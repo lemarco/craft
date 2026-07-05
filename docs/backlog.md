@@ -88,12 +88,14 @@ Four **independent tracks** — different owners can work simultaneously.
 > **Note (A5):** ReadIndex captures the leader's commit index, confirms leadership via a heartbeat `Round` acked by a quorum, and only serves the read once an entry of the current term is committed and applied through the read index. Loss of leadership fails pending reads (`ReadFailed`) so the client retries against the new leader.
 
 #### Track B — Persistence (`craft-storage`) **[P]**
-| ID | Task | Effort |
-|----|------|--------|
-| B1 | `LogStore`/`HardStateStore`/`SnapshotStore` traits | M |
-| B2 | In-memory impl (tests) | S |
-| B3 | `redb` impl + crash-recovery tests | L |
-| B4 | `RaftStorageView` adapter for `craft-core` | M |
+| ID | Task | Effort | Status |
+|----|------|--------|--------|
+| B1 | `LogStore`/`HardStateStore`/`SnapshotStore` traits | M | **done** |
+| B2 | In-memory impl (tests) | S | **done** |
+| B3 | `redb` impl + crash-recovery tests | L | **done** |
+| B4 | `RaftStorageView` adapter for `craft-core` | M | pending |
+
+> **Track B progress (B1–B3):** `craft-storage` defines three storage ports — `HardStateStore` (term + vote), `LogStore` (append-only with suffix-truncate and prefix-purge), and `SnapshotStore` — plus value types `HardState`, `SnapshotMeta`, and `Snapshot`. Two adapters implement them: an in-memory `MemoryStorage` test double and a crash-safe `RedbStorage` backed by a single `redb` file (log entries keyed by index + a metadata table for hard state, snapshot, and the purge boundary, each write committed in its own transaction). A single store-contract test suite runs against **both** backends (so the simulator's in-memory double provably matches production), and a dedicated test reopens a `redb` file across "process lifetimes" to prove hard-state, compaction, and snapshot durability. `redb` is pinned to `2.x` to hold the workspace MSRV at 1.85 (ADR 028). Remaining: **B4** — wire the stores into `craft-core` via a storage-view adapter.
 
 #### Track C — Transport (`craft-net`) **[P]**
 | ID | Task | Effort |
