@@ -33,6 +33,21 @@ Macro responsibilities (crate `raft-macros` or `raft-core` proc-macro):
 - Optional `#[raft_state_machine]` for snapshot header framing (index, term, payload)
 - Compile-time checks that command types are owned and clone-safe for replication
 
+## Implementation note (2026-07-06)
+
+The trait landed in `craft-core` (`StateMachine`, with associated
+`Command`/`Query`/`Response`/`Error`). The "Encode/Decode glue" and the
+"owned & clone-safe" compile-time check are delivered **without a bespoke
+derive**: `Command` and `Query` are marker traits with blanket impls over any
+`serde` type that also satisfies the replication bounds (`Command: Clone + Send
++ 'static`, `Query: Send + 'static`). Users therefore just derive
+`#[derive(Clone, Serialize, Deserialize)]` on their command/query types; a type
+that borrows a lifetime or is not `Clone` fails to satisfy `Command` and will
+not compile. This keeps the public macro surface smaller (a plus for a
+published library, ADR 028), so the originally planned `StateMachine` derive is
+not needed. A `UserActor` derive may still be added for actor message ergonomics
+(backlog D2).
+
 ## Consequences
 
 - **Positive:** Embeddable in arbitrary domains (KV, counters, job queues, etc.)

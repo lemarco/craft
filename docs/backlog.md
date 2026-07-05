@@ -108,11 +108,14 @@ Four **independent tracks** — different owners can work simultaneously.
 | C6 | `postcard` framing over HTTP/3 bodies | S |
 
 #### Track D — Macros (`craft-macros`) **[P]**
-| ID | Task | Effort |
-|----|------|--------|
-| D1 | `StateMachine` derive (encode/decode glue) ([ADR 001](decisions/001-state-machine.md)) | M |
-| D2 | `UserActor` derive (message serde bounds, migratable) | M |
-| D3 | Compile-fail tests (trybuild) | S |
+| ID | Task | Effort | Status |
+|----|------|--------|--------|
+| D0 | `StateMachine` + `Command`/`Query` trait API in `craft-core` ([ADR 001](decisions/001-state-machine.md)) | M | **done** |
+| D1 | `StateMachine` derive (encode/decode glue) ([ADR 001](decisions/001-state-machine.md)) | M | **n/a** — serde blanket impls |
+| D2 | `UserActor` derive (message serde bounds, migratable) | M | pending |
+| D3 | Compile-fail tests (trybuild) | S | pending |
+
+> **Track D progress (D0):** the application state-machine port from ADR 001 now lives in `craft-core`: the `StateMachine` trait (`apply`/`query`/`snapshot`/`restore` with associated `Command`/`Query`/`Response`/`Error` types) plus `Command` and `Query` marker traits. The "encode/decode glue" ADR 001 wanted from a derive is instead provided by **blanket impls** over any `serde` type that also meets the replication bounds — `Command: Clone + Send + 'static`, `Query: Send + 'static` — so a borrowed or non-`Clone` command simply fails to compile (the exact owned/clone-safe check ADR 001 specified), and **D1's bespoke derive is unnecessary**. A reference in-memory KV machine and 10 tests cover set/delete/append (incl. the error path leaving state untouched), the applied-index watermark, snapshot↔restore replacement, malformed-snapshot rejection, determinism (byte-identical snapshots for identical input), and the `Command`/`Query` codec round-trips. Remaining: **D2** (`UserActor` derive) and **D3** (trybuild compile-fail suite).
 
 ---
 
