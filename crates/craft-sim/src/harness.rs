@@ -60,6 +60,7 @@ pub struct Cluster {
 
     reads_ready: BTreeMap<u64, LogIndex>,
     reads_failed: BTreeSet<u64>,
+    snapshots_loaded: BTreeMap<NodeId, LogIndex>,
 }
 
 impl Cluster {
@@ -111,6 +112,7 @@ impl Cluster {
             leaders_per_term: BTreeMap::new(),
             reads_ready: BTreeMap::new(),
             reads_failed: BTreeSet::new(),
+            snapshots_loaded: BTreeMap::new(),
         }
     }
 
@@ -211,6 +213,30 @@ impl Cluster {
             .into_iter()
             .map(|n| n.0)
             .collect()
+    }
+
+    /// Compact the current leader's log up to its last-applied index (Raft §7),
+    /// installing a snapshot with opaque bytes. Returns `false` if there is no
+    /// leader or nothing new to compact.
+    pub fn compact_leader(&mut self) -> bool {
+        let Some(id) = self.leader_node() else {
+            return false;
+        };
+        let node = self.nodes.get_mut(&id).expect("leader exists");
+        let up_to = node.last_applied();
+        node.compact(up_to, vec![0xAB])
+    }
+
+    /// Snapshot boundary index at node `id` (0 if it holds no snapshot).
+    #[must_use]
+    pub fn snapshot_index(&self, id: u64) -> LogIndex {
+        self.nodes[&NodeId(id)].snapshot_index()
+    }
+
+    /// The index a node last installed a leader snapshot at, if any.
+    #[must_use]
+    pub fn snapshot_loaded(&self, id: u64) -> Option<LogIndex> {
+        self.snapshots_loaded.get(&NodeId(id)).copied()
     }
 
     /// Issue a linearizable ReadIndex read (ADR 005) via the current leader.
@@ -374,6 +400,9 @@ impl Cluster {
                 }
                 Output::ReadFailed { id: read_id } => {
                     self.reads_failed.insert(read_id.0);
+                }
+                Output::LoadSnapshot { index, .. } => {
+                    self.snapshots_loaded.insert(id, index);
                 }
             }
         }

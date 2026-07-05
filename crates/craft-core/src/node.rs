@@ -103,6 +103,14 @@ pub enum Output {
         /// The client's read token.
         id: ReadId,
     },
+    /// Load a snapshot installed from the leader into the application state
+    /// machine, replacing all state through `index` (Raft §7).
+    LoadSnapshot {
+        /// Last log index the snapshot includes.
+        index: LogIndex,
+        /// Opaque application snapshot bytes.
+        data: Vec<u8>,
+    },
 }
 
 /// Returned by [`RaftNode::propose`] / [`RaftNode::read_index`] when the node
@@ -136,6 +144,16 @@ struct PendingRead {
     acks: BTreeSet<NodeId>,
 }
 
+/// The most recent snapshot this node holds — enough to ship to a lagging
+/// follower and to recover the configuration after log compaction (Raft §7).
+#[derive(Debug, Clone)]
+struct StoredSnapshot {
+    last_index: LogIndex,
+    last_term: Term,
+    membership: Membership,
+    data: Vec<u8>,
+}
+
 /// A single Raft participant: a deterministic, I/O-free state machine.
 #[derive(Debug, Clone)]
 pub struct RaftNode {
@@ -163,6 +181,7 @@ pub struct RaftNode {
     sent_upper: BTreeMap<NodeId, LogIndex>,
     heartbeat_round: Round,
     pending_reads: Vec<PendingRead>,
+    snapshot: Option<StoredSnapshot>,
 
     // Timing (logical ticks).
     elapsed: u64,
@@ -211,6 +230,7 @@ impl RaftNode {
             sent_upper: BTreeMap::new(),
             heartbeat_round: Round::ZERO,
             pending_reads: Vec::new(),
+            snapshot: None,
             elapsed: 0,
             heartbeat_elapsed: 0,
             election_timeout,
@@ -271,15 +291,24 @@ impl RaftNode {
     pub fn term_at(&self, idx: LogIndex) -> Option<Term> {
         self.log.term_at(idx)
     }
-    /// The active configuration (per the last config entry in the log).
+    /// The active configuration. Prefers the last config entry still in the
+    /// log, then the snapshot's configuration (its config entry may have been
+    /// compacted), then the bootstrap configuration.
     #[must_use]
     pub fn configuration(&self) -> Configuration {
         let membership = self
             .log
             .last_membership()
             .map(|(_, m)| m)
+            .or_else(|| self.snapshot.as_ref().map(|s| &s.membership))
             .unwrap_or(&self.initial);
         Configuration::from_membership(membership)
+    }
+
+    /// Highest index covered by this node's snapshot (0 if none).
+    #[must_use]
+    pub fn snapshot_index(&self) -> LogIndex {
+        self.log.snapshot_index()
     }
     /// The active voting set (sorted).
     #[must_use]
@@ -372,7 +401,7 @@ impl RaftNode {
         match reply {
             RaftRpcReply::RequestVote(r) => self.handle_vote_reply(from, r),
             RaftRpcReply::AppendEntries(r) => self.handle_append_reply(from, r),
-            RaftRpcReply::InstallSnapshot(_) => {}
+            RaftRpcReply::InstallSnapshot(r) => self.handle_snapshot_reply(from, r),
         }
     }
 
@@ -421,6 +450,46 @@ impl RaftNode {
         });
         self.try_complete_reads();
         Ok(())
+    }
+
+    /// Compact the log up to and including `up_to`, replacing that prefix with
+    /// a snapshot whose application state is `data` (Raft §7). The runtime
+    /// supplies `data` from its state machine after applying through `up_to`.
+    ///
+    /// Returns `false` if `up_to` is not a compactable applied index
+    /// (`snapshot_index < up_to <= last_applied`).
+    #[must_use]
+    pub fn compact(&mut self, up_to: LogIndex, data: Vec<u8>) -> bool {
+        if up_to <= self.log.snapshot_index() || up_to > self.last_applied {
+            return false;
+        }
+        let Some(term) = self.log.term_at(up_to) else {
+            return false;
+        };
+        let membership = self.membership_at(up_to);
+        self.log.compact(up_to, term);
+        self.snapshot = Some(StoredSnapshot {
+            last_index: up_to,
+            last_term: term,
+            membership,
+            data,
+        });
+        true
+    }
+
+    /// The configuration in effect at log index `idx`: the last membership
+    /// entry at or before `idx`, else the snapshot's, else the bootstrap one.
+    fn membership_at(&self, idx: LogIndex) -> Membership {
+        for i in (self.log.snapshot_index().0 + 1..=idx.0).rev() {
+            if let Some(EntryPayload::Membership(m)) = self.log.get(LogIndex(i)).map(|e| &e.payload)
+            {
+                return m.clone();
+            }
+        }
+        self.snapshot
+            .as_ref()
+            .map(|s| s.membership.clone())
+            .unwrap_or_else(|| self.initial.clone())
     }
 
     /// Begin a joint-consensus membership change to `new_voters` (+ optional
@@ -773,6 +842,12 @@ impl RaftNode {
             .get(&peer)
             .copied()
             .unwrap_or_else(|| self.log.last_index().next());
+        // If the entries the follower needs have been compacted away, ship the
+        // snapshot instead of an AppendEntries it could never match against.
+        if ni.0 <= self.log.snapshot_index().0 && self.snapshot.is_some() {
+            self.send_snapshot(peer);
+            return;
+        }
         let prev_index = LogIndex(ni.0.saturating_sub(1));
         let prev_term = self.log.term_at(prev_index).unwrap_or(Term::ZERO);
         let entries = self.log.entries_from(ni).to_vec();
@@ -788,6 +863,24 @@ impl RaftNode {
         };
         self.outbox
             .push(Output::Send(peer, RaftRpc::AppendEntries(ae)));
+    }
+
+    fn send_snapshot(&mut self, peer: NodeId) {
+        let Some(snap) = self.snapshot.as_ref() else {
+            return;
+        };
+        let is = InstallSnapshot {
+            term: self.current_term,
+            leader_id: self.id,
+            last_included: LogId::new(snap.last_term, snap.last_index),
+            last_config: snap.membership.clone(),
+            offset: 0,
+            data: snap.data.clone(),
+            done: true,
+        };
+        self.sent_upper.insert(peer, snap.last_index);
+        self.outbox
+            .push(Output::Send(peer, RaftRpc::InstallSnapshot(is)));
     }
 
     fn maybe_advance_commit(&mut self) {
@@ -918,22 +1011,73 @@ impl RaftNode {
         }
     }
 
-    // ---- InstallSnapshot (minimal term handling; full impl deferred) -----
+    // ---- InstallSnapshot (Raft §7) ---------------------------------------
 
     fn handle_install_snapshot(&mut self, from: NodeId, is: InstallSnapshot) {
-        if is.term >= self.current_term {
-            if is.term > self.current_term {
-                self.become_follower(is.term);
-            } else if self.role != Role::Follower {
-                self.set_role(Role::Follower);
-            }
-            self.leader_id = Some(is.leader_id);
-            self.reset_election_timer();
+        if is.term < self.current_term {
+            self.reply_snapshot(from);
+            return;
         }
+        if is.term > self.current_term {
+            self.become_follower(is.term);
+        } else if self.role != Role::Follower {
+            self.set_role(Role::Follower);
+        }
+        self.leader_id = Some(is.leader_id);
+        self.reset_election_timer();
+
+        let last = is.last_included;
+        // Ignore snapshots we already cover; nothing to install.
+        if last.index.0 <= self.log.snapshot_index().0 || last.index <= self.last_applied {
+            self.reply_snapshot(from);
+            return;
+        }
+
+        self.log.install_snapshot(last.index, last.term);
+        self.snapshot = Some(StoredSnapshot {
+            last_index: last.index,
+            last_term: last.term,
+            membership: is.last_config.clone(),
+            data: is.data.clone(),
+        });
+        if self.commit_index < last.index {
+            self.commit_index = last.index;
+        }
+        self.last_applied = last.index;
+        self.outbox.push(Output::LoadSnapshot {
+            index: last.index,
+            data: is.data,
+        });
+        self.reply_snapshot(from);
+    }
+
+    fn reply_snapshot(&mut self, to: NodeId) {
         let reply = InstallSnapshotReply {
             term: self.current_term,
         };
         self.outbox
-            .push(Output::Reply(from, RaftRpcReply::InstallSnapshot(reply)));
+            .push(Output::Reply(to, RaftRpcReply::InstallSnapshot(reply)));
+    }
+
+    fn handle_snapshot_reply(&mut self, from: NodeId, reply: InstallSnapshotReply) {
+        if self.role != Role::Leader || reply.term != self.current_term {
+            return;
+        }
+        // The follower is now caught up to the snapshot boundary we sent.
+        let upper = self
+            .sent_upper
+            .get(&from)
+            .copied()
+            .unwrap_or(LogIndex::ZERO);
+        let current = self
+            .match_index
+            .get(&from)
+            .copied()
+            .unwrap_or(LogIndex::ZERO);
+        if upper > current {
+            self.match_index.insert(from, upper);
+        }
+        self.next_index.insert(from, upper.next());
+        self.maybe_advance_commit();
     }
 }

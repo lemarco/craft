@@ -142,6 +142,9 @@ pub struct InstallSnapshot {
     pub leader_id: NodeId,
     /// The snapshot replaces all entries up to and including this position.
     pub last_included: LogId,
+    /// Cluster configuration as of `last_included` (config entries may have
+    /// been compacted out of the log, so it travels with the snapshot).
+    pub last_config: Membership,
     /// Byte offset of this chunk within the snapshot.
     pub offset: u64,
     /// Raw snapshot chunk bytes.
