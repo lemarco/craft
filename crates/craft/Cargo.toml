@@ -1,0 +1,23 @@
+[package]
+name = "craft"
+description = "A distributed Raft + actor framework: one codebase, N nodes, elastic and self-healing."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+craft-proto.workspace = true
+craft-core.workspace = true
+craft-storage.workspace = true
+craft-net.workspace = true
+craft-actor.workspace = true
+craft-client.workspace = true
+craft-macros.workspace = true

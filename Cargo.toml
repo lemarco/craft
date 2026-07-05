@@ -1,0 +1,52 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/craft-proto",
+    "crates/craft-core",
+    "crates/craft-storage",
+    "crates/craft-net",
+    "crates/craft-macros",
+    "crates/craft-actor",
+    "crates/craft-client",
+    "crates/craft-store-redis",
+    "crates/craft-dashboard",
+    "crates/craft-sim",
+    "crates/craft",
+    "crates/craft-node",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/lemarc/distributive_raft_actor_system"
+authors = ["craft contributors"]
+categories = ["concurrency", "network-programming", "asynchronous"]
+keywords = ["raft", "actor", "distributed", "consensus", "cluster"]
+
+# Shared dependency versions (ADR 028: synchronized workspace).
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+postcard = { version = "1", features = ["use-std"] }
+thiserror = "2"
+
+# Internal crates referenced by path within the workspace.
+craft-proto = { path = "crates/craft-proto", version = "0.1.0" }
+craft-core = { path = "crates/craft-core", version = "0.1.0" }
+craft-storage = { path = "crates/craft-storage", version = "0.1.0" }
+craft-net = { path = "crates/craft-net", version = "0.1.0" }
+craft-macros = { path = "crates/craft-macros", version = "0.1.0" }
+craft-actor = { path = "crates/craft-actor", version = "0.1.0" }
+craft-client = { path = "crates/craft-client", version = "0.1.0" }
+craft-store-redis = { path = "crates/craft-store-redis", version = "0.1.0" }
+craft-dashboard = { path = "crates/craft-dashboard", version = "0.1.0" }
+craft-sim = { path = "crates/craft-sim", version = "0.1.0" }
+craft = { path = "crates/craft", version = "0.1.0" }
+
+# Lints applied across the workspace (ADR 028).
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+lto = "thin"

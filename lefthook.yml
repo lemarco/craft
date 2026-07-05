@@ -1,0 +1,27 @@
+# Lefthook — keep the tree clean on every commit (ADR 028, ADR 029).
+#
+# One-time setup after cloning:
+#     lefthook install
+#
+# Every commit must be warning-free: rustfmt applied, and clippy clean with
+# `-D warnings` (which also denies plain compiler warnings). Tests run on push.
+#
+# Escape hatch (use sparingly): LEFTHOOK=0 git commit ...
+
+pre-commit:
+  parallel: false
+  commands:
+    fmt:
+      glob: "*.rs"
+      run: cargo fmt --all
+      stage_fixed: true
+    clippy:
+      # Whole workspace: a change in one crate can break lints elsewhere.
+      glob: "*.rs"
+      run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+pre-push:
+  parallel: false
+  commands:
+    test:
+      run: cargo test --workspace --all-features

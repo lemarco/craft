@@ -1,0 +1,17 @@
+[package]
+name = "craft-net"
+description = "HTTP/3 (QUIC) transport with mTLS for the craft framework."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+craft-proto.workspace = true

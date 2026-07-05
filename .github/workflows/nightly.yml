@@ -1,0 +1,30 @@
+name: Nightly (heavy lane)
+
+# Heavy, slower checks kept off the PR path (ADR 029): fuzzing, E2E chaos,
+# benchmarks, and soak. These are placeholders wired up as the tracks land.
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    name: fuzz (postcard decoders)
+    runs-on: ubuntu-latest
+    if: false # enable once craft-fuzz targets exist (backlog T4)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo install cargo-fuzz
+      - run: cargo fuzz run wire_decode -- -max_total_time=300
+
+  e2e:
+    name: e2e (docker-compose + chaos)
+    runs-on: ubuntu-latest
+    if: false # enable once craft-node + compose exist (backlog T8/T9)
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "docker compose up + pumba chaos scenarios (ADR 029)"

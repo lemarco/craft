@@ -1,0 +1,17 @@
+[package]
+name = "craft-macros"
+description = "Derive macros (StateMachine, UserActor) for the craft framework."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[lib]
+proc-macro = true
+
+[lints]
+workspace = true

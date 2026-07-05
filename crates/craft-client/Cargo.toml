@@ -1,0 +1,18 @@
+[package]
+name = "craft-client"
+description = "In-process and remote (HTTP/3) client API for craft."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+craft-proto.workspace = true
+craft-net.workspace = true
