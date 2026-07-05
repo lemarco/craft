@@ -13,17 +13,23 @@
 //! * [`peer`] — the [`PeerDirectory`] address book and route-URL builder.
 //! * [`transport`] — the [`Transport`]/[`RequestHandler`] ports plus the
 //!   in-memory [`LocalNetwork`] used by tests and the simulator.
+//! * [`tls`] — mTLS `quinn` server/client configs and dev cert generation.
 
 pub use craft_proto as proto;
 
 pub mod peer;
 pub mod route;
+pub mod tls;
 pub mod transport;
 pub mod wire;
 
 pub use peer::PeerDirectory;
 pub use route::{Route, TrafficClass};
+pub use tls::{NodeIdentity, TlsError, client_config, server_config};
 pub use transport::{
     LocalNetwork, RequestHandler, Transport, TransportError, send_client_request, send_peer_rpc,
 };
 pub use wire::{WireError, decode_body, encode_body};
+
+#[cfg(feature = "dev-certs")]
+pub use tls::ClusterCa;
