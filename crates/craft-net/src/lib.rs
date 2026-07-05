@@ -14,16 +14,19 @@
 //! * [`transport`] — the [`Transport`]/[`RequestHandler`] ports plus the
 //!   in-memory [`LocalNetwork`] used by tests and the simulator.
 //! * [`tls`] — mTLS `quinn` server/client configs and dev cert generation.
+//! * [`quic`] — the live HTTP/3 [`QuicServer`] and [`QuicTransport`].
 
 pub use craft_proto as proto;
 
 pub mod peer;
+pub mod quic;
 pub mod route;
 pub mod tls;
 pub mod transport;
 pub mod wire;
 
 pub use peer::PeerDirectory;
+pub use quic::{QuicServer, QuicTransport, client_endpoint};
 pub use route::{Route, TrafficClass};
 pub use tls::{NodeIdentity, TlsError, client_config, server_config};
 pub use transport::{

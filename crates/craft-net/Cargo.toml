@@ -34,7 +34,12 @@ rustls = { version = "0.23", default-features = false, features = [
     "tls12",
     "logging",
 ] }
+h3 = "0.0.8"
+h3-quinn = "0.0.10"
+http = "1"
+bytes = "1"
+tokio = { version = "1", features = ["rt", "sync"] }
 rcgen = { version = "0.14", optional = true }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
