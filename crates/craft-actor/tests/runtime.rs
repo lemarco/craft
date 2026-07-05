@@ -109,12 +109,13 @@ impl Cluster {
             let transport: Arc<dyn Transport> = Arc::new(net.clone());
             let handle = spawn_node(
                 driver,
-                transport,
+                Arc::clone(&transport),
                 RuntimeConfig {
                     tick_period: Duration::from_millis(5),
                 },
             );
-            let service: Arc<dyn RequestHandler> = Arc::new(NodeService::new(handle.clone()));
+            let service: Arc<dyn RequestHandler> =
+                Arc::new(NodeService::new(handle.clone(), Arc::clone(&transport)));
             net.attach(id, service);
             handles.insert(id, handle);
         }
@@ -213,6 +214,51 @@ async fn propose_on_a_follower_reports_not_leader() {
             }
         }
         other => panic!("expected NotLeader, got {other:?}"),
+    }
+
+    cluster.shutdown();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn follower_transparently_forwards_client_wire_to_leader() {
+    // ADR 003: a client can hit *any* node. Contact a follower over the wire
+    // and expect the write/read to be proxied to the leader and succeed.
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let cluster = Cluster::start(&ids);
+    let leader = cluster.wait_for_leader().await;
+    let follower = ids.into_iter().find(|id| *id != leader).unwrap();
+
+    let propose = ClientRequest::Propose(
+        craft_actor::craft_proto::encode(&KvCommand::Set {
+            key: "via".into(),
+            value: "follower".into(),
+        })
+        .unwrap(),
+    );
+    let response = send_client_request(&cluster.net, follower, &propose)
+        .await
+        .expect("forwarded propose");
+    match response {
+        ClientResponse::Ok(bytes) => {
+            let decoded: KvResponse = craft_actor::craft_proto::decode(&bytes).unwrap();
+            assert_eq!(decoded, KvResponse::Set { previous: None });
+        }
+        other => panic!("expected forwarded Ok, got {other:?}"),
+    }
+
+    // A linearizable read through the follower must also be forwarded.
+    let query = ClientRequest::Query(
+        craft_actor::craft_proto::encode(&KvQuery::Get { key: "via".into() }).unwrap(),
+    );
+    let response = send_client_request(&cluster.net, follower, &query)
+        .await
+        .expect("forwarded query");
+    match response {
+        ClientResponse::Ok(bytes) => {
+            let decoded: KvResponse = craft_actor::craft_proto::decode(&bytes).unwrap();
+            assert_eq!(decoded, KvResponse::Value(Some("follower".into())));
+        }
+        other => panic!("expected forwarded Ok, got {other:?}"),
     }
 
     cluster.shutdown();

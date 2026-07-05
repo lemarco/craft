@@ -29,8 +29,6 @@
 //! * **Log compaction / snapshots** (Track G): the runtime never calls
 //!   `RaftNode::compact`, so the log grows without bound. Inbound
 //!   `InstallSnapshot` restore *is* handled (via the driver).
-//! * **Transparent leader forwarding** (E4, ADR 003): a follower returns
-//!   [`ClientError::NotLeader`] with a hint rather than proxying to the leader.
 //! * **Per-connection identity** (C5): [`NodeService`] trusts the sender id
 //!   declared inside a peer RPC instead of the presented client certificate.
 //! * **Fatal errors are silent**: a corrupt-log / state-machine failure stops
@@ -43,7 +41,8 @@ use std::time::Duration;
 use craft_core::{Command as _, ReadId, Role, StateMachine};
 use craft_net::transport::{Body, BoxFuture};
 use craft_net::{
-    RequestHandler, Route, Transport, TransportError, decode_body, encode_body, send_peer_rpc,
+    RequestHandler, Route, Transport, TransportError, decode_body, encode_body,
+    send_client_request, send_peer_rpc,
 };
 use craft_proto::{ClientRequest, ClientResponse, LogIndex, NodeId, RaftRpc, RaftRpcReply, Term};
 use tokio::sync::{mpsc, oneshot};
@@ -423,22 +422,45 @@ where
 /// `/client/wire` requests into a running node via its [`NodeHandle`].
 ///
 /// Attach it to a `QuicServer` (or `LocalNetwork`) so remote peers and clients
-/// can reach the node.
+/// can reach the node. Client requests use **transparent forwarding** (ADR
+/// 003): a non-leader proxies the request to the current leader over the same
+/// `transport` and returns the leader's response, so clients can connect to any
+/// node without leader discovery. If no leader is known the request fails with
+/// a [`ClientResponse::Error`]; forward attempts are bounded by
+/// `forward_timeout` (elections converge quickly, so stale-hint hops are rare
+/// and time-bounded rather than looping).
 pub struct NodeService<M: StateMachine> {
     handle: NodeHandle<M>,
+    transport: Arc<dyn Transport>,
+    forward_timeout: Duration,
 }
 
 impl<M: StateMachine> NodeService<M> {
-    /// Wrap a node handle as a request handler.
+    /// Wrap a node handle as a request handler. `transport` is used to forward
+    /// client requests to the leader when this node is a follower (ADR 003);
+    /// pass the same transport the node runtime uses.
     #[must_use]
-    pub fn new(handle: NodeHandle<M>) -> Self {
-        Self { handle }
+    pub fn new(handle: NodeHandle<M>, transport: Arc<dyn Transport>) -> Self {
+        Self {
+            handle,
+            transport,
+            forward_timeout: Duration::from_secs(5),
+        }
+    }
+
+    /// Override the per-forward deadline used when proxying to the leader.
+    #[must_use]
+    pub fn with_forward_timeout(mut self, timeout: Duration) -> Self {
+        self.forward_timeout = timeout;
+        self
     }
 }
 
 impl<M: StateMachine> RequestHandler for NodeService<M> {
     fn handle(&self, route: Route, body: Body) -> BoxFuture<'static, Result<Body, TransportError>> {
         let handle = self.handle.clone();
+        let transport = Arc::clone(&self.transport);
+        let forward_timeout = self.forward_timeout;
         Box::pin(async move {
             match route {
                 Route::PeerWire => {
@@ -452,7 +474,8 @@ impl<M: StateMachine> RequestHandler for NodeService<M> {
                 }
                 Route::ClientWire => {
                     let request: ClientRequest = decode_body(&body)?;
-                    let response = serve_client(&handle, request).await;
+                    let response =
+                        route_client(&handle, &transport, forward_timeout, request).await;
                     Ok(encode_body(&response)?)
                 }
                 other => Err(TransportError::Io(format!(
@@ -463,9 +486,49 @@ impl<M: StateMachine> RequestHandler for NodeService<M> {
     }
 }
 
-/// Answer a decoded [`ClientRequest`] against a node, mapping runtime results
-/// onto the wire [`ClientResponse`].
-async fn serve_client<M: StateMachine>(
+/// Serve a client request, forwarding to the leader if this node is a follower
+/// (ADR 003 transparent forwarding).
+async fn route_client<M: StateMachine>(
+    handle: &NodeHandle<M>,
+    transport: &Arc<dyn Transport>,
+    forward_timeout: Duration,
+    request: ClientRequest,
+) -> ClientResponse {
+    // Try locally first. `propose`/`query` on a follower are side-effect-free
+    // and return a `NotLeader` hint (they check role before touching the log),
+    // so this doubles as the leader/leader-hint check without a status hop.
+    let local = serve_locally(handle, request.clone()).await;
+    let ClientResponse::NotLeader { leader } = local else {
+        return local;
+    };
+    match leader {
+        // Forward to the known leader and return its response verbatim.
+        Some(leader) if leader != handle.id() => {
+            forward_to_leader(transport, forward_timeout, leader, request).await
+        }
+        // No leader (election in progress) or a self-referential hint: nothing
+        // to forward to (ADR 003 "no leader known").
+        _ => ClientResponse::Error("no leader elected".to_string()),
+    }
+}
+
+/// Proxy a client request to `leader`, bounded by `timeout`.
+async fn forward_to_leader(
+    transport: &Arc<dyn Transport>,
+    timeout: Duration,
+    leader: NodeId,
+    request: ClientRequest,
+) -> ClientResponse {
+    match tokio::time::timeout(timeout, send_client_request(&**transport, leader, &request)).await {
+        Ok(Ok(response)) => response,
+        Ok(Err(e)) => ClientResponse::Error(format!("forward to leader {leader:?} failed: {e}")),
+        Err(_) => ClientResponse::Error(format!("forward to leader {leader:?} timed out")),
+    }
+}
+
+/// Answer a decoded [`ClientRequest`] against the local node, mapping runtime
+/// results onto the wire [`ClientResponse`] (no forwarding).
+async fn serve_locally<M: StateMachine>(
     handle: &NodeHandle<M>,
     request: ClientRequest,
 ) -> ClientResponse {
