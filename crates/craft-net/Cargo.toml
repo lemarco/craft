@@ -15,3 +15,5 @@ workspace = true
 
 [dependencies]
 craft-proto.workspace = true
+serde.workspace = true
+thiserror.workspace = true

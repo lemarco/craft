@@ -98,14 +98,16 @@ Four **independent tracks** — different owners can work simultaneously.
 > **Track B progress (B1–B3):** `craft-storage` defines three storage ports — `HardStateStore` (term + vote), `LogStore` (append-only with suffix-truncate and prefix-purge), and `SnapshotStore` — plus value types `HardState`, `SnapshotMeta`, and `Snapshot`. Two adapters implement them: an in-memory `MemoryStorage` test double and a crash-safe `RedbStorage` backed by a single `redb` file (log entries keyed by index + a metadata table for hard state, snapshot, and the purge boundary, each write committed in its own transaction). A single store-contract test suite runs against **both** backends (so the simulator's in-memory double provably matches production), and a dedicated test reopens a `redb` file across "process lifetimes" to prove hard-state, compaction, and snapshot durability. `redb` is pinned to `2.x` to hold the workspace MSRV at 1.85 (ADR 028). Remaining: **B4** — wire the stores into `craft-core` via a storage-view adapter.
 
 #### Track C — Transport (`craft-net`) **[P]**
-| ID | Task | Effort |
-|----|------|--------|
-| C1 | `Transport` trait + address/peer map | M |
-| C2 | QUIC/HTTP/3 server via `quinn`+`h3` ([ADR 010](decisions/010-wire-transport.md)) | L |
-| C3 | rustls mTLS peers; **dedicated peer connection** ([ADR 027](decisions/027-future-work-and-risks.md) R2) | L |
-| C4 | Route dispatch: `/peer/wire`, `/client/wire`, `/cluster/join`, `/actor/*` | M |
-| C5 | Peer connection pool + reconnect/backoff | M |
-| C6 | `postcard` framing over HTTP/3 bodies | S |
+| ID | Task | Effort | Status |
+|----|------|--------|--------|
+| C1 | `Transport` trait + address/peer map | M | partial (peer map done; `Transport` trait pending with C2) |
+| C2 | QUIC/HTTP/3 server via `quinn`+`h3` ([ADR 010](decisions/010-wire-transport.md)) | L | pending |
+| C3 | rustls mTLS peers; **dedicated peer connection** ([ADR 027](decisions/027-future-work-and-risks.md) R2) | L | pending |
+| C4 | Route dispatch: `/peer/wire`, `/client/wire`, `/cluster/join`, `/actor/*` | M | **done** (route table) |
+| C5 | Peer connection pool + reconnect/backoff | M | pending |
+| C6 | `postcard` framing over HTTP/3 bodies | S | **done** |
+
+> **Track C progress (C4, C6, C1 partial):** `craft-net` now owns the transport-agnostic wire contract, split into three pure, fully-tested modules. `route` defines the fixed `/raft/v1/*` route table as a `Route` enum with `path`/`from_path`/`method` and a per-route `TrafficClass` (peer consensus is isolated from client/actor/cluster traffic for the dedicated-connection requirement of ADR 027 R2). `wire` frames `postcard` bodies of `craft-proto` types with the `application/x-postcard` content-type, a protocol-version check (missing header ⇒ v1), and a 16 MiB body-size guard that rejects oversized inputs *before* allocating on decode. `peer` provides the `PeerDirectory` (`NodeId → SocketAddr` book) and an HTTPS route-URL builder (IPv6-safe). Covered by 16 tests (route round-trips + uniqueness, traffic-class isolation, body round-trips for peer RPC/reply and client req/resp, the size-limit boundary, content-type/version validation, and directory insert/lookup/remove/URL building). Remaining: the async `Transport` trait plus the live `quinn`/`h3` server and rustls mTLS (**C2/C3**) and the peer connection pool (**C5**).
 
 #### Track D — Macros (`craft-macros`) **[P]**
 | ID | Task | Effort | Status |
