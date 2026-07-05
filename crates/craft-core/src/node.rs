@@ -1,23 +1,29 @@
 //! The pure Raft consensus state machine.
 //!
 //! [`RaftNode`] performs no I/O: it consumes events (`tick`, `receive`,
-//! `receive_reply`, `propose`, `propose_membership`) and accumulates [`Output`]
-//! effects that an outer runtime executes (send messages, apply commands).
-//! Time is logical — the runtime calls [`RaftNode::tick`] once per logical unit
-//! — so a given seed replays deterministically (ADR 029, ADR 030).
+//! `receive_reply`, `propose`, `propose_membership`, `read_index`) and
+//! accumulates [`Output`] effects that an outer runtime executes (send
+//! messages, apply commands, complete reads). Time is logical — the runtime
+//! calls [`RaftNode::tick`] once per logical unit — so a given seed replays
+//! deterministically (ADR 029, ADR 030).
 //!
-//! Cluster membership uses **joint consensus** (ADR 016): a change appends a
-//! transitional `C_old,new` entry that requires majorities in *both* the old
-//! and new voter sets; once it commits, the leader appends the final `C_new`.
+//! * Membership uses **joint consensus** (ADR 016): a change appends a
+//!   transitional `C_old,new` entry that requires majorities in *both* voter
+//!   sets; once it commits, the leader appends the final `C_new`.
+//! * Elections use **Pre-Vote** (Raft thesis §9.6) so isolated nodes cannot
+//!   disrupt a live leader by inflating terms.
+//! * Linearizable reads use **ReadIndex** (ADR 005): the leader confirms it is
+//!   still leader via a heartbeat round to a quorum before serving the read.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use craft_proto::{
     AppendEntries, AppendEntriesReply, EntryPayload, InstallSnapshot, InstallSnapshotReply,
-    LogEntry, LogIndex, Membership, NodeId, RaftRpc, RaftRpcReply, RequestVote, RequestVoteReply,
-    Term,
+    LogEntry, LogId, LogIndex, Membership, NodeId, RaftRpc, RaftRpcReply, RequestVote,
+    RequestVoteReply, Round, Term,
 };
 
+use crate::config::Configuration;
 use crate::log::Log;
 use crate::rng::Rng;
 
@@ -68,6 +74,10 @@ pub struct Committed {
     pub command: Vec<u8>,
 }
 
+/// Client-supplied token identifying a linearizable read request (ADR 005).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ReadId(pub u64);
+
 /// An effect produced by the core for the runtime to execute.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Output {
@@ -79,9 +89,24 @@ pub enum Output {
     Apply(Committed),
     /// The node changed role (useful for observability and tests).
     RoleChanged(Role),
+    /// A ReadIndex read is safe to serve: the state machine at `index` (or
+    /// later) reflects everything committed before the request (ADR 005).
+    ReadReady {
+        /// The client's read token.
+        id: ReadId,
+        /// The confirmed read index.
+        index: LogIndex,
+    },
+    /// A pending read could not be honored (leadership was lost); retry it
+    /// against the new leader.
+    ReadFailed {
+        /// The client's read token.
+        id: ReadId,
+    },
 }
 
-/// Returned by [`RaftNode::propose`] when the node is not the leader.
+/// Returned by [`RaftNode::propose`] / [`RaftNode::read_index`] when the node
+/// is not the leader.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NotLeader {
     /// Best-known current leader, if any, for client redirection.
@@ -102,26 +127,13 @@ pub enum MembershipError {
     EmptyVoters,
 }
 
-/// A resolved view of the active configuration as sets.
-#[derive(Debug, Clone, Default)]
-struct Conf {
-    voters: BTreeSet<NodeId>,
-    outgoing: BTreeSet<NodeId>,
-    learners: BTreeSet<NodeId>,
-}
-
-impl Conf {
-    fn is_joint(&self) -> bool {
-        !self.outgoing.is_empty()
-    }
-}
-
-fn majority(set: &BTreeSet<NodeId>, acked: &BTreeSet<NodeId>) -> bool {
-    if set.is_empty() {
-        return true; // no constraint from an absent half
-    }
-    let need = set.len() / 2 + 1;
-    acked.iter().filter(|id| set.contains(id)).count() >= need
+/// A ReadIndex request awaiting leadership confirmation and apply catch-up.
+#[derive(Debug, Clone)]
+struct PendingRead {
+    id: ReadId,
+    index: LogIndex,
+    round: Round,
+    acks: BTreeSet<NodeId>,
 }
 
 /// A single Raft participant: a deterministic, I/O-free state machine.
@@ -149,6 +161,8 @@ pub struct RaftNode {
     next_index: BTreeMap<NodeId, LogIndex>,
     match_index: BTreeMap<NodeId, LogIndex>,
     sent_upper: BTreeMap<NodeId, LogIndex>,
+    heartbeat_round: Round,
+    pending_reads: Vec<PendingRead>,
 
     // Timing (logical ticks).
     elapsed: u64,
@@ -195,6 +209,8 @@ impl RaftNode {
             next_index: BTreeMap::new(),
             match_index: BTreeMap::new(),
             sent_upper: BTreeMap::new(),
+            heartbeat_round: Round::ZERO,
+            pending_reads: Vec::new(),
             elapsed: 0,
             heartbeat_elapsed: 0,
             election_timeout,
@@ -255,15 +271,25 @@ impl RaftNode {
     pub fn term_at(&self, idx: LogIndex) -> Option<Term> {
         self.log.term_at(idx)
     }
-    /// The active voting set (sorted), per the last config in the log.
+    /// The active configuration (per the last config entry in the log).
+    #[must_use]
+    pub fn configuration(&self) -> Configuration {
+        let membership = self
+            .log
+            .last_membership()
+            .map(|(_, m)| m)
+            .unwrap_or(&self.initial);
+        Configuration::from_membership(membership)
+    }
+    /// The active voting set (sorted).
     #[must_use]
     pub fn voters(&self) -> Vec<NodeId> {
-        self.conf().voters.into_iter().collect()
+        self.configuration().voters()
     }
     /// Whether the active configuration is a joint (transitional) config.
     #[must_use]
     pub fn is_joint(&self) -> bool {
-        self.conf().is_joint()
+        self.configuration().is_joint()
     }
 
     /// Drain accumulated effects. The runtime calls this after every event.
@@ -274,19 +300,6 @@ impl RaftNode {
 
     // ---- Configuration helpers ------------------------------------------
 
-    fn conf(&self) -> Conf {
-        let m = self
-            .log
-            .last_membership()
-            .map(|(_, m)| m)
-            .unwrap_or(&self.initial);
-        Conf {
-            voters: m.voters.iter().copied().collect(),
-            outgoing: m.voters_outgoing.iter().copied().collect(),
-            learners: m.learners.iter().copied().collect(),
-        }
-    }
-
     fn config_index(&self) -> LogIndex {
         self.log
             .last_membership()
@@ -295,27 +308,16 @@ impl RaftNode {
     }
 
     fn is_voter(&self, id: NodeId) -> bool {
-        let c = self.conf();
-        c.voters.contains(&id) || c.outgoing.contains(&id)
+        self.configuration().is_voter(id)
     }
 
     fn peers(&self) -> Vec<NodeId> {
-        let c = self.conf();
-        let mut set: BTreeSet<NodeId> = c
-            .voters
-            .iter()
-            .chain(c.outgoing.iter())
-            .chain(c.learners.iter())
-            .copied()
-            .collect();
-        set.remove(&self.id);
-        set.into_iter().collect()
+        self.configuration().peers(self.id)
     }
 
     /// Whether `acked` satisfies quorum in the current (possibly joint) config.
     fn quorum_ok(&self, acked: &BTreeSet<NodeId>) -> bool {
-        let c = self.conf();
-        majority(&c.voters, acked) && majority(&c.outgoing, acked)
+        self.configuration().has_quorum(acked)
     }
 
     fn quorum_of_votes(&self) -> bool {
@@ -393,6 +395,34 @@ impl RaftNode {
         Ok(idx)
     }
 
+    /// Request a linearizable read (ReadIndex, ADR 005). The leader captures
+    /// its commit index and confirms it still leads by a heartbeat round to a
+    /// quorum; once confirmed and applied, an [`Output::ReadReady`] is emitted.
+    /// If leadership is lost first, an [`Output::ReadFailed`] is emitted.
+    ///
+    /// # Errors
+    /// Returns [`NotLeader`] with a redirect hint if this node is not leader.
+    pub fn read_index(&mut self, id: ReadId) -> Result<(), NotLeader> {
+        if self.role != Role::Leader {
+            return Err(NotLeader {
+                leader: self.leader_id,
+            });
+        }
+        // A fresh heartbeat round whose quorum of acks proves we still lead.
+        self.broadcast_append();
+        let round = self.heartbeat_round;
+        let mut acks = BTreeSet::new();
+        acks.insert(self.id);
+        self.pending_reads.push(PendingRead {
+            id,
+            index: self.commit_index,
+            round,
+            acks,
+        });
+        self.try_complete_reads();
+        Ok(())
+    }
+
     /// Begin a joint-consensus membership change to `new_voters` (+ optional
     /// `learners`). Only the leader may call this, and only when no other
     /// change is in flight (ADR 016).
@@ -410,7 +440,7 @@ impl RaftNode {
                 leader: self.leader_id,
             });
         }
-        let current = self.conf();
+        let current = self.configuration();
         if current.is_joint() || self.config_index() > self.commit_index {
             return Err(MembershipError::InProgress);
         }
@@ -427,7 +457,7 @@ impl RaftNode {
 
         let joint = Membership {
             voters,
-            voters_outgoing: current.voters.into_iter().collect(),
+            voters_outgoing: current.voters(),
             learners,
         };
         let idx = self
@@ -453,6 +483,7 @@ impl RaftNode {
             self.voted_for = None;
         }
         self.votes.clear();
+        self.fail_pending_reads();
         self.set_role(Role::Follower);
     }
 
@@ -478,8 +509,7 @@ impl RaftNode {
         let rv = RequestVote {
             term: self.current_term.next(),
             candidate_id: self.id,
-            last_log_index: self.log.last_index(),
-            last_log_term: self.log.last_term(),
+            last_log: self.log.last_id(),
             pre_vote: true,
         };
         self.send_vote_requests(&rv);
@@ -506,20 +536,16 @@ impl RaftNode {
         let rv = RequestVote {
             term: self.current_term,
             candidate_id: self.id,
-            last_log_index: self.log.last_index(),
-            last_log_term: self.log.last_term(),
+            last_log: self.log.last_id(),
             pre_vote: false,
         };
         self.send_vote_requests(&rv);
     }
 
     fn send_vote_requests(&mut self, rv: &RequestVote) {
-        let conf = self.conf();
-        for p in self.peers() {
-            if conf.voters.contains(&p) || conf.outgoing.contains(&p) {
-                self.outbox
-                    .push(Output::Send(p, RaftRpc::RequestVote(rv.clone())));
-            }
+        for p in self.configuration().voter_peers(self.id) {
+            self.outbox
+                .push(Output::Send(p, RaftRpc::RequestVote(rv.clone())));
         }
     }
 
@@ -552,8 +578,7 @@ impl RaftNode {
     // ---- RequestVote -----------------------------------------------------
 
     fn handle_request_vote(&mut self, from: NodeId, rv: RequestVote) {
-        let up_to_date =
-            (rv.last_log_term, rv.last_log_index) >= (self.log.last_term(), self.log.last_index());
+        let up_to_date = rv.last_log >= self.log.last_id();
 
         if rv.pre_vote {
             // Pre-vote never changes our term or vote. Refuse if we still
@@ -617,7 +642,7 @@ impl RaftNode {
 
     fn handle_append_entries(&mut self, from: NodeId, ae: AppendEntries) {
         if ae.term < self.current_term {
-            self.reply_append(from, false, None, None);
+            self.reply_append(from, false, None, None, ae.round);
             return;
         }
 
@@ -630,16 +655,16 @@ impl RaftNode {
         self.reset_election_timer();
 
         // Log-matching check on the entry preceding the new ones.
-        if ae.prev_log_index.0 > 0 {
-            match self.log.term_at(ae.prev_log_index) {
+        if ae.prev_log.index.0 > 0 {
+            match self.log.term_at(ae.prev_log.index) {
                 None => {
                     let hint = self.log.last_index().next();
-                    self.reply_append(from, false, Some(hint), None);
+                    self.reply_append(from, false, Some(hint), None, ae.round);
                     return;
                 }
-                Some(t) if t != ae.prev_log_term => {
-                    let first = self.log.first_index_of_term(t).unwrap_or(ae.prev_log_index);
-                    self.reply_append(from, false, Some(first), Some(t));
+                Some(t) if t != ae.prev_log.term => {
+                    let first = self.log.first_index_of_term(t).unwrap_or(ae.prev_log.index);
+                    self.reply_append(from, false, Some(first), Some(t), ae.round);
                     return;
                 }
                 _ => {}
@@ -647,7 +672,7 @@ impl RaftNode {
         }
 
         // Append, truncating on the first conflicting index.
-        let mut idx = ae.prev_log_index;
+        let mut idx = ae.prev_log.index;
         for entry in &ae.entries {
             idx = idx.next();
             match self.log.term_at(idx) {
@@ -674,7 +699,7 @@ impl RaftNode {
             self.commit_index = ae.leader_commit.min(idx);
             self.apply_committed();
         }
-        self.reply_append(from, true, None, None);
+        self.reply_append(from, true, None, None, ae.round);
     }
 
     fn reply_append(
@@ -683,12 +708,14 @@ impl RaftNode {
         success: bool,
         conflict_index: Option<LogIndex>,
         conflict_term: Option<Term>,
+        round: Round,
     ) {
         let reply = AppendEntriesReply {
             term: self.current_term,
             success,
             conflict_index,
             conflict_term,
+            round,
         };
         self.outbox
             .push(Output::Reply(to, RaftRpcReply::AppendEntries(reply)));
@@ -713,7 +740,9 @@ impl RaftNode {
                 self.match_index.insert(from, upper);
             }
             self.next_index.insert(from, upper.next());
+            self.confirm_reads(from, reply.round);
             self.maybe_advance_commit();
+            self.try_complete_reads();
         } else {
             let ni = match reply.conflict_index {
                 Some(ci) => LogIndex(ci.0.max(1)),
@@ -730,6 +759,9 @@ impl RaftNode {
     // ---- Replication helpers --------------------------------------------
 
     fn broadcast_append(&mut self) {
+        // Each broadcast opens a new heartbeat round; acks echoing this round
+        // (or later) confirm leadership for any read registered before it.
+        self.heartbeat_round = self.heartbeat_round.next();
         for p in self.peers() {
             self.send_append(p);
         }
@@ -749,10 +781,10 @@ impl RaftNode {
         let ae = AppendEntries {
             term: self.current_term,
             leader_id: self.id,
-            prev_log_index: prev_index,
-            prev_log_term: prev_term,
+            prev_log: LogId::new(prev_term, prev_index),
             entries,
             leader_commit: self.commit_index,
+            round: self.heartbeat_round,
         };
         self.outbox
             .push(Output::Send(peer, RaftRpc::AppendEntries(ae)));
@@ -786,6 +818,7 @@ impl RaftNode {
             self.apply_committed();
             self.maybe_finalize_membership();
             self.maybe_step_down_if_removed();
+            self.try_complete_reads();
         }
     }
 
@@ -806,19 +839,66 @@ impl RaftNode {
         }
     }
 
+    // ---- ReadIndex (ADR 005) --------------------------------------------
+
+    /// Record that `from` acked a heartbeat at `round`, confirming leadership
+    /// for every pending read registered no later than that round.
+    fn confirm_reads(&mut self, from: NodeId, round: Round) {
+        for r in &mut self.pending_reads {
+            if round >= r.round {
+                r.acks.insert(from);
+            }
+        }
+    }
+
+    /// Complete reads that are both leadership-confirmed (a quorum acked the
+    /// read's round) and applied (`last_applied >= index`). A read is only
+    /// served once the leader has committed an entry of its current term, so
+    /// its commit index is authoritative.
+    fn try_complete_reads(&mut self) {
+        if self.role != Role::Leader || self.pending_reads.is_empty() {
+            return;
+        }
+        if self.log.term_at(self.commit_index) != Some(self.current_term) {
+            return;
+        }
+        let conf = self.configuration();
+        let applied = self.last_applied;
+        let mut ready = Vec::new();
+        self.pending_reads.retain(|r| {
+            if conf.has_quorum(&r.acks) && applied >= r.index {
+                ready.push((r.id, r.index));
+                false
+            } else {
+                true
+            }
+        });
+        for (id, index) in ready {
+            self.outbox.push(Output::ReadReady { id, index });
+        }
+    }
+
+    fn fail_pending_reads(&mut self) {
+        for r in std::mem::take(&mut self.pending_reads) {
+            self.outbox.push(Output::ReadFailed { id: r.id });
+        }
+    }
+
+    // ---- Membership finalization (ADR 016) ------------------------------
+
     /// Once a joint `C_old,new` entry commits, the leader appends the final
-    /// `C_new` to leave the transitional configuration (ADR 016).
+    /// `C_new` to leave the transitional configuration.
     fn maybe_finalize_membership(&mut self) {
         if self.role != Role::Leader {
             return;
         }
-        let c = self.conf();
+        let conf = self.configuration();
         let cfg_idx = self.config_index();
-        if c.is_joint() && cfg_idx.0 != 0 && cfg_idx <= self.commit_index {
+        if conf.is_joint() && cfg_idx.0 != 0 && cfg_idx <= self.commit_index {
             let final_config = Membership {
-                voters: c.voters.into_iter().collect(),
+                voters: conf.voters(),
                 voters_outgoing: Vec::new(),
-                learners: c.learners.into_iter().collect(),
+                learners: conf.to_membership().learners,
             };
             self.log
                 .append(self.current_term, EntryPayload::Membership(final_config));
@@ -831,9 +911,8 @@ impl RaftNode {
         if self.role != Role::Leader {
             return;
         }
-        let c = self.conf();
-        if !c.is_joint() && self.config_index() <= self.commit_index && !c.voters.contains(&self.id)
-        {
+        let conf = self.configuration();
+        if !conf.is_joint() && self.config_index() <= self.commit_index && !conf.is_voter(self.id) {
             self.become_follower(self.current_term);
             self.leader_id = None;
         }

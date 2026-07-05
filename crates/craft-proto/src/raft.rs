@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{LogIndex, NodeId, Term};
+use crate::{LogId, LogIndex, NodeId, Round, Term};
 
 /// A single Raft log entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -13,6 +13,14 @@ pub struct LogEntry {
     pub index: LogIndex,
     /// What the entry carries.
     pub payload: EntryPayload,
+}
+
+impl LogEntry {
+    /// This entry's `(term, index)` position.
+    #[must_use]
+    pub fn id(&self) -> LogId {
+        LogId::new(self.term, self.index)
+    }
 }
 
 /// The contents of a [`LogEntry`].
@@ -75,10 +83,8 @@ pub struct RequestVote {
     pub term: Term,
     /// Candidate requesting the vote.
     pub candidate_id: NodeId,
-    /// Index of the candidate's last log entry.
-    pub last_log_index: LogIndex,
-    /// Term of the candidate's last log entry.
-    pub last_log_term: Term,
+    /// Position of the candidate's last log entry (for the up-to-date check).
+    pub last_log: LogId,
     /// Pre-vote probe (does not increment term when set).
     pub pre_vote: bool,
 }
@@ -102,14 +108,14 @@ pub struct AppendEntries {
     pub term: Term,
     /// Leader sending the entries.
     pub leader_id: NodeId,
-    /// Index of the log entry immediately preceding new ones.
-    pub prev_log_index: LogIndex,
-    /// Term of `prev_log_index`.
-    pub prev_log_term: Term,
+    /// Position of the log entry immediately preceding new ones.
+    pub prev_log: LogId,
     /// Entries to store (empty for heartbeat).
     pub entries: Vec<LogEntry>,
     /// Leader's commit index.
     pub leader_commit: LogIndex,
+    /// Leader's heartbeat round, echoed back to confirm ReadIndex leadership.
+    pub round: Round,
 }
 
 /// Reply to an [`AppendEntries`].
@@ -123,6 +129,8 @@ pub struct AppendEntriesReply {
     pub conflict_index: Option<LogIndex>,
     /// Term of the conflicting entry, if any.
     pub conflict_term: Option<Term>,
+    /// Echoes the request's [`AppendEntries::round`] for ReadIndex confirmation.
+    pub round: Round,
 }
 
 /// `InstallSnapshot` RPC (chunked).
@@ -132,10 +140,8 @@ pub struct InstallSnapshot {
     pub term: Term,
     /// Leader sending the snapshot.
     pub leader_id: NodeId,
-    /// Snapshot replaces all entries up to and including this index.
-    pub last_included_index: LogIndex,
-    /// Term of `last_included_index`.
-    pub last_included_term: Term,
+    /// The snapshot replaces all entries up to and including this position.
+    pub last_included: LogId,
     /// Byte offset of this chunk within the snapshot.
     pub offset: u64,
     /// Raw snapshot chunk bytes.

@@ -7,7 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use craft_core::{Config, Output, RaftNode};
+use craft_core::{Config, Output, RaftNode, ReadId};
 use craft_proto::{LogIndex, Membership, NodeId, RaftRpc, RaftRpcReply};
 
 use crate::rng::Rng;
@@ -57,6 +57,9 @@ pub struct Cluster {
     applied: BTreeMap<NodeId, Vec<(LogIndex, Vec<u8>)>>,
     committed: BTreeMap<u64, Vec<u8>>,
     leaders_per_term: BTreeMap<u64, BTreeSet<NodeId>>,
+
+    reads_ready: BTreeMap<u64, LogIndex>,
+    reads_failed: BTreeSet<u64>,
 }
 
 impl Cluster {
@@ -106,6 +109,8 @@ impl Cluster {
             applied: BTreeMap::new(),
             committed: BTreeMap::new(),
             leaders_per_term: BTreeMap::new(),
+            reads_ready: BTreeMap::new(),
+            reads_failed: BTreeSet::new(),
         }
     }
 
@@ -206,6 +211,35 @@ impl Cluster {
             .into_iter()
             .map(|n| n.0)
             .collect()
+    }
+
+    /// Issue a linearizable ReadIndex read (ADR 005) via the current leader.
+    /// Returns `false` if there is no leader to accept it.
+    pub fn read_index(&mut self, id: u64) -> bool {
+        let Some(node_id) = self.leader_node() else {
+            return false;
+        };
+        let outs = {
+            let node = self.nodes.get_mut(&node_id).expect("leader exists");
+            if node.read_index(ReadId(id)).is_err() {
+                return false;
+            }
+            node.take_outputs()
+        };
+        self.process_outputs(node_id, outs);
+        true
+    }
+
+    /// The confirmed read index for read `id`, once it has completed.
+    #[must_use]
+    pub fn read_ready(&self, id: u64) -> Option<LogIndex> {
+        self.reads_ready.get(&id).copied()
+    }
+
+    /// Whether read `id` failed (leadership changed before it confirmed).
+    #[must_use]
+    pub fn read_failed(&self, id: u64) -> bool {
+        self.reads_failed.contains(&id)
     }
 
     /// Start a joint-consensus membership change via the current leader.
@@ -324,6 +358,23 @@ impl Cluster {
                     log.push((c.index, c.command));
                 }
                 Output::RoleChanged(_) => {}
+                Output::ReadReady { id: read_id, index } => {
+                    // Linearizability: the read index is never beyond what the
+                    // confirming leader has actually committed.
+                    let committed = self.nodes[&id].commit_index();
+                    assert!(
+                        index <= committed,
+                        "read {} index {} exceeds node {}'s commit index {}",
+                        read_id.0,
+                        index.0,
+                        id.0,
+                        committed.0
+                    );
+                    self.reads_ready.insert(read_id.0, index);
+                }
+                Output::ReadFailed { id: read_id } => {
+                    self.reads_failed.insert(read_id.0);
+                }
             }
         }
     }

@@ -1,7 +1,9 @@
 //! Joint-consensus membership-change tests (Raft §6, ADR 016).
 
 use craft_core::{Config, MembershipError, RaftNode};
-use craft_proto::{AppendEntriesReply, LogIndex, NodeId, RaftRpcReply, RequestVoteReply, Term};
+use craft_proto::{
+    AppendEntriesReply, LogIndex, NodeId, RaftRpcReply, RequestVoteReply, Round, Term,
+};
 
 fn cfg() -> Config {
     Config {
@@ -36,6 +38,7 @@ fn ack(n: &mut RaftNode, from: u64, term: u64) {
             success: true,
             conflict_index: None,
             conflict_term: None,
+            round: Round::ZERO,
         }),
     );
     let _ = n.take_outputs();

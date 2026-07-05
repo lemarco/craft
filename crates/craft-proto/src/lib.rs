@@ -39,6 +39,27 @@ pub struct Term(pub u64);
 )]
 pub struct LogIndex(pub u64);
 
+/// A leader replication/heartbeat round, used to confirm leadership for
+/// linearizable ReadIndex reads (ADR 005). Monotonic per leader term.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+pub struct Round(pub u64);
+
+/// A position in the Raft log: the `(term, index)` pair that uniquely
+/// identifies an entry. Ordering is lexicographic on `(term, index)`, which is
+/// exactly Raft's log "up-to-date" comparison (§5.4.1), so `LogId` values can
+/// be compared directly instead of juggling two primitives.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+pub struct LogId {
+    /// Term of the entry at `index`.
+    pub term: Term,
+    /// Log index.
+    pub index: LogIndex,
+}
+
 impl Term {
     /// Term zero (before any election).
     pub const ZERO: Term = Term(0);
@@ -58,6 +79,31 @@ impl LogIndex {
     #[must_use]
     pub fn next(self) -> LogIndex {
         LogIndex(self.0 + 1)
+    }
+}
+
+impl Round {
+    /// The zeroth round (no heartbeat sent yet).
+    pub const ZERO: Round = Round(0);
+
+    /// The next round.
+    #[must_use]
+    pub fn next(self) -> Round {
+        Round(self.0 + 1)
+    }
+}
+
+impl LogId {
+    /// The empty-log sentinel `(term 0, index 0)`.
+    pub const ZERO: LogId = LogId {
+        term: Term::ZERO,
+        index: LogIndex::ZERO,
+    };
+
+    /// Construct a [`LogId`] from a term and index.
+    #[must_use]
+    pub fn new(term: Term, index: LogIndex) -> Self {
+        Self { term, index }
     }
 }
 
@@ -115,18 +161,35 @@ mod tests {
         let rpc = RaftRpc::AppendEntries(AppendEntries {
             term: Term(2),
             leader_id: NodeId(1),
-            prev_log_index: LogIndex(4),
-            prev_log_term: Term(1),
+            prev_log: LogId::new(Term(1), LogIndex(4)),
             entries: vec![LogEntry {
                 term: Term(2),
                 index: LogIndex(5),
                 payload: EntryPayload::Noop,
             }],
             leader_commit: LogIndex(4),
+            round: Round(7),
         });
         let bytes = encode(&rpc).expect("encode");
         let back: RaftRpc = decode(&bytes).expect("decode");
         assert_eq!(rpc, back);
+    }
+
+    #[test]
+    fn log_id_orders_by_term_then_index() {
+        // Up-to-dateness: higher term wins regardless of index; same term
+        // compares by index (Raft §5.4.1).
+        assert!(LogId::new(Term(2), LogIndex(1)) > LogId::new(Term(1), LogIndex(9)));
+        assert!(LogId::new(Term(1), LogIndex(5)) > LogId::new(Term(1), LogIndex(4)));
+        assert_eq!(
+            LogEntry {
+                term: Term(3),
+                index: LogIndex(7),
+                payload: EntryPayload::Noop
+            }
+            .id(),
+            LogId::new(Term(3), LogIndex(7))
+        );
     }
 
     #[test]

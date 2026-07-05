@@ -75,13 +75,15 @@ Four **independent tracks** — different owners can work simultaneously.
 | A2 | Leader election (randomized timeout, vote rules, up-to-date check) | L | ✅ done |
 | A3 | Log replication (prevLog matching, conflict truncation, commit index, backtracking, Figure-8 term rule) | L | ✅ done |
 | A4 | **Joint-consensus membership** (add/remove, C_old,new) ([ADR 016](decisions/016-membership-early.md)) | XL | **done** |
-| A5 | ReadIndex linearizable reads ([ADR 005](decisions/005-read-consistency.md)) | M | pending |
+| A5 | ReadIndex linearizable reads ([ADR 005](decisions/005-read-consistency.md)) | M | **done** |
 | A6 | Snapshot install + log compaction (RPC term-handling stub in place) | L | pending |
 | A7 | Unit + `proptest` for safety invariants | L | ✅ done (34 core tests + sim suite) |
 
-**Track A progress:** `craft-core` election + replication + **joint-consensus membership (A4)** implemented as a pure, I/O-free FSM (ADR 030). Elections use **Pre-Vote** (Raft thesis §9.6) so isolated/removed nodes cannot disrupt a live leader by inflating terms. Covered by 52 unit/rule tests plus a `craft-sim` deterministic harness (Track I1–I4 partial) running liveness, grow/shrink membership scenarios (including removing the current leader), and 250 randomized fault schedules asserting election safety, commit agreement, and monotonic application. Remaining: A5 ReadIndex, A6 snapshots.
+**Track A progress:** `craft-core` election + replication + **joint-consensus membership (A4)** + **ReadIndex linearizable reads (A5)** implemented as a pure, I/O-free FSM (ADR 030). Elections use **Pre-Vote** (Raft thesis §9.6) so isolated/removed nodes cannot disrupt a live leader by inflating terms. The FSM is modeled with value objects — `LogId (term,index)`, `Round`, and a `Configuration` value object that owns quorum arithmetic — rather than scattered primitives. Covered by 64 unit/rule tests plus a `craft-sim` deterministic harness (Track I1–I4 partial) running liveness, grow/shrink membership (including removing the current leader), linearizable-read scenarios, and 250 randomized fault schedules asserting election safety, commit agreement, and monotonic application. Remaining: A6 snapshots.
 
 > **Note (A4):** membership uses the standard two-phase joint consensus — a change appends a transitional `C_old,new` requiring majorities in *both* voter sets, then the leader appends the final `C_new`; a leader removed from `C_new` steps down once it commits. New nodes join as followers and catch up before/while being promoted.
+
+> **Note (A5):** ReadIndex captures the leader's commit index, confirms leadership via a heartbeat `Round` acked by a quorum, and only serves the read once an entry of the current term is committed and applied through the read index. Loss of leadership fails pending reads (`ReadFailed`) so the client retries against the new leader.
 
 #### Track B — Persistence (`craft-storage`) **[P]**
 | ID | Task | Effort |

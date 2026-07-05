@@ -1,7 +1,9 @@
 //! Election and role-transition tests (Raft §5.2) with edge cases.
 
 use craft_core::{Config, Output, RaftNode, Role};
-use craft_proto::{AppendEntries, LogIndex, NodeId, RaftRpc, RaftRpcReply, RequestVoteReply, Term};
+use craft_proto::{
+    AppendEntries, LogId, LogIndex, NodeId, RaftRpc, RaftRpcReply, RequestVoteReply, Round, Term,
+};
 
 fn cfg() -> Config {
     Config {
@@ -207,10 +209,10 @@ fn new_leader_append_ends_candidacy() {
     let ae = AppendEntries {
         term: Term(term),
         leader_id: NodeId(2),
-        prev_log_index: LogIndex(0),
-        prev_log_term: Term(0),
+        prev_log: LogId::ZERO,
         entries: vec![],
         leader_commit: LogIndex(0),
+        round: Round::ZERO,
     };
     n.receive(NodeId(2), RaftRpc::AppendEntries(ae));
     assert_eq!(n.role(), Role::Follower);

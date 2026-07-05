@@ -2,8 +2,8 @@
 
 use craft_core::{Config, Output, RaftNode, Role};
 use craft_proto::{
-    AppendEntries, AppendEntriesReply, EntryPayload, LogEntry, LogIndex, NodeId, RaftRpc,
-    RaftRpcReply, Term,
+    AppendEntries, AppendEntriesReply, EntryPayload, LogEntry, LogId, LogIndex, NodeId, RaftRpc,
+    RaftRpcReply, Round, Term,
 };
 
 fn cfg() -> Config {
@@ -44,10 +44,10 @@ fn append(
     let ae = AppendEntries {
         term: Term(term),
         leader_id: NodeId(leader),
-        prev_log_index: LogIndex(prev_index),
-        prev_log_term: Term(prev_term),
+        prev_log: LogId::new(Term(prev_term), LogIndex(prev_index)),
         entries,
         leader_commit: LogIndex(leader_commit),
+        round: Round::ZERO,
     };
     n.receive(NodeId(leader), RaftRpc::AppendEntries(ae));
     let outs = n.take_outputs();

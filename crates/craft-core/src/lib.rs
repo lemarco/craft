@@ -10,8 +10,10 @@
 
 pub use craft_proto as proto;
 
+mod config;
 mod log;
 mod node;
 mod rng;
 
-pub use node::{Committed, Config, MembershipError, NotLeader, Output, RaftNode, Role};
+pub use config::Configuration;
+pub use node::{Committed, Config, MembershipError, NotLeader, Output, RaftNode, ReadId, Role};

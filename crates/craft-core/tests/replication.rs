@@ -2,8 +2,8 @@
 
 use craft_core::{Config, NotLeader, Output, RaftNode};
 use craft_proto::{
-    AppendEntries, AppendEntriesReply, EntryPayload, LogEntry, LogIndex, NodeId, RaftRpc,
-    RaftRpcReply, RequestVoteReply, Term,
+    AppendEntries, AppendEntriesReply, EntryPayload, LogEntry, LogId, LogIndex, NodeId, RaftRpc,
+    RaftRpcReply, RequestVoteReply, Round, Term,
 };
 
 fn cfg() -> Config {
@@ -38,6 +38,7 @@ fn ack(n: &mut RaftNode, from: u64, term: u64) -> Vec<Output> {
             success: true,
             conflict_index: None,
             conflict_term: None,
+            round: Round::ZERO,
         }),
     );
     n.take_outputs()
@@ -74,10 +75,10 @@ fn propose_redirects_to_known_leader() {
     let ae = AppendEntries {
         term: Term(2),
         leader_id: NodeId(2),
-        prev_log_index: LogIndex(0),
-        prev_log_term: Term(0),
+        prev_log: LogId::ZERO,
         entries: vec![],
         leader_commit: LogIndex(0),
+        round: Round::ZERO,
     };
     n.receive(NodeId(2), RaftRpc::AppendEntries(ae));
     let _ = n.take_outputs();
@@ -144,14 +145,14 @@ fn prior_term_entry_commits_only_via_current_term_entry() {
     let ae = AppendEntries {
         term: Term(1),
         leader_id: NodeId(2),
-        prev_log_index: LogIndex(0),
-        prev_log_term: Term(0),
+        prev_log: LogId::ZERO,
         entries: vec![LogEntry {
             term: Term(1),
             index: LogIndex(1),
             payload: EntryPayload::Command(vec![100]),
         }],
         leader_commit: LogIndex(0),
+        round: Round::ZERO,
     };
     n.receive(NodeId(2), RaftRpc::AppendEntries(ae));
     let _ = n.take_outputs();
@@ -194,6 +195,7 @@ fn backtracks_on_rejection_using_conflict_hint() {
             success: false,
             conflict_index: Some(LogIndex(1)),
             conflict_term: None,
+            round: Round::ZERO,
         }),
     );
     let outs = n.take_outputs();
@@ -202,7 +204,7 @@ fn backtracks_on_rejection_using_conflict_hint() {
         _ => None,
     });
     let ae = retried.expect("leader retries with a lower prev index");
-    assert_eq!(ae.prev_log_index, LogIndex(0), "backed off to the start");
+    assert_eq!(ae.prev_log.index, LogIndex(0), "backed off to the start");
     assert_eq!(ae.entries.len(), 1, "now ships the no-op from index 1");
 }
 

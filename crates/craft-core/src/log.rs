@@ -4,7 +4,7 @@
 //! production node persists these entries through a `craft-storage` adapter,
 //! but the core keeps its own view for decision-making (ADR 030).
 
-use craft_proto::{EntryPayload, LogEntry, LogIndex, Membership, Term};
+use craft_proto::{EntryPayload, LogEntry, LogId, LogIndex, Membership, Term};
 
 /// The replicated log, entry `i` (1-based) stored at `entries[i - 1]`.
 #[derive(Debug, Clone, Default)]
@@ -21,6 +21,12 @@ impl Log {
     /// Term of the last entry (0 when empty).
     pub(crate) fn last_term(&self) -> Term {
         self.entries.last().map(|e| e.term).unwrap_or(Term::ZERO)
+    }
+
+    /// Position `(term, index)` of the last entry (the empty-log sentinel when
+    /// the log is empty).
+    pub(crate) fn last_id(&self) -> LogId {
+        LogId::new(self.last_term(), self.last_index())
     }
 
     /// Term at `idx`, or `None` if the index is beyond the log. Index 0 is the

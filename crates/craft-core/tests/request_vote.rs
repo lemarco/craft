@@ -2,8 +2,8 @@
 
 use craft_core::{Config, RaftNode};
 use craft_proto::{
-    AppendEntries, EntryPayload, LogEntry, LogIndex, NodeId, RaftRpc, RaftRpcReply, RequestVote,
-    RequestVoteReply, Term,
+    AppendEntries, EntryPayload, LogEntry, LogId, LogIndex, NodeId, RaftRpc, RaftRpcReply,
+    RequestVote, RequestVoteReply, Round, Term,
 };
 
 fn cfg() -> Config {
@@ -32,10 +32,10 @@ fn install_log(n: &mut RaftNode, leader: u64, term: u64, entries: Vec<LogEntry>)
     let ae = AppendEntries {
         term: Term(term),
         leader_id: NodeId(leader),
-        prev_log_index: LogIndex(0),
-        prev_log_term: Term(0),
+        prev_log: LogId::ZERO,
         entries,
         leader_commit: LogIndex(0),
+        round: Round::ZERO,
     };
     n.receive(NodeId(leader), RaftRpc::AppendEntries(ae));
     let _ = n.take_outputs();
@@ -51,8 +51,7 @@ fn send_vote(
     let rv = RequestVote {
         term: Term(term),
         candidate_id: NodeId(from),
-        last_log_index: LogIndex(last_index),
-        last_log_term: Term(last_term),
+        last_log: LogId::new(Term(last_term), LogIndex(last_index)),
         pre_vote: false,
     };
     n.receive(NodeId(from), RaftRpc::RequestVote(rv));
