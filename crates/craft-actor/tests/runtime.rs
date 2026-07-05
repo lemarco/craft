@@ -13,7 +13,9 @@ use std::time::Duration;
 
 use craft_actor::craft_core::{Config, RaftNode, StateMachine};
 use craft_actor::craft_net::{LocalNetwork, RequestHandler, Transport, send_client_request};
-use craft_actor::craft_proto::{ClientRequest, ClientResponse, NodeId};
+use craft_actor::craft_proto::{
+    AppendEntries, ClientRequest, ClientResponse, LogId, LogIndex, NodeId, RaftRpc, Round, Term,
+};
 use craft_actor::{ClientError, NodeHandle, NodeService, RaftDriver, RuntimeConfig, spawn_node};
 use serde::{Deserialize, Serialize};
 
@@ -212,6 +214,65 @@ async fn propose_on_a_follower_reports_not_leader() {
         }
         other => panic!("expected NotLeader, got {other:?}"),
     }
+
+    cluster.shutdown();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn pending_proposal_fails_when_leadership_is_lost() {
+    // Regression: a proposal that cannot reach quorum must not hang forever.
+    // Isolate the leader (detach its followers), start a proposal that can
+    // never commit, then force a step-down with a higher-term RPC and assert
+    // the proposal resolves with NotLeader rather than blocking.
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let cluster = Cluster::start(&ids);
+    let leader = cluster.wait_for_leader().await;
+
+    let term_before = cluster.handles[&leader].status().await.unwrap().term;
+
+    // Cut the leader off from both followers so the write cannot commit.
+    for &id in &ids {
+        if id != leader {
+            cluster.net.detach(id);
+        }
+    }
+
+    let leader_handle = cluster.handles[&leader].clone();
+    let pending = tokio::spawn(async move {
+        leader_handle
+            .propose(KvCommand::Set {
+                key: "orphan".into(),
+                value: "x".into(),
+            })
+            .await
+    });
+
+    // Give the proposal a moment to be appended and left pending.
+    tokio::time::sleep(Duration::from_millis(30)).await;
+
+    // A higher-term heartbeat from a "new leader" forces the old leader to
+    // step down to a follower.
+    let usurper = NodeId(99);
+    let higher_term = RaftRpc::AppendEntries(AppendEntries {
+        term: Term(term_before.0 + 5),
+        leader_id: usurper,
+        prev_log: LogId::ZERO,
+        entries: Vec::new(),
+        leader_commit: LogIndex::ZERO,
+        round: Round::ZERO,
+    });
+    let _ = cluster.handles[&leader]
+        .deliver_rpc(usurper, higher_term)
+        .await;
+
+    let result = tokio::time::timeout(Duration::from_secs(3), pending)
+        .await
+        .expect("proposal must resolve, not hang, after leadership loss")
+        .expect("proposal task panicked");
+    assert!(
+        matches!(result, Err(ClientError::NotLeader { .. })),
+        "expected NotLeader after step-down, got {result:?}"
+    );
 
     cluster.shutdown();
 }

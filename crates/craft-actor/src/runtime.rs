@@ -20,6 +20,21 @@
 //! The loop holds an `Arc<dyn Transport>`, so the exact same runtime runs over
 //! the deterministic `LocalNetwork` in tests and over live QUIC in production
 //! (ADR 010) with no code changes.
+//!
+//! ## Not yet wired (tracked in the backlog)
+//!
+//! * **Durable persistence** (B4): the in-memory core log is the source of
+//!   truth; hard state and the log are not yet flushed through `craft-storage`,
+//!   so a restart loses state.
+//! * **Log compaction / snapshots** (Track G): the runtime never calls
+//!   `RaftNode::compact`, so the log grows without bound. Inbound
+//!   `InstallSnapshot` restore *is* handled (via the driver).
+//! * **Transparent leader forwarding** (E4, ADR 003): a follower returns
+//!   [`ClientError::NotLeader`] with a hint rather than proxying to the leader.
+//! * **Per-connection identity** (C5): [`NodeService`] trusts the sender id
+//!   declared inside a peer RPC instead of the presented client certificate.
+//! * **Fatal errors are silent**: a corrupt-log / state-machine failure stops
+//!   the loop with no diagnostic until `tracing` lands (Track H).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -142,7 +157,10 @@ impl<M: StateMachine> NodeHandle<M> {
     /// requires it to be, and remain, the leader for the round).
     ///
     /// # Errors
-    /// [`ClientError::NotLeader`] if this node is not the leader, or
+    /// [`ClientError::NotLeader`] if this node is not the leader when the
+    /// proposal is made **or** if it loses leadership before the command
+    /// commits (in the latter case the command may still commit under the new
+    /// leader, so commands should be idempotent — ADR 021), or
     /// [`ClientError::Stopped`] if the runtime shut down before the command
     /// applied.
     pub async fn propose(&self, command: M::Command) -> Result<M::Response, ClientError> {
@@ -257,7 +275,29 @@ impl<M: StateMachine> Runtime<M> {
                 }
             }
         }
+        // If we are no longer the leader, any still-outstanding client request
+        // will never resolve here: an uncommitted proposal in our tail may be
+        // overwritten by the new leader, and the core only reports read
+        // failures. Fail them all with a `NotLeader` hint so callers stop
+        // waiting and retry against the new leader. (A proposal that had
+        // already committed applies above before this runs; anything failed
+        // here may still commit under the new leader, so proposals must be
+        // idempotent — see ADR 021.)
+        if !self.driver.is_leader() {
+            self.fail_pending_requests();
+        }
         replies
+    }
+
+    /// Fail every outstanding proposal and query with a `NotLeader` hint.
+    fn fail_pending_requests(&mut self) {
+        let leader = self.driver.node().leader_id();
+        for (_, tx) in self.pending_proposals.drain() {
+            let _ = tx.send(Err(ClientError::NotLeader { leader }));
+        }
+        for (_, tx) in self.pending_queries.drain() {
+            let _ = tx.send(Err(ClientError::NotLeader { leader }));
+        }
     }
 
     /// Process one mailbox message. Returns `Err` on a fatal driver failure
