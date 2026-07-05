@@ -11,13 +11,19 @@
 //! * [`wire`] — `postcard` body framing: content-type, protocol-version, and a
 //!   16 MiB body-size guard.
 //! * [`peer`] — the [`PeerDirectory`] address book and route-URL builder.
+//! * [`transport`] — the [`Transport`]/[`RequestHandler`] ports plus the
+//!   in-memory [`LocalNetwork`] used by tests and the simulator.
 
 pub use craft_proto as proto;
 
 pub mod peer;
 pub mod route;
+pub mod transport;
 pub mod wire;
 
 pub use peer::PeerDirectory;
 pub use route::{Route, TrafficClass};
+pub use transport::{
+    LocalNetwork, RequestHandler, Transport, TransportError, send_client_request, send_peer_rpc,
+};
 pub use wire::{WireError, decode_body, encode_body};
