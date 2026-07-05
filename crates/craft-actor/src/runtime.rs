@@ -38,13 +38,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use craft_core::{Command as _, ReadId, Role, StateMachine};
+use craft_core::{Command as _, MembershipError, ReadId, Role, StateMachine};
 use craft_net::transport::{Body, BoxFuture};
 use craft_net::{
     RequestHandler, Route, Transport, TransportError, decode_body, encode_body,
-    send_client_request, send_peer_rpc,
+    send_client_request, send_join_request, send_peer_rpc,
 };
-use craft_proto::{ClientRequest, ClientResponse, LogIndex, NodeId, RaftRpc, RaftRpcReply, Term};
+use craft_proto::{
+    ClientRequest, ClientResponse, JoinRejection, JoinRequest, JoinResponse, LogIndex, NodeId,
+    PROTOCOL_VERSION, RaftRpc, RaftRpcReply, Term,
+};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
@@ -104,6 +107,10 @@ enum Envelope<M: StateMachine> {
         query: M::Query,
         respond: oneshot::Sender<Result<M::Response, ClientError>>,
     },
+    Join {
+        request: JoinRequest,
+        respond: oneshot::Sender<JoinResponse>,
+    },
     Campaign,
     Status {
         respond: oneshot::Sender<NodeStatus>,
@@ -117,12 +124,17 @@ pub struct RuntimeConfig {
     /// Wall-clock duration of one logical Raft tick. The core's timeouts are in
     /// ticks (see [`craft_core::Config`]); this maps them onto real time.
     pub tick_period: Duration,
+    /// Whether this node accepts cluster joins (`--allow-join`, ADR 017). When
+    /// `false`, `/cluster/join` requests are rejected with
+    /// [`JoinRejection::JoinsDisabled`].
+    pub allow_join: bool,
 }
 
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
             tick_period: Duration::from_millis(50),
+            allow_join: false,
         }
     }
 }
@@ -200,6 +212,21 @@ impl<M: StateMachine> NodeHandle<M> {
         rx.await.map_err(|_| ClientError::Stopped)
     }
 
+    /// Submit a cluster [`JoinRequest`] (ADR 017). On the leader this triggers a
+    /// membership change and resolves once it commits; on a follower it returns
+    /// [`JoinResponse::Redirect`] (the [`NodeService`] proxies for remote
+    /// callers).
+    ///
+    /// # Errors
+    /// [`ClientError::Stopped`] if the runtime shut down before responding.
+    pub async fn join(&self, request: JoinRequest) -> Result<JoinResponse, ClientError> {
+        let (respond, rx) = oneshot::channel();
+        self.tx
+            .send(Envelope::Join { request, respond })
+            .map_err(|_| ClientError::Stopped)?;
+        rx.await.map_err(|_| ClientError::Stopped)
+    }
+
     /// Force an immediate election (test/bootstrap helper).
     pub fn campaign(&self) {
         let _ = self.tx.send(Envelope::Campaign);
@@ -223,8 +250,12 @@ struct Runtime<M: StateMachine> {
     driver: RaftDriver<M>,
     transport: Arc<dyn Transport>,
     self_tx: mpsc::UnboundedSender<Envelope<M>>,
+    allow_join: bool,
     pending_proposals: HashMap<LogIndex, oneshot::Sender<Result<M::Response, ClientError>>>,
     pending_queries: HashMap<ReadId, oneshot::Sender<Result<M::Response, ClientError>>>,
+    /// Join requests awaiting their membership-change entry to commit, keyed by
+    /// that entry's log index.
+    pending_joins: HashMap<LogIndex, oneshot::Sender<JoinResponse>>,
     next_read_id: u64,
 }
 
@@ -282,13 +313,42 @@ impl<M: StateMachine> Runtime<M> {
         // already committed applies above before this runs; anything failed
         // here may still commit under the new leader, so proposals must be
         // idempotent — see ADR 021.)
+        self.resolve_committed_joins();
         if !self.driver.is_leader() {
             self.fail_pending_requests();
         }
         replies
     }
 
-    /// Fail every outstanding proposal and query with a `NotLeader` hint.
+    /// Complete any join whose membership-change entry has now committed.
+    fn resolve_committed_joins(&mut self) {
+        if self.pending_joins.is_empty() {
+            return;
+        }
+        let commit = self.driver.node().commit_index();
+        let ready: Vec<LogIndex> = self
+            .pending_joins
+            .keys()
+            .copied()
+            .filter(|index| commit >= *index)
+            .collect();
+        if ready.is_empty() {
+            return;
+        }
+        let leader = self.driver.node().id();
+        let membership = self.driver.node().configuration().to_membership();
+        for index in ready {
+            if let Some(tx) = self.pending_joins.remove(&index) {
+                let _ = tx.send(JoinResponse::Accepted {
+                    leader,
+                    membership: membership.clone(),
+                });
+            }
+        }
+    }
+
+    /// Fail every outstanding client request and join with a leader hint after
+    /// losing leadership.
     fn fail_pending_requests(&mut self) {
         let leader = self.driver.node().leader_id();
         for (_, tx) in self.pending_proposals.drain() {
@@ -296,6 +356,9 @@ impl<M: StateMachine> Runtime<M> {
         }
         for (_, tx) in self.pending_queries.drain() {
             let _ = tx.send(Err(ClientError::NotLeader { leader }));
+        }
+        for (_, tx) in self.pending_joins.drain() {
+            let _ = tx.send(JoinResponse::Redirect { leader });
         }
     }
 
@@ -348,6 +411,9 @@ impl<M: StateMachine> Runtime<M> {
                     }
                 }
             }
+            Envelope::Join { request, respond } => {
+                self.on_join(request, respond)?;
+            }
             Envelope::Campaign => {
                 let step = self.driver.campaign()?;
                 let _ = self.settle(step);
@@ -365,6 +431,69 @@ impl<M: StateMachine> Runtime<M> {
             }
         }
         Ok(true)
+    }
+
+    /// Validate and (on the leader) start a cluster join as a membership change
+    /// (ADR 017/020). The join resolves to [`JoinResponse::Accepted`] once the
+    /// membership entry commits (see [`resolve_committed_joins`]).
+    fn on_join(
+        &mut self,
+        request: JoinRequest,
+        respond: oneshot::Sender<JoinResponse>,
+    ) -> Result<(), DriverError> {
+        // Hard-reject a protocol-version mismatch before anything else (ADR 020).
+        if request.protocol_version != PROTOCOL_VERSION {
+            let _ = respond.send(JoinResponse::Rejected {
+                reason: JoinRejection::VersionSkew {
+                    expected: PROTOCOL_VERSION,
+                    got: request.protocol_version,
+                },
+            });
+            return Ok(());
+        }
+        if !self.allow_join {
+            let _ = respond.send(JoinResponse::Rejected {
+                reason: JoinRejection::JoinsDisabled,
+            });
+            return Ok(());
+        }
+        if !self.driver.is_leader() {
+            let _ = respond.send(JoinResponse::Redirect {
+                leader: self.driver.node().leader_id(),
+            });
+            return Ok(());
+        }
+        let mut voters = self.driver.node().voters();
+        if voters.contains(&request.node_id) {
+            let _ = respond.send(JoinResponse::Rejected {
+                reason: JoinRejection::Duplicate,
+            });
+            return Ok(());
+        }
+        voters.push(request.node_id);
+
+        match self.driver.propose_membership(voters, Vec::new())? {
+            Ok((index, step)) => {
+                self.pending_joins.insert(index, respond);
+                let _ = self.settle(step);
+            }
+            Err(MembershipError::NotLeader { leader }) => {
+                let _ = respond.send(JoinResponse::Redirect { leader });
+            }
+            Err(MembershipError::InProgress) => {
+                let _ = respond.send(JoinResponse::Rejected {
+                    reason: JoinRejection::Other(
+                        "a membership change is already in progress".to_string(),
+                    ),
+                });
+            }
+            Err(MembershipError::EmptyVoters) => {
+                let _ = respond.send(JoinResponse::Rejected {
+                    reason: JoinRejection::Other("resulting voter set is empty".to_string()),
+                });
+            }
+        }
+        Ok(())
     }
 }
 
@@ -387,8 +516,10 @@ where
         driver,
         transport,
         self_tx: tx.clone(),
+        allow_join: config.allow_join,
         pending_proposals: HashMap::new(),
         pending_queries: HashMap::new(),
+        pending_joins: HashMap::new(),
         next_read_id: 0,
     };
 
@@ -478,6 +609,11 @@ impl<M: StateMachine> RequestHandler for NodeService<M> {
                         route_client(&handle, &transport, forward_timeout, request).await;
                     Ok(encode_body(&response)?)
                 }
+                Route::ClusterJoin => {
+                    let request: JoinRequest = decode_body(&body)?;
+                    let response = route_join(&handle, &transport, forward_timeout, request).await;
+                    Ok(encode_body(&response)?)
+                }
                 other => Err(TransportError::Io(format!(
                     "route {other:?} is not served by the node runtime"
                 ))),
@@ -523,6 +659,48 @@ async fn forward_to_leader(
         Ok(Ok(response)) => response,
         Ok(Err(e)) => ClientResponse::Error(format!("forward to leader {leader:?} failed: {e}")),
         Err(_) => ClientResponse::Error(format!("forward to leader {leader:?} timed out")),
+    }
+}
+
+/// Serve a cluster join, forwarding to the leader if this node is a follower
+/// (ADR 017 step 2, same transparent pattern as client requests).
+async fn route_join<M: StateMachine>(
+    handle: &NodeHandle<M>,
+    transport: &Arc<dyn Transport>,
+    forward_timeout: Duration,
+    request: JoinRequest,
+) -> JoinResponse {
+    let local = handle
+        .join(request.clone())
+        .await
+        .unwrap_or_else(|_| JoinResponse::Rejected {
+            reason: JoinRejection::Other("node runtime stopped".to_string()),
+        });
+    // A follower that knows the leader redirects; forward there on the caller's
+    // behalf so a joining node only needs one seed address.
+    if let JoinResponse::Redirect {
+        leader: Some(leader),
+    } = local
+    {
+        if leader != handle.id() {
+            return forward_join(transport, forward_timeout, leader, request).await;
+        }
+    }
+    local
+}
+
+/// Proxy a join request to `leader`, bounded by `timeout`.
+async fn forward_join(
+    transport: &Arc<dyn Transport>,
+    timeout: Duration,
+    leader: NodeId,
+    request: JoinRequest,
+) -> JoinResponse {
+    match tokio::time::timeout(timeout, send_join_request(&**transport, leader, &request)).await {
+        Ok(Ok(response)) => response,
+        Ok(Err(_)) | Err(_) => JoinResponse::Redirect {
+            leader: Some(leader),
+        },
     }
 }
 

@@ -11,10 +11,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use craft_actor::craft_core::{Config, RaftNode, StateMachine};
-use craft_actor::craft_net::{LocalNetwork, RequestHandler, Transport, send_client_request};
+use craft_actor::craft_core::{Config, RaftNode, Role, StateMachine};
+use craft_actor::craft_net::{
+    LocalNetwork, RequestHandler, Transport, send_client_request, send_join_request,
+};
 use craft_actor::craft_proto::{
-    AppendEntries, ClientRequest, ClientResponse, LogId, LogIndex, NodeId, RaftRpc, Round, Term,
+    AppendEntries, ClientRequest, ClientResponse, JoinRejection, JoinRequest, JoinResponse, LogId,
+    LogIndex, NodeId, PROTOCOL_VERSION, RaftRpc, Round, Term,
 };
 use craft_actor::{ClientError, NodeHandle, NodeService, RaftDriver, RuntimeConfig, spawn_node};
 use serde::{Deserialize, Serialize};
@@ -102,28 +105,36 @@ struct Cluster {
 impl Cluster {
     fn start(ids: &[NodeId]) -> Self {
         let net = LocalNetwork::new();
-        let mut handles = HashMap::new();
-        for &id in ids {
-            let node = RaftNode::new(id, ids.iter().copied(), config());
-            let driver = RaftDriver::new(node, KvMachine::default());
-            let transport: Arc<dyn Transport> = Arc::new(net.clone());
-            let handle = spawn_node(
-                driver,
-                Arc::clone(&transport),
-                RuntimeConfig {
-                    tick_period: Duration::from_millis(5),
-                },
-            );
-            let service: Arc<dyn RequestHandler> =
-                Arc::new(NodeService::new(handle.clone(), Arc::clone(&transport)));
-            net.attach(id, service);
-            handles.insert(id, handle);
-        }
-        Self {
-            handles,
-            ids: ids.to_vec(),
+        let mut cluster = Self {
+            handles: HashMap::new(),
+            ids: Vec::new(),
             net,
+        };
+        for &id in ids {
+            cluster.spawn_one(id, ids.iter().copied());
+            cluster.ids.push(id);
         }
+        cluster
+    }
+
+    /// Spawn a node runtime for `id` (initial membership `members`) and attach
+    /// its request handler to the shared network. Does not add it to `ids`.
+    fn spawn_one(&mut self, id: NodeId, members: impl IntoIterator<Item = NodeId>) {
+        let node = RaftNode::new(id, members, config());
+        let driver = RaftDriver::new(node, KvMachine::default());
+        let transport: Arc<dyn Transport> = Arc::new(self.net.clone());
+        let handle = spawn_node(
+            driver,
+            Arc::clone(&transport),
+            RuntimeConfig {
+                tick_period: Duration::from_millis(5),
+                allow_join: true,
+            },
+        );
+        let service: Arc<dyn RequestHandler> =
+            Arc::new(NodeService::new(handle.clone(), Arc::clone(&transport)));
+        self.net.attach(id, service);
+        self.handles.insert(id, handle);
     }
 
     /// Poll node statuses until exactly one leader exists, or panic on timeout.
@@ -362,6 +373,112 @@ async fn client_wire_propose_and_query_round_trip() {
         }
         other => panic!("expected Ok, got {other:?}"),
     }
+
+    cluster.shutdown();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_new_node_joins_a_running_cluster() {
+    // E5 (ADR 016/017): a fourth node joins a live 3-node cluster via
+    // /cluster/join, the leader runs a joint-consensus membership change, and
+    // the joiner catches up as a follower.
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let mut cluster = Cluster::start(&ids);
+    let leader = cluster.wait_for_leader().await;
+
+    // Seed some state the joiner must replicate.
+    cluster.handles[&leader]
+        .propose(KvCommand::Set {
+            key: "seed".into(),
+            value: "state".into(),
+        })
+        .await
+        .expect("seed propose");
+
+    // Bring up node 4. It knows the post-join member set but starts with an
+    // empty log; pre-vote keeps it from disrupting the existing leader.
+    let joiner = NodeId(4);
+    let full = [NodeId(1), NodeId(2), NodeId(3), NodeId(4)];
+    cluster.spawn_one(joiner, full.iter().copied());
+    cluster.ids.push(joiner);
+
+    // Ask to join by contacting a *follower* — it should transparently forward
+    // to the leader, which commits the membership change.
+    let entry = ids.into_iter().find(|id| *id != leader).unwrap();
+    let request = JoinRequest {
+        protocol_version: PROTOCOL_VERSION,
+        node_id: joiner,
+        advertise_addr: "node4.local:7443".to_string(),
+    };
+    let response = send_join_request(&cluster.net, entry, &request)
+        .await
+        .expect("join request");
+
+    match response {
+        JoinResponse::Accepted { membership, .. } => {
+            assert!(
+                membership.voters.contains(&joiner),
+                "new node must be a voter in the committed membership: {membership:?}"
+            );
+        }
+        other => panic!("expected Accepted, got {other:?}"),
+    }
+
+    // The joiner should converge to a follower that has caught up to the
+    // cluster's committed state (including the seed command).
+    let converged = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let leader_commit = cluster.handles[&leader]
+                .status()
+                .await
+                .unwrap()
+                .commit_index;
+            if let Some(s) = cluster.handles[&joiner].status().await {
+                if matches!(s.role, Role::Follower)
+                    && s.commit_index >= leader_commit
+                    && leader_commit.0 > 0
+                {
+                    break;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+    assert!(converged.is_ok(), "joiner failed to catch up in time");
+
+    // A duplicate join is rejected.
+    let dup = send_join_request(&cluster.net, leader, &request)
+        .await
+        .expect("duplicate join request");
+    assert!(
+        matches!(
+            dup,
+            JoinResponse::Rejected {
+                reason: JoinRejection::Duplicate
+            }
+        ),
+        "expected Duplicate, got {dup:?}"
+    );
+
+    // A version-skewed join is hard-rejected (ADR 020).
+    let skew = JoinRequest {
+        protocol_version: PROTOCOL_VERSION + 1,
+        node_id: NodeId(5),
+        advertise_addr: "node5.local:7443".to_string(),
+    };
+    let skew_resp = send_join_request(&cluster.net, leader, &skew)
+        .await
+        .expect("skewed join request");
+    assert!(
+        matches!(
+            skew_resp,
+            JoinResponse::Rejected {
+                reason: JoinRejection::VersionSkew { .. }
+            }
+        ),
+        "expected VersionSkew, got {skew_resp:?}"
+    );
 
     cluster.shutdown();
 }

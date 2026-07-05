@@ -16,7 +16,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
-use craft_proto::{ClientRequest, ClientResponse, NodeId, RaftRpc, RaftRpcReply};
+use craft_proto::{
+    ClientRequest, ClientResponse, JoinRequest, JoinResponse, NodeId, RaftRpc, RaftRpcReply,
+};
 
 use crate::route::Route;
 use crate::wire::{WireError, decode_body, encode_body};
@@ -103,6 +105,22 @@ pub async fn send_client_request<T: Transport + ?Sized>(
 ) -> Result<ClientResponse, TransportError> {
     let body = encode_body(request)?;
     let response = transport.send(peer, Route::ClientWire, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Send a cluster [`JoinRequest`] and decode the [`JoinResponse`]
+/// (`/cluster/join`, ADR 017).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is
+/// unreachable / the send fails.
+pub async fn send_join_request<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &JoinRequest,
+) -> Result<JoinResponse, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::ClusterJoin, body).await?;
     Ok(decode_body(&response)?)
 }
 

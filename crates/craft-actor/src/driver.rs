@@ -31,7 +31,9 @@
 use std::collections::HashMap;
 
 use craft_core::Command as _;
-use craft_core::{Committed, NotLeader, Output, RaftNode, ReadId, Role, StateMachine};
+use craft_core::{
+    Committed, MembershipError, NotLeader, Output, RaftNode, ReadId, Role, StateMachine,
+};
 use craft_proto::{CodecError, LogIndex, NodeId, RaftRpc, RaftRpcReply};
 
 /// A network effect the driver produced that the caller must dispatch through
@@ -268,6 +270,29 @@ impl<M: StateMachine> RaftDriver<M> {
                 self.pending_queries.remove(&id);
                 Err(e.into())
             }
+        }
+    }
+
+    /// Begin a joint-consensus membership change to `new_voters` (+ optional
+    /// `learners`) — the log entry underpinning a cluster join/leave (ADR 016).
+    ///
+    /// The outer `Result` reports a fatal drain failure (which stops the node);
+    /// the inner `Result` reports whether the change was accepted (returning the
+    /// log index of the joint-config entry and the effects to dispatch) or
+    /// rejected by the core with a [`MembershipError`] (not leader, a change
+    /// already in flight, or an empty voter set).
+    ///
+    /// # Errors
+    /// Returns [`DriverError`] only if draining a resulting committed command
+    /// fails; membership rejections are carried in the inner `Result`.
+    pub fn propose_membership(
+        &mut self,
+        new_voters: impl IntoIterator<Item = NodeId>,
+        learners: impl IntoIterator<Item = NodeId>,
+    ) -> Result<Result<(LogIndex, Step<M>), MembershipError>, DriverError> {
+        match self.node.propose_membership(new_voters, learners) {
+            Ok(index) => Ok(Ok((index, self.drain()?))),
+            Err(e) => Ok(Err(e)),
         }
     }
 

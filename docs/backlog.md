@@ -135,7 +135,7 @@ Depends on core + storage + net + macros. Some sub-tasks **[P]** among themselve
 | E2 | Timers: election + heartbeat | M | **done** — runtime tick timer (`RuntimeConfig::tick_period`) drives the core's tick-based election/heartbeat clock |
 | E3 | Applier loop → `StateMachine::apply` | M | **done** — `RaftDriver` applies committed cmds in order, serves ReadIndex queries, restores snapshots; single-node + 3-node routed tests |
 | E4 | Client handling + **transparent forward** ([ADR 003](decisions/003-client-routing.md)) | M | **done** — client propose/query correlated to responses; a follower transparently forwards `/client/wire` requests to the leader over the transport (bounded by `forward_timeout`) and returns its response; `Error` when no leader is known |
-| E5 | Join handling → membership change ([ADR 017](decisions/017-join-rpc.md), [ADR 020](decisions/020-join-version-skew.md)) | L | → A4 |
+| E5 | Join handling → membership change ([ADR 017](decisions/017-join-rpc.md), [ADR 020](decisions/020-join-version-skew.md)) | L | **done** — `/cluster/join` → leader runs joint-consensus membership change; version-skew hard-reject (ADR 020), duplicate/joins-disabled rejects, follower forwards to leader, `Accepted` on commit. `allow_join` gates acceptance |
 | E6 | `ActorRegistry`: local spawn/spawn_pool/scale_local/stop ([ADR 012](decisions/012-elastic-cluster.md)) | L | [P] |
 | E7 | Cross-node directory + `resolve`/`cluster` ([ADR 013](decisions/013-cross-node-actors.md)) | L | → C4 |
 | E8 | Remote delivery `/actor/deliver`, routing RR + keyed ([ADR 019](decisions/019-cluster-routing.md)) | M | → E7 |
