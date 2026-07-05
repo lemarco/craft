@@ -1,0 +1,77 @@
+# GitLab CI for craft (ADR 029: fast lane on every push/MR, heavy lane nightly).
+
+stages:
+  - check
+  - heavy
+
+variables:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+  # Keep cargo's registry/build output inside the project so it can be cached.
+  CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
+
+default:
+  image: rust:latest
+  cache:
+    key:
+      files:
+        - Cargo.lock
+    paths:
+      - .cargo/registry/index/
+      - .cargo/registry/cache/
+      - .cargo/git/db/
+      - target/
+
+# --- Fast lane — runs on every branch push and merge request -----------------
+fast:
+  stage: check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH
+  before_script:
+    - rustup component add rustfmt clippy
+    - curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C "$CARGO_HOME/bin"
+  script:
+    - cargo fmt --all -- --check
+    - cargo clippy --workspace --all-targets --all-features -- -D warnings
+    - cargo nextest run --workspace --all-features
+    - cargo test --workspace --doc --all-features
+    - RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
+
+# --- Minimum Supported Rust Version check (ADR 028) --------------------------
+msrv:
+  stage: check
+  image: rust:1.85
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH
+  script:
+    - cargo check --workspace --all-features
+
+# --- Heavy lane — scheduled (nightly) pipelines only -------------------------
+# Configure a pipeline schedule (cron "0 3 * * *") in the project's CI/CD
+# settings to run these. Both are placeholders wired up as the tracks land.
+fuzz:
+  stage: heavy
+  image: rustlang/rust:nightly
+  rules:
+    # Enable once craft-fuzz targets exist (backlog T4).
+    - when: never
+  script:
+    - cargo install cargo-fuzz
+    - cargo fuzz run wire_decode -- -max_total_time=300
+
+e2e:
+  stage: heavy
+  image: docker:27
+  services:
+    - docker:27-dind
+  rules:
+    # Enable once craft-node + compose exist (backlog T8/T9).
+    - when: never
+  script:
+    - echo "docker compose up + pumba chaos scenarios (ADR 029)"

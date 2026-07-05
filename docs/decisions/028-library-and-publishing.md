@@ -53,7 +53,7 @@
 
 - `cargo release` (or workspace script) publishes crates in dependency order:
   `craft-proto → craft-core / craft-storage / craft-macros → craft-net → craft-actor → craft-client → craft-store-redis / craft-dashboard / craft-sim → craft → craft-node`.
-- Tag `vX.Y.Z`; GitHub release with CHANGELOG excerpt.
+- Tag `vX.Y.Z`; GitLab release with CHANGELOG excerpt.
 - `docs.rs` builds automatically on publish.
 
 ### Repository
