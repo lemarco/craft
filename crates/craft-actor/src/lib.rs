@@ -7,5 +7,9 @@
 pub use {craft_core, craft_net, craft_proto, craft_storage};
 
 mod driver;
+mod runtime;
 
 pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
+pub use runtime::{
+    ClientError, NodeHandle, NodeService, NodeStatus, RuntimeConfig, spawn as spawn_node,
+};

@@ -131,10 +131,10 @@ Depends on core + storage + net + macros. Some sub-tasks **[P]** among themselve
 
 | ID | Task | Effort | Notes |
 |----|------|--------|-------|
-| E1 | `RaftNodeActor` (ractor): mailbox → `RaftInput` → execute `RaftOutput` | XL | **partial** — sync `RaftDriver` core done (composes FSM + `StateMachine`, drains `Output`→`NetEffect`/apply/read/snapshot); ractor + async transport wiring remain |
-| E2 | Timers: election + heartbeat | M | [P] after E1 skeleton |
+| E1 | `RaftNodeActor` (ractor): mailbox → `RaftInput` → execute `RaftOutput` | XL | **done (async loop)** — `spawn_node` runs a tokio event loop owning `RaftDriver`, dispatching `NetEffect`s over a `craft-net` `Transport` and feeding peer replies back; `NodeHandle` + `NodeService` bridge clients/peers. (Uses a tokio task, not `ractor`; ractor supervision arrives with E6+.) |
+| E2 | Timers: election + heartbeat | M | **done** — runtime tick timer (`RuntimeConfig::tick_period`) drives the core's tick-based election/heartbeat clock |
 | E3 | Applier loop → `StateMachine::apply` | M | **done** — `RaftDriver` applies committed cmds in order, serves ReadIndex queries, restores snapshots; single-node + 3-node routed tests |
-| E4 | Client handling + **transparent forward** ([ADR 003](decisions/003-client-routing.md)) | M | → E1 |
+| E4 | Client handling + **transparent forward** ([ADR 003](decisions/003-client-routing.md)) | M | **partial** — client propose/query correlated to responses via `NodeHandle`/`/client/wire`; `NotLeader` returned with leader hint. Transparent forward to leader still TODO |
 | E5 | Join handling → membership change ([ADR 017](decisions/017-join-rpc.md), [ADR 020](decisions/020-join-version-skew.md)) | L | → A4 |
 | E6 | `ActorRegistry`: local spawn/spawn_pool/scale_local/stop ([ADR 012](decisions/012-elastic-cluster.md)) | L | [P] |
 | E7 | Cross-node directory + `resolve`/`cluster` ([ADR 013](decisions/013-cross-node-actors.md)) | L | → C4 |
