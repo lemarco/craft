@@ -18,3 +18,7 @@ craft-proto.workspace = true
 craft-core.workspace = true
 craft-storage.workspace = true
 craft-net.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde = { workspace = true, features = ["derive"] }
