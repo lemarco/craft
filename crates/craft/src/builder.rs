@@ -12,7 +12,10 @@ use std::time::Duration;
 use craft_core::{Config, RaftNode, StateMachine};
 use craft_dashboard::{AdminServer, EventBus, Metrics, Observer};
 use craft_net::transport::RequestHandler;
-use craft_net::{LocalNetwork, Transport};
+use craft_net::{
+    LocalNetwork, PeerDirectory, QuicServer, QuicTransport, Transport, TransportError,
+    client_config, server_config,
+};
 use craft_proto::NodeId;
 use tokio::net::TcpListener;
 
@@ -24,6 +27,25 @@ use craft_actor::{
 use crate::cluster::{ClusterFacts, CraftCluster};
 use crate::handler::NodeRouter;
 use crate::observer::CraftObserver;
+use crate::security::Security;
+
+/// An error starting a node over the live QUIC transport
+/// ([`start_quic`](CraftClusterBuilder::start_quic)).
+#[derive(Debug, thiserror::Error)]
+pub enum StartError {
+    /// The mTLS server/client configuration could not be built.
+    #[error("tls configuration: {0}")]
+    Tls(#[from] craft_net::TlsError),
+
+    /// The QUIC listener could not bind `addr`.
+    #[error("bind {addr}: {source}")]
+    Bind {
+        /// The address the listener tried to bind.
+        addr: SocketAddr,
+        /// The underlying transport error.
+        source: TransportError,
+    },
+}
 
 /// Type-erased "register this actor type on the control plane" step.
 type RegisterFn = Box<dyn FnOnce(&ClusterControl) + Send>;
@@ -206,6 +228,45 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
         let (cluster, router) = self.assemble(transport).await;
         net.attach(node_id, router);
         cluster
+    }
+
+    /// Start the node over the live HTTP/3-over-QUIC transport with mTLS (ADR
+    /// 006/010) — the production path. Binds a QUIC listener on `listen`, dials
+    /// peers found in `peers` (a [`NodeId`] → address book), and authenticates
+    /// every connection with `security`.
+    ///
+    /// The `peers` directory should contain the address of every cluster member
+    /// (this node's own entry is ignored). Bootstrap a static cluster by giving
+    /// each node the same [`members`](Self::members) set and `peers` map.
+    ///
+    /// Must run inside a Tokio runtime.
+    ///
+    /// # Errors
+    /// Returns [`StartError`] if the mTLS configuration cannot be built or the
+    /// QUIC listener cannot bind `listen`.
+    pub async fn start_quic(
+        self,
+        security: Security,
+        listen: SocketAddr,
+        peers: PeerDirectory,
+    ) -> Result<CraftCluster<M>, StartError> {
+        let server_cfg = server_config(&security.identity, security.roots.clone())?;
+        let client_cfg = client_config(&security.identity, security.roots)?;
+
+        let server = QuicServer::bind(listen, server_cfg).map_err(|source| StartError::Bind {
+            addr: listen,
+            source,
+        })?;
+        // Share the bound endpoint so outbound dials reuse the listener socket.
+        let endpoint = server.endpoint().clone();
+        let transport: Arc<dyn Transport> =
+            Arc::new(QuicTransport::new(endpoint, client_cfg, peers));
+
+        let (cluster, router) = self.assemble(transport).await;
+
+        let accept = tokio::spawn(async move { server.run(router).await });
+        cluster.tasks.lock().unwrap().push(accept);
+        Ok(cluster)
     }
 
     /// Assemble every runtime component over `transport`, spawn the background

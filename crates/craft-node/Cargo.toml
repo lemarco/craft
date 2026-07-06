@@ -18,4 +18,7 @@ name = "craft-node"
 path = "src/main.rs"
 
 [dependencies]
-craft.workspace = true
+craft = { workspace = true, features = ["dev-certs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls-pemfile = "2"

@@ -40,6 +40,7 @@ mod builder;
 mod cluster;
 mod handler;
 mod observer;
+mod security;
 
 #[doc(inline)]
 pub use craft_proto::{self as proto, NodeId, PROTOCOL_VERSION, Term};
@@ -53,8 +54,14 @@ pub use {craft_dashboard as dashboard, craft_macros as macros, craft_net as net}
 #[doc(inline)]
 pub use craft_storage as storage;
 
-pub use builder::CraftClusterBuilder;
+pub use builder::{CraftClusterBuilder, StartError};
 pub use cluster::{ClusterFacts, CraftCluster};
+pub use security::Security;
+
+/// The peer address book ([`NodeId`] → socket) used to dial cluster members
+/// over QUIC. Re-exported for building [`CraftClusterBuilder::start_quic`] args.
+#[doc(no_inline)]
+pub use craft_net::PeerDirectory;
 
 /// Commonly used telemetry/observability types, re-exported for convenience.
 #[doc(no_inline)]
