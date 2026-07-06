@@ -17,5 +17,7 @@ mod rng;
 mod state_machine;
 
 pub use config::Configuration;
-pub use node::{Committed, Config, MembershipError, NotLeader, Output, RaftNode, ReadId, Role};
+pub use node::{
+    Committed, Config, MembershipError, NotLeader, Output, Persist, RaftNode, ReadId, Role,
+};
 pub use state_machine::{Command, Query, StateMachine};

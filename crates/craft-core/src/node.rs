@@ -135,6 +135,27 @@ pub enum MembershipError {
     EmptyVoters,
 }
 
+/// A batch of durable state changes an outer runtime must fsync **before**
+/// acting on any network effect drained from the same step (Raft §5.1–§5.3):
+/// a follower persists appended entries before ack'ing them, and a node
+/// persists its term/vote before replying to a vote. Produced by
+/// [`RaftNode::take_persist`]; it is the delta since the previous call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Persist {
+    /// Current term to record in the hard state.
+    pub term: Term,
+    /// Vote cast in `term`, to record in the hard state.
+    pub voted_for: Option<NodeId>,
+    /// Whether the hard state (`term`/`voted_for`) actually changed and must be
+    /// written; `false` means only the log changed this step.
+    pub hard_state_dirty: bool,
+    /// When set, the persisted log suffix at indices `>= from` must be
+    /// truncated before `entries` are appended (conflict resolution, Raft §5.3).
+    pub truncate_from: Option<LogIndex>,
+    /// Entries to append after any truncation (ascending, contiguous).
+    pub entries: Vec<LogEntry>,
+}
+
 /// A ReadIndex request awaiting leadership confirmation and apply catch-up.
 #[derive(Debug, Clone)]
 struct PendingRead {
@@ -165,6 +186,14 @@ pub struct RaftNode {
     current_term: Term,
     voted_for: Option<NodeId>,
     log: Log,
+
+    // Durability watermarks (B4): the term/vote last handed to the storage
+    // adapter and the lowest log index changed since then, so `take_persist`
+    // can emit just the delta an outer runtime must fsync before acting on any
+    // network effect from the same step (Raft §5.1–§5.3).
+    persisted_term: Term,
+    persisted_vote: Option<NodeId>,
+    log_dirty_from: Option<LogIndex>,
 
     // Volatile state.
     role: Role,
@@ -220,6 +249,9 @@ impl RaftNode {
             current_term: Term::ZERO,
             voted_for: None,
             log: Log::default(),
+            persisted_term: Term::ZERO,
+            persisted_vote: None,
+            log_dirty_from: None,
             role: Role::Follower,
             leader_id: None,
             commit_index: LogIndex::ZERO,
@@ -237,6 +269,39 @@ impl RaftNode {
             rng,
             outbox: Vec::new(),
         }
+    }
+
+    /// Rebuild a node from durably persisted state after a restart (backlog
+    /// B4). `term`/`voted_for` come from the stored `HardState` and `entries`
+    /// are the stored log (ascending, contiguous from index 1 — no snapshot
+    /// support yet). The node comes back as a [`Follower`](Role::Follower) with
+    /// `commit_index`/`last_applied` at 0: it re-learns its commit index from
+    /// the current leader (or re-derives it after winning an election) and the
+    /// application state machine is rebuilt by replaying the recovered log.
+    ///
+    /// `members` is the bootstrap voter set, used only when the recovered log
+    /// carries no membership entry (a cluster that never reconfigured).
+    #[must_use]
+    pub fn restore(
+        id: NodeId,
+        members: impl IntoIterator<Item = NodeId>,
+        config: Config,
+        term: Term,
+        voted_for: Option<NodeId>,
+        entries: impl IntoIterator<Item = LogEntry>,
+    ) -> Self {
+        let mut node = Self::new(id, members, config);
+        node.current_term = term;
+        node.voted_for = voted_for;
+        for entry in entries {
+            node.log.push_entry(entry);
+        }
+        // Everything just loaded is already durable; start with a clean slate
+        // so the first `take_persist` reports only post-restart changes.
+        node.persisted_term = term;
+        node.persisted_vote = voted_for;
+        node.log_dirty_from = None;
+        node
     }
 
     // ---- Accessors -------------------------------------------------------
@@ -325,6 +390,70 @@ impl RaftNode {
     #[must_use]
     pub fn take_outputs(&mut self) -> Vec<Output> {
         std::mem::take(&mut self.outbox)
+    }
+
+    /// Take the durable state delta accumulated since the previous call, or
+    /// `None` if neither the hard state nor the log changed (backlog B4). The
+    /// runtime persists the returned [`Persist`] *before* dispatching any
+    /// [`Output`] from [`take_outputs`](RaftNode::take_outputs) for the same
+    /// step, so a follower never ack's an entry it has not fsync'd and a node
+    /// never reveals a vote it has not recorded (Raft §5.1–§5.3).
+    #[must_use]
+    pub fn take_persist(&mut self) -> Option<Persist> {
+        let hard_state_dirty =
+            self.current_term != self.persisted_term || self.voted_for != self.persisted_vote;
+        let log_from = self.log_dirty_from.take();
+        if !hard_state_dirty && log_from.is_none() {
+            return None;
+        }
+        self.persisted_term = self.current_term;
+        self.persisted_vote = self.voted_for;
+        let (truncate_from, entries) = match log_from {
+            // Never touch indices already sealed into a snapshot; clamp to the
+            // first live index.
+            Some(from) => {
+                let from = LogIndex(from.0.max(self.log.snapshot_index().0 + 1));
+                (Some(from), self.log.entries_from(from).to_vec())
+            }
+            None => (None, Vec::new()),
+        };
+        Some(Persist {
+            term: self.current_term,
+            voted_for: self.voted_for,
+            hard_state_dirty,
+            truncate_from,
+            entries,
+        })
+    }
+
+    // ---- Log mutation (durability-tracked) -------------------------------
+
+    /// Lowest index whose entry changed; `take_persist` emits from here.
+    fn mark_log_dirty(&mut self, from: LogIndex) {
+        self.log_dirty_from = Some(match self.log_dirty_from {
+            Some(cur) if cur.0 <= from.0 => cur,
+            _ => from,
+        });
+    }
+
+    /// Append a fresh entry and record it as dirty for persistence.
+    fn log_append(&mut self, term: Term, payload: EntryPayload) -> LogIndex {
+        let idx = self.log.append(term, payload);
+        self.mark_log_dirty(idx);
+        idx
+    }
+
+    /// Push a pre-built entry and record it as dirty for persistence.
+    fn log_push(&mut self, entry: LogEntry) {
+        let idx = entry.index;
+        self.log.push_entry(entry);
+        self.mark_log_dirty(idx);
+    }
+
+    /// Truncate the log suffix and record the cut point as dirty.
+    fn log_truncate_from(&mut self, idx: LogIndex) {
+        self.log.truncate_from(idx);
+        self.mark_log_dirty(idx);
     }
 
     // ---- Configuration helpers ------------------------------------------
@@ -416,9 +545,7 @@ impl RaftNode {
                 leader: self.leader_id,
             });
         }
-        let idx = self
-            .log
-            .append(self.current_term, EntryPayload::Command(command));
+        let idx = self.log_append(self.current_term, EntryPayload::Command(command));
         self.broadcast_append();
         self.maybe_advance_commit();
         Ok(idx)
@@ -529,9 +656,7 @@ impl RaftNode {
             voters_outgoing: current.voters(),
             learners,
         };
-        let idx = self
-            .log
-            .append(self.current_term, EntryPayload::Membership(joint));
+        let idx = self.log_append(self.current_term, EntryPayload::Membership(joint));
         self.broadcast_append();
         self.maybe_advance_commit();
         Ok(idx)
@@ -630,7 +755,7 @@ impl RaftNode {
             self.match_index.insert(p, LogIndex::ZERO);
         }
         // A no-op in the new term lets prior-term entries commit safely.
-        self.log.append(self.current_term, EntryPayload::Noop);
+        self.log_append(self.current_term, EntryPayload::Noop);
         self.heartbeat_elapsed = 0;
         self.broadcast_append();
         self.maybe_advance_commit();
@@ -747,15 +872,15 @@ impl RaftNode {
             match self.log.term_at(idx) {
                 Some(t) if t == entry.term => {}
                 Some(_) => {
-                    self.log.truncate_from(idx);
-                    self.log.push_entry(LogEntry {
+                    self.log_truncate_from(idx);
+                    self.log_push(LogEntry {
                         term: entry.term,
                         index: idx,
                         payload: entry.payload.clone(),
                     });
                 }
                 None => {
-                    self.log.push_entry(LogEntry {
+                    self.log_push(LogEntry {
                         term: entry.term,
                         index: idx,
                         payload: entry.payload.clone(),
@@ -993,8 +1118,7 @@ impl RaftNode {
                 voters_outgoing: Vec::new(),
                 learners: conf.to_membership().learners,
             };
-            self.log
-                .append(self.current_term, EntryPayload::Membership(final_config));
+            self.log_append(self.current_term, EntryPayload::Membership(final_config));
             self.broadcast_append();
         }
     }

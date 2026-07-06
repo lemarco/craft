@@ -79,6 +79,14 @@ pub trait LogStore {
     fn purge_prefix(&mut self, through: LogIndex) -> Result<(), StorageError>;
 }
 
+/// Convenience bundle of all three Raft storage ports (plus `Send`) so the
+/// consensus runtime can hold a single `Box<dyn RaftStorage>` regardless of the
+/// concrete backend (backlog B4). Blanket-implemented for every type that
+/// provides the [`HardStateStore`], [`LogStore`], and [`SnapshotStore`] ports.
+pub trait RaftStorage: HardStateStore + LogStore + SnapshotStore + Send {}
+
+impl<T: HardStateStore + LogStore + SnapshotStore + Send> RaftStorage for T {}
+
 /// Durable storage for the most recent [`Snapshot`].
 pub trait SnapshotStore {
     /// Persist a snapshot, replacing any previously stored one.

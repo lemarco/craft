@@ -8,10 +8,14 @@
 //! the [`NetEffect`]s it surfaces.
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, Mutex};
 
 use craft_actor::craft_core::StateMachine;
 use craft_actor::craft_core::{Config, RaftNode, ReadId, Role};
-use craft_actor::craft_proto::NodeId;
+use craft_actor::craft_proto::{LogEntry, LogIndex, NodeId};
+use craft_actor::craft_storage::{
+    HardState, HardStateStore, LogStore, MemoryStorage, Snapshot, SnapshotStore, StorageError,
+};
 use craft_actor::{NetEffect, RaftDriver, ReadOutcome, Step};
 use serde::{Deserialize, Serialize};
 
@@ -479,4 +483,191 @@ fn three_node_leader_serves_linearizable_read_after_replication() {
         }
         ReadOutcome::Failed { .. } => unreachable!(),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Durable persistence + restart recovery (B4)
+// ---------------------------------------------------------------------------
+
+/// A [`MemoryStorage`] shared behind an `Arc<Mutex<..>>` so a simulated restart
+/// can drop one driver and hand the *same* durable bytes to a freshly recovered
+/// one — exactly what a real on-disk backend does across a process restart.
+#[derive(Clone, Default)]
+struct SharedStorage(Arc<Mutex<MemoryStorage>>);
+
+impl HardStateStore for SharedStorage {
+    fn load_hard_state(&self) -> Result<HardState, StorageError> {
+        self.0.lock().unwrap().load_hard_state()
+    }
+    fn save_hard_state(&mut self, state: &HardState) -> Result<(), StorageError> {
+        self.0.lock().unwrap().save_hard_state(state)
+    }
+}
+
+impl LogStore for SharedStorage {
+    fn first_index(&self) -> Result<LogIndex, StorageError> {
+        self.0.lock().unwrap().first_index()
+    }
+    fn last_index(&self) -> Result<LogIndex, StorageError> {
+        self.0.lock().unwrap().last_index()
+    }
+    fn read(&self, index: LogIndex) -> Result<Option<LogEntry>, StorageError> {
+        self.0.lock().unwrap().read(index)
+    }
+    fn read_from(&self, from: LogIndex) -> Result<Vec<LogEntry>, StorageError> {
+        self.0.lock().unwrap().read_from(from)
+    }
+    fn append(&mut self, entries: &[LogEntry]) -> Result<(), StorageError> {
+        self.0.lock().unwrap().append(entries)
+    }
+    fn truncate_suffix(&mut self, from: LogIndex) -> Result<(), StorageError> {
+        self.0.lock().unwrap().truncate_suffix(from)
+    }
+    fn purge_prefix(&mut self, through: LogIndex) -> Result<(), StorageError> {
+        self.0.lock().unwrap().purge_prefix(through)
+    }
+}
+
+impl SnapshotStore for SharedStorage {
+    fn save_snapshot(&mut self, snapshot: &Snapshot) -> Result<(), StorageError> {
+        self.0.lock().unwrap().save_snapshot(snapshot)
+    }
+    fn load_snapshot(&self) -> Result<Option<Snapshot>, StorageError> {
+        self.0.lock().unwrap().load_snapshot()
+    }
+}
+
+fn set(key: &str, value: &str) -> KvCommand {
+    KvCommand::Set {
+        key: key.into(),
+        value: value.into(),
+    }
+}
+
+#[test]
+fn writes_are_persisted_to_storage_as_they_commit() {
+    let storage = SharedStorage::default();
+    let node = RaftNode::new(NodeId(1), [NodeId(1)], config());
+    let mut d = RaftDriver::with_storage(node, KvMachine::default(), Box::new(storage.clone()));
+
+    d.campaign().unwrap();
+    d.propose(&set("a", "1")).unwrap();
+    d.propose(&set("b", "2")).unwrap();
+
+    // Log: index 1 = election no-op, 2 = Set a, 3 = Set b — all durable.
+    assert_eq!(storage.last_index().unwrap(), LogIndex(3));
+    assert_eq!(storage.first_index().unwrap(), LogIndex(1));
+    let entries = storage.read_from(LogIndex(1)).unwrap();
+    assert_eq!(entries.len(), 3, "no-op + two commands persisted");
+    assert_eq!(entries[0].index, LogIndex(1));
+    assert_eq!(entries[2].index, LogIndex(3));
+
+    // The hard state reflects the elected term with a vote for self.
+    let hard = storage.load_hard_state().unwrap();
+    assert_eq!(hard.current_term, d.node().current_term());
+    assert_eq!(hard.voted_for, Some(NodeId(1)));
+}
+
+#[test]
+fn state_survives_a_restart_and_replays_committed_log() {
+    let storage = SharedStorage::default();
+
+    // ---- First life: elect, write three commands (a is overwritten). --------
+    let node = RaftNode::new(NodeId(1), [NodeId(1)], config());
+    let mut d = RaftDriver::with_storage(node, KvMachine::default(), Box::new(storage.clone()));
+    d.campaign().unwrap();
+    d.propose(&set("a", "1")).unwrap();
+    d.propose(&set("b", "2")).unwrap();
+    d.propose(&set("a", "3")).unwrap();
+
+    let term_before = d.node().current_term();
+    let last_before = d.node().last_log_index();
+    assert_eq!(last_before, LogIndex(4), "no-op + three commands");
+
+    // ---- Crash: drop the driver; only `storage` survives. -------------------
+    drop(d);
+
+    // ---- Recovery: rebuild from storage with a *fresh* state machine. -------
+    let mut recovered = RaftDriver::recover(
+        NodeId(1),
+        [NodeId(1)],
+        config(),
+        KvMachine::default(),
+        Box::new(storage.clone()),
+    )
+    .unwrap();
+
+    // Durable state came back verbatim; volatile state reset to a follower.
+    assert_eq!(recovered.node().current_term(), term_before);
+    assert_eq!(recovered.node().last_log_index(), last_before);
+    assert!(
+        !recovered.is_leader(),
+        "a restarted node starts as a follower"
+    );
+    assert_eq!(
+        recovered.machine().applied_through,
+        0,
+        "the fresh machine has not replayed anything yet"
+    );
+
+    // Re-establishing leadership re-commits the recovered log and replays every
+    // command into the fresh machine (no snapshot ⇒ full-log replay).
+    recovered.campaign().unwrap();
+    assert!(recovered.is_leader());
+
+    let step = recovered
+        .query(ReadId(1), KvQuery::Get { key: "a".into() })
+        .unwrap();
+    let ready = step
+        .reads
+        .iter()
+        .find_map(|r| match r {
+            ReadOutcome::Ready { response, .. } => Some(response.clone()),
+            ReadOutcome::Failed { .. } => None,
+        })
+        .expect("read should resolve on the recovered single-node leader");
+    assert_eq!(
+        ready,
+        KvResponse::Value(Some("3".into())),
+        "last write to `a` must win after replay"
+    );
+
+    let step = recovered.query(ReadId(2), KvQuery::Len).unwrap();
+    let len = step.reads.iter().find_map(|r| match r {
+        ReadOutcome::Ready {
+            response: KvResponse::Len(n),
+            ..
+        } => Some(*n),
+        _ => None,
+    });
+    assert_eq!(len, Some(2), "keys `a` and `b` were replayed");
+}
+
+#[test]
+fn recovered_node_persists_a_higher_term_after_restart() {
+    let storage = SharedStorage::default();
+
+    let node = RaftNode::new(NodeId(1), [NodeId(1)], config());
+    let mut d = RaftDriver::with_storage(node, KvMachine::default(), Box::new(storage.clone()));
+    d.campaign().unwrap();
+    let term_before = d.node().current_term();
+    drop(d);
+
+    let mut recovered = RaftDriver::recover(
+        NodeId(1),
+        [NodeId(1)],
+        config(),
+        KvMachine::default(),
+        Box::new(storage.clone()),
+    )
+    .unwrap();
+    recovered.campaign().unwrap();
+
+    let term_after = recovered.node().current_term();
+    assert!(
+        term_after > term_before,
+        "post-restart election must advance the term ({term_after:?} > {term_before:?})"
+    );
+    // The advanced term is durable, not just in memory.
+    assert_eq!(storage.load_hard_state().unwrap().current_term, term_after);
 }

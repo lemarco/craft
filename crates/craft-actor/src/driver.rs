@@ -24,17 +24,30 @@
 //! and routes the returned [`NetEffect`]s. The async actor + `craft-net`
 //! transport wiring (E1) layers on top of this.
 //!
-//! Durable log/hard-state persistence (backlog B4) is intentionally not wired
-//! here yet; the in-memory core log remains the source of truth until the core
-//! exposes its log for a storage view.
+//! ## Durability (backlog B4)
+//!
+//! The driver owns a [`RaftStorage`] backend and persists **before** it acts on
+//! any effect from a step: at the top of [`drain`](RaftDriver::drain) it takes
+//! the core's [`Persist`](craft_core::Persist) delta and writes the hard state
+//! and log synchronously. Because a command is only reported to its client via
+//! the returned [`Step`] *after* that fsync, the node never acknowledges a
+//! commit or reveals a vote that is not yet durable (Raft §5.1–§5.3). On
+//! restart, [`RaftDriver::recover`] rebuilds the core from the stored hard
+//! state and log; the state machine is then rebuilt by replaying the log as the
+//! recovered node re-establishes its commit index.
+//!
+//! Nodes that opt out of durability (the simulator, in-memory tests) use
+//! [`RaftDriver::new`], which installs a [`NullStorage`] that discards writes.
+//! Snapshot durability (compaction / `InstallSnapshot`) is a later increment.
 
 use std::collections::HashMap;
 
 use craft_core::Command as _;
 use craft_core::{
-    Committed, MembershipError, NotLeader, Output, RaftNode, ReadId, Role, StateMachine,
+    Committed, Config, MembershipError, NotLeader, Output, RaftNode, ReadId, Role, StateMachine,
 };
 use craft_proto::{CodecError, LogIndex, NodeId, RaftRpc, RaftRpcReply};
+use craft_storage::{HardState, NullStorage, RaftStorage, StorageError};
 
 /// A network effect the driver produced that the caller must dispatch through
 /// a transport. Kept separate from application results so a runtime can send
@@ -143,6 +156,10 @@ pub enum DriverError {
     /// [`StateMachine::restore`] failed while installing a snapshot.
     #[error("state machine restore: {0}")]
     Restore(Box<dyn std::error::Error + Send + Sync>),
+    /// A durable-storage read or write failed. This is fatal: the node cannot
+    /// safely continue once it can no longer persist Raft state.
+    #[error("storage error: {0}")]
+    Storage(#[from] StorageError),
 }
 
 impl From<NotLeader> for DriverError {
@@ -158,21 +175,70 @@ impl From<NotLeader> for DriverError {
 pub struct RaftDriver<M: StateMachine> {
     node: RaftNode,
     machine: M,
+    /// Durable backend for the hard state and log (backlog B4). Defaults to a
+    /// [`NullStorage`] for nodes that opt out of persistence.
+    storage: Box<dyn RaftStorage>,
     /// Queries awaiting their ReadIndex confirmation, keyed by read token.
     pending_queries: HashMap<ReadId, M::Query>,
 }
 
 impl<M: StateMachine> RaftDriver<M> {
-    /// Create a driver over an existing `node` and application `machine`.
+    /// Create a non-durable driver over an existing `node` and `machine`.
+    ///
+    /// Writes are discarded through a [`NullStorage`]; nothing survives a
+    /// restart. Use [`with_storage`](RaftDriver::with_storage) or
+    /// [`recover`](RaftDriver::recover) for durability.
     ///
     /// The `machine` is assumed to already reflect everything the `node` has
     /// marked applied (both are typically fresh, or both restored together).
     pub fn new(node: RaftNode, machine: M) -> Self {
+        Self::with_storage(node, machine, Box::new(NullStorage))
+    }
+
+    /// Create a durable driver backed by `storage`.
+    ///
+    /// The `node` and `machine` must already be consistent with `storage` — in
+    /// practice they are either both fresh or both produced by
+    /// [`recover`](RaftDriver::recover).
+    pub fn with_storage(node: RaftNode, machine: M, storage: Box<dyn RaftStorage>) -> Self {
         Self {
             node,
             machine,
+            storage,
             pending_queries: HashMap::new(),
         }
+    }
+
+    /// Rebuild a driver from durably persisted state after a restart (backlog
+    /// B4): loads the hard state and log from `storage` and reconstructs the
+    /// core via [`RaftNode::restore`]. `machine` must be a *fresh* state
+    /// machine — the recovered node comes back with `last_applied` at 0 and
+    /// replays its committed log to rebuild the machine as it re-establishes a
+    /// commit index.
+    ///
+    /// `members` is the bootstrap voter set, used only if the recovered log
+    /// carries no membership entry.
+    ///
+    /// # Errors
+    /// Returns [`DriverError::Storage`] if the backend cannot be read.
+    pub fn recover(
+        id: NodeId,
+        members: impl IntoIterator<Item = NodeId>,
+        config: Config,
+        machine: M,
+        storage: Box<dyn RaftStorage>,
+    ) -> Result<Self, DriverError> {
+        let hard = storage.load_hard_state()?;
+        let entries = storage.read_from(LogIndex(1))?;
+        let node = RaftNode::restore(
+            id,
+            members,
+            config,
+            hard.current_term,
+            hard.voted_for,
+            entries,
+        );
+        Ok(Self::with_storage(node, machine, storage))
     }
 
     /// Borrow the underlying consensus node (state inspection, tests).
@@ -296,8 +362,33 @@ impl<M: StateMachine> RaftDriver<M> {
         }
     }
 
+    /// Persist the core's durable delta (hard state + log) for this step.
+    ///
+    /// Run before any effect is surfaced so a follower never ack's an entry it
+    /// has not fsync'd and a node never reveals a vote it has not recorded
+    /// (Raft §5.1–§5.3).
+    fn persist(&mut self) -> Result<(), DriverError> {
+        let Some(delta) = self.node.take_persist() else {
+            return Ok(());
+        };
+        if delta.hard_state_dirty {
+            self.storage.save_hard_state(&HardState {
+                current_term: delta.term,
+                voted_for: delta.voted_for,
+            })?;
+        }
+        if let Some(from) = delta.truncate_from {
+            self.storage.truncate_suffix(from)?;
+        }
+        if !delta.entries.is_empty() {
+            self.storage.append(&delta.entries)?;
+        }
+        Ok(())
+    }
+
     /// Drain and execute every pending core [`Output`].
     fn drain(&mut self) -> Result<Step<M>, DriverError> {
+        self.persist()?;
         let mut step = Step::default();
         for output in self.node.take_outputs() {
             match output {
