@@ -15,12 +15,13 @@
 //! | `CRAFT_LISTEN` | QUIC listen `addr:port` | `0.0.0.0:7443` |
 //! | `CRAFT_ADMIN` | Admin HTTP `addr:port` (`-` to disable) | `0.0.0.0:8080` |
 //! | `CRAFT_PEERS` | `id@host:port` list of **all** members | *self only* |
-//! | `CRAFT_CERT` / `CRAFT_KEY` / `CRAFT_CA` | PEM cert chain / key / CA | *dev CA* |
+//! | `CRAFT_NODE_CERT` / `CRAFT_NODE_KEY` / `CRAFT_CA_CERT` | PEM cert chain / key / CA | *dev CA* |
 //!
 //! With no cert vars set, a throwaway dev CA is minted for a **single-node**
 //! cluster (great for `cargo run -p craft-node`). A multi-node cluster needs a
-//! shared CA: provide `CRAFT_CERT`/`CRAFT_KEY`/`CRAFT_CA` on every node (see
-//! `docs/certs.md`, backlog J6) and list every member in `CRAFT_PEERS`.
+//! shared CA: provide `CRAFT_NODE_CERT`/`CRAFT_NODE_KEY`/`CRAFT_CA_CERT` on
+//! every node (mint them with `examples/certs/generate.sh`; see `docs/certs.md`)
+//! and list every member in `CRAFT_PEERS`.
 
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -144,12 +145,17 @@ fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
         peers.insert(node_id, listen);
     }
 
-    let security = match (env("CRAFT_CERT"), env("CRAFT_KEY"), env("CRAFT_CA")) {
+    let security = match (
+        env("CRAFT_NODE_CERT"),
+        env("CRAFT_NODE_KEY"),
+        env("CRAFT_CA_CERT"),
+    ) {
         (Some(cert), Some(key), Some(ca)) => load_pem_security(node_id, &cert, &key, &ca)?,
         (None, None, None) => {
             if members.len() > 1 {
                 return Err("multi-node clusters need shared certs: set \
-                     CRAFT_CERT/CRAFT_KEY/CRAFT_CA on every node (see docs/certs.md). \
+                     CRAFT_NODE_CERT/CRAFT_NODE_KEY/CRAFT_CA_CERT on every node \
+                     (mint them with examples/certs/generate.sh; see docs/certs.md). \
                      A per-process dev CA only works for a single node."
                     .into());
             }
@@ -158,9 +164,9 @@ fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
             Security::dev(&ca, node_id)?
         }
         _ => {
-            return Err(
-                "set all of CRAFT_CERT, CRAFT_KEY, CRAFT_CA together, or none for dev mode".into(),
-            );
+            return Err("set all of CRAFT_NODE_CERT, CRAFT_NODE_KEY, CRAFT_CA_CERT \
+                 together, or none for dev mode"
+                .into());
         }
     };
 
