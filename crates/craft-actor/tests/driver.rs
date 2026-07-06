@@ -644,6 +644,143 @@ fn state_survives_a_restart_and_replays_committed_log() {
 }
 
 #[test]
+fn snapshot_is_persisted_and_restored_across_a_restart() {
+    let storage = SharedStorage::default();
+
+    // ---- First life: elect, write, then compact through the applied index. --
+    let node = RaftNode::new(NodeId(1), [NodeId(1)], config());
+    let mut d = RaftDriver::with_storage(node, KvMachine::default(), Box::new(storage.clone()));
+    d.campaign().unwrap();
+    d.propose(&set("a", "1")).unwrap(); // index 2
+    d.propose(&set("b", "2")).unwrap(); // index 3
+    d.propose(&set("a", "3")).unwrap(); // index 4 (overwrites a)
+    assert_eq!(d.node().last_applied(), LogIndex(4));
+
+    // Compact: snapshots state through index 4 and purges indices 1..=4.
+    assert!(d.compact().unwrap(), "there is applied state to compact");
+    assert_eq!(d.node().snapshot_index(), LogIndex(4));
+    assert_eq!(
+        storage.first_index().unwrap(),
+        LogIndex(5),
+        "the compacted prefix is purged durably"
+    );
+    assert!(
+        storage.load_snapshot().unwrap().is_some(),
+        "the snapshot is stored durably"
+    );
+
+    // A further write lands beyond the boundary and is durable on its own.
+    d.propose(&set("c", "4")).unwrap(); // index 5
+    assert_eq!(storage.last_index().unwrap(), LogIndex(5));
+
+    let term_before = d.node().current_term();
+
+    // ---- Crash: only `storage` (snapshot + log suffix) survives. ------------
+    drop(d);
+
+    // ---- Recovery: restore the machine from the snapshot, resume the log. ---
+    let mut recovered = RaftDriver::recover(
+        NodeId(1),
+        [NodeId(1)],
+        config(),
+        KvMachine::default(),
+        Box::new(storage.clone()),
+    )
+    .unwrap();
+
+    assert_eq!(recovered.node().current_term(), term_before);
+    assert_eq!(recovered.node().snapshot_index(), LogIndex(4));
+    assert_eq!(recovered.node().last_applied(), LogIndex(4));
+    assert_eq!(recovered.node().last_log_index(), LogIndex(5));
+    assert_eq!(
+        recovered.machine().applied_through,
+        4,
+        "the snapshot restored applied state through its boundary"
+    );
+    assert!(
+        !recovered.is_leader(),
+        "a restarted node starts as a follower"
+    );
+
+    // Re-establishing leadership replays only the retained suffix (`set c`)
+    // into the machine — the snapshotted prefix is never re-applied.
+    recovered.campaign().unwrap();
+    assert!(recovered.is_leader());
+
+    let step = recovered.query(ReadId(1), KvQuery::Len).unwrap();
+    let len = step.reads.iter().find_map(|r| match r {
+        ReadOutcome::Ready {
+            response: KvResponse::Len(n),
+            ..
+        } => Some(*n),
+        _ => None,
+    });
+    assert_eq!(len, Some(3), "a, b and c are all present after recovery");
+
+    let step = recovered
+        .query(ReadId(2), KvQuery::Get { key: "a".into() })
+        .unwrap();
+    let a = step.reads.iter().find_map(|r| match r {
+        ReadOutcome::Ready { response, .. } => Some(response.clone()),
+        _ => None,
+    });
+    assert_eq!(
+        a,
+        Some(KvResponse::Value(Some("3".into()))),
+        "the snapshotted last-write-wins value is preserved"
+    );
+}
+
+#[test]
+fn a_follower_persists_an_installed_snapshot() {
+    use craft_actor::craft_proto::{InstallSnapshot, LogId, Membership, RaftRpc, Term};
+
+    let storage = SharedStorage::default();
+    let node = RaftNode::new(NodeId(2), [NodeId(1), NodeId(2), NodeId(3)], config());
+    let mut d = RaftDriver::with_storage(node, KvMachine::default(), Box::new(storage.clone()));
+
+    // A leader's snapshot: application state {x: "1"} applied through index 4.
+    let mut origin = KvMachine::default();
+    origin.map.insert("x".into(), "1".into());
+    origin.applied_through = 4;
+    let data = craft_actor::craft_proto::encode(&origin).unwrap();
+
+    let install = InstallSnapshot {
+        term: Term(1),
+        leader_id: NodeId(1),
+        last_included: LogId::new(Term(1), LogIndex(4)),
+        last_config: Membership {
+            voters: vec![NodeId(1), NodeId(2), NodeId(3)],
+            voters_outgoing: vec![],
+            learners: vec![],
+        },
+        offset: 0,
+        data,
+        done: true,
+    };
+    d.deliver_rpc(NodeId(1), RaftRpc::InstallSnapshot(install))
+        .unwrap();
+
+    // The state machine was restored from the snapshot bytes.
+    assert_eq!(d.node().snapshot_index(), LogIndex(4));
+    assert_eq!(d.machine().applied_through, 4);
+    assert_eq!(d.machine().map.get("x"), Some(&"1".to_string()));
+
+    // ...and the snapshot + purged prefix + advanced term are all durable.
+    let stored = storage
+        .load_snapshot()
+        .unwrap()
+        .expect("the installed snapshot is persisted");
+    assert_eq!(stored.meta.last_included, LogId::new(Term(1), LogIndex(4)));
+    assert_eq!(
+        storage.first_index().unwrap(),
+        LogIndex(5),
+        "the compacted prefix is purged durably"
+    );
+    assert_eq!(storage.load_hard_state().unwrap().current_term, Term(1));
+}
+
+#[test]
 fn recovered_node_persists_a_higher_term_after_restart() {
     let storage = SharedStorage::default();
 

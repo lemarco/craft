@@ -19,5 +19,6 @@ mod state_machine;
 pub use config::Configuration;
 pub use node::{
     Committed, Config, MembershipError, NotLeader, Output, Persist, RaftNode, ReadId, Role,
+    SnapshotState,
 };
 pub use state_machine::{Command, Query, StateMachine};

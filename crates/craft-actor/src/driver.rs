@@ -38,16 +38,28 @@
 //!
 //! Nodes that opt out of durability (the simulator, in-memory tests) use
 //! [`RaftDriver::new`], which installs a [`NullStorage`] that discards writes.
-//! Snapshot durability (compaction / `InstallSnapshot`) is a later increment.
+//!
+//! ## Snapshot durability (backlog A6)
+//!
+//! [`compact`](RaftDriver::compact) takes an application snapshot via
+//! [`StateMachine::snapshot`], compacts the core's log through the given index,
+//! then persists the resulting [`Snapshot`] and purges the compacted log prefix
+//! (`SnapshotStore::save_snapshot` + `LogStore::purge_prefix`). When a follower
+//! installs a leader-shipped snapshot ([`Output::LoadSnapshot`]) the driver
+//! restores the state machine and persists that snapshot the same way. On
+//! restart, [`recover`](RaftDriver::recover) loads any stored snapshot, restores
+//! the machine from it, and rebuilds the core with
+//! [`RaftNode::restore_with_snapshot`] over the retained log suffix.
 
 use std::collections::HashMap;
 
 use craft_core::Command as _;
 use craft_core::{
-    Committed, Config, MembershipError, NotLeader, Output, RaftNode, ReadId, Role, StateMachine,
+    Committed, Config, MembershipError, NotLeader, Output, RaftNode, ReadId, Role, SnapshotState,
+    StateMachine,
 };
 use craft_proto::{CodecError, LogIndex, NodeId, RaftRpc, RaftRpcReply};
-use craft_storage::{HardState, NullStorage, RaftStorage, StorageError};
+use craft_storage::{HardState, NullStorage, RaftStorage, Snapshot, SnapshotMeta, StorageError};
 
 /// A network effect the driver produced that the caller must dispatch through
 /// a transport. Kept separate from application results so a runtime can send
@@ -156,6 +168,9 @@ pub enum DriverError {
     /// [`StateMachine::restore`] failed while installing a snapshot.
     #[error("state machine restore: {0}")]
     Restore(Box<dyn std::error::Error + Send + Sync>),
+    /// [`StateMachine::snapshot`] failed while capturing state for compaction.
+    #[error("state machine snapshot: {0}")]
+    Snapshot(Box<dyn std::error::Error + Send + Sync>),
     /// A durable-storage read or write failed. This is fatal: the node cannot
     /// safely continue once it can no longer persist Raft state.
     #[error("storage error: {0}")]
@@ -210,34 +225,66 @@ impl<M: StateMachine> RaftDriver<M> {
     }
 
     /// Rebuild a driver from durably persisted state after a restart (backlog
-    /// B4): loads the hard state and log from `storage` and reconstructs the
-    /// core via [`RaftNode::restore`]. `machine` must be a *fresh* state
-    /// machine — the recovered node comes back with `last_applied` at 0 and
-    /// replays its committed log to rebuild the machine as it re-establishes a
-    /// commit index.
+    /// B4 + A6): loads the hard state, snapshot, and log from `storage` and
+    /// reconstructs the core.
     ///
-    /// `members` is the bootstrap voter set, used only if the recovered log
-    /// carries no membership entry.
+    /// * **No snapshot:** the core is rebuilt via [`RaftNode::restore`] with
+    ///   `last_applied` at 0; the *fresh* `machine` is replayed from the whole
+    ///   committed log as the node re-establishes a commit index.
+    /// * **With a snapshot:** the `machine` is restored from the snapshot bytes,
+    ///   and the core is rebuilt via [`RaftNode::restore_with_snapshot`] over the
+    ///   retained log suffix, starting applied/committed at the snapshot
+    ///   boundary.
+    ///
+    /// `machine` must be a *fresh* state machine — it is reset either by replay
+    /// or by [`StateMachine::restore`] here. `members` is the bootstrap voter
+    /// set, used only if neither the recovered log nor the snapshot carries a
+    /// membership entry.
     ///
     /// # Errors
-    /// Returns [`DriverError::Storage`] if the backend cannot be read.
+    /// Returns [`DriverError::Storage`] if the backend cannot be read, or
+    /// [`DriverError::Restore`] if the snapshot cannot be applied to `machine`.
     pub fn recover(
         id: NodeId,
         members: impl IntoIterator<Item = NodeId>,
         config: Config,
-        machine: M,
+        mut machine: M,
         storage: Box<dyn RaftStorage>,
     ) -> Result<Self, DriverError> {
         let hard = storage.load_hard_state()?;
-        let entries = storage.read_from(LogIndex(1))?;
-        let node = RaftNode::restore(
-            id,
-            members,
-            config,
-            hard.current_term,
-            hard.voted_for,
-            entries,
-        );
+        let node = match storage.load_snapshot()? {
+            Some(snapshot) => {
+                machine
+                    .restore(&snapshot.data)
+                    .map_err(|e| DriverError::Restore(Box::new(e)))?;
+                let last = snapshot.meta.last_included;
+                let entries = storage.read_from(last.index.next())?;
+                RaftNode::restore_with_snapshot(
+                    id,
+                    members,
+                    config,
+                    hard.current_term,
+                    hard.voted_for,
+                    SnapshotState {
+                        last_included: last,
+                        membership: snapshot.meta.membership,
+                        data: snapshot.data,
+                    },
+                    entries,
+                )
+            }
+            None => {
+                let entries = storage.read_from(LogIndex(1))?;
+                RaftNode::restore(
+                    id,
+                    members,
+                    config,
+                    hard.current_term,
+                    hard.voted_for,
+                    entries,
+                )
+            }
+        };
         Ok(Self::with_storage(node, machine, storage))
     }
 
@@ -362,6 +409,55 @@ impl<M: StateMachine> RaftDriver<M> {
         }
     }
 
+    /// Snapshot the application state and compact the log up to the highest
+    /// applied index, persisting the snapshot durably (backlog A6, Raft §7).
+    ///
+    /// Takes a [`StateMachine::snapshot`] — which reflects state through
+    /// `last_applied` — and hands it to [`RaftNode::compact`] at exactly that
+    /// index (the only boundary consistent with the captured bytes). If the core
+    /// accepts it, the snapshot is written via `SnapshotStore::save_snapshot` and
+    /// the compacted prefix purged via `LogStore::purge_prefix`, so the reclaimed
+    /// log space survives a restart. Returns `false` (without touching storage)
+    /// if there is nothing new to compact (`last_applied <= snapshot_index`).
+    ///
+    /// # Errors
+    /// Returns [`DriverError::Snapshot`] if the state machine cannot produce a
+    /// snapshot, or [`DriverError::Storage`] if the snapshot or purge cannot be
+    /// persisted.
+    pub fn compact(&mut self) -> Result<bool, DriverError> {
+        let up_to = self.node.last_applied();
+        let data = self
+            .machine
+            .snapshot()
+            .map_err(|e| DriverError::Snapshot(Box::new(e)))?;
+        if !self.node.compact(up_to, data) {
+            return Ok(false);
+        }
+        self.persist_snapshot()?;
+        Ok(true)
+    }
+
+    /// Persist the core's current snapshot and purge the compacted log prefix.
+    ///
+    /// Called after a local [`compact`](RaftDriver::compact) or after installing
+    /// a leader-shipped snapshot ([`Output::LoadSnapshot`]); both leave the
+    /// core's [`stored_snapshot`](RaftNode::stored_snapshot) at the new boundary.
+    fn persist_snapshot(&mut self) -> Result<(), DriverError> {
+        let Some(snapshot) = self.node.stored_snapshot() else {
+            return Ok(());
+        };
+        let boundary = snapshot.last_included.index;
+        self.storage.save_snapshot(&Snapshot {
+            meta: SnapshotMeta {
+                last_included: snapshot.last_included,
+                membership: snapshot.membership,
+            },
+            data: snapshot.data,
+        })?;
+        self.storage.purge_prefix(boundary)?;
+        Ok(())
+    }
+
     /// Persist the core's durable delta (hard state + log) for this step.
     ///
     /// Run before any effect is surfaced so a follower never ack's an entry it
@@ -412,6 +508,9 @@ impl<M: StateMachine> RaftDriver<M> {
                     self.machine
                         .restore(&data)
                         .map_err(|e| DriverError::Restore(Box::new(e)))?;
+                    // The core just installed this snapshot; persist it and
+                    // purge the compacted prefix so it survives a restart (A6).
+                    self.persist_snapshot()?;
                 }
                 Output::RoleChanged(role) => step.role_changes.push(role),
             }

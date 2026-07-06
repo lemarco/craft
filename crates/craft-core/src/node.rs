@@ -156,6 +156,22 @@ pub struct Persist {
     pub entries: Vec<LogEntry>,
 }
 
+/// A read-only view of this node's most recent snapshot (Raft §7): its
+/// boundary `(term, index)`, the configuration in effect there, and the opaque
+/// application bytes. Returned by [`RaftNode::stored_snapshot`] so a runtime can
+/// persist the snapshot durably and purge the compacted log prefix (backlog
+/// A6), and fed back to [`RaftNode::restore_with_snapshot`] on restart.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SnapshotState {
+    /// `(term, index)` of the last log entry the snapshot includes.
+    pub last_included: LogId,
+    /// Cluster configuration at the snapshot boundary (its config entry may
+    /// have been compacted out of the log, so it travels with the snapshot).
+    pub membership: Membership,
+    /// Opaque, application-encoded state-machine bytes.
+    pub data: Vec<u8>,
+}
+
 /// A ReadIndex request awaiting leadership confirmation and apply catch-up.
 #[derive(Debug, Clone)]
 struct PendingRead {
@@ -304,6 +320,51 @@ impl RaftNode {
         node
     }
 
+    /// Rebuild a node from a durable snapshot plus the live log suffix after a
+    /// restart (backlog A6). Used when the stored log was compacted: `snapshot`
+    /// summarizes everything through `snapshot.last_included`, and `entries` are
+    /// the remaining log entries (indices strictly greater than the boundary,
+    /// ascending and contiguous).
+    ///
+    /// The application state machine must be restored from `snapshot.data`
+    /// *before* the node is driven; the node comes back as a
+    /// [`Follower`](Role::Follower) with `commit_index`/`last_applied` at the
+    /// snapshot boundary (which is durably committed), then re-learns any higher
+    /// commit index from the current leader and replays the suffix.
+    #[must_use]
+    pub fn restore_with_snapshot(
+        id: NodeId,
+        members: impl IntoIterator<Item = NodeId>,
+        config: Config,
+        term: Term,
+        voted_for: Option<NodeId>,
+        snapshot: SnapshotState,
+        entries: impl IntoIterator<Item = LogEntry>,
+    ) -> Self {
+        let mut node = Self::new(id, members, config);
+        node.current_term = term;
+        node.voted_for = voted_for;
+        let last = snapshot.last_included;
+        node.log.install_snapshot(last.index, last.term);
+        node.snapshot = Some(StoredSnapshot {
+            last_index: last.index,
+            last_term: last.term,
+            membership: snapshot.membership,
+            data: snapshot.data,
+        });
+        for entry in entries {
+            node.log.push_entry(entry);
+        }
+        // The snapshot boundary is durably committed and already reflected in
+        // the restored state machine.
+        node.commit_index = last.index;
+        node.last_applied = last.index;
+        node.persisted_term = term;
+        node.persisted_vote = voted_for;
+        node.log_dirty_from = None;
+        node
+    }
+
     // ---- Accessors -------------------------------------------------------
 
     /// This node's id.
@@ -374,6 +435,20 @@ impl RaftNode {
     #[must_use]
     pub fn snapshot_index(&self) -> LogIndex {
         self.log.snapshot_index()
+    }
+
+    /// The most recent snapshot this node holds (its boundary, configuration,
+    /// and application bytes), or `None` if nothing has been compacted or
+    /// installed. A runtime persists this via a `SnapshotStore` after a
+    /// [`compact`](RaftNode::compact) or a leader-shipped install so it survives
+    /// a restart (backlog A6).
+    #[must_use]
+    pub fn stored_snapshot(&self) -> Option<SnapshotState> {
+        self.snapshot.as_ref().map(|s| SnapshotState {
+            last_included: LogId::new(s.last_term, s.last_index),
+            membership: s.membership.clone(),
+            data: s.data.clone(),
+        })
     }
     /// The active voting set (sorted).
     #[must_use]
@@ -1158,6 +1233,11 @@ impl RaftNode {
         }
 
         self.log.install_snapshot(last.index, last.term);
+        // Installing a snapshot may discard conflicting entries beyond the
+        // boundary; mark the log dirty from just past it so `take_persist`
+        // reconciles the stored suffix (truncate + re-append the retained tail)
+        // before the driver purges the compacted prefix (backlog A6).
+        self.mark_log_dirty(LogIndex(last.index.0 + 1));
         self.snapshot = Some(StoredSnapshot {
             last_index: last.index,
             last_term: last.term,

@@ -2,7 +2,7 @@
 //! leader shipping a snapshot to a lagging follower, and a follower installing
 //! one and resuming normal replication.
 
-use craft_core::{Config, Output, RaftNode};
+use craft_core::{Config, Output, RaftNode, SnapshotState};
 use craft_proto::{
     AppendEntries, AppendEntriesReply, EntryPayload, InstallSnapshot, LogEntry, LogId, LogIndex,
     Membership, NodeId, RaftRpc, RaftRpcReply, RequestVoteReply, Round, Term,
@@ -204,6 +204,76 @@ fn follower_installs_snapshot_and_resumes_replication() {
     );
     assert_eq!(n.last_log_index(), LogIndex(5));
     assert_eq!(n.commit_index(), LogIndex(5));
+}
+
+#[test]
+fn stored_snapshot_exposes_the_compaction_boundary() {
+    let mut n = leader_with_applied_log();
+    assert!(
+        n.stored_snapshot().is_none(),
+        "no snapshot before compaction"
+    );
+    assert!(n.compact(LogIndex(3), vec![7, 7, 7]));
+
+    let snap = n
+        .stored_snapshot()
+        .expect("a snapshot exists after compaction");
+    assert_eq!(snap.last_included, LogId::new(Term(1), LogIndex(3)));
+    assert_eq!(snap.data, vec![7, 7, 7]);
+    assert_eq!(
+        snap.membership.voters,
+        vec![NodeId(1), NodeId(2), NodeId(3)],
+        "snapshot carries the configuration at the boundary"
+    );
+}
+
+#[test]
+fn restore_with_snapshot_seeds_boundary_and_retained_suffix() {
+    let snapshot = SnapshotState {
+        last_included: LogId::new(Term(3), LogIndex(4)),
+        membership: Membership {
+            voters: vec![NodeId(1), NodeId(2), NodeId(3)],
+            voters_outgoing: vec![],
+            learners: vec![],
+        },
+        data: vec![42],
+    };
+    // One retained live entry beyond the boundary (index 5).
+    let suffix = vec![LogEntry {
+        term: Term(3),
+        index: LogIndex(5),
+        payload: EntryPayload::Command(vec![9]),
+    }];
+
+    let n = RaftNode::restore_with_snapshot(
+        NodeId(2),
+        [NodeId(1), NodeId(2), NodeId(3)],
+        cfg(),
+        Term(5),
+        Some(NodeId(1)),
+        snapshot,
+        suffix,
+    );
+
+    // The boundary is durably committed/applied; the suffix is present but not
+    // yet committed beyond it.
+    assert_eq!(n.snapshot_index(), LogIndex(4));
+    assert_eq!(n.last_applied(), LogIndex(4));
+    assert_eq!(n.commit_index(), LogIndex(4));
+    assert_eq!(n.last_log_index(), LogIndex(5));
+    assert_eq!(n.term_at(LogIndex(5)), Some(Term(3)));
+    assert_eq!(n.current_term(), Term(5));
+    assert_eq!(n.voted_for(), Some(NodeId(1)));
+    // Configuration is recovered from the snapshot (its config entry was
+    // compacted out of the log).
+    assert_eq!(n.voters(), vec![NodeId(1), NodeId(2), NodeId(3)]);
+
+    // The snapshot round-trips back out for shipping to lagging followers.
+    let round = n
+        .stored_snapshot()
+        .expect("snapshot retained after restore");
+    assert_eq!(round.last_included, LogId::new(Term(3), LogIndex(4)));
+    assert_eq!(round.data, vec![42]);
 }
 
 #[test]
