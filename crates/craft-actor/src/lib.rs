@@ -14,6 +14,7 @@ mod messaging;
 mod placement;
 mod registry;
 mod runtime;
+mod supervisor;
 
 pub use directory::{ActorDirectory, ClusterRef, DirectorySync};
 pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
@@ -26,3 +27,4 @@ pub use registry::{
 pub use runtime::{
     ClientError, NodeHandle, NodeService, NodeStatus, RuntimeConfig, spawn as spawn_node,
 };
+pub use supervisor::{ClusterState, ClusterSupervisor, GroupReconcile, ReconcileReport};
