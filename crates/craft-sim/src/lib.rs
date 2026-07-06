@@ -9,6 +9,8 @@
 pub use {craft_core, craft_proto};
 
 mod harness;
+mod linearizability;
 mod rng;
 
 pub use harness::{Cluster, Fault};
+pub use linearizability::{History, Model};

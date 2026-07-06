@@ -245,8 +245,23 @@ emits the events these surfaces render.
 | I1 | In-memory network (delay/drop/partition/isolate) | M | ✅ done |
 | I2 | Virtual clock; deterministic seeded scheduler + reorder | L | ✅ done |
 | I3 | Fault injectors + safety-invariant assertions (election safety, agreement, monotonic apply) | L | ✅ done |
-| I4 | Scenarios: election, replication, partition, join/leave, migrate, scale_cluster | L | partial (election/replication/partition/membership done; actor migrate+scale pending) |
-| I5 | Linearizability checker (`porcupine`-style) over sim histories ([ADR 029](decisions/029-testing-strategy.md)) | L | pending |
+| I4 | Scenarios: election, replication, partition, join/leave, migrate, scale_cluster | L | ✅ done |
+| I5 | Linearizability checker (`porcupine`-style) over sim histories ([ADR 029](decisions/029-testing-strategy.md)) | L | ✅ done |
+
+**Track I notes (Wave 3).** **I5** adds a `porcupine`/Knossos-style
+linearizability checker (`craft_sim::{History, Model}`): the Wing–Gong / Lowe
+DFS over a doubly linked history with `(state, linearized-set)` memoization,
+deciding whether a concurrent history has a legal total order respecting
+real-time precedence. Unit tests cover sequential/concurrent register histories
+(linearizable and not — stale reads, never-written values, real-time-ordered
+clients, overlapping reads, empty history). An integration test replays the
+deterministic Raft simulator as a replicated single-register with a write
+concurrent with a `ReadIndex` read each round and asserts the recorded history
+is linearizable, plus a corrupted-read variant the checker rejects. **I4**
+finishes the actor scenarios over `LocalNetwork`: `scale_cluster` scaling a
+group one-per-node across a 3-node cluster then relocating off a *dead* node
+(reaping its instance), and a stateful counter migrating across *two* hops
+(node 1→2→3) with its state and generation preserved end to end.
 
 #### Track T — Testing & CI (cross-cutting) **[P]** ([ADR 029](decisions/029-testing-strategy.md))
 | ID | Task | Effort | Notes |
