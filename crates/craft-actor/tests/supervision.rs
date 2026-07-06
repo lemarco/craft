@@ -2,10 +2,11 @@
 //! ADR 026 §5).
 
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use craft_actor::{ActorRegistry, RestartPolicy, RpcReplyPort, UserActor};
+use craft_actor::{ActorObserver, ActorRegistry, RestartPolicy, RpcReplyPort, UserActor};
 
 #[derive(Debug, thiserror::Error)]
 #[error("boom")]
@@ -52,6 +53,29 @@ impl UserActor for Flaky {
                 Ok(())
             }
         }
+    }
+}
+
+/// Records the supervision hooks the registry fires (Track H telemetry).
+#[derive(Default)]
+struct RecordingObserver {
+    restarts: Mutex<Vec<(String, u32, u32)>>,
+    escalations: Mutex<Vec<(String, u32)>>,
+}
+
+impl ActorObserver for RecordingObserver {
+    fn on_restart(&self, name: &str, instance: u32, count: u32) {
+        self.restarts
+            .lock()
+            .unwrap()
+            .push((name.to_string(), instance, count));
+    }
+
+    fn on_escalated(&self, name: &str, instance: u32) {
+        self.escalations
+            .lock()
+            .unwrap()
+            .push((name.to_string(), instance));
     }
 }
 
@@ -141,4 +165,42 @@ async fn on_failure_restarts_within_budget_then_escalates() {
         "the escalating failure is not counted as a restart"
     );
     assert_eq!(starts.load(Ordering::SeqCst), 3, "start + 2 restarts");
+}
+
+#[tokio::test]
+async fn observer_sees_restarts_and_escalation() {
+    let registry = ActorRegistry::new();
+    let observer = Arc::new(RecordingObserver::default());
+    registry.set_observer(observer.clone());
+
+    let (cfg, _starts) = cfg();
+    let actor = registry
+        .spawn_supervised::<Flaky>(
+            "f",
+            cfg,
+            RestartPolicy::OnFailure {
+                max_restarts: 1,
+                window: Duration::from_secs(60),
+            },
+        )
+        .unwrap();
+
+    // First failure restarts within budget → one restart notification.
+    actor.send(Msg::Fail).unwrap();
+    let _ = actor.ask(Msg::Get).await.unwrap(); // barrier: restart applied
+    {
+        let restarts = observer.restarts.lock().unwrap();
+        assert_eq!(restarts.as_slice(), &[("f".to_string(), 0, 1)]);
+    }
+
+    // Second failure exhausts the budget → escalation notification.
+    actor.send(Msg::Fail).unwrap();
+    for _ in 0..50 {
+        if !observer.escalations.lock().unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+    let escalations = observer.escalations.lock().unwrap();
+    assert_eq!(escalations.as_slice(), &[("f".to_string(), 0)]);
 }

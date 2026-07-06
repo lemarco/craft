@@ -21,8 +21,12 @@ pub const CLUSTER_PEERS_PATH: &str = "/raft/v1/cluster/peers";
 pub const ACTOR_DELIVER_PATH: &str = "/raft/v1/actor/deliver";
 /// Remote spawn / placement (ADR 013).
 pub const ACTOR_SPAWN_PATH: &str = "/raft/v1/actor/spawn";
+/// Forward a cluster-wide scale to the leader (ADR 013/018).
+pub const ACTOR_SCALE_PATH: &str = "/raft/v1/actor/scale";
 /// Snapshot transfer + respawn on a target node (ADR 013).
 pub const ACTOR_MIGRATE_PATH: &str = "/raft/v1/actor/migrate";
+/// Stop a group on a target node for a planned scale-down / removal (ADR 013/018).
+pub const ACTOR_STOP_PATH: &str = "/raft/v1/actor/stop";
 /// Directory publish / revoke (ADR 013).
 pub const ACTOR_REGISTER_PATH: &str = "/raft/v1/actor/register";
 
@@ -56,22 +60,28 @@ pub enum Route {
     ActorDeliver,
     /// [`ACTOR_SPAWN_PATH`].
     ActorSpawn,
+    /// [`ACTOR_SCALE_PATH`].
+    ActorScale,
     /// [`ACTOR_MIGRATE_PATH`].
     ActorMigrate,
+    /// [`ACTOR_STOP_PATH`].
+    ActorStop,
     /// [`ACTOR_REGISTER_PATH`].
     ActorRegister,
 }
 
 impl Route {
     /// Every route, in a stable order (handy for building a router or tests).
-    pub const ALL: [Route; 8] = [
+    pub const ALL: [Route; 10] = [
         Route::PeerWire,
         Route::ClientWire,
         Route::ClusterJoin,
         Route::ClusterPeers,
         Route::ActorDeliver,
         Route::ActorSpawn,
+        Route::ActorScale,
         Route::ActorMigrate,
+        Route::ActorStop,
         Route::ActorRegister,
     ];
 
@@ -85,7 +95,9 @@ impl Route {
             Route::ClusterPeers => CLUSTER_PEERS_PATH,
             Route::ActorDeliver => ACTOR_DELIVER_PATH,
             Route::ActorSpawn => ACTOR_SPAWN_PATH,
+            Route::ActorScale => ACTOR_SCALE_PATH,
             Route::ActorMigrate => ACTOR_MIGRATE_PATH,
+            Route::ActorStop => ACTOR_STOP_PATH,
             Route::ActorRegister => ACTOR_REGISTER_PATH,
         }
     }
@@ -105,7 +117,9 @@ impl Route {
             Route::ClusterJoin | Route::ClusterPeers => TrafficClass::Cluster,
             Route::ActorDeliver
             | Route::ActorSpawn
+            | Route::ActorScale
             | Route::ActorMigrate
+            | Route::ActorStop
             | Route::ActorRegister => TrafficClass::Actor,
         }
     }

@@ -228,10 +228,30 @@ pub struct RaftNode {
     pending_reads: Vec<PendingRead>,
     snapshot: Option<StoredSnapshot>,
 
+    // Failure detection (ADR 032 liveness): the `logical_clock` tick at which
+    // each peer last acked an AppendEntries. Only the leader populates this (it
+    // is the only role that solicits acks); it underpins `reachable`, a liveness
+    // signal distinct from committed voter membership, so crash detection need
+    // not wait for a `ConfChange`.
+    last_ack_clock: BTreeMap<NodeId, u64>,
+
+    // Leader lease (ADR 005 lease reads): the leader may serve a read locally,
+    // with no fresh quorum round, while it holds a valid lease. The lease is
+    // extended to `lease_round_clock + lease_ticks` whenever a quorum acks the
+    // heartbeat round broadcast at `lease_round_clock`; `lease_acks` accumulates
+    // the acks for the current `lease_round`.
+    lease_round: Round,
+    lease_round_clock: u64,
+    lease_acks: BTreeSet<NodeId>,
+    lease_expiry: u64,
+
     // Timing (logical ticks).
     elapsed: u64,
     heartbeat_elapsed: u64,
     election_timeout: u64,
+    /// Monotonic logical clock (never reset): the tick count since construction,
+    /// used as the time base for the leader lease.
+    logical_clock: u64,
     rng: Rng,
 
     outbox: Vec<Output>,
@@ -279,9 +299,15 @@ impl RaftNode {
             heartbeat_round: Round::ZERO,
             pending_reads: Vec::new(),
             snapshot: None,
+            last_ack_clock: BTreeMap::new(),
+            lease_round: Round::ZERO,
+            lease_round_clock: 0,
+            lease_acks: BTreeSet::new(),
+            lease_expiry: 0,
             elapsed: 0,
             heartbeat_elapsed: 0,
             election_timeout,
+            logical_clock: 0,
             rng,
             outbox: Vec::new(),
         }
@@ -562,6 +588,7 @@ impl RaftNode {
 
     /// Advance logical time by one tick (election / heartbeat timers).
     pub fn tick(&mut self) {
+        self.logical_clock += 1;
         if self.role == Role::Leader {
             self.heartbeat_elapsed += 1;
             if self.heartbeat_elapsed >= self.config.heartbeat_interval {
@@ -753,6 +780,10 @@ impl RaftNode {
         }
         self.votes.clear();
         self.fail_pending_reads();
+        // Surrender the lease immediately on step-down: a follower must never
+        // serve a lease read, and a stale lease could otherwise linger.
+        self.lease_expiry = 0;
+        self.lease_acks.clear();
         self.set_role(Role::Follower);
     }
 
@@ -821,10 +852,16 @@ impl RaftNode {
     fn become_leader(&mut self) {
         self.set_role(Role::Leader);
         self.leader_id = Some(self.id);
+        // A fresh term starts with no lease; it is earned once a heartbeat round
+        // in this term is acked by a quorum (via `broadcast_append` below).
+        self.lease_expiry = 0;
         let next = self.log.last_index().next();
         self.next_index.clear();
         self.match_index.clear();
         self.sent_upper.clear();
+        // Reachability is earned afresh each term from this leader's own acks;
+        // stale observations from a prior leadership must not count (ADR 032).
+        self.last_ack_clock.clear();
         for p in self.peers() {
             self.next_index.insert(p, next);
             self.match_index.insert(p, LogIndex::ZERO);
@@ -1009,7 +1046,13 @@ impl RaftNode {
                 self.match_index.insert(from, upper);
             }
             self.next_index.insert(from, upper.next());
+            // A successful ack is our freshest proof the peer is alive (ADR 032).
+            self.last_ack_clock.insert(from, self.logical_clock);
             self.confirm_reads(from, reply.round);
+            if reply.round >= self.lease_round {
+                self.lease_acks.insert(from);
+                self.maybe_extend_lease();
+            }
             self.maybe_advance_commit();
             self.try_complete_reads();
         } else {
@@ -1031,6 +1074,14 @@ impl RaftNode {
         // Each broadcast opens a new heartbeat round; acks echoing this round
         // (or later) confirm leadership for any read registered before it.
         self.heartbeat_round = self.heartbeat_round.next();
+        // Open a fresh lease-confirmation round: a quorum of acks for it extends
+        // the leader lease, measured from *now* (before any follower has even
+        // received the heartbeat), which keeps the lease conservative (ADR 005).
+        self.lease_round = self.heartbeat_round;
+        self.lease_round_clock = self.logical_clock;
+        self.lease_acks.clear();
+        self.lease_acks.insert(self.id);
+        self.maybe_extend_lease();
         for p in self.peers() {
             self.send_append(p);
         }
@@ -1175,6 +1226,105 @@ impl RaftNode {
         for r in std::mem::take(&mut self.pending_reads) {
             self.outbox.push(Output::ReadFailed { id: r.id });
         }
+    }
+
+    /// The leader lease duration, in logical ticks. Deliberately a fraction of
+    /// the *minimum* election timeout so the lease is guaranteed to expire on
+    /// the leader before any follower — which reset its election timer when it
+    /// received the acked heartbeat — could time out and start an election.
+    /// Halving leaves generous headroom for cross-node clock drift (ADR 005;
+    /// this is why lease reads were originally deferred as "clock-sensitive").
+    fn lease_ticks(&self) -> u64 {
+        self.config.election_timeout_min / 2
+    }
+
+    /// Extend the leader lease if a quorum has acked the current lease round.
+    /// Measured from when the round was broadcast (`lease_round_clock`), so the
+    /// lease is always conservative relative to when followers last heard us.
+    fn maybe_extend_lease(&mut self) {
+        if self.role != Role::Leader {
+            return;
+        }
+        if self.configuration().has_quorum(&self.lease_acks) {
+            let candidate = self.lease_round_clock.saturating_add(self.lease_ticks());
+            if candidate > self.lease_expiry {
+                self.lease_expiry = candidate;
+            }
+        }
+    }
+
+    /// Whether this node currently holds a valid leadership lease (leader, and
+    /// within the lease window). Observability / test hook.
+    #[must_use]
+    pub fn lease_valid(&self) -> bool {
+        self.role == Role::Leader && self.logical_clock < self.lease_expiry
+    }
+
+    /// Attempt a **lease read** (ADR 005): if this leader holds a valid lease and
+    /// has committed an entry in its current term, return `Ok(Some(index))` — the
+    /// read may be served by running `query` once the state machine has applied
+    /// through `index`, with **no** ReadIndex round-trip. Returns `Ok(None)` when
+    /// no valid lease is held (the caller should fall back to
+    /// [`read_index`](Self::read_index)).
+    ///
+    /// # Errors
+    /// Returns [`NotLeader`] with a redirect hint if this node is not the leader.
+    pub fn lease_read(&self) -> Result<Option<LogIndex>, NotLeader> {
+        if self.role != Role::Leader {
+            return Err(NotLeader {
+                leader: self.leader_id,
+            });
+        }
+        // The commit index is only authoritative once an entry of the current
+        // term has committed (leader completeness); until then, fall back.
+        let authoritative = self.log.term_at(self.commit_index) == Some(self.current_term);
+        if self.logical_clock < self.lease_expiry && authoritative {
+            Ok(Some(self.commit_index))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// The voters this node currently considers **reachable** — a liveness
+    /// signal distinct from committed membership (ADR 032).
+    ///
+    /// On the leader this is itself plus every voter that acked an
+    /// AppendEntries within the last `window` logical ticks; a voter silent for
+    /// longer is treated as crashed/partitioned even though it is still a
+    /// committed voter. A non-leader has no first-hand ack data, so it
+    /// conservatively reports the full voter set and leaves crash detection to
+    /// the leader (which is where reconcile runs anyway, ADR 018).
+    ///
+    /// `window` should comfortably exceed the heartbeat interval so a healthy
+    /// follower is never flagged; [`reachable_now`](Self::reachable_now) applies
+    /// a sensible default derived from the election timeout.
+    #[must_use]
+    pub fn reachable(&self, window: u64) -> Vec<NodeId> {
+        let voters = self.configuration().voters();
+        if self.role != Role::Leader {
+            return voters;
+        }
+        let now = self.logical_clock;
+        voters
+            .into_iter()
+            .filter(|&v| {
+                v == self.id
+                    || self
+                        .last_ack_clock
+                        .get(&v)
+                        .is_some_and(|&acked| now.saturating_sub(acked) <= window)
+            })
+            .collect()
+    }
+
+    /// [`reachable`](Self::reachable) with a default detection window of twice
+    /// the maximum election timeout: a follower acks every heartbeat (far more
+    /// often than an election timeout), so silence this long is strong evidence
+    /// it is down rather than merely slow, while staying well clear of the
+    /// heartbeat cadence to avoid flapping.
+    #[must_use]
+    pub fn reachable_now(&self) -> Vec<NodeId> {
+        self.reachable(self.config.election_timeout_max.saturating_mul(2))
     }
 
     // ---- Membership finalization (ADR 016) ------------------------------

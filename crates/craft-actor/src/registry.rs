@@ -34,7 +34,7 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -47,6 +47,13 @@ use tokio::task::JoinHandle;
 /// ([ADR 022](../../../docs/decisions/022-drain-timeout.md)). Overridable per
 /// call; the facade exposes `.drain_timeout(..)` / `CRAFT_DRAIN_TIMEOUT`.
 pub const DEFAULT_DRAIN_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Caller-side deadline for `ask` (request/reply): if the target actor does not
+/// answer within this window, [`ActorRef::ask`] / [`PoolRef::ask`] return
+/// [`AskError::Timeout`] instead of blocking forever on a wedged or slow
+/// handler. Mirrors the cross-node ask deadline so local and remote asks bound
+/// the caller symmetrically.
+pub const ASK_TIMEOUT: Duration = Duration::from_secs(30);
 
 // ---------------------------------------------------------------------------
 // UserActor
@@ -150,14 +157,41 @@ pub trait UserActor: Send + Sized + 'static {
     /// [`MessageDecodeError::NotAddressable`]. Override it (typically with
     /// `craft_proto::decode`) to accept messages sent from other nodes.
     ///
-    /// Only the fire-and-forget part of the message need decode — an embedded
-    /// [`RpcReplyPort`] cannot cross a node boundary, so cross-node `ask` is a
-    /// separate increment.
+    /// This decodes the fire-and-forget half; the request/reply half is
+    /// [`decode_ask`](UserActor::decode_ask).
     ///
     /// # Errors
     /// Returns [`MessageDecodeError`] if the actor is not remotely addressable
     /// or the payload cannot be decoded into a [`Message`](UserActor::Message).
     fn decode_message(_payload: &[u8]) -> Result<Self::Message, MessageDecodeError> {
+        Err(MessageDecodeError::NotAddressable)
+    }
+
+    /// Decode a cross-node **ask** into a message carrying a reply port (E8,
+    /// ADR 013/019 `/actor/deliver` with `reply_expected`). Build your ask
+    /// message variant, converting the supplied [`WireReplyPort`] into the typed
+    /// [`RpcReplyPort<R>`](RpcReplyPort) it expects via
+    /// [`WireReplyPort::reply_port`]; whatever the handler replies is
+    /// `postcard`-encoded back to the caller. The default rejects remote asks
+    /// with [`MessageDecodeError::NotAddressable`].
+    ///
+    /// ```ignore
+    /// fn decode_ask(payload: &[u8], reply: WireReplyPort)
+    ///     -> Result<Self::Message, MessageDecodeError>
+    /// {
+    ///     let req: Req = craft_proto::decode(payload)
+    ///         .map_err(|e| MessageDecodeError::Decode(e.to_string()))?;
+    ///     Ok(Msg::Ask { req, reply: reply.reply_port::<Resp>() })
+    /// }
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`MessageDecodeError`] if the actor does not support remote asks
+    /// or the payload cannot be decoded.
+    fn decode_ask(
+        _payload: &[u8],
+        _reply: WireReplyPort,
+    ) -> Result<Self::Message, MessageDecodeError> {
         Err(MessageDecodeError::NotAddressable)
     }
 
@@ -170,19 +204,89 @@ pub trait UserActor: Send + Sized + 'static {
 /// A one-shot reply channel embedded in a message to implement "ask"
 /// (request/response). The handler calls [`reply`](RpcReplyPort::reply) with
 /// the response; the caller awaits it via [`ActorRef::ask`] / [`PoolRef::ask`].
-#[derive(Debug)]
+///
+/// A port is backed either by an **in-process** channel (local `ask`) or, for a
+/// cross-node `ask` arriving over `/actor/deliver`, by a **wire** channel that
+/// `postcard`-encodes the reply and returns it in the [`DeliverAck`]
+/// (ADR 013/019). A [`WireReplyPort`] is turned into a typed one via
+/// [`WireReplyPort::reply_port`] inside [`UserActor::decode_ask`].
+///
+/// [`DeliverAck`]: craft_proto::DeliverAck
 pub struct RpcReplyPort<R> {
-    tx: oneshot::Sender<R>,
+    sink: Reply<R>,
+}
+
+/// A cross-node reply: either the `postcard`-encoded bytes, or the reason the
+/// handler's reply value could not be serialized. Carrying the failure lets the
+/// serve side report a real encode error instead of a silent "no reply".
+pub(crate) type WireReply = Result<Vec<u8>, String>;
+
+/// Where an [`RpcReplyPort`]'s reply is delivered.
+enum Reply<R> {
+    /// In-process caller (local `ask`).
+    Local(oneshot::Sender<R>),
+    /// Cross-node caller: serialize `R` and hand the result back over the wire.
+    Wire {
+        tx: oneshot::Sender<WireReply>,
+        encode: fn(&R) -> Result<Vec<u8>, craft_proto::CodecError>,
+    },
 }
 
 impl<R> RpcReplyPort<R> {
+    /// A port backed by an in-process one-shot channel (local `ask`).
+    fn local(tx: oneshot::Sender<R>) -> Self {
+        Self {
+            sink: Reply::Local(tx),
+        }
+    }
+
     /// Send the response back to the asker. Returns `Err(value)` if the caller
-    /// already gave up (dropped the pending `ask`).
+    /// already gave up (dropped the pending `ask`) or, for a cross-node reply,
+    /// if the value could not be encoded.
+    ///
+    /// A cross-node encode failure is *also* signalled to the receiving node
+    /// (over the wire channel) so the asker sees a real encode error rather than
+    /// a reply that silently never arrives.
     ///
     /// # Errors
-    /// Returns the unsent `value` if the receiving `ask` was dropped.
+    /// Returns the unsent `value` if the receiving `ask` was dropped or the
+    /// reply could not be serialized.
     pub fn reply(self, value: R) -> Result<(), R> {
-        self.tx.send(value)
+        match self.sink {
+            Reply::Local(tx) => tx.send(value),
+            Reply::Wire { tx, encode } => match encode(&value) {
+                Ok(bytes) => tx.send(Ok(bytes)).map_err(|_| value),
+                Err(e) => {
+                    // Surface the encode failure to the serve side; the handler
+                    // still gets `value` back as undelivered.
+                    let _ = tx.send(Err(e.to_string()));
+                    Err(value)
+                }
+            },
+        }
+    }
+}
+
+/// An opaque reply channel for a cross-node `ask`, handed to
+/// [`UserActor::decode_ask`]. Convert it to the typed [`RpcReplyPort`] your
+/// message variant expects with [`reply_port`](WireReplyPort::reply_port); the
+/// reply is `postcard`-encoded and returned in the `DeliverAck`.
+pub struct WireReplyPort {
+    tx: oneshot::Sender<WireReply>,
+}
+
+impl WireReplyPort {
+    /// Adapt this wire channel into a typed [`RpcReplyPort<R>`] to embed in a
+    /// message. `R` must be serializable so the reply can cross the node
+    /// boundary.
+    #[must_use]
+    pub fn reply_port<R: serde::Serialize>(self) -> RpcReplyPort<R> {
+        RpcReplyPort {
+            sink: Reply::Wire {
+                tx: self.tx,
+                encode: craft_proto::encode::<R>,
+            },
+        }
     }
 }
 
@@ -407,6 +511,10 @@ pub enum AskError {
     /// The actor handled (or dropped) the message without replying.
     #[error("actor dropped the reply")]
     NoReply,
+    /// The message was delivered but no reply arrived within [`ASK_TIMEOUT`], so
+    /// the caller stops waiting rather than blocking forever on a wedged handler.
+    #[error("actor did not reply within {0:?}")]
+    Timeout(Duration),
 }
 
 // ---------------------------------------------------------------------------
@@ -432,6 +540,57 @@ where
     A::Config: Clone,
 {
     Box::new(move || A::start(config.clone()).ok())
+}
+
+/// Observes actor lifecycle transitions (E14 / ADR 026 Track H) so a telemetry
+/// layer can surface spawns, stops, restarts, escalations, and per-message
+/// latency as metrics/events **without** the registry depending on it. Install
+/// one with [`ActorRegistry::set_observer`] *before spawning actors* (the facade
+/// does this at build time); each instance task binds the observer once at
+/// launch, so the hooks add no per-message locking.
+///
+/// The hooks fire from the instance's own task, so keep them cheap and
+/// non-blocking — a slow or panicking observer stalls that actor. All hooks
+/// except [`on_restart`](ActorObserver::on_restart) /
+/// [`on_escalated`](ActorObserver::on_escalated) default to no-ops.
+pub trait ActorObserver: Send + Sync {
+    /// A fresh instance of `name` started (plain, supervised, or restored).
+    fn on_spawned(&self, _name: &str, _instance: u32) {}
+    /// An instance stopped for a non-escalation reason (explicit stop, drain,
+    /// scale-in, or the source side of a migration).
+    fn on_stopped(&self, _name: &str, _instance: u32) {}
+    /// An instance finished handling one message in `elapsed`. Hot path —
+    /// implementations should fast-path when no work is required.
+    fn on_message_handled(&self, _name: &str, _instance: u32, _elapsed: Duration) {}
+    /// A supervised instance rebuilt fresh state after a handler failure.
+    /// `count` is the group's cumulative restart tally after this restart.
+    fn on_restart(&self, name: &str, instance: u32, count: u32);
+    /// A supervised instance exhausted its restart budget (or could not rebuild)
+    /// and escalated: the instance stopped and deregistered itself.
+    fn on_escalated(&self, name: &str, instance: u32);
+}
+
+/// A slot an [`ActorObserver`] can be installed into after construction (the
+/// registry outlives the telemetry wiring in the builder). Read once per
+/// instance task at launch.
+type ObserverHook = Arc<Mutex<Option<Arc<dyn ActorObserver>>>>;
+
+/// A point-in-time snapshot of one actor group's runtime counters, for metrics
+/// sampling (ADR 026 §2). Cumulative counters (`messages`, `handle_nanos`) are
+/// monotonic; the sampler derives rates/latency by differencing successive
+/// reads. `mailbox_depth` is instantaneous (queued-but-unhandled messages).
+#[derive(Debug, Clone)]
+pub struct ActorGroupStats {
+    /// The group's registered name.
+    pub name: String,
+    /// Live instance count.
+    pub instances: usize,
+    /// Cumulative messages handled across the group's instances.
+    pub messages: u64,
+    /// Cumulative wall-time spent in `handle`, in nanoseconds.
+    pub handle_nanos: u64,
+    /// Currently-queued (enqueued but not yet handled) messages.
+    pub mailbox_depth: i64,
 }
 
 /// A single running actor instance within a named group.
@@ -460,10 +619,19 @@ struct PoolInner<A: UserActor> {
     /// behind its own `Arc` so instance tasks can bump it without keeping the
     /// pool alive (which would break the drop-based stop path).
     restarts: Arc<AtomicU32>,
+    /// Telemetry hook fired on lifecycle transitions + per message (Track H).
+    observer: ObserverHook,
+    /// Cumulative messages handled across the group's instances (Track H).
+    messages: Arc<AtomicU64>,
+    /// Cumulative nanoseconds spent in `handle` across instances (Track H).
+    handle_nanos: Arc<AtomicU64>,
+    /// Enqueued-but-unhandled messages (mailbox depth gauge, Track H). Signed
+    /// so a transient dequeue-before-increment race can't underflow.
+    queued: Arc<AtomicI64>,
 }
 
 impl<A: UserActor> PoolInner<A> {
-    fn new(name: &str) -> Arc<Self> {
+    fn new(name: &str, observer: ObserverHook) -> Arc<Self> {
         let (stop, _) = watch::channel(false);
         Arc::new(Self {
             name: name.to_string(),
@@ -473,6 +641,10 @@ impl<A: UserActor> PoolInner<A> {
             stop,
             draining: AtomicBool::new(false),
             restarts: Arc::new(AtomicU32::new(0)),
+            observer,
+            messages: Arc::new(AtomicU64::new(0)),
+            handle_nanos: Arc::new(AtomicU64::new(0)),
+            queued: Arc::new(AtomicI64::new(0)),
         })
     }
 
@@ -491,7 +663,17 @@ impl<A: UserActor> PoolInner<A> {
         let mut stop_rx = self.stop.subscribe();
         let restarts = Arc::clone(&self.restarts);
         let roster = Arc::clone(&self.instances);
+        let messages = Arc::clone(&self.messages);
+        let handle_nanos = Arc::clone(&self.handle_nanos);
+        let queued = Arc::clone(&self.queued);
+        // Bind the observer once (installed before any spawn, ADR 026 Track H),
+        // so per-message hooks never touch the shared lock.
+        let observer = self.observer.lock().unwrap().clone();
+        let name = self.name.clone();
         let join = tokio::spawn(async move {
+            if let Some(o) = &observer {
+                o.on_spawned(&name, instance);
+            }
             // Timestamps of recent restarts, for the `OnFailure` sliding window.
             let mut history: Vec<Instant> = Vec::new();
             // Whether we exited because supervision escalated (budget exhausted
@@ -508,7 +690,17 @@ impl<A: UserActor> PoolInner<A> {
                     }
                     maybe = rx.recv() => match maybe {
                         Some(Mailbox::User(msg)) => {
-                            if state.handle(msg).await.is_err() {
+                            queued.fetch_sub(1, Ordering::Relaxed);
+                            let started = Instant::now();
+                            let result = state.handle(msg).await;
+                            let elapsed = started.elapsed();
+                            messages.fetch_add(1, Ordering::Relaxed);
+                            handle_nanos
+                                .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
+                            if let Some(o) = &observer {
+                                o.on_message_handled(&name, instance, elapsed);
+                            }
+                            if result.is_err() {
                                 // A handler error is a failure; the policy decides
                                 // whether to rebuild fresh state or escalate (E14).
                                 match policy {
@@ -517,7 +709,11 @@ impl<A: UserActor> PoolInner<A> {
                                         match rebuild.as_ref().and_then(|rb| rb()) {
                                             Some(fresh) => {
                                                 state = fresh;
-                                                restarts.fetch_add(1, Ordering::Relaxed);
+                                                let count =
+                                                    restarts.fetch_add(1, Ordering::Relaxed) + 1;
+                                                if let Some(o) = &observer {
+                                                    o.on_restart(&name, instance, count);
+                                                }
                                             }
                                             None => {
                                                 escalated = true;
@@ -533,7 +729,12 @@ impl<A: UserActor> PoolInner<A> {
                                                 Some(fresh) => {
                                                     state = fresh;
                                                     history.push(now);
-                                                    restarts.fetch_add(1, Ordering::Relaxed);
+                                                    let count = restarts
+                                                        .fetch_add(1, Ordering::Relaxed)
+                                                        + 1;
+                                                    if let Some(o) = &observer {
+                                                        o.on_restart(&name, instance, count);
+                                                    }
                                                 }
                                                 None => {
                                                     escalated = true;
@@ -557,6 +758,11 @@ impl<A: UserActor> PoolInner<A> {
             }
             if escalated {
                 roster.lock().unwrap().retain(|i| i.instance != instance);
+                if let Some(o) = &observer {
+                    o.on_escalated(&name, instance);
+                }
+            } else if let Some(o) = &observer {
+                o.on_stopped(&name, instance);
             }
             state.stopped().await;
         });
@@ -632,7 +838,7 @@ impl<A: UserActor> PoolInner<A> {
             return Err(SendError::Draining);
         }
         let tx = self.pick_rr().ok_or(SendError::NoInstances)?;
-        tx.send(Mailbox::User(msg)).map_err(|_| SendError::Closed)
+        self.enqueue(&tx, msg).map_err(|_| SendError::Closed)
     }
 
     fn send_keyed(&self, key: u64, msg: A::Message) -> Result<(), SendError> {
@@ -640,7 +846,24 @@ impl<A: UserActor> PoolInner<A> {
             return Err(SendError::Draining);
         }
         let tx = self.pick_keyed(key).ok_or(SendError::NoInstances)?;
-        tx.send(Mailbox::User(msg)).map_err(|_| SendError::Closed)
+        self.enqueue(&tx, msg).map_err(|_| SendError::Closed)
+    }
+
+    /// Enqueue a user message and bump the mailbox-depth gauge on success. The
+    /// counter is decremented by the instance task when it dequeues (Track H).
+    fn enqueue(
+        &self,
+        tx: &mpsc::UnboundedSender<Mailbox<A>>,
+        msg: A::Message,
+    ) -> Result<(), A::Message> {
+        match tx.send(Mailbox::User(msg)) {
+            Ok(()) => {
+                self.queued.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            }
+            Err(mpsc::error::SendError(Mailbox::User(msg))) => Err(msg),
+            Err(_) => unreachable!("enqueue only sends Mailbox::User"),
+        }
     }
 
     /// Deliver to a specific instance id (used by cross-node delivery, which
@@ -658,8 +881,7 @@ impl<A: UserActor> PoolInner<A> {
                 .tx
                 .clone()
         };
-        tx.send(Mailbox::User(msg))
-            .map_err(|_| DeliverError::Closed)
+        self.enqueue(&tx, msg).map_err(|_| DeliverError::Closed)
     }
 
     /// Capture instance `instance`'s migration snapshot. The request rides the
@@ -774,6 +996,9 @@ trait GroupLifecycle: Send + Sync {
     fn type_name(&self) -> &'static str;
     fn migratable(&self) -> bool;
     fn signal_stop(&self);
+    /// Runtime counters `(instances, messages, handle_nanos, mailbox_depth)` for
+    /// metrics sampling (Track H).
+    fn runtime_stats(&self) -> (usize, u64, u64, i64);
     /// Gracefully drain and stop the group with `timeout` (E12, ADR 022).
     fn drain(self: Arc<Self>, timeout: Duration) -> BoxFuture<'static, DrainOutcome>;
     /// Capture a migration snapshot from instance `instance` (E12).
@@ -799,6 +1024,14 @@ impl<A: UserActor> GroupLifecycle for PoolInner<A> {
     fn signal_stop(&self) {
         PoolInner::signal_stop(self);
     }
+    fn runtime_stats(&self) -> (usize, u64, u64, i64) {
+        (
+            self.len(),
+            self.messages.load(Ordering::Relaxed),
+            self.handle_nanos.load(Ordering::Relaxed),
+            self.queued.load(Ordering::Relaxed),
+        )
+    }
     fn drain(self: Arc<Self>, timeout: Duration) -> BoxFuture<'static, DrainOutcome> {
         Box::pin(async move { PoolInner::drain(&self, timeout).await })
     }
@@ -816,12 +1049,30 @@ impl<A: UserActor> GroupLifecycle for PoolInner<A> {
 /// [`UserActor::decode_message`] and routed to the selected instance.
 trait WireIngress: Send + Sync {
     fn deliver(&self, instance: u32, payload: &[u8]) -> Result<(), DeliverError>;
+    /// Deliver a cross-node **ask**: decode via [`UserActor::decode_ask`] with a
+    /// wire reply port and return the channel the encoded reply arrives on.
+    fn deliver_ask(
+        &self,
+        instance: u32,
+        payload: &[u8],
+    ) -> Result<oneshot::Receiver<WireReply>, DeliverError>;
 }
 
 impl<A: UserActor> WireIngress for PoolInner<A> {
     fn deliver(&self, instance: u32, payload: &[u8]) -> Result<(), DeliverError> {
         let msg = A::decode_message(payload)?;
         self.send_to_instance(instance, msg)
+    }
+
+    fn deliver_ask(
+        &self,
+        instance: u32,
+        payload: &[u8],
+    ) -> Result<oneshot::Receiver<WireReply>, DeliverError> {
+        let (tx, rx) = oneshot::channel();
+        let msg = A::decode_ask(payload, WireReplyPort { tx })?;
+        self.send_to_instance(instance, msg)?;
+        Ok(rx)
     }
 }
 
@@ -865,8 +1116,12 @@ impl<A: UserActor> ActorRef<A> {
         F: FnOnce(RpcReplyPort<R>) -> A::Message,
     {
         let (tx, rx) = oneshot::channel();
-        self.pool.send_rr(build(RpcReplyPort { tx }))?;
-        rx.await.map_err(|_| AskError::NoReply)
+        self.pool.send_rr(build(RpcReplyPort::local(tx)))?;
+        match tokio::time::timeout(ASK_TIMEOUT, rx).await {
+            Ok(Ok(reply)) => Ok(reply),
+            Ok(Err(_)) => Err(AskError::NoReply),
+            Err(_) => Err(AskError::Timeout(ASK_TIMEOUT)),
+        }
     }
 
     /// Whether the actor still has a live instance.
@@ -939,8 +1194,12 @@ impl<A: UserActor> PoolRef<A> {
         F: FnOnce(RpcReplyPort<R>) -> A::Message,
     {
         let (tx, rx) = oneshot::channel();
-        self.pool.send_rr(build(RpcReplyPort { tx }))?;
-        rx.await.map_err(|_| AskError::NoReply)
+        self.pool.send_rr(build(RpcReplyPort::local(tx)))?;
+        match tokio::time::timeout(ASK_TIMEOUT, rx).await {
+            Ok(Ok(reply)) => Ok(reply),
+            Ok(Err(_)) => Err(AskError::NoReply),
+            Err(_) => Err(AskError::Timeout(ASK_TIMEOUT)),
+        }
     }
 
     /// Number of live instances.
@@ -1012,6 +1271,8 @@ pub enum PlacementMode {
 pub struct ActorRegistry {
     groups: Arc<Mutex<HashMap<String, GroupEntry>>>,
     dev_multi_workers: bool,
+    /// Shared with every spawned pool so a later-installed observer still fires.
+    observer: ObserverHook,
 }
 
 impl Default for ActorRegistry {
@@ -1027,6 +1288,7 @@ impl ActorRegistry {
         Self {
             groups: Arc::new(Mutex::new(HashMap::new())),
             dev_multi_workers: false,
+            observer: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -1037,7 +1299,37 @@ impl ActorRegistry {
         Self {
             groups: Arc::new(Mutex::new(HashMap::new())),
             dev_multi_workers: true,
+            observer: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Install an [`ActorObserver`] to receive lifecycle + per-message telemetry
+    /// (Track H). Install *before spawning actors* (the facade does this at build
+    /// time): each instance task binds the observer once at launch, so an
+    /// observer set after a spawn does not retroactively attach to it.
+    pub fn set_observer(&self, observer: Arc<dyn ActorObserver>) {
+        *self.observer.lock().unwrap() = Some(observer);
+    }
+
+    /// Snapshot per-group runtime counters for metrics sampling (Track H). One
+    /// entry per registered group; cumulative fields are monotonic.
+    #[must_use]
+    pub fn stats(&self) -> Vec<ActorGroupStats> {
+        let groups = self.groups.lock().unwrap();
+        groups
+            .iter()
+            .map(|(name, entry)| {
+                let (instances, messages, handle_nanos, mailbox_depth) =
+                    entry.lifecycle.runtime_stats();
+                ActorGroupStats {
+                    name: name.clone(),
+                    instances,
+                    messages,
+                    handle_nanos,
+                    mailbox_depth,
+                }
+            })
+            .collect()
     }
 
     /// Whether local multi-instance pools are permitted.
@@ -1080,7 +1372,7 @@ impl ActorRegistry {
         config: A::Config,
     ) -> Result<ActorRef<A>, SpawnError> {
         self.reserve(name)?;
-        let pool = PoolInner::<A>::new(name);
+        let pool = PoolInner::<A>::new(name, self.observer.clone());
         if let Err(e) = pool.spawn_instance(config) {
             return Err(SpawnError::Start(Box::new(e)));
         }
@@ -1106,7 +1398,7 @@ impl ActorRegistry {
         A::Config: Clone,
     {
         self.reserve(name)?;
-        let pool = PoolInner::<A>::new(name);
+        let pool = PoolInner::<A>::new(name, self.observer.clone());
         if let Err(e) = pool.spawn_instance_supervised(config, policy) {
             return Err(SpawnError::Start(Box::new(e)));
         }
@@ -1129,7 +1421,7 @@ impl ActorRegistry {
         snapshot: &[u8],
     ) -> Result<ActorRef<A>, SpawnError> {
         self.reserve(name)?;
-        let pool = PoolInner::<A>::new(name);
+        let pool = PoolInner::<A>::new(name, self.observer.clone());
         pool.spawn_instance_restoring(config, snapshot)?;
         self.insert(name, &pool);
         Ok(ActorRef { pool })
@@ -1158,7 +1450,7 @@ impl ActorRegistry {
             return Err(SpawnError::MultiWorkerDisabled { count });
         }
         self.reserve(name)?;
-        let pool = PoolInner::<A>::new(name);
+        let pool = PoolInner::<A>::new(name, self.observer.clone());
         for _ in 0..count {
             if let Err(e) = pool.spawn_instance(config.clone()) {
                 pool.signal_stop();
@@ -1334,6 +1626,33 @@ impl ActorRegistry {
                 .clone()
         };
         wire.deliver(instance, payload)
+    }
+
+    /// Deliver a cross-node **ask** to instance `instance` of local group
+    /// `name` and return the channel its `postcard`-encoded reply will arrive
+    /// on (E8, ADR 013/019). The payload is decoded via
+    /// [`UserActor::decode_ask`]. Called by the `/actor/deliver` handler when
+    /// `reply_expected` is set.
+    ///
+    /// # Errors
+    /// Returns [`DeliverError`] if the group is unknown, the actor does not
+    /// support remote asks, the payload cannot be decoded, or the instance is
+    /// gone / closed.
+    pub fn deliver_local_ask(
+        &self,
+        name: &str,
+        instance: u32,
+        payload: &[u8],
+    ) -> Result<oneshot::Receiver<WireReply>, DeliverError> {
+        let wire = {
+            let groups = self.groups.lock().unwrap();
+            groups
+                .get(name)
+                .ok_or_else(|| DeliverError::NotFound(name.to_string()))?
+                .wire
+                .clone()
+        };
+        wire.deliver_ask(instance, payload)
     }
 
     // ---- internals -------------------------------------------------------

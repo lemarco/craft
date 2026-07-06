@@ -25,14 +25,15 @@ mod supervisor;
 
 pub use directory::{ActorDirectory, ClusterRef, DirectorySync};
 pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
-pub use messaging::{CastError, ClusterMessaging};
+pub use messaging::{AskError as ClusterAskError, CastError, ClusterMessaging};
 pub use placement::{
     ClusterControl, ClusterScaleError, MigrateError, RemoteSpawnError, ScalePlan, plan_scale,
 };
 pub use registry::{
-    ActorRef, ActorRegistry, AskError, ConfigCodecError, DEFAULT_DRAIN_TIMEOUT, DeliverError,
-    DrainOutcome, MessageDecodeError, MigrationError, PlacementMode, PoolRef, RestartPolicy,
-    RpcReplyPort, ScaleError, SendError, SnapshotError, SpawnError, StopError, UserActor,
+    ASK_TIMEOUT, ActorGroupStats, ActorObserver, ActorRef, ActorRegistry, AskError,
+    ConfigCodecError, DEFAULT_DRAIN_TIMEOUT, DeliverError, DrainOutcome, MessageDecodeError,
+    MigrationError, PlacementMode, PoolRef, RestartPolicy, RpcReplyPort, ScaleError, SendError,
+    SnapshotError, SpawnError, StopError, UserActor, WireReplyPort,
 };
 pub use resources::{ResourceProfile, VpsResources};
 pub use runtime::{

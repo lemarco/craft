@@ -83,12 +83,19 @@ pub struct ActorEnvelope {
     /// The sending instance, when the message originates from an actor (for
     /// replies / tracing); `None` for messages sent from outside the fabric.
     pub from: Option<ActorId>,
-    /// Per-sender correlation id, used to match a reply to its request.
+    /// The node that originated this envelope. Combined with [`req_id`](Self::req_id)
+    /// it forms a cluster-unique key the receiver uses to deduplicate an
+    /// at-least-once resend, so a side-effecting `ask` handler runs at most once
+    /// per logical request. `None` disables dedup (legacy / intra-fabric sends).
+    pub origin: Option<NodeId>,
+    /// Per-sender correlation id, used to match a reply to its request and,
+    /// with [`origin`](Self::origin), to deduplicate a resend.
     pub req_id: u64,
     /// Application-encoded (`postcard`) message body.
     pub payload: Vec<u8>,
     /// Whether the sender awaits a reply (`ask`) versus fire-and-forget
-    /// (`cast`). Cross-node `ask` is a later increment; E8 delivery is cast.
+    /// (`cast`). When `true` the receiver decodes via
+    /// `UserActor::decode_ask` and returns the reply in [`DeliverAck::reply`].
     pub reply_expected: bool,
 }
 
@@ -100,6 +107,10 @@ pub struct DeliverAck {
     /// A human-readable reason when `delivered` is `false` (unknown group,
     /// no such instance, closed mailbox, not remotely addressable).
     pub error: Option<String>,
+    /// For an `ask` (`reply_expected`), the application-encoded (`postcard`)
+    /// reply the handler produced; `None` for a fire-and-forget `cast` or when
+    /// delivery failed.
+    pub reply: Option<Vec<u8>>,
 }
 
 /// A request to spawn an actor on a target node's registry (`/actor/spawn`,
@@ -124,6 +135,55 @@ pub struct SpawnReply {
     pub id: Option<ActorId>,
     /// A human-readable reason on failure (unknown type, config decode, name
     /// collision, start failure).
+    pub error: Option<String>,
+}
+
+/// A request to drive a group to a cluster-wide instance count on the leader
+/// (`/actor/scale`, ADR 013/018). Sent when `scale_cluster` is called on a
+/// follower: the leader owns cluster-wide placement, so the follower forwards
+/// the intent (with the committed voter set it observed) rather than planning
+/// locally. The target reconstructs each placement via the `actor_type`
+/// factory, exactly like a [`SpawnRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScaleRequest {
+    /// The group name to scale.
+    pub name: String,
+    /// The actor's type tag; every hosting node must have a factory for it.
+    pub actor_type: ActorTypeId,
+    /// Desired cluster-wide instance count (one worker per node, ADR 014).
+    pub total: u64,
+    /// `postcard`-encoded `A::Config` used to construct new instances.
+    pub config: Vec<u8>,
+    /// The live/voter node set the requester observed (committed Raft
+    /// membership), against which the plan is computed.
+    pub live_nodes: Vec<NodeId>,
+}
+
+/// Reply to a [`ScaleRequest`]: `None` error on success.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScaleReply {
+    /// A human-readable reason on failure (planning error or a spawn failure);
+    /// `None` when the scale was applied.
+    pub error: Option<String>,
+}
+
+/// A request to stop a group on a target node (`/actor/stop`, ADR 013/018).
+/// Sent by the leader when a scale-down (or reconcile) plans a *removal* on
+/// another node: the one-worker-per-node model (ADR 014) means "remove on node
+/// N" is "stop this group on node N". The target stops the named group
+/// idempotently.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StopRequest {
+    /// The group name to stop on the target node.
+    pub name: String,
+}
+
+/// Reply to a [`StopRequest`]: `None` error on success (stopping an absent
+/// group is a success — it is already gone).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StopReply {
+    /// A human-readable reason on failure; `None` when the group was stopped
+    /// (or was already absent).
     pub error: Option<String>,
 }
 

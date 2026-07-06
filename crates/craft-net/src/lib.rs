@@ -20,6 +20,7 @@ pub use craft_proto as proto;
 
 pub mod backoff;
 pub mod peer;
+pub mod priority;
 pub mod quic;
 pub mod route;
 pub mod tls;
@@ -28,13 +29,14 @@ pub mod wire;
 
 pub use backoff::{BackoffPolicy, BackoffState};
 pub use peer::PeerDirectory;
+pub use priority::{RateLimiter, TrafficPolicy};
 pub use quic::{QuicServer, QuicTransport, client_endpoint};
 pub use route::{Route, TrafficClass};
 pub use tls::{NodeIdentity, TlsError, client_config, server_config};
 pub use transport::{
-    LocalNetwork, RequestHandler, Transport, TransportError, fetch_peers, send_actor_deliver,
-    send_actor_migrate, send_actor_spawn, send_client_request, send_directory_update,
-    send_join_request, send_peer_rpc,
+    LocalNetwork, RemoteError, RequestHandler, Transport, TransportError, fetch_peers,
+    send_actor_deliver, send_actor_migrate, send_actor_scale, send_actor_spawn, send_actor_stop,
+    send_client_request, send_directory_update, send_join_request, send_peer_rpc,
 };
 pub use wire::{WireError, decode_body, encode_body};
 

@@ -26,7 +26,7 @@ craft-actor.workspace = true
 craft-client.workspace = true
 craft-macros.workspace = true
 craft-dashboard.workspace = true
-tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
+tokio = { version = "1", features = ["rt", "time", "sync", "macros", "net"] }
 thiserror.workspace = true
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 
@@ -34,6 +34,9 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 # Convenience helpers to mint a dev cluster CA + per-node identities. Not for
 # production (operators provide real certs). Forwards to `craft-net/dev-certs`.
 dev-certs = ["craft-net/dev-certs"]
+# Dev-only: switch the entire wire to human-readable JSON (ADR 027 item 4).
+# Forwards to `craft-proto/json-wire`; never enable in production.
+json-wire = ["craft-proto/json-wire"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "io-util"] }

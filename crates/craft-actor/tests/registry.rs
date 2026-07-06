@@ -7,7 +7,9 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use craft_actor::{ActorRegistry, PlacementMode, RpcReplyPort, ScaleError, SpawnError, UserActor};
+use craft_actor::{
+    ActorRegistry, AskError, PlacementMode, RpcReplyPort, ScaleError, SpawnError, UserActor,
+};
 
 // ---------------------------------------------------------------------------
 // Test actors
@@ -95,6 +97,28 @@ impl UserActor for Ping {
 
     async fn handle(&mut self, port: Self::Message) -> Result<(), Self::Error> {
         let _ = port.reply("pong");
+        Ok(())
+    }
+}
+
+/// An actor that never answers an `ask`: it parks the reply port in its own
+/// state (so the port is *not* dropped, which would surface as `NoReply`),
+/// leaving the caller to hit the ask deadline.
+struct Mute {
+    held: Vec<RpcReplyPort<u32>>,
+}
+
+impl UserActor for Mute {
+    type Config = ();
+    type Message = RpcReplyPort<u32>;
+    type Error = PingError;
+
+    fn start(_config: Self::Config) -> Result<Self, Self::Error> {
+        Ok(Mute { held: Vec::new() })
+    }
+
+    async fn handle(&mut self, port: Self::Message) -> Result<(), Self::Error> {
+        self.held.push(port);
         Ok(())
     }
 }
@@ -326,4 +350,18 @@ async fn ping_actor_ask_round_trips() {
     let ping = registry.spawn::<Ping>("ping", ()).unwrap();
     let reply = ping.ask(|port| port).await.unwrap();
     assert_eq!(reply, "pong");
+}
+
+#[tokio::test(start_paused = true)]
+async fn ask_times_out_when_the_actor_never_replies() {
+    let registry = ActorRegistry::new();
+    let mute = registry.spawn::<Mute>("mute", ()).unwrap();
+
+    // The handler parks the port and never answers; the caller must give up at
+    // the ask deadline (virtual clock auto-advances under `start_paused`).
+    let err = mute.ask(|port| port).await.unwrap_err();
+    assert!(
+        matches!(err, AskError::Timeout(_)),
+        "expected a caller-side timeout, got {err:?}"
+    );
 }

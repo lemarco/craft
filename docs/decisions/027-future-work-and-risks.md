@@ -9,19 +9,21 @@ Low-priority items were deferred throughout the design. This ADR records them ex
 
 ## Decision
 
-All items below are **deferred from v1**, except one **cheap safeguard adopted now** (peer connection isolation, see Risk R2).
+The table below tracks each item. Several originally-deferred items have since
+been implemented (a **cheap safeguard adopted now** — peer connection isolation,
+see Risk R2 — plus the post-v1 increments marked **Done**).
 
 ### Deferred features
 
-| # | Item | v1 stance | Revisit when |
-|---|------|-----------|--------------|
-| 1 | **Follower reads** | Deferred — reads use leader ReadIndex ([ADR 005](005-read-consistency.md)) | Read load exceeds leader capacity |
-| 2 | **Lease reads** | Deferred — ReadIndex only (safer, no clock assumptions) | Read latency becomes critical |
-| 3 | **Gossip discovery** | Deferred — explicit `JOIN_ADDR` ([ADR 007](007-discovery.md)) | Dynamic/cloud environments need auto-discovery |
-| 4 | **Dev-only JSON wire** | Skip likely — admin introspection ([ADR 026](026-observability.md)) covers debugging | Only if non-Rust wire debugging demanded |
-| 5 | **Write sharding / multi-Raft** | Deferred — **primary future write-scaling path** (see R1) | Single-leader write throughput is the bottleneck |
-| 6 | **K8s / cloud integrations** | Deferred — admin `/health` `/ready` ([ADR 025](025-health-admin-port.md)) makes it possible externally | Users want managed orchestration |
-| 7 | **QUIC traffic priorities** | Partial safeguard now (R2); full tuning deferred | Consensus degrades under client load |
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | **Follower reads** | Deferred | Cross-node follower reads (serve `query` from a non-leader after a leader read-index round-trip) still forward to the leader; the lease-read work (#2) covers the primary latency win. Revisit when read load exceeds leader capacity |
+| 2 | **Lease reads** | **Done** | Leader lease reads implemented in `craft-core` and the driver fast-path ([ADR 005](005-read-consistency.md)): a valid, quorum-confirmed lease (`election_timeout_min / 2` ticks) serves `query` with no ReadIndex round-trip; conservative lease bound leaves drift headroom |
+| 3 | **Gossip discovery** | **Done** | Bootstrap generalized from a single `JOIN_ADDR` to a resilient **seed set** with peer-book gossip, plus DNS-based discovery (`craft::discovery`) for orchestrated environments ([ADR 007](007-discovery.md)) |
+| 4 | **Dev-only JSON wire** | **Done** | Build-time `craft-proto/json-wire` feature swaps the wire codec from `postcard` to human-readable JSON for debugging (`WIRE_CODEC` reports the active format). Never for production |
+| 5 | **Write sharding / multi-Raft** | Foundation | Pure routing foundation landed (`craft-core::shard`; [ADR 031](031-write-sharding-multi-raft.md)); full multi-group runtime wiring deferred (see R1) |
+| 6 | **K8s / cloud integrations** | **Done** | `deploy/` Dockerfile + Kubernetes StatefulSet/headless-service manifests wired to `/health` `/ready` ([ADR 025](025-health-admin-port.md)), ordinal-derived node ids, and DNS discovery |
+| 7 | **QUIC traffic priorities** | **Done** | v1 per-class connection isolation (R2) extended with per-traffic-class token-bucket rate limiting (`craft_net::TrafficPolicy`) so bulk client/actor traffic cannot starve consensus |
 
 ### Adopted now (cheap safeguard)
 
@@ -35,7 +37,7 @@ All items below are **deferred from v1**, except one **cheap safeguard adopted n
 
 Adding VPSes improves **fault tolerance** and **actor compute**, **not** linear write throughput — all writes funnel through one leader + one log ([ADR 008](008-scale-targets.md)).
 
-- **Mitigation path:** write sharding / multi-Raft (deferred #5).
+- **Mitigation path:** write sharding / multi-Raft (#5) — routing foundation landed ([ADR 031](031-write-sharding-multi-raft.md)); runtime wiring deferred.
 - **v1 guidance:** document clearly; keep commands small; use Redis ([ADR 021](021-actor-state-redis.md)) for high-churn workflow state that does not need consensus.
 
 ### R2 — Consensus starvation on shared QUIC listener
@@ -43,7 +45,7 @@ Adding VPSes improves **fault tolerance** and **actor compute**, **not** linear 
 Peer, client, and actor traffic share one port ([ADR 010](010-wire-transport.md)). Heavy client/actor payloads could delay Raft heartbeats → spurious elections.
 
 - **v1 safeguard (adopted):** separate QUIC connection for peer RPC (above).
-- **Future:** HTTP/3 stream priorities / per-class connections / rate limits.
+- **Adopted since:** per-traffic-class token-bucket rate limiting (`craft_net::TrafficPolicy`, opt-in) throttles bulk client/actor sends so consensus RPCs are never starved on the shared socket. QUIC has no cross-connection stream priority, so admission control is the effective lever.
 
 ### R3 — Directory eventual consistency
 

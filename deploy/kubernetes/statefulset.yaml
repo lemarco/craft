@@ -1,0 +1,110 @@
+# A 3-node craft cluster as a StatefulSet (ADR 027 item 6).
+#
+# Why a StatefulSet: craft nodes have stable identity. Each pod gets a stable
+# ordinal name (`craft-0`, `craft-1`, `craft-2`); the craft-node binary derives
+# its node id from that ordinal (`craft-0` → NodeId(1)) via the downward-API
+# `POD_NAME`, so no per-pod configuration is needed. Membership here is static
+# (every pod lists all members by their headless-service DNS name); to grow the
+# cluster elastically instead, use the DNS-discovery variant noted below.
+#
+# mTLS certs (ADR 006/024): a Secret `craft-certs` supplies the shared CA plus
+# one cert/key per pod, named by pod (`craft-0.pem`/`craft-0.key`, …). Each
+# cert's SAN must be `craft-node-<id>` where `<id>` is the pod ordinal + 1 (the
+# server name the transport validates), e.g. `craft-0.pem` → SAN `craft-node-1`.
+# Mint them with examples/certs/generate.sh (see docs/certs.md).
+#
+# Apply:  kubectl apply -f deploy/kubernetes/
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: craft
+  labels:
+    app: craft
+spec:
+  serviceName: craft-headless
+  replicas: 3
+  # OrderedReady boots craft-0 first, so an initial leader can form before the
+  # rest come up.
+  podManagementPolicy: OrderedReady
+  selector:
+    matchLabels:
+      app: craft
+  template:
+    metadata:
+      labels:
+        app: craft
+    spec:
+      terminationGracePeriodSeconds: 20
+      containers:
+        - name: craft-node
+          image: craft-node:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: quic
+              containerPort: 7443
+              protocol: UDP
+            - name: admin
+              containerPort: 8080
+              protocol: TCP
+          env:
+            # POD_NAME must come first: later vars reference it via $(POD_NAME).
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: CRAFT_LISTEN
+              value: "0.0.0.0:7443"
+            - name: CRAFT_ADMIN
+              value: "0.0.0.0:8080"
+            # Static membership: every pod lists all members by stable DNS. Node
+            # ids are ordinal + 1. Keep this in sync with `replicas` above.
+            - name: CRAFT_PEERS
+              value: >-
+                1@craft-0.craft-headless:7443,2@craft-1.craft-headless:7443,3@craft-2.craft-headless:7443
+            # mTLS material from the `craft-certs` Secret, selected per pod.
+            - name: CRAFT_CA_CERT
+              value: /etc/craft/certs/ca.pem
+            - name: CRAFT_NODE_CERT
+              value: /etc/craft/certs/$(POD_NAME).pem
+            - name: CRAFT_NODE_KEY
+              value: /etc/craft/certs/$(POD_NAME).key
+            # --- Elastic alternative (comment out CRAFT_PEERS above) -----------
+            # Bootstrap craft-0 as a single-node seed that accepts joins, and let
+            # craft-1.. discover peers by DNS and join dynamically (ADR 007):
+            #   - name: CRAFT_ALLOW_JOIN
+            #     value: "1"
+            #   - name: CRAFT_DISCOVERY
+            #     value: "dns:craft:craft-headless:3:7443"
+            # ------------------------------------------------------------------
+          # Liveness/readiness via the admin port (ADR 025): /health is a plain
+          # liveness ping; /ready returns 200 only once the node is a cluster
+          # member and not draining, so rollouts wait for real membership.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: admin
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: admin
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: certs
+              mountPath: /etc/craft/certs
+              readOnly: true
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "128Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+      volumes:
+        - name: certs
+          secret:
+            secretName: craft-certs

@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use craft_proto::{
     ActorEnvelope, ClientRequest, ClientResponse, DeliverAck, DirectoryUpdate, JoinRequest,
     JoinResponse, MigrateReply, MigrateRequest, NodeId, PeerBook, RaftRpc, RaftRpcReply,
-    RegisterAck, SpawnReply, SpawnRequest,
+    RegisterAck, ScaleReply, ScaleRequest, SpawnReply, SpawnRequest, StopReply, StopRequest,
 };
 
 use crate::route::Route;
@@ -46,6 +46,53 @@ pub enum TransportError {
     /// A lower-level transport/IO failure (QUIC, timeout, etc.).
     #[error("transport io: {0}")]
     Io(String),
+}
+
+/// A failure interacting with a remote node during a cross-node operation
+/// (spawn, cast, ask, scale, migrate, stop). Factors the two near-identical
+/// outcomes that every such operation shares, so the domain error enums embed
+/// one `Remote` arm instead of duplicating `Transport { node, reason }` /
+/// `Rejected { node, reason }` pairs.
+#[derive(Debug, thiserror::Error)]
+pub enum RemoteError {
+    /// The request could not be shipped to the target node (unreachable, dial
+    /// failure, framing, timeout).
+    #[error("transport to {node:?} failed: {reason}")]
+    Transport {
+        /// The target node.
+        node: NodeId,
+        /// The underlying transport error.
+        reason: String,
+    },
+    /// The target node received the request but reported that it could not
+    /// carry it out.
+    #[error("node {node:?} rejected the request: {reason}")]
+    Rejected {
+        /// The node that rejected the request.
+        node: NodeId,
+        /// The reason it reported.
+        reason: String,
+    },
+}
+
+impl RemoteError {
+    /// A shipping failure to `node`, capturing `source`'s display form.
+    #[must_use]
+    pub fn transport(node: NodeId, source: impl core::fmt::Display) -> Self {
+        Self::Transport {
+            node,
+            reason: source.to_string(),
+        }
+    }
+
+    /// A rejection reported by `node`.
+    #[must_use]
+    pub fn rejected(node: NodeId, reason: impl Into<String>) -> Self {
+        Self::Rejected {
+            node,
+            reason: reason.into(),
+        }
+    }
 }
 
 /// Server side: handle an inbound request for `route` and produce a response
@@ -191,6 +238,22 @@ pub async fn send_actor_spawn<T: Transport + ?Sized>(
     Ok(decode_body(&response)?)
 }
 
+/// Forward a cluster-wide scale to the (leader) peer and decode its
+/// [`ScaleReply`] (`/actor/scale`, ADR 013/018).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is
+/// unreachable / the send fails.
+pub async fn send_actor_scale<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &ScaleRequest,
+) -> Result<ScaleReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::ActorScale, body).await?;
+    Ok(decode_body(&response)?)
+}
+
 /// Ask a peer to spawn a migration replacement and decode its [`MigrateReply`]
 /// (`/actor/migrate`, ADR 013).
 ///
@@ -204,6 +267,22 @@ pub async fn send_actor_migrate<T: Transport + ?Sized>(
 ) -> Result<MigrateReply, TransportError> {
     let body = encode_body(request)?;
     let response = transport.send(peer, Route::ActorMigrate, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Ask a peer to stop a group for a planned scale-down / removal and decode its
+/// [`StopReply`] (`/actor/stop`, ADR 013/018).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is
+/// unreachable / the send fails.
+pub async fn send_actor_stop<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &StopRequest,
+) -> Result<StopReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::ActorStop, body).await?;
     Ok(decode_body(&response)?)
 }
 

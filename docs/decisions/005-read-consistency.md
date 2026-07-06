@@ -50,10 +50,31 @@ sequenceDiagram
     F-->>C: Ok
 ```
 
-### Not in v1
+### Lease reads (added post-v1)
 
-- **Lease reads** — deferred (clock sensitivity)
-- **Follower reads** — deferred (etcd-style; separate ADR if needed later)
+The leader may serve `query` **without** a ReadIndex round-trip while it holds a
+valid **leadership lease** — the "lease read" originally deferred here for clock
+sensitivity. Implemented in `craft-core` (`RaftNode::lease_read`) and taken
+automatically by the driver's `query` fast path:
+
+- A quorum ack of a heartbeat round grants a lease lasting `election_timeout_min
+  / 2` logical ticks, measured from when the round was **broadcast** (before any
+  follower even received it) — conservative by construction.
+- Halving the *minimum* election timeout guarantees the lease expires on the
+  leader before any follower (which reset its election timer on the acked
+  heartbeat) could time out and elect a new leader; the margin absorbs
+  cross-node clock drift (the original deferral reason).
+- The lease is surrendered immediately on step-down and reset on election, so a
+  deposed or fresh leader never serves a stale lease read.
+- A read is served only when an entry of the current term has committed (leader
+  completeness) and the state machine has applied through the read index;
+  otherwise `query` falls back to full ReadIndex.
+
+### Still deferred
+
+- **Follower reads** — serving `query` from a non-leader after a leader
+  read-index round-trip (etcd-style). The lease path already removes the
+  round-trip on the leader; cross-node follower reads remain future work.
 - **Linearizable actor `ask`** — out of scope; use `query` for authoritative reads
 
 ### API

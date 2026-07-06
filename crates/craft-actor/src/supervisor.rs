@@ -34,8 +34,18 @@ use crate::registry::UserActor;
 pub trait ClusterState: Send + Sync {
     /// Whether this node is currently the Raft leader.
     fn is_leader(&self) -> bool;
-    /// The current live membership (committed voters).
+    /// The current committed voter set (Raft membership). Used as the placement
+    /// target: instances are only ever spawned onto committed voters.
     fn live_nodes(&self) -> Vec<NodeId>;
+    /// The voters currently believed **reachable** — a liveness signal distinct
+    /// from membership (ADR 032). Defaults to [`live_nodes`](Self::live_nodes)
+    /// so an implementation with no failure detector behaves as before (every
+    /// committed voter is assumed alive). The runtime overrides this with the
+    /// leader's heartbeat-derived reachability, enabling crash detection without
+    /// waiting for a `ConfChange`.
+    fn reachable_nodes(&self) -> Vec<NodeId> {
+        self.live_nodes()
+    }
 }
 
 impl<T: ClusterState + ?Sized> ClusterState for Arc<T> {
@@ -44,6 +54,9 @@ impl<T: ClusterState + ?Sized> ClusterState for Arc<T> {
     }
     fn live_nodes(&self) -> Vec<NodeId> {
         (**self).live_nodes()
+    }
+    fn reachable_nodes(&self) -> Vec<NodeId> {
+        (**self).reachable_nodes()
     }
 }
 

@@ -377,6 +377,24 @@ impl<M: StateMachine> RaftDriver<M> {
         // Register the query first so a synchronously-confirmed read (single
         // node) finds it during the drain below.
         self.pending_queries.insert(id, query);
+        // Lease-read fast path (ADR 005): if the leader still holds a valid
+        // leadership lease and has already applied through the lease's read
+        // index, serve the query immediately with **no** ReadIndex round-trip.
+        // A lease that is held but not yet applied falls through to ReadIndex.
+        match self.node.lease_read() {
+            Ok(Some(index)) if self.node.last_applied() >= index => {
+                let mut step = self.drain()?;
+                if let Some(outcome) = self.serve_read(id, index)? {
+                    step.reads.push(outcome);
+                }
+                return Ok(step);
+            }
+            Ok(_) => {}
+            Err(e) => {
+                self.pending_queries.remove(&id);
+                return Err(e.into());
+            }
+        }
         match self.node.read_index(id) {
             Ok(()) => self.drain(),
             Err(e) => {

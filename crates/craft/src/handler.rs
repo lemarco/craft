@@ -13,7 +13,7 @@ use std::sync::Arc;
 use craft_core::StateMachine;
 use craft_net::transport::{Body, BoxFuture};
 use craft_net::{QuicTransport, RequestHandler, Route, TransportError, decode_body, encode_body};
-use craft_proto::{JoinRequest, NodeId, PeerBook, PeerEntry};
+use craft_proto::{JoinRequest, NodeId, PeerBook, PeerEntry, ScaleRequest};
 
 use craft_actor::{ClusterControl, ClusterMessaging, DirectorySync, NodeService};
 
@@ -112,8 +112,21 @@ impl<M: StateMachine> RequestHandler for NodeRouter<M> {
                 let book = self.peers.book();
                 Box::pin(async move { Ok(encode_body(&book)?) })
             }
-            // Remote spawn and migration are the control plane.
-            Route::ActorSpawn | Route::ActorMigrate => self.control.handle(route, body),
+            // Remote spawn, migration, and scale-down stop are the control plane.
+            Route::ActorSpawn | Route::ActorMigrate | Route::ActorStop => {
+                self.control.handle(route, body)
+            }
+            // A follower forwarded a cluster-wide scale here; execute it via
+            // the control plane against the requester's observed voter set
+            // (ADR 018). Async because it drives remote spawns.
+            Route::ActorScale => {
+                let control = Arc::clone(&self.control);
+                Box::pin(async move {
+                    let request: ScaleRequest = decode_body(&body)?;
+                    let reply = control.handle_scale(&request).await;
+                    Ok(encode_body(&reply)?)
+                })
+            }
             // Cross-node actor message delivery.
             Route::ActorDeliver => self.messaging.handle(route, body),
             // Directory publish / anti-entropy.

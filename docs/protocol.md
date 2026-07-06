@@ -99,7 +99,9 @@ Request/response types: `JoinRequest` / `JoinResponse` in `craft-proto` ([ADR 01
 |-------|---------|
 | `POST /raft/v1/actor/deliver` | Message / ask to actor mailbox |
 | `POST /raft/v1/actor/spawn` | Remote spawn (`spawn_remote`, placement) |
+| `POST /raft/v1/actor/scale` | Forward a cluster-wide scale to the leader ([ADR 018](decisions/018-supervision.md)) |
 | `POST /raft/v1/actor/migrate` | Snapshot transfer + respawn on target node |
+| `POST /raft/v1/actor/stop` | Stop a group on a target node for a planned scale-down / removal |
 | `POST /raft/v1/actor/register` | Directory publish / revoke |
 
 See [ADR 013](decisions/013-cross-node-actors.md).

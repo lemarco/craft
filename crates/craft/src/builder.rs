@@ -10,21 +10,23 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use craft_core::{Config, RaftNode, StateMachine};
-use craft_dashboard::{AdminServer, EventBus, Metrics, Observer};
+use craft_dashboard::{AdminServer, CraftEvent, EventBus, Metrics, Observer};
 use craft_net::transport::RequestHandler;
 use craft_net::{
-    LocalNetwork, PeerDirectory, QuicServer, QuicTransport, Transport, TransportError,
-    client_config, fetch_peers, send_join_request, server_config,
+    BackoffPolicy, LocalNetwork, PeerDirectory, QuicServer, QuicTransport, TrafficPolicy,
+    Transport, TransportError, client_config, fetch_peers, send_join_request, server_config,
 };
 use craft_proto::{JoinRejection, JoinRequest, JoinResponse, NodeId, PROTOCOL_VERSION};
 use tokio::net::TcpListener;
 
 use craft_actor::{
-    ActorDirectory, ActorRegistry, ClusterControl, ClusterMessaging, ClusterSupervisor,
-    DirectorySync, NodeService, RaftDriver, RuntimeConfig, UserActor, spawn_node,
+    ActorDirectory, ActorRegistry, ClusterControl, ClusterMessaging, ClusterState,
+    ClusterSupervisor, DirectorySync, NodeService, RaftDriver, RuntimeConfig, UserActor,
+    spawn_node,
 };
 
 use crate::cluster::{ClusterFacts, CraftCluster};
+use crate::discovery::Seed;
 use crate::handler::{NoPeers, NodeRouter, PeerSource, QuicPeers};
 use crate::observer::CraftObserver;
 use crate::security::Security;
@@ -72,7 +74,8 @@ pub struct CraftClusterBuilder<M: StateMachine> {
     refresh_period: Duration,
     event_capacity: usize,
     admin_addr: Option<SocketAddr>,
-    join_seed: Option<(NodeId, SocketAddr)>,
+    join_seeds: Vec<Seed>,
+    traffic_policy: TrafficPolicy,
     registrations: Vec<RegisterFn>,
     managed: Vec<ManageFn>,
 }
@@ -96,7 +99,8 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
             refresh_period: Duration::from_millis(50),
             event_capacity: 1024,
             admin_addr: None,
-            join_seed: None,
+            join_seeds: Vec::new(),
+            traffic_policy: TrafficPolicy::unlimited(),
             registrations: Vec::new(),
             managed: Vec::new(),
         }
@@ -147,7 +151,42 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
     /// the QUIC `listen` address passed to `start_quic`.
     #[must_use]
     pub fn join(mut self, seed: NodeId, addr: SocketAddr) -> Self {
-        self.join_seed = Some((seed, addr));
+        self.join_seeds = vec![Seed::new(seed, addr)];
+        self
+    }
+
+    /// Join an existing cluster by bootstrapping against a **seed set** (ADR 007
+    /// gossip discovery): an ordered list of candidate members. On
+    /// [`start_quic`](Self::start_quic) this node tries each seed in turn — for
+    /// pulling the peer-address book and for the join request — so a single dead
+    /// or relocated seed does not block the join. Preferred seeds first;
+    /// duplicates and any entry equal to this node are ignored.
+    ///
+    /// Supersedes [`join`](Self::join) (a single-seed convenience). Populate the
+    /// list statically, or resolve it from orchestrated DNS with
+    /// [`discovery::resolve_dns_seeds`](crate::discovery::resolve_dns_seeds).
+    #[must_use]
+    pub fn join_seeds(mut self, seeds: impl IntoIterator<Item = Seed>) -> Self {
+        self.join_seeds = seeds.into_iter().collect();
+        self
+    }
+
+    /// Per-traffic-class QUIC admission control (ADR 027 R2). Rate-limit bulk
+    /// client/actor traffic so latency-sensitive Raft consensus RPCs are never
+    /// starved on the shared UDP socket. Defaults to
+    /// [`TrafficPolicy::unlimited`]; consensus (`TrafficClass::Peer`) should
+    /// be left unthrottled. Only affects the QUIC transport
+    /// ([`start_quic`](Self::start_quic)).
+    ///
+    /// ```no_run
+    /// use craft::net::{TrafficClass, TrafficPolicy};
+    /// let policy = TrafficPolicy::unlimited()
+    ///     .with_rate(TrafficClass::Client, 5_000.0, 500.0)
+    ///     .with_rate(TrafficClass::Actor, 20_000.0, 2_000.0);
+    /// ```
+    #[must_use]
+    pub fn traffic_policy(mut self, policy: TrafficPolicy) -> Self {
+        self.traffic_policy = policy;
         self
     }
 
@@ -288,17 +327,23 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
         })?;
         // Share the bound endpoint so outbound dials reuse the listener socket.
         let endpoint = server.endpoint().clone();
-        let quic = Arc::new(QuicTransport::new(endpoint, client_cfg, peers));
+        let quic = Arc::new(QuicTransport::with_policy(
+            endpoint,
+            client_cfg,
+            peers,
+            BackoffPolicy::default(),
+            self.traffic_policy.clone(),
+        ));
         // Advertise our own address so it flows out over `/cluster/peers`.
         quic.learn_peer(self.node_id, listen);
-        if let Some((seed, addr)) = self.join_seed {
-            quic.learn_peer(seed, addr);
+        let seeds = crate::discovery::dedupe_seeds(self.join_seeds.iter().copied(), self.node_id);
+        for seed in &seeds {
+            quic.learn_peer(seed.node_id, seed.addr);
         }
         let transport: Arc<dyn Transport> = quic.clone();
         let peer_source: Arc<dyn PeerSource> = Arc::new(QuicPeers(Arc::clone(&quic)));
 
         let node_id = self.node_id;
-        let join_seed = self.join_seed;
         let sync_period = self.publish_period;
         let (cluster, router) = self
             .assemble(transport, peer_source, Some(sync_period))
@@ -307,11 +352,12 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
         let accept = tokio::spawn(async move { server.run(router).await });
         cluster.tasks.lock().unwrap().push(accept);
 
-        // Dynamically join an existing cluster: learn peer addresses from the
-        // seed, then ask to join (the seed forwards to the leader). Blocks until
-        // the membership change commits or a deadline elapses (ADR 007/017).
-        if let Some((seed, _)) = join_seed {
-            join_cluster(&quic, node_id, seed, listen).await?;
+        // Dynamically join an existing cluster: learn peer addresses from a
+        // reachable seed, then ask to join (the seed forwards to the leader).
+        // Blocks until the membership change commits or a deadline elapses
+        // (ADR 007/017); tries every seed for resilience.
+        if !seeds.is_empty() {
+            join_cluster(&quic, node_id, &seeds, listen).await?;
         }
         Ok(cluster)
     }
@@ -338,12 +384,20 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
             ActorRegistry::new()
         };
         let directory = ActorDirectory::new();
-        let control = Arc::new(ClusterControl::new(
-            node_id,
-            registry.clone(),
-            Arc::clone(&directory),
-            Arc::clone(&transport),
-        ));
+        // Live leadership/membership facts, updated by the facts-refresher loop.
+        // Created before the control plane so forwarded scales can be
+        // leader-gated against it (ADR 018).
+        let facts = Arc::new(ClusterFacts::default());
+        let facts_state: Arc<dyn ClusterState> = facts.clone();
+        let control = Arc::new(
+            ClusterControl::new(
+                node_id,
+                registry.clone(),
+                Arc::clone(&directory),
+                Arc::clone(&transport),
+            )
+            .with_cluster_state(facts_state),
+        );
         let messaging = Arc::new(ClusterMessaging::new(
             node_id,
             Arc::clone(&directory),
@@ -361,8 +415,7 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
             register(&control);
         }
 
-        // --- Supervisor + facts ------------------------------------------
-        let facts = Arc::new(ClusterFacts::default());
+        // --- Supervisor ---------------------------------------------------
         let supervisor = Arc::new(ClusterSupervisor::new(
             Arc::clone(&control),
             Arc::clone(&facts),
@@ -374,6 +427,16 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
         // --- Observability ------------------------------------------------
         let events = EventBus::new(self.event_capacity);
         let metrics = Metrics::new();
+        // Surface actor lifecycle / restarts / escalations and (opt-in)
+        // per-message traces as metrics + events (E14 → Track H, ADR 026): the
+        // registry stays telemetry-agnostic. Installed *before* any spawn so
+        // every instance task binds the observer at launch.
+        let telemetry = Arc::new(crate::cluster::ActorTelemetry::new(
+            node_id,
+            events.clone(),
+            metrics.clone(),
+        ));
+        registry.set_observer(telemetry.clone());
 
         // --- Router -------------------------------------------------------
         let service = NodeService::new(handle.clone(), Arc::clone(&transport))
@@ -389,18 +452,100 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
         // --- Background loops --------------------------------------------
         let mut tasks = Vec::new();
 
-        // Facts refresher: mirror consensus status into the supervisor's view.
+        // Facts refresher + consensus telemetry: mirror consensus status into
+        // the supervisor's view, publish Raft gauges / leader + membership
+        // events (Track H), prune routing to departed nodes, and trigger an
+        // immediate reconcile on any membership change so joiners get workers
+        // without waiting for the periodic timer (E11) and a departed node's
+        // managed workers are replaced promptly (E12).
         {
             let handle = handle.clone();
             let facts = Arc::clone(&facts);
+            let directory = Arc::clone(&directory);
+            let supervisor = Arc::clone(&supervisor);
             let period = self.refresh_period;
+            let mut telemetry =
+                crate::cluster::MembershipTelemetry::new(node_id, events.clone(), metrics.clone());
             tasks.push(tokio::spawn(async move {
                 let mut interval = tokio::time::interval(period);
                 loop {
                     interval.tick().await;
-                    match handle.status().await {
-                        Some(status) => facts.update(&status),
+                    let status = match handle.status().await {
+                        Some(status) => status,
                         None => break,
+                    };
+                    facts.update(&status);
+                    let delta = telemetry.record(&status);
+                    // Prune the local directory copy so routing stops targeting
+                    // a departed node immediately (every node does this).
+                    for node in &delta.departed {
+                        directory.remove_node(*node);
+                    }
+                    // reconcile() is leader-gated internally, so this is a no-op
+                    // on followers; it relocates managed/auto workers to reflect
+                    // the new membership.
+                    if delta.membership_changed {
+                        let _ = supervisor.reconcile().await;
+                    }
+                }
+            }));
+        }
+
+        // Actor metrics sampler: periodically read the registry's per-group
+        // counters and publish rate / latency / mailbox-depth series (Track H).
+        // Counting is intrinsic to each instance task (cheap relaxed atomics);
+        // this loop is the only place that touches the metrics lock for them.
+        {
+            let registry = registry.clone();
+            let metrics = metrics.clone();
+            let events = events.clone();
+            let period = self.refresh_period;
+            tasks.push(tokio::spawn(async move {
+                let mut interval = tokio::time::interval(period);
+                // Last cumulative (messages, handle_nanos) per group, to derive
+                // per-interval deltas into the monotonic counters.
+                let mut prev: std::collections::HashMap<String, (u64, u64)> =
+                    std::collections::HashMap::new();
+                loop {
+                    interval.tick().await;
+                    for stat in registry.stats() {
+                        let actor = stat.name.as_str();
+                        metrics.set(
+                            "craft_actor_instances",
+                            "Live actor instances in a group.",
+                            &[("actor", actor)],
+                            stat.instances as f64,
+                        );
+                        metrics.set(
+                            "craft_actor_mailbox_depth",
+                            "Queued-but-unhandled messages in a group's mailboxes.",
+                            &[("actor", actor)],
+                            stat.mailbox_depth as f64,
+                        );
+                        if stat.mailbox_depth > 0 {
+                            events.emit(CraftEvent::MailboxDepth {
+                                id: format!("{actor}@n{}", node_id.0),
+                                len: stat.mailbox_depth as u64,
+                            });
+                        }
+                        let (pm, pn) = prev.get(actor).copied().unwrap_or((0, 0));
+                        let dm = stat.messages.saturating_sub(pm);
+                        if dm > 0 {
+                            let dn = stat.handle_nanos.saturating_sub(pn);
+                            metrics.incr(
+                                "craft_actor_messages_total",
+                                "Cumulative messages handled by a group.",
+                                &[("actor", actor)],
+                                dm as f64,
+                            );
+                            metrics.incr(
+                                "craft_actor_handle_seconds_total",
+                                "Cumulative time spent in a group's handlers.",
+                                &[("actor", actor)],
+                                dn as f64 / 1e9,
+                            );
+                        }
+                        prev.insert(stat.name, (stat.messages, stat.handle_nanos));
                     }
                 }
             }));
@@ -497,6 +642,7 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
             supervisor,
             events,
             metrics,
+            telemetry,
             members: self.members,
             tasks: Mutex::new(tasks),
         };
@@ -509,36 +655,50 @@ const JOIN_ATTEMPTS: u32 = 40;
 /// Delay between join attempts (≈`JOIN_ATTEMPTS × JOIN_BACKOFF` total budget).
 const JOIN_BACKOFF: Duration = Duration::from_millis(250);
 
-/// Drive a dynamic join against `seed` (ADR 007/017): learn the cluster's peer
-/// addresses, then submit a `/cluster/join` (forwarded to the leader) until it
-/// commits, the cluster refuses it, or the retry budget is exhausted.
+/// Drive a dynamic join against a **seed set** (ADR 007/017): learn the
+/// cluster's peer addresses from whichever seed answers first, then submit a
+/// `/cluster/join` (forwarded to the leader) until it commits, the cluster
+/// refuses it, or the retry budget is exhausted. Each attempt rotates through
+/// every seed so one dead/relocated seed cannot block the join.
 async fn join_cluster(
     quic: &Arc<QuicTransport>,
     node_id: NodeId,
-    seed: NodeId,
+    seeds: &[Seed],
     advertise: SocketAddr,
 ) -> Result<(), StartError> {
-    // Phase 1: pull the peer-address book from the seed so we can reach the
-    // leader (and every member) directly once added.
-    for attempt in 0..JOIN_ATTEMPTS {
-        match fetch_peers(&**quic, seed).await {
-            Ok(book) => {
-                for entry in book.entries {
-                    if let Ok(addr) = entry.addr.parse::<SocketAddr>() {
-                        quic.learn_peer(entry.node, addr);
+    debug_assert!(!seeds.is_empty(), "join_cluster requires at least one seed");
+
+    // Phase 1: pull the peer-address book from any reachable seed so we can
+    // reach the leader (and every member) directly once added.
+    let mut booked = false;
+    let mut last_err = String::from("no seeds");
+    'book: for attempt in 0..JOIN_ATTEMPTS {
+        for seed in seeds {
+            match fetch_peers(&**quic, seed.node_id).await {
+                Ok(book) => {
+                    for entry in book.entries {
+                        if let Ok(addr) = entry.addr.parse::<SocketAddr>() {
+                            quic.learn_peer(entry.node, addr);
+                        }
                     }
+                    booked = true;
+                    break 'book;
                 }
-                break;
+                Err(e) => last_err = e.to_string(),
             }
-            Err(e) if attempt + 1 == JOIN_ATTEMPTS => {
-                return Err(StartError::Join(format!("seed {seed:?} unreachable: {e}")));
-            }
-            Err(_) => tokio::time::sleep(JOIN_BACKOFF).await,
+        }
+        if attempt + 1 < JOIN_ATTEMPTS {
+            tokio::time::sleep(JOIN_BACKOFF).await;
         }
     }
+    if !booked {
+        return Err(StartError::Join(format!(
+            "no seed reachable to bootstrap discovery: {last_err}"
+        )));
+    }
 
-    // Phase 2: ask to join. The seed forwards to the leader on our behalf, so a
-    // `Redirect` means "no leader yet" — retry.
+    // Phase 2: ask to join. Any seed forwards to the leader on our behalf, so a
+    // `Redirect` means "no leader yet" — retry against the next seed.
     let request = JoinRequest {
         protocol_version: PROTOCOL_VERSION,
         node_id,
@@ -546,24 +706,32 @@ async fn join_cluster(
     };
     for attempt in 0..JOIN_ATTEMPTS {
         let last = attempt + 1 == JOIN_ATTEMPTS;
-        match send_join_request(&**quic, seed, &request).await {
-            Ok(JoinResponse::Accepted { .. }) => return Ok(()),
-            // A restart of an already-joined node is a no-op, not a failure.
-            Ok(JoinResponse::Rejected {
-                reason: JoinRejection::Duplicate,
-            }) => return Ok(()),
-            Ok(JoinResponse::Rejected { reason }) => {
-                return Err(StartError::Join(format!(
-                    "cluster rejected join: {reason:?}"
-                )));
+        for (i, seed) in seeds.iter().enumerate() {
+            let last_seed = last && i + 1 == seeds.len();
+            match send_join_request(&**quic, seed.node_id, &request).await {
+                Ok(JoinResponse::Accepted { .. }) => return Ok(()),
+                // A restart of an already-joined node is a no-op, not a failure.
+                Ok(JoinResponse::Rejected {
+                    reason: JoinRejection::Duplicate,
+                }) => return Ok(()),
+                Ok(JoinResponse::Rejected { reason }) => {
+                    return Err(StartError::Join(format!(
+                        "cluster rejected join: {reason:?}"
+                    )));
+                }
+                Ok(JoinResponse::Redirect { leader }) if last_seed => {
+                    return Err(StartError::Join(format!(
+                        "no leader available to accept the join (hint: {leader:?})"
+                    )));
+                }
+                Err(e) if last_seed => {
+                    return Err(StartError::Join(format!("join request failed: {e}")));
+                }
+                Ok(JoinResponse::Redirect { .. }) | Err(_) => {}
             }
-            Ok(JoinResponse::Redirect { leader }) if last => {
-                return Err(StartError::Join(format!(
-                    "no leader available to accept the join (hint: {leader:?})"
-                )));
-            }
-            Err(e) if last => return Err(StartError::Join(format!("join request failed: {e}"))),
-            Ok(JoinResponse::Redirect { .. }) | Err(_) => tokio::time::sleep(JOIN_BACKOFF).await,
+        }
+        if attempt + 1 < JOIN_ATTEMPTS {
+            tokio::time::sleep(JOIN_BACKOFF).await;
         }
     }
     Err(StartError::Join(

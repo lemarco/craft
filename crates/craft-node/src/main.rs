@@ -11,23 +11,30 @@
 //!
 //! | Var | Meaning | Default |
 //! |-----|---------|---------|
-//! | `CRAFT_NODE_ID` | This node's id (`u64`) | `1` |
+//! | `CRAFT_NODE_ID` | This node's id (`u64`) | *from `POD_NAME` ordinal, else `1`* |
+//! | `POD_NAME` | Kubernetes pod name (`craft-0`); its ordinal → `NodeId(ordinal+1)` | *unset* |
 //! | `CRAFT_LISTEN` | QUIC listen `addr:port` | `0.0.0.0:7443` |
 //! | `CRAFT_ADMIN` | Admin HTTP `addr:port` (`-` to disable) | `0.0.0.0:8080` |
-//! | `CRAFT_PEERS` | `id@host:port` list of **all** members | *self only* |
+//! | `CRAFT_PEERS` | `id@host:port` list of **all** members (static membership) | *self only* |
+//! | `CRAFT_JOIN_SEEDS` | `id@host:port` seed list for a **dynamic** join (ADR 007) | *none* |
+//! | `CRAFT_DISCOVERY` | `dns:<prefix>:<service>:<replicas>:<port>` → resolve seeds | *none* |
+//! | `CRAFT_ALLOW_JOIN` | Accept dynamic joins on this node (`1`/`true`) | `false` |
 //! | `CRAFT_NODE_CERT` / `CRAFT_NODE_KEY` / `CRAFT_CA_CERT` | PEM cert chain / key / CA | *dev CA* |
 //!
 //! With no cert vars set, a throwaway dev CA is minted for a **single-node**
 //! cluster (great for `cargo run -p craft-node`). A multi-node cluster needs a
 //! shared CA: provide `CRAFT_NODE_CERT`/`CRAFT_NODE_KEY`/`CRAFT_CA_CERT` on
 //! every node (mint them with `examples/certs/generate.sh`; see `docs/certs.md`)
-//! and list every member in `CRAFT_PEERS`.
+//! and either list every member in `CRAFT_PEERS` (static) or point new nodes at
+//! `CRAFT_JOIN_SEEDS` / `CRAFT_DISCOVERY` to grow the cluster dynamically. See
+//! `deploy/kubernetes/` for a StatefulSet using ordinal-derived ids + DNS.
 
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::net::{SocketAddr, ToSocketAddrs};
 
 use craft::core::StateMachine;
+use craft::discovery::{Seed, resolve_dns_seeds};
 use craft::net::NodeIdentity;
 use craft::proto::LogIndex;
 use craft::{CraftCluster, NodeId, PeerDirectory, Security};
@@ -74,11 +81,80 @@ struct NodeConfig {
     admin: Option<SocketAddr>,
     peers: PeerDirectory,
     members: Vec<NodeId>,
+    join_seeds: Vec<Seed>,
+    /// A `dns:<prefix>:<service>:<replicas>:<port>` discovery spec, resolved
+    /// asynchronously in `main` into additional seeds (Kubernetes headless
+    /// service; see [`craft::discovery::resolve_dns_seeds`]).
+    discovery: Option<DnsSpec>,
+    allow_join: bool,
     security: Security,
+}
+
+/// A parsed `CRAFT_DISCOVERY=dns:<prefix>:<service>:<replicas>:<port>` spec.
+struct DnsSpec {
+    prefix: String,
+    service: String,
+    replicas: u64,
+    port: u16,
 }
 
 fn env(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.is_empty())
+}
+
+fn env_bool(key: &str) -> bool {
+    matches!(
+        env(key).as_deref(),
+        Some("1" | "true" | "TRUE" | "yes" | "on")
+    )
+}
+
+/// Derive a node id from the environment: explicit `CRAFT_NODE_ID` wins,
+/// otherwise a Kubernetes `POD_NAME` ordinal (`craft-0` → `NodeId(1)`), else `1`.
+fn node_id_from_env() -> Result<NodeId, Box<dyn Error>> {
+    if let Some(raw) = env("CRAFT_NODE_ID") {
+        return Ok(NodeId(raw.parse()?));
+    }
+    if let Some(pod) = env("POD_NAME") {
+        let ordinal: u64 = pod
+            .rsplit_once('-')
+            .and_then(|(_, ord)| ord.parse().ok())
+            .ok_or_else(|| format!("POD_NAME {pod:?} has no trailing ordinal (want name-N)"))?;
+        return Ok(NodeId(ordinal + 1));
+    }
+    Ok(NodeId(1))
+}
+
+/// Parse `CRAFT_JOIN_SEEDS` (`id@host:port,...`) into a discovery seed set.
+fn parse_seeds(raw: &str) -> Result<Vec<Seed>, Box<dyn Error>> {
+    let mut seeds = Vec::new();
+    for entry in raw.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+        let (id, addr) = entry
+            .split_once('@')
+            .ok_or_else(|| format!("bad CRAFT_JOIN_SEEDS entry {entry:?} (want id@host:port)"))?;
+        let id: u64 = id
+            .parse()
+            .map_err(|_| format!("bad node id in {entry:?}"))?;
+        seeds.push(Seed::new(NodeId(id), resolve_addr(addr)?));
+    }
+    Ok(seeds)
+}
+
+/// Parse `CRAFT_DISCOVERY=dns:<prefix>:<service>:<replicas>:<port>`.
+fn parse_discovery(raw: &str) -> Result<DnsSpec, Box<dyn Error>> {
+    let parts: Vec<&str> = raw.split(':').collect();
+    match parts.as_slice() {
+        ["dns", prefix, service, replicas, port] => Ok(DnsSpec {
+            prefix: (*prefix).to_string(),
+            service: (*service).to_string(),
+            replicas: replicas.parse()?,
+            port: port.parse()?,
+        }),
+        _ => Err(format!(
+            "bad CRAFT_DISCOVERY {raw:?} (want dns:<prefix>:<service>:<replicas>:<port>)"
+        )
+        .into()),
+    }
 }
 
 /// Resolve `host:port` to a `SocketAddr`, accepting both numeric IPs and DNS
@@ -143,7 +219,7 @@ fn load_pem_security(
 }
 
 fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
-    let node_id = NodeId(env("CRAFT_NODE_ID").as_deref().unwrap_or("1").parse()?);
+    let node_id = node_id_from_env()?;
     let listen: SocketAddr = env("CRAFT_LISTEN")
         .as_deref()
         .unwrap_or("0.0.0.0:7443")
@@ -154,17 +230,32 @@ fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
         None => Some("0.0.0.0:8080".parse()?),
     };
 
+    let join_seeds = match env("CRAFT_JOIN_SEEDS") {
+        Some(raw) => parse_seeds(&raw)?,
+        None => Vec::new(),
+    };
+    let discovery = match env("CRAFT_DISCOVERY") {
+        Some(raw) => Some(parse_discovery(&raw)?),
+        None => None,
+    };
+    let allow_join = env_bool("CRAFT_ALLOW_JOIN");
+
     let (mut peers, mut members) = match env("CRAFT_PEERS") {
         Some(raw) => parse_peers(&raw)?,
         None => (PeerDirectory::new(), Vec::new()),
     };
-    // Always ensure this node is a member and reachable in the book.
-    if !members.contains(&node_id) {
-        members.push(node_id);
-        members.sort();
-    }
-    if !peers.contains(node_id) {
-        peers.insert(node_id, listen);
+    // A node that joins dynamically starts knowing only the *current* members
+    // (from seeds/discovery) and is added to the voter set once its join
+    // commits — it must not pre-list itself as a member (ADR 007/017).
+    let joining = !join_seeds.is_empty() || discovery.is_some();
+    if !joining {
+        if !members.contains(&node_id) {
+            members.push(node_id);
+            members.sort();
+        }
+        if !peers.contains(node_id) {
+            peers.insert(node_id, listen);
+        }
     }
 
     let security = match (
@@ -174,7 +265,7 @@ fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
     ) {
         (Some(cert), Some(key), Some(ca)) => load_pem_security(node_id, &cert, &key, &ca)?,
         (None, None, None) => {
-            if members.len() > 1 {
+            if members.len() > 1 || joining {
                 return Err("multi-node clusters need shared certs: set \
                      CRAFT_NODE_CERT/CRAFT_NODE_KEY/CRAFT_CA_CERT on every node \
                      (mint them with examples/certs/generate.sh; see docs/certs.md). \
@@ -198,6 +289,9 @@ fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
         admin,
         peers,
         members,
+        join_seeds,
+        discovery,
+        allow_join,
         security,
     })
 }
@@ -206,15 +300,31 @@ fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
 async fn main() -> Result<(), Box<dyn Error>> {
     let cfg = config_from_env()?;
     println!(
-        "craft-node v{} (protocol v{})",
+        "craft-node v{} (protocol v{}, wire {})",
         craft::VERSION,
-        craft::PROTOCOL_VERSION
+        craft::PROTOCOL_VERSION,
+        craft::proto::WIRE_CODEC,
     );
+
+    // Assemble the discovery seed set: explicit seeds plus any resolved from a
+    // DNS discovery spec (Kubernetes headless service; ADR 007).
+    let mut seeds = cfg.join_seeds.clone();
+    if let Some(dns) = &cfg.discovery {
+        let resolved = resolve_dns_seeds(&dns.prefix, &dns.service, dns.replicas, dns.port).await?;
+        println!("discovered {} seed(s) via DNS", resolved.len());
+        seeds.extend(resolved);
+    }
 
     let mut builder =
         CraftCluster::builder(cfg.node_id, Demo::default()).members(cfg.members.clone());
     if let Some(admin) = cfg.admin {
         builder = builder.admin_addr(admin);
+    }
+    if cfg.allow_join {
+        builder = builder.allow_join(true);
+    }
+    if !seeds.is_empty() {
+        builder = builder.join_seeds(seeds);
     }
 
     let cluster = builder

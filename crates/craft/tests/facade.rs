@@ -250,6 +250,57 @@ async fn supervisor_auto_places_a_worker_on_every_node() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn follower_scale_cluster_forwards_to_leader() {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let net = LocalNetwork::new();
+
+    // A 3-node cluster with no managed groups: placement is driven purely by an
+    // imperative `scale_cluster`. Every node registers the type so any of them
+    // can host / reconstruct it.
+    let mut clusters = Vec::new();
+    for &id in &ids {
+        let cluster = Arc::new(
+            CraftCluster::builder(id, Kv::default())
+                .members(ids)
+                .raft_config(raft_config())
+                .tick_period(Duration::from_millis(10))
+                .reconcile_period(Duration::from_millis(20))
+                .directory_publish_period(Duration::from_millis(20))
+                .start_local(&net)
+                .await,
+        );
+        cluster.control().register_type::<Worker>();
+        clusters.push(cluster);
+    }
+
+    let leader = leader(&clusters).await;
+    let follower = clusters
+        .iter()
+        .find(|c| c.node_id() != leader.node_id())
+        .expect("a follower exists")
+        .clone();
+
+    // Scaling from a *follower* must transparently forward to the leader
+    // (ADR 018), which plans and executes one worker per node.
+    follower
+        .scale_cluster::<Worker>("w", 3, 0)
+        .await
+        .expect("scale forwarded to leader and applied");
+
+    for c in &clusters {
+        let reg = c.registry().clone();
+        eventually(&format!("worker on node {:?}", c.node_id()), move || {
+            reg.contains("w")
+        })
+        .await;
+    }
+
+    for c in &clusters {
+        c.shutdown();
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn admin_endpoints_report_live_state() {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let net = LocalNetwork::new();
@@ -320,6 +371,69 @@ async fn admin_endpoints_report_live_state() {
     // Metrics endpoint renders Prometheus text (may be empty families).
     let (status, _) = http_get(admin_addr, "/metrics").await;
     assert_eq!(status, 200);
+
+    for c in &clusters {
+        c.shutdown();
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn telemetry_publishes_consensus_and_actor_metrics() {
+    let (_net, clusters) = spawn_cluster().await;
+    let leader = leader(&clusters).await;
+
+    // A worker is placed on the leader, and its lifecycle spawn bumps the
+    // spawn counter; the consensus sampler publishes Raft gauges.
+    let metrics = leader.metrics().clone();
+    eventually("consensus + actor metrics on leader", move || {
+        let out = metrics.render();
+        out.contains("craft_raft_is_leader")
+            && out.contains("craft_actor_spawns_total")
+            && out.contains("craft_actor_instances{actor=\"w\"}")
+    })
+    .await;
+
+    for c in &clusters {
+        c.shutdown();
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn opt_in_tracing_emits_message_handled_events() {
+    use craft::TraceOpts;
+
+    let (_net, clusters) = spawn_cluster().await;
+    let leader = leader(&clusters).await;
+
+    // Wait for the worker group to be placed on the leader.
+    let reg = leader.registry().clone();
+    eventually("worker on leader", move || reg.contains("w")).await;
+
+    // Subscribe, enable tracing for "w", then drive one message through it.
+    let mut sub = leader.events().subscribe();
+    leader.trace("w", TraceOpts::default());
+    leader
+        .registry()
+        .pool::<Worker>("w")
+        .expect("worker pool")
+        .send(())
+        .expect("cast to worker");
+
+    // A MessageHandled event should surface for the traced group.
+    let got = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match sub.recv().await {
+                Some(craft::CraftEvent::MessageHandled { id, .. }) if id.starts_with("w#") => {
+                    break true;
+                }
+                Some(_) => continue,
+                None => break false,
+            }
+        }
+    })
+    .await
+    .expect("did not receive MessageHandled within timeout");
+    assert!(got, "event bus closed before a MessageHandled arrived");
 
     for c in &clusters {
         c.shutdown();

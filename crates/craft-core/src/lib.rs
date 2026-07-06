@@ -14,6 +14,7 @@ mod config;
 mod log;
 mod node;
 mod rng;
+mod shard;
 mod state_machine;
 
 pub use config::Configuration;
@@ -21,4 +22,5 @@ pub use node::{
     Committed, Config, MembershipError, NotLeader, Output, Persist, RaftNode, ReadId, Role,
     SnapshotState,
 };
+pub use shard::{RaftGroupId, ShardId, ShardRouter, place_shard, shard_assignment};
 pub use state_machine::{Command, Query, StateMachine};

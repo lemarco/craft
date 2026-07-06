@@ -1,0 +1,24 @@
+# Client-facing Service for the QUIC client API (ADR 002/003). Load-balances
+# client traffic across all craft pods — any node transparently forwards client
+# requests to the current leader, so clients need not know which pod leads.
+#
+# Type is ClusterIP (in-cluster clients). For external clients, change to
+# type: LoadBalancer (cloud) or expose via an Ingress/Gateway that supports
+# UDP/HTTP-3. The admin port is intentionally NOT exposed here — scrape
+# /metrics and probe /health via the headless service or a separate internal
+# Service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: craft-client
+  labels:
+    app: craft
+spec:
+  type: ClusterIP
+  selector:
+    app: craft
+  ports:
+    - name: quic
+      port: 7443
+      protocol: UDP
+      targetPort: quic

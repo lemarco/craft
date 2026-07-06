@@ -6,15 +6,16 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use craft_actor::craft_net::{LocalNetwork, Transport};
+use craft_actor::craft_net::{LocalNetwork, RemoteError, Transport};
 use craft_actor::craft_proto::{
-    self, ActorId, ActorRegistration, ActorTypeId, DirectoryUpdate, NodeId,
+    self, ActorEnvelope, ActorId, ActorRegistration, ActorTypeId, DeliverAck, DirectoryUpdate,
+    NodeId,
 };
 use craft_actor::{
-    ActorDirectory, ActorRegistry, CastError, ClusterMessaging, DeliverError, MessageDecodeError,
-    UserActor,
+    ActorDirectory, ActorRegistry, CastError, ClusterAskError, ClusterMessaging, DeliverError,
+    MessageDecodeError, RpcReplyPort, UserActor, WireReplyPort,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 
 // ---------------------------------------------------------------------------
 // A remotely-addressable counting actor
@@ -77,6 +78,180 @@ impl UserActor for LocalOnly {
     async fn handle(&mut self, _msg: Self::Message) -> Result<(), Self::Error> {
         Ok(())
     }
+}
+
+// ---------------------------------------------------------------------------
+// An actor supporting cross-node request/reply (`ask`)
+// ---------------------------------------------------------------------------
+
+/// Wire request for the fire-and-forget `Add`.
+#[derive(Debug, Serialize, Deserialize)]
+struct AddReq(u64);
+
+/// Wire request for the `Get` ask (unit — the reply carries the value).
+#[derive(Debug, Serialize, Deserialize)]
+struct GetReq;
+
+/// Accumulates casts and answers asks with the running total.
+enum AccMsg {
+    Add(u64),
+    Get(RpcReplyPort<u64>),
+}
+
+struct Accum {
+    total: u64,
+}
+
+impl UserActor for Accum {
+    type Config = ();
+    type Message = AccMsg;
+    type Error = WorkerError;
+
+    fn start(_config: Self::Config) -> Result<Self, Self::Error> {
+        Ok(Accum { total: 0 })
+    }
+
+    async fn handle(&mut self, msg: Self::Message) -> Result<(), Self::Error> {
+        match msg {
+            AccMsg::Add(n) => self.total += n,
+            AccMsg::Get(reply) => {
+                let _ = reply.reply(self.total);
+            }
+        }
+        Ok(())
+    }
+
+    fn decode_message(payload: &[u8]) -> Result<Self::Message, MessageDecodeError> {
+        let AddReq(n) =
+            craft_proto::decode(payload).map_err(|e| MessageDecodeError::Decode(e.to_string()))?;
+        Ok(AccMsg::Add(n))
+    }
+
+    fn decode_ask(
+        payload: &[u8],
+        reply: WireReplyPort,
+    ) -> Result<Self::Message, MessageDecodeError> {
+        let _req: GetReq =
+            craft_proto::decode(payload).map_err(|e| MessageDecodeError::Decode(e.to_string()))?;
+        Ok(AccMsg::Get(reply.reply_port::<u64>()))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// A side-effecting `ask` actor (for dedup)
+// ---------------------------------------------------------------------------
+
+/// Wire request for the side-effecting `Bump` ask (unit — the reply carries the
+/// new value).
+#[derive(Debug, Serialize, Deserialize)]
+struct BumpReq;
+
+/// A single ask that both mutates (bumps a shared counter) and replies with the
+/// new value, so a test can distinguish "handler ran" from "reply replayed".
+enum BumpMsg {
+    Bump(RpcReplyPort<u64>),
+}
+
+struct Bump {
+    counter: Arc<AtomicU64>,
+}
+
+impl UserActor for Bump {
+    type Config = Arc<AtomicU64>;
+    type Message = BumpMsg;
+    type Error = WorkerError;
+
+    fn start(counter: Self::Config) -> Result<Self, Self::Error> {
+        Ok(Bump { counter })
+    }
+
+    async fn handle(&mut self, msg: Self::Message) -> Result<(), Self::Error> {
+        match msg {
+            BumpMsg::Bump(reply) => {
+                let value = self.counter.fetch_add(1, Ordering::SeqCst) + 1;
+                let _ = reply.reply(value);
+            }
+        }
+        Ok(())
+    }
+
+    fn decode_ask(
+        payload: &[u8],
+        reply: WireReplyPort,
+    ) -> Result<Self::Message, MessageDecodeError> {
+        let _req: BumpReq =
+            craft_proto::decode(payload).map_err(|e| MessageDecodeError::Decode(e.to_string()))?;
+        Ok(BumpMsg::Bump(reply.reply_port::<u64>()))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// An `ask` actor whose reply value cannot be serialized
+// ---------------------------------------------------------------------------
+
+/// A reply type whose `Serialize` always fails, to exercise the wire
+/// reply-encode error path.
+struct Unencodable;
+
+impl Serialize for Unencodable {
+    fn serialize<S: Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
+        Err(serde::ser::Error::custom("this reply never serializes"))
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BadReq;
+
+enum BadMsg {
+    Get(RpcReplyPort<Unencodable>),
+}
+
+struct BadReply;
+
+impl UserActor for BadReply {
+    type Config = ();
+    type Message = BadMsg;
+    type Error = WorkerError;
+
+    fn start(_config: Self::Config) -> Result<Self, Self::Error> {
+        Ok(BadReply)
+    }
+
+    async fn handle(&mut self, msg: Self::Message) -> Result<(), Self::Error> {
+        match msg {
+            BadMsg::Get(reply) => {
+                let _ = reply.reply(Unencodable);
+            }
+        }
+        Ok(())
+    }
+
+    fn decode_ask(
+        payload: &[u8],
+        reply: WireReplyPort,
+    ) -> Result<Self::Message, MessageDecodeError> {
+        let _req: BadReq =
+            craft_proto::decode(payload).map_err(|e| MessageDecodeError::Decode(e.to_string()))?;
+        Ok(BadMsg::Get(reply.reply_port::<Unencodable>()))
+    }
+}
+
+/// Build a messaging plane on `net` for node `id` over `registry`.
+fn messaging_on(
+    net: &LocalNetwork,
+    id: u64,
+    registry: ActorRegistry,
+) -> (Arc<ClusterMessaging>, Arc<ActorDirectory>) {
+    let directory = ActorDirectory::new();
+    let transport: Arc<dyn Transport> = Arc::new(net.clone());
+    let messaging = Arc::new(ClusterMessaging::new(
+        NodeId(id),
+        Arc::clone(&directory),
+        registry,
+        transport,
+    ));
+    net.attach(NodeId(id), messaging.clone());
+    (messaging, directory)
 }
 
 // ---------------------------------------------------------------------------
@@ -217,12 +392,70 @@ async fn remote_node_missing_the_instance_is_reported_as_rejected() {
 
     let err = n1.messaging.cast("ghost", add(1)).await.unwrap_err();
     match err {
-        CastError::Rejected { node, reason } => {
+        CastError::Remote(RemoteError::Rejected { node, reason }) => {
             assert_eq!(node, NodeId(2));
             assert!(reason.contains("ghost"), "reason surfaced: {reason}");
         }
         other => panic!("expected Rejected, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn ask_round_trips_a_reply_across_the_wire() {
+    let net = LocalNetwork::new();
+
+    // Node 1 hosts the `accum` actor; node 2 is a bare client plane.
+    let reg1 = ActorRegistry::new();
+    reg1.spawn::<Accum>("accum", ()).expect("spawn accum");
+    let (_m1, _d1) = messaging_on(&net, 1, reg1);
+    let (m2, d2) = messaging_on(&net, 2, ActorRegistry::new());
+
+    // Node 2 knows node 1 hosts the group (as E7 directory sync would have set).
+    d2.apply(&update(1, vec![reg(1, "accum", 0)]));
+
+    // A remote cast bumps the total, then a remote ask reads it back.
+    m2.cast("accum", craft_proto::encode(&AddReq(7)).unwrap())
+        .await
+        .expect("remote cast");
+    let reply = m2
+        .ask("accum", craft_proto::encode(&GetReq).unwrap())
+        .await
+        .expect("remote ask");
+    let total: u64 = craft_proto::decode(&reply).expect("decode reply");
+    assert_eq!(total, 7, "ask returned the actor's running total");
+}
+
+#[tokio::test]
+async fn ask_to_a_non_addressable_actor_is_rejected() {
+    let net = LocalNetwork::new();
+
+    // `worker` only overrides decode_message (cast), not decode_ask.
+    let reg1 = ActorRegistry::new();
+    reg1.spawn::<Worker>("worker", Arc::new(AtomicU64::new(0)))
+        .unwrap();
+    let (_m1, _d1) = messaging_on(&net, 1, reg1);
+    let (m2, d2) = messaging_on(&net, 2, ActorRegistry::new());
+    d2.apply(&update(1, vec![reg(1, "worker", 0)]));
+
+    let err = m2.ask("worker", Vec::new()).await.unwrap_err();
+    match err {
+        ClusterAskError::Remote(RemoteError::Rejected { node, reason }) => {
+            assert_eq!(node, NodeId(1));
+            assert!(
+                reason.contains("not remotely addressable"),
+                "reason surfaced: {reason}"
+            );
+        }
+        other => panic!("expected Rejected, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn ask_to_unknown_group_yields_no_target() {
+    let net = LocalNetwork::new();
+    let (m1, _d1) = messaging_on(&net, 1, ActorRegistry::new());
+    let err = m1.ask("nope", Vec::new()).await.unwrap_err();
+    assert!(matches!(err, ClusterAskError::NoTarget(g) if g == "nope"));
 }
 
 #[tokio::test]
@@ -247,4 +480,84 @@ async fn local_only_actor_rejects_remote_style_delivery() {
     ));
     // Keep n1 alive for the duration.
     drop(n1);
+}
+
+#[tokio::test]
+async fn duplicate_ask_runs_the_handler_once_and_replays_the_reply() {
+    let net = LocalNetwork::new();
+    let counter = Arc::new(AtomicU64::new(0));
+    let registry = ActorRegistry::new();
+    registry.spawn::<Bump>("bump", counter.clone()).unwrap();
+    let (messaging, _dir) = messaging_on(&net, 1, registry);
+
+    // Two identical envelopes: same origin + req_id (an at-least-once resend).
+    let envelope = ActorEnvelope {
+        to: ActorId {
+            node: NodeId(1),
+            name: "bump".to_string(),
+            instance: 0,
+            generation: 0,
+        },
+        from: None,
+        origin: Some(NodeId(2)),
+        req_id: 42,
+        payload: craft_proto::encode(&BumpReq).unwrap(),
+        reply_expected: true,
+    };
+
+    let decode = |ack: &DeliverAck| -> u64 {
+        craft_proto::decode(ack.reply.as_ref().expect("reply present")).unwrap()
+    };
+
+    let first = messaging.serve_deliver(&envelope).await;
+    let second = messaging.serve_deliver(&envelope).await;
+
+    assert!(first.delivered && second.delivered);
+    assert_eq!(decode(&first), 1, "first ask ran the handler");
+    assert_eq!(decode(&second), 1, "resend replays the recorded reply");
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        1,
+        "the side-effecting handler ran exactly once"
+    );
+
+    // A different req_id from the same origin is a distinct request: it runs.
+    let mut fresh = envelope.clone();
+    fresh.req_id = 43;
+    let third = messaging.serve_deliver(&fresh).await;
+    assert_eq!(decode(&third), 2, "a new req_id is served afresh");
+    assert_eq!(counter.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn reply_encode_failure_surfaces_as_a_real_error() {
+    let net = LocalNetwork::new();
+    let registry = ActorRegistry::new();
+    registry.spawn::<BadReply>("bad", ()).unwrap();
+    let (messaging, _dir) = messaging_on(&net, 1, registry);
+
+    let envelope = ActorEnvelope {
+        to: ActorId {
+            node: NodeId(1),
+            name: "bad".to_string(),
+            instance: 0,
+            generation: 0,
+        },
+        from: None,
+        origin: Some(NodeId(2)),
+        req_id: 1,
+        payload: craft_proto::encode(&BadReq).unwrap(),
+        reply_expected: true,
+    };
+
+    let ack = messaging.serve_deliver(&envelope).await;
+    assert!(ack.delivered, "the message reached the handler");
+    assert!(ack.reply.is_none(), "no reply bytes on encode failure");
+    let error = ack
+        .error
+        .expect("an encode failure is surfaced, not silent");
+    assert!(
+        error.contains("reply encode failed"),
+        "distinct from a dropped reply: {error}"
+    );
 }

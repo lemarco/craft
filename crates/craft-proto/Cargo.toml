@@ -19,4 +19,12 @@ workspace = true
 [dependencies]
 serde.workspace = true
 postcard.workspace = true
+serde_json = { workspace = true, optional = true }
 thiserror.workspace = true
+
+[features]
+# Dev-only: encode every wire body as human-readable JSON instead of the
+# compact `postcard` binary format (ADR 027 item 4). Lets non-Rust tools and
+# packet captures read the wire during debugging. Never enable in production —
+# JSON is larger and slower, and maps with non-string keys are unsupported.
+json-wire = ["dep:serde_json"]

@@ -16,10 +16,11 @@ use std::time::Instant;
 use bytes::{Buf, Bytes};
 use craft_proto::NodeId;
 use http::{Request, Response, StatusCode};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
 
 use crate::backoff::{BackoffPolicy, BackoffState};
 use crate::peer::PeerDirectory;
+use crate::priority::TrafficPolicy;
 use crate::route::{Route, TrafficClass};
 use crate::tls::node_server_name;
 use crate::transport::{Body, BoxFuture, RequestHandler, Transport, TransportError};
@@ -134,6 +135,24 @@ async fn handle_request(
 /// The `h3` client `SendRequest` handle cached per peer connection.
 type ClientSender = h3::client::SendRequest<h3_quinn::OpenStreams, Bytes>;
 
+/// Max concurrent in-flight requests (open QUIC streams) to one peer on the
+/// [`TrafficClass::Actor`] connection. A burst of slow `ask`s queues on this
+/// gate (backpressure) instead of opening unbounded streams and exhausting the
+/// connection's stream limit — which would stall casts / spawns / directory
+/// sync to that peer (ADR 027 R2). Sized below quinn's default bidi-stream cap
+/// (100) to leave headroom.
+const ACTOR_MAX_INFLIGHT: usize = 64;
+
+/// The concurrent-stream ceiling for `class`, or `None` to leave it unbounded.
+/// Consensus (`Peer`) is never gated, so heartbeats never queue behind bulk
+/// traffic; short client/cluster round-trips are left unbounded for now.
+fn class_stream_limit(class: TrafficClass) -> Option<usize> {
+    match class {
+        TrafficClass::Actor => Some(ACTOR_MAX_INFLIGHT),
+        TrafficClass::Peer | TrafficClass::Client | TrafficClass::Cluster => None,
+    }
+}
+
 /// A cached connection to one peer for one [`TrafficClass`], plus its reconnect
 /// backoff (C5). Consensus (`Peer`) traffic gets its own entry, isolated from
 /// bulk client/actor streams (ADR 027 R2).
@@ -141,6 +160,21 @@ type ClientSender = h3::client::SendRequest<h3_quinn::OpenStreams, Bytes>;
 struct PeerConn {
     sender: Option<ClientSender>,
     backoff: BackoffState,
+    /// Bounds concurrent in-flight streams for gated classes (see
+    /// [`class_stream_limit`]); `None` leaves the class unbounded.
+    gate: Option<Arc<Semaphore>>,
+}
+
+impl PeerConn {
+    /// A fresh entry for `class`, arming its stream gate when the class is
+    /// bounded.
+    fn for_class(class: TrafficClass) -> Self {
+        Self {
+            sender: None,
+            backoff: BackoffState::default(),
+            gate: class_stream_limit(class).map(|n| Arc::new(Semaphore::new(n))),
+        }
+    }
 }
 
 struct Inner {
@@ -152,6 +186,9 @@ struct Inner {
     // held only for the brief address lookup/update, never across an `.await`.
     directory: RwLock<PeerDirectory>,
     policy: BackoffPolicy,
+    // Per-traffic-class admission control so bulk client/actor sends cannot
+    // starve Raft heartbeats on the shared socket (ADR 027 R2).
+    traffic: TrafficPolicy,
     conns: Mutex<HashMap<(NodeId, TrafficClass), PeerConn>>,
 }
 
@@ -189,12 +226,34 @@ impl QuicTransport {
         directory: PeerDirectory,
         policy: BackoffPolicy,
     ) -> Self {
+        Self::with_policy(
+            endpoint,
+            client_config,
+            directory,
+            policy,
+            TrafficPolicy::unlimited(),
+        )
+    }
+
+    /// Like [`with_backoff`](QuicTransport::with_backoff) but with an explicit
+    /// per-traffic-class [`TrafficPolicy`] (ADR 027 R2): rate-limit bulk
+    /// client/actor traffic so latency-sensitive consensus RPCs are never
+    /// starved on the shared UDP socket.
+    #[must_use]
+    pub fn with_policy(
+        endpoint: quinn::Endpoint,
+        client_config: quinn::ClientConfig,
+        directory: PeerDirectory,
+        policy: BackoffPolicy,
+        traffic: TrafficPolicy,
+    ) -> Self {
         Self {
             inner: Arc::new(Inner {
                 endpoint,
                 client_config,
                 directory: RwLock::new(directory),
                 policy,
+                traffic,
                 conns: Mutex::new(HashMap::new()),
             }),
         }
@@ -231,6 +290,30 @@ impl QuicTransport {
     }
 }
 
+/// Acquire an in-flight-stream permit for `(peer, class)`, or `None` if the
+/// class is unbounded. Awaits if the gate is saturated (backpressure). The gate
+/// `Arc` is cloned under the connection lock, then acquired *without* holding
+/// it, so a saturated gate never blocks other peers/classes.
+async fn acquire_stream_permit(
+    inner: &Inner,
+    peer: NodeId,
+    class: TrafficClass,
+) -> Option<OwnedSemaphorePermit> {
+    let gate = {
+        let mut conns = inner.conns.lock().await;
+        conns
+            .entry((peer, class))
+            .or_insert_with(|| PeerConn::for_class(class))
+            .gate
+            .clone()
+    };
+    match gate {
+        // The semaphore is never closed, so acquisition cannot fail.
+        Some(sem) => Some(sem.acquire_owned().await.expect("stream gate is open")),
+        None => None,
+    }
+}
+
 /// Get a cached sender for `(peer, class)` or dial a fresh connection. A dial
 /// that is still inside its backoff window short-circuits to
 /// [`TransportError::Unreachable`] without touching the socket; a dial failure
@@ -241,7 +324,9 @@ async fn connect_sender(
     class: TrafficClass,
 ) -> Result<ClientSender, TransportError> {
     let mut conns = inner.conns.lock().await;
-    let entry = conns.entry((peer, class)).or_default();
+    let entry = conns
+        .entry((peer, class))
+        .or_insert_with(|| PeerConn::for_class(class));
     if let Some(sender) = &entry.sender {
         return Ok(sender.clone());
     }
@@ -296,6 +381,14 @@ async fn round_trip(
     body: Body,
 ) -> Result<Body, TransportError> {
     let class = route.traffic_class();
+    // Admission control: throttle rate-limited classes before touching the
+    // socket, keeping consensus (unthrottled) ahead of bulk traffic (ADR 027 R2).
+    inner.traffic.admit(class).await;
+    // Backpressure: cap concurrent in-flight streams on gated classes so a burst
+    // of slow `ask`s queues here instead of exhausting the connection's stream
+    // limit and stalling other Actor-class traffic to this peer. Held for the
+    // whole round-trip; released when `_permit` drops.
+    let _permit = acquire_stream_permit(&inner, peer, class).await;
     let mut sender = connect_sender(&inner, peer, class).await?;
 
     let request = Request::builder()
@@ -358,4 +451,54 @@ impl Transport for QuicTransport {
 /// Returns [`TransportError::Io`] if the socket cannot be bound.
 pub fn client_endpoint(bind: SocketAddr) -> Result<quinn::Endpoint, TransportError> {
     quinn::Endpoint::client(bind).map_err(io)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_actor_traffic_is_stream_gated() {
+        // Bulk/actor sends are bounded; consensus and short client/cluster
+        // round-trips are not, so heartbeats never queue behind bulk streams.
+        assert_eq!(
+            class_stream_limit(TrafficClass::Actor),
+            Some(ACTOR_MAX_INFLIGHT)
+        );
+        assert_eq!(class_stream_limit(TrafficClass::Peer), None);
+        assert_eq!(class_stream_limit(TrafficClass::Client), None);
+        assert_eq!(class_stream_limit(TrafficClass::Cluster), None);
+    }
+
+    #[test]
+    fn an_actor_connection_arms_a_bounded_gate() {
+        let actor = PeerConn::for_class(TrafficClass::Actor);
+        let gate = actor.gate.expect("the actor class is gated");
+        assert_eq!(gate.available_permits(), ACTOR_MAX_INFLIGHT);
+
+        let peer = PeerConn::for_class(TrafficClass::Peer);
+        assert!(peer.gate.is_none(), "consensus is never gated");
+    }
+
+    #[tokio::test]
+    async fn a_saturated_gate_blocks_until_a_permit_is_released() {
+        // A 1-permit gate makes saturation observable without opening 64 streams.
+        let gate = Arc::new(Semaphore::new(1));
+        let held = Arc::clone(&gate).acquire_owned().await.unwrap();
+        assert_eq!(gate.available_permits(), 0);
+
+        let waiter = tokio::spawn({
+            let gate = Arc::clone(&gate);
+            async move { gate.acquire_owned().await.unwrap() }
+        });
+        tokio::task::yield_now().await;
+        assert!(
+            !waiter.is_finished(),
+            "a further acquire blocks while the gate is saturated"
+        );
+
+        // Releasing the held permit lets the queued acquire through.
+        drop(held);
+        let _next = waiter.await.unwrap();
+    }
 }

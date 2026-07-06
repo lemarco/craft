@@ -1,0 +1,27 @@
+# Headless Service: gives every StatefulSet pod a stable per-pod DNS name
+# (`craft-0.craft-headless`, `craft-1.craft-headless`, …) used for Raft peering
+# and for DNS-based discovery (ADR 007). `clusterIP: None` means DNS resolves to
+# individual pod IPs rather than a load-balanced VIP — exactly what a consensus
+# cluster needs to address specific members.
+apiVersion: v1
+kind: Service
+metadata:
+  name: craft-headless
+  labels:
+    app: craft
+spec:
+  clusterIP: None
+  # Resolve DNS as soon as a pod exists, before it passes readiness, so peers
+  # can find each other while the cluster is still forming an initial quorum.
+  publishNotReadyAddresses: true
+  selector:
+    app: craft
+  ports:
+    - name: quic
+      port: 7443
+      protocol: UDP
+      targetPort: quic
+    - name: admin
+      port: 8080
+      protocol: TCP
+      targetPort: admin

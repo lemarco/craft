@@ -20,24 +20,25 @@
 //! *other* nodes is the leader-only `ClusterSupervisor`'s job (E10), which
 //! reuses this same planner.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use craft_net::transport::{Body, BoxFuture};
 use craft_net::{
-    RequestHandler, Route, Transport, TransportError, decode_body, encode_body, send_actor_migrate,
-    send_actor_spawn,
+    RemoteError, RequestHandler, Route, Transport, TransportError, decode_body, encode_body,
+    send_actor_migrate, send_actor_scale, send_actor_spawn, send_actor_stop,
 };
 use craft_proto::{
-    ActorId, ActorRegistration, ActorTypeId, MigrateReply, MigrateRequest, NodeId, SpawnReply,
-    SpawnRequest,
+    ActorId, ActorRegistration, ActorTypeId, MigrateReply, MigrateRequest, NodeId, ScaleReply,
+    ScaleRequest, SpawnReply, SpawnRequest, StopReply, StopRequest,
 };
 
 use crate::directory::ActorDirectory;
 use crate::registry::{
-    ActorRegistry, ConfigCodecError, ScaleError, SnapshotError, SpawnError, UserActor,
+    ActorRegistry, ConfigCodecError, ScaleError, SnapshotError, SpawnError, StopError, UserActor,
 };
+use crate::supervisor::ClusterState;
 
 // ---------------------------------------------------------------------------
 // Placement planner (pure)
@@ -134,22 +135,10 @@ pub enum RemoteSpawnError {
     /// The actor's config could not be encoded for shipping.
     #[error("config encode failed: {0}")]
     Config(ConfigCodecError),
-    /// The envelope could not be shipped to the target node.
-    #[error("transport to {node:?} failed: {reason}")]
-    Transport {
-        /// The target node.
-        node: NodeId,
-        /// The underlying transport error.
-        reason: String,
-    },
-    /// The target node received the request but could not spawn.
-    #[error("node {node:?} rejected spawn: {reason}")]
-    Remote {
-        /// The target node.
-        node: NodeId,
-        /// The reason it reported.
-        reason: String,
-    },
+    /// The request could not be shipped to the target node, or that node
+    /// rejected the spawn.
+    #[error(transparent)]
+    Remote(#[from] RemoteError),
 }
 
 /// Why a [`scale_cluster`](ClusterControl::scale_cluster) failed (E9).
@@ -161,6 +150,10 @@ pub enum ClusterScaleError {
     /// A spawn issued by the plan failed.
     #[error(transparent)]
     Spawn(#[from] RemoteSpawnError),
+    /// A removal issued by the plan could not be enacted on a remote node
+    /// (shipping failure or rejection).
+    #[error(transparent)]
+    Stop(#[from] RemoteError),
 }
 
 /// Why a [`migrate`](ClusterControl::migrate) failed (E12, ADR 013).
@@ -178,22 +171,10 @@ pub enum MigrateError {
     /// The actor's config could not be encoded for shipping.
     #[error("config encode failed: {0}")]
     Config(ConfigCodecError),
-    /// The migrate request could not be shipped to the target node.
-    #[error("transport to {node:?} failed: {reason}")]
-    Transport {
-        /// The target node.
-        node: NodeId,
-        /// The underlying transport error.
-        reason: String,
-    },
-    /// The target node received the request but could not spawn the replacement.
-    #[error("node {node:?} rejected migrate: {reason}")]
-    Remote {
-        /// The target node.
-        node: NodeId,
-        /// The reason it reported.
-        reason: String,
-    },
+    /// The migrate request could not be shipped to the target node, or that
+    /// node rejected the replacement spawn.
+    #[error(transparent)]
+    Remote(#[from] RemoteError),
 }
 
 // ---------------------------------------------------------------------------
@@ -231,6 +212,10 @@ pub struct ClusterControl {
     directory: Arc<ActorDirectory>,
     transport: Arc<dyn Transport>,
     factories: Mutex<HashMap<ActorTypeId, SpawnFactory>>,
+    // Optional leadership/membership view used to leader-gate forwarded scales
+    // and to source authoritative `live_nodes` (ADR 018). `None` in tests /
+    // sim that drive placement directly without a consensus node.
+    state: Option<Arc<dyn ClusterState>>,
 }
 
 impl ClusterControl {
@@ -249,7 +234,18 @@ impl ClusterControl {
             directory,
             transport,
             factories: Mutex::new(HashMap::new()),
+            state: None,
         }
+    }
+
+    /// Attach a [`ClusterState`] so forwarded scales are leader-gated and source
+    /// their `live_nodes` from this node's own committed voters (ADR 018). The
+    /// runtime wires the real one; without it, [`handle_scale`](Self::handle_scale)
+    /// trusts the requester's view (test/sim behavior).
+    #[must_use]
+    pub fn with_cluster_state(mut self, state: Arc<dyn ClusterState>) -> Self {
+        self.state = Some(state);
+        self
     }
 
     /// This node's id.
@@ -309,16 +305,13 @@ impl ClusterControl {
         };
         let reply = send_actor_spawn(self.transport.as_ref(), node, &request)
             .await
-            .map_err(|e| RemoteSpawnError::Transport {
-                node,
-                reason: e.to_string(),
-            })?;
+            .map_err(|e| RemoteSpawnError::Remote(RemoteError::transport(node, e)))?;
         match reply.id {
             Some(id) => Ok(id),
-            None => Err(RemoteSpawnError::Remote {
+            None => Err(RemoteSpawnError::Remote(RemoteError::rejected(
                 node,
-                reason: reply.error.unwrap_or_else(|| "unknown".to_string()),
-            }),
+                reply.error.unwrap_or_else(|| "unknown".to_string()),
+            ))),
         }
     }
 
@@ -346,12 +339,158 @@ impl ClusterControl {
         for &node in &plan.spawns {
             self.spawn_remote::<A>(node, name, config.clone()).await?;
         }
-        for id in &plan.removes {
-            if id.node == self.node_id {
-                let _ = self.registry.stop(name);
+        self.enact_removes(name, &plan.removes).await?;
+        Ok(plan)
+    }
+
+    /// The type-erased core of [`scale_cluster`](ClusterControl::scale_cluster):
+    /// plan against `live_nodes` and execute the spawns from an **already
+    /// encoded** config, reconstructing each instance through the `actor_type`
+    /// factory (locally via [`handle_spawn`](ClusterControl::handle_spawn),
+    /// remotely via a raw [`SpawnRequest`]). Used by the leader when it receives
+    /// a forwarded [`ScaleRequest`], where the concrete actor type is not known
+    /// statically. Every hosting node must have registered the type.
+    ///
+    /// # Errors
+    /// Returns [`ClusterScaleError`] if placement cannot be planned or a spawn
+    /// fails.
+    pub async fn scale_cluster_encoded(
+        &self,
+        name: &str,
+        actor_type: ActorTypeId,
+        total: usize,
+        config: &[u8],
+        live_nodes: &[NodeId],
+    ) -> Result<ScalePlan, ClusterScaleError> {
+        let current = self.directory.lookup(name);
+        let plan = plan_scale(total, live_nodes, &current)?;
+        for &node in &plan.spawns {
+            let request = SpawnRequest {
+                name: name.to_string(),
+                actor_type: actor_type.clone(),
+                config: config.to_vec(),
+                generation: 0,
+            };
+            if node == self.node_id {
+                if let Some(reason) = self.handle_spawn(&request).error {
+                    return Err(
+                        RemoteSpawnError::Remote(RemoteError::rejected(node, reason)).into(),
+                    );
+                }
+            } else {
+                let reply = send_actor_spawn(self.transport.as_ref(), node, &request)
+                    .await
+                    .map_err(|e| RemoteSpawnError::Remote(RemoteError::transport(node, e)))?;
+                if reply.id.is_none() {
+                    return Err(RemoteSpawnError::Remote(RemoteError::rejected(
+                        node,
+                        reply.error.unwrap_or_else(|| "unknown".to_string()),
+                    ))
+                    .into());
+                }
             }
         }
+        self.enact_removes(name, &plan.removes).await?;
         Ok(plan)
+    }
+
+    /// Enact the [`ScalePlan`]'s removals: stop the group locally where a removal
+    /// targets this node, and send an `/actor/stop` to every *other* node with a
+    /// planned removal (ADR 013/018). One worker per node (ADR 014), so a removal
+    /// on node N means "stop this group on N"; nodes are deduped so at most one
+    /// stop is sent per node.
+    ///
+    /// # Errors
+    /// Returns [`RemoteStopError`] if a remote stop cannot be shipped or the
+    /// target rejects it. A departed node (unreachable) surfaces as a transport
+    /// error; its instances are reaped when it leaves, and the next reconcile
+    /// re-plans any residual removal.
+    async fn enact_removes(&self, name: &str, removes: &[ActorId]) -> Result<(), RemoteError> {
+        let mut remote_nodes: BTreeSet<NodeId> = BTreeSet::new();
+        for id in removes {
+            if id.node == self.node_id {
+                let _ = self.registry.stop(name);
+            } else {
+                remote_nodes.insert(id.node);
+            }
+        }
+        for node in remote_nodes {
+            let request = StopRequest {
+                name: name.to_string(),
+            };
+            let reply = send_actor_stop(self.transport.as_ref(), node, &request)
+                .await
+                .map_err(|e| RemoteError::transport(node, e))?;
+            if let Some(reason) = reply.error {
+                return Err(RemoteError::rejected(node, reason));
+            }
+        }
+        Ok(())
+    }
+
+    /// Handle an inbound [`StopRequest`] and produce its [`StopReply`]: stop the
+    /// named group locally. Idempotent — an absent group is reported as success
+    /// (it is already gone), so a re-sent removal is harmless.
+    #[must_use]
+    pub fn handle_stop(&self, request: &StopRequest) -> StopReply {
+        match self.registry.stop(&request.name) {
+            Ok(()) | Err(StopError::NotFound(_)) => StopReply { error: None },
+        }
+    }
+
+    /// Serve a forwarded [`ScaleRequest`] on the leader (`/actor/scale`, ADR 018).
+    ///
+    /// **Leader-gated:** when a [`ClusterState`] is attached
+    /// ([`with_cluster_state`](Self::with_cluster_state)), this re-confirms the
+    /// node is still the leader before planning — a node deposed mid-flight must
+    /// not run cluster-wide placement concurrently with the real leader's
+    /// reconcile (double-placement / spurious stops). It also sources
+    /// `live_nodes` from **this node's own committed voters**, which are never
+    /// staler than the requester's set (which may have lagged a `ConfChange`),
+    /// avoiding under-placement or spawns onto a removed node. Without a state
+    /// (tests/sim) it falls back to the requester's `live_nodes`.
+    #[must_use]
+    pub async fn handle_scale(&self, request: &ScaleRequest) -> ScaleReply {
+        let live_nodes = match &self.state {
+            Some(state) => {
+                if !state.is_leader() {
+                    return ScaleReply {
+                        error: Some("not leader".to_string()),
+                    };
+                }
+                state.live_nodes()
+            }
+            None => request.live_nodes.clone(),
+        };
+        match self
+            .scale_cluster_encoded(
+                &request.name,
+                request.actor_type.clone(),
+                request.total as usize,
+                &request.config,
+                &live_nodes,
+            )
+            .await
+        {
+            Ok(_) => ScaleReply { error: None },
+            Err(e) => ScaleReply {
+                error: Some(e.to_string()),
+            },
+        }
+    }
+
+    /// Forward a [`ScaleRequest`] to the current `leader` and decode its
+    /// [`ScaleReply`] (used when `scale_cluster` is called on a follower).
+    ///
+    /// # Errors
+    /// Returns [`TransportError`] if the leader is unreachable or the send
+    /// fails.
+    pub async fn request_scale(
+        &self,
+        leader: NodeId,
+        request: &ScaleRequest,
+    ) -> Result<ScaleReply, TransportError> {
+        send_actor_scale(self.transport.as_ref(), leader, request).await
     }
 
     /// Migrate the locally-hosted instance `from` to `to_node`, transferring
@@ -394,15 +533,12 @@ impl ClusterControl {
         };
         let reply = send_actor_migrate(self.transport.as_ref(), to_node, &request)
             .await
-            .map_err(|e| MigrateError::Transport {
-                node: to_node,
-                reason: e.to_string(),
-            })?;
+            .map_err(|e| MigrateError::Remote(RemoteError::transport(to_node, e)))?;
         let Some(id) = reply.id else {
-            return Err(MigrateError::Remote {
-                node: to_node,
-                reason: reply.error.unwrap_or_else(|| "unknown".to_string()),
-            });
+            return Err(MigrateError::Remote(RemoteError::rejected(
+                to_node,
+                reply.error.unwrap_or_else(|| "unknown".to_string()),
+            )));
         };
         // Target has the state as of the snapshot; drain and stop the source.
         let _ = self.registry.stop_graceful(&from.name, drain_timeout).await;
@@ -512,6 +648,9 @@ impl RequestHandler for ClusterControl {
             Route::ActorMigrate => decode_body::<MigrateRequest>(&body)
                 .map_err(TransportError::from)
                 .and_then(|request| Ok(encode_body(&self.handle_migrate(&request))?)),
+            Route::ActorStop => decode_body::<StopRequest>(&body)
+                .map_err(TransportError::from)
+                .and_then(|request| Ok(encode_body(&self.handle_stop(&request))?)),
             other => Err(TransportError::Io(format!(
                 "control handler received unexpected route {other:?}"
             ))),

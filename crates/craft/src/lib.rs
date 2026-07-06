@@ -38,6 +38,7 @@
 
 mod builder;
 mod cluster;
+pub mod discovery;
 mod handler;
 mod observer;
 mod security;
@@ -55,7 +56,7 @@ pub use {craft_dashboard as dashboard, craft_macros as macros, craft_net as net}
 pub use craft_storage as storage;
 
 pub use builder::{CraftClusterBuilder, StartError};
-pub use cluster::{ClusterFacts, CraftCluster};
+pub use cluster::{ClusterFacts, CraftCluster, ScaleClusterError};
 pub use security::Security;
 
 /// The peer address book ([`NodeId`] → socket) used to dial cluster members
@@ -65,7 +66,9 @@ pub use craft_net::PeerDirectory;
 
 /// Commonly used telemetry/observability types, re-exported for convenience.
 #[doc(no_inline)]
-pub use craft_dashboard::{CraftEvent, EventBus, EventSubscription, Metrics};
+pub use craft_dashboard::{
+    CraftEvent, EventBus, EventSubscription, Metrics, StopReason, TraceOpts,
+};
 
 /// Library version string (from `Cargo.toml`).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

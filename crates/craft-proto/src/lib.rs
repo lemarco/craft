@@ -14,7 +14,8 @@ pub mod raft;
 
 pub use actor::{
     ActorEnvelope, ActorId, ActorRef, ActorRegistration, ActorTypeId, DeliverAck, DirectoryUpdate,
-    MigrateReply, MigrateRequest, RegisterAck, SpawnReply, SpawnRequest,
+    MigrateReply, MigrateRequest, RegisterAck, ScaleReply, ScaleRequest, SpawnReply, SpawnRequest,
+    StopReply, StopRequest,
 };
 pub use client::{ClientRequest, ClientResponse};
 pub use join::{JoinRejection, JoinRequest, JoinResponse, PeerBook, PeerEntry};
@@ -110,31 +111,63 @@ impl LogId {
     }
 }
 
+/// The wire codec in effect for this build: `"postcard"` by default, or
+/// `"json"` when the dev-only `json-wire` feature is enabled (ADR 027 item 4).
+/// Surfaced so a node can log/advertise its wire format at startup.
+pub const WIRE_CODEC: &str = if cfg!(feature = "json-wire") {
+    "json"
+} else {
+    "postcard"
+};
+
 /// Errors from encoding/decoding wire bodies.
 #[derive(Debug, thiserror::Error)]
 pub enum CodecError {
-    /// `postcard` serialization failed.
-    #[error("postcard encode failed: {0}")]
+    /// Serialization failed.
+    #[error("wire encode failed: {0}")]
     Encode(String),
-    /// `postcard` deserialization failed.
-    #[error("postcard decode failed: {0}")]
+    /// Deserialization failed.
+    #[error("wire decode failed: {0}")]
     Decode(String),
 }
 
-/// Encode a value to a `postcard` byte vector.
+/// Encode a value to a wire byte vector.
+///
+/// Uses the compact `postcard` binary format (ADR 010/011) unless the dev-only
+/// `json-wire` feature is enabled, in which case bodies are human-readable JSON.
 ///
 /// # Errors
 /// Returns [`CodecError::Encode`] if serialization fails.
+#[cfg(not(feature = "json-wire"))]
 pub fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>, CodecError> {
     postcard::to_stdvec(value).map_err(|e| CodecError::Encode(e.to_string()))
 }
 
-/// Decode a value from a `postcard` byte slice.
+/// Decode a value from a wire byte slice. See [`encode`] for the format.
 ///
 /// # Errors
 /// Returns [`CodecError::Decode`] if deserialization fails.
+#[cfg(not(feature = "json-wire"))]
 pub fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, CodecError> {
     postcard::from_bytes(bytes).map_err(|e| CodecError::Decode(e.to_string()))
+}
+
+/// Encode a value as JSON (dev-only `json-wire` build). See [`WIRE_CODEC`].
+///
+/// # Errors
+/// Returns [`CodecError::Encode`] if serialization fails.
+#[cfg(feature = "json-wire")]
+pub fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>, CodecError> {
+    serde_json::to_vec(value).map_err(|e| CodecError::Encode(e.to_string()))
+}
+
+/// Decode a value from JSON (dev-only `json-wire` build). See [`WIRE_CODEC`].
+///
+/// # Errors
+/// Returns [`CodecError::Decode`] if deserialization fails.
+#[cfg(feature = "json-wire")]
+pub fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, CodecError> {
+    serde_json::from_slice(bytes).map_err(|e| CodecError::Decode(e.to_string()))
 }
 
 #[cfg(test)]
@@ -199,5 +232,25 @@ mod tests {
     fn decode_rejects_garbage() {
         let err = decode::<LogEntry>(&[0xff, 0xff, 0xff, 0xff]);
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn wire_codec_name_matches_the_active_format() {
+        // The default build is postcard; `--features json-wire` flips it.
+        if cfg!(feature = "json-wire") {
+            assert_eq!(WIRE_CODEC, "json");
+            // JSON is human-readable: the encoded RPC contains field names.
+            let bytes = encode(&RequestVote {
+                term: Term(1),
+                candidate_id: NodeId(2),
+                last_log: LogId::ZERO,
+                pre_vote: true,
+            })
+            .unwrap();
+            let text = String::from_utf8(bytes).unwrap();
+            assert!(text.contains("candidate_id"), "json body: {text}");
+        } else {
+            assert_eq!(WIRE_CODEC, "postcard");
+        }
     }
 }
