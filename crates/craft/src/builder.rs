@@ -14,9 +14,9 @@ use craft_dashboard::{AdminServer, EventBus, Metrics, Observer};
 use craft_net::transport::RequestHandler;
 use craft_net::{
     LocalNetwork, PeerDirectory, QuicServer, QuicTransport, Transport, TransportError,
-    client_config, server_config,
+    client_config, fetch_peers, send_join_request, server_config,
 };
-use craft_proto::NodeId;
+use craft_proto::{JoinRejection, JoinRequest, JoinResponse, NodeId, PROTOCOL_VERSION};
 use tokio::net::TcpListener;
 
 use craft_actor::{
@@ -25,7 +25,7 @@ use craft_actor::{
 };
 
 use crate::cluster::{ClusterFacts, CraftCluster};
-use crate::handler::NodeRouter;
+use crate::handler::{NoPeers, NodeRouter, PeerSource, QuicPeers};
 use crate::observer::CraftObserver;
 use crate::security::Security;
 
@@ -45,6 +45,11 @@ pub enum StartError {
         /// The underlying transport error.
         source: TransportError,
     },
+
+    /// A dynamic join via [`join`](CraftClusterBuilder::join) could not be
+    /// completed (seed unreachable, no leader, or the cluster refused it).
+    #[error("cluster join failed: {0}")]
+    Join(String),
 }
 
 /// Type-erased "register this actor type on the control plane" step.
@@ -67,6 +72,7 @@ pub struct CraftClusterBuilder<M: StateMachine> {
     refresh_period: Duration,
     event_capacity: usize,
     admin_addr: Option<SocketAddr>,
+    join_seed: Option<(NodeId, SocketAddr)>,
     registrations: Vec<RegisterFn>,
     managed: Vec<ManageFn>,
 }
@@ -90,6 +96,7 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
             refresh_period: Duration::from_millis(50),
             event_capacity: 1024,
             admin_addr: None,
+            join_seed: None,
             registrations: Vec::new(),
             managed: Vec::new(),
         }
@@ -123,6 +130,24 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
     #[must_use]
     pub fn allow_join(mut self, allow: bool) -> Self {
         self.runtime.allow_join = allow;
+        self
+    }
+
+    /// Join an **existing** cluster dynamically by contacting `seed` (a member's
+    /// id + address) instead of pre-configuring every peer's address (ADR
+    /// 007/017). On [`start_quic`](Self::start_quic) this node fetches the
+    /// cluster's peer-address book from the seed, then sends a `/cluster/join`
+    /// (the seed forwards to the leader), which commits a membership change
+    /// adding this node. Peer addresses propagate both ways over `/cluster/peers`
+    /// so every node — including this one — learns how to reach the others.
+    ///
+    /// Set [`members`](Self::members) to the cluster's *current* voter set (which
+    /// does **not** include this new node); it starts as a non-voting follower
+    /// and becomes a voter once the join commits. `advertise_addr` defaults to
+    /// the QUIC `listen` address passed to `start_quic`.
+    #[must_use]
+    pub fn join(mut self, seed: NodeId, addr: SocketAddr) -> Self {
+        self.join_seed = Some((seed, addr));
         self
     }
 
@@ -225,7 +250,8 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
     pub async fn start_local(self, net: &LocalNetwork) -> CraftCluster<M> {
         let node_id = self.node_id;
         let transport: Arc<dyn Transport> = Arc::new(net.clone());
-        let (cluster, router) = self.assemble(transport).await;
+        let peers: Arc<dyn PeerSource> = Arc::new(NoPeers);
+        let (cluster, router) = self.assemble(transport, peers, None).await;
         net.attach(node_id, router);
         cluster
     }
@@ -235,15 +261,18 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
     /// peers found in `peers` (a [`NodeId`] → address book), and authenticates
     /// every connection with `security`.
     ///
-    /// The `peers` directory should contain the address of every cluster member
-    /// (this node's own entry is ignored). Bootstrap a static cluster by giving
-    /// each node the same [`members`](Self::members) set and `peers` map.
+    /// For a **static** cluster the `peers` directory should contain the address
+    /// of every member (this node's own entry is ignored); give each node the
+    /// same [`members`](Self::members) set and `peers` map. For **elastic**
+    /// growth, pair [`join`](Self::join) with a `peers` map holding just the seed
+    /// — addresses of the rest are discovered over `/cluster/peers` (ADR 007).
     ///
     /// Must run inside a Tokio runtime.
     ///
     /// # Errors
-    /// Returns [`StartError`] if the mTLS configuration cannot be built or the
-    /// QUIC listener cannot bind `listen`.
+    /// Returns [`StartError`] if the mTLS configuration cannot be built, the
+    /// QUIC listener cannot bind `listen`, or a requested dynamic
+    /// [`join`](Self::join) could not be completed.
     pub async fn start_quic(
         self,
         security: Security,
@@ -259,13 +288,31 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
         })?;
         // Share the bound endpoint so outbound dials reuse the listener socket.
         let endpoint = server.endpoint().clone();
-        let transport: Arc<dyn Transport> =
-            Arc::new(QuicTransport::new(endpoint, client_cfg, peers));
+        let quic = Arc::new(QuicTransport::new(endpoint, client_cfg, peers));
+        // Advertise our own address so it flows out over `/cluster/peers`.
+        quic.learn_peer(self.node_id, listen);
+        if let Some((seed, addr)) = self.join_seed {
+            quic.learn_peer(seed, addr);
+        }
+        let transport: Arc<dyn Transport> = quic.clone();
+        let peer_source: Arc<dyn PeerSource> = Arc::new(QuicPeers(Arc::clone(&quic)));
 
-        let (cluster, router) = self.assemble(transport).await;
+        let node_id = self.node_id;
+        let join_seed = self.join_seed;
+        let sync_period = self.publish_period;
+        let (cluster, router) = self
+            .assemble(transport, peer_source, Some(sync_period))
+            .await;
 
         let accept = tokio::spawn(async move { server.run(router).await });
         cluster.tasks.lock().unwrap().push(accept);
+
+        // Dynamically join an existing cluster: learn peer addresses from the
+        // seed, then ask to join (the seed forwards to the leader). Blocks until
+        // the membership change commits or a deadline elapses (ADR 007/017).
+        if let Some((seed, _)) = join_seed {
+            join_cluster(&quic, node_id, seed, listen).await?;
+        }
         Ok(cluster)
     }
 
@@ -274,6 +321,8 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
     async fn assemble(
         self,
         transport: Arc<dyn Transport>,
+        peers: Arc<dyn PeerSource>,
+        peer_sync: Option<Duration>,
     ) -> (CraftCluster<M>, Arc<dyn RequestHandler>) {
         let node_id = self.node_id;
 
@@ -334,6 +383,7 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
             Arc::clone(&control),
             Arc::clone(&messaging),
             Arc::clone(&directory_sync),
+            Arc::clone(&peers),
         ));
 
         // --- Background loops --------------------------------------------
@@ -368,6 +418,34 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
                     interval.tick().await;
                     let regs = registry.local_registrations(node_id);
                     let _ = directory_sync.publish(&members, regs).await;
+                }
+            }));
+        }
+
+        // Peer-address anti-entropy: gossip `/cluster/peers` so nodes learn how
+        // to reach members added dynamically via `join` (ADR 007). Skipped for
+        // transports without socket addresses (the in-memory network).
+        if let Some(period) = peer_sync {
+            let peers = Arc::clone(&peers);
+            let transport = Arc::clone(&transport);
+            tasks.push(tokio::spawn(async move {
+                let mut interval = tokio::time::interval(period);
+                loop {
+                    interval.tick().await;
+                    // Pull each currently known peer's book and merge new
+                    // addresses. Converges: the leader (and forwarding follower)
+                    // learn a joiner from its join request, and every node then
+                    // pulls that address from them.
+                    for entry in peers.book().entries {
+                        if entry.node == node_id {
+                            continue;
+                        }
+                        if let Ok(remote) = fetch_peers(&*transport, entry.node).await {
+                            for peer in remote.entries {
+                                peers.learn(peer.node, &peer.addr);
+                            }
+                        }
+                    }
                 }
             }));
         }
@@ -424,4 +502,71 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
         };
         (cluster, router)
     }
+}
+
+/// How long to keep retrying each phase of a dynamic join before giving up.
+const JOIN_ATTEMPTS: u32 = 40;
+/// Delay between join attempts (≈`JOIN_ATTEMPTS × JOIN_BACKOFF` total budget).
+const JOIN_BACKOFF: Duration = Duration::from_millis(250);
+
+/// Drive a dynamic join against `seed` (ADR 007/017): learn the cluster's peer
+/// addresses, then submit a `/cluster/join` (forwarded to the leader) until it
+/// commits, the cluster refuses it, or the retry budget is exhausted.
+async fn join_cluster(
+    quic: &Arc<QuicTransport>,
+    node_id: NodeId,
+    seed: NodeId,
+    advertise: SocketAddr,
+) -> Result<(), StartError> {
+    // Phase 1: pull the peer-address book from the seed so we can reach the
+    // leader (and every member) directly once added.
+    for attempt in 0..JOIN_ATTEMPTS {
+        match fetch_peers(&**quic, seed).await {
+            Ok(book) => {
+                for entry in book.entries {
+                    if let Ok(addr) = entry.addr.parse::<SocketAddr>() {
+                        quic.learn_peer(entry.node, addr);
+                    }
+                }
+                break;
+            }
+            Err(e) if attempt + 1 == JOIN_ATTEMPTS => {
+                return Err(StartError::Join(format!("seed {seed:?} unreachable: {e}")));
+            }
+            Err(_) => tokio::time::sleep(JOIN_BACKOFF).await,
+        }
+    }
+
+    // Phase 2: ask to join. The seed forwards to the leader on our behalf, so a
+    // `Redirect` means "no leader yet" — retry.
+    let request = JoinRequest {
+        protocol_version: PROTOCOL_VERSION,
+        node_id,
+        advertise_addr: advertise.to_string(),
+    };
+    for attempt in 0..JOIN_ATTEMPTS {
+        let last = attempt + 1 == JOIN_ATTEMPTS;
+        match send_join_request(&**quic, seed, &request).await {
+            Ok(JoinResponse::Accepted { .. }) => return Ok(()),
+            // A restart of an already-joined node is a no-op, not a failure.
+            Ok(JoinResponse::Rejected {
+                reason: JoinRejection::Duplicate,
+            }) => return Ok(()),
+            Ok(JoinResponse::Rejected { reason }) => {
+                return Err(StartError::Join(format!(
+                    "cluster rejected join: {reason:?}"
+                )));
+            }
+            Ok(JoinResponse::Redirect { leader }) if last => {
+                return Err(StartError::Join(format!(
+                    "no leader available to accept the join (hint: {leader:?})"
+                )));
+            }
+            Err(e) if last => return Err(StartError::Join(format!("join request failed: {e}"))),
+            Ok(JoinResponse::Redirect { .. }) | Err(_) => tokio::time::sleep(JOIN_BACKOFF).await,
+        }
+    }
+    Err(StartError::Join(
+        "join did not commit before the retry budget elapsed".to_string(),
+    ))
 }

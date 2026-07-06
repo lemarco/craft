@@ -79,6 +79,7 @@ Runnable examples live in [`crates/craft/examples`](crates/craft/examples):
 cargo run -p craft --example kv_store          # single-node KV store
 cargo run -p craft --example three_node_local  # 3 nodes + transparent forwarding
 cargo run -p craft --example actors_cluster    # auto-placed, cross-node actors
+cargo run -p craft --example vps_join --features dev-certs  # elastic join from a seed
 ```
 
 A full multi-process cluster over **real QUIC + mTLS** lives in [`e2e/`](e2e):

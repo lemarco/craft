@@ -157,3 +157,106 @@ async fn quic_cluster_elects_leader_and_replicates() {
         c.shutdown();
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+async fn a_new_node_dynamically_joins_over_quic() {
+    // Backlog E5 / ADR 007: a fourth node joins a live 3-node QUIC cluster
+    // knowing ONLY the seed's address. It fetches the peer-address book from the
+    // seed, is added by the leader via a membership change, and both directions
+    // learn each other's addresses over `/cluster/peers`.
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let addrs: Vec<SocketAddr> = ids.iter().map(|_| free_udp()).collect();
+    let ca = ClusterCa::generate().expect("dev CA");
+    let peers: PeerDirectory = ids.iter().copied().zip(addrs.iter().copied()).collect();
+
+    let mut clusters = Vec::new();
+    for (i, &id) in ids.iter().enumerate() {
+        let security = Security::new(
+            ca.issue_node(id).expect("issue node cert"),
+            ca.root_store().expect("trust root"),
+        );
+        let cluster = CraftCluster::builder(id, Kv::default())
+            .members(ids)
+            .allow_join(true)
+            .raft_config(raft_config())
+            .tick_period(Duration::from_millis(10))
+            .start_quic(security, addrs[i], peers.clone())
+            .await
+            .expect("start quic node");
+        clusters.push(Arc::new(cluster));
+    }
+
+    let leader = await_leader(&clusters).await;
+    leader
+        .handle()
+        .propose(Cmd::Set {
+            key: "k".into(),
+            value: "v".into(),
+        })
+        .await
+        .expect("seed proposal");
+
+    // Bring up node 4 knowing only node 1's address as a seed — no static entry
+    // for nodes 2 and 3. `members` is the *current* voter set (without node 4),
+    // so it starts as a non-voting follower and never disrupts the election.
+    let joiner_id = NodeId(4);
+    let joiner_addr = free_udp();
+    let seed_only: PeerDirectory = [(NodeId(1), addrs[0])].into_iter().collect();
+    let security = Security::new(
+        ca.issue_node(joiner_id).expect("issue joiner cert"),
+        ca.root_store().expect("trust root"),
+    );
+    let joiner = CraftCluster::builder(joiner_id, Kv::default())
+        .members(ids)
+        .allow_join(true)
+        .raft_config(raft_config())
+        .tick_period(Duration::from_millis(10))
+        .join(NodeId(1), addrs[0])
+        .start_quic(security, joiner_addr, seed_only)
+        .await
+        .expect("dynamic join over quic");
+    let joiner = Arc::new(joiner);
+
+    // The join committed a membership change adding node 4, and it caught up to
+    // the pre-join state.
+    let mut joined = false;
+    for _ in 0..1000 {
+        if let Some(status) = joiner.status().await {
+            if status.voters.contains(&joiner_id) && status.last_applied >= LogIndex(1) {
+                joined = true;
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(joined, "node 4 did not become a voter and catch up");
+
+    // A fresh proposal now replicates to the enlarged cluster, node 4 included.
+    let leader = await_leader(&clusters).await;
+    leader
+        .handle()
+        .propose(Cmd::Set {
+            key: "k2".into(),
+            value: "v2".into(),
+        })
+        .await
+        .expect("post-join proposal");
+    let target = leader.status().await.expect("leader status").commit_index;
+
+    let mut caught_up = false;
+    for _ in 0..1000 {
+        if let Some(status) = joiner.status().await {
+            if status.last_applied >= target {
+                caught_up = true;
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(caught_up, "node 4 did not replicate the post-join proposal");
+
+    joiner.shutdown();
+    for c in &clusters {
+        c.shutdown();
+    }
+}

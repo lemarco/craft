@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
 use bytes::{Buf, Bytes};
@@ -146,7 +146,11 @@ struct PeerConn {
 struct Inner {
     endpoint: quinn::Endpoint,
     client_config: quinn::ClientConfig,
-    directory: PeerDirectory,
+    // Runtime-mutable so peers learned dynamically (a node joining via
+    // `/cluster/join`, addresses gossiped over `/cluster/peers`) become dialable
+    // without restarting the transport (ADR 007). Guarded by a std `RwLock`
+    // held only for the brief address lookup/update, never across an `.await`.
+    directory: RwLock<PeerDirectory>,
     policy: BackoffPolicy,
     conns: Mutex<HashMap<(NodeId, TrafficClass), PeerConn>>,
 }
@@ -189,11 +193,41 @@ impl QuicTransport {
             inner: Arc::new(Inner {
                 endpoint,
                 client_config,
-                directory,
+                directory: RwLock::new(directory),
                 policy,
                 conns: Mutex::new(HashMap::new()),
             }),
         }
+    }
+
+    /// Learn (or update) a peer's address at runtime — e.g. when a node joins
+    /// via `/cluster/join` or its address is gossiped over `/cluster/peers`
+    /// (ADR 007). Subsequent dials to `id` use `addr`.
+    pub fn learn_peer(&self, id: NodeId, addr: SocketAddr) {
+        self.inner
+            .directory
+            .write()
+            .expect("peer directory poisoned")
+            .insert(id, addr);
+    }
+
+    /// Forget a peer that has left the cluster; future dials to it fail fast.
+    pub fn forget_peer(&self, id: NodeId) {
+        self.inner
+            .directory
+            .write()
+            .expect("peer directory poisoned")
+            .remove(id);
+    }
+
+    /// A snapshot of the currently known peer addresses.
+    #[must_use]
+    pub fn peers(&self) -> PeerDirectory {
+        self.inner
+            .directory
+            .read()
+            .expect("peer directory poisoned")
+            .clone()
     }
 }
 
@@ -234,6 +268,8 @@ async fn connect_sender(
 async fn dial(inner: &Inner, peer: NodeId) -> Result<ClientSender, TransportError> {
     let addr = inner
         .directory
+        .read()
+        .expect("peer directory poisoned")
         .addr(peer)
         .ok_or(TransportError::Unreachable(peer))?;
     let server_name = node_server_name(peer);

@@ -18,8 +18,8 @@ use std::sync::{Arc, Mutex};
 
 use craft_proto::{
     ActorEnvelope, ClientRequest, ClientResponse, DeliverAck, DirectoryUpdate, JoinRequest,
-    JoinResponse, MigrateReply, MigrateRequest, NodeId, RaftRpc, RaftRpcReply, RegisterAck,
-    SpawnReply, SpawnRequest,
+    JoinResponse, MigrateReply, MigrateRequest, NodeId, PeerBook, RaftRpc, RaftRpcReply,
+    RegisterAck, SpawnReply, SpawnRequest,
 };
 
 use crate::route::Route;
@@ -123,6 +123,23 @@ pub async fn send_join_request<T: Transport + ?Sized>(
 ) -> Result<JoinResponse, TransportError> {
     let body = encode_body(request)?;
     let response = transport.send(peer, Route::ClusterJoin, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Fetch a peer's [`PeerBook`] for address propagation (`/cluster/peers`,
+/// ADR 007). The request body is empty; the response is the peer's current view
+/// of reachable node addresses.
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is
+/// unreachable / the send fails.
+pub async fn fetch_peers<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+) -> Result<PeerBook, TransportError> {
+    let response = transport
+        .send(peer, Route::ClusterPeers, Vec::new())
+        .await?;
     Ok(decode_body(&response)?)
 }
 

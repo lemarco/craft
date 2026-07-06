@@ -37,6 +37,26 @@ pub enum JoinResponse {
     },
 }
 
+/// One node's advertised address, as gossiped in a [`PeerBook`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PeerEntry {
+    /// The node this address belongs to.
+    pub node: NodeId,
+    /// The address peers should dial to reach it (`host:port`).
+    pub addr: String,
+}
+
+/// A snapshot of a node's known peer addresses, served over `/cluster/peers`
+/// (ADR 007) so a newly joined node — and existing members — can learn how to
+/// reach every peer without static, cluster-wide address configuration. This is
+/// the address-plane counterpart to the Raft-replicated membership (which
+/// carries only [`NodeId`]s, not addresses).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PeerBook {
+    /// Known `(node, addr)` pairs, ascending by id.
+    pub entries: Vec<PeerEntry>,
+}
+
 /// Reason a [`JoinRequest`] was rejected.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum JoinRejection {

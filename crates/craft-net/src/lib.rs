@@ -32,7 +32,7 @@ pub use quic::{QuicServer, QuicTransport, client_endpoint};
 pub use route::{Route, TrafficClass};
 pub use tls::{NodeIdentity, TlsError, client_config, server_config};
 pub use transport::{
-    LocalNetwork, RequestHandler, Transport, TransportError, send_actor_deliver,
+    LocalNetwork, RequestHandler, Transport, TransportError, fetch_peers, send_actor_deliver,
     send_actor_migrate, send_actor_spawn, send_client_request, send_directory_update,
     send_join_request, send_peer_rpc,
 };

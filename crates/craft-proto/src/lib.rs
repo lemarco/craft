@@ -17,7 +17,7 @@ pub use actor::{
     MigrateReply, MigrateRequest, RegisterAck, SpawnReply, SpawnRequest,
 };
 pub use client::{ClientRequest, ClientResponse};
-pub use join::{JoinRejection, JoinRequest, JoinResponse};
+pub use join::{JoinRejection, JoinRequest, JoinResponse, PeerBook, PeerEntry};
 pub use raft::{
     AppendEntries, AppendEntriesReply, EntryPayload, InstallSnapshot, InstallSnapshotReply,
     LogEntry, Membership, RaftRpc, RaftRpcReply, RequestVote, RequestVoteReply,

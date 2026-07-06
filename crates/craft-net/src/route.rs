@@ -15,6 +15,8 @@ pub const PEER_WIRE_PATH: &str = "/raft/v1/peer/wire";
 pub const CLIENT_WIRE_PATH: &str = "/raft/v1/client/wire";
 /// Cluster join handshake (ADR 017).
 pub const CLUSTER_JOIN_PATH: &str = "/raft/v1/cluster/join";
+/// Peer-address book exchange for address propagation (ADR 007).
+pub const CLUSTER_PEERS_PATH: &str = "/raft/v1/cluster/peers";
 /// Deliver a message / ask to a remote actor mailbox (ADR 013).
 pub const ACTOR_DELIVER_PATH: &str = "/raft/v1/actor/deliver";
 /// Remote spawn / placement (ADR 013).
@@ -48,6 +50,8 @@ pub enum Route {
     ClientWire,
     /// [`CLUSTER_JOIN_PATH`].
     ClusterJoin,
+    /// [`CLUSTER_PEERS_PATH`].
+    ClusterPeers,
     /// [`ACTOR_DELIVER_PATH`].
     ActorDeliver,
     /// [`ACTOR_SPAWN_PATH`].
@@ -60,10 +64,11 @@ pub enum Route {
 
 impl Route {
     /// Every route, in a stable order (handy for building a router or tests).
-    pub const ALL: [Route; 7] = [
+    pub const ALL: [Route; 8] = [
         Route::PeerWire,
         Route::ClientWire,
         Route::ClusterJoin,
+        Route::ClusterPeers,
         Route::ActorDeliver,
         Route::ActorSpawn,
         Route::ActorMigrate,
@@ -77,6 +82,7 @@ impl Route {
             Route::PeerWire => PEER_WIRE_PATH,
             Route::ClientWire => CLIENT_WIRE_PATH,
             Route::ClusterJoin => CLUSTER_JOIN_PATH,
+            Route::ClusterPeers => CLUSTER_PEERS_PATH,
             Route::ActorDeliver => ACTOR_DELIVER_PATH,
             Route::ActorSpawn => ACTOR_SPAWN_PATH,
             Route::ActorMigrate => ACTOR_MIGRATE_PATH,
@@ -96,7 +102,7 @@ impl Route {
         match self {
             Route::PeerWire => TrafficClass::Peer,
             Route::ClientWire => TrafficClass::Client,
-            Route::ClusterJoin => TrafficClass::Cluster,
+            Route::ClusterJoin | Route::ClusterPeers => TrafficClass::Cluster,
             Route::ActorDeliver
             | Route::ActorSpawn
             | Route::ActorMigrate

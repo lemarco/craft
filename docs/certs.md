@@ -163,12 +163,26 @@ CN is free-form.
 
 1. Copy `ca.pem` (and, if signing on the box, `ca.key`) to the new host.
 2. Mint its cert: `generate.sh --node-id <N> --out ./certs --ca ca.pem --ca-key ca.key`.
-3. Add `<N>@<addr>` to `CRAFT_PEERS` on every node and restart them (static
-   membership; see below).
+3. Point the new node at **one existing member** as a seed and let it join the
+   live cluster — no restart of the running nodes, and no cluster-wide address
+   list required (ADR 007/017):
 
-> **v1 membership is static.** Bootstrap the full member set up front via
-> matching `CRAFT_PEERS` + `.members(...)`. Dynamic `JOIN_ADDR` onboarding
-> (a node joining a live cluster without a restart) is a planned follow-up.
+   ```rust
+   let cluster = CraftCluster::builder(NodeId(N), machine)
+       .members(current_voters)          // the cluster's current voter set (not this node)
+       .join(seed_id, seed_addr)         // contact any member; it forwards to the leader
+       .start_quic(security, listen, [(seed_id, seed_addr)].into_iter().collect())
+       .await?;
+   ```
+
+   The joiner fetches the peer-address book from the seed over `/cluster/peers`,
+   the leader commits a membership change adding it, and addresses propagate both
+   ways so every node can reach the newcomer. See the `vps_join` example
+   (`cargo run -p craft --example vps_join --features dev-certs`).
+
+> **Static membership still works** for fixed clusters: bootstrap the full member
+> set up front via matching `CRAFT_PEERS` + `.members(...)`. Dynamic `join` is the
+> elastic path; the reference `craft-node` binary reads a static `CRAFT_PEERS`.
 
 ---
 
