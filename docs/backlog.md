@@ -203,15 +203,41 @@ to `RedisStore`). Real Redis is covered by `testcontainers` tests gated
 `store-redis` heavy CI job with Docker-in-Docker, keeping the fast lane
 Docker-free.
 
-#### Track H — Observability (`craft-dashboard` + admin) **[P]**
-| ID | Task | Effort |
-|----|------|--------|
-| H1 | Admin HTTP `:8080`: `/health`, `/ready` ([ADR 025](decisions/025-health-admin-port.md)) | M |
-| H2 | Prometheus `/metrics` ([ADR 026](decisions/026-observability.md)) | M |
-| H3 | Telemetry event stream (`cluster.events()`) | M |
-| H4 | Introspection JSON API `/introspect/*` | L |
-| H5 | Live dashboard UI + SSE `/dashboard` | L |
-| H6 | Opt-in message tracing | M |
+#### Track H — Observability (`craft-dashboard` + admin) **[P]** — **done**
+| ID | Task | Effort | Status |
+|----|------|--------|--------|
+| H1 | Admin HTTP `:8080`: `/health`, `/ready` ([ADR 025](decisions/025-health-admin-port.md)) | M | done |
+| H2 | Prometheus `/metrics` ([ADR 026](decisions/026-observability.md)) | M | done |
+| H3 | Telemetry event stream (`cluster.events()`) | M | done |
+| H4 | Introspection JSON API `/introspect/*` | L | done |
+| H5 | Live dashboard UI + SSE `/dashboard` | L | done |
+| H6 | Opt-in message tracing | M | scaffolded¹ |
+
+**Track H notes.** `craft-dashboard` provides the full read-only admin surface
+on the separate admin port (ADR 025), built on hyper HTTP/1.1:
+
+- **H2 `Metrics`** — a small, always-on, dependency-light Prometheus registry
+  (counter/gauge/summary families, deterministic sorted labels, text
+  exposition) rendered at `GET /metrics`.
+- **H3 `EventBus`/`CraftEvent`** — BEAM-`:telemetry`-style bounded broadcast;
+  slow subscribers' lagged events are skipped and counted (`dropped()`), never
+  backpressuring producers. `EventSubscription::recv` transparently skips gaps.
+- **H4 `Observer` port + view types** — `Readiness`, `ClusterView`,
+  `ActorView`, `NodeView` served as JSON at `/ready`, `/introspect/cluster`,
+  `/introspect/actors[/{id}]`, `/introspect/node/{id}`. Decoupled from the
+  concrete `StateMachine` via boxed-future trait so the facade implements it.
+- **H1 `AdminServer`** — `/health` (liveness), `/ready` (200/503 from
+  `Readiness::is_ready`), plus the above; GET-only, JSON bodies.
+- **H5** — a single self-contained embedded `/dashboard` HTML page (cluster
+  map, actor table, live event log) that tails `GET /dashboard/events` (SSE
+  fed from the `EventBus`); read-only per ADR 026 §6.
+
+Tested over real TCP sockets against a fake `Observer` (every route incl. SSE
+streaming, 200/404/400/503 cases) plus unit tests for the metrics encoder and
+event bus. ¹ **H6**: the types are in place (`TraceOpts`,
+`CraftEvent::MessageTraced`); enabling per-actor tracing is wired when the
+facade connects the runtime to the `EventBus` (facade Track E), so the runtime
+emits the events these surfaces render.
 
 #### Track I — Simulation (`craft-sim`) **[P]** (can start once core+net traits exist)
 | ID | Task | Effort | Status |

@@ -1,0 +1,117 @@
+//! JSON snapshot types and the [`Observer`] port the admin server reads from
+//! (ADR 025 readiness, ADR 026 §4 introspection).
+//!
+//! The dashboard crate does not depend on the concrete runtime; instead the
+//! facade/runtime implements [`Observer`], supplying point-in-time snapshots
+//! that the admin HTTP server renders as JSON. This keeps observability
+//! decoupled and lets tests drive the endpoints with a fake observer.
+
+use std::future::Future;
+use std::pin::Pin;
+
+use serde::{Deserialize, Serialize};
+
+/// A boxed, `Send` future — object-safe return type for [`Observer`].
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// Readiness snapshot for `GET /ready` (ADR 025). `200` iff
+/// [`is_ready`](Readiness::is_ready).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Readiness {
+    /// This node's id.
+    pub node_id: u64,
+    /// Current role (`leader`/`follower`/`candidate`/…).
+    pub role: String,
+    /// Whether the node is a member of the current Raft configuration.
+    pub member: bool,
+    /// Whether the node is draining/leaving (ADR 022).
+    pub draining: bool,
+    /// Auto-spawned workers currently hosted (ADR 015).
+    pub workers: Vec<String>,
+    /// Human-readable reason when not ready (e.g. `"joining"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl Readiness {
+    /// A node is ready when it is a cluster member and not draining.
+    #[must_use]
+    pub fn is_ready(&self) -> bool {
+        self.member && !self.draining
+    }
+}
+
+/// One node's summary within a [`ClusterView`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeSummary {
+    /// Node id.
+    pub id: u64,
+    /// Role as seen by the responder.
+    pub role: String,
+    /// Whether it is a voting member.
+    pub member: bool,
+}
+
+/// Cluster-wide view for `GET /introspect/cluster` (ADR 026 §4).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClusterView {
+    /// Current best-known leader.
+    pub leader: Option<u64>,
+    /// Current term.
+    pub term: u64,
+    /// Highest committed index.
+    pub commit_index: u64,
+    /// Known nodes and their roles.
+    pub nodes: Vec<NodeSummary>,
+}
+
+/// One actor's introspection record (ADR 026 §4).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActorView {
+    /// Actor identity (registry key / instance id).
+    pub id: String,
+    /// Node currently hosting the actor.
+    pub node: u64,
+    /// User actor type name.
+    pub actor_type: String,
+    /// Current mailbox depth.
+    pub mailbox_depth: u64,
+    /// Uptime in seconds since (re)spawn.
+    pub uptime_secs: u64,
+    /// Restart/migration generation.
+    pub generation: u32,
+}
+
+/// Per-node view for `GET /introspect/node/{id}` (ADR 026 §4).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeView {
+    /// Node id.
+    pub id: u64,
+    /// Worker pools hosted here.
+    pub workers: Vec<String>,
+    /// Logical CPU/parallelism available (ADR 013 resources).
+    pub cpus: u32,
+    /// Whether the external actor-state store is reachable (ADR 021).
+    pub store_healthy: bool,
+}
+
+/// Read-only observability port implemented by the runtime/facade.
+///
+/// Object-safe (boxed futures) so the admin server can hold
+/// `Arc<dyn Observer>` independent of the concrete `StateMachine`.
+pub trait Observer: Send + Sync + 'static {
+    /// Current readiness snapshot (ADR 025).
+    fn readiness(&self) -> BoxFuture<'_, Readiness>;
+
+    /// Cluster-wide consensus/membership view.
+    fn cluster(&self) -> BoxFuture<'_, ClusterView>;
+
+    /// All actors known to this node (cluster-wide when served by the leader).
+    fn actors(&self) -> BoxFuture<'_, Vec<ActorView>>;
+
+    /// A single actor by id, if present.
+    fn actor(&self, id: &str) -> BoxFuture<'_, Option<ActorView>>;
+
+    /// A single node's detail by id, if known.
+    fn node(&self, id: u64) -> BoxFuture<'_, Option<NodeView>>;
+}

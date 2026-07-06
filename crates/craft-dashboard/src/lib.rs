@@ -1,6 +1,30 @@
-//! `craft-dashboard` — BEAM-style observability (ADR 026, ADR 025).
+//! `craft-dashboard` — admin HTTP endpoints and the live observability
+//! dashboard (ADR 025 + ADR 026, backlog Track H).
 //!
-//! Admin HTTP endpoints (`/health`, `/ready`, `/metrics`), telemetry stream,
-//! introspection API, and a live web dashboard (backlog Track H).
+//! Everything here rides the **admin port** (default `0.0.0.0:8080/tcp`),
+//! separate from the mTLS QUIC craft wire, so ordinary probes and Prometheus
+//! scrapers work without client certs. The surface is entirely read-only.
+//!
+//! Pieces:
+//!
+//! * [`Metrics`] — a small always-on Prometheus registry (`GET /metrics`).
+//! * [`EventBus`] / [`CraftEvent`] — the BEAM-`:telemetry`-style event stream,
+//!   consumed by user sinks and the dashboard's SSE feed.
+//! * [`Observer`] + view types — the port the runtime implements to expose
+//!   readiness and introspection snapshots as JSON.
+//! * [`AdminServer`] — the hyper HTTP/1.1 server tying it together: `/health`,
+//!   `/ready`, `/metrics`, `/introspect/*`, `/dashboard`, `/dashboard/events`.
 
 pub use {craft_actor, craft_net};
+
+mod dashboard;
+mod metrics;
+mod server;
+mod telemetry;
+mod views;
+
+pub use dashboard::DASHBOARD_HTML;
+pub use metrics::{MetricKind, Metrics};
+pub use server::AdminServer;
+pub use telemetry::{CraftEvent, EventBus, EventSubscription, StopReason, TraceOpts};
+pub use views::{ActorView, BoxFuture, ClusterView, NodeSummary, NodeView, Observer, Readiness};
