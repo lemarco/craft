@@ -18,6 +18,7 @@
 
 pub use craft_proto as proto;
 
+pub mod backoff;
 pub mod peer;
 pub mod quic;
 pub mod route;
@@ -25,6 +26,7 @@ pub mod tls;
 pub mod transport;
 pub mod wire;
 
+pub use backoff::{BackoffPolicy, BackoffState};
 pub use peer::PeerDirectory;
 pub use quic::{QuicServer, QuicTransport, client_endpoint};
 pub use route::{Route, TrafficClass};

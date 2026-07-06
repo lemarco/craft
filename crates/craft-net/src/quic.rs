@@ -11,14 +11,16 @@ use std::collections::HashMap;
 use std::fmt;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Instant;
 
 use bytes::{Buf, Bytes};
 use craft_proto::NodeId;
 use http::{Request, Response, StatusCode};
 use tokio::sync::Mutex;
 
+use crate::backoff::{BackoffPolicy, BackoffState};
 use crate::peer::PeerDirectory;
-use crate::route::Route;
+use crate::route::{Route, TrafficClass};
 use crate::tls::node_server_name;
 use crate::transport::{Body, BoxFuture, RequestHandler, Transport, TransportError};
 use crate::wire::MAX_BODY_BYTES;
@@ -129,19 +131,32 @@ async fn handle_request(
     Ok(())
 }
 
-/// The `h3` client `SendRequest` handle cached per peer.
+/// The `h3` client `SendRequest` handle cached per peer connection.
 type ClientSender = h3::client::SendRequest<h3_quinn::OpenStreams, Bytes>;
+
+/// A cached connection to one peer for one [`TrafficClass`], plus its reconnect
+/// backoff (C5). Consensus (`Peer`) traffic gets its own entry, isolated from
+/// bulk client/actor streams (ADR 027 R2).
+#[derive(Default)]
+struct PeerConn {
+    sender: Option<ClientSender>,
+    backoff: BackoffState,
+}
 
 struct Inner {
     endpoint: quinn::Endpoint,
     client_config: quinn::ClientConfig,
     directory: PeerDirectory,
-    senders: Mutex<HashMap<NodeId, ClientSender>>,
+    policy: BackoffPolicy,
+    conns: Mutex<HashMap<(NodeId, TrafficClass), PeerConn>>,
 }
 
 /// A [`Transport`] over HTTP/3: dials peers by [`NodeId`] using the
 /// [`PeerDirectory`], authenticates with mTLS, and performs one request/response
-/// per [`send`](Transport::send). Connections are cached per peer and reused.
+/// per [`send`](Transport::send). Connections are cached **per peer and traffic
+/// class** and reused, so latency-sensitive consensus RPCs never share a QUIC
+/// connection with bulk client/actor traffic (ADR 027 R2). Failed dials back
+/// off exponentially ([`BackoffPolicy`]) so a dead peer is not hammered.
 #[derive(Clone)]
 pub struct QuicTransport {
     inner: Arc<Inner>,
@@ -150,30 +165,73 @@ pub struct QuicTransport {
 impl QuicTransport {
     /// Build a client transport from a client QUIC endpoint (see
     /// [`client_endpoint`]), an mTLS client config (build it with
-    /// [`crate::tls::client_config`]), and the peer address book.
+    /// [`crate::tls::client_config`]), and the peer address book, using the
+    /// default reconnect [`BackoffPolicy`].
     #[must_use]
     pub fn new(
         endpoint: quinn::Endpoint,
         client_config: quinn::ClientConfig,
         directory: PeerDirectory,
     ) -> Self {
+        Self::with_backoff(endpoint, client_config, directory, BackoffPolicy::default())
+    }
+
+    /// Like [`new`](QuicTransport::new) but with an explicit reconnect
+    /// [`BackoffPolicy`].
+    #[must_use]
+    pub fn with_backoff(
+        endpoint: quinn::Endpoint,
+        client_config: quinn::ClientConfig,
+        directory: PeerDirectory,
+        policy: BackoffPolicy,
+    ) -> Self {
         Self {
             inner: Arc::new(Inner {
                 endpoint,
                 client_config,
                 directory,
-                senders: Mutex::new(HashMap::new()),
+                policy,
+                conns: Mutex::new(HashMap::new()),
             }),
         }
     }
 }
 
-async fn connect_sender(inner: &Inner, peer: NodeId) -> Result<ClientSender, TransportError> {
-    let mut senders = inner.senders.lock().await;
-    if let Some(sender) = senders.get(&peer) {
+/// Get a cached sender for `(peer, class)` or dial a fresh connection. A dial
+/// that is still inside its backoff window short-circuits to
+/// [`TransportError::Unreachable`] without touching the socket; a dial failure
+/// arms the backoff, and a success clears it.
+async fn connect_sender(
+    inner: &Inner,
+    peer: NodeId,
+    class: TrafficClass,
+) -> Result<ClientSender, TransportError> {
+    let mut conns = inner.conns.lock().await;
+    let entry = conns.entry((peer, class)).or_default();
+    if let Some(sender) = &entry.sender {
         return Ok(sender.clone());
     }
+    if !entry.backoff.ready(Instant::now()) {
+        // Still backing off from a recent failure — do not redial yet.
+        return Err(TransportError::Unreachable(peer));
+    }
 
+    let dialed = dial(inner, peer).await;
+    match dialed {
+        Ok(sender) => {
+            entry.sender = Some(sender.clone());
+            entry.backoff.reset();
+            Ok(sender)
+        }
+        Err(e) => {
+            entry.backoff.record_failure(&inner.policy, Instant::now());
+            Err(e)
+        }
+    }
+}
+
+/// Perform the actual mTLS QUIC + HTTP/3 handshake to `peer`.
+async fn dial(inner: &Inner, peer: NodeId) -> Result<ClientSender, TransportError> {
     let addr = inner
         .directory
         .addr(peer)
@@ -192,8 +250,6 @@ async fn connect_sender(inner: &Inner, peer: NodeId) -> Result<ClientSender, Tra
     tokio::spawn(async move {
         let _ = std::future::poll_fn(|cx| driver.poll_close(cx)).await;
     });
-
-    senders.insert(peer, sender.clone());
     Ok(sender)
 }
 
@@ -203,7 +259,8 @@ async fn round_trip(
     route: Route,
     body: Body,
 ) -> Result<Body, TransportError> {
-    let mut sender = connect_sender(&inner, peer).await?;
+    let class = route.traffic_class();
+    let mut sender = connect_sender(&inner, peer, class).await?;
 
     let request = Request::builder()
         .method(route.method())
@@ -235,9 +292,14 @@ async fn round_trip(
     }
     .await;
 
-    // On failure, drop the cached connection so the next call reconnects.
+    // A send failure on an established connection drops it and arms the backoff,
+    // so the next call redials (after the window) instead of reusing a dead one.
     if send.is_err() {
-        inner.senders.lock().await.remove(&peer);
+        let mut conns = inner.conns.lock().await;
+        if let Some(entry) = conns.get_mut(&(peer, class)) {
+            entry.sender = None;
+            entry.backoff.record_failure(&inner.policy, Instant::now());
+        }
     }
     send
 }
