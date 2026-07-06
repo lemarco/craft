@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use craft_core::StateMachine;
 use craft_dashboard::{CraftEvent, EventBus, Metrics, StopReason, TraceOpts};
@@ -20,8 +20,8 @@ use tokio::task::JoinHandle;
 
 use craft_actor::{
     ActorDirectory, ActorObserver, ActorRegistry, ClusterControl, ClusterMessaging,
-    ClusterScaleError, ClusterState, ClusterSupervisor, DirectorySync, NodeHandle, NodeStatus,
-    UserActor,
+    ClusterScaleError, ClusterState, ClusterSupervisor, DirectorySync, NOT_LEADER_REASON,
+    NodeHandle, NodeStatus, UserActor,
 };
 
 /// The live leadership/membership facts the supervisor reconciles against
@@ -451,32 +451,50 @@ impl<M: StateMachine> CraftCluster<M> {
     where
         A::Config: Clone,
     {
-        let status = self.status().await.ok_or(ScaleClusterError::Stopped)?;
-        if matches!(status.role, craft_core::Role::Leader) {
-            self.control
-                .scale_cluster::<A>(name, total, config, &status.voters)
-                .await?;
-            return Ok(());
-        }
-        let leader = status.leader.ok_or(ScaleClusterError::NoLeader)?;
         let encoded =
             A::encode_config(&config).map_err(|e| ScaleClusterError::Config(e.to_string()))?;
-        let request = ScaleRequest {
-            name: name.to_string(),
-            actor_type: ClusterControl::type_id::<A>(),
-            total: total as u64,
-            config: encoded,
-            live_nodes: status.voters.clone(),
-        };
-        let reply = self
-            .control
-            .request_scale(leader, &request)
-            .await
-            .map_err(|e| RemoteError::transport(leader, e))?;
-        if let Some(reason) = reply.error {
-            return Err(RemoteError::rejected(leader, reason).into());
+        // Leadership may still be settling (just elected / handed off): the live
+        // status can name a leader whose own facts have not yet caught up, so a
+        // forwarded scale can be transiently refused with `NOT_LEADER_REASON`.
+        // Re-resolve and retry within a bounded deadline rather than surfacing a
+        // spurious failure — a real placement error returns immediately.
+        let deadline = Instant::now() + SCALE_FORWARD_TIMEOUT;
+        loop {
+            let status = self.status().await.ok_or(ScaleClusterError::Stopped)?;
+            if matches!(status.role, craft_core::Role::Leader) {
+                self.control
+                    .scale_cluster::<A>(name, total, config.clone(), &status.voters)
+                    .await?;
+                return Ok(());
+            }
+            let Some(leader) = status.leader else {
+                // No leader yet — keep waiting for one to emerge if there's time.
+                if Instant::now() < deadline {
+                    tokio::time::sleep(SCALE_FORWARD_RETRY).await;
+                    continue;
+                }
+                return Err(ScaleClusterError::NoLeader);
+            };
+            let request = ScaleRequest {
+                name: name.to_string(),
+                actor_type: ClusterControl::type_id::<A>(),
+                total: total as u64,
+                config: encoded.clone(),
+                live_nodes: status.voters.clone(),
+            };
+            let reply = self
+                .control
+                .request_scale(leader, &request)
+                .await
+                .map_err(|e| RemoteError::transport(leader, e))?;
+            match reply.error {
+                None => return Ok(()),
+                Some(reason) if reason == NOT_LEADER_REASON && Instant::now() < deadline => {
+                    tokio::time::sleep(SCALE_FORWARD_RETRY).await;
+                }
+                Some(reason) => return Err(RemoteError::rejected(leader, reason).into()),
+            }
         }
-        Ok(())
     }
 
     /// Publish this node's local actor registrations to the rest of the cluster
@@ -501,6 +519,14 @@ impl<M: StateMachine> Drop for CraftCluster<M> {
         self.shutdown();
     }
 }
+
+/// How long [`scale_cluster`](CraftCluster::scale_cluster) keeps re-resolving
+/// the leader while a forwarded scale is transiently refused because leadership
+/// is still settling. Comfortably exceeds the facts-refresh period so a scale
+/// issued right after an election succeeds rather than failing spuriously.
+const SCALE_FORWARD_TIMEOUT: Duration = Duration::from_secs(5);
+/// Delay between forward retries within [`SCALE_FORWARD_TIMEOUT`].
+const SCALE_FORWARD_RETRY: Duration = Duration::from_millis(25);
 
 /// Why a cluster-wide [`scale_cluster`](CraftCluster::scale_cluster) failed.
 #[derive(Debug, thiserror::Error)]

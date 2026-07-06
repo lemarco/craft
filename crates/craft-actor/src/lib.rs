@@ -27,7 +27,8 @@ pub use directory::{ActorDirectory, ClusterRef, DirectorySync};
 pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
 pub use messaging::{AskError as ClusterAskError, CastError, ClusterMessaging};
 pub use placement::{
-    ClusterControl, ClusterScaleError, MigrateError, RemoteSpawnError, ScalePlan, plan_scale,
+    ClusterControl, ClusterScaleError, MigrateError, NOT_LEADER_REASON, RemoteSpawnError,
+    ScalePlan, plan_scale,
 };
 pub use registry::{
     ASK_TIMEOUT, ActorGroupStats, ActorObserver, ActorRef, ActorRegistry, AskError,

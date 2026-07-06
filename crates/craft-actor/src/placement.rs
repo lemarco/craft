@@ -141,6 +141,13 @@ pub enum RemoteSpawnError {
     Remote(#[from] RemoteError),
 }
 
+/// The [`ScaleReply::error`] a leader-gated [`handle_scale`](ClusterControl::handle_scale)
+/// returns when this node is not (or is no longer) the leader. Distinct from a
+/// planning/placement failure: it is **transient** — leadership is settling or
+/// has moved — so a forwarding caller should re-resolve the leader and retry
+/// rather than surface it (ADR 018).
+pub const NOT_LEADER_REASON: &str = "not leader";
+
 /// Why a [`scale_cluster`](ClusterControl::scale_cluster) failed (E9).
 #[derive(Debug, thiserror::Error)]
 pub enum ClusterScaleError {
@@ -455,7 +462,7 @@ impl ClusterControl {
             Some(state) => {
                 if !state.is_leader() {
                     return ScaleReply {
-                        error: Some("not leader".to_string()),
+                        error: Some(NOT_LEADER_REASON.to_string()),
                     };
                 }
                 state.live_nodes()
