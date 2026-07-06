@@ -158,13 +158,29 @@ Depends on core + storage + net + macros. Some sub-tasks **[P]** among themselve
 
 Independent tracks again.
 
-#### Track F — Client (`craft-client`) **[P]**
-| ID | Task | Effort |
-|----|------|--------|
-| F1 | `ClientHandle` (in-process, ractor) | M |
-| F2 | `RemoteClient` (HTTP/3 + client mTLS) ([ADR 006](decisions/006-security.md)) | M |
-| F3 | `TypedClient<M>` encode/decode | S |
-| F4 | Retry/leader-follow ergonomics (forward already server-side) | S |
+#### Track F — Client (`craft-client`) **[P]** — **done**
+| ID | Task | Effort | Status |
+|----|------|--------|--------|
+| F1 | `ClientHandle` (in-process) | M | done¹ |
+| F2 | `RemoteClient` (HTTP/3 + client mTLS) ([ADR 006](decisions/006-security.md)) | M | done |
+| F3 | `TypedClient<M>` encode/decode | S | done |
+| F4 | Retry/leader-follow ergonomics (forward already server-side) | S | done |
+
+**Track F notes.** Added a raw-bytes `Client` trait (native async-in-trait,
+`propose`/`query`) plus `ClientError`, `RetryPolicy`, `RemoteClient`, and
+`TypedClient<C, M>`. `RemoteClient` works over any `craft_net::Transport`
+(live QUIC/HTTP/3 or the in-memory `LocalNetwork`), rotating across seed
+`targets` with per-attempt timeouts, backoff, and `NotLeader` leader-follow —
+followers already forward server-side (ADR 003), so the client only needs one
+reachable node. `TypedClient<C, M>` wraps any `Client` with a `StateMachine`'s
+command/query/response types via `postcard`. Integration tests spin up a real
+3-node `NodeService` cluster over `LocalNetwork` and assert: typed
+propose/query through any node, a write submitted to a *follower-only* target
+being forwarded to the leader, and failover when the first seed is detached.
+¹ **F1**: the in-process (L2 L1) handle is `craft_actor::NodeHandle`
+(zero-copy `propose`/`query` on an embedded node); `craft-client` deliberately
+does not re-wrap it (that would force a `craft-actor` dependency and duplicate
+the API). `LocalNetwork` gives the same in-process ergonomics for tests.
 
 #### Track G — Redis store (`craft-store-redis`) **[P]**
 | ID | Task | Effort |

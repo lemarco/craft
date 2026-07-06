@@ -15,4 +15,12 @@ workspace = true
 
 [dependencies]
 craft-proto.workspace = true
+craft-core.workspace = true
 craft-net.workspace = true
+thiserror.workspace = true
+tokio = { version = "1", features = ["time"] }
+
+[dev-dependencies]
+craft-actor.workspace = true
+serde = { workspace = true, features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
