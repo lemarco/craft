@@ -17,7 +17,8 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 use craft_proto::{
-    ClientRequest, ClientResponse, JoinRequest, JoinResponse, NodeId, RaftRpc, RaftRpcReply,
+    ClientRequest, ClientResponse, DirectoryUpdate, JoinRequest, JoinResponse, NodeId, RaftRpc,
+    RaftRpcReply, RegisterAck,
 };
 
 use crate::route::Route;
@@ -121,6 +122,22 @@ pub async fn send_join_request<T: Transport + ?Sized>(
 ) -> Result<JoinResponse, TransportError> {
     let body = encode_body(request)?;
     let response = transport.send(peer, Route::ClusterJoin, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Publish a [`DirectoryUpdate`] to a peer and decode its [`RegisterAck`]
+/// (`/actor/register`, ADR 013).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is
+/// unreachable / the send fails.
+pub async fn send_directory_update<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    update: &DirectoryUpdate,
+) -> Result<RegisterAck, TransportError> {
+    let body = encode_body(update)?;
+    let response = transport.send(peer, Route::ActorRegister, body).await?;
     Ok(decode_body(&response)?)
 }
 

@@ -12,7 +12,9 @@ pub mod client;
 pub mod join;
 pub mod raft;
 
-pub use actor::{ActorEnvelope, ActorRef};
+pub use actor::{
+    ActorEnvelope, ActorId, ActorRef, ActorRegistration, ActorTypeId, DirectoryUpdate, RegisterAck,
+};
 pub use client::{ClientRequest, ClientResponse};
 pub use join::{JoinRejection, JoinRequest, JoinResponse};
 pub use raft::{

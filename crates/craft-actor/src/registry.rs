@@ -37,6 +37,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+use craft_proto::{ActorId, ActorRegistration, ActorTypeId, NodeId};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
@@ -57,6 +58,11 @@ pub trait UserActor: Send + Sized + 'static {
     type Message: Send + 'static;
     /// Error returned by [`start`](UserActor::start) / [`handle`](UserActor::handle).
     type Error: std::error::Error + Send + Sync + 'static;
+
+    /// Whether instances carry migratable state that should be snapshotted and
+    /// transferred when their node leaves (ADR 013). Defaults to `false`
+    /// (stateless — the supervisor simply respawns the same count elsewhere).
+    const MIGRATABLE: bool = false;
 
     /// Build the actor's initial state from its configuration. Called once, on
     /// the actor's task, before any message is handled.
@@ -351,7 +357,9 @@ impl<A: UserActor> PoolInner<A> {
 /// without knowing its actor type.
 trait GroupLifecycle: Send + Sync {
     fn instance_count(&self) -> usize;
+    fn instance_ids(&self) -> Vec<u32>;
     fn type_name(&self) -> &'static str;
+    fn migratable(&self) -> bool;
     fn signal_stop(&self);
 }
 
@@ -359,8 +367,14 @@ impl<A: UserActor> GroupLifecycle for PoolInner<A> {
     fn instance_count(&self) -> usize {
         self.len()
     }
+    fn instance_ids(&self) -> Vec<u32> {
+        PoolInner::instance_ids(self)
+    }
     fn type_name(&self) -> &'static str {
         std::any::type_name::<A>()
+    }
+    fn migratable(&self) -> bool {
+        A::MIGRATABLE
     }
     fn signal_stop(&self) {
         PoolInner::signal_stop(self);
@@ -701,6 +715,33 @@ impl ActorRegistry {
             .unwrap()
             .get(name)
             .map_or(0, |e| e.lifecycle.instance_count())
+    }
+
+    /// Snapshot every locally-hosted actor instance as an [`ActorRegistration`]
+    /// owned by `node_id`, for publication into the cluster directory (E7,
+    /// ADR 013). Generation is `0` (bumped on respawn/migration in E12).
+    #[must_use]
+    pub fn local_registrations(&self, node_id: NodeId) -> Vec<ActorRegistration> {
+        let groups = self.groups.lock().unwrap();
+        let mut out = Vec::new();
+        for (name, entry) in groups.iter() {
+            let actor_type = ActorTypeId(entry.lifecycle.type_name().to_string());
+            let migratable = entry.lifecycle.migratable();
+            for instance in entry.lifecycle.instance_ids() {
+                out.push(ActorRegistration {
+                    id: ActorId {
+                        node: node_id,
+                        name: name.clone(),
+                        instance,
+                        generation: 0,
+                    },
+                    actor_type: actor_type.clone(),
+                    migratable,
+                });
+            }
+        }
+        out.sort_by(|a, b| a.id.cmp(&b.id));
+        out
     }
 
     // ---- internals -------------------------------------------------------

@@ -8,10 +8,12 @@
 
 pub use {craft_core, craft_net, craft_proto, craft_storage};
 
+mod directory;
 mod driver;
 mod registry;
 mod runtime;
 
+pub use directory::{ActorDirectory, ClusterRef, DirectorySync};
 pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
 pub use registry::{
     ActorRef, ActorRegistry, AskError, PoolRef, RpcReplyPort, ScaleError, SendError, SpawnError,

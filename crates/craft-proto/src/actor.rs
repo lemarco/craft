@@ -1,8 +1,63 @@
-//! Cross-node actor messaging wire types (ADR 013, ADR 019).
+//! Cross-node actor messaging + directory wire types (ADR 013, ADR 019).
 
 use serde::{Deserialize, Serialize};
 
 use crate::NodeId;
+
+/// A compile-time actor type tag. In v1 this is the Rust type name of the
+/// `UserActor`, which is stable within a build; two nodes running the same
+/// binary agree on it (ADR 013).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ActorTypeId(pub String);
+
+/// A globally-unique address for a single actor instance in the cluster
+/// (ADR 013). `generation` is bumped on respawn/migration so stale references
+/// are detectable.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ActorId {
+    /// Node currently hosting the instance.
+    pub node: NodeId,
+    /// Logical group / pool name (e.g. `"workers"`).
+    pub name: String,
+    /// Instance index within the group (`0` for a singleton).
+    pub instance: u32,
+    /// Bumped on respawn / migration to invalidate stale references.
+    pub generation: u64,
+}
+
+/// A directory entry describing one live actor instance, replicated across the
+/// cluster via `/actor/register` (ADR 013).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActorRegistration {
+    /// The instance's address.
+    pub id: ActorId,
+    /// The actor's type tag.
+    pub actor_type: ActorTypeId,
+    /// Whether the actor carries migratable state (ADR 013 migration).
+    pub migratable: bool,
+}
+
+/// A state-based directory update: node `node`'s **complete** set of local
+/// registrations at monotonic `epoch` (ADR 013 publish/revoke). Receivers
+/// replace everything they hold for `node`, applying an update only if its
+/// `epoch` is newer — so updates are idempotent and reorder-safe. Publishing an
+/// empty `registrations` revokes all of `node`'s entries (e.g. on leave).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DirectoryUpdate {
+    /// The node whose local registrations this snapshot describes.
+    pub node: NodeId,
+    /// Monotonic per-node version; higher supersedes lower.
+    pub epoch: u64,
+    /// The node's full set of local registrations at this epoch.
+    pub registrations: Vec<ActorRegistration>,
+}
+
+/// Acknowledgement for a [`DirectoryUpdate`] delivered to `/actor/register`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegisterAck {
+    /// Whether the update was applied (`false` if it was stale/superseded).
+    pub applied: bool,
+}
 
 /// A reference used to route a message to an actor or actor group.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

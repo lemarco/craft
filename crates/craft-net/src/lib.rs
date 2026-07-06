@@ -31,7 +31,7 @@ pub use route::{Route, TrafficClass};
 pub use tls::{NodeIdentity, TlsError, client_config, server_config};
 pub use transport::{
     LocalNetwork, RequestHandler, Transport, TransportError, send_client_request,
-    send_join_request, send_peer_rpc,
+    send_directory_update, send_join_request, send_peer_rpc,
 };
 pub use wire::{WireError, decode_body, encode_body};
 
