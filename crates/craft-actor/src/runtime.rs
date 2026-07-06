@@ -86,6 +86,8 @@ pub struct NodeStatus {
     pub commit_index: LogIndex,
     /// Highest applied index.
     pub last_applied: LogIndex,
+    /// The current committed voter set (live membership), sorted.
+    pub voters: Vec<NodeId>,
 }
 
 /// Internal mailbox messages processed by the runtime loop.
@@ -427,6 +429,7 @@ impl<M: StateMachine> Runtime<M> {
                     leader: node.leader_id(),
                     commit_index: node.commit_index(),
                     last_applied: node.last_applied(),
+                    voters: node.voters(),
                 });
             }
         }

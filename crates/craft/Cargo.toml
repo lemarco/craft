@@ -21,3 +21,14 @@ craft-net.workspace = true
 craft-actor.workspace = true
 craft-client.workspace = true
 craft-macros.workspace = true
+craft-dashboard.workspace = true
+tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
+
+[features]
+# Convenience helpers to mint a dev cluster CA + per-node identities. Not for
+# production (operators provide real certs). Forwards to `craft-net/dev-certs`.
+dev-certs = ["craft-net/dev-certs"]
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "io-util"] }
+serde = { workspace = true, features = ["derive"] }

@@ -6,10 +6,40 @@
 //! host supervised actors that can message, spawn, and migrate across nodes.
 //!
 //! This facade re-exports the stable public API; most users depend only on
-//! `craft` (ADR 028). The `CraftCluster` builder (backlog Wave 4) will be the
-//! main entry point.
+//! `craft` (ADR 028). The [`CraftCluster`] builder is the main entry point:
+//!
+//! ```no_run
+//! use std::time::Duration;
+//! use craft::{CraftCluster, NodeId};
+//! use craft::net::LocalNetwork;
+//! # use craft::core::{Config, StateMachine};
+//! # use craft::proto::LogIndex;
+//! # #[derive(Default)]
+//! # struct Counter(u64);
+//! # impl StateMachine for Counter {
+//! #     type Command = u64; type Query = (); type Response = u64; type Error = std::convert::Infallible;
+//! #     fn apply(&mut self, _: LogIndex, c: &u64) -> Result<u64, Self::Error> { self.0 += *c; Ok(self.0) }
+//! #     fn query(&self, _: &()) -> Result<u64, Self::Error> { Ok(self.0) }
+//! #     fn snapshot(&self) -> Result<Vec<u8>, Self::Error> { Ok(self.0.to_le_bytes().to_vec()) }
+//! #     fn restore(&mut self, b: &[u8]) -> Result<(), Self::Error> { self.0 = u64::from_le_bytes(b.try_into().unwrap()); Ok(()) }
+//! # }
+//! # async fn run() {
+//! let net = LocalNetwork::new();
+//! let cluster = CraftCluster::builder(NodeId(1), Counter::default())
+//!     .members([NodeId(1), NodeId(2), NodeId(3)])
+//!     .tick_period(Duration::from_millis(10))
+//!     .start_local(&net)
+//!     .await;
+//! # let _ = cluster;
+//! # }
+//! ```
 //!
 //! See the `docs/` directory for architecture and the accepted ADRs.
+
+mod builder;
+mod cluster;
+mod handler;
+mod observer;
 
 #[doc(inline)]
 pub use craft_proto::{self as proto, NodeId, PROTOCOL_VERSION, Term};
@@ -18,7 +48,17 @@ pub use craft_proto::{self as proto, NodeId, PROTOCOL_VERSION, Term};
 pub use {craft_actor as actor, craft_client as client, craft_core as core};
 
 #[doc(inline)]
-pub use {craft_macros as macros, craft_net as net, craft_storage as storage};
+pub use {craft_dashboard as dashboard, craft_macros as macros, craft_net as net};
+
+#[doc(inline)]
+pub use craft_storage as storage;
+
+pub use builder::CraftClusterBuilder;
+pub use cluster::{ClusterFacts, CraftCluster};
+
+/// Commonly used telemetry/observability types, re-exported for convenience.
+#[doc(no_inline)]
+pub use craft_dashboard::{CraftEvent, EventBus, EventSubscription, Metrics};
 
 /// Library version string (from `Cargo.toml`).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
