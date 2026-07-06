@@ -17,8 +17,8 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 use craft_proto::{
-    ClientRequest, ClientResponse, DirectoryUpdate, JoinRequest, JoinResponse, NodeId, RaftRpc,
-    RaftRpcReply, RegisterAck,
+    ActorEnvelope, ClientRequest, ClientResponse, DeliverAck, DirectoryUpdate, JoinRequest,
+    JoinResponse, NodeId, RaftRpc, RaftRpcReply, RegisterAck,
 };
 
 use crate::route::Route;
@@ -138,6 +138,22 @@ pub async fn send_directory_update<T: Transport + ?Sized>(
 ) -> Result<RegisterAck, TransportError> {
     let body = encode_body(update)?;
     let response = transport.send(peer, Route::ActorRegister, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Deliver an [`ActorEnvelope`] to the node hosting the target instance and
+/// decode its [`DeliverAck`] (`/actor/deliver`, ADR 013).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is
+/// unreachable / the send fails.
+pub async fn send_actor_deliver<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    envelope: &ActorEnvelope,
+) -> Result<DeliverAck, TransportError> {
+    let body = encode_body(envelope)?;
+    let response = transport.send(peer, Route::ActorDeliver, body).await?;
     Ok(decode_body(&response)?)
 }
 

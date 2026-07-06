@@ -71,13 +71,33 @@ pub struct ActorRef {
     pub node: Option<NodeId>,
 }
 
-/// An actor message crossing a node boundary via `/actor/deliver`.
+/// An actor message crossing a node boundary via `/actor/deliver` (ADR 013).
+///
+/// The sender has already resolved the logical target (group + RR/keyed
+/// selection) to a concrete instance `to` via the cluster directory (E7), so
+/// the receiving node delivers straight to that instance.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActorEnvelope {
-    /// Where the message should be delivered.
-    pub target: ActorRef,
-    /// Application-encoded message body.
+    /// The concrete destination instance.
+    pub to: ActorId,
+    /// The sending instance, when the message originates from an actor (for
+    /// replies / tracing); `None` for messages sent from outside the fabric.
+    pub from: Option<ActorId>,
+    /// Per-sender correlation id, used to match a reply to its request.
+    pub req_id: u64,
+    /// Application-encoded (`postcard`) message body.
     pub payload: Vec<u8>,
-    /// Whether the sender awaits a reply (`ask`) versus fire-and-forget (`cast`).
+    /// Whether the sender awaits a reply (`ask`) versus fire-and-forget
+    /// (`cast`). Cross-node `ask` is a later increment; E8 delivery is cast.
     pub reply_expected: bool,
+}
+
+/// Acknowledgement for an [`ActorEnvelope`] delivered to `/actor/deliver`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeliverAck {
+    /// Whether the message reached a live local mailbox.
+    pub delivered: bool,
+    /// A human-readable reason when `delivered` is `false` (unknown group,
+    /// no such instance, closed mailbox, not remotely addressable).
+    pub error: Option<String>,
 }

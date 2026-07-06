@@ -85,6 +85,23 @@ pub trait UserActor: Send + Sized + 'static {
         msg: Self::Message,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send;
 
+    /// Decode a cross-node wire payload into a message for remote delivery
+    /// (E8, ADR 013 `/actor/deliver`). The default leaves the actor
+    /// **local-only**: a remote `cast` to it fails with
+    /// [`MessageDecodeError::NotAddressable`]. Override it (typically with
+    /// `craft_proto::decode`) to accept messages sent from other nodes.
+    ///
+    /// Only the fire-and-forget part of the message need decode — an embedded
+    /// [`RpcReplyPort`] cannot cross a node boundary, so cross-node `ask` is a
+    /// separate increment.
+    ///
+    /// # Errors
+    /// Returns [`MessageDecodeError`] if the actor is not remotely addressable
+    /// or the payload cannot be decoded into a [`Message`](UserActor::Message).
+    fn decode_message(_payload: &[u8]) -> Result<Self::Message, MessageDecodeError> {
+        Err(MessageDecodeError::NotAddressable)
+    }
+
     /// Called once after the mailbox closes (stop or scale-in), for cleanup.
     fn stopped(&mut self) -> impl std::future::Future<Output = ()> + Send {
         async {}
@@ -177,6 +194,35 @@ pub enum SendError {
     #[error("no live actor instances")]
     NoInstances,
     /// The selected instance's mailbox is closed (it stopped).
+    #[error("actor mailbox is closed")]
+    Closed,
+}
+
+/// Why a wire payload could not be turned into a message (E8).
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum MessageDecodeError {
+    /// The actor did not override [`UserActor::decode_message`], so it accepts
+    /// only in-process messages.
+    #[error("actor is not remotely addressable")]
+    NotAddressable,
+    /// The payload could not be decoded into the actor's message type.
+    #[error("wire payload decode failed: {0}")]
+    Decode(String),
+}
+
+/// Why a cross-node delivery to a local instance failed (E8).
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum DeliverError {
+    /// No actor group with this name exists on this node.
+    #[error("no actor named `{0}`")]
+    NotFound(String),
+    /// The payload could not be decoded into the actor's message type.
+    #[error(transparent)]
+    Decode(#[from] MessageDecodeError),
+    /// The target instance id is not live in the group (stopped / migrated).
+    #[error("no live instance {0} in the group")]
+    NoInstance(u32),
+    /// The target instance's mailbox is closed.
     #[error("actor mailbox is closed")]
     Closed,
 }
@@ -291,6 +337,21 @@ impl<A: UserActor> PoolInner<A> {
         tx.send(msg).map_err(|_| SendError::Closed)
     }
 
+    /// Deliver to a specific instance id (used by cross-node delivery, which
+    /// has already selected the target instance via the directory, E8).
+    fn send_to_instance(&self, instance: u32, msg: A::Message) -> Result<(), DeliverError> {
+        let tx = {
+            let instances = self.instances.lock().unwrap();
+            instances
+                .iter()
+                .find(|i| i.instance == instance)
+                .ok_or(DeliverError::NoInstance(instance))?
+                .tx
+                .clone()
+        };
+        tx.send(msg).map_err(|_| DeliverError::Closed)
+    }
+
     fn len(&self) -> usize {
         self.instances.lock().unwrap().len()
     }
@@ -378,6 +439,21 @@ impl<A: UserActor> GroupLifecycle for PoolInner<A> {
     }
     fn signal_stop(&self) {
         PoolInner::signal_stop(self);
+    }
+}
+
+/// Type-erased byte ingress so the registry can deliver a cross-node
+/// [`ActorEnvelope`](craft_proto::ActorEnvelope) payload to a group without
+/// knowing its actor type (E8): the payload is decoded via
+/// [`UserActor::decode_message`] and routed to the selected instance.
+trait WireIngress: Send + Sync {
+    fn deliver(&self, instance: u32, payload: &[u8]) -> Result<(), DeliverError>;
+}
+
+impl<A: UserActor> WireIngress for PoolInner<A> {
+    fn deliver(&self, instance: u32, payload: &[u8]) -> Result<(), DeliverError> {
+        let msg = A::decode_message(payload)?;
+        self.send_to_instance(instance, msg)
     }
 }
 
@@ -539,6 +615,8 @@ struct GroupEntry {
     handle: Arc<dyn Any + Send + Sync>,
     /// The same pool, erased for type-agnostic lifecycle/inspection.
     lifecycle: Arc<dyn GroupLifecycle>,
+    /// The same pool, erased for cross-node byte delivery (E8).
+    wire: Arc<dyn WireIngress>,
 }
 
 /// A node-local registry of named user actors and pools (backlog E6).
@@ -744,6 +822,32 @@ impl ActorRegistry {
         out
     }
 
+    /// Deliver a cross-node payload to instance `instance` of local group
+    /// `name` (E8, ADR 013). The payload is decoded via the actor's
+    /// [`UserActor::decode_message`] and enqueued on the target instance's
+    /// mailbox. Called by the `/actor/deliver` handler.
+    ///
+    /// # Errors
+    /// Returns [`DeliverError`] if the group is unknown, the actor is not
+    /// remotely addressable, the payload cannot be decoded, or the instance is
+    /// gone / closed.
+    pub fn deliver_local(
+        &self,
+        name: &str,
+        instance: u32,
+        payload: &[u8],
+    ) -> Result<(), DeliverError> {
+        let wire = {
+            let groups = self.groups.lock().unwrap();
+            groups
+                .get(name)
+                .ok_or_else(|| DeliverError::NotFound(name.to_string()))?
+                .wire
+                .clone()
+        };
+        wire.deliver(instance, payload)
+    }
+
     // ---- internals -------------------------------------------------------
 
     fn reserve(&self, name: &str) -> Result<(), SpawnError> {
@@ -757,6 +861,7 @@ impl ActorRegistry {
         let entry = GroupEntry {
             handle: pool.clone(),
             lifecycle: pool.clone(),
+            wire: pool.clone(),
         };
         self.groups.lock().unwrap().insert(name.to_string(), entry);
     }

@@ -10,14 +10,16 @@ pub use {craft_core, craft_net, craft_proto, craft_storage};
 
 mod directory;
 mod driver;
+mod messaging;
 mod registry;
 mod runtime;
 
 pub use directory::{ActorDirectory, ClusterRef, DirectorySync};
 pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
+pub use messaging::{CastError, ClusterMessaging};
 pub use registry::{
-    ActorRef, ActorRegistry, AskError, PoolRef, RpcReplyPort, ScaleError, SendError, SpawnError,
-    StopError, UserActor,
+    ActorRef, ActorRegistry, AskError, DeliverError, MessageDecodeError, PoolRef, RpcReplyPort,
+    ScaleError, SendError, SpawnError, StopError, UserActor,
 };
 pub use runtime::{
     ClientError, NodeHandle, NodeService, NodeStatus, RuntimeConfig, spawn as spawn_node,
