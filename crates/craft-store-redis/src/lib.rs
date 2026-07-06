@@ -1,5 +1,5 @@
 //! `craft-store-redis` — Redis implementation of
-//! [`ActorStateStore`](craft_actor::ActorStateStore) ([ADR 021](../decisions/021-actor-state-redis.md)).
+//! [`ActorStateStore`] ([ADR 021](../decisions/021-actor-state-redis.md)).
 //!
 //! Optional crate for externalizing stateful-actor data (backlog Track G) so it
 //! survives a VPS crash: when the leader respawns a worker on another node it
@@ -21,7 +21,7 @@
 //! # }
 //! ```
 //!
-//! Connections use a [`ConnectionManager`](redis::aio::ConnectionManager),
+//! Connections use a [`ConnectionManager`],
 //! which multiplexes over one connection and transparently reconnects. Real
 //! Redis behavior is covered by a `testcontainers`-backed integration test
 //! (ADR 029), gated `#[ignore]` so it runs in the heavy CI lane rather than on
