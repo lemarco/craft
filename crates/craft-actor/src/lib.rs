@@ -13,6 +13,7 @@ mod driver;
 mod messaging;
 mod placement;
 mod registry;
+mod resources;
 mod runtime;
 mod supervisor;
 
@@ -24,9 +25,10 @@ pub use placement::{
 };
 pub use registry::{
     ActorRef, ActorRegistry, AskError, ConfigCodecError, DEFAULT_DRAIN_TIMEOUT, DeliverError,
-    DrainOutcome, MessageDecodeError, MigrationError, PoolRef, RpcReplyPort, ScaleError, SendError,
-    SnapshotError, SpawnError, StopError, UserActor,
+    DrainOutcome, MessageDecodeError, MigrationError, PlacementMode, PoolRef, RpcReplyPort,
+    ScaleError, SendError, SnapshotError, SpawnError, StopError, UserActor,
 };
+pub use resources::{ResourceProfile, VpsResources};
 pub use runtime::{
     ClientError, NodeHandle, NodeService, NodeStatus, RuntimeConfig, spawn as spawn_node,
 };

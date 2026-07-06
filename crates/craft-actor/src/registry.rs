@@ -196,9 +196,13 @@ pub enum SpawnError {
     /// An actor group with this name already exists.
     #[error("actor name `{0}` is already registered")]
     NameExists(String),
-    /// A pool count `> 1` was requested outside development mode (ADR 014).
-    #[error("pools with count > 1 require development mode (--dev-multi-workers); got {count}")]
-    DevModeRequired {
+    /// A pool count `> 1` was requested in production mode, which allows at most
+    /// one worker per node per name (ADR 014). Enable `--dev-multi-workers` for
+    /// multiple local instances.
+    #[error(
+        "one worker per node in production (ADR 014); count {count} requires --dev-multi-workers"
+    )]
+    MultiWorkerDisabled {
         /// The rejected instance count.
         count: usize,
     },
@@ -235,9 +239,13 @@ pub enum ScaleError {
         /// The type the group was registered with.
         registered: &'static str,
     },
-    /// A count `> 1` was requested outside development mode (ADR 014).
-    #[error("scaling above 1 requires development mode (--dev-multi-workers); got {count}")]
-    DevModeRequired {
+    /// A count `> 1` was requested in production mode, which allows at most one
+    /// worker per node per name (ADR 014). Enable `--dev-multi-workers` to scale
+    /// locally.
+    #[error(
+        "one worker per node in production (ADR 014); scaling to {count} requires --dev-multi-workers"
+    )]
+    MultiWorkerDisabled {
         /// The rejected instance count.
         count: usize,
     },
@@ -859,6 +867,17 @@ struct GroupEntry {
     wire: Arc<dyn WireIngress>,
 }
 
+/// How the registry places worker instances on this node (ADR 014).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlacementMode {
+    /// Production default: at most **one** worker per node per name. Scale out
+    /// by adding VPSes, not by stacking workers on one machine.
+    Production,
+    /// Development (`--dev-multi-workers` / `RAFT_DEV_MULTI_WORKERS=1`): multiple
+    /// local instances per name are permitted, at the user's responsibility.
+    DevelopmentMulti,
+}
+
 /// A node-local registry of named user actors and pools (backlog E6).
 ///
 /// Clone it freely — every clone shares the same underlying registry.
@@ -898,6 +917,17 @@ impl ActorRegistry {
     #[must_use]
     pub fn dev_multi_workers(&self) -> bool {
         self.dev_multi_workers
+    }
+
+    /// The registry's placement mode (ADR 014). Production enforces one worker
+    /// per node per name; development permits multiple local instances.
+    #[must_use]
+    pub fn placement_mode(&self) -> PlacementMode {
+        if self.dev_multi_workers {
+            PlacementMode::DevelopmentMulti
+        } else {
+            PlacementMode::Production
+        }
     }
 
     /// Names of all registered actor groups.
@@ -956,7 +986,7 @@ impl ActorRegistry {
     ///
     /// # Errors
     /// Returns [`SpawnError::ZeroCount`] for `count == 0`,
-    /// [`SpawnError::DevModeRequired`] for `count > 1` in production,
+    /// [`SpawnError::MultiWorkerDisabled`] for `count > 1` in production,
     /// [`SpawnError::NameExists`] if `name` is taken, or [`SpawnError::Start`]
     /// if an instance fails to initialize.
     pub fn spawn_pool<A: UserActor>(
@@ -972,7 +1002,7 @@ impl ActorRegistry {
             return Err(SpawnError::ZeroCount);
         }
         if count > 1 && !self.dev_multi_workers {
-            return Err(SpawnError::DevModeRequired { count });
+            return Err(SpawnError::MultiWorkerDisabled { count });
         }
         self.reserve(name)?;
         let pool = PoolInner::<A>::new(name);
@@ -991,7 +1021,7 @@ impl ActorRegistry {
     /// # Errors
     /// Returns [`ScaleError::NotFound`] / [`ScaleError::TypeMismatch`] if the
     /// group is missing or a different type, [`ScaleError::ZeroCount`] for
-    /// `count == 0`, [`ScaleError::DevModeRequired`] for `count > 1` in
+    /// `count == 0`, [`ScaleError::MultiWorkerDisabled`] for `count > 1` in
     /// production, or [`ScaleError::Start`] if a new instance fails to start.
     pub async fn scale_local<A: UserActor>(
         &self,
@@ -1006,7 +1036,7 @@ impl ActorRegistry {
             return Err(ScaleError::ZeroCount);
         }
         if count > 1 && !self.dev_multi_workers {
-            return Err(ScaleError::DevModeRequired { count });
+            return Err(ScaleError::MultiWorkerDisabled { count });
         }
         let pool = self.lookup::<A>(name)?;
         pool.scale_to(count, &config)

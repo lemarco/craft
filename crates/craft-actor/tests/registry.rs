@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use craft_actor::{ActorRegistry, RpcReplyPort, ScaleError, SpawnError, UserActor};
+use craft_actor::{ActorRegistry, PlacementMode, RpcReplyPort, ScaleError, SpawnError, UserActor};
 
 // ---------------------------------------------------------------------------
 // Test actors
@@ -251,6 +251,7 @@ async fn scale_local_type_mismatch_is_reported() {
 async fn production_rejects_local_pools_above_one() {
     let registry = ActorRegistry::new();
     assert!(!registry.dev_multi_workers());
+    assert_eq!(registry.placement_mode(), PlacementMode::Production);
 
     // A pool of one is fine.
     registry
@@ -260,7 +261,7 @@ async fn production_rejects_local_pools_above_one() {
     let err = registry
         .spawn_pool::<Worker>("many", 3, WorkerCfg::new())
         .unwrap_err();
-    assert!(matches!(err, SpawnError::DevModeRequired { count: 3 }));
+    assert!(matches!(err, SpawnError::MultiWorkerDisabled { count: 3 }));
 
     // scale_local above one is likewise rejected in production.
     let scale_err = registry
@@ -269,8 +270,15 @@ async fn production_rejects_local_pools_above_one() {
         .unwrap_err();
     assert!(matches!(
         scale_err,
-        ScaleError::DevModeRequired { count: 2 }
+        ScaleError::MultiWorkerDisabled { count: 2 }
     ));
+}
+
+#[test]
+fn dev_registry_reports_development_placement_mode() {
+    let registry = ActorRegistry::new_dev();
+    assert!(registry.dev_multi_workers());
+    assert_eq!(registry.placement_mode(), PlacementMode::DevelopmentMulti);
 }
 
 #[tokio::test]
