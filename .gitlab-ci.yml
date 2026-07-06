@@ -75,3 +75,20 @@ e2e:
     - when: never
   script:
     - echo "docker compose up + pumba chaos scenarios (ADR 029)"
+
+# --- Redis-backed ActorStateStore integration tests (Track G, ADR 021) ------
+# Runs the `#[ignore]`d testcontainers tests against a real Redis. Scheduled so
+# it does not slow the fast lane; needs a Docker daemon (dind).
+store-redis:
+  stage: heavy
+  image: rust:latest
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_HOST: "tcp://docker:2375"
+    DOCKER_TLS_CERTDIR: ""
+    TESTCONTAINERS_RYUK_DISABLED: "true"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  script:
+    - cargo test -p craft-store-redis -- --ignored

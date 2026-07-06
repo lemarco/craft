@@ -182,12 +182,26 @@ being forwarded to the leader, and failover when the first seed is detached.
 does not re-wrap it (that would force a `craft-actor` dependency and duplicate
 the API). `LocalNetwork` gives the same in-process ergonomics for tests.
 
-#### Track G — Redis store (`craft-store-redis`) **[P]**
-| ID | Task | Effort |
-|----|------|--------|
-| G1 | `ActorStateStore` trait in `craft-actor` | S |
-| G2 | Redis impl (`fred`/`redis`) get/set/del/CAS/TTL ([ADR 021](decisions/021-actor-state-redis.md)) | M |
-| G3 | Example worker using store + idempotency | S |
+#### Track G — Redis store (`craft-store-redis`) **[P]** — **done**
+| ID | Task | Effort | Status |
+|----|------|--------|--------|
+| G1 | `ActorStateStore` trait in `craft-actor` | S | done |
+| G2 | Redis impl (`fred`/`redis`) get/set/del/CAS/TTL ([ADR 021](decisions/021-actor-state-redis.md)) | M | done |
+| G3 | Example worker using store + idempotency | S | done |
+
+**Track G notes.** `ActorStateStore` (object-safe, boxed-future port matching
+the transport style) lives in `craft-actor::store` alongside `StoreError` and an
+in-process `InMemoryStore` (lazy-TTL `HashMap`) for tests/dev. Methods:
+`get`/`set`(+TTL)/`delete`/`compare_and_set` (the primitive for optimistic
+concurrency and single-writer idempotency). `craft-store-redis::RedisStore`
+implements it with the `redis` crate's auto-reconnecting `ConnectionManager`
+(clone-per-call), `PSETEX` for TTL, and a binary-safe Lua CAS script; supports
+key prefixing for multi-tenant isolation. G3: `examples/idempotent_worker.rs`
+shows a CAS-guarded exactly-once handler (runs on `InMemoryStore`, one-line swap
+to `RedisStore`). Real Redis is covered by `testcontainers` tests gated
+`#[ignore]` (verified green against a live container) and wired into a scheduled
+`store-redis` heavy CI job with Docker-in-Docker, keeping the fast lane
+Docker-free.
 
 #### Track H — Observability (`craft-dashboard` + admin) **[P]**
 | ID | Task | Effort |

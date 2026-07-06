@@ -20,6 +20,7 @@ mod placement;
 mod registry;
 mod resources;
 mod runtime;
+mod store;
 mod supervisor;
 
 pub use directory::{ActorDirectory, ClusterRef, DirectorySync};
@@ -37,4 +38,5 @@ pub use resources::{ResourceProfile, VpsResources};
 pub use runtime::{
     ClientError, NodeHandle, NodeService, NodeStatus, RuntimeConfig, spawn as spawn_node,
 };
+pub use store::{ActorStateStore, BoxFuture, InMemoryStore, StoreError};
 pub use supervisor::{ClusterState, ClusterSupervisor, GroupReconcile, ReconcileReport};
