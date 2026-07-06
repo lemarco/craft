@@ -46,18 +46,23 @@ impl UserActor for Worker {
     }
 }
 
-/// A test double for cluster leadership + membership.
+/// A test double for cluster leadership + membership. `nodes` is mutable so a
+/// test can simulate a join or a leave between reconciles.
 struct MockState {
     leader: AtomicBool,
-    nodes: Vec<NodeId>,
+    nodes: std::sync::Mutex<Vec<NodeId>>,
 }
 
 impl MockState {
     fn new(leader: bool, nodes: &[u64]) -> Self {
         Self {
             leader: AtomicBool::new(leader),
-            nodes: nodes.iter().copied().map(NodeId).collect(),
+            nodes: std::sync::Mutex::new(nodes.iter().copied().map(NodeId).collect()),
         }
+    }
+
+    fn set_nodes(&self, nodes: &[u64]) {
+        *self.nodes.lock().unwrap() = nodes.iter().copied().map(NodeId).collect();
     }
 }
 
@@ -66,7 +71,7 @@ impl ClusterState for MockState {
         self.leader.load(Ordering::SeqCst)
     }
     fn live_nodes(&self) -> Vec<NodeId> {
-        self.nodes.clone()
+        self.nodes.lock().unwrap().clone()
     }
 }
 
@@ -173,6 +178,92 @@ async fn reconcile_is_idempotent_once_the_directory_reflects_placement() {
         second.spawns(),
         0,
         "declarative reconcile is a no-op once satisfied"
+    );
+}
+
+#[tokio::test]
+async fn an_auto_worker_appears_on_a_newly_joined_node() {
+    let net = LocalNetwork::new();
+    let n1 = node(&net, 1);
+    let state = Arc::new(MockState::new(true, &[1]));
+    let sup = ClusterSupervisor::new(Arc::clone(&n1.control), Arc::clone(&state));
+    // One worker per live node — the count tracks the membership (ADR 015).
+    sup.manage_auto::<Worker>("w", 0);
+
+    // Single-node cluster: one worker on node 1.
+    let first = sup.reconcile().await;
+    assert_eq!(first.groups[0].total, 1, "target tracks the one live node");
+    assert!(n1.registry.contains("w"));
+
+    // Node 2 joins the cluster (and the switch).
+    let n2 = node(&net, 2);
+    state.set_nodes(&[1, 2]);
+
+    let second = sup.reconcile().await;
+    assert!(second.is_ok());
+    assert_eq!(second.groups[0].total, 2, "target grew with the membership");
+    assert!(
+        n2.registry.contains("w"),
+        "auto worker spawned on the joiner"
+    );
+    assert!(
+        n1.registry.contains("w"),
+        "existing worker untouched (idempotent)"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_is_idempotent_even_before_the_directory_converges() {
+    let net = LocalNetwork::new();
+    let n1 = node(&net, 1);
+    let sup = ClusterSupervisor::new(Arc::clone(&n1.control), MockState::new(true, &[1]));
+    sup.manage::<Worker>("w", 1, 0);
+
+    // Two passes without ever updating the directory: the second would re-plan
+    // a spawn on node 1, which must be an idempotent no-op rather than an error.
+    let first = sup.reconcile().await;
+    assert!(first.is_ok());
+    let second = sup.reconcile().await;
+    assert!(
+        second.is_ok(),
+        "repeat spawn on an existing group is tolerated"
+    );
+    assert!(n1.registry.contains("w"));
+    assert_eq!(n1.registry.instance_count("w"), 1, "no duplicate instance");
+}
+
+#[tokio::test]
+async fn a_departed_node_is_planned_for_removal() {
+    let net = LocalNetwork::new();
+    let n1 = node(&net, 1);
+    let _n2 = node(&net, 2);
+    let state = Arc::new(MockState::new(true, &[1, 2]));
+    let sup = ClusterSupervisor::new(Arc::clone(&n1.control), Arc::clone(&state));
+    sup.manage_auto::<Worker>("w", 0);
+
+    sup.reconcile().await;
+    // Directory converges to reflect both workers (as DirectorySync would).
+    n1.directory.apply(&DirectoryUpdate {
+        node: NodeId(1),
+        epoch: 1,
+        registrations: vec![reg(1, "w", 0)],
+    });
+    n1.directory.apply(&DirectoryUpdate {
+        node: NodeId(2),
+        epoch: 1,
+        registrations: vec![reg(2, "w", 0)],
+    });
+
+    // Node 2 leaves the membership.
+    state.set_nodes(&[1]);
+    let report = sup.reconcile().await;
+
+    let plan = report.groups[0].result.as_ref().unwrap();
+    assert!(plan.spawns.is_empty());
+    assert_eq!(
+        plan.removes,
+        vec![reg(2, "w", 0).id],
+        "the departed node's instance is scheduled for removal"
     );
 }
 

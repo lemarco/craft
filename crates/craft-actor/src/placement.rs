@@ -239,7 +239,13 @@ impl ClusterControl {
         config: A::Config,
     ) -> Result<ActorId, RemoteSpawnError> {
         if node == self.node_id {
-            self.registry.spawn::<A>(name, config)?;
+            // Idempotent (ADR 015/018): a repeat local spawn of an existing
+            // group is a no-op, so reconciliation can run safely even before
+            // the directory reflects the placement.
+            match self.registry.spawn::<A>(name, config) {
+                Ok(_) | Err(SpawnError::NameExists(_)) => {}
+                Err(e) => return Err(e.into()),
+            }
             return Ok(ActorId {
                 node,
                 name: name.to_string(),
@@ -316,12 +322,24 @@ impl ClusterControl {
                 error: Some(SpawnError::UnknownType(request.actor_type.0.clone()).to_string()),
             };
         };
-        match factory(&self.registry, &request.name, &request.config) {
+        let outcome = factory(&self.registry, &request.name, &request.config);
+        match outcome {
+            // A fresh spawn, or an idempotent repeat of one already present
+            // (ADR 013 idempotent spawn by name/node/generation), both succeed.
             Ok(instance) => SpawnReply {
                 id: Some(ActorId {
                     node: self.node_id,
                     name: request.name.clone(),
                     instance,
+                    generation: request.generation,
+                }),
+                error: None,
+            },
+            Err(SpawnError::NameExists(_)) => SpawnReply {
+                id: Some(ActorId {
+                    node: self.node_id,
+                    name: request.name.clone(),
+                    instance: 0,
                     generation: request.generation,
                 }),
                 error: None,

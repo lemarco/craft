@@ -38,11 +38,42 @@ pub trait ClusterState: Send + Sync {
     fn live_nodes(&self) -> Vec<NodeId>;
 }
 
-/// A reconcile step for one managed group: given the control plane and the
-/// live membership, drive the group to its desired placement.
+impl<T: ClusterState + ?Sized> ClusterState for Arc<T> {
+    fn is_leader(&self) -> bool {
+        (**self).is_leader()
+    }
+    fn live_nodes(&self) -> Vec<NodeId> {
+        (**self).live_nodes()
+    }
+}
+
+/// How many instances a managed group should keep cluster-wide.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Target {
+    /// A fixed cluster-wide count (`manage`).
+    Fixed(usize),
+    /// One per live node — the count tracks the membership (`manage_auto`,
+    /// ADR 015). Newly joined nodes get a worker on the next reconcile.
+    PerLiveNode,
+}
+
+impl Target {
+    /// Resolve the desired total against the current live membership.
+    fn resolve(self, live_count: usize) -> usize {
+        match self {
+            Target::Fixed(n) => n,
+            Target::PerLiveNode => live_count,
+        }
+    }
+}
+
+/// A reconcile step for one managed group: given the control plane, the
+/// resolved target count, and the live membership, drive the group to its
+/// desired placement.
 type ReconcileFn = Arc<
     dyn Fn(
             Arc<ClusterControl>,
+            usize,
             Vec<NodeId>,
         ) -> BoxFuture<'static, Result<ScalePlan, ClusterScaleError>>
         + Send
@@ -52,7 +83,7 @@ type ReconcileFn = Arc<
 #[derive(Clone)]
 struct ManagedSpec {
     name: String,
-    total: usize,
+    target: Target,
     reconcile: ReconcileFn,
 }
 
@@ -114,19 +145,40 @@ impl<S: ClusterState> ClusterSupervisor<S> {
         }
     }
 
-    /// Declare that the cluster should keep `total` instances of actor `A`
-    /// named `name`, one per node (ADR 014). Registers `A`'s spawn factory on
-    /// the local control plane so this node can host or place it, and records a
-    /// reconcile step. Every node runs the same managed set at startup, so any
-    /// node that becomes leader can place the group.
+    /// Declare that the cluster should keep exactly `total` instances of actor
+    /// `A` named `name`, one per node (ADR 014). Registers `A`'s spawn factory
+    /// on the local control plane so this node can host or place it. Every node
+    /// runs the same managed set at startup, so any node that becomes leader
+    /// can place the group.
     pub fn manage<A>(&self, name: &str, total: usize, config: A::Config)
+    where
+        A: UserActor,
+        A::Config: Clone + Send + Sync + 'static,
+    {
+        self.push_managed::<A>(name, Target::Fixed(total), config);
+    }
+
+    /// Declare an **auto-worker** group (ADR 015): one instance of `A` on every
+    /// live node, with the count tracking the membership. A node that joins the
+    /// cluster gets a worker on the next reconcile; a node that leaves has its
+    /// instance planned for removal. This is what makes `JOIN_ADDR` + the same
+    /// binary bring a worker up automatically, with no `main` boilerplate.
+    pub fn manage_auto<A>(&self, name: &str, config: A::Config)
+    where
+        A: UserActor,
+        A::Config: Clone + Send + Sync + 'static,
+    {
+        self.push_managed::<A>(name, Target::PerLiveNode, config);
+    }
+
+    fn push_managed<A>(&self, name: &str, target: Target, config: A::Config)
     where
         A: UserActor,
         A::Config: Clone + Send + Sync + 'static,
     {
         self.control.register_type::<A>();
         let group = name.to_string();
-        let reconcile: ReconcileFn = Arc::new(move |control: Arc<ClusterControl>, live| {
+        let reconcile: ReconcileFn = Arc::new(move |control: Arc<ClusterControl>, total, live| {
             let group = group.clone();
             let config = config.clone();
             Box::pin(async move {
@@ -137,7 +189,7 @@ impl<S: ClusterState> ClusterSupervisor<S> {
         });
         self.managed.lock().unwrap().push(ManagedSpec {
             name: name.to_string(),
-            total,
+            target,
             reconcile,
         });
     }
@@ -167,10 +219,11 @@ impl<S: ClusterState> ClusterSupervisor<S> {
         let specs = self.managed.lock().unwrap().clone();
         let mut groups = Vec::with_capacity(specs.len());
         for spec in specs {
-            let result = (spec.reconcile)(Arc::clone(&self.control), live.clone()).await;
+            let total = spec.target.resolve(live.len());
+            let result = (spec.reconcile)(Arc::clone(&self.control), total, live.clone()).await;
             groups.push(GroupReconcile {
                 name: spec.name,
-                total: spec.total,
+                total,
                 result,
             });
         }
