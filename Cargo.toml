@@ -14,6 +14,9 @@ members = [
     "crates/craft",
     "crates/craft-node",
 ]
+# `benchmarks/` is a standalone crate (its own workspace) so criterion never
+# compiles in the fast lane; it path-depends on these crates. See backlog T10.
+exclude = ["benchmarks"]
 
 [workspace.package]
 version = "0.1.0"

@@ -107,6 +107,19 @@ store-redis:
   script:
     - cargo test -p craft-store-redis -- --ignored
 
+# --- Benchmarks + soak (Track T, T10, ADR 029) ------------------------------
+# The `benchmarks/` crate is a standalone workspace (excluded from the root) so
+# criterion never touches the fast lane. Runs on schedule: criterion micro-benches
+# (append/apply/deliver) plus a soak over the deterministic simulator.
+bench:
+  stage: heavy
+  image: rust:latest
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  script:
+    - cargo bench --manifest-path benchmarks/Cargo.toml
+    - SOAK_SECS=120 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak
+
 # --- Publish (ADR 028) ------------------------------------------------------
 # `cargo publish --workspace` resolves intra-workspace path deps locally and
 # uploads every crate in dependency order. The dry-run gate runs on tags and on

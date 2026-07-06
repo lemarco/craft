@@ -1,0 +1,43 @@
+# Benchmarks + soak harness (backlog T10, ADR 029). Deliberately a standalone
+# crate *outside* the main workspace (its own [workspace] table + excluded by the
+# root manifest) so criterion never compiles in the fast CI lane. Run with
+# `cargo bench` / `cargo run --release --bin soak` from this directory.
+[package]
+name = "craft-benchmarks"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+craft-core = { path = "../crates/craft-core" }
+craft-storage = { path = "../crates/craft-storage" }
+craft-actor = { path = "../crates/craft-actor" }
+craft-proto = { path = "../crates/craft-proto" }
+craft-sim = { path = "../crates/craft-sim" }
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+criterion = "0.5"
+tempfile = "3"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "soak"
+path = "src/bin/soak.rs"
+
+[[bench]]
+name = "append"
+harness = false
+
+[[bench]]
+name = "apply"
+harness = false
+
+[[bench]]
+name = "deliver"
+harness = false

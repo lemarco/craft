@@ -275,7 +275,7 @@ group one-per-node across a 3-node cluster then relocating off a *dead* node
 | T7 | `testcontainers-rs` Redis integration for `ActorStateStore` | M | → G2 |
 | T8 | E2E `docker-compose` cluster + real mTLS certs | L | **done** (`e2e/`) |
 | T9 | Chaos injection in E2E (`pumba`/`toxiproxy`: partition, latency) | L | **done** (`e2e/chaos.sh`) |
-| T10 | `criterion` benches (append, apply, deliver) + soak harness | M | → E1 |
+| T10 | `criterion` benches (append, apply, deliver) + soak harness | M | **done** (`benchmarks/`) |
 
 **T6** is covered by `craft/tests/quic.rs`: a 3-node cluster over loopback QUIC +
 mTLS (shared dev CA, one UDP socket each) that elects a leader and replicates
@@ -296,6 +296,19 @@ The `.gitlab-ci.yml` `e2e` heavy-lane job runs both `run.sh` and `chaos.sh` on
 schedule via dind (pumba off there — no mountable socket). Validated locally:
 election+failover (node 2→3), and partition (leader 3 isolated → majority
 elects 2) → heal (3 rejoins under 2), and the pumba latency window.
+
+**T10** adds `benchmarks/` — a standalone crate (its own `[workspace]`, excluded
+from the root so criterion never compiles in the fast lane) with three criterion
+benches over the real hot paths — `append` (`MemoryStorage` vs fsync'd
+`RedbStorage`), `apply` (single-node `RaftNode` propose→commit→apply pipeline),
+`deliver` (`ActorRegistry::deliver_local` decode+enqueue) — plus a `soak` binary
+that hammers the deterministic `craft-sim` `Cluster` across many seeds with
+random isolate/partition/heal faults, relying on the harness's per-step invariant
+checks (panics with the replay seed on any violation). A scheduled `bench` CI job
+runs `cargo bench` + a 120s soak. Validated locally: all three benches produce
+numbers (memory append ~2.2 Melem/s, redb fsync-bound, apply ~0.5 Melem/s,
+deliver ~4.8 Melem/s) and a 4s soak did 315 rounds / ~149k commits with no
+invariant violations.
 
 ---
 

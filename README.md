@@ -90,6 +90,14 @@ A full multi-process cluster over **real QUIC + mTLS** lives in [`e2e/`](e2e):
 Provision certificates for a real deployment with
 [`examples/certs/generate.sh`](examples/certs/generate.sh) — see [docs/certs.md](docs/certs.md).
 
+Benchmarks and a soak harness live in [`benchmarks/`](benchmarks) (a standalone
+crate):
+
+```sh
+cargo bench --manifest-path benchmarks/Cargo.toml               # append / apply / deliver
+SOAK_SECS=60 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak
+```
+
 ## Documentation
 
 - API docs: [docs.rs/craft](https://docs.rs/craft)
