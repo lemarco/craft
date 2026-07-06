@@ -101,3 +101,28 @@ pub struct DeliverAck {
     /// no such instance, closed mailbox, not remotely addressable).
     pub error: Option<String>,
 }
+
+/// A request to spawn an actor on a target node's registry (`/actor/spawn`,
+/// ADR 013). The target looks up a factory registered for `actor_type`,
+/// decodes `config`, and starts the actor under `name`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpawnRequest {
+    /// The group name to register the actor under.
+    pub name: String,
+    /// The actor's type tag; the target must have a factory registered for it.
+    pub actor_type: ActorTypeId,
+    /// `postcard`-encoded `A::Config`.
+    pub config: Vec<u8>,
+    /// Generation for the new instance (bumped on respawn/migration).
+    pub generation: u64,
+}
+
+/// Reply to a [`SpawnRequest`]: the spawned instance's id, or an error string.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpawnReply {
+    /// The spawned instance's id on success.
+    pub id: Option<ActorId>,
+    /// A human-readable reason on failure (unknown type, config decode, name
+    /// collision, start failure).
+    pub error: Option<String>,
+}

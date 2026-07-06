@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 
 use craft_proto::{
     ActorEnvelope, ClientRequest, ClientResponse, DeliverAck, DirectoryUpdate, JoinRequest,
-    JoinResponse, NodeId, RaftRpc, RaftRpcReply, RegisterAck,
+    JoinResponse, NodeId, RaftRpc, RaftRpcReply, RegisterAck, SpawnReply, SpawnRequest,
 };
 
 use crate::route::Route;
@@ -154,6 +154,22 @@ pub async fn send_actor_deliver<T: Transport + ?Sized>(
 ) -> Result<DeliverAck, TransportError> {
     let body = encode_body(envelope)?;
     let response = transport.send(peer, Route::ActorDeliver, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Ask a peer to spawn an actor and decode its [`SpawnReply`]
+/// (`/actor/spawn`, ADR 013).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is
+/// unreachable / the send fails.
+pub async fn send_actor_spawn<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &SpawnRequest,
+) -> Result<SpawnReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::ActorSpawn, body).await?;
     Ok(decode_body(&response)?)
 }
 

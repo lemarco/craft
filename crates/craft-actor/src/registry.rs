@@ -85,6 +85,30 @@ pub trait UserActor: Send + Sized + 'static {
         msg: Self::Message,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send;
 
+    /// Encode this actor's `Config` for a remote spawn (E9, ADR 013
+    /// `/actor/spawn`). The default makes the actor **local-spawn-only**:
+    /// `spawn_remote` / `scale_cluster` fail with
+    /// [`ConfigCodecError::NotSpawnable`]. Override it (typically with
+    /// `craft_proto::encode`) to allow the control plane to place the actor on
+    /// other nodes.
+    ///
+    /// # Errors
+    /// Returns [`ConfigCodecError`] if the actor is not remotely spawnable or
+    /// the config cannot be encoded.
+    fn encode_config(_config: &Self::Config) -> Result<Vec<u8>, ConfigCodecError> {
+        Err(ConfigCodecError::NotSpawnable)
+    }
+
+    /// Decode a `Config` shipped for a remote spawn (E9). Must round-trip with
+    /// [`encode_config`](UserActor::encode_config); the default rejects.
+    ///
+    /// # Errors
+    /// Returns [`ConfigCodecError`] if the actor is not remotely spawnable or
+    /// the bytes cannot be decoded.
+    fn decode_config(_bytes: &[u8]) -> Result<Self::Config, ConfigCodecError> {
+        Err(ConfigCodecError::NotSpawnable)
+    }
+
     /// Decode a cross-node wire payload into a message for remote delivery
     /// (E8, ADR 013 `/actor/deliver`). The default leaves the actor
     /// **local-only**: a remote `cast` to it fails with
@@ -146,6 +170,13 @@ pub enum SpawnError {
     /// The requested instance count was zero.
     #[error("instance count must be at least 1")]
     ZeroCount,
+    /// No spawn factory is registered for the requested actor type (a remote
+    /// spawn arrived for a type the target node does not know, E9).
+    #[error("no factory registered for actor type `{0}`")]
+    UnknownType(String),
+    /// The actor's config could not be decoded for a remote spawn (E9).
+    #[error(transparent)]
+    Config(#[from] ConfigCodecError),
     /// [`UserActor::start`] failed while constructing an instance.
     #[error("actor start failed: {0}")]
     Start(Box<dyn std::error::Error + Send + Sync>),
@@ -170,6 +201,15 @@ pub enum ScaleError {
     DevModeRequired {
         /// The rejected instance count.
         count: usize,
+    },
+    /// A cluster-wide `total` cannot be placed one-per-node because there are
+    /// fewer live nodes than instances requested (ADR 014, E9).
+    #[error("cannot place {total} instances one-per-node across only {nodes} live node(s)")]
+    InsufficientNodes {
+        /// The requested cluster-wide total.
+        total: usize,
+        /// The number of live nodes available.
+        nodes: usize,
     },
     /// The requested instance count was zero (use [`ActorRegistry::stop`]).
     #[error("instance count must be at least 1 (use `stop` to remove the group)")]
@@ -196,6 +236,19 @@ pub enum SendError {
     /// The selected instance's mailbox is closed (it stopped).
     #[error("actor mailbox is closed")]
     Closed,
+}
+
+/// Why an actor's config could not be (de)serialized for a remote spawn (E9).
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum ConfigCodecError {
+    /// The actor did not override [`UserActor::encode_config`] /
+    /// [`decode_config`](UserActor::decode_config), so it can only be spawned
+    /// locally.
+    #[error("actor is not remotely spawnable")]
+    NotSpawnable,
+    /// The config could not be encoded/decoded.
+    #[error("config codec failed: {0}")]
+    Codec(String),
 }
 
 /// Why a wire payload could not be turned into a message (E8).
