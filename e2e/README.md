@@ -17,11 +17,18 @@ real network between separate processes.
 - `run.sh` — brings the cluster up, asserts a single agreed leader is elected,
   kills that leader, asserts the survivors re-elect a new one, then tears
   everything down.
+- `chaos.sh` — fault injection (T9): partitions the leader off the cluster
+  network, asserts the majority re-elects, heals the partition, and asserts the
+  whole cluster re-converges on one leader (no split brain). Also an opt-in
+  latency scenario via [`pumba`](https://github.com/alexei-led/pumba).
+- `lib.sh` — shared helpers (compose wrapper, leader polling) sourced by both.
 
 ## Run it
 
 ```sh
-./e2e/run.sh
+./e2e/run.sh                    # election + failover
+./e2e/chaos.sh                  # partition + heal
+CRAFT_E2E_PUMBA=1 ./e2e/chaos.sh  # also inject 250ms±50ms latency via pumba
 ```
 
 Requires Docker + `docker compose`. Admin APIs are published on host ports
@@ -33,5 +40,7 @@ CI job sets `CRAFT_E2E_HOST=docker`.
 
 ## Chaos (T9)
 
-`run.sh`'s leader-kill is the first fault scenario. Latency/partition injection
-via `pumba`/`toxiproxy` layers onto this same compose network (tracked as T9).
+`chaos.sh` implements network partition + heal (dependency-free, via
+`docker network disconnect/connect`) and an opt-in `pumba` latency scenario
+(`CRAFT_E2E_PUMBA=1`) that adds delay + jitter to every node and asserts
+consensus survives. `run.sh`'s leader-kill is a third fault scenario.

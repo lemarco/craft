@@ -66,10 +66,12 @@ fuzz:
     - cargo install cargo-fuzz
     - cargo fuzz run wire_decode -- -max_total_time=300
 
-# --- E2E docker-compose cluster over real QUIC + mTLS (Track T, T8) ---------
+# --- E2E docker-compose cluster over real QUIC + mTLS (Track T, T8/T9) -------
 # Builds the craft-node image, mints a shared CA + per-node certs, boots a
-# 3-node cluster, and asserts leader election + failover re-election. Scheduled
-# so it does not slow the fast lane; needs a Docker daemon (dind).
+# 3-node cluster, and asserts election + failover (run.sh) then network
+# partition + heal (chaos.sh). Scheduled so it does not slow the fast lane;
+# needs a Docker daemon (dind). The pumba latency scenario is opt-in
+# (CRAFT_E2E_PUMBA=1) and left off here since dind lacks a mountable socket.
 e2e:
   stage: heavy
   image: docker:27
@@ -86,6 +88,7 @@ e2e:
     - apk add --no-cache bash curl
   script:
     - bash e2e/run.sh
+    - bash e2e/chaos.sh
 
 # --- Redis-backed ActorStateStore integration tests (Track G, ADR 021) ------
 # Runs the `#[ignore]`d testcontainers tests against a real Redis. Scheduled so

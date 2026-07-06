@@ -274,7 +274,7 @@ group one-per-node across a 3-node cluster then relocating off a *dead* node
 | T6 | In-process integration: N nodes, loopback QUIC + mTLS | M | **done** (`craft/tests/quic.rs`) |
 | T7 | `testcontainers-rs` Redis integration for `ActorStateStore` | M | → G2 |
 | T8 | E2E `docker-compose` cluster + real mTLS certs | L | **done** (`e2e/`) |
-| T9 | Chaos injection in E2E (`pumba`/`toxiproxy`: partition, latency) | L | → T8 (leader-kill landed) |
+| T9 | Chaos injection in E2E (`pumba`/`toxiproxy`: partition, latency) | L | **done** (`e2e/chaos.sh`) |
 | T10 | `criterion` benches (append, apply, deliver) + soak harness | M | → E1 |
 
 **T6** is covered by `craft/tests/quic.rs`: a 3-node cluster over loopback QUIC +
@@ -285,9 +285,17 @@ one-shot `certgen` service runs `examples/certs/generate.sh` to mint a shared CA
 each other by service DNS name (peers now resolve hostnames, not just literal
 `SocketAddr`s), and elect a leader over **real** QUIC/mTLS between separate
 processes. `e2e/run.sh` asserts election *and* failover (kills the leader,
-verifies the survivors re-elect) and tears down on exit — the leader-kill is the
-first **T9** chaos scenario. The `.gitlab-ci.yml` `e2e` heavy-lane job runs it on
-schedule via dind. Validated locally: node 2 elected, killed, node 3 re-elected.
+verifies the survivors re-elect) and tears down on exit. **T9** adds
+`e2e/chaos.sh`: it partitions the leader off the cluster network (via
+`docker network disconnect`, dependency-free), asserts the majority re-elects,
+then heals (`docker network connect`) and asserts the cluster re-converges on
+one leader with the old leader rejoining as a follower (no split brain) — plus
+an opt-in `pumba` netem latency scenario (`CRAFT_E2E_PUMBA=1`, 250ms±50ms) that
+asserts consensus survives. Shared polling/compose helpers live in `e2e/lib.sh`.
+The `.gitlab-ci.yml` `e2e` heavy-lane job runs both `run.sh` and `chaos.sh` on
+schedule via dind (pumba off there — no mountable socket). Validated locally:
+election+failover (node 2→3), and partition (leader 3 isolated → majority
+elects 2) → heal (3 rejoins under 2), and the pumba latency window.
 
 ---
 
