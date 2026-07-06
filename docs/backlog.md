@@ -122,10 +122,12 @@ Four **independent tracks** — different owners can work simultaneously.
 |----|------|--------|--------|
 | D0 | `StateMachine` + `Command`/`Query` trait API in `craft-core` ([ADR 001](decisions/001-state-machine.md)) | M | **done** |
 | D1 | `StateMachine` derive (encode/decode glue) ([ADR 001](decisions/001-state-machine.md)) | M | **n/a** — serde blanket impls |
-| D2 | `UserActor` derive (message serde bounds, migratable) | M | pending |
-| D3 | Compile-fail tests (trybuild) | S | pending |
+| D2 | `UserActor` derive (message serde bounds, migratable) | M | **done** (as `#[remote_actor]` attribute) |
+| D3 | Compile-fail tests (trybuild) | S | **done** |
 
-> **Track D progress (D0):** the application state-machine port from ADR 001 now lives in `craft-core`: the `StateMachine` trait (`apply`/`query`/`snapshot`/`restore` with associated `Command`/`Query`/`Response`/`Error` types) plus `Command` and `Query` marker traits. The "encode/decode glue" ADR 001 wanted from a derive is instead provided by **blanket impls** over any `serde` type that also meets the replication bounds — `Command: Clone + Send + 'static`, `Query: Send + 'static` — so a borrowed or non-`Clone` command simply fails to compile (the exact owned/clone-safe check ADR 001 specified), and **D1's bespoke derive is unnecessary**. A reference in-memory KV machine and 10 tests cover set/delete/append (incl. the error path leaving state untouched), the applied-index watermark, snapshot↔restore replacement, malformed-snapshot rejection, determinism (byte-identical snapshots for identical input), and the `Command`/`Query` codec round-trips. Remaining: **D2** (`UserActor` derive) and **D3** (trybuild compile-fail suite).
+> **Track D progress (D0):** the application state-machine port from ADR 001 now lives in `craft-core`: the `StateMachine` trait (`apply`/`query`/`snapshot`/`restore` with associated `Command`/`Query`/`Response`/`Error` types) plus `Command` and `Query` marker traits. The "encode/decode glue" ADR 001 wanted from a derive is instead provided by **blanket impls** over any `serde` type that also meets the replication bounds — `Command: Clone + Send + 'static`, `Query: Send + 'static` — so a borrowed or non-`Clone` command simply fails to compile (the exact owned/clone-safe check ADR 001 specified), and **D1's bespoke derive is unnecessary**. A reference in-memory KV machine and 10 tests cover set/delete/append (incl. the error path leaving state untouched), the applied-index watermark, snapshot↔restore replacement, malformed-snapshot rejection, determinism (byte-identical snapshots for identical input), and the `Command`/`Query` codec round-trips.
+
+> **Track D done (D2/D3).** Since a `UserActor` `impl` carries user logic (`start`/`handle`) that a derive cannot generate, D2 ships as an **attribute macro** `#[craft_actor::remote_actor]` (re-exported from `craft-macros`) applied to the `impl UserActor for T` block: it appends serde-backed `postcard` implementations of `encode_config` / `decode_config` / `decode_message` for any not already present (so a single method can still be overridden by hand), enforcing the "message serde bounds" of D2 — a non-`serde` `Config`/`Message` fails to compile. An optional `#[remote_actor(migratable)]` flag also sets `const MIGRATABLE = true` (the `migration_snapshot`/`restore_migration` bodies remain the author's, as they carry state, not a mechanical codec). Covered by 6 positive tests (config/message round-trips, invalid-bytes → `Decode` error, default-not-migratable, `migratable` const, hand-written-codec-preserved) plus a **D3/T3 trybuild** compile-fail suite asserting the macro's own diagnostics (unknown option; applied to a non-`UserActor` block).
 
 ---
 
@@ -195,7 +197,7 @@ Independent tracks again.
 |----|------|--------|-------|
 | T1 | `cargo-nextest` wiring + fast/nightly CI lanes | S | [P] anytime |
 | T2 | `proptest` harness for Raft safety invariants | M | → A1 |
-| T3 | `trybuild` compile-fail suite (macros) | S | → D3 (same) |
+| T3 | `trybuild` compile-fail suite (macros) | S | **done** (with D3) |
 | T4 | `craft-fuzz`: `postcard`/wire decoders (`cargo-fuzz`) | M | → W0.4 |
 | T5 | Storage crash-recovery tests (kill mid-write, reopen) | M | → B3 |
 | T6 | In-process integration: N nodes, loopback QUIC + mTLS | M | → C3 |

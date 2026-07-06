@@ -8,6 +8,11 @@
 
 pub use {craft_core, craft_net, craft_proto, craft_storage};
 
+/// Attribute macro that fills in the `postcard` wire codecs on a [`UserActor`]
+/// `impl` so the actor is remotely spawnable and addressable (ADR 013). See the
+/// [macro docs](macro@remote_actor) for usage.
+pub use craft_macros::remote_actor;
+
 mod directory;
 mod driver;
 mod messaging;

@@ -30,6 +30,9 @@ keywords = ["raft", "actor", "distributed", "consensus", "cluster"]
 serde = { version = "1", features = ["derive"] }
 postcard = { version = "1", features = ["use-std"] }
 thiserror = "2"
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
 
 # Internal crates referenced by path within the workspace.
 craft-proto = { path = "crates/craft-proto", version = "0.1.0" }
