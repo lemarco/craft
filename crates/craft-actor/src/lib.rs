@@ -19,10 +19,13 @@ mod supervisor;
 pub use directory::{ActorDirectory, ClusterRef, DirectorySync};
 pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
 pub use messaging::{CastError, ClusterMessaging};
-pub use placement::{ClusterControl, ClusterScaleError, RemoteSpawnError, ScalePlan, plan_scale};
+pub use placement::{
+    ClusterControl, ClusterScaleError, MigrateError, RemoteSpawnError, ScalePlan, plan_scale,
+};
 pub use registry::{
-    ActorRef, ActorRegistry, AskError, ConfigCodecError, DeliverError, MessageDecodeError, PoolRef,
-    RpcReplyPort, ScaleError, SendError, SpawnError, StopError, UserActor,
+    ActorRef, ActorRegistry, AskError, ConfigCodecError, DEFAULT_DRAIN_TIMEOUT, DeliverError,
+    DrainOutcome, MessageDecodeError, MigrationError, PoolRef, RpcReplyPort, ScaleError, SendError,
+    SnapshotError, SpawnError, StopError, UserActor,
 };
 pub use runtime::{
     ClientError, NodeHandle, NodeService, NodeStatus, RuntimeConfig, spawn as spawn_node,

@@ -22,15 +22,22 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use craft_net::transport::{Body, BoxFuture};
 use craft_net::{
-    RequestHandler, Route, Transport, TransportError, decode_body, encode_body, send_actor_spawn,
+    RequestHandler, Route, Transport, TransportError, decode_body, encode_body, send_actor_migrate,
+    send_actor_spawn,
 };
-use craft_proto::{ActorId, ActorRegistration, ActorTypeId, NodeId, SpawnReply, SpawnRequest};
+use craft_proto::{
+    ActorId, ActorRegistration, ActorTypeId, MigrateReply, MigrateRequest, NodeId, SpawnReply,
+    SpawnRequest,
+};
 
 use crate::directory::ActorDirectory;
-use crate::registry::{ActorRegistry, ConfigCodecError, ScaleError, SpawnError, UserActor};
+use crate::registry::{
+    ActorRegistry, ConfigCodecError, ScaleError, SnapshotError, SpawnError, UserActor,
+};
 
 // ---------------------------------------------------------------------------
 // Placement planner (pure)
@@ -156,22 +163,62 @@ pub enum ClusterScaleError {
     Spawn(#[from] RemoteSpawnError),
 }
 
+/// Why a [`migrate`](ClusterControl::migrate) failed (E12, ADR 013).
+#[derive(Debug, thiserror::Error)]
+pub enum MigrateError {
+    /// The instance to migrate is not hosted on this node.
+    #[error("instance {0:?} is not local to this node")]
+    NotLocal(ActorId),
+    /// The migration target is this node — nothing to migrate.
+    #[error("cannot migrate to the same node {0:?}")]
+    SameNode(NodeId),
+    /// Capturing the source's migration snapshot failed.
+    #[error("snapshot failed: {0}")]
+    Snapshot(#[from] SnapshotError),
+    /// The actor's config could not be encoded for shipping.
+    #[error("config encode failed: {0}")]
+    Config(ConfigCodecError),
+    /// The migrate request could not be shipped to the target node.
+    #[error("transport to {node:?} failed: {reason}")]
+    Transport {
+        /// The target node.
+        node: NodeId,
+        /// The underlying transport error.
+        reason: String,
+    },
+    /// The target node received the request but could not spawn the replacement.
+    #[error("node {node:?} rejected migrate: {reason}")]
+    Remote {
+        /// The target node.
+        node: NodeId,
+        /// The reason it reported.
+        reason: String,
+    },
+}
+
 // ---------------------------------------------------------------------------
 // Control plane
 // ---------------------------------------------------------------------------
 
 /// A factory that reconstructs an actor of a specific type from a wire config
-/// and spawns it under `name`, returning the assigned instance id.
+/// and spawns it under `name`, returning the assigned instance id. A non-empty
+/// `snapshot` restores migratable state before the actor runs (E12).
 type SpawnFactory =
-    Arc<dyn Fn(&ActorRegistry, &str, &[u8]) -> Result<u32, SpawnError> + Send + Sync>;
+    Arc<dyn Fn(&ActorRegistry, &str, &[u8], &[u8]) -> Result<u32, SpawnError> + Send + Sync>;
 
 fn make_factory<A: UserActor>() -> SpawnFactory {
-    Arc::new(|registry: &ActorRegistry, name: &str, config: &[u8]| {
-        let config = A::decode_config(config)?;
-        registry.spawn::<A>(name, config)?;
-        // A fresh singleton group is assigned instance id 0.
-        Ok(0)
-    })
+    Arc::new(
+        |registry: &ActorRegistry, name: &str, config: &[u8], snapshot: &[u8]| {
+            let config = A::decode_config(config)?;
+            if snapshot.is_empty() {
+                registry.spawn::<A>(name, config)?;
+            } else {
+                registry.spawn_restoring::<A>(name, config, snapshot)?;
+            }
+            // A fresh singleton group is assigned instance id 0.
+            Ok(0)
+        },
+    )
 }
 
 /// The node-local actor control plane (E9): remote spawn and cluster-wide
@@ -307,6 +354,110 @@ impl ClusterControl {
         Ok(plan)
     }
 
+    /// Migrate the locally-hosted instance `from` to `to_node`, transferring
+    /// its state (E12, ADR 013). Captures the instance's migration snapshot,
+    /// asks the target to spawn a replacement (of type `A`) and restore it, then
+    /// gracefully drains and stops the source with `drain_timeout` (ADR 022).
+    ///
+    /// The replacement's generation is bumped past the source's so stale
+    /// references are detectable.
+    ///
+    /// # Errors
+    /// Returns [`MigrateError`] if the instance is not local, the target is this
+    /// node, the snapshot / config-encode fails, the transport fails, or the
+    /// target rejects the spawn.
+    pub async fn migrate<A: UserActor>(
+        &self,
+        from: ActorId,
+        to_node: NodeId,
+        config: A::Config,
+        drain_timeout: Duration,
+    ) -> Result<ActorId, MigrateError> {
+        if from.node != self.node_id {
+            return Err(MigrateError::NotLocal(from));
+        }
+        if to_node == self.node_id {
+            return Err(MigrateError::SameNode(to_node));
+        }
+        let snapshot = self
+            .registry
+            .snapshot_local(&from.name, from.instance)
+            .await?;
+        let config = A::encode_config(&config).map_err(MigrateError::Config)?;
+        let request = MigrateRequest {
+            from: from.clone(),
+            name: from.name.clone(),
+            actor_type: Self::type_id::<A>(),
+            config,
+            snapshot,
+            generation: from.generation + 1,
+        };
+        let reply = send_actor_migrate(self.transport.as_ref(), to_node, &request)
+            .await
+            .map_err(|e| MigrateError::Transport {
+                node: to_node,
+                reason: e.to_string(),
+            })?;
+        let Some(id) = reply.id else {
+            return Err(MigrateError::Remote {
+                node: to_node,
+                reason: reply.error.unwrap_or_else(|| "unknown".to_string()),
+            });
+        };
+        // Target has the state as of the snapshot; drain and stop the source.
+        let _ = self.registry.stop_graceful(&from.name, drain_timeout).await;
+        Ok(id)
+    }
+
+    /// Handle an inbound [`MigrateRequest`] and produce its [`MigrateReply`]:
+    /// spawn a replacement of the requested type and restore the snapshot into
+    /// it before it handles any message (E12). Idempotent — a replacement that
+    /// already exists is reported as success.
+    #[must_use]
+    pub fn handle_migrate(&self, request: &MigrateRequest) -> MigrateReply {
+        let factory = self
+            .factories
+            .lock()
+            .unwrap()
+            .get(&request.actor_type)
+            .cloned();
+        let Some(factory) = factory else {
+            return MigrateReply {
+                id: None,
+                error: Some(SpawnError::UnknownType(request.actor_type.0.clone()).to_string()),
+            };
+        };
+        match factory(
+            &self.registry,
+            &request.name,
+            &request.config,
+            &request.snapshot,
+        ) {
+            Ok(instance) => MigrateReply {
+                id: Some(ActorId {
+                    node: self.node_id,
+                    name: request.name.clone(),
+                    instance,
+                    generation: request.generation,
+                }),
+                error: None,
+            },
+            Err(SpawnError::NameExists(_)) => MigrateReply {
+                id: Some(ActorId {
+                    node: self.node_id,
+                    name: request.name.clone(),
+                    instance: 0,
+                    generation: request.generation,
+                }),
+                error: None,
+            },
+            Err(e) => MigrateReply {
+                id: None,
+                error: Some(e.to_string()),
+            },
+        }
+    }
+
     /// Handle an inbound [`SpawnRequest`] and produce its [`SpawnReply`].
     #[must_use]
     pub fn handle_spawn(&self, request: &SpawnRequest) -> SpawnReply {
@@ -322,7 +473,7 @@ impl ClusterControl {
                 error: Some(SpawnError::UnknownType(request.actor_type.0.clone()).to_string()),
             };
         };
-        let outcome = factory(&self.registry, &request.name, &request.config);
+        let outcome = factory(&self.registry, &request.name, &request.config, &[]);
         match outcome {
             // A fresh spawn, or an idempotent repeat of one already present
             // (ADR 013 idempotent spawn by name/node/generation), both succeed.
@@ -358,6 +509,9 @@ impl RequestHandler for ClusterControl {
             Route::ActorSpawn => decode_body::<SpawnRequest>(&body)
                 .map_err(TransportError::from)
                 .and_then(|request| Ok(encode_body(&self.handle_spawn(&request))?)),
+            Route::ActorMigrate => decode_body::<MigrateRequest>(&body)
+                .map_err(TransportError::from)
+                .and_then(|request| Ok(encode_body(&self.handle_migrate(&request))?)),
             other => Err(TransportError::Io(format!(
                 "control handler received unexpected route {other:?}"
             ))),

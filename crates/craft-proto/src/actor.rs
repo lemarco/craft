@@ -126,3 +126,36 @@ pub struct SpawnReply {
     /// collision, start failure).
     pub error: Option<String>,
 }
+
+/// A request to migrate a stateful actor to a target node (`/actor/migrate`,
+/// ADR 013). The departing node captures the instance's migration snapshot,
+/// then asks the target to spawn a replacement under `name` and restore the
+/// snapshot into it before it handles any message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MigrateRequest {
+    /// The instance being migrated away (its current address on the source).
+    pub from: ActorId,
+    /// The group name to register the replacement under (usually `from.name`).
+    pub name: String,
+    /// The actor's type tag; the target must have a factory registered for it.
+    pub actor_type: ActorTypeId,
+    /// `postcard`-encoded `A::Config` for constructing the replacement.
+    pub config: Vec<u8>,
+    /// Migration snapshot from [`migration_snapshot`]; empty for a stateless
+    /// actor (the target simply spawns a fresh instance).
+    ///
+    /// [`migration_snapshot`]: https://docs.rs/craft-actor
+    pub snapshot: Vec<u8>,
+    /// Generation for the replacement instance (bumped past the source's).
+    pub generation: u64,
+}
+
+/// Reply to a [`MigrateRequest`]: the replacement instance's id, or an error.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MigrateReply {
+    /// The replacement instance's id on success.
+    pub id: Option<ActorId>,
+    /// A human-readable reason on failure (unknown type, config decode, restore
+    /// failure, start failure).
+    pub error: Option<String>,
+}

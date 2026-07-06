@@ -34,12 +34,19 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
+use craft_net::transport::BoxFuture;
 use craft_proto::{ActorId, ActorRegistration, ActorTypeId, NodeId};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
+
+/// Default graceful-drain timeout for stopping/migrating an actor instance
+/// ([ADR 022](../../../docs/decisions/022-drain-timeout.md)). Overridable per
+/// call; the facade exposes `.drain_timeout(..)` / `CRAFT_DRAIN_TIMEOUT`.
+pub const DEFAULT_DRAIN_TIMEOUT: Duration = Duration::from_secs(60);
 
 // ---------------------------------------------------------------------------
 // UserActor
@@ -107,6 +114,34 @@ pub trait UserActor: Send + Sized + 'static {
     /// the bytes cannot be decoded.
     fn decode_config(_bytes: &[u8]) -> Result<Self::Config, ConfigCodecError> {
         Err(ConfigCodecError::NotSpawnable)
+    }
+
+    /// Capture this actor's migratable state as a byte snapshot, so it can be
+    /// transferred to a replacement on another node when this node leaves
+    /// (E12, [ADR 013](../../../docs/decisions/013-cross-node-actors.md)). The
+    /// default is a **stateless** actor: an empty snapshot, meaning the
+    /// supervisor simply respawns a fresh instance elsewhere. Stateful actors
+    /// (`MIGRATABLE = true`) override this together with
+    /// [`restore_migration`](UserActor::restore_migration).
+    ///
+    /// Runs on the actor's own task, ordered after any already-queued messages,
+    /// so the snapshot reflects everything handled before the migration began.
+    ///
+    /// # Errors
+    /// Returns [`MigrationError`] if the state cannot be captured.
+    fn migration_snapshot(&self) -> Result<Vec<u8>, MigrationError> {
+        Ok(Vec::new())
+    }
+
+    /// Restore migratable state from a snapshot produced by
+    /// [`migration_snapshot`](UserActor::migration_snapshot) on the departing
+    /// node (E12). Runs once, on the new instance's task, before it handles any
+    /// message. The default ignores the (empty) snapshot.
+    ///
+    /// # Errors
+    /// Returns [`MigrationError`] if the snapshot cannot be applied.
+    fn restore_migration(&mut self, _snapshot: &[u8]) -> Result<(), MigrationError> {
+        Ok(())
     }
 
     /// Decode a cross-node wire payload into a message for remote delivery
@@ -180,6 +215,10 @@ pub enum SpawnError {
     /// [`UserActor::start`] failed while constructing an instance.
     #[error("actor start failed: {0}")]
     Start(Box<dyn std::error::Error + Send + Sync>),
+    /// [`UserActor::restore_migration`] failed while installing a migration
+    /// snapshot on the target node (E12).
+    #[error("migration restore failed: {0}")]
+    Restore(MigrationError),
 }
 
 /// Why a `scale_local` failed.
@@ -236,6 +275,47 @@ pub enum SendError {
     /// The selected instance's mailbox is closed (it stopped).
     #[error("actor mailbox is closed")]
     Closed,
+    /// The group is draining for stop/migration and rejects new messages
+    /// (E12, [ADR 022](../../../docs/decisions/022-drain-timeout.md)).
+    #[error("actor is draining")]
+    Draining,
+}
+
+/// The outcome of a graceful drain (E12, ADR 022).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DrainOutcome {
+    /// Every in-flight and queued message finished before the timeout.
+    Completed,
+    /// The timeout elapsed with work still in flight; the actor was force
+    /// stopped (`DrainIncomplete`).
+    TimedOut,
+}
+
+/// An error while capturing a migration snapshot from a live actor (E12).
+#[derive(Debug, thiserror::Error)]
+pub enum SnapshotError {
+    /// The requested instance is not live in the group.
+    #[error("no live instance {0}")]
+    NoInstance(u32),
+    /// The instance stopped before it could produce a snapshot.
+    #[error("actor mailbox is closed")]
+    Closed,
+    /// [`UserActor::migration_snapshot`] failed.
+    #[error(transparent)]
+    Migration(#[from] MigrationError),
+}
+
+/// A failure capturing or applying a migratable actor's state (E12,
+/// [ADR 013](../../../docs/decisions/013-cross-node-actors.md)).
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub struct MigrationError(pub String);
+
+impl MigrationError {
+    /// Build a migration error from any displayable cause.
+    pub fn new(cause: impl std::fmt::Display) -> Self {
+        Self(cause.to_string())
+    }
 }
 
 /// Why an actor's config could not be (de)serialized for a remote spawn (E9).
@@ -278,6 +358,9 @@ pub enum DeliverError {
     /// The target instance's mailbox is closed.
     #[error("actor mailbox is closed")]
     Closed,
+    /// The group is draining for stop/migration and rejects new messages (E12).
+    #[error("actor is draining")]
+    Draining,
 }
 
 /// Why an `ask` failed.
@@ -295,10 +378,18 @@ pub enum AskError {
 // Instance + pool internals
 // ---------------------------------------------------------------------------
 
+/// An item on an instance's serial mailbox: either a user message or a control
+/// request to capture the actor's migration snapshot (E12). Using one channel
+/// keeps snapshot capture strictly ordered after already-queued messages.
+enum Mailbox<A: UserActor> {
+    User(A::Message),
+    Snapshot(oneshot::Sender<Result<Vec<u8>, MigrationError>>),
+}
+
 /// A single running actor instance within a named group.
 struct Instance<A: UserActor> {
     instance: u32,
-    tx: mpsc::UnboundedSender<A::Message>,
+    tx: mpsc::UnboundedSender<Mailbox<A>>,
     join: JoinHandle<()>,
 }
 
@@ -312,6 +403,9 @@ struct PoolInner<A: UserActor> {
     next_instance: AtomicU32,
     /// Group-wide stop signal; flipping it to `true` ends every instance task.
     stop: watch::Sender<bool>,
+    /// Set while the group is draining for stop/migration; new sends are
+    /// rejected (E12, ADR 022).
+    draining: AtomicBool,
 }
 
 impl<A: UserActor> PoolInner<A> {
@@ -323,31 +417,36 @@ impl<A: UserActor> PoolInner<A> {
             rr: AtomicUsize::new(0),
             next_instance: AtomicU32::new(0),
             stop,
+            draining: AtomicBool::new(false),
         })
     }
 
-    /// Start one instance and register it. On failure nothing is registered.
-    fn spawn_instance(self: &Arc<Self>, config: A::Config) -> Result<u32, A::Error> {
-        let mut state = A::start(config)?;
+    /// Launch the mailbox task for an already-constructed `state`, register the
+    /// instance, and return its id. Shared by fresh spawns and migration
+    /// restores.
+    fn launch(self: &Arc<Self>, mut state: A) -> u32 {
         let instance = self.next_instance.fetch_add(1, Ordering::Relaxed);
-        let (tx, mut rx) = mpsc::unbounded_channel::<A::Message>();
+        let (tx, mut rx) = mpsc::unbounded_channel::<Mailbox<A>>();
         let mut stop_rx = self.stop.subscribe();
         let join = tokio::spawn(async move {
             loop {
                 tokio::select! {
                     changed = stop_rx.changed() => {
-                        // Group dropped (Err) or stop signalled (true) → drain out.
+                        // Group dropped (Err) or stop signalled (true) → force out.
                         if changed.is_err() || *stop_rx.borrow() {
                             break;
                         }
                     }
                     maybe = rx.recv() => match maybe {
-                        Some(msg) => {
-                            // Handler errors keep the actor alive (supervision
-                            // policies arrive with E14); the result is dropped.
+                        // Handler errors keep the actor alive (supervision
+                        // policies arrive with E14); the result is dropped.
+                        Some(Mailbox::User(msg)) => {
                             let _ = state.handle(msg).await;
                         }
-                        None => break, // all senders dropped (scaled in)
+                        Some(Mailbox::Snapshot(reply)) => {
+                            let _ = reply.send(state.migration_snapshot());
+                        }
+                        None => break, // mailbox closed (scaled in / drained)
                     }
                 }
             }
@@ -357,11 +456,31 @@ impl<A: UserActor> PoolInner<A> {
             .lock()
             .unwrap()
             .push(Instance { instance, tx, join });
-        Ok(instance)
+        instance
+    }
+
+    /// Start one instance and register it. On failure nothing is registered.
+    fn spawn_instance(self: &Arc<Self>, config: A::Config) -> Result<u32, A::Error> {
+        let state = A::start(config)?;
+        Ok(self.launch(state))
+    }
+
+    /// Start one instance and restore migratable state into it before it
+    /// handles any message (E12).
+    fn spawn_instance_restoring(
+        self: &Arc<Self>,
+        config: A::Config,
+        snapshot: &[u8],
+    ) -> Result<u32, SpawnError> {
+        let mut state = A::start(config).map_err(|e| SpawnError::Start(Box::new(e)))?;
+        state
+            .restore_migration(snapshot)
+            .map_err(SpawnError::Restore)?;
+        Ok(self.launch(state))
     }
 
     /// A clone of the round-robin-selected instance's sender.
-    fn pick_rr(&self) -> Option<mpsc::UnboundedSender<A::Message>> {
+    fn pick_rr(&self) -> Option<mpsc::UnboundedSender<Mailbox<A>>> {
         let instances = self.instances.lock().unwrap();
         if instances.is_empty() {
             return None;
@@ -371,7 +490,7 @@ impl<A: UserActor> PoolInner<A> {
     }
 
     /// A clone of the instance selected by hashing `key` (stable within a run).
-    fn pick_keyed(&self, key: u64) -> Option<mpsc::UnboundedSender<A::Message>> {
+    fn pick_keyed(&self, key: u64) -> Option<mpsc::UnboundedSender<Mailbox<A>>> {
         let instances = self.instances.lock().unwrap();
         if instances.is_empty() {
             return None;
@@ -381,18 +500,27 @@ impl<A: UserActor> PoolInner<A> {
     }
 
     fn send_rr(&self, msg: A::Message) -> Result<(), SendError> {
+        if self.draining.load(Ordering::SeqCst) {
+            return Err(SendError::Draining);
+        }
         let tx = self.pick_rr().ok_or(SendError::NoInstances)?;
-        tx.send(msg).map_err(|_| SendError::Closed)
+        tx.send(Mailbox::User(msg)).map_err(|_| SendError::Closed)
     }
 
     fn send_keyed(&self, key: u64, msg: A::Message) -> Result<(), SendError> {
+        if self.draining.load(Ordering::SeqCst) {
+            return Err(SendError::Draining);
+        }
         let tx = self.pick_keyed(key).ok_or(SendError::NoInstances)?;
-        tx.send(msg).map_err(|_| SendError::Closed)
+        tx.send(Mailbox::User(msg)).map_err(|_| SendError::Closed)
     }
 
     /// Deliver to a specific instance id (used by cross-node delivery, which
     /// has already selected the target instance via the directory, E8).
     fn send_to_instance(&self, instance: u32, msg: A::Message) -> Result<(), DeliverError> {
+        if self.draining.load(Ordering::SeqCst) {
+            return Err(DeliverError::Draining);
+        }
         let tx = {
             let instances = self.instances.lock().unwrap();
             instances
@@ -402,7 +530,50 @@ impl<A: UserActor> PoolInner<A> {
                 .tx
                 .clone()
         };
-        tx.send(msg).map_err(|_| DeliverError::Closed)
+        tx.send(Mailbox::User(msg))
+            .map_err(|_| DeliverError::Closed)
+    }
+
+    /// Capture instance `instance`'s migration snapshot. The request rides the
+    /// serial mailbox, so it observes every message queued before it (E12).
+    async fn snapshot_instance(&self, instance: u32) -> Result<Vec<u8>, SnapshotError> {
+        let tx = {
+            let instances = self.instances.lock().unwrap();
+            instances
+                .iter()
+                .find(|i| i.instance == instance)
+                .ok_or(SnapshotError::NoInstance(instance))?
+                .tx
+                .clone()
+        };
+        let (reply, rx) = oneshot::channel();
+        tx.send(Mailbox::Snapshot(reply))
+            .map_err(|_| SnapshotError::Closed)?;
+        rx.await
+            .map_err(|_| SnapshotError::Closed)?
+            .map_err(SnapshotError::Migration)
+    }
+
+    /// Gracefully drain every instance: reject new messages, let queued and
+    /// in-flight work finish, and force-stop any instance still running when
+    /// `timeout` elapses (E12, ADR 022).
+    async fn drain(&self, timeout: Duration) -> DrainOutcome {
+        self.draining.store(true, Ordering::SeqCst);
+        let drained: Vec<Instance<A>> = std::mem::take(&mut *self.instances.lock().unwrap());
+        let mut outcome = DrainOutcome::Completed;
+        for inst in drained {
+            let Instance { tx, mut join, .. } = inst;
+            // Close the mailbox so the task drains its queue then exits.
+            drop(tx);
+            match tokio::time::timeout(timeout, &mut join).await {
+                Ok(_) => {}
+                Err(_) => {
+                    join.abort();
+                    outcome = DrainOutcome::TimedOut;
+                }
+            }
+        }
+        outcome
     }
 
     fn len(&self) -> usize {
@@ -475,6 +646,13 @@ trait GroupLifecycle: Send + Sync {
     fn type_name(&self) -> &'static str;
     fn migratable(&self) -> bool;
     fn signal_stop(&self);
+    /// Gracefully drain and stop the group with `timeout` (E12, ADR 022).
+    fn drain(self: Arc<Self>, timeout: Duration) -> BoxFuture<'static, DrainOutcome>;
+    /// Capture a migration snapshot from instance `instance` (E12).
+    fn snapshot(
+        self: Arc<Self>,
+        instance: u32,
+    ) -> BoxFuture<'static, Result<Vec<u8>, SnapshotError>>;
 }
 
 impl<A: UserActor> GroupLifecycle for PoolInner<A> {
@@ -492,6 +670,15 @@ impl<A: UserActor> GroupLifecycle for PoolInner<A> {
     }
     fn signal_stop(&self) {
         PoolInner::signal_stop(self);
+    }
+    fn drain(self: Arc<Self>, timeout: Duration) -> BoxFuture<'static, DrainOutcome> {
+        Box::pin(async move { PoolInner::drain(&self, timeout).await })
+    }
+    fn snapshot(
+        self: Arc<Self>,
+        instance: u32,
+    ) -> BoxFuture<'static, Result<Vec<u8>, SnapshotError>> {
+        Box::pin(async move { PoolInner::snapshot_instance(&self, instance).await })
     }
 }
 
@@ -744,6 +931,27 @@ impl ActorRegistry {
         Ok(ActorRef { pool })
     }
 
+    /// Spawn a single named actor and restore migratable state into it from a
+    /// snapshot before it handles any message (E12, ADR 013). Used by the
+    /// `/actor/migrate` target side.
+    ///
+    /// # Errors
+    /// Returns [`SpawnError::NameExists`] if `name` is taken, [`SpawnError::Start`]
+    /// if the actor fails to initialize, or [`SpawnError::Restore`] if the
+    /// snapshot cannot be applied.
+    pub fn spawn_restoring<A: UserActor>(
+        &self,
+        name: &str,
+        config: A::Config,
+        snapshot: &[u8],
+    ) -> Result<ActorRef<A>, SpawnError> {
+        self.reserve(name)?;
+        let pool = PoolInner::<A>::new(name);
+        pool.spawn_instance_restoring(config, snapshot)?;
+        self.insert(name, &pool);
+        Ok(ActorRef { pool })
+    }
+
     /// Spawn a pool of `count` identical actors under `name`.
     ///
     /// # Errors
@@ -836,6 +1044,50 @@ impl ActorRegistry {
             .ok_or_else(|| StopError::NotFound(name.to_string()))?;
         entry.lifecycle.signal_stop();
         Ok(())
+    }
+
+    /// Gracefully stop and remove the actor group `name`: reject new messages,
+    /// let queued and in-flight work finish, and force-stop anything still
+    /// running when `timeout` elapses (E12, ADR 022). Returns whether the drain
+    /// completed or timed out.
+    ///
+    /// # Errors
+    /// Returns [`StopError::NotFound`] if no such group exists.
+    pub async fn stop_graceful(
+        &self,
+        name: &str,
+        timeout: Duration,
+    ) -> Result<DrainOutcome, StopError> {
+        let entry = self
+            .groups
+            .lock()
+            .unwrap()
+            .remove(name)
+            .ok_or_else(|| StopError::NotFound(name.to_string()))?;
+        Ok(entry.lifecycle.drain(timeout).await)
+    }
+
+    /// Capture a migration snapshot from instance `instance` of local group
+    /// `name` by asking the live actor (E12, ADR 013). The request is ordered
+    /// after any already-queued messages.
+    ///
+    /// # Errors
+    /// Returns [`SnapshotError`] if the group / instance is gone or the actor
+    /// fails to produce a snapshot.
+    pub async fn snapshot_local(
+        &self,
+        name: &str,
+        instance: u32,
+    ) -> Result<Vec<u8>, SnapshotError> {
+        let lifecycle = {
+            let groups = self.groups.lock().unwrap();
+            groups
+                .get(name)
+                .ok_or(SnapshotError::NoInstance(instance))?
+                .lifecycle
+                .clone()
+        };
+        lifecycle.snapshot(instance).await
     }
 
     /// Number of live instances in group `name` (0 if absent).

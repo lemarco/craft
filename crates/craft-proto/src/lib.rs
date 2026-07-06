@@ -14,7 +14,7 @@ pub mod raft;
 
 pub use actor::{
     ActorEnvelope, ActorId, ActorRef, ActorRegistration, ActorTypeId, DeliverAck, DirectoryUpdate,
-    RegisterAck, SpawnReply, SpawnRequest,
+    MigrateReply, MigrateRequest, RegisterAck, SpawnReply, SpawnRequest,
 };
 pub use client::{ClientRequest, ClientResponse};
 pub use join::{JoinRejection, JoinRequest, JoinResponse};
