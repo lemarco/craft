@@ -25,8 +25,8 @@ pub use placement::{
 };
 pub use registry::{
     ActorRef, ActorRegistry, AskError, ConfigCodecError, DEFAULT_DRAIN_TIMEOUT, DeliverError,
-    DrainOutcome, MessageDecodeError, MigrationError, PlacementMode, PoolRef, RpcReplyPort,
-    ScaleError, SendError, SnapshotError, SpawnError, StopError, UserActor,
+    DrainOutcome, MessageDecodeError, MigrationError, PlacementMode, PoolRef, RestartPolicy,
+    RpcReplyPort, ScaleError, SendError, SnapshotError, SpawnError, StopError, UserActor,
 };
 pub use resources::{ResourceProfile, VpsResources};
 pub use runtime::{

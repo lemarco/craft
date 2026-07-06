@@ -36,7 +36,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use craft_net::transport::BoxFuture;
 use craft_proto::{ActorId, ActorRegistration, ActorTypeId, NodeId};
@@ -289,6 +289,33 @@ pub enum SendError {
     Draining,
 }
 
+/// OTP-style supervision policy for an actor instance whose
+/// [`handle`](UserActor::handle) returns an error (E14,
+/// [ADR 026](../../../docs/decisions/026-observability.md) §5).
+///
+/// A handler error is craft's notion of an actor *failure*. The policy decides
+/// what the runtime does with the failing instance; a fresh instance is rebuilt
+/// with [`UserActor::start`] from the original config (so supervised actors
+/// require `Config: Clone`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RestartPolicy {
+    /// Never restart: handler errors are non-fatal and the instance keeps its
+    /// current state (the default — plain `spawn` behavior).
+    #[default]
+    Never,
+    /// Restart on failure, bounded to `max_restarts` within a sliding `window`.
+    /// Exceeding the budget escalates: the instance is stopped
+    /// (`ActorStopped { reason: RestartLimit }` once telemetry lands).
+    OnFailure {
+        /// Maximum restarts allowed inside `window` before escalation.
+        max_restarts: u32,
+        /// Sliding window over which restarts are counted.
+        window: Duration,
+    },
+    /// Always restart with fresh state on every handler error.
+    Always,
+}
+
 /// The outcome of a graceful drain (E12, ADR 022).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DrainOutcome {
@@ -394,6 +421,19 @@ enum Mailbox<A: UserActor> {
     Snapshot(oneshot::Sender<Result<Vec<u8>, MigrationError>>),
 }
 
+/// Reconstructs a fresh actor `state` for a supervised restart (E14). Returns
+/// `None` if [`UserActor::start`] fails, which escalates the instance to stop.
+/// Only ever invoked from the owning instance task, so `Send` (no `Sync`).
+type Rebuild<A> = Box<dyn Fn() -> Option<A> + Send>;
+
+/// Build a [`Rebuild`] that reconstructs `A` from a retained config clone (E14).
+fn make_rebuild<A: UserActor>(config: A::Config) -> Rebuild<A>
+where
+    A::Config: Clone,
+{
+    Box::new(move || A::start(config.clone()).ok())
+}
+
 /// A single running actor instance within a named group.
 struct Instance<A: UserActor> {
     instance: u32,
@@ -404,7 +444,9 @@ struct Instance<A: UserActor> {
 /// The shared state of a named actor group (one instance = a singleton).
 struct PoolInner<A: UserActor> {
     name: String,
-    instances: Mutex<Vec<Instance<A>>>,
+    /// Behind its own `Arc` so an escalating instance task can remove itself
+    /// from the roster (E14) without holding the whole pool alive.
+    instances: Arc<Mutex<Vec<Instance<A>>>>,
     /// Round-robin cursor for `send`.
     rr: AtomicUsize,
     /// Monotonic instance-id allocator (never reused within a group).
@@ -414,6 +456,10 @@ struct PoolInner<A: UserActor> {
     /// Set while the group is draining for stop/migration; new sends are
     /// rejected (E12, ADR 022).
     draining: AtomicBool,
+    /// Cumulative supervised restarts across the group's instances (E14). Held
+    /// behind its own `Arc` so instance tasks can bump it without keeping the
+    /// pool alive (which would break the drop-based stop path).
+    restarts: Arc<AtomicU32>,
 }
 
 impl<A: UserActor> PoolInner<A> {
@@ -421,23 +467,38 @@ impl<A: UserActor> PoolInner<A> {
         let (stop, _) = watch::channel(false);
         Arc::new(Self {
             name: name.to_string(),
-            instances: Mutex::new(Vec::new()),
+            instances: Arc::new(Mutex::new(Vec::new())),
             rr: AtomicUsize::new(0),
             next_instance: AtomicU32::new(0),
             stop,
             draining: AtomicBool::new(false),
+            restarts: Arc::new(AtomicU32::new(0)),
         })
     }
 
     /// Launch the mailbox task for an already-constructed `state`, register the
     /// instance, and return its id. Shared by fresh spawns and migration
-    /// restores.
-    fn launch(self: &Arc<Self>, mut state: A) -> u32 {
+    /// restores. `policy` + `rebuild` drive supervised restarts (E14); a plain
+    /// spawn passes [`RestartPolicy::Never`] and `None`.
+    fn launch(
+        self: &Arc<Self>,
+        mut state: A,
+        policy: RestartPolicy,
+        rebuild: Option<Rebuild<A>>,
+    ) -> u32 {
         let instance = self.next_instance.fetch_add(1, Ordering::Relaxed);
         let (tx, mut rx) = mpsc::unbounded_channel::<Mailbox<A>>();
         let mut stop_rx = self.stop.subscribe();
+        let restarts = Arc::clone(&self.restarts);
+        let roster = Arc::clone(&self.instances);
         let join = tokio::spawn(async move {
-            loop {
+            // Timestamps of recent restarts, for the `OnFailure` sliding window.
+            let mut history: Vec<Instant> = Vec::new();
+            // Whether we exited because supervision escalated (budget exhausted
+            // or the rebuild failed): such an instance removes itself from the
+            // roster so `is_alive` / routing stop seeing it (E14).
+            let mut escalated = false;
+            'run: loop {
                 tokio::select! {
                     changed = stop_rx.changed() => {
                         // Group dropped (Err) or stop signalled (true) → force out.
@@ -446,10 +507,46 @@ impl<A: UserActor> PoolInner<A> {
                         }
                     }
                     maybe = rx.recv() => match maybe {
-                        // Handler errors keep the actor alive (supervision
-                        // policies arrive with E14); the result is dropped.
                         Some(Mailbox::User(msg)) => {
-                            let _ = state.handle(msg).await;
+                            if state.handle(msg).await.is_err() {
+                                // A handler error is a failure; the policy decides
+                                // whether to rebuild fresh state or escalate (E14).
+                                match policy {
+                                    RestartPolicy::Never => {}
+                                    RestartPolicy::Always => {
+                                        match rebuild.as_ref().and_then(|rb| rb()) {
+                                            Some(fresh) => {
+                                                state = fresh;
+                                                restarts.fetch_add(1, Ordering::Relaxed);
+                                            }
+                                            None => {
+                                                escalated = true;
+                                                break 'run; // cannot restart
+                                            }
+                                        }
+                                    }
+                                    RestartPolicy::OnFailure { max_restarts, window } => {
+                                        let now = Instant::now();
+                                        history.retain(|t| now.duration_since(*t) < window);
+                                        if (history.len() as u32) < max_restarts {
+                                            match rebuild.as_ref().and_then(|rb| rb()) {
+                                                Some(fresh) => {
+                                                    state = fresh;
+                                                    history.push(now);
+                                                    restarts.fetch_add(1, Ordering::Relaxed);
+                                                }
+                                                None => {
+                                                    escalated = true;
+                                                    break 'run;
+                                                }
+                                            }
+                                        } else {
+                                            escalated = true;
+                                            break 'run; // budget exhausted → escalate
+                                        }
+                                    }
+                                }
+                            }
                         }
                         Some(Mailbox::Snapshot(reply)) => {
                             let _ = reply.send(state.migration_snapshot());
@@ -457,6 +554,9 @@ impl<A: UserActor> PoolInner<A> {
                         None => break, // mailbox closed (scaled in / drained)
                     }
                 }
+            }
+            if escalated {
+                roster.lock().unwrap().retain(|i| i.instance != instance);
             }
             state.stopped().await;
         });
@@ -470,7 +570,22 @@ impl<A: UserActor> PoolInner<A> {
     /// Start one instance and register it. On failure nothing is registered.
     fn spawn_instance(self: &Arc<Self>, config: A::Config) -> Result<u32, A::Error> {
         let state = A::start(config)?;
-        Ok(self.launch(state))
+        Ok(self.launch(state, RestartPolicy::Never, None))
+    }
+
+    /// Start one supervised instance whose handler errors are governed by
+    /// `policy`, rebuilding fresh state from `config` on restart (E14).
+    fn spawn_instance_supervised(
+        self: &Arc<Self>,
+        config: A::Config,
+        policy: RestartPolicy,
+    ) -> Result<u32, A::Error>
+    where
+        A::Config: Clone,
+    {
+        let state = A::start(config.clone())?;
+        let rebuild = make_rebuild::<A>(config);
+        Ok(self.launch(state, policy, Some(rebuild)))
     }
 
     /// Start one instance and restore migratable state into it before it
@@ -484,7 +599,12 @@ impl<A: UserActor> PoolInner<A> {
         state
             .restore_migration(snapshot)
             .map_err(SpawnError::Restore)?;
-        Ok(self.launch(state))
+        Ok(self.launch(state, RestartPolicy::Never, None))
+    }
+
+    /// Cumulative supervised restarts across this group's instances (E14).
+    fn restart_count(&self) -> u32 {
+        self.restarts.load(Ordering::Relaxed)
     }
 
     /// A clone of the round-robin-selected instance's sender.
@@ -761,6 +881,13 @@ impl<A: UserActor> ActorRef<A> {
         &self.pool.name
     }
 
+    /// How many supervised restarts this actor has undergone (E14, ADR 026 §5).
+    /// Always `0` for an unsupervised (`RestartPolicy::Never`) actor.
+    #[must_use]
+    pub fn restart_count(&self) -> u32 {
+        self.pool.restart_count()
+    }
+
     /// Stop the actor and await its task.
     pub async fn stop(&self) {
         self.pool.stop().await;
@@ -955,6 +1082,32 @@ impl ActorRegistry {
         self.reserve(name)?;
         let pool = PoolInner::<A>::new(name);
         if let Err(e) = pool.spawn_instance(config) {
+            return Err(SpawnError::Start(Box::new(e)));
+        }
+        self.insert(name, &pool);
+        Ok(ActorRef { pool })
+    }
+
+    /// Spawn a supervised singleton whose handler errors are governed by
+    /// `policy` (E14, ADR 026 §5). On a supervised restart the actor is rebuilt
+    /// with [`UserActor::start`] from `config`, so a supervised `Config` must be
+    /// `Clone`. Read the running restart tally via [`ActorRef::restart_count`].
+    ///
+    /// # Errors
+    /// Returns [`SpawnError::NameExists`] if `name` is taken or
+    /// [`SpawnError::Start`] if the actor fails to initialize.
+    pub fn spawn_supervised<A: UserActor>(
+        &self,
+        name: &str,
+        config: A::Config,
+        policy: RestartPolicy,
+    ) -> Result<ActorRef<A>, SpawnError>
+    where
+        A::Config: Clone,
+    {
+        self.reserve(name)?;
+        let pool = PoolInner::<A>::new(name);
+        if let Err(e) = pool.spawn_instance_supervised(config, policy) {
             return Err(SpawnError::Start(Box::new(e)));
         }
         self.insert(name, &pool);
