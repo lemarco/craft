@@ -271,11 +271,23 @@ group one-per-node across a 3-node cluster then relocating off a *dead* node
 | T3 | `trybuild` compile-fail suite (macros) | S | **done** (with D3) |
 | T4 | `craft-fuzz`: `postcard`/wire decoders (`cargo-fuzz`) | M | → W0.4 |
 | T5 | Storage crash-recovery tests (kill mid-write, reopen) | M | → B3 |
-| T6 | In-process integration: N nodes, loopback QUIC + mTLS | M | → C3 |
+| T6 | In-process integration: N nodes, loopback QUIC + mTLS | M | **done** (`craft/tests/quic.rs`) |
 | T7 | `testcontainers-rs` Redis integration for `ActorStateStore` | M | → G2 |
-| T8 | E2E `docker-compose` cluster + real mTLS certs | L | → J3 |
-| T9 | Chaos injection in E2E (`pumba`/`toxiproxy`: partition, latency) | L | → T8 |
+| T8 | E2E `docker-compose` cluster + real mTLS certs | L | **done** (`e2e/`) |
+| T9 | Chaos injection in E2E (`pumba`/`toxiproxy`: partition, latency) | L | → T8 (leader-kill landed) |
 | T10 | `criterion` benches (append, apply, deliver) + soak harness | M | → E1 |
+
+**T6** is covered by `craft/tests/quic.rs`: a 3-node cluster over loopback QUIC +
+mTLS (shared dev CA, one UDP socket each) that elects a leader and replicates
+propose/query. **T8** lands in `e2e/`: a `docker-compose` cluster where a
+one-shot `certgen` service runs `examples/certs/generate.sh` to mint a shared CA
++ per-node certs into a volume, then three `craft-node` containers boot, discover
+each other by service DNS name (peers now resolve hostnames, not just literal
+`SocketAddr`s), and elect a leader over **real** QUIC/mTLS between separate
+processes. `e2e/run.sh` asserts election *and* failover (kills the leader,
+verifies the survivors re-elect) and tears down on exit — the leader-kill is the
+first **T9** chaos scenario. The `.gitlab-ci.yml` `e2e` heavy-lane job runs it on
+schedule via dind. Validated locally: node 2 elected, killed, node 3 re-elected.
 
 ---
 

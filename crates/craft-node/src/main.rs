@@ -25,7 +25,7 @@
 
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, ToSocketAddrs};
 
 use craft::core::StateMachine;
 use craft::net::NodeIdentity;
@@ -81,6 +81,29 @@ fn env(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.is_empty())
 }
 
+/// Resolve `host:port` to a `SocketAddr`, accepting both numeric IPs and DNS
+/// names (e.g. docker-compose service names). Retries briefly so a peer whose
+/// container is still coming up on the shared network doesn't fail the boot.
+fn resolve_addr(hostport: &str) -> Result<SocketAddr, Box<dyn Error>> {
+    if let Ok(addr) = hostport.parse::<SocketAddr>() {
+        return Ok(addr);
+    }
+    let mut last = String::new();
+    for _ in 0..20 {
+        match hostport.to_socket_addrs() {
+            Ok(mut addrs) => {
+                if let Some(addr) = addrs.next() {
+                    return Ok(addr);
+                }
+                last = format!("no addresses for {hostport:?}");
+            }
+            Err(e) => last = format!("cannot resolve {hostport:?}: {e}"),
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    Err(last.into())
+}
+
 /// Parse `CRAFT_PEERS` (`id@host:port,...`) into an address book + member list.
 fn parse_peers(raw: &str) -> Result<(PeerDirectory, Vec<NodeId>), Box<dyn Error>> {
     let mut map = BTreeMap::new();
@@ -91,8 +114,7 @@ fn parse_peers(raw: &str) -> Result<(PeerDirectory, Vec<NodeId>), Box<dyn Error>
         let id: u64 = id
             .parse()
             .map_err(|_| format!("bad node id in {entry:?}"))?;
-        let addr: SocketAddr = addr.parse().map_err(|_| format!("bad addr in {entry:?}"))?;
-        map.insert(NodeId(id), addr);
+        map.insert(NodeId(id), resolve_addr(addr)?);
     }
     let members = map.keys().copied().collect();
     Ok((map.into_iter().collect(), members))

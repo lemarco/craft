@@ -1,0 +1,5 @@
+# Keep the Docker build context small and reproducible.
+target/
+.git/
+.cargo/
+**/*.md
