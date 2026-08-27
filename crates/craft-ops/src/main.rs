@@ -1,9 +1,7 @@
-mod backup;
-
 use std::path::PathBuf;
 
-use backup::{OpsError, export_local, import_local, pull_object, push_object};
 use clap::{Parser, Subcommand};
+use craft_ops::backup::{OpsError, export_local, import_local, pull_object, push_object};
 
 #[derive(Parser)]
 #[command(name = "craft-ops", about = "Craft cluster operational tools")]
