@@ -91,7 +91,7 @@ pub async fn resolve_dns_seeds(
 /// StatefulSet pod: `{prefix}-{ordinal}.{service}` (a trailing-empty `service`
 /// yields the bare pod name, used in tests).
 #[must_use]
-pub fn seed_host(prefix: &str, ordinal: u64, service: &str) -> String {
+pub(crate) fn seed_host(prefix: &str, ordinal: u64, service: &str) -> String {
     if service.is_empty() {
         format!("{prefix}-{ordinal}")
     } else {

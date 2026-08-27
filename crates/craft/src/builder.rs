@@ -24,8 +24,8 @@ use tokio::net::TcpListener;
 
 use craft_actor::{
     ActorDirectory, ActorRegistry, ClusterControl, ClusterMessaging, ClusterState,
-    ClusterSupervisor, DirectorySync, NodeService, RaftDriver, RuntimeConfig, UserActor,
-    spawn_multi_raft_node, spawn_node,
+    ClusterSupervisor, DirectorySync, NodeService, RaftDriver, ResourceProfile, RuntimeConfig,
+    UserActor, VpsResources, spawn_multi_raft_node, spawn_node,
 };
 
 use crate::cluster::{ClusterFacts, CraftCluster};
@@ -72,6 +72,7 @@ pub struct CraftClusterBuilder<M: StateMachine> {
     raft: Config,
     runtime: RuntimeConfig,
     dev_multi_workers: bool,
+    resource_profile: ResourceProfile,
     forward_timeout: Duration,
     reconcile_period: Duration,
     publish_period: Duration,
@@ -102,6 +103,7 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
             raft: Config::default(),
             runtime: RuntimeConfig::default(),
             dev_multi_workers: false,
+            resource_profile: ResourceProfile::default(),
             forward_timeout: Duration::from_secs(5),
             reconcile_period: Duration::from_millis(250),
             publish_period: Duration::from_millis(250),
@@ -260,6 +262,15 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
     #[must_use]
     pub fn dev_multi_workers(mut self, dev: bool) -> Self {
         self.dev_multi_workers = dev;
+        self
+    }
+
+    /// How much of this VPS the single worker should use (ADR 014). Defaults to
+    /// [`ResourceProfile::UseAllAvailable`]; retrieve the detected capacity from
+    /// [`CraftCluster::vps_resources`] after start.
+    #[must_use]
+    pub fn resource_profile(mut self, profile: ResourceProfile) -> Self {
+        self.resource_profile = profile;
         self
     }
 
@@ -437,6 +448,9 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
     ) -> (CraftCluster<M>, Arc<dyn RequestHandler>) {
         let node_id = self.node_id;
 
+        let vps_resources = VpsResources::detect(self.resource_profile);
+        let resource_profile = self.resource_profile;
+
         // --- Consensus runtime -------------------------------------------
         let mut multi_raft = None;
         let (handle, group_handles, consensus_service) = if self.raft_groups > 1 {
@@ -590,9 +604,10 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
             let facts = Arc::clone(&facts);
             let directory = Arc::clone(&directory);
             let supervisor = Arc::clone(&supervisor);
-            let multi_raft = multi_raft.clone();
             let events = events.clone();
             let period = self.refresh_period;
+            // Explicit keepalive: rebalance state must outlive this task.
+            let _multi_raft = multi_raft.clone();
             let mut telemetry =
                 crate::cluster::MembershipTelemetry::new(node_id, events.clone(), metrics.clone());
             tasks.push(tokio::spawn(async move {
@@ -615,7 +630,7 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
                     // the new membership.
                     if delta.membership_changed {
                         let _ = supervisor.reconcile().await;
-                        if let Some(mr) = multi_raft.as_ref()
+                        if let Some(mr) = _multi_raft.as_ref()
                             && let Ok(report) = mr.rebalance(Arc::clone(&facts)).await
                         {
                             MultiRaftState::<M>::emit_rebalance(&events, &report);
@@ -781,8 +796,8 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
             metrics,
             telemetry,
             members: self.members,
-            facts,
-            multi_raft,
+            resource_profile,
+            vps_resources,
             actor_state_store: self.actor_state_store,
             tasks: Mutex::new(tasks),
         };

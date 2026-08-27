@@ -12,7 +12,7 @@ use craft_proto::{Membership, NodeId};
 
 /// A resolved cluster configuration with quorum semantics.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Configuration {
+pub(crate) struct Configuration {
     voters: BTreeSet<NodeId>,
     outgoing: BTreeSet<NodeId>,
     learners: BTreeSet<NodeId>,

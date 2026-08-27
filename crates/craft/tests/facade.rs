@@ -233,7 +233,11 @@ async fn cluster_elects_leader_and_serves_reads_and_writes() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn supervisor_auto_places_a_worker_on_every_node() {
     let (_net, clusters) = spawn_cluster().await;
-    let _leader = leader(&clusters).await;
+    let leader = leader(&clusters).await;
+
+    // Drive reconcile explicitly via the public supervisor accessor.
+    let report = leader.supervisor().reconcile().await;
+    assert!(report.is_ok(), "initial reconcile should succeed");
 
     // The leader's reconcile loop should place one "w" worker per live node.
     for c in &clusters {
@@ -453,5 +457,29 @@ async fn builder_wires_actor_state_store() {
 
     let wired = cluster.actor_state_store().expect("store configured");
     assert!(Arc::ptr_eq(&store, &wired));
+    cluster.shutdown();
+}
+
+#[tokio::test]
+async fn builder_wires_resource_profile() {
+    use craft::{ResourceProfile, VpsResources};
+
+    let net = LocalNetwork::new();
+    let cluster = CraftCluster::builder(NodeId(1), Kv::default())
+        .resource_profile(ResourceProfile::Limited { worker_threads: 2 })
+        .start_local(&net)
+        .await;
+
+    assert_eq!(
+        cluster.resource_profile(),
+        ResourceProfile::Limited { worker_threads: 2 }
+    );
+    assert_eq!(
+        cluster.vps_resources(),
+        VpsResources::from_parallelism(
+            cluster.vps_resources().available_parallelism,
+            ResourceProfile::Limited { worker_threads: 2 },
+        )
+    );
     cluster.shutdown();
 }

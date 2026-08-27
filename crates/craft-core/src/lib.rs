@@ -17,13 +17,12 @@ mod rng;
 mod shard;
 mod state_machine;
 
-pub use config::Configuration;
 pub use node::{
     Committed, Config, MembershipError, NotLeader, Output, Persist, RaftNode, ReadId, Role,
     SnapshotState,
 };
 pub use shard::{
-    GroupRebalancePlan, RaftGroupId, ShardId, ShardRouter, group_host_assignment, place_group,
-    place_shard, plan_node_group_rebalance, shard_assignment,
+    GroupRebalancePlan, RaftGroupId, ShardId, ShardRouter, group_host_assignment, place_shard,
+    plan_node_group_rebalance,
 };
 pub use state_machine::{Command, Query, StateMachine};

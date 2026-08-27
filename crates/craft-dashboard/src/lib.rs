@@ -23,8 +23,7 @@ mod server;
 mod telemetry;
 mod views;
 
-pub use dashboard::DASHBOARD_HTML;
-pub use metrics::{MetricKind, Metrics};
+pub use metrics::Metrics;
 pub use server::AdminServer;
 pub use telemetry::{CraftEvent, EventBus, EventSubscription, StopReason, TraceOpts};
 pub use views::{ActorView, BoxFuture, ClusterView, NodeSummary, NodeView, Observer, Readiness};

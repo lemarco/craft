@@ -21,11 +21,10 @@ use tokio::task::JoinHandle;
 use craft_actor::{
     ActorDirectory, ActorObserver, ActorRegistry, ClusterControl, ClusterMessaging,
     ClusterScaleError, ClusterState, ClusterSupervisor, DirectorySync, NOT_LEADER_REASON,
-    NodeHandle, NodeStatus, UserActor,
+    NodeHandle, NodeStatus, ResourceProfile, UserActor, VpsResources,
 };
 
 use crate::CraftClusterBuilder;
-use crate::multi_raft::MultiRaftState;
 
 /// The live leadership/membership facts the supervisor reconciles against
 /// (implements [`ClusterState`]), refreshed from the node's consensus status by
@@ -335,12 +334,8 @@ pub struct CraftCluster<M: StateMachine> {
     pub(crate) metrics: Metrics,
     pub(crate) telemetry: Arc<ActorTelemetry>,
     pub(crate) members: Vec<NodeId>,
-    /// Kept alive for supervisor reconciliation and membership facts.
-    #[allow(dead_code)]
-    pub(crate) facts: Arc<ClusterFacts>,
-    /// Retained so rebalance state outlives the builder; used from background tasks.
-    #[allow(dead_code)]
-    pub(crate) multi_raft: Option<Arc<MultiRaftState<M>>>,
+    pub(crate) resource_profile: ResourceProfile,
+    pub(crate) vps_resources: VpsResources,
     pub(crate) actor_state_store: Option<Arc<dyn craft_actor::ActorStateStore>>,
     pub(crate) tasks: Mutex<Vec<JoinHandle<()>>>,
 }
@@ -366,6 +361,18 @@ impl<M: StateMachine> CraftCluster<M> {
     #[must_use]
     pub fn members(&self) -> &[NodeId] {
         &self.members
+    }
+
+    /// How much of this VPS the worker should use (ADR 014).
+    #[must_use]
+    pub fn resource_profile(&self) -> ResourceProfile {
+        self.resource_profile
+    }
+
+    /// Detected VPS capacity for sizing the single worker's internal pools (ADR 014).
+    #[must_use]
+    pub fn vps_resources(&self) -> VpsResources {
+        self.vps_resources
     }
 
     /// The workflow-state store wired by

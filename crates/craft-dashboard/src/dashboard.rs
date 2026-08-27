@@ -6,7 +6,7 @@
 //! a live event log. Read-only: it never mutates the cluster (ADR 026 §6).
 
 /// The dashboard page markup + inline script.
-pub const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
+pub(crate) const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />

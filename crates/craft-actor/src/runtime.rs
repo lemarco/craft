@@ -432,7 +432,7 @@ impl<M: StateMachine> Runtime<M> {
             return;
         }
         let leader = self.driver.node().id();
-        let membership = self.driver.node().configuration().to_membership();
+        let membership = self.driver.node().committed_membership();
         for index in ready {
             if let Some(tx) = self.pending_joins.remove(&index) {
                 let _ = tx.send(JoinResponse::Accepted {

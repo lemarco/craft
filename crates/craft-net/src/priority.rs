@@ -8,8 +8,8 @@
 //! rate-limiting the bulk [`TrafficClass`]es while consensus traffic flows
 //! unthrottled.
 //!
-//! A [`TrafficPolicy`] maps each class to an optional token-bucket
-//! [`RateLimiter`]. The default policy is *unlimited* (no behavior change);
+//! A [`TrafficPolicy`] maps each class to an optional token-bucket rate limiter.
+//! The default policy is *unlimited* (no behavior change);
 //! operators opt into limits per class when a node is client/actor-heavy.
 
 use std::collections::HashMap;
@@ -22,11 +22,11 @@ use tokio::time::Instant;
 use crate::route::TrafficClass;
 
 /// A token-bucket rate limiter: refills at `rate` tokens per second up to a
-/// `burst` ceiling. [`acquire`](RateLimiter::acquire) consumes one token,
+/// `burst` ceiling. `acquire` consumes one token,
 /// sleeping only when the bucket is empty. Tokens may go transiently negative so
 /// concurrent acquirers queue rather than all racing through an empty bucket.
 #[derive(Debug)]
-pub struct RateLimiter {
+pub(crate) struct RateLimiter {
     rate: f64,
     burst: f64,
     bucket: Mutex<Bucket>,

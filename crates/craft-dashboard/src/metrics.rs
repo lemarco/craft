@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 
 /// The Prometheus type of a metric family.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MetricKind {
+pub(crate) enum MetricKind {
     /// Monotonically increasing value (`# TYPE … counter`).
     Counter,
     /// Instantaneous value that can go up or down (`# TYPE … gauge`).

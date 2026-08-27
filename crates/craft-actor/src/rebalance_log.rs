@@ -4,7 +4,7 @@ use craft_core::{GroupRebalancePlan, RaftGroupId};
 use craft_proto::NodeId;
 
 /// When `CRAFT_LOG_REBALANCE` is set, write a line to stderr (visible in tests/CI logs).
-pub fn enabled() -> bool {
+pub(crate) fn enabled() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| std::env::var_os("CRAFT_LOG_REBALANCE").is_some())
 }

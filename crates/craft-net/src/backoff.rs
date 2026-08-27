@@ -1,7 +1,7 @@
 //! Exponential reconnect backoff for the peer connection pool (backlog C5,
 //! [ADR 027](../../../docs/decisions/027-future-work-and-risks.md) R2).
 //!
-//! [`BackoffPolicy`] is a pure, deterministic delay schedule; [`BackoffState`]
+//! [`BackoffPolicy`] is a pure, deterministic delay schedule; `BackoffState`
 //! tracks a single endpoint's consecutive failures and the earliest time a
 //! redial is allowed. Both take an explicit `now: Instant`, so the reconnect
 //! logic is unit-testable without sleeping or a real clock.
@@ -53,7 +53,7 @@ impl BackoffPolicy {
 /// Per-endpoint reconnect state: how many consecutive dials have failed and the
 /// earliest instant the next dial is permitted.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct BackoffState {
+pub(crate) struct BackoffState {
     failures: u32,
     /// `None` means "ready now" (no failure recorded yet, or reset).
     ready_at: Option<Instant>,
@@ -67,8 +67,8 @@ impl BackoffState {
     }
 
     /// Number of consecutive failures recorded.
-    #[must_use]
-    pub fn failures(&self) -> u32 {
+    #[cfg(test)]
+    pub(crate) fn failures(&self) -> u32 {
         self.failures
     }
 

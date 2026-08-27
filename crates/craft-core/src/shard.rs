@@ -106,7 +106,7 @@ fn group_node_weight(group: RaftGroupId, node: craft_proto::NodeId) -> u64 {
 /// Deterministic and stable under node churn — the same property as
 /// [`place_shard`].
 #[must_use]
-pub fn place_group(
+pub(crate) fn place_group(
     group: RaftGroupId,
     nodes: &[craft_proto::NodeId],
 ) -> Option<craft_proto::NodeId> {
@@ -169,8 +169,9 @@ pub fn plan_node_group_rebalance(
 
 /// The full shard → owning-group assignment for `shard_count` shards over
 /// `groups`, using [`place_shard`]. Empty when `groups` is empty.
+#[cfg(test)]
 #[must_use]
-pub fn shard_assignment(
+pub(crate) fn shard_assignment(
     shard_count: u32,
     groups: &[RaftGroupId],
 ) -> BTreeMap<ShardId, RaftGroupId> {

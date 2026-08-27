@@ -24,9 +24,12 @@ mod redb_store;
 mod traits;
 mod types;
 
+#[cfg(test)]
+pub mod test_util;
+
 pub use error::StorageError;
 pub use memory::MemoryStorage;
-pub use namespaced::{GroupMemoryStorage, GroupRedbLayout, group_redb_path};
+pub use namespaced::{GroupRedbLayout, group_redb_path};
 pub use null::NullStorage;
 pub use redb_store::RedbStorage;
 pub use traits::{HardStateStore, LogStore, RaftStorage, SnapshotStore};

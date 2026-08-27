@@ -58,6 +58,7 @@ pub use craft_storage as storage;
 
 pub use builder::{CraftClusterBuilder, StartError};
 pub use cluster::{ClusterFacts, CraftCluster, ScaleClusterError};
+pub use craft_actor::{ResourceProfile, VpsResources};
 pub use security::Security;
 
 /// The peer address book ([`NodeId`] → socket) used to dial cluster members

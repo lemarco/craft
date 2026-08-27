@@ -28,10 +28,10 @@ pub mod tls;
 pub mod transport;
 pub mod wire;
 
-pub use backoff::{BackoffPolicy, BackoffState};
+pub use backoff::BackoffPolicy;
 pub use group_transport::GroupTransport;
 pub use peer::PeerDirectory;
-pub use priority::{RateLimiter, TrafficPolicy};
+pub use priority::TrafficPolicy;
 pub use quic::{QuicServer, QuicTransport, client_endpoint};
 pub use route::{Route, TrafficClass};
 pub use tls::{NodeIdentity, TlsError, client_config, server_config};

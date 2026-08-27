@@ -447,7 +447,7 @@ impl RaftNode {
     /// log, then the snapshot's configuration (its config entry may have been
     /// compacted), then the bootstrap configuration.
     #[must_use]
-    pub fn configuration(&self) -> Configuration {
+    pub(crate) fn configuration(&self) -> Configuration {
         let membership = self
             .log
             .last_membership()
@@ -455,6 +455,12 @@ impl RaftNode {
             .or_else(|| self.snapshot.as_ref().map(|s| &s.membership))
             .unwrap_or(&self.initial);
         Configuration::from_membership(membership)
+    }
+
+    /// The committed membership as a wire [`Membership`] value.
+    #[must_use]
+    pub fn committed_membership(&self) -> craft_proto::Membership {
+        self.configuration().to_membership()
     }
 
     /// Highest index covered by this node's snapshot (0 if none).
