@@ -1,6 +1,6 @@
 # Tier 2 — multi-Raft architecture (write scaling)
 
-**Status:** Accepted (Phase 1 pure planners landed)  
+**Status:** Accepted (Phase 1 planners + Phase 2 dynamic catalog runtime landed)  
 **Date:** 2026-08-27
 
 ## Context
@@ -29,9 +29,9 @@ and sequences runtime work.
 | Phase | Item | Scope | Status |
 |-------|------|-------|--------|
 | **1** | Pure planners (`craft-core::shard`) | Catalog validation/expansion; stable virtual shard space | **landed** |
-| **2** | **Dynamic catalog expansion** | Replicated catalog + leader command + rebalance | next runtime |
-| **3** | **Stable shard activation** | `StableShardRouter` in runtime; migration from Tier 1 modulus | after Phase 2 |
-| **4** | Cross-shard atomic transactions | Separate ADR — [cross-shard-transactions](cross-shard-transactions.md) | proposed |
+| **2** | **Dynamic catalog expansion** | Replicated catalog + leader command + rebalance | **landed** |
+| **3** | **Stable shard activation** | `StableShardRouter` in runtime; migration from Tier 1 modulus | **landed** |
+| **4** | Cross-shard atomic transactions | Separate ADR — [cross-shard-transactions](cross-shard-transactions.md) | **done** (saga coordinator) |
 | **—** | Meta-Raft group | Deferred — group 0 coordinator remains | deferred |
 
 ---
@@ -54,20 +54,22 @@ and sequences runtime work.
 - Existing [`MultiRaftState::rebalance`](../../crates/craft/src/multi_raft.rs) +
   group migrate RPC adopt/retire replicas on physical nodes.
 
-**Runtime design (Phase 2, not yet wired):**
+**Runtime design (Phase 2 — landed):**
 
 ```
 Leader (group 0)
-  → propose ClusterCatalogCommand::AddGroups { count }
-  → committed on group 0 internal metadata channel (not user StateMachine)
-  → all nodes update catalog → facts refresher → rebalance + membership sync
+  → POST /raft/v1/cluster/catalog/add (CatalogAddRequest)
+  → propose CatalogCommand::AddGroups on group 0 log (EntryPayload::Catalog)
+  → all nodes replay → on_catalog_applied → MultiRaftState::apply_catalog_command
+  → facts refresher → rebalance adopt + extend_routing_catalog + membership sync
 ```
 
 - Catalog is **cluster metadata**, not application state — handled by craft
   runtime on group 0 (same boundary as `/cluster/join` membership).
-- Facade API (planned): `CraftCluster::add_raft_groups(count)` (leader-only).
-- `GET /introspect/raft-groups` already exposes catalog size; extend with
-  `catalog_version` / pending expansion when wired.
+- Facade API: `CraftCluster::add_raft_groups(count)` (leader-only, redirects
+  followers via wire RPC).
+- `GET /introspect/raft-groups` exposes live `catalog_size` from the in-memory
+  catalog mutex; `catalog_version` / pending expansion deferred.
 
 **Safety:**
 
@@ -114,11 +116,12 @@ group set.
 
 ### 3. Cross-shard atomic transactions (Phase 4 — separate ADR)
 
-Not implemented in Tier 2. See [cross-shard-transactions](cross-shard-transactions.md)
-for 2PC vs saga framework options, consistency targets, and explicit non-goals.
+**Landed:** saga coordinator in `craft-client` ([`run_saga`](../../crates/craft-client/src/saga.rs)),
+facade [`StoreSagaJournal`](../../crates/craft/src/saga.rs). See
+[cross-shard-transactions](cross-shard-transactions.md) for guarantees and 2PC deferral.
 
 Tier 1 [`propose_keyed_batch`](../../crates/craft-client/src/batch.rs) remains the
-**non-atomic** default.
+**non-atomic** default for callers that manage compensation themselves.
 
 ---
 

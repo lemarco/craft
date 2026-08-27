@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use craft::CraftCluster;
-use craft::core::{Config, RaftGroupId, ShardRouter, StateMachine, place_shard};
+use craft::core::{RaftGroupId, StableShardRouter, place_shard};
 use craft::net::{LocalNetwork, Transport, send_client_request};
 use craft::proto::{ClientRequest, ClientResponse, LogIndex, NodeId};
 use craft_benchmarks::TinyRng;
@@ -95,10 +95,12 @@ fn raft_config(seed: u64) -> Config {
 
 fn route_key(seed: u64, round: u64) -> Vec<u8> {
     let groups = [RaftGroupId(0), RaftGroupId(1)];
-    let router = ShardRouter::new(64);
-    for i in 0..10_000u32 {
+    let router = StableShardRouter::new(64);
+    for i in 0..50_000u32 {
         let key = format!("soak-{seed}-{round}-{i}").into_bytes();
-        let shard = router.shard_for(&key);
+        let Some(shard) = router.shard_for(&key) else {
+            continue;
+        };
         if place_shard(shard, &groups).is_some() {
             return key;
         }

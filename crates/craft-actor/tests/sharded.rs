@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use craft_actor::craft_core::RaftGroupId;
+use craft_actor::craft_core::ShardRoutingKind;
 use craft_actor::craft_net::{LocalNetwork, RequestHandler, Transport, send_client_request};
 use craft_actor::craft_proto::{ClientRequest, ClientResponse, NodeId};
 use craft_actor::{RuntimeConfig, ShardedNodeService, spawn_multi_raft_node, spawn_raft_group};
@@ -39,6 +40,7 @@ async fn keyed_writes_route_to_independent_raft_groups() {
         runtime.clone(),
         runtime,
         shard_count,
+        ShardRoutingKind::StableVirtual,
         2,
         machines,
         Arc::clone(&transport),
@@ -164,6 +166,7 @@ async fn sharded_runtime_adopts_a_second_group_at_runtime() {
     services.insert(0, service0);
     let sharded = Arc::new(ShardedNodeService::new(
         shard_count,
+        ShardRoutingKind::StableVirtual,
         vec![RaftGroupId(0)],
         services,
     ));
@@ -250,4 +253,76 @@ async fn sharded_runtime_adopts_a_second_group_at_runtime() {
 
     handle0.shutdown();
     handle1.shutdown();
+}
+
+#[tokio::test(start_paused = true)]
+async fn stable_shard_activation_rejects_inactive_keys() {
+    use craft_actor::craft_core::{ShardRoutingKind, StableShardRouter};
+
+    let net = LocalNetwork::new();
+    let transport: Arc<dyn Transport> = Arc::new(net.clone());
+    let node_id = NodeId(1);
+    let members = [node_id];
+    let active = 8;
+    let runtime = RuntimeConfig {
+        tick_period: TICK_PERIOD,
+        allow_join: false,
+        allow_leave: false,
+        ..RuntimeConfig::default()
+    };
+    let (sharded, handles) = spawn_multi_raft_node(
+        node_id,
+        &members,
+        craft_actor::craft_core::DEFAULT_GROUP_REPLICATION_FACTOR,
+        craft_actor::craft_core::Config::default(),
+        runtime.clone(),
+        runtime,
+        active,
+        ShardRoutingKind::StableVirtual,
+        1,
+        vec![KvMachine::default()],
+        Arc::clone(&transport),
+        Duration::from_secs(5),
+        None,
+    )
+    .expect("spawn stable node");
+    net.attach(node_id, Arc::clone(&sharded) as Arc<dyn RequestHandler>);
+
+    let inactive_key = {
+        let router = StableShardRouter::new(active);
+        (0..50_000u32)
+            .find_map(|i| {
+                let key = format!("inactive-{i}").into_bytes();
+                router.shard_for(&key).is_none().then_some(key)
+            })
+            .expect("inactive key")
+    };
+
+    let cmd = craft_actor::craft_proto::encode(&KvCommand::Set {
+        key: "k".into(),
+        value: "v".into(),
+    })
+    .unwrap();
+    let resp = send_client_request(
+        &*transport,
+        node_id,
+        &ClientRequest::ProposeKeyed {
+            key: inactive_key,
+            command: cmd,
+        },
+    )
+    .await
+    .expect("propose inactive key");
+    assert!(
+        matches!(resp, ClientResponse::Error(ref e) if e.contains("active shard")),
+        "unexpected response: {resp:?}"
+    );
+
+    let plan = sharded.activate_shards(16).expect("activate");
+    assert_eq!(plan.from, active);
+    assert_eq!(plan.to, 16);
+
+    for handle in handles {
+        handle.shutdown();
+    }
 }

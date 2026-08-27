@@ -72,13 +72,15 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | `take_persist` / `restore` (core) | ✅ | ✅ | — | — | ✅ |
 | Write sharding / multi-Raft routing | ⚠️ | ✅ `multi_raft` | ✅ | — | ✅ |
 | Tier 2 catalog expansion (pure planner) | ✅ `shard` | — | — | — | ⚠️ |
-| Tier 2 stable virtual shards (pure planner) | ✅ `shard` | — | — | — | ⚠️ |
-| Dynamic catalog expansion (runtime) | — | ❌ | — | — | ❌ |
+| Tier 2 stable virtual shards (pure planner) | ✅ `shard` | — | — | — | ✅ |
+| Dynamic catalog expansion (runtime) | — | ✅ `multi_raft` | — | — | ✅ |
+| Stable shard routing (runtime) | — | ✅ `multi_raft`, `sharded` | — | — | ✅ |
 | Cross-shard atomic transactions | — | ❌ | — | — | ❌ |
 | Per-group membership planner (`group_voters`, join/leave affects) | ✅ | ✅ | — | — | ✅ |
 | Per-group membership runtime sync on cluster join | — | ✅ | — | — | ✅ |
 | Per-group learners (`group_learners`, membership sync) | ✅ | — | — | — | ✅ |
-| Operator shard expansion (`expand_shard_count`) | ✅ | ✅ `multi_raft` | — | — | ✅ |
+| Operator shard expansion (`expand_shard_count`, Tier 1 modulus) | ✅ | ✅ `multi_raft` | — | — | ✅ |
+| Stable shard activation (`activate_shards`, Tier 2) | ✅ | ✅ `multi_raft`, `sharded` | — | — | — |
 | Cluster leave RPC (`/cluster/leave`, `CraftCluster::leave`) | — | ✅ `runtime`, `multi_raft` | — | — | ✅ |
 | Leader-side reachability / hysteresis / phi-accrual | ✅ | ✅ | — | — | ✅ |
 | Wire protocol N/N−1 compat band | ✅ | ✅ | — | — | ✅ |
@@ -194,8 +196,6 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 
 | Priority | Gap | Suggested test location | Effort |
 |----------|-----|-------------------------|--------|
-| **P1** | Dynamic catalog expansion runtime (`add_raft_groups`) | `craft/tests/multi_raft.rs`, `craft-actor` rebalance | L |
-| **P1** | Stable shard router in runtime (`StableShardRouter` wiring) | `craft-actor/sharded`, `craft/tests/multi_raft.rs` | L |
 | **P2** | Cross-shard saga coordinator | `craft-client`, ADR Phase 4 | XL |
 
 ### Closed gaps
@@ -211,12 +211,15 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-08 | Snapshot survives facade restart (`compact` + `data_dir`) | `craft/tests/persistence.rs` |
 | 2026-08 | 3-node majority survives one member restart | `craft/tests/persistence.rs` |
 | 2026-08 | Shared KV fixtures + harness helpers (dedupe ~8 copies) | `craft-test-support` (`Kv`, `TrackedKv`, `find_keys_for_two_groups`, cluster polling) |
+| 2026-08 | Stable shard router runtime (`StableShardRouter`, `activate_shards`, builder default) | `craft-actor/sharded`, `craft/tests/multi_raft.rs`, `craft-actor/tests/sharded.rs` |
 | 2026-08 | Linearizability E2E phase 2 (QUIC `craft-e2e-client` + external checker) | `crates/craft-e2e-client`, `e2e/linearizability.sh`, `e2e/docker-compose.yml` |
 | 2026-08 | Hardening: graceful leave integration, admin HTTPS E2E | `craft/tests/graceful_leave.rs`, `craft/tests/facade.rs`, `craft-dashboard/tests/admin.rs` |
 | 2026-08 | Wire decode fuzz (`cargo-fuzz` wire_decode, scheduled CI) | `crates/craft-fuzz/`, `.gitlab-ci.yml` `fuzz` job |
 | 2026-08 | Tier 1 multi-Raft: learners planner, shard expansion, keyed batch, `/introspect/raft-groups` | `craft-core`, `craft-client`, `craft-dashboard`, `craft/tests/multi_raft.rs`, `docs/decisions/tier1-multi-raft-advances.md` |
 | 2026-08 | Client retry edge cases (`NoTargets`, timeout, `NotLeader`, unreachable) | `craft-client/tests/retry.rs` |
 | 2026-08 | Keyed client routing (multi-Raft propose/query) | `craft/tests/client_keyed.rs` |
+| 2026-08 | Tier 2 Phase 4: cross-shard saga coordinator (`run_saga`, `StoreSagaJournal`) | `craft-client/src/saga.rs`, `craft/src/saga.rs`, `craft/tests/saga.rs`, `docs/decisions/cross-shard-transactions.md` |
+| 2026-08 | Tier 2 Phase 2: dynamic catalog runtime (`add_raft_groups`, `/cluster/catalog/add`) | `craft-proto/catalog`, `craft-actor/runtime`, `craft/tests/multi_raft.rs`, `docs/decisions/tier2-multi-raft-architecture.md` |
 | 2026-08 | Tier 2 multi-Raft architecture ADR + Phase 1 pure planners | `craft-core/src/shard.rs`, `docs/decisions/tier2-multi-raft-architecture.md` |
 | 2026-08 | Actor routing Tier 3: ring, session, drain override, `ask_linearizable`, directory RYW | `craft-actor` (`ring`, `session`, `directory_policy`), `craft-actor/tests/{messaging,migration}.rs`, `docs/decisions/actor-routing-tier3.md` |
 | 2026-08 | `craft-node` env parsing unit tests | `craft-node/src/config.rs` (`#[cfg(test)]`) |

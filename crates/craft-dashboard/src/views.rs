@@ -121,6 +121,8 @@ pub struct RaftGroupSummary {
 pub struct RaftGroupsView {
     /// Active virtual shard count (may grow via expansion).
     pub shard_count: u32,
+    /// Keyed routing mode: `modulus` (Tier 1) or `stable_virtual` (Tier 2).
+    pub shard_routing: String,
     /// Number of catalogued Raft groups.
     pub catalog_size: u32,
     /// Target voter replication factor per group.

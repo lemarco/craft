@@ -2,16 +2,46 @@
 
 use std::collections::BTreeMap;
 
-use craft_core::{RaftGroupId, ShardRouter, place_shard};
+use craft_core::{RaftGroupId, ShardRouter, ShardRoutingKind, StableShardRouter, place_shard};
 
 /// Find two distinct routing keys that land on different Raft groups.
+///
+/// Uses stable virtual routing by default (matches new cluster defaults).
 #[must_use]
-pub fn find_keys_for_two_groups(shard_count: u32, groups: &[RaftGroupId]) -> (Vec<u8>, Vec<u8>) {
-    let router = ShardRouter::new(shard_count);
+pub fn find_keys_for_two_groups(active_count: u32, groups: &[RaftGroupId]) -> (Vec<u8>, Vec<u8>) {
+    find_keys_for_two_groups_with_routing(active_count, groups, ShardRoutingKind::StableVirtual)
+}
+
+/// Find two routing keys under Tier 1 modulus routing.
+#[must_use]
+pub fn find_keys_for_two_groups_modulus(
+    active_count: u32,
+    groups: &[RaftGroupId],
+) -> (Vec<u8>, Vec<u8>) {
+    find_keys_for_two_groups_with_routing(active_count, groups, ShardRoutingKind::Modulus)
+}
+
+/// Find two distinct routing keys for the given routing mode.
+#[must_use]
+pub fn find_keys_for_two_groups_with_routing(
+    active_count: u32,
+    groups: &[RaftGroupId],
+    routing: ShardRoutingKind,
+) -> (Vec<u8>, Vec<u8>) {
+    let limit = match routing {
+        ShardRoutingKind::Modulus => 10_000,
+        ShardRoutingKind::StableVirtual => 50_000,
+    };
     let mut by_group: BTreeMap<u32, Vec<u8>> = BTreeMap::new();
-    for i in 0..10_000u32 {
+    for i in 0..limit {
         let key = format!("route-{i}").into_bytes();
-        let shard = router.shard_for(&key);
+        let shard = match routing {
+            ShardRoutingKind::Modulus => Some(ShardRouter::new(active_count).shard_for(&key)),
+            ShardRoutingKind::StableVirtual => StableShardRouter::new(active_count).shard_for(&key),
+        };
+        let Some(shard) = shard else {
+            continue;
+        };
         let Some(group) = place_shard(shard, groups) else {
             continue;
         };

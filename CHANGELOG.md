@@ -16,6 +16,11 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ### Added
 
+- **Stable shard routing (Tier 2 Phase 3)** — multi-Raft clusters default to
+  `StableShardRouter` (`CraftClusterBuilder::stable_shards`, default on).
+  `CraftCluster::activate_shards` grows the active virtual prefix without
+  remapping; Tier 1 `expand_shard_count` remains via `.modulus_shards()`.
+  Introspect exposes `shard_routing`.
 - **Tier 2 multi-Raft architecture** ([tier2-multi-raft-architecture](docs/decisions/tier2-multi-raft-architecture.md)) —
   ADR for dynamic catalog expansion, stable virtual shard activation, and phased
   write-scaling path; Phase 1 pure planners in `craft-core::shard`

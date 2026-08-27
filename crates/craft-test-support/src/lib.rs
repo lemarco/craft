@@ -20,4 +20,7 @@ pub use facade::{
 };
 pub use harness::{TICK_PERIOD, fast_raft_config, fast_raft_config_with_seed, free_udp};
 pub use kv::{Cmd, Kv, KvCommand, KvError, KvMachine, KvQuery, KvResponse, Qry, Resp, TrackedKv};
-pub use shard::find_keys_for_two_groups;
+pub use shard::{
+    find_keys_for_two_groups, find_keys_for_two_groups_modulus,
+    find_keys_for_two_groups_with_routing,
+};

@@ -42,6 +42,26 @@ pub const DEFAULT_GROUP_LEARNER_FACTOR: u32 = 0;
 /// Upper bound for [`ShardRouter`] active shard counts (Tier 1 expansion).
 pub const MAX_VIRTUAL_SHARDS: u32 = 4096;
 
+/// How keyed traffic maps into the virtual shard space (Tier 1 vs Tier 2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShardRoutingKind {
+    /// Tier 1: `hash(key) % active_count` — keys remap when the count grows.
+    Modulus,
+    /// Tier 2: fixed virtual id `hash(key) % MAX_VIRTUAL_SHARDS` with an active prefix.
+    StableVirtual,
+}
+
+impl ShardRoutingKind {
+    /// Stable string for introspect / operator tooling.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Modulus => "modulus",
+            Self::StableVirtual => "stable_virtual",
+        }
+    }
+}
+
 /// FNV-1a (64-bit): a small, dependency-free, **stable** hash. Stability matters
 /// because the mapping must be identical on every node and across process
 /// restarts — unlike `DefaultHasher`, whose output is not guaranteed stable.
@@ -125,6 +145,8 @@ pub enum ShardExpansionError {
     },
     /// Keyed routing / expansion requires multi-Raft (`raft_groups > 1`).
     NotMultiRaft,
+    /// Stable virtual routing is active — use [`StableShardRouter::activate_shards`].
+    StableRoutingActive,
 }
 
 impl std::fmt::Display for ShardExpansionError {
@@ -141,6 +163,9 @@ impl std::fmt::Display for ShardExpansionError {
             Self::NotMultiRaft => {
                 f.write_str("shard expansion requires multi-Raft (raft_groups > 1)")
             }
+            Self::StableRoutingActive => f.write_str(
+                "stable virtual shard routing is active; use activate_shards instead of expand_shard_count",
+            ),
         }
     }
 }
@@ -517,6 +542,10 @@ pub enum StableShardActivationError {
         /// Requested active count.
         requested: u32,
     },
+    /// Tier 1 modulus routing is active — use [`ShardRouter::expand_shard_count`].
+    ModulusRoutingActive,
+    /// Activation requires multi-Raft (`raft_groups > 1`).
+    NotMultiRaft,
 }
 
 impl std::fmt::Display for StableShardActivationError {
@@ -530,6 +559,12 @@ impl std::fmt::Display for StableShardActivationError {
                 f,
                 "requested {requested} active shards exceeds MAX_VIRTUAL_SHARDS ({MAX_VIRTUAL_SHARDS})"
             ),
+            Self::ModulusRoutingActive => f.write_str(
+                "modulus shard routing is active; use expand_shard_count instead of activate_shards",
+            ),
+            Self::NotMultiRaft => {
+                f.write_str("shard activation requires multi-Raft (raft_groups > 1)")
+            }
         }
     }
 }

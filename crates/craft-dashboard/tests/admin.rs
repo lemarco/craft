@@ -57,6 +57,7 @@ impl Observer for Fake {
         Box::pin(async move {
             RaftGroupsView {
                 shard_count: 64,
+                shard_routing: "stable_virtual".into(),
                 catalog_size: 2,
                 replication_factor: 3,
                 learner_factor: 1,
@@ -260,6 +261,7 @@ async fn introspection_routes_return_json() {
     let (status, body) = get(addr, "/introspect/raft-groups").await;
     assert_eq!(status, 200);
     assert!(body.contains("\"shard_count\":64") && body.contains("\"catalog_size\":2"));
+    assert!(body.contains("\"shard_routing\":\"stable_virtual\""));
 
     let (status, body) = get(addr, "/introspect/actors").await;
     assert_eq!(status, 200);

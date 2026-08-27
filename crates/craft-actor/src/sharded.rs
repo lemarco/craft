@@ -7,8 +7,9 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use craft_core::{
-    RaftGroupId, ShardCountExpansionPlan, ShardExpansionError, ShardRouter, StateMachine,
-    place_shard,
+    RaftGroupId, ShardCountExpansionPlan, ShardExpansionError, ShardId, ShardRouter,
+    ShardRoutingKind, StableShardActivationError, StableShardActivationPlan, StableShardRouter,
+    StateMachine, place_shard,
 };
 use craft_net::transport::{Body, BoxFuture, RequestHandler};
 use craft_net::{Route, Transport, TransportError, decode_body, encode_body};
@@ -17,10 +18,67 @@ use craft_storage::{GroupRedbLayout, RaftStorage, StorageError};
 
 use crate::RuntimeConfig;
 
+/// Internal keyed-router state (Tier 1 modulus vs Tier 2 stable virtual prefix).
+#[derive(Debug, Clone, Copy)]
+enum KeyedRouter {
+    Modulus(ShardRouter),
+    Stable(StableShardRouter),
+}
+
+impl KeyedRouter {
+    fn new(kind: ShardRoutingKind, active_count: u32) -> Self {
+        match kind {
+            ShardRoutingKind::Modulus => Self::Modulus(ShardRouter::new(active_count)),
+            ShardRoutingKind::StableVirtual => Self::Stable(StableShardRouter::new(active_count)),
+        }
+    }
+
+    fn kind(&self) -> ShardRoutingKind {
+        match self {
+            Self::Modulus(_) => ShardRoutingKind::Modulus,
+            Self::Stable(_) => ShardRoutingKind::StableVirtual,
+        }
+    }
+
+    fn active_count(&self) -> u32 {
+        match self {
+            Self::Modulus(r) => r.shard_count(),
+            Self::Stable(r) => r.active_count(),
+        }
+    }
+
+    fn shard_for(&self, key: &[u8]) -> Option<ShardId> {
+        match self {
+            Self::Modulus(r) => Some(r.shard_for(key)),
+            Self::Stable(r) => r.shard_for(key),
+        }
+    }
+
+    fn expand_shard_count(
+        &mut self,
+        new_count: u32,
+    ) -> Result<ShardCountExpansionPlan, ShardExpansionError> {
+        match self {
+            Self::Modulus(r) => r.expand_shard_count(new_count),
+            Self::Stable(_) => Err(ShardExpansionError::StableRoutingActive),
+        }
+    }
+
+    fn activate_shards(
+        &mut self,
+        new_active: u32,
+    ) -> Result<StableShardActivationPlan, StableShardActivationError> {
+        match self {
+            Self::Stable(r) => r.activate_shards(new_active),
+            Self::Modulus(_) => Err(StableShardActivationError::ModulusRoutingActive),
+        }
+    }
+}
+
 /// Routes client and peer traffic to one of several Raft groups hosted on the
 /// same physical node.
 pub struct ShardedNodeService {
-    router: RwLock<ShardRouter>,
+    router: RwLock<KeyedRouter>,
     group_ids: Arc<RwLock<Vec<RaftGroupId>>>,
     groups: Arc<RwLock<BTreeMap<u32, Arc<dyn RequestHandler>>>>,
 }
@@ -30,14 +88,21 @@ impl ShardedNodeService {
     #[must_use]
     pub fn new(
         shard_count: u32,
+        routing: ShardRoutingKind,
         group_ids: Vec<RaftGroupId>,
         groups: BTreeMap<u32, Arc<dyn RequestHandler>>,
     ) -> Self {
         Self {
-            router: RwLock::new(ShardRouter::new(shard_count)),
+            router: RwLock::new(KeyedRouter::new(routing, shard_count)),
             group_ids: Arc::new(RwLock::new(group_ids)),
             groups: Arc::new(RwLock::new(groups)),
         }
+    }
+
+    /// Keyed routing mode on this node.
+    #[must_use]
+    pub fn routing_kind(&self) -> ShardRoutingKind {
+        self.router.read().expect("sharded router lock").kind()
     }
 
     /// Active shard count for keyed routing.
@@ -46,13 +111,13 @@ impl ShardedNodeService {
         self.router
             .read()
             .expect("sharded router lock")
-            .shard_count()
+            .active_count()
     }
 
-    /// Expand the active shard keyspace (Tier 1). Keys remap — drain clients first.
+    /// Expand the active shard keyspace (Tier 1 modulus). Keys remap — drain clients first.
     ///
     /// # Errors
-    /// Returns [`ShardExpansionError`] when `new_count` is invalid.
+    /// Returns [`ShardExpansionError`] when `new_count` is invalid or stable routing is active.
     pub fn expand_shard_count(
         &self,
         new_count: u32,
@@ -61,6 +126,20 @@ impl ShardedNodeService {
             .write()
             .expect("sharded router lock")
             .expand_shard_count(new_count)
+    }
+
+    /// Grow the active virtual shard prefix (Tier 2 stable). Existing keys keep their shard id.
+    ///
+    /// # Errors
+    /// Returns [`StableShardActivationError`] when `new_active` is invalid or modulus routing is active.
+    pub fn activate_shards(
+        &self,
+        new_active: u32,
+    ) -> Result<StableShardActivationPlan, StableShardActivationError> {
+        self.router
+            .write()
+            .expect("sharded router lock")
+            .activate_shards(new_active)
     }
 
     /// Raft groups currently hosted on this physical node.
@@ -112,7 +191,7 @@ impl ShardedNodeService {
             .router
             .read()
             .expect("sharded router lock")
-            .shard_for(key);
+            .shard_for(key)?;
         let ids = self.group_ids.read().expect("sharded group_ids lock");
         place_shard(shard, &ids)
     }
@@ -130,13 +209,17 @@ impl ShardedNodeService {
             )),
             ClientRequest::ProposeKeyed { key, command } => {
                 let Some(group) = self.group_for_key(&key) else {
-                    return Err(ClientResponse::Error("no raft groups configured".into()));
+                    return Err(ClientResponse::Error(
+                        "key outside active shard range".into(),
+                    ));
                 };
                 Ok((group.0, ClientRequest::Propose(command)))
             }
             ClientRequest::QueryKeyed { key, query } => {
                 let Some(group) = self.group_for_key(&key) else {
-                    return Err(ClientResponse::Error("no raft groups configured".into()));
+                    return Err(ClientResponse::Error(
+                        "key outside active shard range".into(),
+                    ));
                 };
                 Ok((group.0, ClientRequest::Query(query)))
             }
@@ -148,7 +231,9 @@ impl ShardedNodeService {
                 route_key: Some(key),
             } => {
                 let Some(group) = self.group_for_key(&key) else {
-                    return Err(ClientResponse::Error("no raft groups configured".into()));
+                    return Err(ClientResponse::Error(
+                        "key outside active shard range".into(),
+                    ));
                 };
                 Ok((
                     group.0,
@@ -341,6 +426,7 @@ pub fn spawn_multi_raft_node<M>(
     runtime: RuntimeConfig,
     runtime_group0: RuntimeConfig,
     shard_count: u32,
+    shard_routing: ShardRoutingKind,
     group_count: u32,
     machines: Vec<M>,
     network: Arc<dyn Transport>,
@@ -379,6 +465,11 @@ where
         handles.push(handle);
     }
 
-    let sharded = Arc::new(ShardedNodeService::new(shard_count, group_ids, services));
+    let sharded = Arc::new(ShardedNodeService::new(
+        shard_count,
+        shard_routing,
+        group_ids,
+        services,
+    ));
     Ok((sharded, handles))
 }

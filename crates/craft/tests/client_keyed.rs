@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use craft::CraftCluster;
 use craft::NodeId;
-use craft::core::{RaftGroupId, ShardRouter, place_shard};
+use craft::core::{RaftGroupId, StableShardRouter, place_shard};
 use craft::net::LocalNetwork;
 use craft_client::{RemoteClient, TypedClient};
 use craft_test_support::{
@@ -43,15 +43,11 @@ async fn remote_client_routes_keyed_writes_and_reads_by_shard() {
     let groups = [RaftGroupId(0), RaftGroupId(1)];
     let (route_a, route_b) = find_keys_for_two_groups(shard_count, &groups);
 
-    let router = ShardRouter::new(shard_count);
-    assert_eq!(
-        place_shard(router.shard_for(&route_a), &groups),
-        Some(groups[0])
-    );
-    assert_eq!(
-        place_shard(router.shard_for(&route_b), &groups),
-        Some(groups[1])
-    );
+    let router = StableShardRouter::new(shard_count);
+    let shard_a = router.shard_for(&route_a).expect("route_a active");
+    let shard_b = router.shard_for(&route_b).expect("route_b active");
+    assert_eq!(place_shard(shard_a, &groups), Some(groups[0]));
+    assert_eq!(place_shard(shard_b, &groups), Some(groups[1]));
 
     let remote = RemoteClient::new(Arc::new(net.clone()), [NodeId(1)]);
     let client: TypedClient<RemoteClient, KvMachine> = TypedClient::new(remote);

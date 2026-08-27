@@ -30,7 +30,7 @@ pub use shard::{
     CatalogError, CatalogExpansionPlan, DEFAULT_GROUP_LEARNER_FACTOR,
     DEFAULT_GROUP_REPLICATION_FACTOR, GroupMembershipChange, GroupRebalancePlan,
     GroupReplicationTarget, MAX_VIRTUAL_SHARDS, RaftGroupId, ShardCountExpansionPlan,
-    ShardExpansionError, ShardId, ShardRouter, StableShardActivationError,
+    ShardExpansionError, ShardId, ShardRouter, ShardRoutingKind, StableShardActivationError,
     StableShardActivationPlan, StableShardRouter, effective_replication_factor,
     group_host_assignment, group_learners, group_membership_assignment, group_voters,
     groups_joining_node_affects, groups_leaving_node_affects, place_shard, plan_catalog_expansion,

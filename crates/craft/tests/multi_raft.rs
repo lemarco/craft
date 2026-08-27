@@ -494,6 +494,7 @@ async fn tier1_shard_expansion_and_keyed_batch() {
         .raft_config(fast_raft_config_with_seed(9))
         .tick_period(TICK_PERIOD)
         .shard_count(shard_count)
+        .modulus_shards()
         .raft_machines([KvMachine::default(), KvMachine::default()])
         .start_local(&net)
         .await;
@@ -539,17 +540,97 @@ async fn tier1_shard_expansion_and_keyed_batch() {
 }
 
 fn find_key_for_group(shard_count: u32, groups: &[RaftGroupId], target: u32) -> Vec<u8> {
-    use craft::core::{ShardRouter, place_shard};
+    use craft::core::{StableShardRouter, place_shard};
 
-    let router = ShardRouter::new(shard_count);
-    for i in 0..10_000u32 {
+    let router = StableShardRouter::new(shard_count);
+    for i in 0..50_000u32 {
         let key = format!("catalog-{target}-{i}").into_bytes();
-        let shard = router.shard_for(&key);
+        let Some(shard) = router.shard_for(&key) else {
+            continue;
+        };
         if place_shard(shard, groups).is_some_and(|g| g.0 == target) {
             return key;
         }
     }
     panic!("no routing key for group {target}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn stable_shard_activation_preserves_key_routing() {
+    use craft::core::{
+        ShardRoutingKind, StableShardRouter, place_shard, stable_router_preserves_routable_keys,
+    };
+    use craft_client::{KeyedBatchStep, RemoteClient, propose_keyed_batch};
+
+    let net = LocalNetwork::new();
+    let node_id = NodeId(1);
+    let active = 64;
+    let groups = [RaftGroupId(0), RaftGroupId(1)];
+    let (route_a, route_b) = find_keys_for_two_groups(active, &groups);
+
+    let cluster = CraftCluster::builder(node_id, KvMachine::default())
+        .members([node_id])
+        .raft_config(fast_raft_config_with_seed(11))
+        .tick_period(TICK_PERIOD)
+        .shard_count(active)
+        .raft_machines([KvMachine::default(), KvMachine::default()])
+        .start_local(&net)
+        .await;
+
+    assert_eq!(cluster.shard_routing(), ShardRoutingKind::StableVirtual);
+    wait_for_group_leaders(&cluster).await;
+
+    let before_router = StableShardRouter::new(active);
+    let shard_a = before_router.shard_for(&route_a).expect("route_a active");
+    let shard_b = before_router.shard_for(&route_b).expect("route_b active");
+    assert_eq!(place_shard(shard_a, &groups).unwrap().0, 0);
+    assert_eq!(place_shard(shard_b, &groups).unwrap().0, 1);
+
+    let plan = cluster.activate_shards(128).expect("activate shards");
+    assert_eq!(plan.from, 64);
+    assert_eq!(plan.to, 128);
+    assert_eq!(cluster.shard_count(), 128);
+
+    let after_router = StableShardRouter::new(128);
+    assert_eq!(after_router.shard_for(&route_a), Some(shard_a));
+    assert_eq!(after_router.shard_for(&route_b), Some(shard_b));
+    assert!(stable_router_preserves_routable_keys(
+        active,
+        128,
+        &[route_a.as_slice(), route_b.as_slice()],
+    ));
+
+    let transport: Arc<dyn craft::net::Transport> = Arc::new(net.clone());
+    let client = RemoteClient::new(transport, [node_id]);
+    let cmd_a = craft::proto::encode(&KvCommand::Set {
+        key: "a".into(),
+        value: "1".into(),
+    })
+    .unwrap();
+    let cmd_b = craft::proto::encode(&KvCommand::Set {
+        key: "b".into(),
+        value: "2".into(),
+    })
+    .unwrap();
+
+    let results = propose_keyed_batch(
+        &client,
+        &[
+            KeyedBatchStep {
+                key: route_a,
+                payload: cmd_a,
+            },
+            KeyedBatchStep {
+                key: route_b,
+                payload: cmd_b,
+            },
+        ],
+    )
+    .await
+    .expect("batch propose after activation");
+    assert_eq!(results.len(), 2);
+
+    cluster.shutdown();
 }
 
 #[tokio::test(start_paused = true)]

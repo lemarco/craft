@@ -355,6 +355,7 @@ pub struct CraftCluster<M: StateMachine> {
     pub(crate) group_handles: Vec<NodeHandle<M>>,
     pub(crate) raft_groups: u32,
     pub(crate) shard_count: u32,
+    pub(crate) shard_routing: craft_core::ShardRoutingKind,
     pub(crate) registry: ActorRegistry,
     pub(crate) control: Arc<ClusterControl>,
     pub(crate) messaging: Arc<ClusterMessaging>,
@@ -489,12 +490,23 @@ impl<M: StateMachine> CraftCluster<M> {
         }
     }
 
-    /// Expand the virtual shard keyspace (multi-Raft only). Keys **remap** when
+    /// Keyed routing mode for multi-Raft clusters.
+    #[must_use]
+    pub fn shard_routing(&self) -> craft_core::ShardRoutingKind {
+        if let Some(mr) = &self.multi_raft {
+            mr.sharded.routing_kind()
+        } else {
+            self.shard_routing
+        }
+    }
+
+    /// Expand the virtual shard keyspace (Tier 1 modulus only). Keys **remap** when
     /// the modulus changes — drain keyed clients before calling.
     ///
     /// # Errors
     /// Returns [`craft_core::ShardExpansionError::NotMultiRaft`] on single-Raft
-    /// clusters, or planner errors when `new_count` is invalid.
+    /// clusters, [`craft_core::ShardExpansionError::StableRoutingActive`] when stable
+    /// routing is configured, or planner errors when `new_count` is invalid.
     pub fn expand_shard_count(
         &self,
         new_count: u32,
@@ -504,6 +516,24 @@ impl<M: StateMachine> CraftCluster<M> {
             .as_ref()
             .ok_or(craft_core::ShardExpansionError::NotMultiRaft)?;
         mr.sharded.expand_shard_count(new_count)
+    }
+
+    /// Grow the active virtual shard prefix (Tier 2 stable routing). Existing keyed
+    /// traffic keeps the same virtual shard id.
+    ///
+    /// # Errors
+    /// Returns [`craft_core::StableShardActivationError::NotMultiRaft`] on single-Raft
+    /// clusters, [`craft_core::StableShardActivationError::ModulusRoutingActive`] when
+    /// modulus routing is configured, or planner errors when `new_active` is invalid.
+    pub fn activate_shards(
+        &self,
+        new_active: u32,
+    ) -> Result<craft_core::StableShardActivationPlan, craft_core::StableShardActivationError> {
+        let mr = self
+            .multi_raft
+            .as_ref()
+            .ok_or(craft_core::StableShardActivationError::NotMultiRaft)?;
+        mr.sharded.activate_shards(new_active)
     }
 
     /// The node-local actor registry (spawn / scale / drain local actors).

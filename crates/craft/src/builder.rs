@@ -93,6 +93,7 @@ pub struct CraftClusterBuilder<M: StateMachine> {
     traffic_policy: TrafficPolicy,
     raft_groups: u32,
     shard_count: u32,
+    shard_routing: craft_core::ShardRoutingKind,
     group_replication_factor: u32,
     group_learner_factor: u32,
     raft_machines: Option<Vec<M>>,
@@ -132,6 +133,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             traffic_policy: TrafficPolicy::unlimited(),
             raft_groups: 1,
             shard_count: 256,
+            shard_routing: craft_core::ShardRoutingKind::StableVirtual,
             group_replication_factor: DEFAULT_GROUP_REPLICATION_FACTOR,
             group_learner_factor: DEFAULT_GROUP_LEARNER_FACTOR,
             raft_machines: None,
@@ -177,6 +179,27 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     #[must_use]
     pub fn shard_count(mut self, count: u32) -> Self {
         self.shard_count = count.max(1);
+        self
+    }
+
+    /// Use stable virtual shard routing (Tier 2 default). Keys outside the active
+    /// prefix are rejected; use [`CraftCluster::activate_shards`] to grow capacity
+    /// without remapping existing keys.
+    #[must_use]
+    pub fn stable_shards(mut self, enabled: bool) -> Self {
+        self.shard_routing = if enabled {
+            craft_core::ShardRoutingKind::StableVirtual
+        } else {
+            craft_core::ShardRoutingKind::Modulus
+        };
+        self
+    }
+
+    /// Tier 1 modulus routing (`hash(key) % count`). Keys **remap** when the count
+    /// grows — prefer the default stable virtual routing for new clusters.
+    #[must_use]
+    pub fn modulus_shards(mut self) -> Self {
+        self.shard_routing = craft_core::ShardRoutingKind::Modulus;
         self
     }
 
@@ -655,6 +678,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 self.runtime.clone(),
                 runtime_group0,
                 self.shard_count,
+                self.shard_routing,
                 self.raft_groups,
                 machines,
                 Arc::clone(&transport),
@@ -975,6 +999,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 Arc::clone(&directory),
                 registry.clone(),
                 self.shard_count,
+                self.shard_routing,
                 self.raft_groups,
                 self.group_replication_factor,
                 self.group_learner_factor,
@@ -1014,6 +1039,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             group_handles,
             raft_groups: self.raft_groups,
             shard_count: self.shard_count,
+            shard_routing: self.shard_routing,
             registry,
             control,
             messaging,
