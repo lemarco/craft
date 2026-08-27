@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use craft_core::{Config, RaftNode, StateMachine};
+use craft_core::{Config, DEFAULT_GROUP_REPLICATION_FACTOR, RaftNode, StateMachine};
 use craft_dashboard::{AdminServer, CraftEvent, EventBus, Metrics, Observer};
 use craft_net::transport::RequestHandler;
 use craft_net::{
@@ -28,10 +28,11 @@ use craft_actor::{
     UserActor, VpsResources, spawn_multi_raft_node, spawn_node,
 };
 
+use crate::certs::{CertReloadHandle, PemSecurity};
 use crate::cluster::{ClusterFacts, CraftCluster};
 use crate::discovery::Seed;
 use crate::handler::{NoPeers, NodeRouter, PeerSource, QuicPeers};
-use crate::multi_raft::MultiRaftState;
+use crate::multi_raft::{ArcGroupMigrate, GroupMigratePort, MultiRaftState};
 use crate::observer::CraftObserver;
 use crate::security::Security;
 
@@ -83,14 +84,17 @@ pub struct CraftClusterBuilder<M: StateMachine> {
     traffic_policy: TrafficPolicy,
     raft_groups: u32,
     shard_count: u32,
+    group_replication_factor: u32,
     raft_machines: Option<Vec<M>>,
     data_dir: Option<PathBuf>,
     actor_state_store: Option<Arc<dyn craft_actor::ActorStateStore>>,
+    /// Poll interval for on-disk PEM rotation when using [`start_quic_pem`](Self::start_quic_pem).
+    cert_watch: Option<Duration>,
     registrations: Vec<RegisterFn>,
     managed: Vec<ManageFn>,
 }
 
-impl<M: StateMachine + Default> CraftClusterBuilder<M> {
+impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     /// Start a builder for node `node_id` running `machine`. Defaults to a
     /// single-node cluster (`members = [node_id]`); call [`members`](Self::members)
     /// for a multi-node bootstrap.
@@ -114,9 +118,11 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
             traffic_policy: TrafficPolicy::unlimited(),
             raft_groups: 1,
             shard_count: 256,
+            group_replication_factor: DEFAULT_GROUP_REPLICATION_FACTOR,
             raft_machines: None,
             data_dir: None,
             actor_state_store: None,
+            cert_watch: None,
             registrations: Vec::new(),
             managed: Vec::new(),
         }
@@ -153,6 +159,15 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
     #[must_use]
     pub fn shard_count(mut self, count: u32) -> Self {
         self.shard_count = count.max(1);
+        self
+    }
+
+    /// Replication factor for each shard Raft group's voter set (ADR 033).
+    /// Clamped to the live node count at runtime; default 3. Use a value ≥
+    /// expected cluster size to replicate on every joined node.
+    #[must_use]
+    pub fn group_replication_factor(mut self, factor: u32) -> Self {
+        self.group_replication_factor = factor.max(1);
         self
     }
 
@@ -296,6 +311,14 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
         self
     }
 
+    /// How often consensus status is mirrored into the supervisor and telemetry
+    /// (membership + reachability deltas, ADR 032).
+    #[must_use]
+    pub fn refresh_period(mut self, period: Duration) -> Self {
+        self.refresh_period = period;
+        self
+    }
+
     /// Capacity of the telemetry [`EventBus`] ring buffer per subscriber.
     #[must_use]
     pub fn event_capacity(mut self, capacity: usize) -> Self {
@@ -308,6 +331,15 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
     #[must_use]
     pub fn admin_addr(mut self, addr: SocketAddr) -> Self {
         self.admin_addr = Some(addr);
+        self
+    }
+
+    /// Poll on-disk PEM files every `period` and hot-reload TLS when they change
+    /// ([ADR 034](decisions/034-cert-automation.md)).
+    /// Used with [`start_quic_pem`](Self::start_quic_pem); defaults to **60s** when unset.
+    #[must_use]
+    pub fn cert_watch(mut self, period: Duration) -> Self {
+        self.cert_watch = Some(period);
         self
     }
 
@@ -394,13 +426,43 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
         listen: SocketAddr,
         peers: PeerDirectory,
     ) -> Result<CraftCluster<M>, StartError> {
+        self.start_quic_inner(security, listen, peers, None).await
+    }
+
+    /// Like [`start_quic`](Self::start_quic) but loads from [`PemSecurity`] and,
+    /// when [`cert_watch`](Self::cert_watch) is set (or by default every **60s**),
+    /// hot-reloads TLS when the PEM files change. Also reloads on `SIGHUP` (Unix).
+    ///
+    /// # Errors
+    /// Same as [`start_quic`](Self::start_quic).
+    pub async fn start_quic_pem(
+        self,
+        pem: PemSecurity,
+        listen: SocketAddr,
+        peers: PeerDirectory,
+    ) -> Result<CraftCluster<M>, StartError> {
+        let paths = pem.paths.clone();
+        self.start_quic_inner(pem.security, listen, peers, Some(paths))
+            .await
+    }
+
+    async fn start_quic_inner(
+        self,
+        security: Security,
+        listen: SocketAddr,
+        peers: PeerDirectory,
+        pem_paths: Option<craft_net::CertPaths>,
+    ) -> Result<CraftCluster<M>, StartError> {
         let server_cfg = server_config(&security.identity, security.roots.clone())?;
         let client_cfg = client_config(&security.identity, security.roots)?;
 
-        let server = QuicServer::bind(listen, server_cfg).map_err(|source| StartError::Bind {
-            addr: listen,
-            source,
-        })?;
+        let server =
+            Arc::new(
+                QuicServer::bind(listen, server_cfg).map_err(|source| StartError::Bind {
+                    addr: listen,
+                    source,
+                })?,
+            );
         // Share the bound endpoint so outbound dials reuse the listener socket.
         let endpoint = server.endpoint().clone();
         let quic = Arc::new(QuicTransport::with_policy(
@@ -421,11 +483,15 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
 
         let node_id = self.node_id;
         let sync_period = self.publish_period;
-        let (cluster, router) = self
+        let cert_watch = self.cert_watch;
+        let (mut cluster, router) = self
             .assemble(transport, peer_source, Some(sync_period))
             .await;
 
-        let accept = tokio::spawn(async move { server.run(router).await });
+        let accept = tokio::spawn({
+            let server = Arc::clone(&server);
+            async move { server.run_arc(router).await }
+        });
         cluster.tasks.lock().unwrap().push(accept);
 
         // Dynamically join an existing cluster: learn peer addresses from a
@@ -435,6 +501,27 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
         if !seeds.is_empty() {
             join_cluster(&quic, node_id, &seeds, listen).await?;
         }
+
+        if let Some(paths) = pem_paths {
+            let reload = Arc::new(CertReloadHandle::new(
+                node_id,
+                paths,
+                server,
+                quic,
+                Arc::clone(&cluster.facts),
+            ));
+            let period = cert_watch.unwrap_or(Duration::from_secs(60));
+            cluster
+                .tasks
+                .lock()
+                .unwrap()
+                .push(reload.clone().spawn_watcher(period));
+            if let Some(sighup) = reload.clone().spawn_sighup() {
+                cluster.tasks.lock().unwrap().push(sighup);
+            }
+            cluster.cert_reload = Some(reload);
+        }
+
         Ok(cluster)
     }
 
@@ -450,6 +537,11 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
 
         let vps_resources = VpsResources::detect(self.resource_profile);
         let resource_profile = self.resource_profile;
+
+        // When joining dynamically, bootstrap consensus without this node in the
+        // voter set — group 0 join + per-group sync add it later (ADR 033).
+        let dynamic_join = !self.join_seeds.is_empty();
+        let bootstrap_voters = consensus_bootstrap_voters(&self.members, node_id, dynamic_join);
 
         // --- Consensus runtime -------------------------------------------
         let mut multi_raft = None;
@@ -469,7 +561,8 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
                 (0..self.raft_groups).map(craft_core::RaftGroupId).collect();
             let (sharded, handles_vec) = spawn_multi_raft_node(
                 node_id,
-                &self.members,
+                &bootstrap_voters,
+                self.group_replication_factor,
                 self.raft.clone(),
                 self.runtime.clone(),
                 self.shard_count,
@@ -499,17 +592,25 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
                 data_dir: self.data_dir.clone(),
                 catalog,
                 node_id,
-                members: self.members.clone(),
+                replication_factor: self.group_replication_factor,
             }));
             (primary, group_handles, sharded as Arc<dyn RequestHandler>)
         } else {
-            let node = RaftNode::new(node_id, self.members.clone(), self.raft.clone());
             let driver = if let Some(ref dir) = self.data_dir {
                 let storage = GroupRedbLayout::new(dir)
                     .open_group(0)
                     .expect("open raft storage");
-                RaftDriver::with_storage(node, self.machine, Box::new(storage))
+                RaftDriver::recover(
+                    node_id,
+                    bootstrap_voters.iter().copied(),
+                    self.raft.clone(),
+                    self.machine,
+                    Box::new(storage),
+                )
+                .expect("recover raft storage")
             } else {
+                let node =
+                    RaftNode::new(node_id, bootstrap_voters.iter().copied(), self.raft.clone());
                 RaftDriver::new(node, self.machine)
             };
             let handle = spawn_node(driver, Arc::clone(&transport), self.runtime.clone());
@@ -588,6 +689,9 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
             Arc::clone(&messaging),
             Arc::clone(&directory_sync),
             Arc::clone(&peers),
+            multi_raft.as_ref().map(|state| {
+                Arc::new(ArcGroupMigrate(Arc::clone(state))) as Arc<dyn GroupMigratePort>
+            }),
         ));
 
         // --- Background loops --------------------------------------------
@@ -596,9 +700,9 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
         // Facts refresher + consensus telemetry: mirror consensus status into
         // the supervisor's view, publish Raft gauges / leader + membership
         // events (Track H), prune routing to departed nodes, and trigger an
-        // immediate reconcile on any membership change so joiners get workers
-        // without waiting for the periodic timer (E11) and a departed node's
-        // managed workers are replaced promptly (E12).
+        // immediate reconcile on any membership or reachability change so joiners
+        // get workers without waiting for the periodic timer (E11), a departed
+        // or crashed node's managed workers are replaced promptly (E12/ADR 032),
         {
             let handle = handle.clone();
             let facts = Arc::clone(&facts);
@@ -621,20 +725,23 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
                     facts.update(&status);
                     let delta = telemetry.record(&status);
                     // Prune the local directory copy so routing stops targeting
-                    // a departed node immediately (every node does this).
-                    for node in &delta.departed {
+                    // a departed or unreachable node immediately (every node).
+                    for node in delta.departed.iter().chain(&delta.unreachable) {
                         directory.remove_node(*node);
                     }
-                    // reconcile() is leader-gated internally, so this is a no-op
-                    // on followers; it relocates managed/auto workers to reflect
-                    // the new membership.
-                    if delta.membership_changed {
-                        let _ = supervisor.reconcile().await;
-                        if let Some(mr) = _multi_raft.as_ref()
-                            && let Ok(report) = mr.rebalance(Arc::clone(&facts)).await
-                        {
-                            MultiRaftState::<M>::emit_rebalance(&events, &report);
+                    if let Some(mr) = _multi_raft.as_ref() {
+                        // Per-group membership converges incrementally (joint
+                        // consensus); retry every tick until the planner is
+                        // satisfied (ADR 033).
+                        let _ = mr.sync_group_membership(Arc::clone(&facts)).await;
+                        if delta.membership_changed || delta.reachability_changed {
+                            let _ = supervisor.reconcile().await;
+                            if let Ok(report) = mr.rebalance(Arc::clone(&facts)).await {
+                                MultiRaftState::<M>::emit_rebalance(&events, &report);
+                            }
                         }
+                    } else if delta.membership_changed || delta.reachability_changed {
+                        let _ = supervisor.reconcile().await;
                     }
                 }
             }));
@@ -799,10 +906,31 @@ impl<M: StateMachine + Default> CraftClusterBuilder<M> {
             resource_profile,
             vps_resources,
             actor_state_store: self.actor_state_store,
+            wire_handler: Arc::clone(&router),
+            facts,
+            multi_raft,
+            cert_reload: None,
             tasks: Mutex::new(tasks),
         };
         (cluster, router)
     }
+}
+
+/// Initial voter set before a dynamic join commits (excludes `node_id`).
+fn consensus_bootstrap_voters(
+    members: &[NodeId],
+    node_id: NodeId,
+    dynamic_join: bool,
+) -> Vec<NodeId> {
+    if !dynamic_join {
+        return members.to_vec();
+    }
+    let live: Vec<_> = members
+        .iter()
+        .copied()
+        .filter(|id| *id != node_id)
+        .collect();
+    if live.is_empty() { vec![node_id] } else { live }
 }
 
 /// How long to keep retrying each phase of a dynamic join before giving up.

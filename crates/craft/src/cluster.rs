@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 use craft_core::StateMachine;
 use craft_dashboard::{CraftEvent, EventBus, Metrics, StopReason, TraceOpts};
 use craft_net::RemoteError;
+use craft_net::transport::RequestHandler;
 use craft_proto::{NodeId, ScaleRequest};
 use tokio::task::JoinHandle;
 
@@ -24,7 +25,10 @@ use craft_actor::{
     NodeHandle, NodeStatus, ResourceProfile, UserActor, VpsResources,
 };
 
+use crate::multi_raft::MultiRaftState;
+
 use crate::CraftClusterBuilder;
+use crate::certs::CertReloadHandle;
 
 /// The live leadership/membership facts the supervisor reconciles against
 /// (implements [`ClusterState`]), refreshed from the node's consensus status by
@@ -201,12 +205,19 @@ pub(crate) struct MembershipTelemetry {
     prev: Option<NodeStatus>,
 }
 
-/// What changed in the committed voter set since the previous status tick.
+/// What changed in the committed voter set and reachability since the previous
+/// status tick.
 pub(crate) struct StatusDelta {
     /// Voters present last tick but gone now (crash / leave).
     pub departed: Vec<NodeId>,
+    /// Voters that dropped out of the reachable set but remain committed members
+    /// (crash / partition without a `ConfChange`, ADR 032).
+    pub unreachable: Vec<NodeId>,
     /// Whether the committed voter set changed at all (join or leave).
     pub membership_changed: bool,
+    /// Whether the heartbeat-derived reachable set changed (crash, heal, or
+    /// partition).
+    pub reachability_changed: bool,
 }
 
 impl MembershipTelemetry {
@@ -272,7 +283,9 @@ impl MembershipTelemetry {
         }
 
         let mut departed = Vec::new();
+        let mut unreachable = Vec::new();
         let mut membership_changed = false;
+        let mut reachability_changed = false;
         if let Some(prev) = &self.prev {
             use std::collections::BTreeSet;
             let prev_v: BTreeSet<NodeId> = prev.voters.iter().copied().collect();
@@ -304,11 +317,25 @@ impl MembershipTelemetry {
                     graceful: false,
                 });
             }
+
+            let prev_r: BTreeSet<NodeId> = prev.reachable.iter().copied().collect();
+            let new_r: BTreeSet<NodeId> = status.reachable.iter().copied().collect();
+            if prev_r != new_r {
+                reachability_changed = true;
+                for lost in prev_r.difference(&new_r) {
+                    // Still a committed voter — crash/partition, not a leave.
+                    if new_v.contains(lost) {
+                        unreachable.push(*lost);
+                    }
+                }
+            }
         }
         self.prev = Some(status.clone());
         StatusDelta {
             departed,
+            unreachable,
             membership_changed,
+            reachability_changed,
         }
     }
 }
@@ -337,6 +364,13 @@ pub struct CraftCluster<M: StateMachine> {
     pub(crate) resource_profile: ResourceProfile,
     pub(crate) vps_resources: VpsResources,
     pub(crate) actor_state_store: Option<Arc<dyn craft_actor::ActorStateStore>>,
+    /// Full `/raft/v1/*` handler attached to the transport (stored so tests can
+    /// re-attach a node after simulating partition on [`LocalNetwork`]).
+    pub(crate) wire_handler: Arc<dyn RequestHandler>,
+    pub(crate) facts: Arc<ClusterFacts>,
+    /// Live multi-Raft state when `raft_groups > 1` (handles move on rebalance).
+    pub(crate) multi_raft: Option<Arc<MultiRaftState<M>>>,
+    pub(crate) cert_reload: Option<Arc<CertReloadHandle>>,
     pub(crate) tasks: Mutex<Vec<JoinHandle<()>>>,
 }
 
@@ -385,15 +419,39 @@ impl<M: StateMachine> CraftCluster<M> {
     }
 
     /// The in-process client handle for Raft group 0 (single-group default).
-    /// With multi-Raft, use [`group_handles`](Self::group_handles) for other
-    /// groups and keyed client APIs for shard-aware routing.
+    /// With multi-Raft, prefer [`group_handle`](Self::group_handle) — the
+    /// bootstrap handle may be retired after rebalance.
     #[must_use]
     pub fn handle(&self) -> &NodeHandle<M> {
         &self.handle
     }
 
-    /// One [`NodeHandle`] per hosted Raft group (length equals
-    /// [`raft_groups`](Self::raft_groups)).
+    /// Active handle for Raft group `group`, if this node currently hosts it.
+    #[must_use]
+    pub fn group_handle(&self, group: u32) -> Option<NodeHandle<M>> {
+        if let Some(mr) = &self.multi_raft {
+            return mr.handles.lock().unwrap().get(&group).cloned();
+        }
+        if group == 0 {
+            Some(self.handle.clone())
+        } else {
+            self.group_handles.get(group as usize).cloned()
+        }
+    }
+
+    /// Group ids with a live Raft runtime on this node (updates after rebalance).
+    #[must_use]
+    pub fn hosted_groups(&self) -> Vec<u32> {
+        if let Some(mr) = &self.multi_raft {
+            mr.handles.lock().unwrap().keys().copied().collect()
+        } else {
+            (0..self.raft_groups).collect()
+        }
+    }
+
+    /// One [`NodeHandle`] per catalog group at bootstrap (may include retired
+    /// groups after rebalance; use [`group_handle`](Self::group_handle) for the
+    /// live set).
     #[must_use]
     pub fn group_handles(&self) -> &[NodeHandle<M>] {
         &self.group_handles
@@ -469,12 +527,28 @@ impl<M: StateMachine> CraftCluster<M> {
         self.handle.status().await
     }
 
+    /// The node's wire handler (re-attach after simulated partition in tests).
+    #[doc(hidden)]
+    pub fn wire_handler(&self) -> Arc<dyn RequestHandler> {
+        Arc::clone(&self.wire_handler)
+    }
+
     /// Whether this node currently believes it is the Raft leader.
     pub async fn is_leader(&self) -> bool {
-        self.handle
+        let Some(handle) = self.group_handle(0) else {
+            return false;
+        };
+        handle
             .status()
             .await
             .is_some_and(|s| matches!(s.role, craft_core::Role::Leader))
+    }
+
+    /// Hot-reload handle when the node was started with [`CraftClusterBuilder::start_quic_pem`]
+    /// (ADR 034). `None` for in-memory or static `Security` starts.
+    #[must_use]
+    pub fn cert_reload(&self) -> Option<&CertReloadHandle> {
+        self.cert_reload.as_deref()
     }
 
     /// Drive actor group `name` to `total` instances cluster-wide (one worker
@@ -556,11 +630,35 @@ impl<M: StateMachine> CraftCluster<M> {
 
     /// Stop the node: shut the runtime down and abort all background tasks.
     pub fn shutdown(&self) {
-        for handle in &self.group_handles {
-            handle.shutdown();
+        if let Some(mr) = &self.multi_raft {
+            for handle in mr.handles.lock().unwrap().values() {
+                handle.shutdown();
+            }
+        } else {
+            for handle in &self.group_handles {
+                handle.shutdown();
+            }
         }
         for task in self.tasks.lock().unwrap().drain(..) {
             task.abort();
+        }
+    }
+
+    /// Stop the node and wait until every consensus runtime has exited so
+    /// durable storage files can be reopened (for example on process restart).
+    pub async fn shutdown_and_wait(&self) {
+        for task in self.tasks.lock().unwrap().drain(..) {
+            task.abort();
+        }
+        if let Some(mr) = &self.multi_raft {
+            let handles: Vec<_> = mr.handles.lock().unwrap().values().cloned().collect();
+            for handle in handles {
+                handle.shutdown_and_wait().await;
+            }
+        } else {
+            for handle in &self.group_handles {
+                handle.shutdown_and_wait().await;
+            }
         }
     }
 }
@@ -598,4 +696,52 @@ pub enum ScaleClusterError {
     /// the leader rejecting the scale).
     #[error(transparent)]
     Remote(#[from] RemoteError),
+}
+
+#[cfg(test)]
+mod tests {
+    use craft_actor::NodeStatus;
+    use craft_core::Role;
+    use craft_dashboard::{EventBus, Metrics};
+    use craft_proto::{LogIndex, NodeId, Term};
+
+    use super::MembershipTelemetry;
+
+    fn status(voters: &[u64], reachable: &[u64]) -> NodeStatus {
+        NodeStatus {
+            id: NodeId(1),
+            role: Role::Leader,
+            term: Term(1),
+            leader: Some(NodeId(1)),
+            commit_index: LogIndex(0),
+            last_applied: LogIndex(0),
+            voters: voters.iter().copied().map(NodeId).collect(),
+            reachable: reachable.iter().copied().map(NodeId).collect(),
+        }
+    }
+
+    #[test]
+    fn reachability_delta_flags_a_crashed_voter_without_membership_change() {
+        let mut telemetry = MembershipTelemetry::new(NodeId(1), EventBus::new(16), Metrics::new());
+        let _ = telemetry.record(&status(&[1, 2, 3], &[1, 2, 3]));
+
+        let delta = telemetry.record(&status(&[1, 2, 3], &[1, 2]));
+
+        assert!(!delta.membership_changed);
+        assert!(delta.reachability_changed);
+        assert_eq!(delta.unreachable, vec![NodeId(3)]);
+        assert!(delta.departed.is_empty());
+    }
+
+    #[test]
+    fn reachability_delta_triggers_on_heal_without_membership_change() {
+        let mut telemetry = MembershipTelemetry::new(NodeId(1), EventBus::new(16), Metrics::new());
+        let _ = telemetry.record(&status(&[1, 2, 3], &[1, 2]));
+
+        let delta = telemetry.record(&status(&[1, 2, 3], &[1, 2, 3]));
+
+        assert!(!delta.membership_changed);
+        assert!(delta.reachability_changed);
+        assert!(delta.unreachable.is_empty());
+    }
 }
