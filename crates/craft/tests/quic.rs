@@ -221,11 +221,12 @@ async fn a_new_node_dynamically_joins_over_quic() {
     // the pre-join state.
     let mut joined = false;
     for _ in 0..1000 {
-        if let Some(status) = joiner.status().await {
-            if status.voters.contains(&joiner_id) && status.last_applied >= LogIndex(1) {
-                joined = true;
-                break;
-            }
+        if let Some(status) = joiner.status().await
+            && status.voters.contains(&joiner_id)
+            && status.last_applied >= LogIndex(1)
+        {
+            joined = true;
+            break;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
@@ -245,11 +246,11 @@ async fn a_new_node_dynamically_joins_over_quic() {
 
     let mut caught_up = false;
     for _ in 0..1000 {
-        if let Some(status) = joiner.status().await {
-            if status.last_applied >= target {
-                caught_up = true;
-                break;
-            }
+        if let Some(status) = joiner.status().await
+            && status.last_applied >= target
+        {
+            caught_up = true;
+            break;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }

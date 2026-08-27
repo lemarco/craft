@@ -96,6 +96,77 @@ fn weight(shard: ShardId, group: RaftGroupId) -> u64 {
     mix64(u64::from(shard.0) << 32 | u64::from(group.0))
 }
 
+/// Rendezvous weight for placing `group` on physical node `node`.
+fn group_node_weight(group: RaftGroupId, node: craft_proto::NodeId) -> u64 {
+    mix64(u64::from(group.0) << 32 | node.0)
+}
+
+/// The physical node that should host the sole replica of `group` among
+/// `nodes`, by rendezvous hashing. Returns `None` when `nodes` is empty.
+/// Deterministic and stable under node churn — the same property as
+/// [`place_shard`].
+#[must_use]
+pub fn place_group(
+    group: RaftGroupId,
+    nodes: &[craft_proto::NodeId],
+) -> Option<craft_proto::NodeId> {
+    nodes
+        .iter()
+        .copied()
+        .max_by_key(|n| group_node_weight(group, *n))
+}
+
+/// Full assignment of each Raft group to a host node over `nodes`.
+#[must_use]
+pub fn group_host_assignment(
+    groups: &[RaftGroupId],
+    nodes: &[craft_proto::NodeId],
+) -> BTreeMap<RaftGroupId, craft_proto::NodeId> {
+    let mut map = BTreeMap::new();
+    if nodes.is_empty() {
+        return map;
+    }
+    for &group in groups {
+        if let Some(node) = place_group(group, nodes) {
+            map.insert(group, node);
+        }
+    }
+    map
+}
+
+/// Local rebalance actions for one physical node (multi-Raft control plane).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct GroupRebalancePlan {
+    /// Groups this node should begin hosting.
+    pub adopt: Vec<RaftGroupId>,
+    /// Groups this node should stop hosting.
+    pub retire: Vec<RaftGroupId>,
+}
+
+/// Diff the groups `node_id` currently hosts against the rendezvous assignment
+/// for `all_groups` over `live_nodes`.
+#[must_use]
+pub fn plan_node_group_rebalance(
+    node_id: craft_proto::NodeId,
+    all_groups: &[RaftGroupId],
+    live_nodes: &[craft_proto::NodeId],
+    currently_hosted: &[RaftGroupId],
+) -> GroupRebalancePlan {
+    use std::collections::BTreeSet;
+
+    let desired = group_host_assignment(all_groups, live_nodes);
+    let should: BTreeSet<RaftGroupId> = desired
+        .into_iter()
+        .filter(|(_, host)| *host == node_id)
+        .map(|(g, _)| g)
+        .collect();
+    let current: BTreeSet<RaftGroupId> = currently_hosted.iter().copied().collect();
+
+    let adopt = should.difference(&current).copied().collect();
+    let retire = current.difference(&should).copied().collect();
+    GroupRebalancePlan { adopt, retire }
+}
+
 /// The full shard → owning-group assignment for `shard_count` shards over
 /// `groups`, using [`place_shard`]. Empty when `groups` is empty.
 #[must_use]
@@ -222,5 +293,35 @@ mod tests {
             moved < 200,
             "moved {moved}/400 shards — rendezvous hashing should move ~1/4"
         );
+    }
+
+    #[test]
+    fn group_hosts_spread_across_physical_nodes() {
+        use craft_proto::NodeId;
+
+        let nodes = [NodeId(1), NodeId(2), NodeId(3)];
+        let groups: Vec<_> = (0..6).map(RaftGroupId).collect();
+        let map = group_host_assignment(&groups, &nodes);
+        assert_eq!(map.len(), 6);
+        for host in map.values() {
+            assert!(nodes.contains(host));
+        }
+    }
+
+    #[test]
+    fn node_rebalance_plan_adopts_for_a_joining_node() {
+        use craft_proto::NodeId;
+
+        let groups: Vec<_> = (0..12).map(RaftGroupId).collect();
+        let live = [NodeId(1), NodeId(2), NodeId(3)];
+        let assignment = group_host_assignment(&groups, &live);
+        let node_id = live
+            .iter()
+            .copied()
+            .find(|n| assignment.values().any(|host| *host == *n))
+            .expect("at least one node should host a group");
+        let plan = plan_node_group_rebalance(node_id, &groups, &live, &[]);
+        assert!(!plan.adopt.is_empty());
+        assert!(plan.retire.is_empty());
     }
 }

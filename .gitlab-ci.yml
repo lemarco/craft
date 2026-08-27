@@ -44,7 +44,7 @@ fast:
 # --- Minimum Supported Rust Version check (ADR 028) --------------------------
 msrv:
   stage: check
-  image: rust:1.85
+  image: rust:1.98
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "schedule"

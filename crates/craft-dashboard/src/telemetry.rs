@@ -100,6 +100,13 @@ pub enum CraftEvent {
         /// Human-readable message summary.
         message: String,
     },
+    /// Multi-Raft group placement was recomputed on the leader (ADR 031).
+    RaftGroupsRebalanced {
+        /// Groups adopted on this node.
+        adopt: Vec<u32>,
+        /// Groups retired on this node.
+        retire: Vec<u32>,
+    },
 }
 
 /// Options for opt-in per-message tracing (ADR 026 §7). Off by default; when

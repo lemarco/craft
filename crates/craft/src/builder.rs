@@ -5,6 +5,7 @@
 //! leader-only supervisor, telemetry, and the admin server, and wires the
 //! background loops that keep them current.
 
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -30,6 +31,7 @@ use craft_actor::{
 use crate::cluster::{ClusterFacts, CraftCluster};
 use crate::discovery::Seed;
 use crate::handler::{NoPeers, NodeRouter, PeerSource, QuicPeers};
+use crate::multi_raft::MultiRaftState;
 use crate::observer::CraftObserver;
 use crate::security::Security;
 
@@ -82,11 +84,12 @@ pub struct CraftClusterBuilder<M: StateMachine> {
     shard_count: u32,
     raft_machines: Option<Vec<M>>,
     data_dir: Option<PathBuf>,
+    actor_state_store: Option<Arc<dyn craft_actor::ActorStateStore>>,
     registrations: Vec<RegisterFn>,
     managed: Vec<ManageFn>,
 }
 
-impl<M: StateMachine> CraftClusterBuilder<M> {
+impl<M: StateMachine + Default> CraftClusterBuilder<M> {
     /// Start a builder for node `node_id` running `machine`. Defaults to a
     /// single-node cluster (`members = [node_id]`); call [`members`](Self::members)
     /// for a multi-node bootstrap.
@@ -111,6 +114,7 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
             shard_count: 256,
             raft_machines: None,
             data_dir: None,
+            actor_state_store: None,
             registrations: Vec::new(),
             managed: Vec::new(),
         }
@@ -156,7 +160,10 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
     #[must_use]
     pub fn raft_machines(mut self, machines: impl IntoIterator<Item = M>) -> Self {
         let machines: Vec<M> = machines.into_iter().collect();
-        assert!(!machines.is_empty(), "raft_machines requires at least one machine");
+        assert!(
+            !machines.is_empty(),
+            "raft_machines requires at least one machine"
+        );
         self.raft_groups = machines.len() as u32;
         self.raft_machines = Some(machines);
         self
@@ -168,6 +175,16 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
     #[must_use]
     pub fn data_dir(mut self, path: impl Into<PathBuf>) -> Self {
         self.data_dir = Some(path.into());
+        self
+    }
+
+    /// External store for **stateful actor workflow data** (ADR 021). The port
+    /// is [`craft_actor::ActorStateStore`]; swap `InMemoryStore` (dev/tests) for
+    /// `craft_store_redis::RedisStore` in production. Retrieve the same handle
+    /// from [`CraftCluster::actor_state_store`] when building actor configs.
+    #[must_use]
+    pub fn actor_state_store(mut self, store: Arc<dyn craft_actor::ActorStateStore>) -> Self {
+        self.actor_state_store = Some(store);
         self
     }
 
@@ -421,6 +438,7 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
         let node_id = self.node_id;
 
         // --- Consensus runtime -------------------------------------------
+        let mut multi_raft = None;
         let (handle, group_handles, consensus_service) = if self.raft_groups > 1 {
             let machines = self.raft_machines.unwrap_or_else(|| {
                 panic!(
@@ -433,7 +451,9 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
                 self.raft_groups as usize,
                 "raft_machines length must match raft_groups"
             );
-            let (sharded, handles) = spawn_multi_raft_node(
+            let catalog: Vec<craft_core::RaftGroupId> =
+                (0..self.raft_groups).map(craft_core::RaftGroupId).collect();
+            let (sharded, handles_vec) = spawn_multi_raft_node(
                 node_id,
                 &self.members,
                 self.raft.clone(),
@@ -446,12 +466,28 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
                 self.data_dir.as_deref(),
             )
             .expect("open multi-group raft storage");
-            let primary = handles[0].clone();
-            (
-                primary,
-                handles,
-                Arc::new(sharded) as Arc<dyn RequestHandler>,
-            )
+            let mut handle_map = BTreeMap::new();
+            for (i, h) in handles_vec.into_iter().enumerate() {
+                handle_map.insert(i as u32, h);
+            }
+            let primary = handle_map.get(&0).cloned().expect("group 0 handle");
+            let group_handles: Vec<_> = catalog
+                .iter()
+                .filter_map(|g| handle_map.get(&g.0).cloned())
+                .collect();
+            multi_raft = Some(Arc::new(MultiRaftState {
+                sharded: Arc::clone(&sharded),
+                handles: Mutex::new(handle_map),
+                transport: Arc::clone(&transport),
+                raft: self.raft.clone(),
+                runtime: self.runtime.clone(),
+                forward_timeout: self.forward_timeout,
+                data_dir: self.data_dir.clone(),
+                catalog,
+                node_id,
+                members: self.members.clone(),
+            }));
+            (primary, group_handles, sharded as Arc<dyn RequestHandler>)
         } else {
             let node = RaftNode::new(node_id, self.members.clone(), self.raft.clone());
             let driver = if let Some(ref dir) = self.data_dir {
@@ -554,6 +590,8 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
             let facts = Arc::clone(&facts);
             let directory = Arc::clone(&directory);
             let supervisor = Arc::clone(&supervisor);
+            let multi_raft = multi_raft.clone();
+            let events = events.clone();
             let period = self.refresh_period;
             let mut telemetry =
                 crate::cluster::MembershipTelemetry::new(node_id, events.clone(), metrics.clone());
@@ -577,6 +615,11 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
                     // the new membership.
                     if delta.membership_changed {
                         let _ = supervisor.reconcile().await;
+                        if let Some(mr) = multi_raft.as_ref()
+                            && let Ok(report) = mr.rebalance(Arc::clone(&facts)).await
+                        {
+                            MultiRaftState::<M>::emit_rebalance(&events, &report);
+                        }
                     }
                 }
             }));
@@ -738,6 +781,9 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
             metrics,
             telemetry,
             members: self.members,
+            facts,
+            multi_raft,
+            actor_state_store: self.actor_state_store,
             tasks: Mutex::new(tasks),
         };
         (cluster, router)

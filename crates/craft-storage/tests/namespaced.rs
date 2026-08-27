@@ -64,7 +64,7 @@ fn group_redb_layout_survives_reopen() {
 #[test]
 fn group_memory_storage_matches_memory_contract() {
     let mut a = GroupMemoryStorage::new(0);
-    let mut b = GroupMemoryStorage::new(1);
+    let b = GroupMemoryStorage::new(1);
     a.save_hard_state(&HardState {
         current_term: Term(2),
         voted_for: None,
@@ -79,5 +79,8 @@ fn group_memory_storage_matches_memory_contract() {
             voted_for: None,
         })
         .unwrap();
-    assert_eq!(a.load_hard_state().unwrap(), plain.load_hard_state().unwrap());
+    assert_eq!(
+        a.load_hard_state().unwrap(),
+        plain.load_hard_state().unwrap()
+    );
 }

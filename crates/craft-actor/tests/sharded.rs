@@ -85,14 +85,8 @@ fn find_keys_for_two_groups(shard_count: u32, groups: &[RaftGroupId]) -> (Vec<u8
             break;
         }
     }
-    let k0 = by_group
-        .get(&groups[0].0)
-        .expect("key for group 0")
-        .clone();
-    let k1 = by_group
-        .get(&groups[1].0)
-        .expect("key for group 1")
-        .clone();
+    let k0 = by_group.get(&groups[0].0).expect("key for group 0").clone();
+    let k1 = by_group.get(&groups[1].0).expect("key for group 1").clone();
     (k0, k1)
 }
 
@@ -100,10 +94,10 @@ async fn wait_for_group_leaders(handles: &[craft_actor::NodeHandle<KvMachine>]) 
     for _ in 0..500 {
         let mut leaders = 0usize;
         for handle in handles {
-            if let Some(status) = handle.status().await {
-                if status.role == Role::Leader {
-                    leaders += 1;
-                }
+            if let Some(status) = handle.status().await
+                && status.role == Role::Leader
+            {
+                leaders += 1;
             }
         }
         if leaders == handles.len() {
@@ -141,7 +135,7 @@ async fn keyed_writes_route_to_independent_raft_groups() {
         None,
     )
     .expect("spawn multi-raft node");
-    net.attach(node_id, Arc::new(sharded));
+    net.attach(node_id, sharded);
 
     wait_for_group_leaders(&handles).await;
 
@@ -182,7 +176,7 @@ async fn keyed_writes_route_to_independent_raft_groups() {
     )
     .await
     .expect("propose to group 1");
-    let ClientResponse::Ok(bytes) = resp_b else {
+    let ClientResponse::Ok(_bytes) = resp_b else {
         panic!("unexpected propose response: {resp_b:?}");
     };
 

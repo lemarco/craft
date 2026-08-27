@@ -439,3 +439,19 @@ async fn opt_in_tracing_emits_message_handled_events() {
         c.shutdown();
     }
 }
+
+#[tokio::test]
+async fn builder_wires_actor_state_store() {
+    use craft::actor::{ActorStateStore, InMemoryStore};
+
+    let net = LocalNetwork::new();
+    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
+    let cluster = CraftCluster::builder(NodeId(1), Kv::default())
+        .actor_state_store(Arc::clone(&store))
+        .start_local(&net)
+        .await;
+
+    let wired = cluster.actor_state_store().expect("store configured");
+    assert!(Arc::ptr_eq(&store, &wired));
+    cluster.shutdown();
+}

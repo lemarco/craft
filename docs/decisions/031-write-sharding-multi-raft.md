@@ -57,8 +57,12 @@ storage, and client changes behind it.
   key; [`ShardedNodeService`] resolves `key → shard → group` and forwards to
   the correct group's [`NodeService`]. Ungrouped `Propose`/`Query` still hit
   group 0 (single-group default unchanged).
-- **Rebalancing control plane** (leader-owned placement on join/leave) remains
-  deferred.
+- **Rebalancing control plane** (leader-owned placement on join/leave) — landed:
+  `place_group` / `group_host_assignment` / `plan_node_group_rebalance` in
+  `craft-core::shard`; `RaftGroupReconciler` in `craft-actor::group_rebalance`;
+  `MultiRaftState::rebalance` on membership change via the facade facts refresher;
+  `CraftEvent::RaftGroupsRebalanced`. Local adopt/retire only — cross-node group
+  migration RPC remains deferred.
 
 ### Cross-shard writes
 
@@ -77,18 +81,26 @@ storage, and client changes behind it.
 ## What landed now
 
 - `craft-core::shard`: `ShardRouter`, `ShardId`, `RaftGroupId`, `place_shard`,
-  `shard_assignment` — pure, deterministic, unit-tested (including the
+  `shard_assignment`, `place_group`, `group_host_assignment`,
+  `plan_node_group_rebalance` — pure, deterministic, unit-tested (including the
   minimal-churn property of rendezvous hashing). This is the shared vocabulary
   every later layer (client, runtime, control plane) routes against.
 - `craft-actor::sharded`: `ShardedNodeService`, `spawn_multi_raft_node`,
   `GroupTransport`, keyed client wire types (`ProposeKeyed`/`QueryKeyed`).
 - `craft-client`: `RemoteClient::propose_keyed` / `query_keyed` and matching
   `TypedClient` helpers.
+- `CraftClusterBuilder::raft_groups`, `raft_machines`, `shard_count`, and
+  `data_dir`; `CraftCluster::group_handles()`.
+- `craft-actor::group_rebalance`: `RaftGroupReconciler` (leader-only planning).
+- `craft::MultiRaftState::rebalance` — local adopt/retire on membership change;
+  `CraftEvent::RaftGroupsRebalanced`.
 
 ## What is deferred (and why it is safe to defer)
 
-- `CraftClusterBuilder::raft_groups`, `raft_machines`, and `shard_count` for
-  multi-group local/QUIC starts; `CraftCluster::group_handles()`.
+- Cross-node group migration RPC (moving a hosted group replica to another
+  physical node over the wire).
+- Per-group Raft membership across nodes (each group still uses the cluster-wide
+  voter set today).
 
 ## Consequences
 
@@ -98,13 +110,14 @@ storage, and client changes behind it.
 - The routing math is proven and testable in isolation, decoupled from the hard
   runtime work.
 - Rendezvous placement gives cheap elasticity (minimal shard movement).
+- Local rebalance on membership change keeps group hosting aligned with rendezvous
+  placement without manual operator intervention.
 
 **Negative**
 
-- Full multi-Raft is still future work; write throughput is unchanged until the
-  runtime wiring lands.
 - Fixed shard count trades repartitioning flexibility for routing simplicity.
 - Cross-shard atomicity remains unsolved (explicitly out of scope).
+- Cross-node group migration still requires a future RPC path.
 
 ## Related
 

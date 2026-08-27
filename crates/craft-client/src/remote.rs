@@ -146,9 +146,8 @@ impl RemoteClient {
                     idx += 1;
                 }
                 Ok(Ok(ClientResponse::ReadIndexConfirmed { .. })) => {
-                    last = ClientError::Server(
-                        "unexpected ReadIndexConfirmed on client wire".into(),
-                    );
+                    last =
+                        ClientError::Server("unexpected ReadIndexConfirmed on client wire".into());
                     idx += 1;
                 }
                 Ok(Err(e)) => {
@@ -177,7 +176,10 @@ impl KeyedClient for RemoteClient {
         key: Vec<u8>,
         payload: Vec<u8>,
     ) -> impl Future<Output = Result<Vec<u8>, ClientError>> + Send {
-        self.call(ClientRequest::ProposeKeyed { key, command: payload })
+        self.call(ClientRequest::ProposeKeyed {
+            key,
+            command: payload,
+        })
     }
 
     fn query_keyed(
@@ -185,7 +187,10 @@ impl KeyedClient for RemoteClient {
         key: Vec<u8>,
         payload: Vec<u8>,
     ) -> impl Future<Output = Result<Vec<u8>, ClientError>> + Send {
-        self.call(ClientRequest::QueryKeyed { key, query: payload })
+        self.call(ClientRequest::QueryKeyed {
+            key,
+            query: payload,
+        })
     }
 }
 

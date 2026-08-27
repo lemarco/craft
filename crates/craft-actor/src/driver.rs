@@ -567,9 +567,9 @@ impl<M: StateMachine> RaftDriver<M> {
                     }
                 }
                 Output::ReadFailed { id } => {
-                    if self.pending_read_confirms.remove(&id).is_some() {
-                        step.reads.push(ReadOutcome::Failed { id });
-                    } else if self.pending_queries.remove(&id).is_some() {
+                    if self.pending_read_confirms.remove(&id).is_some()
+                        || self.pending_queries.remove(&id).is_some()
+                    {
                         step.reads.push(ReadOutcome::Failed { id });
                     }
                 }

@@ -108,10 +108,10 @@ fn spawn_cluster() -> (LocalNetwork, Vec<(NodeId, NodeHandle<Kv>)>) {
 async fn await_leader(handles: &[(NodeId, NodeHandle<Kv>)]) -> NodeId {
     for _ in 0..500 {
         for (id, handle) in handles {
-            if let Some(status) = handle.status().await {
-                if status.role == Role::Leader {
-                    return *id;
-                }
+            if let Some(status) = handle.status().await
+                && status.role == Role::Leader
+            {
+                return *id;
             }
         }
         tokio::time::sleep(Duration::from_millis(10)).await;

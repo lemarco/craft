@@ -82,5 +82,6 @@ Adopt a **testing pyramid** with deterministic simulation at its core.
 
 ## Related
 
+- [testing-coverage.md](../testing-coverage.md) — living coverage matrix and gap tracker
 - [backlog.md](../backlog.md) — Track I (sim), Track T (testing/CI)
 - [010-wire-transport.md](010-wire-transport.md) · [021-actor-state-redis.md](021-actor-state-redis.md) · [028-library-and-publishing.md](028-library-and-publishing.md) · [027-future-work-and-risks.md](027-future-work-and-risks.md)

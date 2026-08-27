@@ -39,10 +39,12 @@ Architecture and decision records for the distributive Raft actor system.
 
 ## Architecture
 
+- [../AGENTS.md](../AGENTS.md) — agent/AI entry point (rules, skills, quality gates)
 - [architecture.md](architecture.md) — system design
 - [protocol.md](protocol.md) — HTTP/3 routes and postcard bodies
 - [certs.md](certs.md) — mTLS provisioning for VPS
 - [backlog.md](backlog.md) — full implementation backlog + parallel tracks
+- [testing-coverage.md](testing-coverage.md) — test inventory, coverage matrix, known gaps
 - [open-questions.md](open-questions.md) — all resolved
 
 ## How we decide

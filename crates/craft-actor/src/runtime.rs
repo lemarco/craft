@@ -327,6 +327,8 @@ impl<M: StateMachine> NodeHandle<M> {
     }
 }
 
+type ReadConfirmSender = oneshot::Sender<Result<(LogIndex, Term), ClientError>>;
+
 /// Owns the driver and mutable correlation state inside the loop task.
 struct Runtime<M: StateMachine> {
     driver: RaftDriver<M>,
@@ -336,7 +338,7 @@ struct Runtime<M: StateMachine> {
     pending_proposals: HashMap<LogIndex, oneshot::Sender<Result<M::Response, ClientError>>>,
     pending_queries: HashMap<ReadId, oneshot::Sender<Result<M::Response, ClientError>>>,
     /// Leader ReadIndex confirmations awaiting quorum ack (follower-read setup).
-    pending_read_confirms: HashMap<ReadId, oneshot::Sender<Result<(LogIndex, Term), ClientError>>>,
+    pending_read_confirms: HashMap<ReadId, ReadConfirmSender>,
     /// Join requests awaiting their membership-change entry to commit, keyed by
     /// that entry's log index.
     pending_joins: HashMap<LogIndex, oneshot::Sender<JoinResponse>>,
@@ -524,16 +526,14 @@ impl<M: StateMachine> Runtime<M> {
                     }
                 }
             }
-            Envelope::LocalQuery { query, respond } => {
-                match self.driver.local_query(&query) {
-                    Ok(response) => {
-                        let _ = respond.send(Ok(response));
-                    }
-                    Err(e) => {
-                        let _ = respond.send(Err(ClientError::Driver(e.to_string())));
-                    }
+            Envelope::LocalQuery { query, respond } => match self.driver.local_query(&query) {
+                Ok(response) => {
+                    let _ = respond.send(Ok(response));
                 }
-            }
+                Err(e) => {
+                    let _ = respond.send(Err(ClientError::Driver(e.to_string())));
+                }
+            },
             Envelope::Join { request, respond } => {
                 self.on_join(request, respond)?;
             }
@@ -850,10 +850,9 @@ async fn route_join<M: StateMachine>(
     if let JoinResponse::Redirect {
         leader: Some(leader),
     } = local
+        && leader != handle.id()
     {
-        if leader != handle.id() {
-            return forward_join(transport, forward_timeout, leader, request).await;
-        }
+        return forward_join(transport, forward_timeout, leader, request).await;
     }
     local
 }

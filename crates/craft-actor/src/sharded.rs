@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use craft_core::{RaftGroupId, ShardRouter, StateMachine, place_shard};
@@ -18,8 +18,8 @@ use crate::RuntimeConfig;
 /// same physical node.
 pub struct ShardedNodeService {
     router: ShardRouter,
-    group_ids: Vec<RaftGroupId>,
-    groups: BTreeMap<u32, Arc<dyn RequestHandler>>,
+    group_ids: Arc<RwLock<Vec<RaftGroupId>>>,
+    groups: Arc<RwLock<BTreeMap<u32, Arc<dyn RequestHandler>>>>,
 }
 
 impl ShardedNodeService {
@@ -32,24 +32,59 @@ impl ShardedNodeService {
     ) -> Self {
         Self {
             router: ShardRouter::new(shard_count),
-            group_ids,
-            groups,
+            group_ids: Arc::new(RwLock::new(group_ids)),
+            groups: Arc::new(RwLock::new(groups)),
         }
+    }
+
+    /// Raft groups currently hosted on this physical node.
+    #[must_use]
+    pub fn hosted_group_ids(&self) -> Vec<RaftGroupId> {
+        self.groups
+            .read()
+            .expect("sharded groups lock")
+            .keys()
+            .copied()
+            .map(RaftGroupId)
+            .collect()
+    }
+
+    /// Register a newly spawned group handler.
+    pub fn insert_group(&self, group: u32, handler: Arc<dyn RequestHandler>) {
+        self.groups
+            .write()
+            .expect("sharded groups lock")
+            .insert(group, handler);
+        let mut ids = self.group_ids.write().expect("sharded group_ids lock");
+        if !ids.iter().any(|g| g.0 == group) {
+            ids.push(RaftGroupId(group));
+            ids.sort_by_key(|g| g.0);
+        }
+    }
+
+    /// Remove a group handler during rebalance.
+    pub fn remove_group(&self, group: u32) -> Option<Arc<dyn RequestHandler>> {
+        self.groups
+            .write()
+            .expect("sharded groups lock")
+            .remove(&group)
     }
 
     fn group_for_key(&self, key: &[u8]) -> Option<RaftGroupId> {
         let shard = self.router.shard_for(key);
-        place_shard(shard, &self.group_ids)
+        let ids = self.group_ids.read().expect("sharded group_ids lock");
+        place_shard(shard, &ids)
     }
 
     fn route_client(&self, request: ClientRequest) -> Result<(u32, ClientRequest), ClientResponse> {
+        let ids = self.group_ids.read().expect("sharded group_ids lock");
         match request {
             ClientRequest::Propose(bytes) => Ok((
-                self.group_ids.first().map(|g| g.0).unwrap_or(0),
+                ids.first().map(|g| g.0).unwrap_or(0),
                 ClientRequest::Propose(bytes),
             )),
             ClientRequest::Query(bytes) => Ok((
-                self.group_ids.first().map(|g| g.0).unwrap_or(0),
+                ids.first().map(|g| g.0).unwrap_or(0),
                 ClientRequest::Query(bytes),
             )),
             ClientRequest::ProposeKeyed { key, command } => {
@@ -65,7 +100,7 @@ impl ShardedNodeService {
                 Ok((group.0, ClientRequest::Query(query)))
             }
             ClientRequest::ReadIndexConfirm { route_key: None } => Ok((
-                self.group_ids.first().map(|g| g.0).unwrap_or(0),
+                ids.first().map(|g| g.0).unwrap_or(0),
                 ClientRequest::ReadIndexConfirm { route_key: None },
             )),
             ClientRequest::ReadIndexConfirm {
@@ -89,10 +124,14 @@ impl RequestHandler for ShardedNodeService {
     fn handle(&self, route: Route, body: Body) -> BoxFuture<'static, Result<Body, TransportError>> {
         match route {
             Route::PeerWire => {
-                let groups = self.groups.clone();
+                let groups = Arc::clone(&self.groups);
                 Box::pin(async move {
                     let envelope: GroupPeerEnvelope = decode_body(&body)?;
-                    let Some(handler) = groups.get(&envelope.group) else {
+                    let handler = {
+                        let groups = groups.read().expect("sharded groups lock");
+                        groups.get(&envelope.group).cloned()
+                    };
+                    let Some(handler) = handler else {
                         return Err(TransportError::Io(format!(
                             "unknown raft group {}",
                             envelope.group
@@ -107,7 +146,7 @@ impl RequestHandler for ShardedNodeService {
                 })
             }
             Route::ClientWire => {
-                let groups = self.groups.clone();
+                let groups = Arc::clone(&self.groups);
                 let request: ClientRequest = match decode_body(&body) {
                     Ok(r) => r,
                     Err(e) => {
@@ -120,10 +159,12 @@ impl RequestHandler for ShardedNodeService {
                         Ok(pair) => pair,
                         Err(response) => return Ok(encode_body(&response)?),
                     };
-                    let Some(handler) = groups.get(&group_id) else {
-                        return Err(TransportError::Io(format!(
-                            "unknown raft group {group_id}"
-                        )));
+                    let handler = {
+                        let groups = groups.read().expect("sharded groups lock");
+                        groups.get(&group_id).cloned()
+                    };
+                    let Some(handler) = handler else {
+                        return Err(TransportError::Io(format!("unknown raft group {group_id}")));
                     };
                     handler
                         .handle(
@@ -134,8 +175,12 @@ impl RequestHandler for ShardedNodeService {
                 })
             }
             other => {
-                let handler = self.groups.values().next().cloned();
+                let groups = Arc::clone(&self.groups);
                 Box::pin(async move {
+                    let handler = {
+                        let groups = groups.read().expect("sharded groups lock");
+                        groups.values().next().cloned()
+                    };
                     let Some(handler) = handler else {
                         return Err(TransportError::Io("no raft groups".into()));
                     };
@@ -146,8 +191,45 @@ impl RequestHandler for ShardedNodeService {
     }
 }
 
+/// Spawn one Raft group on a physical node.
+#[allow(clippy::too_many_arguments)]
+pub fn spawn_raft_group<M>(
+    node_id: NodeId,
+    members: &[NodeId],
+    group: u32,
+    raft: craft_core::Config,
+    runtime: RuntimeConfig,
+    machine: M,
+    network: Arc<dyn Transport>,
+    forward_timeout: Duration,
+    storage_dir: Option<&Path>,
+) -> Result<(Arc<dyn RequestHandler>, crate::NodeHandle<M>), StorageError>
+where
+    M: StateMachine + 'static,
+{
+    use craft_core::RaftNode;
+    use craft_net::GroupTransport;
+
+    use crate::{NodeService, RaftDriver, spawn_node};
+
+    let node = RaftNode::new(node_id, members.iter().copied(), raft);
+    let driver = if let Some(dir) = storage_dir {
+        let storage = GroupRedbLayout::new(dir).open_group(group)?;
+        RaftDriver::with_storage(node, machine, Box::new(storage) as Box<dyn RaftStorage>)
+    } else {
+        RaftDriver::new(node, machine)
+    };
+    let group_transport = Arc::new(GroupTransport::new(group, network)) as Arc<dyn Transport>;
+    let handle = spawn_node(driver, Arc::clone(&group_transport), runtime);
+    let service = Arc::new(
+        NodeService::new(handle.clone(), group_transport).with_forward_timeout(forward_timeout),
+    ) as Arc<dyn RequestHandler>;
+    Ok((service, handle))
+}
+
 /// Spawn `group_count` independent Raft groups on one physical node (same
 /// member set), wired through a [`ShardedNodeService`].
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_multi_raft_node<M>(
     node_id: NodeId,
     members: &[NodeId],
@@ -159,43 +241,31 @@ pub fn spawn_multi_raft_node<M>(
     network: Arc<dyn Transport>,
     forward_timeout: Duration,
     storage_dir: Option<&Path>,
-) -> Result<(ShardedNodeService, Vec<crate::NodeHandle<M>>), StorageError>
+) -> Result<(Arc<ShardedNodeService>, Vec<crate::NodeHandle<M>>), StorageError>
 where
     M: StateMachine + 'static,
 {
-    use craft_core::RaftNode;
-    use craft_net::GroupTransport;
-
-    use crate::{NodeService, RaftDriver, spawn_node};
-
-    let layout = storage_dir.map(GroupRedbLayout::new);
     let group_ids: Vec<RaftGroupId> = (0..group_count).map(RaftGroupId).collect();
     let mut handles = Vec::new();
     let mut services = BTreeMap::new();
 
     for (g, machine) in machines.into_iter().enumerate().take(group_count as usize) {
         let g = g as u32;
-        let node = RaftNode::new(node_id, members.iter().copied(), raft.clone());
-        let driver = if let Some(ref layout) = layout {
-            let storage = layout.open_group(g)?;
-            RaftDriver::with_storage(node, machine, Box::new(storage) as Box<dyn RaftStorage>)
-        } else {
-            RaftDriver::new(node, machine)
-        };
-        let group_transport =
-            Arc::new(GroupTransport::new(g, Arc::clone(&network))) as Arc<dyn Transport>;
-        let handle = spawn_node(
-            driver,
-            Arc::clone(&group_transport),
+        let (service, handle) = spawn_raft_group(
+            node_id,
+            members,
+            g,
+            raft.clone(),
             runtime.clone(),
-        );
-        let service = Arc::new(
-            NodeService::new(handle.clone(), group_transport).with_forward_timeout(forward_timeout),
-        ) as Arc<dyn RequestHandler>;
+            machine,
+            Arc::clone(&network),
+            forward_timeout,
+            storage_dir,
+        )?;
         services.insert(g, service);
         handles.push(handle);
     }
 
-    let sharded = ShardedNodeService::new(shard_count, group_ids, services);
+    let sharded = Arc::new(ShardedNodeService::new(shard_count, group_ids, services));
     Ok((sharded, handles))
 }

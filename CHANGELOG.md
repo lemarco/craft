@@ -9,6 +9,11 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ## [Unreleased]
 
+### Changed
+
+- **MSRV 1.98** — workspace `rust-version`, Clippy MSRV, CI `msrv` job, and
+  `deploy/Dockerfile` builder image aligned with stable 1.98.0 ([ADR 028](docs/decisions/028-library-and-publishing.md)).
+
 ### Added
 
 - **Follower reads** ([ADR 005](docs/decisions/005-read-consistency.md)) —
@@ -23,6 +28,11 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
   `shard_count`; `CraftCluster::group_handles()`.
 - **`CraftClusterBuilder::data_dir`** — per-group `group-<id>.redb` persistence via
   `GroupRedbLayout`.
+- **Multi-Raft rebalancing control plane** ([ADR 031](docs/decisions/031-write-sharding-multi-raft.md))
+  — rendezvous group→host placement (`place_group`, `plan_node_group_rebalance`),
+  leader-only `RaftGroupReconciler`, local adopt/retire via
+  `MultiRaftState::rebalance` on membership change; `CraftEvent::RaftGroupsRebalanced`.
+  Cross-node group migration RPC remains deferred.
 
 - **Lease reads** ([ADR 005](docs/decisions/005-read-consistency.md)) — the
   leader serves `query` locally, with no ReadIndex round-trip, while it holds a

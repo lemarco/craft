@@ -4,10 +4,10 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use craft::CraftCluster;
 use craft::core::{Config, RaftGroupId, Role, ShardRouter, StateMachine, place_shard};
 use craft::net::{LocalNetwork, send_client_request};
 use craft::proto::{ClientRequest, ClientResponse, LogIndex, NodeId};
-use craft::CraftCluster;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -95,10 +95,10 @@ async fn wait_for_group_leaders(cluster: &CraftCluster<KvMachine>) {
     for _ in 0..500 {
         let mut leaders = 0usize;
         for handle in cluster.group_handles() {
-            if let Some(status) = handle.status().await {
-                if status.role == Role::Leader {
-                    leaders += 1;
-                }
+            if let Some(status) = handle.status().await
+                && status.role == Role::Leader
+            {
+                leaders += 1;
             }
         }
         if leaders == cluster.raft_groups() as usize {
@@ -226,8 +226,7 @@ async fn builder_persists_each_raft_group_to_separate_redb_files() {
 
         wait_for_group_leaders(&cluster).await;
 
-        let resp = cluster
-            .group_handles()[0]
+        let resp = cluster.group_handles()[0]
             .propose(KvCommand::Set {
                 key: "persist".into(),
                 value: "g0".into(),

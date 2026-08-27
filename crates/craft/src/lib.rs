@@ -40,6 +40,7 @@ mod builder;
 mod cluster;
 pub mod discovery;
 mod handler;
+mod multi_raft;
 mod observer;
 mod security;
 

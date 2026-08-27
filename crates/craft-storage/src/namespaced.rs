@@ -53,9 +53,7 @@ impl GroupRedbLayout {
     /// # Errors
     /// Returns [`StorageError`] if any group file cannot be opened.
     pub fn open_groups(&self, group_count: u32) -> Result<Vec<RedbStorage>, StorageError> {
-        (0..group_count)
-            .map(|g| self.open_group(g))
-            .collect()
+        (0..group_count).map(|g| self.open_group(g)).collect()
     }
 }
 

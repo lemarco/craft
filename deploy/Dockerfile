@@ -8,7 +8,7 @@
 # hardened surface. Certs are mounted from a Secret at /etc/craft/certs; the
 # admin port (8080) serves the Kubernetes liveness/readiness probes (ADR 025).
 
-FROM rust:1-slim AS build
+FROM rust:1.98-slim AS build
 WORKDIR /src
 # Cache dependencies separately from source for faster incremental rebuilds.
 COPY Cargo.toml Cargo.lock ./

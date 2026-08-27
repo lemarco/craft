@@ -144,10 +144,10 @@ impl Cluster {
             loop {
                 let mut leaders = Vec::new();
                 for &id in &self.ids {
-                    if let Some(status) = self.handles[&id].status().await {
-                        if matches!(status.role, craft_actor::craft_core::Role::Leader) {
-                            leaders.push(id);
-                        }
+                    if let Some(status) = self.handles[&id].status().await
+                        && matches!(status.role, craft_actor::craft_core::Role::Leader)
+                    {
+                        leaders.push(id);
                     }
                 }
                 if leaders.len() == 1 {
@@ -298,8 +298,8 @@ async fn leader_confirms_read_index_for_follower_reads() {
         leader,
         &ClientRequest::ReadIndexConfirm { route_key: None },
     )
-        .await
-        .expect("read index confirm");
+    .await
+    .expect("read index confirm");
     match confirm {
         ClientResponse::ReadIndexConfirmed { index, term } => {
             let status = cluster.handles[&leader].status().await.unwrap();
@@ -471,13 +471,12 @@ async fn a_new_node_joins_a_running_cluster() {
                 .await
                 .unwrap()
                 .commit_index;
-            if let Some(s) = cluster.handles[&joiner].status().await {
-                if matches!(s.role, Role::Follower)
-                    && s.commit_index >= leader_commit
-                    && leader_commit.0 > 0
-                {
-                    break;
-                }
+            if let Some(s) = cluster.handles[&joiner].status().await
+                && matches!(s.role, Role::Follower)
+                && s.commit_index >= leader_commit
+                && leader_commit.0 > 0
+            {
+                break;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }

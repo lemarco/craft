@@ -66,10 +66,10 @@ impl DedupCache {
     fn record(&mut self, key: (NodeId, u64), reply: Option<Vec<u8>>) {
         if self.replies.insert(key, reply).is_none() {
             self.order.push_back(key);
-            if self.order.len() > DEDUP_CAPACITY {
-                if let Some(evicted) = self.order.pop_front() {
-                    self.replies.remove(&evicted);
-                }
+            if self.order.len() > DEDUP_CAPACITY
+                && let Some(evicted) = self.order.pop_front()
+            {
+                self.replies.remove(&evicted);
             }
         }
     }

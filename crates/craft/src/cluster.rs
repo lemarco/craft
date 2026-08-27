@@ -24,6 +24,9 @@ use craft_actor::{
     NodeHandle, NodeStatus, UserActor,
 };
 
+use crate::CraftClusterBuilder;
+use crate::multi_raft::MultiRaftState;
+
 /// The live leadership/membership facts the supervisor reconciles against
 /// (implements [`ClusterState`]), refreshed from the node's consensus status by
 /// a background task. Exposed only so [`CraftCluster::supervisor`] has a nameable
@@ -256,19 +259,17 @@ impl MembershipTelemetry {
             .prev
             .as_ref()
             .is_some_and(|p| p.leader != status.leader || p.term != status.term);
-        if leader_changed {
-            if let Some(leader) = status.leader {
-                self.metrics.incr(
-                    "craft_raft_leader_changes_total",
-                    "Observed leadership changes.",
-                    &[("node", node)],
-                    1.0,
-                );
-                self.events.emit(CraftEvent::LeaderChanged {
-                    term: status.term.0,
-                    leader: leader.0,
-                });
-            }
+        if leader_changed && let Some(leader) = status.leader {
+            self.metrics.incr(
+                "craft_raft_leader_changes_total",
+                "Observed leadership changes.",
+                &[("node", node)],
+                1.0,
+            );
+            self.events.emit(CraftEvent::LeaderChanged {
+                term: status.term.0,
+                leader: leader.0,
+            });
         }
 
         let mut departed = Vec::new();
@@ -334,6 +335,13 @@ pub struct CraftCluster<M: StateMachine> {
     pub(crate) metrics: Metrics,
     pub(crate) telemetry: Arc<ActorTelemetry>,
     pub(crate) members: Vec<NodeId>,
+    /// Kept alive for supervisor reconciliation and membership facts.
+    #[allow(dead_code)]
+    pub(crate) facts: Arc<ClusterFacts>,
+    /// Retained so rebalance state outlives the builder; used from background tasks.
+    #[allow(dead_code)]
+    pub(crate) multi_raft: Option<Arc<MultiRaftState<M>>>,
+    pub(crate) actor_state_store: Option<Arc<dyn craft_actor::ActorStateStore>>,
     pub(crate) tasks: Mutex<Vec<JoinHandle<()>>>,
 }
 
@@ -341,8 +349,11 @@ impl<M: StateMachine> CraftCluster<M> {
     /// Start describing a node running `machine`, identified by `node_id`. See
     /// [`CraftClusterBuilder`](crate::CraftClusterBuilder) for the options.
     #[must_use]
-    pub fn builder(node_id: NodeId, machine: M) -> crate::CraftClusterBuilder<M> {
-        crate::CraftClusterBuilder::new(node_id, machine)
+    pub fn builder(node_id: NodeId, machine: M) -> CraftClusterBuilder<M>
+    where
+        M: Default,
+    {
+        CraftClusterBuilder::new(node_id, machine)
     }
 
     /// This node's id.
@@ -355,6 +366,15 @@ impl<M: StateMachine> CraftCluster<M> {
     #[must_use]
     pub fn members(&self) -> &[NodeId] {
         &self.members
+    }
+
+    /// The workflow-state store wired by
+    /// [`CraftClusterBuilder::actor_state_store`](crate::CraftClusterBuilder::actor_state_store),
+    /// if any (ADR 021). Clone the `Arc` into actor `Config` when spawning
+    /// stateful workers.
+    #[must_use]
+    pub fn actor_state_store(&self) -> Option<Arc<dyn craft_actor::ActorStateStore>> {
+        self.actor_state_store.clone()
     }
 
     /// The in-process client handle for Raft group 0 (single-group default).

@@ -63,10 +63,10 @@ impl ActorDirectory {
     /// held for `update.node` (and therefore applied), `false` if stale.
     pub fn apply(&self, update: &DirectoryUpdate) -> bool {
         let mut inner = self.inner.lock().unwrap();
-        if let Some(existing) = inner.by_node.get(&update.node) {
-            if existing.epoch >= update.epoch {
-                return false;
-            }
+        if let Some(existing) = inner.by_node.get(&update.node)
+            && existing.epoch >= update.epoch
+        {
+            return false;
         }
         inner.by_node.insert(
             update.node,
@@ -304,10 +304,10 @@ impl DirectorySync {
             if peer == self.node_id {
                 continue;
             }
-            if let Ok(ack) = send_directory_update(self.transport.as_ref(), peer, &update).await {
-                if ack.applied {
-                    acks += 1;
-                }
+            if let Ok(ack) = send_directory_update(self.transport.as_ref(), peer, &update).await
+                && ack.applied
+            {
+                acks += 1;
             }
         }
         acks

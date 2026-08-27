@@ -112,14 +112,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The join blocks until the membership change commits; confirm node 4 is now
     // a voter and has replicated the pre-join state.
     for _ in 0..1000 {
-        if let Some(status) = joiner.status().await {
-            if status.voters.contains(&joiner_id) && status.last_applied >= LogIndex(1) {
-                println!(
-                    "node 4 joined: voters = {:?}, applied up to index {}",
-                    status.voters, status.last_applied.0
-                );
-                break;
-            }
+        if let Some(status) = joiner.status().await
+            && status.voters.contains(&joiner_id)
+            && status.last_applied >= LogIndex(1)
+        {
+            println!(
+                "node 4 joined: voters = {:?}, applied up to index {}",
+                status.voters, status.last_applied.0
+            );
+            break;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }

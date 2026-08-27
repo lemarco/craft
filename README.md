@@ -3,7 +3,7 @@
 **A distributed Raft + actor framework for Rust: one codebase, N nodes, elastic and self-healing.**
 
 [![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
-[![rust](https://img.shields.io/badge/rustc-1.85%2B-orange.svg)](#msrv)
+[![rust](https://img.shields.io/badge/rustc-1.98%2B-orange.svg)](#msrv)
 
 > **Paused since 2026-07-06.** v0.1 milestone is feature-complete per [backlog](docs/backlog.md); not production-hardened. This README is written so you can pick the project up months later without re-reading 32 ADRs.
 
@@ -57,11 +57,13 @@ From [ADR 027](docs/decisions/027-future-work-and-risks.md) and [backlog post-v1
 
 ```sh
 cd craft
-cargo build --workspace
-cargo test --workspace --all-features
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+./scripts/quality-gate-pre-commit.sh   # manual; lefthook runs fmt + this on commit
+./scripts/quality-gate-pre-push.sh     # check + tests + doctests
 
-# Single-process examples (no Docker)
+# Git hooks (recommended once per clone):
+lefthook install
+
+# Examples
 cargo run -p craft --example kv_store
 cargo run -p craft --example three_node_local
 cargo run -p craft --example actors_cluster
@@ -160,7 +162,17 @@ SOAK_SECS=60 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soa
 
 Certs for real deploy: [`examples/certs/generate.sh`](examples/certs/generate.sh) — [docs/certs.md](docs/certs.md).
 
-Git hooks: `lefthook install` (fmt + clippy on commit, tests on push).
+## Quality gates (local)
+
+| When | What runs |
+|------|-----------|
+| **pre-commit** | parallel: `fmt --check`, shellcheck, `cargo doc` → piped: clippy → check |
+| **pre-push** | piped: check → tests (nextest if installed) → doctests → release build |
+| **commit-msg** | conventional commits (`feat`, `fix`, `chore`, …) |
+| **CI fast lane** | fmt, clippy, nextest, doctests (see `.gitlab-ci.yml`) |
+
+Setup: `lefthook install` · manual: `./scripts/quality-gate-pre-commit.sh` / `quality-gate-pre-push.sh`  
+Bypass: `LEFTHOOK=0 git commit|push …` · lock issues: `./scripts/cargo-status.sh`
 
 ## Documentation map
 
@@ -168,6 +180,7 @@ Git hooks: `lefthook install` (fmt + clippy on commit, tests on push).
 |-----|----------------|
 | [docs/architecture.md](docs/architecture.md) | System overview |
 | [docs/backlog.md](docs/backlog.md) | Implementation status |
+| [docs/testing-coverage.md](docs/testing-coverage.md) | Test inventory, coverage matrix, known gaps |
 | [docs/protocol.md](docs/protocol.md) | HTTP/3 routes, wire format |
 | [docs/decisions/](docs/decisions/) | 32 ADRs — full design rationale |
 | [docs/releasing.md](docs/releasing.md) | crates.io publish workflow |
@@ -176,7 +189,7 @@ Git hooks: `lefthook install` (fmt + clippy on commit, tests on push).
 
 ## MSRV
 
-Minimum Supported Rust Version is **1.85**. MSRV bumps are a minor-version event ([ADR 028](docs/decisions/028-library-and-publishing.md)).
+Minimum Supported Rust Version is **1.98**. MSRV bumps are a minor-version event ([ADR 028](docs/decisions/028-library-and-publishing.md)).
 
 ## License
 
