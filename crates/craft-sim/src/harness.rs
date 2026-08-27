@@ -406,6 +406,7 @@ impl Cluster {
                     self.snapshots_loaded.insert(id, index);
                 }
                 Output::CatalogApplied { .. } => {}
+                Output::SagaJournalApplied { .. } => {}
             }
         }
     }

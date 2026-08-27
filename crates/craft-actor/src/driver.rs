@@ -58,7 +58,9 @@ use craft_core::{
     CatalogProposeError, Committed, Config, MembershipError, NotLeader, Output, RaftNode, ReadId,
     Role, SnapshotState, StateMachine,
 };
-use craft_proto::{CatalogCommand, CodecError, LogIndex, NodeId, RaftRpc, RaftRpcReply};
+use craft_proto::{
+    CatalogCommand, CodecError, LogIndex, NodeId, RaftRpc, RaftRpcReply, SagaJournalCommand,
+};
 use craft_storage::{HardState, NullStorage, RaftStorage, Snapshot, SnapshotMeta, StorageError};
 
 /// A network effect the driver produced that the caller must dispatch through
@@ -124,6 +126,8 @@ pub struct Step<M: StateMachine> {
     pub role_changes: Vec<Role>,
     /// Committed catalog metadata entries (Tier 2; not applied to the user SM).
     pub catalog_applied: Vec<(LogIndex, CatalogCommand)>,
+    /// Committed saga journal entries (Tier 2 v2; not applied to the user SM).
+    pub saga_journal_applied: Vec<(LogIndex, SagaJournalCommand)>,
 }
 
 impl<M: StateMachine> Default for Step<M> {
@@ -134,6 +138,7 @@ impl<M: StateMachine> Default for Step<M> {
             reads: Vec::new(),
             role_changes: Vec::new(),
             catalog_applied: Vec::new(),
+            saga_journal_applied: Vec::new(),
         }
     }
 }
@@ -147,6 +152,7 @@ impl<M: StateMachine> Step<M> {
             && self.reads.is_empty()
             && self.role_changes.is_empty()
             && self.catalog_applied.is_empty()
+            && self.saga_journal_applied.is_empty()
     }
 }
 
@@ -558,6 +564,21 @@ impl<M: StateMachine> RaftDriver<M> {
         }
     }
 
+    /// Append a saga journal metadata entry (group 0 leader only, Tier 2 v2).
+    ///
+    /// # Errors
+    /// Returns [`DriverError`] only if draining a resulting committed saga journal
+    /// entry fails; leadership rejections are carried in the inner `Result`.
+    pub fn propose_saga_journal(
+        &mut self,
+        command: SagaJournalCommand,
+    ) -> Result<Result<(LogIndex, Step<M>), CatalogProposeError>, DriverError> {
+        match self.node.propose_saga_journal(command) {
+            Ok(index) => Ok(Ok((index, self.drain()?))),
+            Err(e) => Ok(Err(e)),
+        }
+    }
+
     /// Snapshot the application state and compact the log up to the highest
     /// applied index, persisting the snapshot durably (backlog A6, Raft §7).
     ///
@@ -668,6 +689,9 @@ impl<M: StateMachine> RaftDriver<M> {
                 Output::RoleChanged(role) => step.role_changes.push(role),
                 Output::CatalogApplied { index, command } => {
                     step.catalog_applied.push((index, command));
+                }
+                Output::SagaJournalApplied { index, command } => {
+                    step.saga_journal_applied.push((index, command));
                 }
             }
         }

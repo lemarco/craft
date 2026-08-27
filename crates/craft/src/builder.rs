@@ -651,6 +651,17 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         let dynamic_join = !self.join_seeds.is_empty();
         let bootstrap_voters = consensus_bootstrap_voters(&self.members, node_id, dynamic_join);
 
+        let saga_registry = Arc::new(Mutex::new(BTreeMap::new()));
+        let saga_hook_reg = Arc::clone(&saga_registry);
+        let on_saga_journal_applied: craft_actor::SagaJournalAppliedFn = Arc::new(move |cmd| {
+            if let Ok(record) = craft_client::decode_journal_record(&cmd.record) {
+                saga_hook_reg
+                    .lock()
+                    .expect("lock")
+                    .insert(cmd.saga_id, record);
+            }
+        });
+
         // --- Consensus runtime -------------------------------------------
         let mut multi_raft = None;
         let mut catalog_event_rx = None;
@@ -678,6 +689,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             runtime_group0.on_catalog_applied = Some(Arc::new(move |cmd| {
                 let _ = catalog_tx.send(cmd);
             }));
+            runtime_group0.on_saga_journal_applied = Some(Arc::clone(&on_saga_journal_applied));
             let (sharded, handles_vec) = spawn_multi_raft_node(
                 node_id,
                 &bootstrap_voters,
@@ -735,7 +747,9 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                     RaftNode::new(node_id, bootstrap_voters.iter().copied(), self.raft.clone());
                 RaftDriver::new(node, self.machine)
             };
-            let handle = spawn_node(driver, Arc::clone(&transport), self.runtime.clone());
+            let mut runtime = self.runtime.clone();
+            runtime.on_saga_journal_applied = Some(Arc::clone(&on_saga_journal_applied));
+            let handle = spawn_node(driver, Arc::clone(&transport), runtime);
             let service = Arc::new(
                 NodeService::new(handle.clone(), Arc::clone(&transport))
                     .with_forward_timeout(self.forward_timeout),
@@ -1059,6 +1073,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             events,
             metrics,
             catalog_version,
+            saga_registry,
             telemetry,
             members: self.members,
             resource_profile,

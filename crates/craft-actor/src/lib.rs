@@ -51,7 +51,8 @@ pub use registry::{
 pub use resources::{ResourceProfile, VpsResources};
 pub use ring::{VIRTUAL_NODES, group_salt, hash_bytes, hash_key as ring_hash_key, pick_index};
 pub use runtime::{
-    ClientError, NodeHandle, NodeService, NodeStatus, RuntimeConfig, spawn as spawn_node,
+    ClientError, NodeHandle, NodeService, NodeStatus, RuntimeConfig, SagaJournalAppliedFn,
+    spawn as spawn_node,
 };
 pub use session::ActorSession;
 pub use tracing_init::init_tracing;

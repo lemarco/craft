@@ -1,15 +1,29 @@
-//! Saga journal backed by [`ActorStateStore`] and Prometheus helpers.
+//! Saga journal backed by group 0 Raft metadata and/or [`ActorStateStore`].
 
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use craft_actor::ActorStateStore;
+use craft_actor::{ActorStateStore, NodeHandle};
 use craft_client::{
     SagaEvent, SagaJournal, SagaJournalError, SagaJournalPhase, SagaJournalRecord,
     decode_journal_record, encode_journal_record,
 };
+use craft_core::StateMachine;
 use craft_dashboard::Metrics;
+use craft_proto::SagaJournalCommand;
+
+fn fresh_record(saga_id: &[u8]) -> SagaJournalRecord {
+    SagaJournalRecord {
+        saga_id: saga_id.to_vec(),
+        phase: SagaJournalPhase::Running,
+        completed_steps: 0,
+        catalog_version: None,
+        failed_step: None,
+        compensate_failed_at: None,
+    }
+}
 
 fn journal_key(saga_id: &[u8]) -> String {
     format!("craft:saga:{}", String::from_utf8_lossy(saga_id))
@@ -45,14 +59,7 @@ impl StoreSagaJournal {
         f: impl FnOnce(SagaJournalRecord) -> SagaJournalRecord,
     ) -> Result<(), SagaJournalError> {
         let prev = self.read(saga_id).await?;
-        let rec = prev.unwrap_or_else(|| SagaJournalRecord {
-            saga_id: saga_id.to_vec(),
-            phase: SagaJournalPhase::Running,
-            completed_steps: 0,
-            catalog_version: None,
-            failed_step: None,
-            compensate_failed_at: None,
-        });
+        let rec = prev.unwrap_or_else(|| fresh_record(saga_id));
         let updated = f(rec);
         let bytes = encode_journal_record(&updated)?;
         self.store
@@ -163,6 +170,285 @@ impl SagaJournal for StoreSagaJournal {
         Box<dyn Future<Output = Result<Option<SagaJournalRecord>, SagaJournalError>> + Send + 'a>,
     > {
         Box::pin(async move { self.read(saga_id).await })
+    }
+}
+
+/// In-memory view of saga records applied from group 0 Raft (all replicas).
+pub type SagaRegistry = Arc<Mutex<BTreeMap<Vec<u8>, SagaJournalRecord>>>;
+
+type SagaJournalUpsertFn = dyn Fn(SagaJournalCommand) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send>>
+    + Send
+    + Sync;
+
+/// Persist saga progress in group 0 coordinator metadata (no Redis required).
+pub struct Group0SagaJournal {
+    upsert: Arc<SagaJournalUpsertFn>,
+    registry: SagaRegistry,
+}
+
+impl Group0SagaJournal {
+    /// Build a journal that proposes upserts on `group0` and reads `registry`.
+    #[must_use]
+    pub fn new<M: StateMachine + 'static>(group0: NodeHandle<M>, registry: SagaRegistry) -> Self {
+        let upsert = Arc::new(move |command: SagaJournalCommand| {
+            let group0 = group0.clone();
+            Box::pin(async move {
+                group0
+                    .upsert_saga_journal(command)
+                    .await
+                    .map_err(|e| SagaJournalError::Backend(e.to_string()))
+            }) as Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send>>
+        });
+        Self { upsert, registry }
+    }
+
+    async fn read(&self, saga_id: &[u8]) -> Result<Option<SagaJournalRecord>, SagaJournalError> {
+        Ok(self.registry.lock().expect("lock").get(saga_id).cloned())
+    }
+
+    async fn update(
+        &self,
+        saga_id: &[u8],
+        f: impl FnOnce(SagaJournalRecord) -> SagaJournalRecord,
+    ) -> Result<(), SagaJournalError> {
+        let prev = self.read(saga_id).await?;
+        let updated = f(prev.unwrap_or_else(|| fresh_record(saga_id)));
+        let command = SagaJournalCommand {
+            saga_id: saga_id.to_vec(),
+            record: encode_journal_record(&updated)?,
+        };
+        (self.upsert)(command).await
+    }
+}
+
+impl SagaJournal for Group0SagaJournal {
+    fn on_started<'a>(
+        &'a self,
+        saga_id: &'a [u8],
+        _steps: usize,
+        catalog_version: Option<u32>,
+    ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.update(saga_id, |mut rec| {
+                rec.phase = SagaJournalPhase::Running;
+                rec.completed_steps = 0;
+                rec.catalog_version = catalog_version;
+                rec.failed_step = None;
+                rec.compensate_failed_at = None;
+                rec
+            })
+            .await
+        })
+    }
+
+    fn on_step_committed<'a>(
+        &'a self,
+        saga_id: &'a [u8],
+        step: usize,
+    ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.update(saga_id, |mut rec| {
+                rec.completed_steps = step as u32 + 1;
+                rec
+            })
+            .await
+        })
+    }
+
+    fn on_completed<'a>(
+        &'a self,
+        saga_id: &'a [u8],
+    ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.update(saga_id, |mut rec| {
+                rec.phase = SagaJournalPhase::Completed;
+                rec
+            })
+            .await
+        })
+    }
+
+    fn on_compensation_started<'a>(
+        &'a self,
+        saga_id: &'a [u8],
+        failed_step: usize,
+    ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.update(saga_id, |mut rec| {
+                rec.phase = SagaJournalPhase::Compensating;
+                rec.failed_step = Some(failed_step as u32);
+                rec
+            })
+            .await
+        })
+    }
+
+    fn on_compensated<'a>(
+        &'a self,
+        saga_id: &'a [u8],
+        _compensated_steps: usize,
+    ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.update(saga_id, |mut rec| {
+                rec.phase = SagaJournalPhase::Compensated;
+                rec.compensate_failed_at = None;
+                rec
+            })
+            .await
+        })
+    }
+
+    fn on_stuck<'a>(
+        &'a self,
+        saga_id: &'a [u8],
+        failed_step: usize,
+        compensate_failed_at: usize,
+    ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.update(saga_id, |mut rec| {
+                rec.phase = SagaJournalPhase::Stuck;
+                rec.failed_step = Some(failed_step as u32);
+                rec.compensate_failed_at = Some(compensate_failed_at as u32);
+                rec
+            })
+            .await
+        })
+    }
+
+    fn load<'a>(
+        &'a self,
+        saga_id: &'a [u8],
+    ) -> Pin<
+        Box<dyn Future<Output = Result<Option<SagaJournalRecord>, SagaJournalError>> + Send + 'a>,
+    > {
+        Box::pin(async move { self.read(saga_id).await })
+    }
+}
+
+/// Replicate to group 0 and optionally mirror in an external store (Redis).
+pub struct CompositeSagaJournal {
+    group0: Group0SagaJournal,
+    store: Option<StoreSagaJournal>,
+}
+
+impl CompositeSagaJournal {
+    /// Group 0 is always the durable fallback; `store` is an optional mirror.
+    #[must_use]
+    pub fn new(group0: Group0SagaJournal, store: Option<StoreSagaJournal>) -> Self {
+        Self { group0, store }
+    }
+}
+
+impl SagaJournal for CompositeSagaJournal {
+    fn on_started<'a>(
+        &'a self,
+        saga_id: &'a [u8],
+        steps: usize,
+        catalog_version: Option<u32>,
+    ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.group0
+                .on_started(saga_id, steps, catalog_version)
+                .await?;
+            if let Some(store) = &self.store {
+                store.on_started(saga_id, steps, catalog_version).await?;
+            }
+            Ok(())
+        })
+    }
+
+    fn on_step_committed<'a>(
+        &'a self,
+        saga_id: &'a [u8],
+        step: usize,
+    ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.group0.on_step_committed(saga_id, step).await?;
+            if let Some(store) = &self.store {
+                store.on_step_committed(saga_id, step).await?;
+            }
+            Ok(())
+        })
+    }
+
+    fn on_completed<'a>(
+        &'a self,
+        saga_id: &'a [u8],
+    ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.group0.on_completed(saga_id).await?;
+            if let Some(store) = &self.store {
+                store.on_completed(saga_id).await?;
+            }
+            Ok(())
+        })
+    }
+
+    fn on_compensation_started<'a>(
+        &'a self,
+        saga_id: &'a [u8],
+        failed_step: usize,
+    ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.group0
+                .on_compensation_started(saga_id, failed_step)
+                .await?;
+            if let Some(store) = &self.store {
+                store.on_compensation_started(saga_id, failed_step).await?;
+            }
+            Ok(())
+        })
+    }
+
+    fn on_compensated<'a>(
+        &'a self,
+        saga_id: &'a [u8],
+        compensated_steps: usize,
+    ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.group0
+                .on_compensated(saga_id, compensated_steps)
+                .await?;
+            if let Some(store) = &self.store {
+                store.on_compensated(saga_id, compensated_steps).await?;
+            }
+            Ok(())
+        })
+    }
+
+    fn on_stuck<'a>(
+        &'a self,
+        saga_id: &'a [u8],
+        failed_step: usize,
+        compensate_failed_at: usize,
+    ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.group0
+                .on_stuck(saga_id, failed_step, compensate_failed_at)
+                .await?;
+            if let Some(store) = &self.store {
+                store
+                    .on_stuck(saga_id, failed_step, compensate_failed_at)
+                    .await?;
+            }
+            Ok(())
+        })
+    }
+
+    fn load<'a>(
+        &'a self,
+        saga_id: &'a [u8],
+    ) -> Pin<
+        Box<dyn Future<Output = Result<Option<SagaJournalRecord>, SagaJournalError>> + Send + 'a>,
+    > {
+        Box::pin(async move {
+            if let Some(store) = &self.store
+                && let Some(rec) = store.load(saga_id).await?
+            {
+                return Ok(Some(rec));
+            }
+            self.group0.load(saga_id).await
+        })
     }
 }
 

@@ -365,6 +365,7 @@ pub struct CraftCluster<M: StateMachine> {
     pub(crate) events: EventBus,
     pub(crate) metrics: Metrics,
     pub(crate) catalog_version: Arc<AtomicU32>,
+    pub(crate) saga_registry: crate::saga::SagaRegistry,
     pub(crate) telemetry: Arc<ActorTelemetry>,
     pub(crate) members: Vec<NodeId>,
     pub(crate) resource_profile: ResourceProfile,
@@ -424,6 +425,25 @@ impl<M: StateMachine> CraftCluster<M> {
     #[must_use]
     pub fn actor_state_store(&self) -> Option<Arc<dyn craft_actor::ActorStateStore>> {
         self.actor_state_store.clone()
+    }
+
+    /// Default saga journal: group 0 Raft metadata, optionally mirrored to
+    /// [`Self::actor_state_store`] when configured.
+    #[must_use]
+    pub fn saga_journal(&self) -> Arc<dyn craft_client::SagaJournal> {
+        let group0 = self
+            .group_handle(0)
+            .expect("group 0 handle required for saga journal");
+        let group0_journal =
+            crate::saga::Group0SagaJournal::new(group0, Arc::clone(&self.saga_registry));
+        if let Some(store) = &self.actor_state_store {
+            Arc::new(crate::saga::CompositeSagaJournal::new(
+                group0_journal,
+                Some(crate::saga::StoreSagaJournal::new(Arc::clone(store))),
+            ))
+        } else {
+            Arc::new(group0_journal)
+        }
     }
 
     /// The in-process client handle for Raft group 0 (single-group default).

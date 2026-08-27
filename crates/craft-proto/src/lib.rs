@@ -15,6 +15,7 @@ pub mod group_migrate;
 pub mod join;
 pub mod leave;
 pub mod raft;
+pub mod saga_journal;
 
 pub use actor::{
     ActorEnvelope, ActorId, ActorRef, ActorRegistration, ActorTypeId, DeliverAck, DirectoryUpdate,
@@ -34,6 +35,7 @@ pub use raft::{
     AppendEntries, AppendEntriesReply, EntryPayload, InstallSnapshot, InstallSnapshotReply,
     LogEntry, Membership, RaftRpc, RaftRpcReply, RequestVote, RequestVoteReply,
 };
+pub use saga_journal::SagaJournalCommand;
 
 /// Wire/protocol version negotiated on join (join-version-skew: hard reject on mismatch).
 pub const PROTOCOL_VERSION: u32 = 1;

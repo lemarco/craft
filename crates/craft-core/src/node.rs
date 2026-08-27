@@ -20,7 +20,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use craft_proto::{
     AppendEntries, AppendEntriesReply, CatalogCommand, EntryPayload, InstallSnapshot,
     InstallSnapshotReply, LogEntry, LogId, LogIndex, Membership, NodeId, RaftRpc, RaftRpcReply,
-    RequestVote, RequestVoteReply, Round, Term,
+    RequestVote, RequestVoteReply, Round, SagaJournalCommand, Term,
 };
 
 use crate::config::Configuration;
@@ -123,6 +123,13 @@ pub enum Output {
         index: LogIndex,
         /// Catalog command committed at `index`.
         command: CatalogCommand,
+    },
+    /// A committed saga journal entry (Tier 2 v2; not applied to the user SM).
+    SagaJournalApplied {
+        /// Log index of the saga journal entry.
+        index: LogIndex,
+        /// Saga journal command committed at `index`.
+        command: SagaJournalCommand,
     },
 }
 
@@ -824,6 +831,25 @@ impl RaftNode {
         Ok(idx)
     }
 
+    /// Append a saga journal metadata entry to the log (group 0 only, Tier 2 v2).
+    ///
+    /// # Errors
+    /// Returns [`CatalogProposeError::NotLeader`] when this node is not leader.
+    pub fn propose_saga_journal(
+        &mut self,
+        command: SagaJournalCommand,
+    ) -> Result<LogIndex, CatalogProposeError> {
+        if self.role != Role::Leader {
+            return Err(CatalogProposeError::NotLeader {
+                leader: self.leader_id,
+            });
+        }
+        let idx = self.log_append(self.current_term, EntryPayload::SagaJournal(command));
+        self.broadcast_append();
+        self.maybe_advance_commit();
+        Ok(idx)
+    }
+
     // ---- Role transitions ------------------------------------------------
 
     fn set_role(&mut self, role: Role) {
@@ -1248,6 +1274,12 @@ impl RaftNode {
                 }
                 Some(EntryPayload::Catalog(command)) => {
                     self.outbox.push(Output::CatalogApplied {
+                        index: next,
+                        command: command.clone(),
+                    });
+                }
+                Some(EntryPayload::SagaJournal(command)) => {
+                    self.outbox.push(Output::SagaJournalApplied {
                         index: next,
                         command: command.clone(),
                     });

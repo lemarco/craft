@@ -19,6 +19,9 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
   `craft_client::run_saga`, `SagaPlan`/`SagaStep`, `SagaJournal` trait,
   `InMemorySagaJournal`; facade `StoreSagaJournal` + `record_saga_metrics`.
   Integration tests `craft/tests/saga.rs`; unit tests in `craft-client/src/saga.rs`.
+- **Saga hardening v2 — group 0 journal fallback** — `EntryPayload::SagaJournal` on
+  group 0 Raft log; `Group0SagaJournal`, `CompositeSagaJournal`, `CraftCluster::saga_journal()`.
+  E2E resume after coordinator restart without Redis (`cross_shard_saga_survives_coordinator_restart_via_group0_journal`).
 - **Optional cross-shard 2PC** ([cross-shard-transactions](docs/decisions/cross-shard-transactions.md)) —
   `CraftClusterBuilder::cross_shard_2pc(true)`; wire `TwoPhasePrepare/Commit/Abort`;
   `craft_client::propose_cross_shard_2pc` + `TwoPhasePlan` validation (≤3 groups).
@@ -43,6 +46,9 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
   `craft_client::run_saga`, `SagaPlan`/`SagaStep`, `SagaJournal` trait,
   `InMemorySagaJournal`; facade `StoreSagaJournal` + `record_saga_metrics`.
   Integration tests `craft/tests/saga.rs`; unit tests in `craft-client/src/saga.rs`.
+- **Saga hardening v2 — group 0 journal fallback** — `EntryPayload::SagaJournal` on
+  group 0 Raft log; `Group0SagaJournal`, `CompositeSagaJournal`, `CraftCluster::saga_journal()`.
+  E2E resume after coordinator restart without Redis (`cross_shard_saga_survives_coordinator_restart_via_group0_journal`).
 - **Tier 2 Phase 2 — dynamic catalog runtime** ([tier2-multi-raft-architecture](docs/decisions/tier2-multi-raft-architecture.md)) —
   `CatalogCommand::AddGroups` replicated on group 0 (`EntryPayload::Catalog`);
   `POST /raft/v1/cluster/catalog/add`; `CraftCluster::add_raft_groups(count)`;

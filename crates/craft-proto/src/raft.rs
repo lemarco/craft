@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{CatalogCommand, LogId, LogIndex, NodeId, Round, Term};
+use crate::{CatalogCommand, LogId, LogIndex, NodeId, Round, SagaJournalCommand, Term};
 
 /// A single Raft log entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,6 +34,8 @@ pub enum EntryPayload {
     Membership(Membership),
     /// Multi-Raft catalog metadata (Tier 2; applied by craft, not the user SM).
     Catalog(CatalogCommand),
+    /// Cross-shard saga journal metadata (Tier 2 v2; applied by craft, not the user SM).
+    SagaJournal(SagaJournalCommand),
 }
 
 /// A cluster configuration. During joint consensus both the incoming

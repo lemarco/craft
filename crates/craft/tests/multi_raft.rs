@@ -726,10 +726,7 @@ async fn switch_to_stable_shards_from_modulus() {
     let resp = send_client_request(
         &*Arc::new(net.clone()),
         node_id,
-        &ClientRequest::ProposeKeyed {
-            key,
-            command: cmd,
-        },
+        &ClientRequest::ProposeKeyed { key, command: cmd },
     )
     .await
     .expect("propose after switch");

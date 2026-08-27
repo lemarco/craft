@@ -51,8 +51,8 @@ use craft_net::{
 use craft_proto::{
     CatalogAddRequest, CatalogAddResponse, CatalogCommand, CatalogRejection, ClientRequest,
     ClientResponse, JoinRejection, JoinRequest, JoinResponse, LeaveRejection, LeaveRequest,
-    LeaveResponse, LogIndex, NodeId, PROTOCOL_VERSION, RaftRpc, RaftRpcReply, Term,
-    protocol_version_compatible,
+    LeaveResponse, LogIndex, NodeId, PROTOCOL_VERSION, RaftRpc, RaftRpcReply, SagaJournalCommand,
+    Term, protocol_version_compatible,
 };
 use tokio::sync::{mpsc, oneshot};
 
@@ -143,6 +143,10 @@ enum Envelope<M: StateMachine> {
         request: CatalogAddRequest,
         respond: oneshot::Sender<CatalogAddResponse>,
     },
+    UpsertSagaJournal {
+        command: SagaJournalCommand,
+        respond: oneshot::Sender<Result<(), ClientError>>,
+    },
     /// Leader-only: begin a joint-consensus membership change (per-group-raft-membership).
     ProposeMembership {
         voters: Vec<NodeId>,
@@ -185,6 +189,8 @@ enum Envelope<M: StateMachine> {
 pub type CatalogSnapshotFn = Arc<dyn Fn() -> Vec<craft_core::RaftGroupId> + Send + Sync>;
 /// Hook invoked when a catalog entry commits on this node (all group 0 replicas).
 pub type CatalogAppliedFn = Arc<dyn Fn(CatalogCommand) + Send + Sync>;
+/// Hook invoked when a saga journal entry commits on this node (group 0 replicas).
+pub type SagaJournalAppliedFn = Arc<dyn Fn(SagaJournalCommand) + Send + Sync>;
 
 /// Tunables for the runtime loop.
 #[derive(Clone)]
@@ -204,6 +210,8 @@ pub struct RuntimeConfig {
     pub catalog_snapshot: Option<CatalogSnapshotFn>,
     /// Apply hook for committed catalog entries (group 0 multi-Raft only).
     pub on_catalog_applied: Option<CatalogAppliedFn>,
+    /// Apply hook for committed saga journal entries (group 0 only).
+    pub on_saga_journal_applied: Option<SagaJournalAppliedFn>,
     /// Enable cross-shard two-phase commit prepare/commit/abort on this group.
     pub cross_shard_2pc: bool,
 }
@@ -216,6 +224,7 @@ impl Default for RuntimeConfig {
             allow_leave: false,
             catalog_snapshot: None,
             on_catalog_applied: None,
+            on_saga_journal_applied: None,
             cross_shard_2pc: false,
         }
     }
@@ -234,6 +243,10 @@ impl std::fmt::Debug for RuntimeConfig {
             .field(
                 "on_catalog_applied",
                 &self.on_catalog_applied.as_ref().map(|_| "<fn>"),
+            )
+            .field(
+                "on_saga_journal_applied",
+                &self.on_saga_journal_applied.as_ref().map(|_| "<fn>"),
             )
             .field("cross_shard_2pc", &self.cross_shard_2pc)
             .finish()
@@ -433,6 +446,22 @@ impl<M: StateMachine> NodeHandle<M> {
         rx.await.map_err(|_| ClientError::Stopped)
     }
 
+    /// Replicate a saga journal upsert on group 0 (Tier 2 v2).
+    ///
+    /// # Errors
+    /// [`ClientError::NotLeader`] when this node is not the group 0 leader.
+    /// [`ClientError::Stopped`] if the runtime shut down before responding.
+    pub async fn upsert_saga_journal(
+        &self,
+        command: SagaJournalCommand,
+    ) -> Result<(), ClientError> {
+        let (respond, rx) = oneshot::channel();
+        self.tx
+            .send(Envelope::UpsertSagaJournal { command, respond })
+            .map_err(|_| ClientError::Stopped)?;
+        rx.await.map_err(|_| ClientError::Stopped)?
+    }
+
     /// Propose a joint-consensus membership change to `voters` when this node
     /// is the Raft leader for the group (per-group-raft-membership).
     ///
@@ -574,8 +603,10 @@ struct Runtime<M: StateMachine> {
     pending_leaves: HashMap<LogIndex, oneshot::Sender<LeaveResponse>>,
     /// Catalog add requests awaiting their catalog entry to commit.
     pending_catalog_adds: HashMap<LogIndex, oneshot::Sender<CatalogAddResponse>>,
+    pending_saga_journals: HashMap<LogIndex, oneshot::Sender<Result<(), ClientError>>>,
     catalog_snapshot: Option<CatalogSnapshotFn>,
     on_catalog_applied: Option<CatalogAppliedFn>,
+    on_saga_journal_applied: Option<SagaJournalAppliedFn>,
     next_read_id: u64,
     cross_shard_2pc: bool,
     two_phase_prepares: crate::two_phase::PrepareStore,
@@ -652,6 +683,14 @@ impl<M: StateMachine> Runtime<M> {
                     catalog_len: from_len + new_groups.len() as u32,
                     new_groups,
                 });
+            }
+        }
+        for (index, command) in step.saga_journal_applied {
+            if let Some(hook) = &self.on_saga_journal_applied {
+                hook(command.clone());
+            }
+            if let Some(tx) = self.pending_saga_journals.remove(&index) {
+                let _ = tx.send(Ok(()));
             }
         }
         // If we are no longer the leader, any still-outstanding client request
@@ -746,6 +785,9 @@ impl<M: StateMachine> Runtime<M> {
         for (_, tx) in self.pending_catalog_adds.drain() {
             let _ = tx.send(CatalogAddResponse::Redirect { leader });
         }
+        for (_, tx) in self.pending_saga_journals.drain() {
+            let _ = tx.send(Err(ClientError::NotLeader { leader }));
+        }
         self.two_phase_prepares.clear();
     }
 
@@ -830,6 +872,9 @@ impl<M: StateMachine> Runtime<M> {
             }
             Envelope::CatalogAdd { request, respond } => {
                 self.on_catalog_add(request, respond)?;
+            }
+            Envelope::UpsertSagaJournal { command, respond } => {
+                self.on_upsert_saga_journal(command, respond)?;
             }
             Envelope::ProposeMembership {
                 voters,
@@ -1185,6 +1230,30 @@ impl<M: StateMachine> Runtime<M> {
         Ok(())
     }
 
+    /// Replicate a saga journal upsert on the group 0 leader.
+    fn on_upsert_saga_journal(
+        &mut self,
+        command: SagaJournalCommand,
+        respond: oneshot::Sender<Result<(), ClientError>>,
+    ) -> Result<(), DriverError> {
+        if !self.driver.is_leader() {
+            let _ = respond.send(Err(ClientError::NotLeader {
+                leader: self.driver.node().leader_id(),
+            }));
+            return Ok(());
+        }
+        match self.driver.propose_saga_journal(command)? {
+            Ok((index, step)) => {
+                self.pending_saga_journals.insert(index, respond);
+                let _ = self.settle(step);
+            }
+            Err(CatalogProposeError::NotLeader { leader }) => {
+                let _ = respond.send(Err(ClientError::NotLeader { leader }));
+            }
+        }
+        Ok(())
+    }
+
     fn on_propose_membership(
         &mut self,
         voters: Vec<NodeId>,
@@ -1243,8 +1312,10 @@ where
         pending_joins: HashMap::new(),
         pending_leaves: HashMap::new(),
         pending_catalog_adds: HashMap::new(),
+        pending_saga_journals: HashMap::new(),
         catalog_snapshot: config.catalog_snapshot.clone(),
         on_catalog_applied: config.on_catalog_applied.clone(),
+        on_saga_journal_applied: config.on_saga_journal_applied.clone(),
         next_read_id: 0,
         cross_shard_2pc: config.cross_shard_2pc,
         two_phase_prepares: crate::two_phase::PrepareStore::default(),

@@ -75,7 +75,8 @@ scope for library-first design.
 2. **Phase 4 default path (landed):** framework **saga coordinator** (option B) with:
    - explicit `SagaStep { key, command, compensate }` types in `craft-client`;
    - [`run_saga`](../../crates/craft-client/src/saga.rs) + [`SagaJournal`](../../crates/craft-client/src/saga.rs) trait;
-   - durable saga journal via [`StoreSagaJournal`](../../crates/craft/src/saga.rs) (`ActorStateStore`, key `craft:saga:{id}`);
+   - durable saga journal via [`Group0SagaJournal`](../../crates/craft/src/saga.rs) (group 0 Raft metadata, `EntryPayload::SagaJournal`) with optional Redis mirror via [`CompositeSagaJournal`](../../crates/craft/src/saga.rs) when [`CraftClusterBuilder::actor_state_store`](../../crates/craft/src/builder.rs) is configured; standalone [`StoreSagaJournal`](../../crates/craft/src/saga.rs) remains for external-only stores;
+   - [`CraftCluster::saga_journal`](../../crates/craft/src/cluster.rs) — default journal (group 0, composite when Redis configured);
    - metrics helper [`record_saga_metrics`](../../crates/craft/src/saga.rs): `craft_saga_completed_total`, `craft_saga_compensated_total`, `craft_saga_stuck_total`.
 3. **Optional increment (landed):** limited **2PC** (option C) for ≤3 groups and
    small payloads, behind [`CraftClusterBuilder::cross_shard_2pc`](../../crates/craft/src/builder.rs)(true):
@@ -97,11 +98,11 @@ without a global transaction manager — document as explicit non-goal.
 
 ## Open questions
 
-- Saga journal in group 0 metadata vs Redis-only — affects restart without Redis.
 - Whether compensation runs on **same shard** as forward step (key affinity).
 
 **Resolved (Tier 2 tails):**
 
+- Saga journal in group 0 metadata vs Redis-only — **group 0 is the durable fallback** (`Group0SagaJournal`); Redis mirrors when configured. Integration test `cross_shard_saga_survives_coordinator_restart_via_group0_journal` in `craft/tests/saga.rs`.
 - Dynamic catalog mid-saga: [`run_keyed_saga`](../../crates/craft/src/cluster.rs) pins
   `catalog_version`; [`run_saga`](../../crates/craft-client/src/saga.rs) rejects steps when
   the live generation changes.

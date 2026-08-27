@@ -1,6 +1,5 @@
 //! Fast TLS config validation tests (no Docker).
 
-use craft_actor::ActorStateStore;
 use craft_store_redis::{RedisStore, RedisTlsConfig};
 
 #[tokio::test]

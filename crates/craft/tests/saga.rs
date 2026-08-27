@@ -7,15 +7,17 @@ use craft::CraftCluster;
 use craft::StoreSagaJournal;
 use craft::actor::{ActorStateStore, InMemoryStore};
 use craft::client::{
-    RemoteClient, RetryPolicy, RunSagaOpts, SagaJournal, SagaJournalPhase, SagaOutcome, SagaPlan,
-    SagaStep, run_saga,
+    KeyedClient, RemoteClient, RetryPolicy, RunSagaOpts, SagaJournal, SagaJournalPhase,
+    SagaOutcome, SagaPlan, SagaStep, run_saga,
 };
 use craft::net::{LocalNetwork, Transport, TransportError, decode_body};
 use craft::proto::{ClientRequest, ClientResponse, NodeId};
 use craft_test_support::{
     KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, advance, assert_eq, await_craft_leader,
-    fast_raft_config_with_seed, find_keys_for_two_groups, wait_for_each_group_cluster_leader,
+    fast_raft_config_with_seed, find_keys_for_two_groups, wait_for_craft_stopped,
+    wait_for_each_group_cluster_leader,
 };
+use std::path::{Path, PathBuf};
 
 async fn spawn_two_group_cluster() -> (LocalNetwork, Vec<Arc<CraftCluster<KvMachine>>>) {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
@@ -312,5 +314,123 @@ async fn run_keyed_saga_is_idempotent_when_journal_completed() {
 
     for cluster in &clusters {
         cluster.shutdown();
+    }
+}
+
+fn node_data_dir(base: &Path, id: NodeId) -> PathBuf {
+    base.join(format!("node-{}", id.0))
+}
+
+async fn spawn_durable_two_group_cluster(
+    net: &LocalNetwork,
+    id: NodeId,
+    members: [NodeId; 3],
+    data_dir: PathBuf,
+) -> CraftCluster<KvMachine> {
+    CraftCluster::builder(id, KvMachine::default())
+        .members(members)
+        .raft_config(fast_raft_config_with_seed(11))
+        .tick_period(TICK_PERIOD)
+        .shard_count(64)
+        .raft_machines([KvMachine::default(), KvMachine::default()])
+        .data_dir(data_dir)
+        .start_local(net)
+        .await
+}
+
+#[tokio::test(start_paused = true)]
+async fn cross_shard_saga_survives_coordinator_restart_via_group0_journal() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let base = dir.path().to_path_buf();
+    let net = LocalNetwork::new();
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+
+    let groups = [craft::core::RaftGroupId(0), craft::core::RaftGroupId(1)];
+    let (key_a, key_b) = find_keys_for_two_groups(64, &groups);
+    let plan = two_shard_plan(key_a.clone(), key_b.clone());
+
+    {
+        let mut clusters = Vec::new();
+        for &id in &ids {
+            let cluster =
+                spawn_durable_two_group_cluster(&net, id, ids, node_data_dir(&base, id)).await;
+            clusters.push(Arc::new(cluster));
+        }
+        wait_for_each_group_cluster_leader(&clusters, 2).await;
+        let leader = await_craft_leader(&clusters).await;
+        let client = RemoteClient::new(Arc::new(net.clone()), [leader.node_id()]);
+
+        client
+            .propose_keyed(key_a.clone(), plan.steps[0].command.clone())
+            .await
+            .expect("step 0 forward");
+
+        let journal = leader.saga_journal();
+        journal
+            .on_started(
+                &plan.saga_id,
+                plan.steps.len(),
+                Some(leader.catalog_version()),
+            )
+            .await
+            .expect("journal start");
+        journal
+            .on_step_committed(&plan.saga_id, 0)
+            .await
+            .expect("journal step 0");
+
+        for cluster in &clusters {
+            wait_for_craft_stopped(cluster.as_ref()).await;
+        }
+        for &id in &ids {
+            net.detach(id);
+        }
+    }
+
+    {
+        let mut clusters = Vec::new();
+        for &id in &ids {
+            let cluster =
+                spawn_durable_two_group_cluster(&net, id, ids, node_data_dir(&base, id)).await;
+            clusters.push(Arc::new(cluster));
+        }
+        wait_for_each_group_cluster_leader(&clusters, 2).await;
+        let leader = await_craft_leader(&clusters).await;
+        let client = RemoteClient::new(Arc::new(net.clone()), [leader.node_id()]);
+        let journal = leader.saga_journal();
+
+        let loaded = journal.load(&plan.saga_id).await.expect("load");
+        assert!(
+            loaded.is_some(),
+            "group 0 journal must survive restart without Redis"
+        );
+        assert_eq!(loaded.unwrap().completed_steps, 1);
+
+        let outcome = leader
+            .resume_keyed_saga(&client, &plan, journal.as_ref())
+            .await
+            .expect("resume after restart");
+        assert!(matches!(outcome, SagaOutcome::Completed(_)));
+
+        let qry_to = craft::proto::encode(&KvQuery::Get { key: "to".into() }).unwrap();
+        let got_to = craft::net::send_client_request(
+            &*Arc::new(net.clone()),
+            leader.node_id(),
+            &ClientRequest::QueryKeyed {
+                key: key_b,
+                query: qry_to,
+            },
+        )
+        .await
+        .expect("query to");
+        let ClientResponse::Ok(bytes_to) = got_to else {
+            panic!("unexpected {got_to:?}");
+        };
+        let val_to: KvResponse = craft::proto::decode(&bytes_to).unwrap();
+        assert_eq!(val_to, KvResponse::Value(Some("200".into())));
+
+        for cluster in &clusters {
+            cluster.shutdown();
+        }
     }
 }
