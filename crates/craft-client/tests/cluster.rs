@@ -29,6 +29,7 @@ fn spawn_cluster() -> (LocalNetwork, Vec<(NodeId, NodeHandle<Kv>)>) {
             tick_period: TICK_PERIOD,
             allow_join: false,
             allow_leave: false,
+            ..RuntimeConfig::default()
         };
         let handle = spawn_node(driver, Arc::clone(&transport), cfg);
         let service = NodeService::new(handle.clone(), Arc::clone(&transport));

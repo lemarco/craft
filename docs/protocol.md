@@ -104,6 +104,17 @@ Content-Type: application/x-postcard
 
 Request/response types: `LeaveRequest` / `LeaveResponse` in `craft-proto` ([leave-rpc](decisions/leave-rpc.md)).
 
+### Cluster catalog add (multi-Raft, node ↔ node)
+
+```
+POST /raft/v1/cluster/catalog/add
+Content-Type: application/x-postcard
+```
+
+**Multi-Raft only.** The group 0 leader appends a [`CatalogCommand::AddGroups`](../../crates/craft-proto/src/catalog.rs) entry to the group 0 Raft log (not the user state machine). All nodes replay the entry, update the in-memory catalog, extend keyed routing, and rebalance to adopt new groups ([tier2-multi-raft-architecture](decisions/tier2-multi-raft-architecture.md)).
+
+Request/response types: `CatalogAddRequest` / `CatalogAddResponse` in `craft-proto`. Facade: `CraftCluster::add_raft_groups(count)`.
+
 ### Actor delivery (cross-node, v1)
 
 | Route | Purpose |

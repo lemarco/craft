@@ -9,11 +9,6 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ## [Unreleased]
 
-### Changed
-
-- **MSRV 1.98** — workspace `rust-version`, Clippy MSRV, CI `msrv` job, and
-  `deploy/Dockerfile` builder image aligned with stable 1.98.0 ([library-and-publishing](docs/decisions/library-and-publishing.md)).
-
 ### Added
 
 - **Stable shard routing (Tier 2 Phase 3)** — multi-Raft clusters default to
@@ -21,6 +16,23 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
   `CraftCluster::activate_shards` grows the active virtual prefix without
   remapping; Tier 1 `expand_shard_count` remains via `.modulus_shards()`.
   Introspect exposes `shard_routing`.
+
+### Changed
+
+- **MSRV 1.98** — workspace `rust-version`, Clippy MSRV, CI `msrv` job, and
+  `deploy/Dockerfile` builder image aligned with stable 1.98.0 ([library-and-publishing](docs/decisions/library-and-publishing.md)).
+
+### Added
+
+- **Tier 2 Phase 4 — cross-shard saga coordinator** ([cross-shard-transactions](docs/decisions/cross-shard-transactions.md)) —
+  `craft_client::run_saga`, `SagaPlan`/`SagaStep`, `SagaJournal` trait,
+  `InMemorySagaJournal`; facade `StoreSagaJournal` + `record_saga_metrics`.
+  Integration tests `craft/tests/saga.rs`; unit tests in `craft-client/src/saga.rs`.
+- **Tier 2 Phase 2 — dynamic catalog runtime** ([tier2-multi-raft-architecture](docs/decisions/tier2-multi-raft-architecture.md)) —
+  `CatalogCommand::AddGroups` replicated on group 0 (`EntryPayload::Catalog`);
+  `POST /raft/v1/cluster/catalog/add`; `CraftCluster::add_raft_groups(count)`;
+  `MultiRaftState::apply_catalog_command` + rebalance adopt + keyed routing
+  extension. Integration test `add_raft_groups_expands_catalog_without_restart`.
 - **Tier 2 multi-Raft architecture** ([tier2-multi-raft-architecture](docs/decisions/tier2-multi-raft-architecture.md)) —
   ADR for dynamic catalog expansion, stable virtual shard activation, and phased
   write-scaling path; Phase 1 pure planners in `craft-core::shard`
