@@ -49,7 +49,7 @@ impl RequestHandler for EchoHandler {
                     ClientRequest::Propose(p) | ClientRequest::Query(p) => p,
                     ClientRequest::ProposeKeyed { command, .. } => command,
                     ClientRequest::QueryKeyed { query, .. } => query,
-                    ClientRequest::ReadIndexConfirm => Vec::new(),
+                    ClientRequest::ReadIndexConfirm { .. } => Vec::new(),
                 };
                 Ok(encode_body(&ClientResponse::Ok(payload))?)
             }

@@ -22,7 +22,7 @@ use tokio::net::TcpListener;
 use craft_actor::{
     ActorDirectory, ActorRegistry, ClusterControl, ClusterMessaging, ClusterState,
     ClusterSupervisor, DirectorySync, NodeService, RaftDriver, RuntimeConfig, UserActor,
-    spawn_node,
+    spawn_multi_raft_node, spawn_node,
 };
 
 use crate::cluster::{ClusterFacts, CraftCluster};
@@ -76,6 +76,9 @@ pub struct CraftClusterBuilder<M: StateMachine> {
     admin_addr: Option<SocketAddr>,
     join_seeds: Vec<Seed>,
     traffic_policy: TrafficPolicy,
+    raft_groups: u32,
+    shard_count: u32,
+    raft_machines: Option<Vec<M>>,
     registrations: Vec<RegisterFn>,
     managed: Vec<ManageFn>,
 }
@@ -101,6 +104,9 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
             admin_addr: None,
             join_seeds: Vec::new(),
             traffic_policy: TrafficPolicy::unlimited(),
+            raft_groups: 1,
+            shard_count: 256,
+            raft_machines: None,
             registrations: Vec::new(),
             managed: Vec::new(),
         }
@@ -120,6 +126,35 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
     #[must_use]
     pub fn raft_config(mut self, config: Config) -> Self {
         self.raft = config;
+        self
+    }
+
+    /// Host `count` independent Raft groups on this node (multi-Raft, ADR 031).
+    /// Requires `M: Clone`; each group gets a clone of the builder's state
+    /// machine. Defaults to `1` (single-group, unchanged behaviour).
+    #[must_use]
+    pub fn raft_groups(mut self, count: u32) -> Self {
+        self.raft_groups = count.max(1);
+        self
+    }
+
+    /// Fixed shard count for [`raft_groups`](Self::raft_groups) routing
+    /// (defaults to 256).
+    #[must_use]
+    pub fn shard_count(mut self, count: u32) -> Self {
+        self.shard_count = count.max(1);
+        self
+    }
+
+    /// One state machine instance per Raft group. Required when
+    /// [`raft_groups`](Self::raft_groups) is greater than 1; sets the group
+    /// count from the slice length.
+    #[must_use]
+    pub fn raft_machines(mut self, machines: impl IntoIterator<Item = M>) -> Self {
+        let machines: Vec<M> = machines.into_iter().collect();
+        assert!(!machines.is_empty(), "raft_machines requires at least one machine");
+        self.raft_groups = machines.len() as u32;
+        self.raft_machines = Some(machines);
         self
     }
 
@@ -373,9 +408,45 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
         let node_id = self.node_id;
 
         // --- Consensus runtime -------------------------------------------
-        let node = RaftNode::new(node_id, self.members.clone(), self.raft.clone());
-        let driver = RaftDriver::new(node, self.machine);
-        let handle = spawn_node(driver, Arc::clone(&transport), self.runtime.clone());
+        let (handle, group_handles, consensus_service) = if self.raft_groups > 1 {
+            let machines = self.raft_machines.unwrap_or_else(|| {
+                panic!(
+                    "raft_groups = {} requires .raft_machines(...) on the builder",
+                    self.raft_groups
+                )
+            });
+            assert_eq!(
+                machines.len(),
+                self.raft_groups as usize,
+                "raft_machines length must match raft_groups"
+            );
+            let (sharded, handles) = spawn_multi_raft_node(
+                node_id,
+                &self.members,
+                self.raft.clone(),
+                self.runtime.clone(),
+                self.shard_count,
+                self.raft_groups,
+                machines,
+                Arc::clone(&transport),
+                self.forward_timeout,
+            );
+            let primary = handles[0].clone();
+            (
+                primary,
+                handles,
+                Arc::new(sharded) as Arc<dyn RequestHandler>,
+            )
+        } else {
+            let node = RaftNode::new(node_id, self.members.clone(), self.raft.clone());
+            let driver = RaftDriver::new(node, self.machine);
+            let handle = spawn_node(driver, Arc::clone(&transport), self.runtime.clone());
+            let service = Arc::new(
+                NodeService::new(handle.clone(), Arc::clone(&transport))
+                    .with_forward_timeout(self.forward_timeout),
+            ) as Arc<dyn RequestHandler>;
+            (handle.clone(), vec![handle], service)
+        };
 
         // --- Actor planes -------------------------------------------------
         let registry = if self.dev_multi_workers {
@@ -439,10 +510,8 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
         registry.set_observer(telemetry.clone());
 
         // --- Router -------------------------------------------------------
-        let service = NodeService::new(handle.clone(), Arc::clone(&transport))
-            .with_forward_timeout(self.forward_timeout);
         let router: Arc<dyn RequestHandler> = Arc::new(NodeRouter::new(
-            service,
+            consensus_service,
             Arc::clone(&control),
             Arc::clone(&messaging),
             Arc::clone(&directory_sync),
@@ -634,6 +703,9 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
         let cluster = CraftCluster {
             node_id,
             handle,
+            group_handles,
+            raft_groups: self.raft_groups,
+            shard_count: self.shard_count,
             registry,
             control,
             messaging,

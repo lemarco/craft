@@ -10,6 +10,8 @@ use craft_net::transport::{Body, BoxFuture, RequestHandler};
 use craft_net::{Route, Transport, TransportError, decode_body, encode_body};
 use craft_proto::{ClientRequest, ClientResponse, GroupPeerEnvelope, NodeId};
 
+use crate::RuntimeConfig;
+
 /// Routes client and peer traffic to one of several Raft groups hosted on the
 /// same physical node.
 pub struct ShardedNodeService {
@@ -60,10 +62,23 @@ impl ShardedNodeService {
                 };
                 Ok((group.0, ClientRequest::Query(query)))
             }
-            ClientRequest::ReadIndexConfirm => Ok((
+            ClientRequest::ReadIndexConfirm { route_key: None } => Ok((
                 self.group_ids.first().map(|g| g.0).unwrap_or(0),
-                ClientRequest::ReadIndexConfirm,
+                ClientRequest::ReadIndexConfirm { route_key: None },
             )),
+            ClientRequest::ReadIndexConfirm {
+                route_key: Some(key),
+            } => {
+                let Some(group) = self.group_for_key(&key) else {
+                    return Err(ClientResponse::Error("no raft groups configured".into()));
+                };
+                Ok((
+                    group.0,
+                    ClientRequest::ReadIndexConfirm {
+                        route_key: Some(key),
+                    },
+                ))
+            }
         }
     }
 }
@@ -134,19 +149,21 @@ impl RequestHandler for ShardedNodeService {
 pub fn spawn_multi_raft_node<M>(
     node_id: NodeId,
     members: &[NodeId],
+    raft: craft_core::Config,
+    runtime: RuntimeConfig,
     shard_count: u32,
     group_count: u32,
     machines: Vec<M>,
-    network: Arc<craft_net::LocalNetwork>,
+    network: Arc<dyn Transport>,
     forward_timeout: Duration,
 ) -> (ShardedNodeService, Vec<crate::NodeHandle<M>>)
 where
     M: StateMachine + 'static,
 {
-    use craft_core::{Config, RaftNode};
+    use craft_core::RaftNode;
     use craft_net::GroupTransport;
 
-    use crate::{NodeService, RaftDriver, RuntimeConfig, spawn_node};
+    use crate::{NodeService, RaftDriver, spawn_node};
 
     let group_ids: Vec<RaftGroupId> = (0..group_count).map(RaftGroupId).collect();
     let mut handles = Vec::new();
@@ -154,14 +171,14 @@ where
 
     for (g, machine) in machines.into_iter().enumerate().take(group_count as usize) {
         let g = g as u32;
-        let node = RaftNode::new(node_id, members.iter().copied(), Config::default());
+        let node = RaftNode::new(node_id, members.iter().copied(), raft.clone());
         let driver = RaftDriver::new(node, machine);
         let group_transport =
-            Arc::new(GroupTransport::new(g, network.clone())) as Arc<dyn Transport>;
+            Arc::new(GroupTransport::new(g, Arc::clone(&network))) as Arc<dyn Transport>;
         let handle = spawn_node(
             driver,
             Arc::clone(&group_transport),
-            RuntimeConfig::default(),
+            runtime.clone(),
         );
         let service = Arc::new(
             NodeService::new(handle.clone(), group_transport).with_forward_timeout(forward_timeout),

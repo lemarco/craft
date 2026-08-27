@@ -86,11 +86,8 @@ storage, and client changes behind it.
 
 ## What is deferred (and why it is safe to defer)
 
-- `CraftClusterBuilder` integration (multi-group QUIC/local start), per-group
-  redb namespacing, cross-node multi-group replication layout, and a
-  rebalancing control plane. Single-group remains the default via
-  `CraftClusterBuilder`; opt into multi-Raft with `spawn_multi_raft_node` or
-  a custom `ShardedNodeService` until the builder path lands.
+- `CraftClusterBuilder::raft_groups`, `raft_machines`, and `shard_count` for
+  multi-group local/QUIC starts; `CraftCluster::group_handles()`.
 
 ## Consequences
 

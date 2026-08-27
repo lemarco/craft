@@ -321,6 +321,9 @@ impl MembershipTelemetry {
 pub struct CraftCluster<M: StateMachine> {
     pub(crate) node_id: NodeId,
     pub(crate) handle: NodeHandle<M>,
+    pub(crate) group_handles: Vec<NodeHandle<M>>,
+    pub(crate) raft_groups: u32,
+    pub(crate) shard_count: u32,
     pub(crate) registry: ActorRegistry,
     pub(crate) control: Arc<ClusterControl>,
     pub(crate) messaging: Arc<ClusterMessaging>,
@@ -354,12 +357,31 @@ impl<M: StateMachine> CraftCluster<M> {
         &self.members
     }
 
-    /// The in-process client handle (the L1 client of ADR 002): propose and
-    /// query the replicated state machine with no network hop when this node is
-    /// the leader.
+    /// The in-process client handle for Raft group 0 (single-group default).
+    /// With multi-Raft, use [`group_handles`](Self::group_handles) for other
+    /// groups and keyed client APIs for shard-aware routing.
     #[must_use]
     pub fn handle(&self) -> &NodeHandle<M> {
         &self.handle
+    }
+
+    /// One [`NodeHandle`] per hosted Raft group (length equals
+    /// [`raft_groups`](Self::raft_groups)).
+    #[must_use]
+    pub fn group_handles(&self) -> &[NodeHandle<M>] {
+        &self.group_handles
+    }
+
+    /// Number of independent Raft groups on this node (1 = default).
+    #[must_use]
+    pub fn raft_groups(&self) -> u32 {
+        self.raft_groups
+    }
+
+    /// Shard count used for keyed client routing when `raft_groups > 1`.
+    #[must_use]
+    pub fn shard_count(&self) -> u32 {
+        self.shard_count
     }
 
     /// The node-local actor registry (spawn / scale / drain local actors).

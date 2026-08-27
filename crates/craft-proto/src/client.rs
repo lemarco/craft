@@ -27,7 +27,10 @@ pub enum ClientRequest {
     },
     /// Ask the leader to confirm a linearizable read index without executing a
     /// query (etcd-style follower read setup, ADR 005).
-    ReadIndexConfirm,
+    ReadIndexConfirm {
+        /// Shard routing key for multi-Raft; `None` targets group 0.
+        route_key: Option<Vec<u8>>,
+    },
 }
 
 /// The cluster's response to a [`ClientRequest`].

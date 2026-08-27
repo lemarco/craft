@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use craft_actor::craft_core::{RaftGroupId, Role, ShardRouter, StateMachine, place_shard};
 use craft_actor::craft_net::{LocalNetwork, Transport, send_client_request};
-use craft_actor::craft_proto::{ClientRequest, ClientResponse, NodeId};
+use craft_actor::craft_proto::{ClientRequest, ClientResponse, LogIndex, NodeId};
 use craft_actor::spawn_multi_raft_node;
 use serde::{Deserialize, Serialize};
 
@@ -128,10 +128,15 @@ async fn keyed_writes_route_to_independent_raft_groups() {
     let (sharded, handles) = spawn_multi_raft_node(
         node_id,
         &members,
+        craft_actor::craft_core::Config::default(),
+        craft_actor::RuntimeConfig {
+            tick_period: Duration::from_millis(10),
+            allow_join: false,
+        },
         shard_count,
         2,
         machines,
-        Arc::new(net.clone()),
+        Arc::clone(&transport),
         Duration::from_secs(5),
     );
     net.attach(node_id, Arc::new(sharded));

@@ -10,12 +10,11 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use craft_core::StateMachine;
-use craft_net::transport::{Body, BoxFuture};
-use craft_net::{QuicTransport, RequestHandler, Route, TransportError, decode_body, encode_body};
+use craft_net::transport::{Body, BoxFuture, RequestHandler};
+use craft_net::{QuicTransport, Route, TransportError, decode_body, encode_body};
 use craft_proto::{JoinRequest, NodeId, PeerBook, PeerEntry, ScaleRequest};
 
-use craft_actor::{ClusterControl, ClusterMessaging, DirectorySync, NodeService};
+use craft_actor::{ClusterControl, ClusterMessaging, DirectorySync};
 
 /// The address plane: learn peer addresses at runtime and snapshot the current
 /// address book (ADR 007). Backed by the live [`QuicTransport`] directory in
@@ -67,17 +66,17 @@ impl PeerSource for NoPeers {
 
 /// Routes an inbound request to the sub-handler that owns it (ADR 010 route
 /// table). One of these is attached per node.
-pub(crate) struct NodeRouter<M: StateMachine> {
-    service: NodeService<M>,
+pub(crate) struct NodeRouter {
+    service: Arc<dyn RequestHandler>,
     control: Arc<ClusterControl>,
     messaging: Arc<ClusterMessaging>,
     directory_sync: Arc<DirectorySync>,
     peers: Arc<dyn PeerSource>,
 }
 
-impl<M: StateMachine> NodeRouter<M> {
+impl NodeRouter {
     pub(crate) fn new(
-        service: NodeService<M>,
+        service: Arc<dyn RequestHandler>,
         control: Arc<ClusterControl>,
         messaging: Arc<ClusterMessaging>,
         directory_sync: Arc<DirectorySync>,
@@ -93,7 +92,7 @@ impl<M: StateMachine> NodeRouter<M> {
     }
 }
 
-impl<M: StateMachine> RequestHandler for NodeRouter<M> {
+impl RequestHandler for NodeRouter {
     fn handle(&self, route: Route, body: Body) -> BoxFuture<'static, Result<Body, TransportError>> {
         match route {
             // Consensus, client API, and cluster join are served by the runtime.

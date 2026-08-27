@@ -235,6 +235,7 @@ impl<M: StateMachine> NodeHandle<M> {
     pub async fn follower_query_bytes(
         &self,
         query_bytes: Vec<u8>,
+        route_key: Option<Vec<u8>>,
         leader: NodeId,
         transport: &Arc<dyn Transport>,
         timeout: Duration,
@@ -243,7 +244,13 @@ impl<M: StateMachine> NodeHandle<M> {
             .map_err(|e| ClientError::Driver(format!("decode query: {e}")))?;
         let confirm = tokio::time::timeout(
             timeout,
-            send_client_request(&**transport, leader, &ClientRequest::ReadIndexConfirm),
+            send_client_request(
+                &**transport,
+                leader,
+                &ClientRequest::ReadIndexConfirm {
+                    route_key: route_key.clone(),
+                },
+            ),
         )
         .await
         .map_err(|_| ClientError::Driver("read index confirm timed out".to_string()))?
@@ -750,9 +757,11 @@ async fn route_client<M: StateMachine>(
     request: ClientRequest,
 ) -> ClientResponse {
     match request {
-        ClientRequest::Query(bytes) => route_query(handle, transport, forward_timeout, bytes).await,
-        ClientRequest::QueryKeyed { query, .. } => {
-            route_query(handle, transport, forward_timeout, query).await
+        ClientRequest::Query(bytes) => {
+            route_query(handle, transport, forward_timeout, bytes, None).await
+        }
+        ClientRequest::QueryKeyed { key, query } => {
+            route_query(handle, transport, forward_timeout, query, Some(key)).await
         }
         other => route_write_client(handle, transport, forward_timeout, other).await,
     }
@@ -765,6 +774,7 @@ async fn route_query<M: StateMachine>(
     transport: &Arc<dyn Transport>,
     forward_timeout: Duration,
     bytes: Vec<u8>,
+    route_key: Option<Vec<u8>>,
 ) -> ClientResponse {
     let query = match <M::Query as craft_core::Query>::from_bytes(&bytes) {
         Ok(q) => q,
@@ -776,7 +786,7 @@ async fn route_query<M: StateMachine>(
             leader: Some(leader),
         }) if leader != handle.id() => {
             match handle
-                .follower_query_bytes(bytes, leader, transport, forward_timeout)
+                .follower_query_bytes(bytes, route_key, leader, transport, forward_timeout)
                 .await
             {
                 Ok(response) => encode_client_ok(&response),
@@ -892,7 +902,7 @@ async fn serve_locally<M: StateMachine>(
                 Err(e) => ClientResponse::Error(e.to_string()),
             }
         }
-        ClientRequest::ReadIndexConfirm => match handle.confirm_read_index().await {
+        ClientRequest::ReadIndexConfirm { .. } => match handle.confirm_read_index().await {
             Ok((index, term)) => ClientResponse::ReadIndexConfirmed { index, term },
             Err(ClientError::NotLeader { leader }) => ClientResponse::NotLeader { leader },
             Err(e) => ClientResponse::Error(e.to_string()),

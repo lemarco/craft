@@ -293,7 +293,11 @@ async fn leader_confirms_read_index_for_follower_reads() {
         .await
         .expect("seed write");
 
-    let confirm = send_client_request(&cluster.net, leader, &ClientRequest::ReadIndexConfirm)
+    let confirm = send_client_request(
+        &cluster.net,
+        leader,
+        &ClientRequest::ReadIndexConfirm { route_key: None },
+    )
         .await
         .expect("read index confirm");
     match confirm {
