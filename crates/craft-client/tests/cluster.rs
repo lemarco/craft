@@ -2,6 +2,9 @@
 //! in-memory `LocalNetwork` transport: the [`RemoteClient`]/[`TypedClient`]
 //! drive live nodes through `craft_actor`'s `NodeService`, exercising
 //! transparent follower→leader forwarding (client-routing) and failover/retry (F4).
+//!
+//! Retry-policy edge cases (`NoTargets`, timeout, `NotLeader`) live in
+//! [`retry.rs`](retry.rs).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -35,13 +38,11 @@ fn spawn_cluster() -> (LocalNetwork, Vec<(NodeId, NodeHandle<Kv>)>) {
     (net, handles)
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn typed_client_proposes_and_reads_through_any_node() {
     let (net, handles) = spawn_cluster();
     let leader = await_node_leader(&handles).await;
 
-    // Client contacts all three nodes; forwarding means it need not know which
-    // one is the leader.
     let remote = RemoteClient::new(Arc::new(net.clone()), [NodeId(1), NodeId(2), NodeId(3)]);
     let client: TypedClient<RemoteClient, Kv> = TypedClient::new(remote);
 
@@ -60,7 +61,6 @@ async fn typed_client_proposes_and_reads_through_any_node() {
         .expect("query");
     assert_eq!(resp, Resp::Value(Some("1".into())));
 
-    // Sanity: the leader we elected is one of the configured nodes.
     assert!([NodeId(1), NodeId(2), NodeId(3)].contains(&leader));
 
     for (_, h) in &handles {
@@ -68,13 +68,11 @@ async fn typed_client_proposes_and_reads_through_any_node() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn client_targeting_only_a_follower_serves_reads_locally() {
     let (net, handles) = spawn_cluster();
     let leader = await_node_leader(&handles).await;
 
-    // Pick a follower as the *only* target: the write must still succeed via
-    // transparent server-side forwarding (client-routing).
     let follower = handles
         .iter()
         .map(|(id, _)| *id)
@@ -104,23 +102,20 @@ async fn client_targeting_only_a_follower_serves_reads_locally() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn client_fails_over_when_the_first_target_is_unreachable() {
     let (net, handles) = spawn_cluster();
     let _leader = await_node_leader(&handles).await;
 
-    // Detach node 1 from the switch (crash/partition). A client whose first
-    // rotation may land on the dead node must still succeed by retrying others.
     assert!(net.detach(NodeId(1)));
 
     let remote = RemoteClient::new(Arc::new(net.clone()), [NodeId(1), NodeId(2), NodeId(3)])
         .with_retry(RetryPolicy {
             max_attempts: 8,
             attempt_timeout: Duration::from_secs(2),
-            backoff: Duration::from_millis(20),
+            backoff: Duration::ZERO,
         });
 
-    // Use the raw byte API here to exercise `Client` directly.
     let payload = craft_actor::craft_proto::encode(&Cmd::Set {
         key: "x".into(),
         value: "y".into(),

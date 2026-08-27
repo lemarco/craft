@@ -16,10 +16,12 @@
 
 pub use {craft_core, craft_net, craft_proto};
 
+mod batch;
 mod error;
 mod remote;
 mod typed;
 
+pub use batch::{BatchError, KeyedBatchStep, propose_keyed_batch};
 pub use error::ClientError;
 pub use remote::{Client, KeyedClient, RemoteClient, RetryPolicy};
 pub use typed::TypedClient;
