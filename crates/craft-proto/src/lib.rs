@@ -36,6 +36,15 @@ pub use raft::{
 /// Wire/protocol version negotiated on join (join-version-skew: hard reject on mismatch).
 pub const PROTOCOL_VERSION: u32 = 1;
 
+/// Oldest wire protocol this release accepts during rolling upgrades (N/N−1).
+pub const MIN_COMPATIBLE_PROTOCOL_VERSION: u32 = 1;
+
+/// Whether `got` is in the supported compatibility band `[MIN..=PROTOCOL]`.
+#[must_use]
+pub fn protocol_version_compatible(got: u32) -> bool {
+    got >= MIN_COMPATIBLE_PROTOCOL_VERSION && got <= PROTOCOL_VERSION
+}
+
 /// Stable identifier for a cluster node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct NodeId(pub u64);
@@ -244,7 +253,15 @@ mod tests {
     }
 
     #[test]
-    fn wire_codec_name_matches_the_active_format() {
+    fn protocol_version_compatible_accepts_current_and_min() {
+        assert!(protocol_version_compatible(PROTOCOL_VERSION));
+        assert!(protocol_version_compatible(MIN_COMPATIBLE_PROTOCOL_VERSION));
+        assert!(!protocol_version_compatible(0));
+        assert!(!protocol_version_compatible(PROTOCOL_VERSION + 1));
+    }
+
+    #[test]
+    fn wire_codec_matches_build_feature() {
         // The default build is postcard; `--features json-wire` flips it.
         if cfg!(feature = "json-wire") {
             assert_eq!(WIRE_CODEC, "json");

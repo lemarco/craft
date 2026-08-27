@@ -89,15 +89,16 @@ pub fn check_content_type(content_type: &str) -> Result<(), WireError> {
     }
 }
 
-/// Validate a request's advertised protocol version against
-/// [`craft_proto::PROTOCOL_VERSION`]. A missing header (`None`) implies version
-/// `1` and is always accepted (`docs/protocol.md` §Versioning).
+/// Validate a request's advertised protocol version against the rolling-upgrade
+/// compatibility band ([`craft_proto::protocol_version_compatible`]).
+///
+/// A missing header (`None`) implies version `1` (`docs/protocol.md` §Versioning).
 ///
 /// # Errors
-/// Returns [`WireError::ProtocolVersion`] on a mismatch.
+/// Returns [`WireError::ProtocolVersion`] when outside the supported band.
 pub fn check_protocol_version(version: Option<u32>) -> Result<(), WireError> {
     let got = version.unwrap_or(1);
-    if got == craft_proto::PROTOCOL_VERSION {
+    if craft_proto::protocol_version_compatible(got) {
         Ok(())
     } else {
         Err(WireError::ProtocolVersion {
