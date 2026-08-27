@@ -204,6 +204,13 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         self
     }
 
+    /// Enable optional cross-shard two-phase commit on every Raft group runtime.
+    #[must_use]
+    pub fn cross_shard_2pc(mut self, enabled: bool) -> Self {
+        self.runtime.cross_shard_2pc = enabled;
+        self
+    }
+
     /// Replication factor for each shard Raft group's voter set (per-group-raft-membership).
     /// Clamped to the live node count at runtime; default 3. Use a value ≥
     /// expected cluster size to replicate on every joined node.

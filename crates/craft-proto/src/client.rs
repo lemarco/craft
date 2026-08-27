@@ -31,6 +31,29 @@ pub enum ClientRequest {
         /// Shard routing key for multi-Raft; `None` targets group 0.
         route_key: Option<Vec<u8>>,
     },
+    /// Stage a command in leader memory for cross-shard 2PC (optional Tier 2).
+    TwoPhasePrepare {
+        /// Shared transaction id.
+        tx_id: Vec<u8>,
+        /// Shard routing key.
+        key: Vec<u8>,
+        /// Application-encoded command to commit later.
+        command: Vec<u8>,
+    },
+    /// Commit a previously prepared command through the normal Raft log.
+    TwoPhaseCommit {
+        /// Shared transaction id.
+        tx_id: Vec<u8>,
+        /// Shard routing key.
+        key: Vec<u8>,
+    },
+    /// Drop a previously prepared command without committing.
+    TwoPhaseAbort {
+        /// Shared transaction id.
+        tx_id: Vec<u8>,
+        /// Shard routing key.
+        key: Vec<u8>,
+    },
 }
 
 /// The cluster's response to a [`ClientRequest`].

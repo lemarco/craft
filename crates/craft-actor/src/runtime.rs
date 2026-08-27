@@ -160,6 +160,22 @@ enum Envelope<M: StateMachine> {
     Compact {
         respond: oneshot::Sender<Result<bool, ClientError>>,
     },
+    TwoPhasePrepare {
+        tx_id: Vec<u8>,
+        route_key: Vec<u8>,
+        command: Vec<u8>,
+        respond: oneshot::Sender<Result<(), ClientError>>,
+    },
+    TwoPhaseCommit {
+        tx_id: Vec<u8>,
+        route_key: Vec<u8>,
+        respond: oneshot::Sender<Result<M::Response, ClientError>>,
+    },
+    TwoPhaseAbort {
+        tx_id: Vec<u8>,
+        route_key: Vec<u8>,
+        respond: oneshot::Sender<Result<(), ClientError>>,
+    },
     Shutdown {
         done: Option<oneshot::Sender<()>>,
     },
@@ -188,6 +204,8 @@ pub struct RuntimeConfig {
     pub catalog_snapshot: Option<CatalogSnapshotFn>,
     /// Apply hook for committed catalog entries (group 0 multi-Raft only).
     pub on_catalog_applied: Option<CatalogAppliedFn>,
+    /// Enable cross-shard two-phase commit prepare/commit/abort on this group.
+    pub cross_shard_2pc: bool,
 }
 
 impl Default for RuntimeConfig {
@@ -198,6 +216,7 @@ impl Default for RuntimeConfig {
             allow_leave: false,
             catalog_snapshot: None,
             on_catalog_applied: None,
+            cross_shard_2pc: false,
         }
     }
 }
@@ -216,6 +235,7 @@ impl std::fmt::Debug for RuntimeConfig {
                 "on_catalog_applied",
                 &self.on_catalog_applied.as_ref().map(|_| "<fn>"),
             )
+            .field("cross_shard_2pc", &self.cross_shard_2pc)
             .finish()
     }
 }
@@ -455,6 +475,59 @@ impl<M: StateMachine> NodeHandle<M> {
         rx.await.map_err(|_| ClientError::Stopped)?
     }
 
+    /// Stage a command for cross-shard 2PC on this group's leader.
+    pub async fn two_phase_prepare(
+        &self,
+        tx_id: Vec<u8>,
+        route_key: Vec<u8>,
+        command: Vec<u8>,
+    ) -> Result<(), ClientError> {
+        let (respond, rx) = oneshot::channel();
+        self.tx
+            .send(Envelope::TwoPhasePrepare {
+                tx_id,
+                route_key,
+                command,
+                respond,
+            })
+            .map_err(|_| ClientError::Stopped)?;
+        rx.await.map_err(|_| ClientError::Stopped)?
+    }
+
+    /// Commit a previously prepared command through the normal Raft log.
+    pub async fn two_phase_commit(
+        &self,
+        tx_id: Vec<u8>,
+        route_key: Vec<u8>,
+    ) -> Result<M::Response, ClientError> {
+        let (respond, rx) = oneshot::channel();
+        self.tx
+            .send(Envelope::TwoPhaseCommit {
+                tx_id,
+                route_key,
+                respond,
+            })
+            .map_err(|_| ClientError::Stopped)?;
+        rx.await.map_err(|_| ClientError::Stopped)?
+    }
+
+    /// Drop a previously prepared command without committing.
+    pub async fn two_phase_abort(
+        &self,
+        tx_id: Vec<u8>,
+        route_key: Vec<u8>,
+    ) -> Result<(), ClientError> {
+        let (respond, rx) = oneshot::channel();
+        self.tx
+            .send(Envelope::TwoPhaseAbort {
+                tx_id,
+                route_key,
+                respond,
+            })
+            .map_err(|_| ClientError::Stopped)?;
+        rx.await.map_err(|_| ClientError::Stopped)?
+    }
+
     /// Fetch a status snapshot, or `None` if the runtime has stopped.
     pub async fn status(&self) -> Option<NodeStatus> {
         let (respond, rx) = oneshot::channel();
@@ -504,6 +577,8 @@ struct Runtime<M: StateMachine> {
     catalog_snapshot: Option<CatalogSnapshotFn>,
     on_catalog_applied: Option<CatalogAppliedFn>,
     next_read_id: u64,
+    cross_shard_2pc: bool,
+    two_phase_prepares: crate::two_phase::PrepareStore,
 }
 
 impl<M: StateMachine> Runtime<M> {
@@ -671,6 +746,7 @@ impl<M: StateMachine> Runtime<M> {
         for (_, tx) in self.pending_catalog_adds.drain() {
             let _ = tx.send(CatalogAddResponse::Redirect { leader });
         }
+        self.two_phase_prepares.clear();
     }
 
     /// Process one mailbox message. Returns `Err` on a fatal driver failure
@@ -794,8 +870,135 @@ impl<M: StateMachine> Runtime<M> {
                     .map_err(|e| ClientError::Driver(e.to_string()));
                 let _ = respond.send(result);
             }
+            Envelope::TwoPhasePrepare {
+                tx_id,
+                route_key,
+                command,
+                respond,
+            } => {
+                self.on_two_phase_prepare(tx_id, route_key, command, respond);
+            }
+            Envelope::TwoPhaseCommit {
+                tx_id,
+                route_key,
+                respond,
+            } => {
+                self.on_two_phase_commit(tx_id, route_key, respond)?;
+            }
+            Envelope::TwoPhaseAbort {
+                tx_id,
+                route_key,
+                respond,
+            } => {
+                self.on_two_phase_abort(tx_id, route_key, respond);
+            }
         }
         Ok(true)
+    }
+
+    fn on_two_phase_prepare(
+        &mut self,
+        tx_id: Vec<u8>,
+        route_key: Vec<u8>,
+        command: Vec<u8>,
+        respond: oneshot::Sender<Result<(), ClientError>>,
+    ) {
+        if !self.cross_shard_2pc {
+            let _ = respond.send(Err(ClientError::Driver(
+                "cross-shard 2PC is disabled on this group".to_string(),
+            )));
+            return;
+        }
+        if !self.driver.is_leader() {
+            let _ = respond.send(Err(ClientError::NotLeader {
+                leader: self.driver.node().leader_id(),
+            }));
+            return;
+        }
+        if M::Command::from_bytes(&command).is_err() {
+            let _ = respond.send(Err(ClientError::Driver(
+                "decode command for 2PC prepare failed".to_string(),
+            )));
+            return;
+        }
+        match self.two_phase_prepares.prepare(tx_id, route_key, command) {
+            Ok(()) => {
+                let _ = respond.send(Ok(()));
+            }
+            Err(e) => {
+                let _ = respond.send(Err(ClientError::Driver(e.to_string())));
+            }
+        }
+    }
+
+    fn on_two_phase_commit(
+        &mut self,
+        tx_id: Vec<u8>,
+        route_key: Vec<u8>,
+        respond: oneshot::Sender<Result<M::Response, ClientError>>,
+    ) -> Result<(), DriverError> {
+        if !self.cross_shard_2pc {
+            let _ = respond.send(Err(ClientError::Driver(
+                "cross-shard 2PC is disabled on this group".to_string(),
+            )));
+            return Ok(());
+        }
+        if !self.driver.is_leader() {
+            let _ = respond.send(Err(ClientError::NotLeader {
+                leader: self.driver.node().leader_id(),
+            }));
+            return Ok(());
+        }
+        let Some(bytes) = self.two_phase_prepares.take(&tx_id, &route_key) else {
+            let _ = respond.send(Err(ClientError::Driver(
+                "no prepared command for transaction key".to_string(),
+            )));
+            return Ok(());
+        };
+        let command = match M::Command::from_bytes(&bytes) {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = respond.send(Err(ClientError::Driver(format!(
+                    "decode prepared command: {e}"
+                ))));
+                return Ok(());
+            }
+        };
+        match self.driver.propose(&command) {
+            Ok((index, step)) => {
+                self.pending_proposals.insert(index, respond);
+                let _ = self.settle(step);
+            }
+            Err(DriverError::NotLeader { leader }) => {
+                let _ = respond.send(Err(ClientError::NotLeader { leader }));
+            }
+            Err(e) => {
+                let _ = respond.send(Err(ClientError::Driver(e.to_string())));
+            }
+        }
+        Ok(())
+    }
+
+    fn on_two_phase_abort(
+        &mut self,
+        tx_id: Vec<u8>,
+        route_key: Vec<u8>,
+        respond: oneshot::Sender<Result<(), ClientError>>,
+    ) {
+        if !self.cross_shard_2pc {
+            let _ = respond.send(Err(ClientError::Driver(
+                "cross-shard 2PC is disabled on this group".to_string(),
+            )));
+            return;
+        }
+        if !self.driver.is_leader() {
+            let _ = respond.send(Err(ClientError::NotLeader {
+                leader: self.driver.node().leader_id(),
+            }));
+            return;
+        }
+        let _ = self.two_phase_prepares.abort(&tx_id, &route_key);
+        let _ = respond.send(Ok(()));
     }
 
     /// Validate and (on the leader) start a cluster join as a membership change
@@ -1043,6 +1246,8 @@ where
         catalog_snapshot: config.catalog_snapshot.clone(),
         on_catalog_applied: config.on_catalog_applied.clone(),
         next_read_id: 0,
+        cross_shard_2pc: config.cross_shard_2pc,
+        two_phase_prepares: crate::two_phase::PrepareStore::default(),
     };
 
     tokio::spawn(async move {
@@ -1179,7 +1384,113 @@ async fn route_client<M: StateMachine>(
         ClientRequest::QueryKeyed { key, query } => {
             route_query(handle, transport, forward_timeout, query, Some(key)).await
         }
+        ClientRequest::TwoPhasePrepare {
+            tx_id,
+            key,
+            command,
+        } => route_two_phase_prepare(handle, transport, forward_timeout, tx_id, key, command).await,
+        ClientRequest::TwoPhaseCommit { tx_id, key } => {
+            route_two_phase_commit(handle, transport, forward_timeout, tx_id, key).await
+        }
+        ClientRequest::TwoPhaseAbort { tx_id, key } => {
+            route_two_phase_abort(handle, transport, forward_timeout, tx_id, key).await
+        }
         other => route_write_client(handle, transport, forward_timeout, other).await,
+    }
+}
+
+async fn route_two_phase_prepare<M: StateMachine>(
+    handle: &NodeHandle<M>,
+    transport: &Arc<dyn Transport>,
+    forward_timeout: Duration,
+    tx_id: Vec<u8>,
+    route_key: Vec<u8>,
+    command: Vec<u8>,
+) -> ClientResponse {
+    match handle
+        .two_phase_prepare(tx_id.clone(), route_key.clone(), command.clone())
+        .await
+    {
+        Ok(()) => ClientResponse::Ok(Vec::new()),
+        Err(ClientError::NotLeader {
+            leader: Some(leader),
+        }) if leader != handle.id() => {
+            forward_to_leader(
+                transport,
+                forward_timeout,
+                leader,
+                ClientRequest::TwoPhasePrepare {
+                    tx_id,
+                    key: route_key,
+                    command,
+                },
+            )
+            .await
+        }
+        Err(ClientError::NotLeader { leader }) => ClientResponse::NotLeader { leader },
+        Err(e) => ClientResponse::Error(e.to_string()),
+    }
+}
+
+async fn route_two_phase_commit<M: StateMachine>(
+    handle: &NodeHandle<M>,
+    transport: &Arc<dyn Transport>,
+    forward_timeout: Duration,
+    tx_id: Vec<u8>,
+    route_key: Vec<u8>,
+) -> ClientResponse {
+    match handle
+        .two_phase_commit(tx_id.clone(), route_key.clone())
+        .await
+    {
+        Ok(response) => encode_client_ok(&response),
+        Err(ClientError::NotLeader {
+            leader: Some(leader),
+        }) if leader != handle.id() => {
+            forward_to_leader(
+                transport,
+                forward_timeout,
+                leader,
+                ClientRequest::TwoPhaseCommit {
+                    tx_id,
+                    key: route_key,
+                },
+            )
+            .await
+        }
+        Err(ClientError::NotLeader { leader }) => ClientResponse::NotLeader { leader },
+        Err(e) => ClientResponse::Error(e.to_string()),
+    }
+}
+
+async fn route_two_phase_abort<M: StateMachine>(
+    handle: &NodeHandle<M>,
+    transport: &Arc<dyn Transport>,
+    forward_timeout: Duration,
+    tx_id: Vec<u8>,
+    route_key: Vec<u8>,
+) -> ClientResponse {
+    match handle
+        .two_phase_abort(tx_id.clone(), route_key.clone())
+        .await
+    {
+        Ok(()) => ClientResponse::Ok(Vec::new()),
+        Err(ClientError::NotLeader {
+            leader: Some(leader),
+        }) if leader != handle.id() => {
+            forward_to_leader(
+                transport,
+                forward_timeout,
+                leader,
+                ClientRequest::TwoPhaseAbort {
+                    tx_id,
+                    key: route_key,
+                },
+            )
+            .await
+        }
+        Err(ClientError::NotLeader { leader }) => ClientResponse::NotLeader { leader },
+        Err(e) => ClientResponse::Error(e.to_string()),
     }
 }
 
@@ -1403,6 +1714,11 @@ async fn serve_locally<M: StateMachine>(
             Err(ClientError::NotLeader { leader }) => ClientResponse::NotLeader { leader },
             Err(e) => ClientResponse::Error(e.to_string()),
         },
+        ClientRequest::TwoPhasePrepare { .. }
+        | ClientRequest::TwoPhaseCommit { .. }
+        | ClientRequest::TwoPhaseAbort { .. } => {
+            ClientResponse::Error("two-phase request misrouted".into())
+        }
     }
 }
 

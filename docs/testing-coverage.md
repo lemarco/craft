@@ -75,7 +75,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Tier 2 stable virtual shards (pure planner) | ✅ `shard` | — | — | — | ✅ |
 | Dynamic catalog expansion (runtime) | — | ✅ `multi_raft` | — | — | ✅ |
 | Stable shard routing (runtime) | — | ✅ `multi_raft`, `sharded` | — | — | ✅ |
-| Cross-shard atomic transactions | — | ✅ `saga`, `craft-client` | — | — | ✅ |
+| Cross-shard atomic transactions | — | ✅ `saga`, `two_phase`, `craft-client` | — | — | ✅ |
 | Per-group membership planner (`group_voters`, join/leave affects) | ✅ | ✅ | — | — | ✅ |
 | Per-group membership runtime sync on cluster join | — | ✅ | — | — | ✅ |
 | Per-group learners (`group_learners`, membership sync) | ✅ | — | — | — | ✅ |
@@ -219,6 +219,7 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-08 | Keyed client routing (multi-Raft propose/query) | `craft/tests/client_keyed.rs` |
 | 2026-08 | Tier 2 tails: `catalog_version`, `switch_to_stable_shards`, saga hardening | `craft-core/shard.rs`, `craft/src/cluster.rs`, `craft-client/src/saga.rs`, `craft/tests/{multi_raft,saga}.rs` |
 | 2026-08 | Tier 2 Phase 4: cross-shard saga coordinator (`run_saga`, `StoreSagaJournal`) | `craft-client/src/saga.rs`, `craft/src/saga.rs`, `craft/tests/saga.rs`, `docs/decisions/cross-shard-transactions.md` |
+| 2026-08 | Optional cross-shard 2PC (`propose_cross_shard_2pc`, `cross_shard_2pc`) | `craft-core/src/two_phase.rs`, `craft-actor/src/two_phase.rs`, `craft-client/src/two_phase.rs`, `craft/tests/two_phase.rs` |
 | 2026-08 | Tier 2 Phase 2: dynamic catalog runtime (`add_raft_groups`, `/cluster/catalog/add`) | `craft-proto/catalog`, `craft-actor/runtime`, `craft/tests/multi_raft.rs`, `docs/decisions/tier2-multi-raft-architecture.md` |
 | 2026-08 | Tier 2 multi-Raft architecture ADR + Phase 1 pure planners | `craft-core/src/shard.rs`, `docs/decisions/tier2-multi-raft-architecture.md` |
 | 2026-08 | Actor routing Tier 3: ring, session, drain override, `ask_linearizable`, directory RYW | `craft-actor` (`ring`, `session`, `directory_policy`), `craft-actor/tests/{messaging,migration}.rs`, `docs/decisions/actor-routing-tier3.md` |

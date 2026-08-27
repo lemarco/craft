@@ -20,6 +20,7 @@ mod batch;
 mod error;
 mod remote;
 mod saga;
+mod two_phase;
 mod typed;
 
 pub use batch::{BatchError, KeyedBatchStep, propose_keyed_batch};
@@ -30,4 +31,5 @@ pub use saga::{
     SagaJournalError, SagaJournalPhase, SagaJournalRecord, SagaOutcome, SagaPlan, SagaStep,
     decode_journal_record, encode_journal_record, resume_saga, run_saga,
 };
+pub use two_phase::{TwoPhaseClient, TwoPhaseError, propose_cross_shard_2pc};
 pub use typed::TypedClient;

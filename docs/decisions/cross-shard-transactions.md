@@ -1,6 +1,6 @@
 # Cross-shard atomic transactions (multi-Raft)
 
-**Status:** Accepted (Phase 4 saga coordinator)  
+**Status:** Accepted (Phase 4 saga + optional 2PC landed)  
 **Date:** 2026-08-27
 
 ## Context
@@ -71,15 +71,18 @@ scope for library-first design.
 
 ## Decision
 
-1. **Do not** implement 2PC in Tier 2.
+1. **Do not** require 2PC for Tier 2 — saga remains the default path.
 2. **Phase 4 default path (landed):** framework **saga coordinator** (option B) with:
    - explicit `SagaStep { key, command, compensate }` types in `craft-client`;
    - [`run_saga`](../../crates/craft-client/src/saga.rs) + [`SagaJournal`](../../crates/craft-client/src/saga.rs) trait;
    - durable saga journal via [`StoreSagaJournal`](../../crates/craft/src/saga.rs) (`ActorStateStore`, key `craft:saga:{id}`);
    - metrics helper [`record_saga_metrics`](../../crates/craft/src/saga.rs): `craft_saga_completed_total`, `craft_saga_compensated_total`, `craft_saga_stuck_total`.
-3. **Optional later increment:** limited **2PC** (option C) for ≤3 groups and
-   small payloads, behind `CraftClusterBuilder::cross_shard_2pc(true)` — only if
-   saga adoption shows demand.
+3. **Optional increment (landed):** limited **2PC** (option C) for ≤3 groups and
+   small payloads, behind [`CraftClusterBuilder::cross_shard_2pc`](../../crates/craft/src/builder.rs)(true):
+   - [`TwoPhasePlan`](../../crates/craft-core/src/two_phase.rs) validation in `craft-core`;
+   - wire types [`ClientRequest::TwoPhasePrepare/Commit/Abort`](../../crates/craft-proto/src/client.rs);
+   - leader in-memory [`PrepareStore`](../../crates/craft-actor/src/two_phase.rs) per Raft group;
+   - client API [`propose_cross_shard_2pc`](../../crates/craft-client/src/two_phase.rs) over existing transport.
 
 ## Consistency guarantees (target)
 
@@ -87,7 +90,7 @@ scope for library-first design.
 |-----|-----------|
 | `propose_keyed_batch` | Sequential; partial failure surfaced |
 | `run_saga` | All steps committed OR compensators run; at-least-once step delivery with idempotency |
-| `propose_cross_shard_2pc` (future) | Atomic commit if all groups ack prepare |
+| `propose_cross_shard_2pc` | Atomic commit if all groups ack prepare (leader memory; cleared on leadership loss) |
 
 Neither saga nor 2PC provides **global serializable isolation** across shards
 without a global transaction manager — document as explicit non-goal.

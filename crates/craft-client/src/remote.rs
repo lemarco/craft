@@ -194,6 +194,37 @@ impl KeyedClient for RemoteClient {
     }
 }
 
+impl crate::two_phase::TwoPhaseClient for RemoteClient {
+    fn prepare_keyed(
+        &self,
+        tx_id: Vec<u8>,
+        key: Vec<u8>,
+        command: Vec<u8>,
+    ) -> impl Future<Output = Result<Vec<u8>, ClientError>> + Send {
+        self.call(ClientRequest::TwoPhasePrepare {
+            tx_id,
+            key,
+            command,
+        })
+    }
+
+    fn commit_keyed(
+        &self,
+        tx_id: Vec<u8>,
+        key: Vec<u8>,
+    ) -> impl Future<Output = Result<Vec<u8>, ClientError>> + Send {
+        self.call(ClientRequest::TwoPhaseCommit { tx_id, key })
+    }
+
+    fn abort_keyed(
+        &self,
+        tx_id: Vec<u8>,
+        key: Vec<u8>,
+    ) -> impl Future<Output = Result<Vec<u8>, ClientError>> + Send {
+        self.call(ClientRequest::TwoPhaseAbort { tx_id, key })
+    }
+}
+
 impl Client for RemoteClient {
     fn propose(
         &self,

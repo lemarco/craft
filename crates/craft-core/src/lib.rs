@@ -17,6 +17,7 @@ mod node;
 mod rng;
 mod shard;
 mod state_machine;
+mod two_phase;
 
 pub use failure_detector::{
     AckWindowLiveness, FailureDetectorKind, PhiAccrualDetector, PhiAccrualLiveness,
@@ -40,3 +41,7 @@ pub use shard::{
     stable_router_preserves_routable_keys, validate_catalog, virtual_shard_for,
 };
 pub use state_machine::{Command, Query, StateMachine};
+pub use two_phase::{
+    TWO_PHASE_MAX_GROUPS, TWO_PHASE_MAX_PAYLOAD, TWO_PHASE_MAX_STEPS, TwoPhasePlan,
+    TwoPhasePlanError, TwoPhaseStep, validate_two_phase_plan,
+};

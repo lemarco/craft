@@ -245,6 +245,41 @@ impl ShardedNodeService {
                 };
                 Ok((group.0, ClientRequest::Query(query)))
             }
+            ClientRequest::TwoPhasePrepare {
+                tx_id,
+                key,
+                command,
+            } => {
+                let Some(group) = self.group_for_key(&key) else {
+                    return Err(ClientResponse::Error(
+                        "key outside active shard range".into(),
+                    ));
+                };
+                Ok((
+                    group.0,
+                    ClientRequest::TwoPhasePrepare {
+                        tx_id,
+                        key,
+                        command,
+                    },
+                ))
+            }
+            ClientRequest::TwoPhaseCommit { tx_id, key } => {
+                let Some(group) = self.group_for_key(&key) else {
+                    return Err(ClientResponse::Error(
+                        "key outside active shard range".into(),
+                    ));
+                };
+                Ok((group.0, ClientRequest::TwoPhaseCommit { tx_id, key }))
+            }
+            ClientRequest::TwoPhaseAbort { tx_id, key } => {
+                let Some(group) = self.group_for_key(&key) else {
+                    return Err(ClientResponse::Error(
+                        "key outside active shard range".into(),
+                    ));
+                };
+                Ok((group.0, ClientRequest::TwoPhaseAbort { tx_id, key }))
+            }
             ClientRequest::ReadIndexConfirm { route_key: None } => Ok((
                 ids.first().map(|g| g.0).unwrap_or(0),
                 ClientRequest::ReadIndexConfirm { route_key: None },

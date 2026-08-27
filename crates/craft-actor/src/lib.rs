@@ -30,6 +30,7 @@ mod store;
 mod store_codec;
 mod supervisor;
 mod tracing_init;
+mod two_phase;
 
 pub use directory::{ActorDirectory, ClusterRef, DirectorySync};
 pub use directory_policy::{DirectoryPolicy, DirectoryRetry};
