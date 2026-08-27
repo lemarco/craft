@@ -153,7 +153,8 @@ impl<M: StateMachine> Observer for CraftObserver<M> {
             if let Some(mr) = &self.multi_raft {
                 let snapshots: Vec<(u32, NodeHandle<M>)> = {
                     let handles = mr.handles.lock().unwrap();
-                    mr.catalog
+                    let catalog = mr.catalog.lock().unwrap();
+                    catalog
                         .iter()
                         .filter_map(|group| {
                             handles
@@ -192,7 +193,11 @@ impl<M: StateMachine> Observer for CraftObserver<M> {
             }
             RaftGroupsView {
                 shard_count: active_shard_count,
-                catalog_size: self.raft_groups,
+                catalog_size: self
+                    .multi_raft
+                    .as_ref()
+                    .map(|mr| mr.catalog.lock().unwrap().len() as u32)
+                    .unwrap_or(self.raft_groups),
                 replication_factor: self.replication_factor,
                 learner_factor: self.learner_factor,
                 hosted_groups: hosted,

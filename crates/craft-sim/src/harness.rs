@@ -405,6 +405,7 @@ impl Cluster {
                 Output::LoadSnapshot { index, .. } => {
                     self.snapshots_loaded.insert(id, index);
                 }
+                Output::CatalogApplied { .. } => {}
             }
         }
     }

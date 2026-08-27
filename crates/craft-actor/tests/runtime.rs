@@ -65,6 +65,7 @@ impl Cluster {
                 tick_period: TICK_PERIOD,
                 allow_join: true,
                 allow_leave: true,
+                ..RuntimeConfig::default()
             },
         );
         let service: Arc<dyn RequestHandler> =
@@ -572,6 +573,7 @@ async fn fatal_storage_error_stops_the_runtime() {
             tick_period: TICK_PERIOD,
             allow_join: false,
             allow_leave: false,
+            ..RuntimeConfig::default()
         },
     );
     let service: Arc<dyn RequestHandler> =

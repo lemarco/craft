@@ -16,9 +16,10 @@ use craft_core::StateMachine;
 use craft_dashboard::{CraftEvent, EventBus, Metrics, StopReason, TraceOpts};
 use craft_net::RemoteError;
 use craft_net::transport::RequestHandler;
-use craft_net::{Transport, send_leave_request};
+use craft_net::{Transport, send_catalog_add_request, send_leave_request};
 use craft_proto::{
-    LeaveRejection, LeaveRequest, LeaveResponse, Membership, NodeId, PROTOCOL_VERSION, ScaleRequest,
+    CatalogAddRequest, CatalogAddResponse, CatalogRejection, LeaveRejection, LeaveRequest,
+    LeaveResponse, Membership, NodeId, PROTOCOL_VERSION, ScaleRequest,
 };
 use tokio::task::JoinHandle;
 
@@ -462,10 +463,20 @@ impl<M: StateMachine> CraftCluster<M> {
         &self.group_handles
     }
 
-    /// Number of independent Raft groups on this node (1 = default).
+    /// Number of Raft groups in the live catalog (1 = default single-group).
     #[must_use]
     pub fn raft_groups(&self) -> u32 {
-        self.raft_groups
+        if let Some(mr) = &self.multi_raft {
+            mr.catalog.lock().unwrap().len() as u32
+        } else {
+            self.raft_groups
+        }
+    }
+
+    /// Live catalog length for multi-Raft clusters.
+    #[must_use]
+    pub fn catalog_len(&self) -> u32 {
+        self.raft_groups()
     }
 
     /// Shard count used for keyed client routing when `raft_groups > 1`.
@@ -688,6 +699,72 @@ impl<M: StateMachine> CraftCluster<M> {
         }
     }
 
+    /// Grow the multi-Raft group catalog without restarting nodes (Tier 2).
+    pub async fn add_raft_groups(&self, count: u32) -> Result<Vec<u32>, AddRaftGroupsError> {
+        if self.multi_raft.is_none() {
+            return Err(AddRaftGroupsError::NotMultiRaft);
+        }
+        if count == 0 {
+            return Err(AddRaftGroupsError::InvalidCount);
+        }
+        let deadline = Instant::now() + CATALOG_ADD_TIMEOUT;
+        loop {
+            let status = self.status().await.ok_or(AddRaftGroupsError::Stopped)?;
+            if matches!(status.role, craft_core::Role::Leader) {
+                return self
+                    .catalog_add_local(count)
+                    .await
+                    .map_err(AddRaftGroupsError::from);
+            }
+            let Some(leader) = status.leader else {
+                if Instant::now() >= deadline {
+                    return Err(AddRaftGroupsError::NoLeader);
+                }
+                tokio::time::sleep(CATALOG_ADD_RETRY).await;
+                continue;
+            };
+            let request = CatalogAddRequest {
+                protocol_version: PROTOCOL_VERSION,
+                add_groups: count,
+            };
+            let response = send_catalog_add_request(&*self.transport, leader, &request)
+                .await
+                .map_err(AddRaftGroupsError::Transport)?;
+            match response {
+                CatalogAddResponse::Accepted { new_groups, .. } => return Ok(new_groups),
+                CatalogAddResponse::Redirect { .. } if Instant::now() >= deadline => {
+                    return Err(AddRaftGroupsError::NoLeader);
+                }
+                CatalogAddResponse::Rejected { reason } => {
+                    return Err(AddRaftGroupsError::Rejected(reason));
+                }
+                CatalogAddResponse::Redirect { .. } => {
+                    tokio::time::sleep(CATALOG_ADD_RETRY).await;
+                }
+            }
+        }
+    }
+
+    async fn catalog_add_local(&self, count: u32) -> Result<Vec<u32>, CatalogAddLocalError> {
+        let handle = self
+            .group_handle(0)
+            .ok_or(CatalogAddLocalError::NoGroup0Handle)?;
+        let response = handle
+            .catalog_add(CatalogAddRequest {
+                protocol_version: PROTOCOL_VERSION,
+                add_groups: count,
+            })
+            .await
+            .map_err(|_| CatalogAddLocalError::Stopped)?;
+        match response {
+            CatalogAddResponse::Accepted { new_groups, .. } => Ok(new_groups),
+            CatalogAddResponse::Redirect { leader } => {
+                Err(CatalogAddLocalError::NotLeader { leader })
+            }
+            CatalogAddResponse::Rejected { reason } => Err(CatalogAddLocalError::Rejected(reason)),
+        }
+    }
+
     /// Hot-reload handle when the node was started with [`CraftClusterBuilder::start_quic_pem`]
     /// (cert-automation). `None` for in-memory or static `Security` starts.
     #[must_use]
@@ -860,6 +937,8 @@ impl<M: StateMachine> Drop for CraftCluster<M> {
 const SCALE_FORWARD_TIMEOUT: Duration = Duration::from_secs(5);
 /// Delay between forward retries within [`SCALE_FORWARD_TIMEOUT`].
 const SCALE_FORWARD_RETRY: Duration = Duration::from_millis(25);
+const CATALOG_ADD_TIMEOUT: Duration = Duration::from_secs(5);
+const CATALOG_ADD_RETRY: Duration = Duration::from_millis(25);
 /// Total budget for [`CraftCluster::leave`] peer retries.
 const LEAVE_TIMEOUT: Duration = Duration::from_secs(30);
 /// Delay between leave attempts within [`LEAVE_TIMEOUT`].
@@ -901,6 +980,44 @@ pub enum ScaleClusterError {
     /// the leader rejecting the scale).
     #[error(transparent)]
     Remote(#[from] RemoteError),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum AddRaftGroupsError {
+    #[error("multi-raft catalog expansion is not enabled")]
+    NotMultiRaft,
+    #[error("add_groups must be at least 1")]
+    InvalidCount,
+    #[error("node runtime has stopped")]
+    Stopped,
+    #[error("no leader is currently elected")]
+    NoLeader,
+    #[error("catalog add rejected: {0:?}")]
+    Rejected(CatalogRejection),
+    #[error(transparent)]
+    Transport(#[from] craft_net::TransportError),
+}
+
+impl From<CatalogAddLocalError> for AddRaftGroupsError {
+    fn from(err: CatalogAddLocalError) -> Self {
+        match err {
+            CatalogAddLocalError::Stopped | CatalogAddLocalError::NoGroup0Handle => Self::Stopped,
+            CatalogAddLocalError::NotLeader { .. } => Self::NoLeader,
+            CatalogAddLocalError::Rejected(reason) => Self::Rejected(reason),
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+enum CatalogAddLocalError {
+    #[error("node runtime has stopped")]
+    Stopped,
+    #[error("group 0 is not hosted on this node")]
+    NoGroup0Handle,
+    #[error("not leader")]
+    NotLeader { leader: Option<NodeId> },
+    #[error("catalog add rejected: {0:?}")]
+    Rejected(CatalogRejection),
 }
 
 #[cfg(test)]

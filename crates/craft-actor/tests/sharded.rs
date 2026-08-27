@@ -25,16 +25,19 @@ async fn keyed_writes_route_to_independent_raft_groups() {
     let (route_key_a, route_key_b) = find_keys_for_two_groups(shard_count, &group_ids);
 
     let machines = vec![KvMachine::default(), KvMachine::default()];
+    let runtime = RuntimeConfig {
+        tick_period: TICK_PERIOD,
+        allow_join: false,
+        allow_leave: false,
+        ..RuntimeConfig::default()
+    };
     let (sharded, handles) = spawn_multi_raft_node(
         node_id,
         &members,
         craft_actor::craft_core::DEFAULT_GROUP_REPLICATION_FACTOR,
         craft_actor::craft_core::Config::default(),
-        craft_actor::RuntimeConfig {
-            tick_period: TICK_PERIOD,
-            allow_join: false,
-            allow_leave: false,
-        },
+        runtime.clone(),
+        runtime,
         shard_count,
         2,
         machines,
@@ -140,6 +143,7 @@ async fn sharded_runtime_adopts_a_second_group_at_runtime() {
         tick_period: TICK_PERIOD,
         allow_join: false,
         allow_leave: false,
+        ..RuntimeConfig::default()
     };
     let raft = fast_raft_config_with_seed(3);
 

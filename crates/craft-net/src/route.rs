@@ -33,6 +33,8 @@ pub const ACTOR_STOP_PATH: &str = "/raft/v1/actor/stop";
 pub const ACTOR_REGISTER_PATH: &str = "/raft/v1/actor/register";
 /// Cross-node Raft group migration (write-sharding-multi-raft).
 pub const CLUSTER_GROUP_MIGRATE_PATH: &str = "/raft/v1/cluster/group/migrate";
+/// Dynamic multi-Raft catalog expansion (Tier 2).
+pub const CLUSTER_CATALOG_ADD_PATH: &str = "/raft/v1/cluster/catalog/add";
 
 /// The connection class a route belongs to. Peer consensus traffic is isolated
 /// onto its own QUIC connection from everything else (future-work-and-risks R2).
@@ -76,11 +78,13 @@ pub enum Route {
     ActorRegister,
     /// [`CLUSTER_GROUP_MIGRATE_PATH`].
     ClusterGroupMigrate,
+    /// [`CLUSTER_CATALOG_ADD_PATH`].
+    ClusterCatalogAdd,
 }
 
 impl Route {
     /// Every route, in a stable order (handy for building a router or tests).
-    pub const ALL: [Route; 12] = [
+    pub const ALL: [Route; 13] = [
         Route::PeerWire,
         Route::ClientWire,
         Route::ClusterJoin,
@@ -93,6 +97,7 @@ impl Route {
         Route::ActorStop,
         Route::ActorRegister,
         Route::ClusterGroupMigrate,
+        Route::ClusterCatalogAdd,
     ];
 
     /// The request path for this route.
@@ -111,6 +116,7 @@ impl Route {
             Route::ActorStop => ACTOR_STOP_PATH,
             Route::ActorRegister => ACTOR_REGISTER_PATH,
             Route::ClusterGroupMigrate => CLUSTER_GROUP_MIGRATE_PATH,
+            Route::ClusterCatalogAdd => CLUSTER_CATALOG_ADD_PATH,
         }
     }
 
@@ -129,7 +135,8 @@ impl Route {
             Route::ClusterJoin
             | Route::ClusterLeave
             | Route::ClusterPeers
-            | Route::ClusterGroupMigrate => TrafficClass::Cluster,
+            | Route::ClusterGroupMigrate
+            | Route::ClusterCatalogAdd => TrafficClass::Cluster,
             Route::ActorDeliver
             | Route::ActorSpawn
             | Route::ActorScale

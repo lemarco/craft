@@ -8,6 +8,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 pub mod actor;
+pub mod catalog;
 pub mod client;
 pub mod group;
 pub mod group_migrate;
@@ -20,6 +21,7 @@ pub use actor::{
     MigrateReply, MigrateRequest, RegisterAck, ScaleReply, ScaleRequest, SpawnReply, SpawnRequest,
     StopReply, StopRequest,
 };
+pub use catalog::{CatalogAddRequest, CatalogAddResponse, CatalogCommand, CatalogRejection};
 pub use client::{ClientRequest, ClientResponse};
 pub use group::GroupPeerEnvelope;
 pub use group_migrate::{

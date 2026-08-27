@@ -96,6 +96,17 @@ impl ShardedNodeService {
             .remove(&group)
     }
 
+    /// Extend the routing catalog without requiring hosted handlers (Tier 2).
+    pub fn extend_routing_catalog(&self, new_groups: &[RaftGroupId]) {
+        let mut ids = self.group_ids.write().expect("sharded group_ids lock");
+        for group in new_groups {
+            if !ids.iter().any(|g| g.0 == group.0) {
+                ids.push(*group);
+            }
+        }
+        ids.sort_by_key(|g| g.0);
+    }
+
     fn group_for_key(&self, key: &[u8]) -> Option<RaftGroupId> {
         let shard = self
             .router
@@ -204,7 +215,7 @@ impl RequestHandler for ShardedNodeService {
                         .await
                 })
             }
-            Route::ClusterJoin | Route::ClusterLeave => {
+            Route::ClusterJoin | Route::ClusterLeave | Route::ClusterCatalogAdd => {
                 let groups = Arc::clone(&self.groups);
                 Box::pin(async move {
                     let handler = {
@@ -328,6 +339,7 @@ pub fn spawn_multi_raft_node<M>(
     replication_factor: u32,
     raft: craft_core::Config,
     runtime: RuntimeConfig,
+    runtime_group0: RuntimeConfig,
     shard_count: u32,
     group_count: u32,
     machines: Vec<M>,
@@ -347,12 +359,17 @@ where
     for (g, machine) in machines.into_iter().enumerate().take(group_count as usize) {
         let g = g as u32;
         let voters = group_voters(RaftGroupId(g), live_nodes, replication_factor);
+        let rt = if g == 0 {
+            runtime_group0.clone()
+        } else {
+            runtime.clone()
+        };
         let (service, handle) = spawn_raft_group(
             node_id,
             &voters,
             g,
             raft.clone(),
-            runtime.clone(),
+            rt,
             machine,
             Arc::clone(&network),
             forward_timeout,

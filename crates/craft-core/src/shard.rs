@@ -482,6 +482,275 @@ pub fn plan_node_group_rebalance(
     GroupRebalancePlan { adopt, retire }
 }
 
+// ---------------------------------------------------------------------------
+// Tier 2 — stable virtual shards + dynamic catalog (pure planners)
+// ---------------------------------------------------------------------------
+
+/// Map `key` to a **fixed** virtual shard in `[0, [`MAX_VIRTUAL_SHARDS`])`.
+/// Unlike [`ShardRouter::shard_for`], this id never changes when the active
+/// prefix grows ([tier2-multi-raft-architecture]).
+///
+/// [tier2-multi-raft-architecture]: ../../../docs/decisions/tier2-multi-raft-architecture.md
+#[must_use]
+pub fn virtual_shard_for(key: &[u8]) -> ShardId {
+    ShardId((fnv1a(key) % u64::from(MAX_VIRTUAL_SHARDS)) as u32)
+}
+
+/// Whether `shard` is routable given `active_count` active virtual shards.
+#[must_use]
+pub fn shard_is_active(shard: ShardId, active_count: u32) -> bool {
+    shard.0 < active_count.clamp(1, MAX_VIRTUAL_SHARDS)
+}
+
+/// Why stable shard activation was rejected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StableShardActivationError {
+    /// `new_active` must be strictly greater than the current active count.
+    CannotShrink {
+        /// Current active virtual shards.
+        current: u32,
+        /// Requested active count.
+        requested: u32,
+    },
+    /// `new_active` exceeds [`MAX_VIRTUAL_SHARDS`].
+    ExceedsMax {
+        /// Requested active count.
+        requested: u32,
+    },
+}
+
+impl std::fmt::Display for StableShardActivationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CannotShrink { current, requested } => write!(
+                f,
+                "active shard count can only increase (have {current}, requested {requested})"
+            ),
+            Self::ExceedsMax { requested } => write!(
+                f,
+                "requested {requested} active shards exceeds MAX_VIRTUAL_SHARDS ({MAX_VIRTUAL_SHARDS})"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for StableShardActivationError {}
+
+/// Plan for activating more virtual shards without remapping existing keys.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StableShardActivationPlan {
+    /// Previous active virtual shard count.
+    pub from: u32,
+    /// New active virtual shard count.
+    pub to: u32,
+    /// Virtual shard ids entering the active range `[from, to)`.
+    pub newly_active: Vec<ShardId>,
+}
+
+/// Plan increasing the active virtual shard prefix (Tier 2 stable expansion).
+///
+/// # Errors
+/// Returns [`StableShardActivationError`] when `to` is not a strict increase
+/// within [`MAX_VIRTUAL_SHARDS`].
+pub fn plan_stable_shard_activation(
+    from: u32,
+    to: u32,
+) -> Result<StableShardActivationPlan, StableShardActivationError> {
+    let from = from.clamp(1, MAX_VIRTUAL_SHARDS);
+    if to <= from {
+        return Err(StableShardActivationError::CannotShrink {
+            current: from,
+            requested: to,
+        });
+    }
+    if to > MAX_VIRTUAL_SHARDS {
+        return Err(StableShardActivationError::ExceedsMax { requested: to });
+    }
+    Ok(StableShardActivationPlan {
+        from,
+        to,
+        newly_active: (from..to).map(ShardId).collect(),
+    })
+}
+
+/// Router over a fixed virtual space with a tunable active prefix (Tier 2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StableShardRouter {
+    active_count: u32,
+}
+
+impl StableShardRouter {
+    /// Active virtual shard count in `[1, MAX_VIRTUAL_SHARDS]`.
+    #[must_use]
+    pub fn new(active_count: u32) -> Self {
+        Self {
+            active_count: active_count.clamp(1, MAX_VIRTUAL_SHARDS),
+        }
+    }
+
+    /// Number of virtual shards currently accepting keyed traffic.
+    #[must_use]
+    pub fn active_count(&self) -> u32 {
+        self.active_count
+    }
+
+    /// Virtual shard for `key`, or `None` when the key lands outside the active prefix.
+    #[must_use]
+    pub fn shard_for(&self, key: &[u8]) -> Option<ShardId> {
+        let shard = virtual_shard_for(key);
+        shard_is_active(shard, self.active_count).then_some(shard)
+    }
+
+    /// Grow the active prefix without remapping keys already in `[0, from)`.
+    ///
+    /// # Errors
+    /// Same rules as [`plan_stable_shard_activation`].
+    pub fn activate_shards(
+        &mut self,
+        new_active: u32,
+    ) -> Result<StableShardActivationPlan, StableShardActivationError> {
+        let plan = plan_stable_shard_activation(self.active_count, new_active)?;
+        self.active_count = plan.to;
+        Ok(plan)
+    }
+}
+
+/// Invalid multi-Raft group catalog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CatalogError {
+    /// Catalog must not be empty.
+    Empty,
+    /// Group 0 (coordinator) must be present at index 0.
+    MissingCoordinator,
+    /// Group ids must be contiguous `0..=max` without gaps.
+    NonContiguous {
+        /// Last valid id before the gap.
+        expected_next: u32,
+        /// Id that broke contiguity.
+        found: u32,
+    },
+    /// Duplicate group id.
+    Duplicate {
+        /// Repeated id.
+        group: u32,
+    },
+    /// `add_groups` must be at least 1.
+    InvalidExpansionCount {
+        /// Requested append count.
+        add_groups: u32,
+    },
+}
+
+impl std::fmt::Display for CatalogError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Empty => f.write_str("catalog must not be empty"),
+            Self::MissingCoordinator => f.write_str("catalog must start with group 0"),
+            Self::NonContiguous {
+                expected_next,
+                found,
+            } => write!(
+                f,
+                "catalog ids must be contiguous (expected {expected_next}, found {found})"
+            ),
+            Self::Duplicate { group } => write!(f, "duplicate group id {group}"),
+            Self::InvalidExpansionCount { add_groups } => {
+                write!(f, "add_groups must be >= 1 (got {add_groups})")
+            }
+        }
+    }
+}
+
+impl std::error::Error for CatalogError {}
+
+/// Plan for appending contiguous Raft groups to the catalog (Tier 2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogExpansionPlan {
+    /// Previous catalog length.
+    pub from_len: u32,
+    /// Catalog length after expansion.
+    pub to_len: u32,
+    /// New group ids appended in order.
+    pub new_groups: Vec<RaftGroupId>,
+}
+
+/// Validate a multi-Raft group catalog (coordinator + contiguous ids).
+///
+/// # Errors
+/// Returns [`CatalogError`] when `catalog` violates catalog invariants.
+pub fn validate_catalog(catalog: &[RaftGroupId]) -> Result<(), CatalogError> {
+    if catalog.is_empty() {
+        return Err(CatalogError::Empty);
+    }
+    if catalog[0].0 != 0 {
+        return Err(CatalogError::MissingCoordinator);
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for (i, &group) in catalog.iter().enumerate() {
+        if !seen.insert(group.0) {
+            return Err(CatalogError::Duplicate { group: group.0 });
+        }
+        let expected = i as u32;
+        if group.0 != expected {
+            return Err(CatalogError::NonContiguous {
+                expected_next: expected,
+                found: group.0,
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Plan appending `add_groups` contiguous ids after the current catalog tail.
+///
+/// # Errors
+/// Returns [`CatalogError`] when the current catalog is invalid or `add_groups`
+/// is zero (use `add_groups >= 1`).
+pub fn plan_catalog_expansion(
+    catalog: &[RaftGroupId],
+    add_groups: u32,
+) -> Result<CatalogExpansionPlan, CatalogError> {
+    validate_catalog(catalog)?;
+    if add_groups == 0 {
+        return Err(CatalogError::InvalidExpansionCount { add_groups });
+    }
+    let from_len = catalog.len() as u32;
+    let next_id = catalog.last().expect("non-empty").0 + 1;
+    let new_groups: Vec<_> = (0..add_groups)
+        .map(|offset| RaftGroupId(next_id + offset))
+        .collect();
+    Ok(CatalogExpansionPlan {
+        from_len,
+        to_len: from_len + add_groups,
+        new_groups,
+    })
+}
+
+/// After growing the active prefix, keys that were already routable keep the
+/// same virtual shard id.
+#[must_use]
+pub fn stable_router_preserves_routable_keys(
+    from_active: u32,
+    to_active: u32,
+    samples: &[&[u8]],
+) -> bool {
+    let before = StableShardRouter::new(from_active);
+    let mut after = StableShardRouter::new(from_active);
+    if after.activate_shards(to_active).is_err() {
+        return false;
+    }
+    for key in samples {
+        let before_shard = before.shard_for(key);
+        let after_shard = after.shard_for(key);
+        if let Some(a) = before_shard
+            && after_shard != Some(a)
+        {
+            return false;
+        }
+    }
+    true
+}
+
 /// The full shard → owning-group assignment for `shard_count` shards over
 /// `groups`, using [`place_shard`]. Empty when `groups` is empty.
 #[cfg(test)]
@@ -768,5 +1037,73 @@ mod tests {
         let plan = router.expand_shard_count(128).expect("expand");
         assert_eq!(plan.to, 128);
         assert_eq!(router.shard_count(), 128);
+    }
+
+    #[test]
+    fn stable_activation_does_not_remap_routable_keys() {
+        let samples: Vec<Vec<u8>> = (0..200u16).map(|n| n.to_le_bytes().to_vec()).collect();
+        let sample_refs: Vec<&[u8]> = samples.iter().map(|v| v.as_slice()).collect();
+
+        // Tier 1 modulus router remaps most keys when count doubles.
+        let mut tier1 = ShardRouter::new(256);
+        let before: Vec<_> = sample_refs.iter().map(|k| tier1.shard_for(k)).collect();
+        tier1.expand_shard_count(512).expect("expand");
+        let remapped = before
+            .iter()
+            .zip(sample_refs.iter())
+            .filter(|(old, key)| **old != tier1.shard_for(key))
+            .count();
+        assert!(
+            remapped > sample_refs.len() / 4,
+            "modulus expansion should remap a large fraction"
+        );
+
+        // Stable router keeps virtual shard ids for already-routable keys.
+        assert!(stable_router_preserves_routable_keys(
+            256,
+            512,
+            &sample_refs
+        ));
+    }
+
+    #[test]
+    fn catalog_validation_requires_coordinator_and_contiguous_ids() {
+        assert!(validate_catalog(&[]).is_err());
+        assert!(validate_catalog(&[RaftGroupId(1)]).is_err());
+        assert!(validate_catalog(&[RaftGroupId(0), RaftGroupId(2)]).is_err());
+        assert!(validate_catalog(&[RaftGroupId(0), RaftGroupId(0)]).is_err());
+        assert!(validate_catalog(&[RaftGroupId(0), RaftGroupId(1)]).is_ok());
+    }
+
+    #[test]
+    fn catalog_expansion_appends_contiguous_groups() {
+        let catalog: Vec<_> = (0..3).map(RaftGroupId).collect();
+        let plan = plan_catalog_expansion(&catalog, 2).expect("expand");
+        assert_eq!(plan.from_len, 3);
+        assert_eq!(plan.to_len, 5);
+        assert_eq!(plan.new_groups, vec![RaftGroupId(3), RaftGroupId(4)]);
+        let mut expanded = catalog;
+        expanded.extend(plan.new_groups);
+        assert!(validate_catalog(&expanded).is_ok());
+    }
+
+    #[test]
+    fn catalog_expansion_moves_minimal_shard_fraction() {
+        let before: Vec<_> = (0..4).map(RaftGroupId).collect();
+        let plan = plan_catalog_expansion(&before, 1).expect("expand");
+        let mut after = before.clone();
+        after.extend(plan.new_groups);
+        let before_map = shard_assignment(400, &before);
+        let after_map = shard_assignment(400, &after);
+        let mut moved = 0;
+        for (shard, old) in &before_map {
+            let new = after_map[shard];
+            if new != *old {
+                assert_eq!(new, RaftGroupId(4));
+                moved += 1;
+            }
+        }
+        assert!(moved > 0);
+        assert!(moved < 200);
     }
 }

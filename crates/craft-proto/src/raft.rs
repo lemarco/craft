@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{LogId, LogIndex, NodeId, Round, Term};
+use crate::{CatalogCommand, LogId, LogIndex, NodeId, Round, Term};
 
 /// A single Raft log entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,6 +32,8 @@ pub enum EntryPayload {
     Command(Vec<u8>),
     /// Cluster membership change entry (joint consensus, membership-early).
     Membership(Membership),
+    /// Multi-Raft catalog metadata (Tier 2; applied by craft, not the user SM).
+    Catalog(CatalogCommand),
 }
 
 /// A cluster configuration. During joint consensus both the incoming

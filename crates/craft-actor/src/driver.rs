@@ -55,10 +55,10 @@ use std::collections::HashMap;
 
 use craft_core::Command as _;
 use craft_core::{
-    Committed, Config, MembershipError, NotLeader, Output, RaftNode, ReadId, Role, SnapshotState,
-    StateMachine,
+    CatalogProposeError, Committed, Config, MembershipError, NotLeader, Output, RaftNode, ReadId,
+    Role, SnapshotState, StateMachine,
 };
-use craft_proto::{CodecError, LogIndex, NodeId, RaftRpc, RaftRpcReply};
+use craft_proto::{CatalogCommand, CodecError, LogIndex, NodeId, RaftRpc, RaftRpcReply};
 use craft_storage::{HardState, NullStorage, RaftStorage, Snapshot, SnapshotMeta, StorageError};
 
 /// A network effect the driver produced that the caller must dispatch through
@@ -122,6 +122,8 @@ pub struct Step<M: StateMachine> {
     pub reads: Vec<ReadOutcome<M::Response>>,
     /// Role transitions observed this step (for observability).
     pub role_changes: Vec<Role>,
+    /// Committed catalog metadata entries (Tier 2; not applied to the user SM).
+    pub catalog_applied: Vec<(LogIndex, CatalogCommand)>,
 }
 
 impl<M: StateMachine> Default for Step<M> {
@@ -131,6 +133,7 @@ impl<M: StateMachine> Default for Step<M> {
             applied: Vec::new(),
             reads: Vec::new(),
             role_changes: Vec::new(),
+            catalog_applied: Vec::new(),
         }
     }
 }
@@ -143,6 +146,7 @@ impl<M: StateMachine> Step<M> {
             && self.applied.is_empty()
             && self.reads.is_empty()
             && self.role_changes.is_empty()
+            && self.catalog_applied.is_empty()
     }
 }
 
@@ -539,6 +543,21 @@ impl<M: StateMachine> RaftDriver<M> {
         }
     }
 
+    /// Append a catalog metadata entry (group 0 leader only, Tier 2).
+    ///
+    /// # Errors
+    /// Returns [`DriverError`] only if draining a resulting committed catalog
+    /// entry fails; leadership rejections are carried in the inner `Result`.
+    pub fn propose_catalog(
+        &mut self,
+        command: CatalogCommand,
+    ) -> Result<Result<(LogIndex, Step<M>), CatalogProposeError>, DriverError> {
+        match self.node.propose_catalog(command) {
+            Ok(index) => Ok(Ok((index, self.drain()?))),
+            Err(e) => Ok(Err(e)),
+        }
+    }
+
     /// Snapshot the application state and compact the log up to the highest
     /// applied index, persisting the snapshot durably (backlog A6, Raft §7).
     ///
@@ -647,6 +666,9 @@ impl<M: StateMachine> RaftDriver<M> {
                     self.persist_snapshot()?;
                 }
                 Output::RoleChanged(role) => step.role_changes.push(role),
+                Output::CatalogApplied { index, command } => {
+                    step.catalog_applied.push((index, command));
+                }
             }
         }
         Ok(step)

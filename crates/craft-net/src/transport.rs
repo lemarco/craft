@@ -17,10 +17,11 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 use craft_proto::{
-    ActorEnvelope, ClientRequest, ClientResponse, DeliverAck, DirectoryUpdate, GroupMigrateReply,
-    GroupMigrateRequest, JoinRequest, JoinResponse, LeaveRequest, LeaveResponse, MigrateReply,
-    MigrateRequest, NodeId, PeerBook, RaftRpc, RaftRpcReply, RegisterAck, ScaleReply, ScaleRequest,
-    SpawnReply, SpawnRequest, StopReply, StopRequest,
+    ActorEnvelope, CatalogAddRequest, CatalogAddResponse, ClientRequest, ClientResponse,
+    DeliverAck, DirectoryUpdate, GroupMigrateReply, GroupMigrateRequest, JoinRequest, JoinResponse,
+    LeaveRequest, LeaveResponse, MigrateReply, MigrateRequest, NodeId, PeerBook, RaftRpc,
+    RaftRpcReply, RegisterAck, ScaleReply, ScaleRequest, SpawnReply, SpawnRequest, StopReply,
+    StopRequest,
 };
 
 use crate::route::Route;
@@ -187,6 +188,22 @@ pub async fn send_leave_request<T: Transport + ?Sized>(
 ) -> Result<LeaveResponse, TransportError> {
     let body = encode_body(request)?;
     let response = transport.send(peer, Route::ClusterLeave, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Send a [`CatalogAddRequest`] and decode the [`CatalogAddResponse`]
+/// (`/cluster/catalog/add`, Tier 2).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is
+/// unreachable / the send fails.
+pub async fn send_catalog_add_request<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &CatalogAddRequest,
+) -> Result<CatalogAddResponse, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::ClusterCatalogAdd, body).await?;
     Ok(decode_body(&response)?)
 }
 

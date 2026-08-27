@@ -18,9 +18,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use craft_proto::{
-    AppendEntries, AppendEntriesReply, EntryPayload, InstallSnapshot, InstallSnapshotReply,
-    LogEntry, LogId, LogIndex, Membership, NodeId, RaftRpc, RaftRpcReply, RequestVote,
-    RequestVoteReply, Round, Term,
+    AppendEntries, AppendEntriesReply, CatalogCommand, EntryPayload, InstallSnapshot,
+    InstallSnapshotReply, LogEntry, LogId, LogIndex, Membership, NodeId, RaftRpc, RaftRpcReply,
+    RequestVote, RequestVoteReply, Round, Term,
 };
 
 use crate::config::Configuration;
@@ -117,6 +117,13 @@ pub enum Output {
         /// Opaque application snapshot bytes.
         data: Vec<u8>,
     },
+    /// A committed catalog metadata entry (Tier 2; not applied to the user SM).
+    CatalogApplied {
+        /// Log index of the catalog entry.
+        index: LogIndex,
+        /// Catalog command committed at `index`.
+        command: CatalogCommand,
+    },
 }
 
 /// Returned by [`RaftNode::propose`] / [`RaftNode::read_index`] when the node
@@ -139,6 +146,16 @@ pub enum MembershipError {
     InProgress,
     /// The requested configuration has no voters.
     EmptyVoters,
+}
+
+/// Why a catalog metadata change could not be started.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CatalogProposeError {
+    /// This node is not the leader.
+    NotLeader {
+        /// Best-known current leader, if any.
+        leader: Option<NodeId>,
+    },
 }
 
 /// A batch of durable state changes an outer runtime must fsync **before**
@@ -788,6 +805,25 @@ impl RaftNode {
         Ok(idx)
     }
 
+    /// Append a catalog metadata entry to the log (group 0 only, Tier 2).
+    ///
+    /// # Errors
+    /// Returns [`CatalogProposeError::NotLeader`] when this node is not leader.
+    pub fn propose_catalog(
+        &mut self,
+        command: CatalogCommand,
+    ) -> Result<LogIndex, CatalogProposeError> {
+        if self.role != Role::Leader {
+            return Err(CatalogProposeError::NotLeader {
+                leader: self.leader_id,
+            });
+        }
+        let idx = self.log_append(self.current_term, EntryPayload::Catalog(command));
+        self.broadcast_append();
+        self.maybe_advance_commit();
+        Ok(idx)
+    }
+
     // ---- Role transitions ------------------------------------------------
 
     fn set_role(&mut self, role: Role) {
@@ -1196,17 +1232,22 @@ impl RaftNode {
     fn apply_committed(&mut self) {
         while self.last_applied < self.commit_index {
             let next = self.last_applied.next();
-            let command = self.log.get(next).and_then(|e| match &e.payload {
-                EntryPayload::Command(c) => Some(c.clone()),
-                _ => None,
-            });
-            self.last_applied = next;
-            if let Some(command) = command {
-                self.outbox.push(Output::Apply(Committed {
-                    index: next,
-                    command,
-                }));
+            match self.log.get(next).map(|e| &e.payload) {
+                Some(EntryPayload::Command(c)) => {
+                    self.outbox.push(Output::Apply(Committed {
+                        index: next,
+                        command: c.clone(),
+                    }));
+                }
+                Some(EntryPayload::Catalog(command)) => {
+                    self.outbox.push(Output::CatalogApplied {
+                        index: next,
+                        command: command.clone(),
+                    });
+                }
+                _ => {}
             }
+            self.last_applied = next;
         }
     }
 

@@ -41,8 +41,8 @@ pub use tls::{NodeIdentity, TlsError, client_config, server_config};
 pub use transport::{
     LocalNetwork, RemoteError, RequestHandler, Transport, TransportError, fetch_peers,
     send_actor_deliver, send_actor_migrate, send_actor_scale, send_actor_spawn, send_actor_stop,
-    send_client_request, send_directory_update, send_group_migrate, send_join_request,
-    send_leave_request, send_peer_rpc,
+    send_catalog_add_request, send_client_request, send_directory_update, send_group_migrate,
+    send_join_request, send_leave_request, send_peer_rpc,
 };
 pub use wire::{WireError, decode_body, encode_body};
 

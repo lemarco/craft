@@ -38,15 +38,20 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use craft_core::{Command as _, MembershipError, Query as _, ReadId, Role, StateMachine};
+use craft_core::{
+    CatalogProposeError, Command as _, MembershipError, Query as _, ReadId, Role, StateMachine,
+    plan_catalog_expansion,
+};
 use craft_net::transport::{Body, BoxFuture};
 use craft_net::{
     RequestHandler, Route, Transport, TransportError, decode_body, encode_body,
-    send_client_request, send_join_request, send_leave_request, send_peer_rpc,
+    send_catalog_add_request, send_client_request, send_join_request, send_leave_request,
+    send_peer_rpc,
 };
 use craft_proto::{
-    ClientRequest, ClientResponse, JoinRejection, JoinRequest, JoinResponse, LeaveRejection,
-    LeaveRequest, LeaveResponse, LogIndex, NodeId, PROTOCOL_VERSION, RaftRpc, RaftRpcReply, Term,
+    CatalogAddRequest, CatalogAddResponse, CatalogCommand, CatalogRejection, ClientRequest,
+    ClientResponse, JoinRejection, JoinRequest, JoinResponse, LeaveRejection, LeaveRequest,
+    LeaveResponse, LogIndex, NodeId, PROTOCOL_VERSION, RaftRpc, RaftRpcReply, Term,
     protocol_version_compatible,
 };
 use tokio::sync::{mpsc, oneshot};
@@ -134,6 +139,10 @@ enum Envelope<M: StateMachine> {
         request: LeaveRequest,
         respond: oneshot::Sender<LeaveResponse>,
     },
+    CatalogAdd {
+        request: CatalogAddRequest,
+        respond: oneshot::Sender<CatalogAddResponse>,
+    },
     /// Leader-only: begin a joint-consensus membership change (per-group-raft-membership).
     ProposeMembership {
         voters: Vec<NodeId>,
@@ -156,8 +165,13 @@ enum Envelope<M: StateMachine> {
     },
 }
 
+/// Snapshot of the live multi-Raft catalog for group 0 expansion planning.
+pub type CatalogSnapshotFn = Arc<dyn Fn() -> Vec<craft_core::RaftGroupId> + Send + Sync>;
+/// Hook invoked when a catalog entry commits on this node (all group 0 replicas).
+pub type CatalogAppliedFn = Arc<dyn Fn(CatalogCommand) + Send + Sync>;
+
 /// Tunables for the runtime loop.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RuntimeConfig {
     /// Wall-clock duration of one logical Raft tick. The core's timeouts are in
     /// ticks (see [`craft_core::Config`]); this maps them onto real time.
@@ -170,6 +184,10 @@ pub struct RuntimeConfig {
     /// `/cluster/leave` requests are rejected with
     /// [`LeaveRejection::LeavesDisabled`].
     pub allow_leave: bool,
+    /// Live catalog for [`CatalogAddRequest`] planning (group 0 multi-Raft only).
+    pub catalog_snapshot: Option<CatalogSnapshotFn>,
+    /// Apply hook for committed catalog entries (group 0 multi-Raft only).
+    pub on_catalog_applied: Option<CatalogAppliedFn>,
 }
 
 impl Default for RuntimeConfig {
@@ -178,7 +196,27 @@ impl Default for RuntimeConfig {
             tick_period: Duration::from_millis(50),
             allow_join: false,
             allow_leave: false,
+            catalog_snapshot: None,
+            on_catalog_applied: None,
         }
+    }
+}
+
+impl std::fmt::Debug for RuntimeConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RuntimeConfig")
+            .field("tick_period", &self.tick_period)
+            .field("allow_join", &self.allow_join)
+            .field("allow_leave", &self.allow_leave)
+            .field(
+                "catalog_snapshot",
+                &self.catalog_snapshot.as_ref().map(|_| "<fn>"),
+            )
+            .field(
+                "on_catalog_applied",
+                &self.on_catalog_applied.as_ref().map(|_| "<fn>"),
+            )
+            .finish()
     }
 }
 
@@ -360,6 +398,21 @@ impl<M: StateMachine> NodeHandle<M> {
         rx.await.map_err(|_| ClientError::Stopped)
     }
 
+    /// Submit a [`CatalogAddRequest`] to grow the multi-Raft catalog (group 0).
+    ///
+    /// # Errors
+    /// [`ClientError::Stopped`] if the runtime shut down before responding.
+    pub async fn catalog_add(
+        &self,
+        request: CatalogAddRequest,
+    ) -> Result<CatalogAddResponse, ClientError> {
+        let (respond, rx) = oneshot::channel();
+        self.tx
+            .send(Envelope::CatalogAdd { request, respond })
+            .map_err(|_| ClientError::Stopped)?;
+        rx.await.map_err(|_| ClientError::Stopped)
+    }
+
     /// Propose a joint-consensus membership change to `voters` when this node
     /// is the Raft leader for the group (per-group-raft-membership).
     ///
@@ -446,6 +499,10 @@ struct Runtime<M: StateMachine> {
     pending_joins: HashMap<LogIndex, oneshot::Sender<JoinResponse>>,
     /// Leave requests awaiting their membership-change entry to commit.
     pending_leaves: HashMap<LogIndex, oneshot::Sender<LeaveResponse>>,
+    /// Catalog add requests awaiting their catalog entry to commit.
+    pending_catalog_adds: HashMap<LogIndex, oneshot::Sender<CatalogAddResponse>>,
+    catalog_snapshot: Option<CatalogSnapshotFn>,
+    on_catalog_applied: Option<CatalogAppliedFn>,
     next_read_id: u64,
 }
 
@@ -503,6 +560,23 @@ impl<M: StateMachine> Runtime<M> {
                         }));
                     }
                 }
+            }
+        }
+        for (index, command) in step.catalog_applied {
+            if let Some(hook) = &self.on_catalog_applied {
+                hook(command.clone());
+            }
+            if let Some(tx) = self.pending_catalog_adds.remove(&index) {
+                let leader = self.driver.node().id();
+                let CatalogCommand::AddGroups {
+                    from_len,
+                    new_groups,
+                } = command;
+                let _ = tx.send(CatalogAddResponse::Accepted {
+                    leader,
+                    catalog_len: from_len + new_groups.len() as u32,
+                    new_groups,
+                });
             }
         }
         // If we are no longer the leader, any still-outstanding client request
@@ -594,6 +668,9 @@ impl<M: StateMachine> Runtime<M> {
         for (_, tx) in self.pending_leaves.drain() {
             let _ = tx.send(LeaveResponse::Redirect { leader });
         }
+        for (_, tx) in self.pending_catalog_adds.drain() {
+            let _ = tx.send(CatalogAddResponse::Redirect { leader });
+        }
     }
 
     /// Process one mailbox message. Returns `Err` on a fatal driver failure
@@ -674,6 +751,9 @@ impl<M: StateMachine> Runtime<M> {
             }
             Envelope::Leave { request, respond } => {
                 self.on_leave(request, respond)?;
+            }
+            Envelope::CatalogAdd { request, respond } => {
+                self.on_catalog_add(request, respond)?;
             }
             Envelope::ProposeMembership {
                 voters,
@@ -849,6 +929,59 @@ impl<M: StateMachine> Runtime<M> {
         Ok(())
     }
 
+    /// Validate and (on the group 0 leader) replicate a catalog expansion.
+    fn on_catalog_add(
+        &mut self,
+        request: CatalogAddRequest,
+        respond: oneshot::Sender<CatalogAddResponse>,
+    ) -> Result<(), DriverError> {
+        if !protocol_version_compatible(request.protocol_version) {
+            let _ = respond.send(CatalogAddResponse::Rejected {
+                reason: CatalogRejection::VersionSkew {
+                    expected: PROTOCOL_VERSION,
+                    got: request.protocol_version,
+                },
+            });
+            return Ok(());
+        }
+        if !self.driver.is_leader() {
+            let _ = respond.send(CatalogAddResponse::Redirect {
+                leader: self.driver.node().leader_id(),
+            });
+            return Ok(());
+        }
+        let Some(snapshot) = &self.catalog_snapshot else {
+            let _ = respond.send(CatalogAddResponse::Rejected {
+                reason: CatalogRejection::NotMultiRaft,
+            });
+            return Ok(());
+        };
+        let catalog = snapshot();
+        let plan = match plan_catalog_expansion(&catalog, request.add_groups) {
+            Ok(plan) => plan,
+            Err(e) => {
+                let _ = respond.send(CatalogAddResponse::Rejected {
+                    reason: CatalogRejection::InvalidExpansion(e.to_string()),
+                });
+                return Ok(());
+            }
+        };
+        let command = CatalogCommand::AddGroups {
+            from_len: plan.from_len,
+            new_groups: plan.new_groups.iter().map(|g| g.0).collect(),
+        };
+        match self.driver.propose_catalog(command)? {
+            Ok((index, step)) => {
+                self.pending_catalog_adds.insert(index, respond);
+                let _ = self.settle(step);
+            }
+            Err(CatalogProposeError::NotLeader { leader }) => {
+                let _ = respond.send(CatalogAddResponse::Redirect { leader });
+            }
+        }
+        Ok(())
+    }
+
     fn on_propose_membership(
         &mut self,
         voters: Vec<NodeId>,
@@ -906,6 +1039,9 @@ where
         pending_read_confirms: HashMap::new(),
         pending_joins: HashMap::new(),
         pending_leaves: HashMap::new(),
+        pending_catalog_adds: HashMap::new(),
+        catalog_snapshot: config.catalog_snapshot.clone(),
+        on_catalog_applied: config.on_catalog_applied.clone(),
         next_read_id: 0,
     };
 
@@ -1012,6 +1148,12 @@ impl<M: StateMachine> RequestHandler for NodeService<M> {
                 Route::ClusterLeave => {
                     let request: LeaveRequest = decode_body(&body)?;
                     let response = route_leave(&handle, &transport, forward_timeout, request).await;
+                    Ok(encode_body(&response)?)
+                }
+                Route::ClusterCatalogAdd => {
+                    let request: CatalogAddRequest = decode_body(&body)?;
+                    let response =
+                        route_catalog_add(&handle, &transport, forward_timeout, request).await;
                     Ok(encode_body(&response)?)
                 }
                 other => Err(TransportError::Io(format!(
@@ -1152,6 +1294,49 @@ async fn route_leave<M: StateMachine>(
         return forward_leave(transport, forward_timeout, leader, request).await;
     }
     local
+}
+
+/// Serve a catalog add, forwarding to the group 0 leader if this node is a follower.
+async fn route_catalog_add<M: StateMachine>(
+    handle: &NodeHandle<M>,
+    transport: &Arc<dyn Transport>,
+    forward_timeout: Duration,
+    request: CatalogAddRequest,
+) -> CatalogAddResponse {
+    let local = handle
+        .catalog_add(request.clone())
+        .await
+        .unwrap_or_else(|_| CatalogAddResponse::Rejected {
+            reason: CatalogRejection::Other("node runtime stopped".to_string()),
+        });
+    if let CatalogAddResponse::Redirect {
+        leader: Some(leader),
+    } = local
+        && leader != handle.id()
+    {
+        return forward_catalog_add(transport, forward_timeout, leader, request).await;
+    }
+    local
+}
+
+/// Proxy a catalog add request to `leader`, bounded by `timeout`.
+async fn forward_catalog_add(
+    transport: &Arc<dyn Transport>,
+    timeout: Duration,
+    leader: NodeId,
+    request: CatalogAddRequest,
+) -> CatalogAddResponse {
+    match tokio::time::timeout(
+        timeout,
+        send_catalog_add_request(&**transport, leader, &request),
+    )
+    .await
+    {
+        Ok(Ok(response)) => response,
+        Ok(Err(_)) | Err(_) => CatalogAddResponse::Redirect {
+            leader: Some(leader),
+        },
+    }
 }
 
 /// Proxy a join request to `leader`, bounded by `timeout`.

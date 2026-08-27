@@ -23,16 +23,19 @@ pub use failure_detector::{
     ReachabilityConfig,
 };
 pub use node::{
-    Committed, Config, MembershipError, NotLeader, Output, Persist, RaftNode, ReadId, Role,
-    SnapshotState,
+    CatalogProposeError, Committed, Config, MembershipError, NotLeader, Output, Persist, RaftNode,
+    ReadId, Role, SnapshotState,
 };
 pub use shard::{
-    DEFAULT_GROUP_LEARNER_FACTOR, DEFAULT_GROUP_REPLICATION_FACTOR, GroupMembershipChange,
-    GroupRebalancePlan, GroupReplicationTarget, MAX_VIRTUAL_SHARDS, RaftGroupId,
-    ShardCountExpansionPlan, ShardExpansionError, ShardId, ShardRouter,
-    effective_replication_factor, group_host_assignment, group_learners,
-    group_membership_assignment, group_voters, groups_joining_node_affects,
-    groups_leaving_node_affects, place_shard, plan_group_membership_change,
-    plan_group_membership_sync, plan_node_group_rebalance, plan_shard_count_expansion,
+    CatalogError, CatalogExpansionPlan, DEFAULT_GROUP_LEARNER_FACTOR,
+    DEFAULT_GROUP_REPLICATION_FACTOR, GroupMembershipChange, GroupRebalancePlan,
+    GroupReplicationTarget, MAX_VIRTUAL_SHARDS, RaftGroupId, ShardCountExpansionPlan,
+    ShardExpansionError, ShardId, ShardRouter, StableShardActivationError,
+    StableShardActivationPlan, StableShardRouter, effective_replication_factor,
+    group_host_assignment, group_learners, group_membership_assignment, group_voters,
+    groups_joining_node_affects, groups_leaving_node_affects, place_shard, plan_catalog_expansion,
+    plan_group_membership_change, plan_group_membership_sync, plan_node_group_rebalance,
+    plan_shard_count_expansion, plan_stable_shard_activation, shard_is_active,
+    stable_router_preserves_routable_keys, validate_catalog, virtual_shard_for,
 };
 pub use state_machine::{Command, Query, StateMachine};

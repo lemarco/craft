@@ -19,6 +19,7 @@ async fn export_and_respawn_from_bundle_preserves_state() {
         tick_period: TICK_PERIOD,
         allow_join: false,
         allow_leave: false,
+        ..RuntimeConfig::default()
     };
     let raft = fast_raft_config_with_seed(3);
     let (_service_a, handle_a) = spawn_raft_group(

@@ -13,10 +13,32 @@ use craft_core::{Config, StateMachine};
 use craft_core::{RaftGroupId, group_voters};
 use craft_dashboard::CraftEvent;
 use craft_net::{Transport, send_group_migrate};
-use craft_proto::{GroupMigrateReply, GroupMigrateRequest, NodeId};
+use craft_proto::{CatalogCommand, GroupMigrateReply, GroupMigrateRequest, NodeId};
 use craft_storage::StorageError;
 
 use crate::cluster::ClusterFacts;
+
+/// Apply a committed catalog command to `catalog`, returning newly added groups.
+pub(crate) fn merge_catalog_command(
+    catalog: &mut Vec<RaftGroupId>,
+    cmd: &CatalogCommand,
+) -> Vec<RaftGroupId> {
+    let CatalogCommand::AddGroups {
+        from_len,
+        new_groups,
+    } = cmd;
+    let from_len = *from_len;
+    let target_len = from_len as usize + new_groups.len();
+    if catalog.len() >= target_len {
+        return Vec::new();
+    }
+    if catalog.len() != from_len as usize {
+        return Vec::new();
+    }
+    let added: Vec<_> = new_groups.iter().map(|&g| RaftGroupId(g)).collect();
+    catalog.extend(&added);
+    added
+}
 
 /// Runtime state for dynamic multi-Raft group hosting on one physical node.
 pub(crate) struct MultiRaftState<M: StateMachine> {
@@ -27,7 +49,7 @@ pub(crate) struct MultiRaftState<M: StateMachine> {
     pub runtime: RuntimeConfig,
     pub forward_timeout: std::time::Duration,
     pub data_dir: Option<PathBuf>,
-    pub catalog: Vec<RaftGroupId>,
+    pub catalog: Arc<Mutex<Vec<RaftGroupId>>>,
     pub node_id: NodeId,
     /// Per-group voter replication factor (per-group-raft-membership).
     pub replication_factor: u32,
@@ -54,14 +76,27 @@ impl<M: StateMachine + Default + 'static> MultiRaftState<M> {
                 .map(|(id, handle)| (*id, handle.clone()))
                 .collect()
         };
+        let catalog = self.catalog.lock().unwrap().clone();
         sync_hosted_group_membership(
             &hosted,
             &live,
-            &self.catalog,
+            &catalog,
             self.replication_factor,
             self.learner_factor,
         )
         .await
+    }
+
+    /// Apply a committed catalog entry locally and extend keyed routing.
+    pub fn apply_catalog_command(&self, cmd: &CatalogCommand) -> Vec<RaftGroupId> {
+        let added = {
+            let mut catalog = self.catalog.lock().unwrap();
+            merge_catalog_command(&mut catalog, cmd)
+        };
+        if !added.is_empty() {
+            self.sharded.extend_routing_catalog(&added);
+        }
+        added
     }
 
     /// Plan and apply local adopt/retire actions, pushing retired groups to
@@ -73,7 +108,7 @@ impl<M: StateMachine + Default + 'static> MultiRaftState<M> {
         let hosted = self.sharded.hosted_group_ids();
         let reconciler = RaftGroupReconciler::new(
             self.node_id,
-            self.catalog.clone(),
+            self.catalog.lock().unwrap().clone(),
             self.replication_factor,
             Arc::clone(&facts),
         );
@@ -176,7 +211,7 @@ impl<M: StateMachine + Default + 'static> MultiRaftState<M> {
         live_nodes: &[NodeId],
     ) -> Result<GroupMigrateReply, StorageError> {
         let id = request.group;
-        if !self.catalog.iter().any(|g| g.0 == id) {
+        if !self.catalog.lock().unwrap().iter().any(|g| g.0 == id) {
             return Ok(GroupMigrateReply {
                 adopted: false,
                 error: Some(format!("unknown raft group {id}")),

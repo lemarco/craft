@@ -23,7 +23,9 @@ use craft_net::{
     BackoffPolicy, LocalNetwork, PeerDirectory, QuicServer, QuicTransport, TrafficPolicy,
     Transport, TransportError, client_config, fetch_peers, send_join_request, server_config,
 };
-use craft_proto::{JoinRejection, JoinRequest, JoinResponse, NodeId, PROTOCOL_VERSION};
+use craft_proto::{
+    CatalogCommand, JoinRejection, JoinRequest, JoinResponse, NodeId, PROTOCOL_VERSION,
+};
 use craft_storage::GroupRedbLayout;
 use tokio::net::TcpListener;
 
@@ -620,6 +622,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
 
         // --- Consensus runtime -------------------------------------------
         let mut multi_raft = None;
+        let mut catalog_event_rx = None;
         let (handle, group_handles, consensus_service) = if self.raft_groups > 1 {
             let machines = self.raft_machines.unwrap_or_else(|| {
                 panic!(
@@ -632,14 +635,25 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 self.raft_groups as usize,
                 "raft_machines length must match raft_groups"
             );
-            let catalog: Vec<craft_core::RaftGroupId> =
+            let initial_catalog: Vec<craft_core::RaftGroupId> =
                 (0..self.raft_groups).map(craft_core::RaftGroupId).collect();
+            let catalog = Arc::new(Mutex::new(initial_catalog.clone()));
+            let (catalog_tx, catalog_rx) = tokio::sync::mpsc::unbounded_channel::<CatalogCommand>();
+            catalog_event_rx = Some(catalog_rx);
+            let catalog_snap = Arc::clone(&catalog);
+            let mut runtime_group0 = self.runtime.clone();
+            runtime_group0.catalog_snapshot =
+                Some(Arc::new(move || catalog_snap.lock().unwrap().clone()));
+            runtime_group0.on_catalog_applied = Some(Arc::new(move |cmd| {
+                let _ = catalog_tx.send(cmd);
+            }));
             let (sharded, handles_vec) = spawn_multi_raft_node(
                 node_id,
                 &bootstrap_voters,
                 self.group_replication_factor,
                 self.raft.clone(),
                 self.runtime.clone(),
+                runtime_group0,
                 self.shard_count,
                 self.raft_groups,
                 machines,
@@ -653,7 +667,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 handle_map.insert(i as u32, h);
             }
             let primary = handle_map.get(&0).cloned().expect("group 0 handle");
-            let group_handles: Vec<_> = catalog
+            let group_handles: Vec<_> = initial_catalog
                 .iter()
                 .filter_map(|g| handle_map.get(&g.0).cloned())
                 .collect();
@@ -790,12 +804,23 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             let period = self.refresh_period;
             // Explicit keepalive: rebalance state must outlive this task.
             let _multi_raft = multi_raft.clone();
+            let mut catalog_events = catalog_event_rx;
             let mut telemetry =
                 crate::cluster::MembershipTelemetry::new(node_id, events.clone(), metrics.clone());
             tasks.push(tokio::spawn(async move {
                 let mut interval = tokio::time::interval(period);
                 loop {
                     interval.tick().await;
+                    if let Some(mr) = _multi_raft.as_ref()
+                        && let Some(ref mut rx) = catalog_events
+                    {
+                        while let Ok(cmd) = rx.try_recv() {
+                            mr.apply_catalog_command(&cmd);
+                            if let Ok(report) = mr.rebalance(Arc::clone(&facts)).await {
+                                MultiRaftState::<M>::emit_rebalance(&events, &report);
+                            }
+                        }
+                    }
                     let status = match handle.status().await {
                         Some(status) => status,
                         None => break,
