@@ -1,6 +1,6 @@
 # Cross-shard atomic transactions (multi-Raft)
 
-**Status:** Proposed  
+**Status:** Accepted (Phase 4 saga coordinator)  
 **Date:** 2026-08-27
 
 ## Context
@@ -69,13 +69,14 @@ Global timestamps + intent locks across groups.
 **Rejected for craft v1** — operational complexity, new storage coupling, out of
 scope for library-first design.
 
-## Decision (proposed)
+## Decision
 
 1. **Do not** implement 2PC in Tier 2.
-2. **Phase 4 default path:** framework **saga coordinator** (option B) with:
+2. **Phase 4 default path (landed):** framework **saga coordinator** (option B) with:
    - explicit `SagaStep { key, command, compensate }` types in `craft-client`;
-   - durable saga journal (Redis or group-0 side channel);
-   - metrics: `saga_completed`, `saga_compensated`, `saga_stuck`.
+   - [`run_saga`](../../crates/craft-client/src/saga.rs) + [`SagaJournal`](../../crates/craft-client/src/saga.rs) trait;
+   - durable saga journal via [`StoreSagaJournal`](../../crates/craft/src/saga.rs) (`ActorStateStore`, key `craft:saga:{id}`);
+   - metrics helper [`record_saga_metrics`](../../crates/craft/src/saga.rs): `craft_saga_completed_total`, `craft_saga_compensated_total`, `craft_saga_stuck_total`.
 3. **Optional later increment:** limited **2PC** (option C) for ≤3 groups and
    small payloads, behind `CraftClusterBuilder::cross_shard_2pc(true)` — only if
    saga adoption shows demand.
@@ -85,7 +86,7 @@ scope for library-first design.
 | API | Guarantee |
 |-----|-----------|
 | `propose_keyed_batch` | Sequential; partial failure surfaced |
-| `run_saga` (proposed) | All steps committed OR compensators run; at-least-once step delivery with idempotency |
+| `run_saga` | All steps committed OR compensators run; at-least-once step delivery with idempotency |
 | `propose_cross_shard_2pc` (future) | Atomic commit if all groups ack prepare |
 
 Neither saga nor 2PC provides **global serializable isolation** across shards

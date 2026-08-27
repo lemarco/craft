@@ -31,7 +31,7 @@ and sequences runtime work.
 | **1** | Pure planners (`craft-core::shard`) | Catalog validation/expansion; stable virtual shard space | **landed** |
 | **2** | **Dynamic catalog expansion** | Replicated catalog + leader command + rebalance | **landed** |
 | **3** | **Stable shard activation** | `StableShardRouter` in runtime; migration from Tier 1 modulus | **landed** |
-| **4** | Cross-shard atomic transactions | Separate ADR — [cross-shard-transactions](cross-shard-transactions.md) | proposed |
+| **4** | Cross-shard atomic transactions | Separate ADR — [cross-shard-transactions](cross-shard-transactions.md) | **done** (saga coordinator) |
 | **—** | Meta-Raft group | Deferred — group 0 coordinator remains | deferred |
 
 ---
@@ -116,11 +116,12 @@ group set.
 
 ### 3. Cross-shard atomic transactions (Phase 4 — separate ADR)
 
-Not implemented in Tier 2. See [cross-shard-transactions](cross-shard-transactions.md)
-for saga coordinator (Phase 4), 2PC options, consistency targets, and explicit non-goals.
+**Landed:** saga coordinator in `craft-client` ([`run_saga`](../../crates/craft-client/src/saga.rs)),
+facade [`StoreSagaJournal`](../../crates/craft/src/saga.rs). See
+[cross-shard-transactions](cross-shard-transactions.md) for guarantees and 2PC deferral.
 
 Tier 1 [`propose_keyed_batch`](../../crates/craft-client/src/batch.rs) remains the
-**non-atomic** default.
+**non-atomic** default for callers that manage compensation themselves.
 
 ---
 

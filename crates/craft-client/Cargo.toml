@@ -20,6 +20,7 @@ workspace = true
 craft-proto.workspace = true
 craft-core.workspace = true
 craft-net.workspace = true
+serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tokio = { version = "1", features = ["time"] }
 

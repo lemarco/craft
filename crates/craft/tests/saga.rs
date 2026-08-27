@@ -1,0 +1,236 @@
+//! Cross-shard saga integration (multi-Raft Phase 4).
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
+
+use craft::CraftCluster;
+use craft::StoreSagaJournal;
+use craft::actor::{ActorStateStore, InMemoryStore};
+use craft::client::{
+    RemoteClient, RetryPolicy, RunSagaOpts, SagaJournalPhase, SagaOutcome, SagaPlan, SagaStep,
+    run_saga,
+};
+use craft::net::{LocalNetwork, Transport, TransportError, decode_body};
+use craft::proto::{ClientRequest, ClientResponse, NodeId};
+use craft_test_support::{
+    KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, advance, await_craft_leader,
+    fast_raft_config_with_seed, find_keys_for_two_groups, wait_for_each_group_cluster_leader,
+};
+
+async fn spawn_two_group_cluster() -> (LocalNetwork, Vec<Arc<CraftCluster<KvMachine>>>) {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let net = LocalNetwork::new();
+    let mut clusters = Vec::new();
+    for &id in &ids {
+        let cluster = CraftCluster::builder(id, KvMachine::default())
+            .members(ids)
+            .raft_config(fast_raft_config_with_seed(11))
+            .tick_period(TICK_PERIOD)
+            .shard_count(64)
+            .raft_machines([KvMachine::default(), KvMachine::default()])
+            .start_local(&net)
+            .await;
+        clusters.push(Arc::new(cluster));
+    }
+    (net, clusters)
+}
+
+fn two_shard_plan(key_a: Vec<u8>, key_b: Vec<u8>) -> SagaPlan {
+    SagaPlan {
+        saga_id: b"transfer-x".to_vec(),
+        steps: vec![
+            SagaStep {
+                key: key_a,
+                command: craft::proto::encode(&KvCommand::Set {
+                    key: "from".into(),
+                    value: "100".into(),
+                })
+                .unwrap(),
+                compensate: craft::proto::encode(&KvCommand::Delete { key: "from".into() })
+                    .unwrap(),
+            },
+            SagaStep {
+                key: key_b,
+                command: craft::proto::encode(&KvCommand::Set {
+                    key: "to".into(),
+                    value: "200".into(),
+                })
+                .unwrap(),
+                compensate: craft::proto::encode(&KvCommand::Delete { key: "to".into() }).unwrap(),
+            },
+        ],
+    }
+}
+
+/// Fail keyed forward proposes after `forward_ok` successes; compensate still uses inner.
+struct FailAfterForward {
+    inner: Arc<LocalNetwork>,
+    forward_ok: u32,
+    forward_calls: Arc<AtomicU32>,
+}
+
+impl Transport for FailAfterForward {
+    fn send(
+        &self,
+        peer: NodeId,
+        route: craft::net::Route,
+        body: craft::net::transport::Body,
+    ) -> craft::net::transport::BoxFuture<
+        'static,
+        Result<craft::net::transport::Body, TransportError>,
+    > {
+        let inner = Arc::clone(&self.inner);
+        let forward_ok = self.forward_ok;
+        let forward_calls = Arc::clone(&self.forward_calls);
+        Box::pin(async move {
+            if let Ok(ClientRequest::ProposeKeyed { command, .. }) = decode_body(&body) {
+                let is_compensate = craft::proto::decode::<KvCommand>(&command)
+                    .ok()
+                    .is_some_and(|cmd| matches!(cmd, KvCommand::Delete { .. }));
+                if !is_compensate {
+                    let n = forward_calls.fetch_add(1, Ordering::Relaxed);
+                    if n >= forward_ok {
+                        return Err(TransportError::Unreachable(peer));
+                    }
+                }
+            }
+            inner.send(peer, route, body).await
+        })
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn cross_shard_saga_completes_two_groups() {
+    let (net, clusters) = spawn_two_group_cluster().await;
+    wait_for_each_group_cluster_leader(&clusters, 2).await;
+    let leader = await_craft_leader(&clusters).await;
+
+    let groups = [craft::core::RaftGroupId(0), craft::core::RaftGroupId(1)];
+    let (key_a, key_b) = find_keys_for_two_groups(64, &groups);
+
+    let client = RemoteClient::new(Arc::new(net.clone()), [leader.node_id()]);
+    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
+    let journal = StoreSagaJournal::new(Arc::clone(&store));
+
+    let outcome = run_saga(
+        &client,
+        &two_shard_plan(key_a.clone(), key_b.clone()),
+        RunSagaOpts {
+            journal: Some(&journal),
+            catalog_version: Some(leader.catalog_len()),
+            ..RunSagaOpts::default()
+        },
+    )
+    .await
+    .expect("saga completes");
+    assert!(matches!(outcome, SagaOutcome::Completed(_)));
+
+    let records = store
+        .get("craft:saga:transfer-x")
+        .await
+        .expect("journal read")
+        .expect("journal record");
+    let record = craft::client::decode_journal_record(&records).expect("decode");
+    assert_eq!(record.phase, SagaJournalPhase::Completed);
+
+    let qry_from = craft::proto::encode(&KvQuery::Get { key: "from".into() }).unwrap();
+    let got_from = craft::net::send_client_request(
+        &*Arc::new(net.clone()),
+        leader.node_id(),
+        &ClientRequest::QueryKeyed {
+            key: key_a,
+            query: qry_from,
+        },
+    )
+    .await
+    .expect("query from");
+    let ClientResponse::Ok(bytes_from) = got_from else {
+        panic!("unexpected {got_from:?}");
+    };
+    let val_from: KvResponse = craft::proto::decode(&bytes_from).unwrap();
+    assert_eq!(val_from, KvResponse::Value(Some("100".into())));
+
+    let qry_to = craft::proto::encode(&KvQuery::Get { key: "to".into() }).unwrap();
+    let got_to = craft::net::send_client_request(
+        &*Arc::new(net.clone()),
+        leader.node_id(),
+        &ClientRequest::QueryKeyed {
+            key: key_b,
+            query: qry_to,
+        },
+    )
+    .await
+    .expect("query to");
+    let ClientResponse::Ok(bytes_to) = got_to else {
+        panic!("unexpected {got_to:?}");
+    };
+    let val_to: KvResponse = craft::proto::decode(&bytes_to).unwrap();
+    assert_eq!(val_to, KvResponse::Value(Some("200".into())));
+
+    for _ in 0..5 {
+        advance(TICK_PERIOD).await;
+    }
+    for cluster in &clusters {
+        cluster.shutdown();
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn cross_shard_saga_compensates_when_second_forward_fails() {
+    let (net, clusters) = spawn_two_group_cluster().await;
+    wait_for_each_group_cluster_leader(&clusters, 2).await;
+    let leader = await_craft_leader(&clusters).await;
+
+    let groups = [craft::core::RaftGroupId(0), craft::core::RaftGroupId(1)];
+    let (key_a, key_b) = find_keys_for_two_groups(64, &groups);
+
+    let transport = Arc::new(FailAfterForward {
+        inner: Arc::new(net.clone()),
+        forward_ok: 1,
+        forward_calls: Arc::new(AtomicU32::new(0)),
+    });
+    let client = RemoteClient::new(transport, [leader.node_id()]).with_retry(RetryPolicy {
+        max_attempts: 1,
+        ..RetryPolicy::default()
+    });
+
+    let outcome = run_saga(
+        &client,
+        &two_shard_plan(key_a.clone(), key_b),
+        RunSagaOpts::default(),
+    )
+    .await
+    .expect("compensated saga");
+
+    let SagaOutcome::Compensated {
+        failed_step,
+        compensated_steps,
+        ..
+    } = outcome
+    else {
+        panic!("expected compensated outcome");
+    };
+    assert_eq!(failed_step, 1);
+    assert_eq!(compensated_steps, 1);
+
+    let qry = craft::proto::encode(&KvQuery::Get { key: "from".into() }).unwrap();
+    let got = craft::net::send_client_request(
+        &*Arc::new(net.clone()),
+        leader.node_id(),
+        &ClientRequest::QueryKeyed {
+            key: key_a,
+            query: qry,
+        },
+    )
+    .await
+    .expect("query");
+    let ClientResponse::Ok(bytes) = got else {
+        panic!("unexpected {got:?}");
+    };
+    let val: KvResponse = craft::proto::decode(&bytes).unwrap();
+    assert_eq!(val, KvResponse::Value(None));
+
+    for cluster in &clusters {
+        cluster.shutdown();
+    }
+}

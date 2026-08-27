@@ -11,6 +11,10 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ### Added
 
+- **Tier 2 Phase 4 — cross-shard saga coordinator** ([cross-shard-transactions](docs/decisions/cross-shard-transactions.md)) —
+  `craft_client::run_saga`, `SagaPlan`/`SagaStep`, `SagaJournal` trait,
+  `InMemorySagaJournal`; facade `StoreSagaJournal` + `record_saga_metrics`.
+  Integration tests `craft/tests/saga.rs`; unit tests in `craft-client/src/saga.rs`.
 - **Stable shard routing (Tier 2 Phase 3)** — multi-Raft clusters default to
   `StableShardRouter` (`CraftClusterBuilder::stable_shards`, default on).
   `CraftCluster::activate_shards` grows the active virtual prefix without

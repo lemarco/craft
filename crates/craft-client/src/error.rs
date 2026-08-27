@@ -1,7 +1,7 @@
 //! Client-side error type.
 
 /// Why a client request could not be completed.
-#[derive(Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error)]
 pub enum ClientError {
     /// The client was created with no target nodes to contact.
     #[error("no target nodes configured")]
