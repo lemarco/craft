@@ -39,6 +39,7 @@ dev-certs = ["craft-net/dev-certs"]
 json-wire = ["craft-proto/json-wire"]
 
 [dev-dependencies]
+tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "io-util"] }
 serde = { workspace = true, features = ["derive"] }
 # The QUIC/mTLS integration test mints a shared dev cluster CA.

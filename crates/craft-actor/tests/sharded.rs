@@ -138,7 +138,9 @@ async fn keyed_writes_route_to_independent_raft_groups() {
         machines,
         Arc::clone(&transport),
         Duration::from_secs(5),
-    );
+        None,
+    )
+    .expect("spawn multi-raft node");
     net.attach(node_id, Arc::new(sharded));
 
     wait_for_group_leaders(&handles).await;

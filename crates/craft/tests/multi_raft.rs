@@ -207,3 +207,45 @@ async fn builder_hosts_independent_raft_groups() {
 
     cluster.shutdown();
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn builder_persists_each_raft_group_to_separate_redb_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let data_dir = dir.path().to_path_buf();
+    let net = LocalNetwork::new();
+    let node_id = NodeId(1);
+
+    {
+        let cluster = CraftCluster::builder(node_id, KvMachine::default())
+            .members([node_id])
+            .tick_period(Duration::from_millis(10))
+            .raft_machines([KvMachine::default(), KvMachine::default()])
+            .data_dir(&data_dir)
+            .start_local(&net)
+            .await;
+
+        wait_for_group_leaders(&cluster).await;
+
+        let resp = cluster
+            .group_handles()[0]
+            .propose(KvCommand::Set {
+                key: "persist".into(),
+                value: "g0".into(),
+            })
+            .await
+            .expect("propose on group 0");
+        assert_eq!(resp, KvResponse::Set);
+
+        cluster.shutdown();
+    }
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    assert!(data_dir.join("group-0.redb").is_file());
+    assert!(data_dir.join("group-1.redb").is_file());
+
+    let layout = craft::storage::GroupRedbLayout::new(&data_dir);
+    let store = layout.open_group(0).unwrap();
+    use craft::storage::LogStore;
+    assert!(store.last_index().unwrap().0 >= 1);
+}

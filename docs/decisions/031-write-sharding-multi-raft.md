@@ -51,7 +51,8 @@ storage, and client changes behind it.
 - `GroupTransport` wraps peer RPCs in `GroupPeerEnvelope` so a single UDP
   socket carries multiple Raft groups.
 - `GroupMemoryStorage` provides per-group in-memory isolation for tests;
-  production redb namespacing remains deferred.
+  [`GroupRedbLayout`] stores each group in `group-<id>.redb` under a shared
+  data directory (`CraftClusterBuilder::data_dir`).
 - **Client routing:** `ClientRequest::ProposeKeyed` / `QueryKeyed` carry a shard
   key; [`ShardedNodeService`] resolves `key → shard → group` and forwards to
   the correct group's [`NodeService`]. Ungrouped `Propose`/`Query` still hit

@@ -6,6 +6,7 @@
 //! background loops that keep them current.
 
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -17,6 +18,7 @@ use craft_net::{
     Transport, TransportError, client_config, fetch_peers, send_join_request, server_config,
 };
 use craft_proto::{JoinRejection, JoinRequest, JoinResponse, NodeId, PROTOCOL_VERSION};
+use craft_storage::GroupRedbLayout;
 use tokio::net::TcpListener;
 
 use craft_actor::{
@@ -79,6 +81,7 @@ pub struct CraftClusterBuilder<M: StateMachine> {
     raft_groups: u32,
     shard_count: u32,
     raft_machines: Option<Vec<M>>,
+    data_dir: Option<PathBuf>,
     registrations: Vec<RegisterFn>,
     managed: Vec<ManageFn>,
 }
@@ -107,6 +110,7 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
             raft_groups: 1,
             shard_count: 256,
             raft_machines: None,
+            data_dir: None,
             registrations: Vec::new(),
             managed: Vec::new(),
         }
@@ -155,6 +159,15 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
         assert!(!machines.is_empty(), "raft_machines requires at least one machine");
         self.raft_groups = machines.len() as u32;
         self.raft_machines = Some(machines);
+        self
+    }
+
+    /// Persist each Raft group's log/hard-state/snapshot under `path` as
+    /// `group-<id>.redb` files (multi-Raft, ADR 031). Single-group nodes use
+    /// `group-0.redb`.
+    #[must_use]
+    pub fn data_dir(mut self, path: impl Into<PathBuf>) -> Self {
+        self.data_dir = Some(path.into());
         self
     }
 
@@ -430,7 +443,9 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
                 machines,
                 Arc::clone(&transport),
                 self.forward_timeout,
-            );
+                self.data_dir.as_deref(),
+            )
+            .expect("open multi-group raft storage");
             let primary = handles[0].clone();
             (
                 primary,
@@ -439,7 +454,14 @@ impl<M: StateMachine> CraftClusterBuilder<M> {
             )
         } else {
             let node = RaftNode::new(node_id, self.members.clone(), self.raft.clone());
-            let driver = RaftDriver::new(node, self.machine);
+            let driver = if let Some(ref dir) = self.data_dir {
+                let storage = GroupRedbLayout::new(dir)
+                    .open_group(0)
+                    .expect("open raft storage");
+                RaftDriver::with_storage(node, self.machine, Box::new(storage))
+            } else {
+                RaftDriver::new(node, self.machine)
+            };
             let handle = spawn_node(driver, Arc::clone(&transport), self.runtime.clone());
             let service = Arc::new(
                 NodeService::new(handle.clone(), Arc::clone(&transport))

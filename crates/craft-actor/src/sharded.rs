@@ -2,6 +2,7 @@
 //! RPC demux (ADR 031).
 
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -9,6 +10,7 @@ use craft_core::{RaftGroupId, ShardRouter, StateMachine, place_shard};
 use craft_net::transport::{Body, BoxFuture, RequestHandler};
 use craft_net::{Route, Transport, TransportError, decode_body, encode_body};
 use craft_proto::{ClientRequest, ClientResponse, GroupPeerEnvelope, NodeId};
+use craft_storage::{GroupRedbLayout, RaftStorage, StorageError};
 
 use crate::RuntimeConfig;
 
@@ -156,7 +158,8 @@ pub fn spawn_multi_raft_node<M>(
     machines: Vec<M>,
     network: Arc<dyn Transport>,
     forward_timeout: Duration,
-) -> (ShardedNodeService, Vec<crate::NodeHandle<M>>)
+    storage_dir: Option<&Path>,
+) -> Result<(ShardedNodeService, Vec<crate::NodeHandle<M>>), StorageError>
 where
     M: StateMachine + 'static,
 {
@@ -165,6 +168,7 @@ where
 
     use crate::{NodeService, RaftDriver, spawn_node};
 
+    let layout = storage_dir.map(GroupRedbLayout::new);
     let group_ids: Vec<RaftGroupId> = (0..group_count).map(RaftGroupId).collect();
     let mut handles = Vec::new();
     let mut services = BTreeMap::new();
@@ -172,7 +176,12 @@ where
     for (g, machine) in machines.into_iter().enumerate().take(group_count as usize) {
         let g = g as u32;
         let node = RaftNode::new(node_id, members.iter().copied(), raft.clone());
-        let driver = RaftDriver::new(node, machine);
+        let driver = if let Some(ref layout) = layout {
+            let storage = layout.open_group(g)?;
+            RaftDriver::with_storage(node, machine, Box::new(storage) as Box<dyn RaftStorage>)
+        } else {
+            RaftDriver::new(node, machine)
+        };
         let group_transport =
             Arc::new(GroupTransport::new(g, Arc::clone(&network))) as Arc<dyn Transport>;
         let handle = spawn_node(
@@ -188,5 +197,5 @@ where
     }
 
     let sharded = ShardedNodeService::new(shard_count, group_ids, services);
-    (sharded, handles)
+    Ok((sharded, handles))
 }

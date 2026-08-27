@@ -529,7 +529,9 @@ impl<M: StateMachine> CraftCluster<M> {
 
     /// Stop the node: shut the runtime down and abort all background tasks.
     pub fn shutdown(&self) {
-        self.handle.shutdown();
+        for handle in &self.group_handles {
+            handle.shutdown();
+        }
         for task in self.tasks.lock().unwrap().drain(..) {
             task.abort();
         }

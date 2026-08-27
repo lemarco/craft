@@ -21,8 +21,8 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
   helpers; single-group clusters unchanged.
 - **`CraftClusterBuilder` multi-Raft** — `raft_groups`, `raft_machines`,
   `shard_count`; `CraftCluster::group_handles()`.
-- **`ReadIndexConfirm { route_key }`** — group-aware follower reads in
-  multi-Raft setups.
+- **`CraftClusterBuilder::data_dir`** — per-group `group-<id>.redb` persistence via
+  `GroupRedbLayout`.
 
 - **Lease reads** ([ADR 005](docs/decisions/005-read-consistency.md)) — the
   leader serves `query` locally, with no ReadIndex round-trip, while it holds a
