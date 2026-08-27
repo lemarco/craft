@@ -83,6 +83,7 @@ impl Cluster {
             election_timeout_max: 10,
             heartbeat_interval: 1,
             seed,
+            ..Default::default()
         };
         let membership = Membership {
             voters: voters.iter().map(|n| NodeId(*n)).collect(),
