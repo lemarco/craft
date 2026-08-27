@@ -96,7 +96,14 @@ without a global transaction manager — document as explicit non-goal.
 
 - Saga journal in group 0 metadata vs Redis-only — affects restart without Redis.
 - Whether compensation runs on **same shard** as forward step (key affinity).
-- Interaction with dynamic catalog expansion mid-saga (catalog version pin).
+
+**Resolved (Tier 2 tails):**
+
+- Dynamic catalog mid-saga: [`run_keyed_saga`](../../crates/craft/src/cluster.rs) pins
+  `catalog_version`; [`run_saga`](../../crates/craft-client/src/saga.rs) rejects steps when
+  the live generation changes.
+- Idempotent replay: journal [`load`](../../crates/craft-client/src/saga.rs) + completed
+  phase short-circuit in `run_saga`.
 
 ## Related
 

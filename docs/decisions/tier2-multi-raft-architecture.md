@@ -68,8 +68,8 @@ Leader (group 0)
   runtime on group 0 (same boundary as `/cluster/join` membership).
 - Facade API: `CraftCluster::add_raft_groups(count)` (leader-only, redirects
   followers via wire RPC).
-- `GET /introspect/raft-groups` exposes live `catalog_size` from the in-memory
-  catalog mutex; `catalog_version` / pending expansion deferred.
+- `GET /introspect/raft-groups` exposes live `catalog_size` and monotonic
+  `catalog_version` (starts at `1`, bumps on catalog add) from the in-memory catalog.
 
 **Safety:**
 
@@ -103,10 +103,10 @@ Pure API (Phase 1):
 
 **Migration from Tier 1 modulus router:**
 
-- New clusters: builder defaults to `StableShardRouter` once Phase 3 lands.
-- Existing clusters: one-time operator flag `stable_shards=true` + explicit
-  `active_count` match; document that switching formulas requires drain/migrate
-  (same as Tier 1 expansion today).
+- New clusters: builder defaults to `StableShardRouter`.
+- Existing clusters: [`CraftCluster::switch_to_stable_shards`](../../crates/craft/src/cluster.rs)
+  performs a one-time modulus → stable switch at the current active count
+  (operator must drain keyed clients first — hash formulas differ).
 
 **Relation to catalog expansion:** orthogonal — catalog adds groups (rendezvous
 churn); stable activation adds virtual slots without remapping within a fixed

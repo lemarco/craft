@@ -640,9 +640,11 @@ async fn add_raft_groups_expands_catalog_without_restart() {
 
     let leader = cluster_leader(&clusters).await;
     assert_eq!(leader.raft_groups(), 2);
+    assert_eq!(leader.catalog_version(), 1);
 
     let new_groups = leader.add_raft_groups(1).await.expect("add raft group");
     assert_eq!(new_groups, vec![2]);
+    assert_eq!(leader.catalog_version(), 2);
 
     for _ in 0..40 {
         advance(TICK_PERIOD).await;
@@ -681,4 +683,106 @@ async fn add_raft_groups_expands_catalog_without_restart() {
     for cluster in &clusters {
         cluster.shutdown();
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn switch_to_stable_shards_from_modulus() {
+    use craft::client::RemoteClient;
+    use craft::core::ShardRoutingKind;
+    use craft_test_support::{KvCommand, KvMachine, TICK_PERIOD, fast_raft_config_with_seed};
+
+    let net = LocalNetwork::new();
+    let node_id = NodeId(1);
+    let cluster = CraftCluster::builder(node_id, KvMachine::default())
+        .members([node_id])
+        .raft_config(fast_raft_config_with_seed(12))
+        .tick_period(TICK_PERIOD)
+        .shard_count(64)
+        .modulus_shards()
+        .raft_machines([KvMachine::default(), KvMachine::default()])
+        .start_local(&net)
+        .await;
+
+    wait_for_group_leaders(&cluster).await;
+    assert_eq!(cluster.shard_routing(), ShardRoutingKind::Modulus);
+
+    let plan = cluster
+        .switch_to_stable_shards()
+        .expect("switch routing mode");
+    assert_eq!(plan.from, ShardRoutingKind::Modulus);
+    assert_eq!(plan.to, ShardRoutingKind::StableVirtual);
+    assert_eq!(plan.active_count, 64);
+    assert_eq!(cluster.shard_routing(), ShardRoutingKind::StableVirtual);
+    assert!(cluster.switch_to_stable_shards().is_err());
+
+    let cmd = craft::proto::encode(&KvCommand::Set {
+        key: "k".into(),
+        value: "v".into(),
+    })
+    .unwrap();
+    let resp = send_client_request(
+        &*Arc::new(net.clone()),
+        node_id,
+        &ClientRequest::ProposeKeyed {
+            key: b"route-a".to_vec(),
+            command: cmd,
+        },
+    )
+    .await
+    .expect("propose after switch");
+    assert!(matches!(resp, ClientResponse::Ok(_)));
+    let _client = RemoteClient::new(Arc::new(net.clone()), [node_id]);
+
+    cluster.shutdown();
+}
+
+#[tokio::test(start_paused = true)]
+async fn switch_to_stable_shards_from_modulus() {
+    use craft::client::RemoteClient;
+    use craft::core::ShardRoutingKind;
+    use craft_test_support::{KvCommand, KvMachine, TICK_PERIOD, fast_raft_config_with_seed};
+
+    let net = LocalNetwork::new();
+    let node_id = NodeId(1);
+    let cluster = CraftCluster::builder(node_id, KvMachine::default())
+        .members([node_id])
+        .raft_config(fast_raft_config_with_seed(12))
+        .tick_period(TICK_PERIOD)
+        .shard_count(64)
+        .modulus_shards()
+        .raft_machines([KvMachine::default(), KvMachine::default()])
+        .start_local(&net)
+        .await;
+
+    wait_for_group_leaders(&cluster).await;
+    assert_eq!(cluster.shard_routing(), ShardRoutingKind::Modulus);
+
+    let plan = cluster
+        .switch_to_stable_shards()
+        .expect("switch routing mode");
+    assert_eq!(plan.from, ShardRoutingKind::Modulus);
+    assert_eq!(plan.to, ShardRoutingKind::StableVirtual);
+    assert_eq!(plan.active_count, 64);
+    assert_eq!(cluster.shard_routing(), ShardRoutingKind::StableVirtual);
+    assert!(cluster.switch_to_stable_shards().is_err());
+
+    let cmd = craft::proto::encode(&KvCommand::Set {
+        key: "k".into(),
+        value: "v".into(),
+    })
+    .unwrap();
+    let resp = send_client_request(
+        &*Arc::new(net.clone()),
+        node_id,
+        &ClientRequest::ProposeKeyed {
+            key: b"route-a".to_vec(),
+            command: cmd,
+        },
+    )
+    .await
+    .expect("propose after switch");
+    assert!(matches!(resp, ClientResponse::Ok(_)));
+    let _client = RemoteClient::new(Arc::new(net.clone()), [node_id]);
+
+    cluster.shutdown();
 }

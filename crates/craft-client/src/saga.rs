@@ -583,4 +583,80 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, SagaError::CompensationFailed { .. }));
     }
+
+    #[tokio::test]
+    async fn saga_rejects_catalog_version_change() {
+        let script = Arc::new(SagaScript {
+            forward_ok: 1,
+            compensate_ok: 0,
+            forward_calls: Arc::new(AtomicU32::new(0)),
+            compensate_calls: Arc::new(AtomicU32::new(0)),
+        });
+        let client = client(Arc::clone(&script));
+        let journal = InMemorySagaJournal::default();
+        let live = Arc::new(Mutex::new(2u32));
+        let err = run_saga(
+            &client,
+            &SagaPlan {
+                saga_id: b"transfer-2".to_vec(),
+                steps: vec![SagaStep {
+                    key: b"shard-a".to_vec(),
+                    command: vec![1],
+                    compensate: vec![0xFF, 1],
+                }],
+            },
+            RunSagaOpts {
+                journal: Some(&journal),
+                catalog_version: Some(1),
+                catalog_version_live: Some(live),
+                ..RunSagaOpts::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            SagaError::CatalogVersionChanged {
+                pinned: 1,
+                current: 2
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn saga_is_idempotent_when_journal_completed() {
+        let script = Arc::new(SagaScript {
+            forward_ok: 0,
+            compensate_ok: 0,
+            forward_calls: Arc::new(AtomicU32::new(0)),
+            compensate_calls: Arc::new(AtomicU32::new(0)),
+        });
+        let client = client(Arc::clone(&script));
+        let journal = InMemorySagaJournal::default();
+        journal
+            .on_started(b"done", 1, Some(1))
+            .await
+            .expect("seed");
+        journal.on_completed(b"done").await.expect("seed complete");
+
+        let outcome = run_saga(
+            &client,
+            &SagaPlan {
+                saga_id: b"done".to_vec(),
+                steps: vec![SagaStep {
+                    key: b"k".to_vec(),
+                    command: vec![1],
+                    compensate: vec![0xFF],
+                }],
+            },
+            RunSagaOpts {
+                journal: Some(&journal),
+                ..RunSagaOpts::default()
+            },
+        )
+        .await
+        .expect("idempotent replay");
+        assert!(matches!(outcome, SagaOutcome::Completed(_)));
+        assert_eq!(script.forward_calls.load(Ordering::Relaxed), 0);
+    }
 }

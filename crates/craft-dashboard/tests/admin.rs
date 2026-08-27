@@ -59,6 +59,7 @@ impl Observer for Fake {
                 shard_count: 64,
                 shard_routing: "stable_virtual".into(),
                 catalog_size: 2,
+                catalog_version: 1,
                 replication_factor: 3,
                 learner_factor: 1,
                 hosted_groups: vec![0, 1],
@@ -260,7 +261,11 @@ async fn introspection_routes_return_json() {
 
     let (status, body) = get(addr, "/introspect/raft-groups").await;
     assert_eq!(status, 200);
-    assert!(body.contains("\"shard_count\":64") && body.contains("\"catalog_size\":2"));
+    assert!(
+        body.contains("\"shard_count\":64")
+            && body.contains("\"catalog_size\":2")
+            && body.contains("\"catalog_version\":1")
+    );
     assert!(body.contains("\"shard_routing\":\"stable_virtual\""));
 
     let (status, body) = get(addr, "/introspect/actors").await;

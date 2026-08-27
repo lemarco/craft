@@ -117,7 +117,7 @@ async fn cross_shard_saga_completes_two_groups() {
         &two_shard_plan(key_a.clone(), key_b.clone()),
         RunSagaOpts {
             journal: Some(&journal),
-            catalog_version: Some(leader.catalog_len()),
+            catalog_version: Some(leader.catalog_version()),
             ..RunSagaOpts::default()
         },
     )
@@ -229,6 +229,70 @@ async fn cross_shard_saga_compensates_when_second_forward_fails() {
     };
     let val: KvResponse = craft::proto::decode(&bytes).unwrap();
     assert_eq!(val, KvResponse::Value(None));
+
+    for cluster in &clusters {
+        cluster.shutdown();
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn cross_shard_saga_resume_completes_second_step() {
+    let (net, clusters) = spawn_two_group_cluster().await;
+    wait_for_each_group_cluster_leader(&clusters, 2).await;
+    let leader = await_craft_leader(&clusters).await;
+
+    let groups = [craft::core::RaftGroupId(0), craft::core::RaftGroupId(1)];
+    let (key_a, key_b) = find_keys_for_two_groups(64, &groups);
+    let plan = two_shard_plan(key_a.clone(), key_b.clone());
+
+    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
+    let journal = StoreSagaJournal::new(Arc::clone(&store));
+    journal
+        .on_started(&plan.saga_id, plan.steps.len(), Some(leader.catalog_version()))
+        .await
+        .expect("seed journal");
+    journal
+        .on_step_committed(&plan.saga_id, 0)
+        .await
+        .expect("seed first step");
+
+    let client = RemoteClient::new(Arc::new(net.clone()), [leader.node_id()]);
+    let outcome = leader
+        .resume_keyed_saga(&client, &plan, &journal)
+        .await
+        .expect("resume completes");
+    assert!(matches!(outcome, SagaOutcome::Completed(_)));
+    assert!(leader.metrics().render().contains("craft_saga_completed_total"));
+
+    for cluster in &clusters {
+        cluster.shutdown();
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn run_keyed_saga_is_idempotent_when_journal_completed() {
+    let (net, clusters) = spawn_two_group_cluster().await;
+    wait_for_each_group_cluster_leader(&clusters, 2).await;
+    let leader = await_craft_leader(&clusters).await;
+
+    let groups = [craft::core::RaftGroupId(0), craft::core::RaftGroupId(1)];
+    let (key_a, key_b) = find_keys_for_two_groups(64, &groups);
+    let plan = two_shard_plan(key_a, key_b);
+
+    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
+    let journal = StoreSagaJournal::new(Arc::clone(&store));
+    journal
+        .on_started(&plan.saga_id, plan.steps.len(), Some(leader.catalog_version()))
+        .await
+        .expect("seed");
+    journal.on_completed(&plan.saga_id).await.expect("seed complete");
+
+    let client = RemoteClient::new(Arc::new(net.clone()), [leader.node_id()]);
+    let outcome = leader
+        .run_keyed_saga(&client, &plan, &journal)
+        .await
+        .expect("idempotent replay");
+    assert!(matches!(outcome, SagaOutcome::Completed(_)));
 
     for cluster in &clusters {
         cluster.shutdown();
