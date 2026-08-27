@@ -85,7 +85,7 @@ Properties:
 | `NodeStatus.reachable`, `ClusterState::reachable_nodes`, `ClusterFacts` wiring | **Landed** |
 | Placement still targets committed voters (no behavior change) | **Landed (intentional)** |
 | Supervisor consuming `reachable_nodes()` to migrate/respawn a crashed host's workers | **Landed** |
-| Tuning the detection window / hysteresis under real network jitter | **Deferred** |
+| Tuning the detection window / hysteresis under real network jitter | **Landed (Tier 2)** — `ReachabilityConfig` + `CraftClusterBuilder::reachability()`; ack-window hysteresis + optional phi-accrual (`FailureDetectorKind::PhiAccrual`); `reachable_now()` on every leader tick |
 
 The crash-driven reconcile reads `reachable_nodes()` and diffs it against
 committed membership to find crashed voters, then the leader's

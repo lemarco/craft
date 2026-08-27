@@ -64,5 +64,6 @@ pub enum JoinResponse {
 ## Related
 
 - [membership-early.md](membership-early.md)
+- [leave-rpc.md](leave-rpc.md)
 - [discovery.md](discovery.md)
 - [protocol.md](../protocol.md)

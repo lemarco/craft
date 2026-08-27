@@ -17,8 +17,8 @@ User chose **hard reject** (not warn-only or configurable lax mode).
 
 | Field | Source | Rule |
 |-------|--------|------|
-| **`protocol_version`** | `JoinRequest` + optional header `Raft-Protocol-Version` | Must **exactly equal** cluster’s supported protocol version (v1 → `1`) |
-| **`app_version`** | `JoinRequest` (user app semver string) | Must **exactly equal** cluster’s committed app version |
+| **`protocol_version`** | `JoinRequest` + optional header `Raft-Protocol-Version` | Must fall in **`[MIN_COMPATIBLE_PROTOCOL_VERSION, PROTOCOL_VERSION]`** (rolling N/N−1 wire upgrades). Outside the band → `409` |
+| **`app_version`** | `JoinRequest` (user app semver string) | Must **exactly equal** cluster’s committed app version (unchanged — mixed app semver still rejected) |
 
 Cluster app version = semver reported by **existing members** (must be unanimous among live nodes; leader verifies via peer metadata or configured `CRAFT_APP_VERSION` env).
 
@@ -41,11 +41,20 @@ HTTP `409`; no membership change proposed.
 
 ### Rolling upgrades
 
-1. Upgrade all existing nodes to new app version (same semver everywhere).
-2. Deploy new VPS with **matching** `app_version`.
-3. Join.
+**Wire (protocol):** during a rolling deploy, nodes may temporarily run adjacent
+protocol versions. Join and every framed request accept any version in
+`[MIN_COMPATIBLE_PROTOCOL_VERSION .. PROTOCOL_VERSION]` (see
+[`craft_proto::protocol_version_compatible`](../../crates/craft-proto/src/lib.rs)).
+When bumping `PROTOCOL_VERSION`, raise the minimum only after the fleet has
+drained the old wire.
 
-No partial mixed cluster in production.
+**App semver:** still **exact match** required — upgrade all nodes to the same
+`app_version` before adding a joiner with a different state machine build.
+
+1. Upgrade existing nodes to the new **app** version (same semver everywhere).
+2. Roll nodes one at a time; adjacent **protocol** versions may coexist.
+3. Deploy new VPS with matching `app_version` and a compatible `protocol_version`.
+4. Join.
 
 ### Development
 

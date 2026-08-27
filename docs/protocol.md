@@ -102,7 +102,7 @@ Content-Type: application/x-postcard
 
 **Requires** target node started with `--allow-leave`. The leader applies a **joint-consensus membership change** removing `LeaveRequest.node_id` from group 0 ([per-group-raft-membership](decisions/per-group-raft-membership.md)); per-group sync removes the node from shard groups.
 
-Request/response types: `LeaveRequest` / `LeaveResponse` in `craft-proto` (symmetric to join).
+Request/response types: `LeaveRequest` / `LeaveResponse` in `craft-proto` ([leave-rpc](decisions/leave-rpc.md)).
 
 ### Actor delivery (cross-node, v1)
 

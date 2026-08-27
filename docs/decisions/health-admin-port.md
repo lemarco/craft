@@ -46,13 +46,14 @@ GET /ready
 |--------|-----|---------|
 | Builder | `.admin_listen(addr)` | `0.0.0.0:8080` |
 | Environment | `CRAFT_ADMIN_ADDR` | same |
+| Environment | `CRAFT_ADMIN_TLS_CERT` / `CRAFT_ADMIN_TLS_KEY` | optional admin HTTPS (both required) |
 | Disable | `.admin_disabled()` / `CRAFT_ADMIN_ADDR=off` | admin off |
 
 ### Security
 
 - Admin port carries **no consensus / client data** — only health + metrics.
 - Default plain HTTP for LB simplicity; **bind to private interface** or firewall recommended.
-- Optional TLS via `.admin_tls(...)` (server-only) — deferred detail.
+- Optional TLS via `.admin_tls(cert, key)` or `CRAFT_ADMIN_TLS_*` on `craft-node` — **server-only** PEM (no client certs); suitable for bare VPS HTTPS or Ingress TLS termination upstream.
 - No mTLS requirement (unlike `/client/wire`), since no sensitive operations.
 
 ### Out of scope v1

@@ -53,7 +53,9 @@ impl ClusterRef {
 
 **Default:** `std::collections::hash_map::DefaultHasher` over `key` + stable cluster name salt.
 
-Document: remapping when instances added/removed (consistent hash ring behavior lite — minimal v1: modulo; full ring deferred).
+Document: remapping when instances added/removed uses a **consistent hash ring**
+(64 virtual nodes per member, group-name salt); see
+[actor-routing-tier3](actor-routing-tier3.md).
 
 ### Production note
 
