@@ -5,7 +5,7 @@ use std::sync::Arc;
 use craft::CraftCluster;
 use craft::core::{Role, StateMachine};
 
-use crate::harness::TICK_PERIOD;
+use crate::clock::{POLL_STEP, advance};
 
 /// Poll until one cluster in `clusters` reports leader, or panic after ~10s.
 pub async fn await_craft_leader<M>(clusters: &[Arc<CraftCluster<M>>]) -> Arc<CraftCluster<M>>
@@ -18,7 +18,7 @@ where
                 return Arc::clone(c);
             }
         }
-        tokio::time::sleep(TICK_PERIOD).await;
+        advance(POLL_STEP).await;
     }
     panic!("no leader elected");
 }
@@ -32,7 +32,7 @@ where
         if cluster.is_leader().await {
             return;
         }
-        tokio::time::sleep(TICK_PERIOD).await;
+        advance(POLL_STEP).await;
     }
     panic!("cluster failed to elect a leader");
 }
@@ -54,7 +54,7 @@ where
         if leaders == cluster.raft_groups() as usize {
             return;
         }
-        tokio::time::sleep(TICK_PERIOD).await;
+        advance(POLL_STEP).await;
     }
     panic!("not all raft groups elected a leader");
 }
@@ -85,7 +85,7 @@ pub async fn wait_for_each_group_cluster_leader<M>(
         if ready {
             return;
         }
-        tokio::time::sleep(TICK_PERIOD).await;
+        advance(POLL_STEP).await;
     }
     panic!("not all raft groups elected a leader across the cluster");
 }
@@ -110,7 +110,7 @@ pub async fn wait_for_group_leader_on_any<M>(
                 return;
             }
         }
-        tokio::time::sleep(TICK_PERIOD).await;
+        advance(POLL_STEP).await;
     }
     panic!("no leader elected for group {group}");
 }

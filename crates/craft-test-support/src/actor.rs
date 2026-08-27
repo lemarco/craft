@@ -4,7 +4,7 @@ use craft_actor::NodeHandle;
 use craft_actor::craft_core::{Role, StateMachine};
 use craft_actor::craft_proto::NodeId;
 
-use crate::harness::TICK_PERIOD;
+use crate::clock::{POLL_STEP, advance};
 
 /// Poll node statuses until one reports `Leader`, or panic after ~5s.
 pub async fn await_node_leader<M>(handles: &[(NodeId, NodeHandle<M>)]) -> NodeId
@@ -19,7 +19,7 @@ where
                 return *id;
             }
         }
-        tokio::time::sleep(TICK_PERIOD).await;
+        advance(POLL_STEP).await;
     }
     panic!("no leader elected");
 }
@@ -41,7 +41,7 @@ where
         if leaders == handles.len() {
             return;
         }
-        tokio::time::sleep(TICK_PERIOD).await;
+        advance(POLL_STEP).await;
     }
     panic!("not all raft groups elected a leader");
 }
@@ -57,7 +57,7 @@ where
         {
             return;
         }
-        tokio::time::sleep(TICK_PERIOD).await;
+        advance(POLL_STEP).await;
     }
     panic!("node failed to elect a leader");
 }

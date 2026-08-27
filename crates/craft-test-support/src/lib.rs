@@ -4,12 +4,16 @@
 //! of copying them into every `tests/` module.
 
 pub mod actor;
+pub mod clock;
 pub mod facade;
 pub mod harness;
 pub mod kv;
 pub mod shard;
 
 pub use actor::{await_node_leader, wait_for_all_node_leaders, wait_for_node_leader};
+pub use clock::{
+    POLL_STEP, advance, eventually, eventually_async, eventually_async_default, eventually_default,
+};
 pub use facade::{
     await_craft_leader, wait_for_craft_leader, wait_for_craft_stopped,
     wait_for_each_group_cluster_leader, wait_for_group_leader_on_any, wait_for_group_leaders,

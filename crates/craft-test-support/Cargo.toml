@@ -19,4 +19,4 @@ craft-actor.workspace = true
 craft.workspace = true
 serde.workspace = true
 thiserror.workspace = true
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["time", "test-util", "rt", "macros"] }
