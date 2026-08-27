@@ -59,7 +59,7 @@ All low items recorded as intentional deferrals with known risks in [ADR 027](de
 
 | Topic | Stance |
 |-------|--------|
-| Follower reads | Deferred |
+| Follower reads | **Done** — see [ADR 005](decisions/005-read-consistency.md) |
 | Lease reads | Deferred |
 | Gossip discovery | Deferred |
 | Dev-only JSON wire | Likely skip |

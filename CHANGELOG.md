@@ -28,6 +28,9 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
   `shard_count`; `CraftCluster::group_handles()`.
 - **`CraftClusterBuilder::data_dir`** — per-group `group-<id>.redb` persistence via
   `GroupRedbLayout`.
+- **mTLS cert automation** ([ADR 034](docs/decisions/034-cert-automation.md)) —
+  `PemSecurity`, `start_quic_pem`, `CertReloadHandle` (poll + `SIGHUP` hot reload);
+  `examples/step-ca/`, `deploy/kubernetes/cert-manager/`; `CRAFT_CERT_WATCH_SECS`.
 - **Multi-Raft rebalancing control plane** ([ADR 031](docs/decisions/031-write-sharding-multi-raft.md))
   — rendezvous group→host placement (`place_group`, `plan_node_group_rebalance`),
   leader-only `RaftGroupReconciler`, local adopt/retire via
@@ -66,9 +69,11 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 - **Liveness signal, distinct from membership** ([ADR 032](docs/decisions/032-liveness-vs-membership.md))
   — leader-side failure detector from heartbeat acks: `RaftNode::reachable` /
   `reachable_now` in `craft-core`, surfaced as `NodeStatus.reachable` and
-  `ClusterState::reachable_nodes()` (defaults to `live_nodes()`). Placement still
-  targets committed voters; this unblocks crash-driven auto-migrate/respawn
-  (deferred). Foundation for retiring `NodeStatus.voters`-as-"live nodes".
+  `ClusterState::reachable_nodes()` (defaults to `live_nodes()`). **Crash-driven
+  reconcile:** the leader supervisor plans placement against `reachable_nodes()`
+  (auto-worker count tracks reachable nodes; fixed groups cap at the reachable
+  set); the facts-refresher triggers reconcile and directory prune on
+  reachability changes, not only membership commits.
 
 ### Changed
 

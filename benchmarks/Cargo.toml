@@ -16,7 +16,8 @@ craft-storage = { path = "../crates/craft-storage" }
 craft-actor = { path = "../crates/craft-actor" }
 craft-proto = { path = "../crates/craft-proto" }
 craft-sim = { path = "../crates/craft-sim" }
-tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+craft = { path = "../crates/craft" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
@@ -29,6 +30,10 @@ path = "src/lib.rs"
 [[bin]]
 name = "soak"
 path = "src/bin/soak.rs"
+
+[[bin]]
+name = "soak_multi_raft"
+path = "src/bin/soak_multi_raft.rs"
 
 [[bench]]
 name = "append"

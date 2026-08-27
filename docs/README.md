@@ -36,6 +36,10 @@ Architecture and decision records for the distributive Raft actor system.
 | [028](decisions/028-library-and-publishing.md) | Library distribution & publishing | **Accepted** |
 | [029](decisions/029-testing-strategy.md) | Testing strategy (sim-first, containers, E2E) | **Accepted** |
 | [030](decisions/030-architecture-style.md) | Architecture style (pragmatic ports & adapters) | **Accepted** |
+| [034](decisions/034-cert-automation.md) | mTLS automation (step-ca, cert-manager, hot reload) | **Accepted** |
+| [031](decisions/031-write-sharding-multi-raft.md) | Write sharding / multi-Raft | **Accepted** |
+| [032](decisions/032-liveness-vs-membership.md) | Liveness signal vs membership | **Accepted** |
+| [033](decisions/033-per-group-raft-membership.md) | Per-group Raft membership (multi-Raft) | **Accepted** |
 
 ## Architecture
 

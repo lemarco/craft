@@ -17,7 +17,7 @@ see Risk R2 — plus the post-v1 increments marked **Done**).
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| 1 | **Follower reads** | Deferred | Cross-node follower reads (serve `query` from a non-leader after a leader read-index round-trip) still forward to the leader; the lease-read work (#2) covers the primary latency win. Revisit when read load exceeds leader capacity |
+| 1 | **Follower reads** | **Done** | etcd-style linearizable reads on followers: `ReadIndexConfirm` → apply barrier → local `StateMachine::query` ([ADR 005](005-read-consistency.md)). Writes still forward to the leader (ADR 003). Lease reads remain leader-only. |
 | 2 | **Lease reads** | **Done** | Leader lease reads implemented in `craft-core` and the driver fast-path ([ADR 005](005-read-consistency.md)): a valid, quorum-confirmed lease (`election_timeout_min / 2` ticks) serves `query` with no ReadIndex round-trip; conservative lease bound leaves drift headroom |
 | 3 | **Gossip discovery** | **Done** | Bootstrap generalized from a single `JOIN_ADDR` to a resilient **seed set** with peer-book gossip, plus DNS-based discovery (`craft::discovery`) for orchestrated environments ([ADR 007](007-discovery.md)) |
 | 4 | **Dev-only JSON wire** | **Done** | Build-time `craft-proto/json-wire` feature swaps the wire codec from `postcard` to human-readable JSON for debugging (`WIRE_CODEC` reports the active format). Never for production |
@@ -69,7 +69,7 @@ Deep introspection/tracing is costlier than BEAM-native ([ADR 026](026-observabi
 
 Per-node and per-client certs, manual rotation ([ADR 006](006-security.md), [ADR 024](024-cert-provisioning.md)).
 
-- **Mitigation:** cert script + docs; ACME/step-ca integration is future work.
+- **Mitigation:** cert script + docs; **hot reload + step-ca / cert-manager examples** ([ADR 034](034-cert-automation.md)).
 
 ---
 

@@ -32,7 +32,7 @@
 
 ### What works (v0.1)
 
-- Pure Raft FSM (`craft-core`) — election, replication, joint-consensus membership, snapshots, ReadIndex + lease reads
+- Pure Raft FSM (`craft-core`) — election, replication, joint-consensus membership, snapshots, ReadIndex + lease reads + **follower reads**
 - HTTP/3 / QUIC + mTLS between nodes (`craft-net`)
 - Durable log via redb (`craft-storage`)
 - Cross-node actors, auto-spawn on join, Redis actor state (optional)
@@ -46,10 +46,9 @@
 
 From [ADR 027](docs/decisions/027-future-work-and-risks.md) and [backlog post-v1](docs/backlog.md):
 
-1. **Follower reads** — reads still forward to leader; lease reads cover the main latency win
-2. **Multi-Raft runtime** — routing foundation in `craft-core::shard`; N Raft groups not wired end-to-end
-3. **Worker migration on node failure** — reachability signal exists; respawn/migrate logic deferred
-4. **Production hardening** — real-world soak, fuzzing, docs.rs publish, crates.io release (tooling ready in [docs/releasing.md](docs/releasing.md))
+1. **Cross-node group migration RPC** — multi-Raft rebalancing adopts/retires locally; wire migration between physical nodes remains deferred ([ADR 031](docs/decisions/031-write-sharding-multi-raft.md))
+2. **Worker migration on node failure** — leader supervisor reconciles against `reachable_nodes()`; crashed hosts lose workers and survivors respawn them without a `ConfChange` ([ADR 032](docs/decisions/032-liveness-vs-membership.md))
+3. **Production hardening** — real-world soak, fuzzing, docs.rs publish, crates.io release (tooling ready in [docs/releasing.md](docs/releasing.md))
 
 ---
 
@@ -71,6 +70,7 @@ cargo run -p craft --example actors_cluster
 # Real QUIC + mTLS cluster (needs Docker)
 ./e2e/run.sh
 ./e2e/chaos.sh
+./e2e/cert_renew.sh
 ```
 
 **Read next (in order):**
@@ -155,6 +155,7 @@ cargo run -p craft --example vps_join --features dev-certs  # elastic join
 
 ./e2e/run.sh    # 3-node QUIC/mTLS + failover
 ./e2e/chaos.sh  # network partition + heal
+./e2e/cert_renew.sh  # PEM reissue + hot reload (SIGHUP / poll)
 
 cargo bench --manifest-path benchmarks/Cargo.toml
 SOAK_SECS=60 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak
