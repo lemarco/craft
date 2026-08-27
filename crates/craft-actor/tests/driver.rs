@@ -7,104 +7,20 @@
 //! using only the driver's public `tick`/`deliver_*`/`propose`/`query` API and
 //! the [`NetEffect`]s it surfaces.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use craft_actor::craft_core::StateMachine;
-use craft_actor::craft_core::{Config, RaftNode, ReadId, Role};
+use craft_actor::craft_core::{Config, RaftNode, ReadId, Role, StateMachine};
 use craft_actor::craft_proto::{LogEntry, LogIndex, NodeId};
 use craft_actor::craft_storage::{
     HardState, HardStateStore, LogStore, MemoryStorage, Snapshot, SnapshotStore, StorageError,
 };
 use craft_actor::{NetEffect, RaftDriver, ReadOutcome, Step};
-use serde::{Deserialize, Serialize};
+use craft_test_support::{KvCommand, KvQuery, KvResponse, TrackedKv};
 
 // ---------------------------------------------------------------------------
-// Reference KV state machine
+// Reference KV state machine (see `craft-test-support`)
 // ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-enum KvCommand {
-    Set { key: String, value: String },
-    Delete { key: String },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-enum KvQuery {
-    Get { key: String },
-    Len,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-enum KvResponse {
-    Set { previous: Option<String> },
-    Deleted { existed: bool },
-    Value(Option<String>),
-    Len(u64),
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("kv error: {0}")]
-struct KvError(String);
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-struct KvMachine {
-    map: BTreeMap<String, String>,
-    /// Highest applied index, to assert exactly-once ordered application.
-    applied_through: u64,
-}
-
-impl StateMachine for KvMachine {
-    type Command = KvCommand;
-    type Query = KvQuery;
-    type Response = KvResponse;
-    type Error = KvError;
-
-    fn apply(
-        &mut self,
-        index: craft_actor::craft_proto::LogIndex,
-        command: &Self::Command,
-    ) -> Result<Self::Response, Self::Error> {
-        // Commands apply in strictly ascending index order, exactly once. The
-        // indices are not contiguous: the core interleaves non-command entries
-        // (the leader's election no-op, membership entries) that never reach
-        // the state machine.
-        assert!(
-            index.0 > self.applied_through,
-            "commands must apply in strictly ascending index order exactly once \
-             (index {} <= applied_through {})",
-            index.0,
-            self.applied_through
-        );
-        self.applied_through = index.0;
-        Ok(match command {
-            KvCommand::Set { key, value } => {
-                let previous = self.map.insert(key.clone(), value.clone());
-                KvResponse::Set { previous }
-            }
-            KvCommand::Delete { key } => {
-                let existed = self.map.remove(key).is_some();
-                KvResponse::Deleted { existed }
-            }
-        })
-    }
-
-    fn query(&self, query: &Self::Query) -> Result<Self::Response, Self::Error> {
-        Ok(match query {
-            KvQuery::Get { key } => KvResponse::Value(self.map.get(key).cloned()),
-            KvQuery::Len => KvResponse::Len(self.map.len() as u64),
-        })
-    }
-
-    fn snapshot(&self) -> Result<Vec<u8>, Self::Error> {
-        craft_actor::craft_proto::encode(self).map_err(|e| KvError(e.to_string()))
-    }
-
-    fn restore(&mut self, snapshot: &[u8]) -> Result<(), Self::Error> {
-        *self = craft_actor::craft_proto::decode(snapshot).map_err(|e| KvError(e.to_string()))?;
-        Ok(())
-    }
-}
 
 fn config() -> Config {
     Config {
@@ -115,9 +31,9 @@ fn config() -> Config {
     }
 }
 
-fn single_node() -> RaftDriver<KvMachine> {
+fn single_node() -> RaftDriver<TrackedKv> {
     let node = RaftNode::new(NodeId(1), [NodeId(1)], config());
-    RaftDriver::new(node, KvMachine::default())
+    RaftDriver::new(node, TrackedKv::default())
 }
 
 // ---------------------------------------------------------------------------
@@ -273,7 +189,7 @@ fn delete_reports_existence() {
 /// [`NetEffect`]s each driver emits back into their destination drivers until
 /// the network quiesces, exactly like a real transport would (minus the I/O).
 struct Cluster {
-    drivers: HashMap<NodeId, RaftDriver<KvMachine>>,
+    drivers: HashMap<NodeId, RaftDriver<TrackedKv>>,
     ids: Vec<NodeId>,
     /// Reads resolved anywhere in the cluster during routing.
     reads: Vec<ReadOutcome<KvResponse>>,
@@ -295,7 +211,7 @@ impl Cluster {
             .iter()
             .map(|&id| {
                 let node = RaftNode::new(id, members.clone(), config());
-                (id, RaftDriver::new(node, KvMachine::default()))
+                (id, RaftDriver::new(node, TrackedKv::default()))
             })
             .collect();
         Self {
@@ -306,7 +222,7 @@ impl Cluster {
     }
 
     /// Queue every effect in `step`, tagging each with its author `from`.
-    fn enqueue(queue: &mut Vec<Pending>, from: NodeId, step: &Step<KvMachine>) {
+    fn enqueue(queue: &mut Vec<Pending>, from: NodeId, step: &Step<TrackedKv>) {
         for effect in &step.effects {
             queue.push(Pending {
                 from,
@@ -402,7 +318,7 @@ impl Cluster {
     fn applied_count(&self, index: u64) -> usize {
         self.ids
             .iter()
-            .filter(|id| self.drivers[id].machine().applied_through >= index)
+            .filter(|id| self.drivers[id].machine().applied_through() >= index)
             .count()
     }
 }
@@ -571,7 +487,7 @@ fn set(key: &str, value: &str) -> KvCommand {
 fn writes_are_persisted_to_storage_as_they_commit() {
     let storage = SharedStorage::default();
     let node = RaftNode::new(NodeId(1), [NodeId(1)], config());
-    let mut d = RaftDriver::with_storage(node, KvMachine::default(), Box::new(storage.clone()));
+    let mut d = RaftDriver::with_storage(node, TrackedKv::default(), Box::new(storage.clone()));
 
     d.campaign().unwrap();
     d.propose(&set("a", "1")).unwrap();
@@ -597,7 +513,7 @@ fn state_survives_a_restart_and_replays_committed_log() {
 
     // ---- First life: elect, write three commands (a is overwritten). --------
     let node = RaftNode::new(NodeId(1), [NodeId(1)], config());
-    let mut d = RaftDriver::with_storage(node, KvMachine::default(), Box::new(storage.clone()));
+    let mut d = RaftDriver::with_storage(node, TrackedKv::default(), Box::new(storage.clone()));
     d.campaign().unwrap();
     d.propose(&set("a", "1")).unwrap();
     d.propose(&set("b", "2")).unwrap();
@@ -615,7 +531,7 @@ fn state_survives_a_restart_and_replays_committed_log() {
         NodeId(1),
         [NodeId(1)],
         config(),
-        KvMachine::default(),
+        TrackedKv::default(),
         Box::new(storage.clone()),
     )
     .unwrap();
@@ -628,7 +544,7 @@ fn state_survives_a_restart_and_replays_committed_log() {
         "a restarted node starts as a follower"
     );
     assert_eq!(
-        recovered.machine().applied_through,
+        recovered.machine().applied_through(),
         0,
         "the fresh machine has not replayed anything yet"
     );
@@ -673,7 +589,7 @@ fn snapshot_is_persisted_and_restored_across_a_restart() {
 
     // ---- First life: elect, write, then compact through the applied index. --
     let node = RaftNode::new(NodeId(1), [NodeId(1)], config());
-    let mut d = RaftDriver::with_storage(node, KvMachine::default(), Box::new(storage.clone()));
+    let mut d = RaftDriver::with_storage(node, TrackedKv::default(), Box::new(storage.clone()));
     d.campaign().unwrap();
     d.propose(&set("a", "1")).unwrap(); // index 2
     d.propose(&set("b", "2")).unwrap(); // index 3
@@ -707,7 +623,7 @@ fn snapshot_is_persisted_and_restored_across_a_restart() {
         NodeId(1),
         [NodeId(1)],
         config(),
-        KvMachine::default(),
+        TrackedKv::default(),
         Box::new(storage.clone()),
     )
     .unwrap();
@@ -717,7 +633,7 @@ fn snapshot_is_persisted_and_restored_across_a_restart() {
     assert_eq!(recovered.node().last_applied(), LogIndex(4));
     assert_eq!(recovered.node().last_log_index(), LogIndex(5));
     assert_eq!(
-        recovered.machine().applied_through,
+        recovered.machine().applied_through(),
         4,
         "the snapshot restored applied state through its boundary"
     );
@@ -761,12 +677,19 @@ fn a_follower_persists_an_installed_snapshot() {
 
     let storage = SharedStorage::default();
     let node = RaftNode::new(NodeId(2), [NodeId(1), NodeId(2), NodeId(3)], config());
-    let mut d = RaftDriver::with_storage(node, KvMachine::default(), Box::new(storage.clone()));
+    let mut d = RaftDriver::with_storage(node, TrackedKv::default(), Box::new(storage.clone()));
 
     // A leader's snapshot: application state {x: "1"} applied through index 4.
-    let mut origin = KvMachine::default();
-    origin.map.insert("x".into(), "1".into());
-    origin.applied_through = 4;
+    let mut origin = TrackedKv::default();
+    origin
+        .apply(
+            LogIndex(4),
+            &KvCommand::Set {
+                key: "x".into(),
+                value: "1".into(),
+            },
+        )
+        .unwrap();
     let data = craft_actor::craft_proto::encode(&origin).unwrap();
 
     let install = InstallSnapshot {
@@ -787,8 +710,12 @@ fn a_follower_persists_an_installed_snapshot() {
 
     // The state machine was restored from the snapshot bytes.
     assert_eq!(d.node().snapshot_index(), LogIndex(4));
-    assert_eq!(d.machine().applied_through, 4);
-    assert_eq!(d.machine().map.get("x"), Some(&"1".to_string()));
+    assert_eq!(d.machine().applied_through(), 4);
+    let got = d
+        .machine()
+        .query(&KvQuery::Get { key: "x".into() })
+        .unwrap();
+    assert_eq!(got, KvResponse::Value(Some("1".into())));
 
     // ...and the snapshot + purged prefix + advanced term are all durable.
     let stored = storage
@@ -809,7 +736,7 @@ fn recovered_node_persists_a_higher_term_after_restart() {
     let storage = SharedStorage::default();
 
     let node = RaftNode::new(NodeId(1), [NodeId(1)], config());
-    let mut d = RaftDriver::with_storage(node, KvMachine::default(), Box::new(storage.clone()));
+    let mut d = RaftDriver::with_storage(node, TrackedKv::default(), Box::new(storage.clone()));
     d.campaign().unwrap();
     let term_before = d.node().current_term();
     drop(d);
@@ -818,7 +745,7 @@ fn recovered_node_persists_a_higher_term_after_restart() {
         NodeId(1),
         [NodeId(1)],
         config(),
-        KvMachine::default(),
+        TrackedKv::default(),
         Box::new(storage.clone()),
     )
     .unwrap();

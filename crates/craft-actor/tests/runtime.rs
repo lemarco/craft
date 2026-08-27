@@ -6,12 +6,11 @@
 //! proposals/queries both directly via [`NodeHandle`] and over the
 //! `/client/wire` path through the [`NodeService`] request handler.
 
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use craft_actor::craft_core::{Config, RaftNode, Role, StateMachine};
+use craft_actor::craft_core::{RaftNode, Role};
 use craft_actor::craft_net::{
     LocalNetwork, RequestHandler, Transport, send_client_request, send_join_request,
 };
@@ -20,84 +19,13 @@ use craft_actor::craft_proto::{
     LogIndex, NodeId, PROTOCOL_VERSION, RaftRpc, Round, Term,
 };
 use craft_actor::{ClientError, NodeHandle, NodeService, RaftDriver, RuntimeConfig, spawn_node};
-use serde::{Deserialize, Serialize};
-
-// ---------------------------------------------------------------------------
-// Reference KV state machine
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-enum KvCommand {
-    Set { key: String, value: String },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-enum KvQuery {
-    Get { key: String },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-enum KvResponse {
-    Set { previous: Option<String> },
-    Value(Option<String>),
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("kv error")]
-struct KvError;
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-struct KvMachine {
-    map: BTreeMap<String, String>,
-}
-
-impl StateMachine for KvMachine {
-    type Command = KvCommand;
-    type Query = KvQuery;
-    type Response = KvResponse;
-    type Error = KvError;
-
-    fn apply(
-        &mut self,
-        _index: craft_actor::craft_proto::LogIndex,
-        command: &Self::Command,
-    ) -> Result<Self::Response, Self::Error> {
-        match command {
-            KvCommand::Set { key, value } => {
-                let previous = self.map.insert(key.clone(), value.clone());
-                Ok(KvResponse::Set { previous })
-            }
-        }
-    }
-
-    fn query(&self, query: &Self::Query) -> Result<Self::Response, Self::Error> {
-        match query {
-            KvQuery::Get { key } => Ok(KvResponse::Value(self.map.get(key).cloned())),
-        }
-    }
-
-    fn snapshot(&self) -> Result<Vec<u8>, Self::Error> {
-        craft_actor::craft_proto::encode(self).map_err(|_| KvError)
-    }
-
-    fn restore(&mut self, snapshot: &[u8]) -> Result<(), Self::Error> {
-        *self = craft_actor::craft_proto::decode(snapshot).map_err(|_| KvError)?;
-        Ok(())
-    }
-}
-
-fn config() -> Config {
-    Config {
-        election_timeout_min: 8,
-        election_timeout_max: 16,
-        heartbeat_interval: 2,
-        seed: 7,
-    }
-}
+use craft_test_support::{
+    Kv, KvCommand, KvQuery, KvResponse, TICK_PERIOD, fast_raft_config_with_seed,
+};
 
 /// A running cluster of async node runtimes wired over one `LocalNetwork`.
 struct Cluster {
-    handles: HashMap<NodeId, NodeHandle<KvMachine>>,
+    handles: HashMap<NodeId, NodeHandle<Kv>>,
     ids: Vec<NodeId>,
     net: LocalNetwork,
 }
@@ -120,14 +48,14 @@ impl Cluster {
     /// Spawn a node runtime for `id` (initial membership `members`) and attach
     /// its request handler to the shared network. Does not add it to `ids`.
     fn spawn_one(&mut self, id: NodeId, members: impl IntoIterator<Item = NodeId>) {
-        let node = RaftNode::new(id, members, config());
-        let driver = RaftDriver::new(node, KvMachine::default());
+        let node = RaftNode::new(id, members, fast_raft_config_with_seed(7));
+        let driver = RaftDriver::new(node, Kv::default());
         let transport: Arc<dyn Transport> = Arc::new(self.net.clone());
         let handle = spawn_node(
             driver,
             Arc::clone(&transport),
             RuntimeConfig {
-                tick_period: Duration::from_millis(5),
+                tick_period: TICK_PERIOD,
                 allow_join: true,
             },
         );
@@ -231,9 +159,10 @@ async fn propose_on_a_follower_reports_not_leader() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn follower_transparently_forwards_client_wire_to_leader() {
-    // ADR 003: a client can hit *any* node. Contact a follower over the wire
-    // and expect the write/read to be proxied to the leader and succeed.
+async fn follower_forwards_writes_and_serves_reads_locally() {
+    // ADR 003: writes hit any node and forward to the leader.
+    // ADR 005: queries on a follower confirm ReadIndex with the leader,
+    // wait for the apply barrier, then serve from local state.
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let cluster = Cluster::start(&ids);
     let leader = cluster.wait_for_leader().await;
@@ -264,13 +193,13 @@ async fn follower_transparently_forwards_client_wire_to_leader() {
     );
     let response = send_client_request(&cluster.net, follower, &query)
         .await
-        .expect("forwarded query");
+        .expect("follower read");
     match response {
         ClientResponse::Ok(bytes) => {
             let decoded: KvResponse = craft_actor::craft_proto::decode(&bytes).unwrap();
             assert_eq!(decoded, KvResponse::Value(Some("follower".into())));
         }
-        other => panic!("expected forwarded Ok, got {other:?}"),
+        other => panic!("expected follower read Ok, got {other:?}"),
     }
 
     cluster.shutdown();

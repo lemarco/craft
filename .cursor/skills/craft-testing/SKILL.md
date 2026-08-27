@@ -39,7 +39,7 @@ let transport: Arc<dyn Transport> = Arc::new(net.clone());
 // spawn_node + net.attach(id, NodeService)
 ```
 
-Reuse KV fixtures from an existing test until `craft-test-support` exists.
+Reuse KV fixtures from [`craft-test-support`](../crates/craft-test-support/src/kv.rs).
 
 ### Sim regression
 

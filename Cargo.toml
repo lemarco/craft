@@ -13,10 +13,11 @@ members = [
     "crates/craft-sim",
     "crates/craft",
     "crates/craft-node",
+    "crates/craft-test-support",
 ]
 # `benchmarks/` is a standalone crate (its own workspace) so criterion never
 # compiles in the fast lane; it path-depends on these crates. See backlog T10.
-exclude = ["benchmarks"]
+exclude = ["benchmarks", "crates/craft-fuzz"]
 
 [workspace.package]
 version = "0.1.0"
@@ -50,6 +51,7 @@ craft-store-redis = { path = "crates/craft-store-redis", version = "0.1.0" }
 craft-dashboard = { path = "crates/craft-dashboard", version = "0.1.0" }
 craft-sim = { path = "crates/craft-sim", version = "0.1.0" }
 craft = { path = "crates/craft", version = "0.1.0" }
+craft-test-support = { path = "crates/craft-test-support", version = "0.1.0" }
 
 # Lints applied across the workspace (ADR 028).
 [workspace.lints.rust]

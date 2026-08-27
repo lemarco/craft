@@ -7,104 +7,12 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use craft::core::{Config, StateMachine};
 use craft::net::tls::ClusterCa;
-use craft::proto::{self, LogIndex};
+use craft::proto::LogIndex;
 use craft::{CraftCluster, NodeId, PeerDirectory, Security};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-
-// --- Reference KV state machine -------------------------------------------
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-enum Cmd {
-    Set { key: String, value: String },
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-enum Qry {
-    Get { key: String },
-}
-
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-enum Resp {
-    Set,
-    Value(Option<String>),
-}
-
-#[derive(Debug)]
-struct KvError;
-impl std::fmt::Display for KvError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("kv error")
-    }
-}
-impl std::error::Error for KvError {}
-
-#[derive(Default)]
-struct Kv {
-    map: BTreeMap<String, String>,
-}
-
-impl StateMachine for Kv {
-    type Command = Cmd;
-    type Query = Qry;
-    type Response = Resp;
-    type Error = KvError;
-
-    fn apply(&mut self, _index: LogIndex, command: &Cmd) -> Result<Resp, KvError> {
-        match command {
-            Cmd::Set { key, value } => {
-                self.map.insert(key.clone(), value.clone());
-                Ok(Resp::Set)
-            }
-        }
-    }
-
-    fn query(&self, query: &Qry) -> Result<Resp, KvError> {
-        match query {
-            Qry::Get { key } => Ok(Resp::Value(self.map.get(key).cloned())),
-        }
-    }
-
-    fn snapshot(&self) -> Result<Vec<u8>, KvError> {
-        proto::encode(&self.map).map_err(|_| KvError)
-    }
-
-    fn restore(&mut self, snapshot: &[u8]) -> Result<(), KvError> {
-        self.map = proto::decode(snapshot).map_err(|_| KvError)?;
-        Ok(())
-    }
-}
-
-// --- Harness --------------------------------------------------------------
-
-fn raft_config() -> Config {
-    Config {
-        election_timeout_min: 5,
-        election_timeout_max: 10,
-        heartbeat_interval: 2,
-        seed: 7,
-    }
-}
-
-/// Grab a currently-free localhost UDP address for a QUIC listener.
-fn free_udp() -> SocketAddr {
-    let sock = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-    sock.local_addr().unwrap()
-}
-
-async fn await_leader(clusters: &[Arc<CraftCluster<Kv>>]) -> Arc<CraftCluster<Kv>> {
-    for _ in 0..1000 {
-        for c in clusters {
-            if c.is_leader().await {
-                return Arc::clone(c);
-            }
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    panic!("no leader elected over QUIC");
-}
+use craft_test_support::{
+    Cmd, Kv, Qry, Resp, TICK_PERIOD, await_craft_leader, fast_raft_config, free_udp,
+};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn quic_cluster_elects_leader_and_replicates() {
@@ -125,15 +33,15 @@ async fn quic_cluster_elects_leader_and_replicates() {
         );
         let cluster = CraftCluster::builder(id, Kv::default())
             .members(ids)
-            .raft_config(raft_config())
-            .tick_period(Duration::from_millis(10))
+            .raft_config(fast_raft_config())
+            .tick_period(TICK_PERIOD)
             .start_quic(security, addrs[i], peers.clone())
             .await
             .expect("start quic node");
         clusters.push(Arc::new(cluster));
     }
 
-    let leader = await_leader(&clusters).await;
+    let leader = await_craft_leader(&clusters).await;
 
     // Write through the leader and read it back linearizably.
     let resp = leader
@@ -144,7 +52,7 @@ async fn quic_cluster_elects_leader_and_replicates() {
         })
         .await
         .expect("propose over quic");
-    assert_eq!(resp, Resp::Set);
+    assert_eq!(resp, Resp::Set { previous: None });
 
     let resp = leader
         .handle()
@@ -178,15 +86,15 @@ async fn a_new_node_dynamically_joins_over_quic() {
         let cluster = CraftCluster::builder(id, Kv::default())
             .members(ids)
             .allow_join(true)
-            .raft_config(raft_config())
-            .tick_period(Duration::from_millis(10))
+            .raft_config(fast_raft_config())
+            .tick_period(TICK_PERIOD)
             .start_quic(security, addrs[i], peers.clone())
             .await
             .expect("start quic node");
         clusters.push(Arc::new(cluster));
     }
 
-    let leader = await_leader(&clusters).await;
+    let leader = await_craft_leader(&clusters).await;
     leader
         .handle()
         .propose(Cmd::Set {
@@ -209,8 +117,8 @@ async fn a_new_node_dynamically_joins_over_quic() {
     let joiner = CraftCluster::builder(joiner_id, Kv::default())
         .members(ids)
         .allow_join(true)
-        .raft_config(raft_config())
-        .tick_period(Duration::from_millis(10))
+        .raft_config(fast_raft_config())
+        .tick_period(TICK_PERIOD)
         .join(NodeId(1), addrs[0])
         .start_quic(security, joiner_addr, seed_only)
         .await
@@ -233,7 +141,7 @@ async fn a_new_node_dynamically_joins_over_quic() {
     assert!(joined, "node 4 did not become a voter and catch up");
 
     // A fresh proposal now replicates to the enlarged cluster, node 4 included.
-    let leader = await_leader(&clusters).await;
+    let leader = await_craft_leader(&clusters).await;
     leader
         .handle()
         .propose(Cmd::Set {

@@ -1,0 +1,22 @@
+[package]
+name = "craft-test-support"
+description = "Shared KV fixtures and cluster harness helpers for craft integration tests."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+craft-proto.workspace = true
+craft-core.workspace = true
+craft-actor.workspace = true
+craft.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio = { version = "1", features = ["time"] }

@@ -1,112 +1,103 @@
 //! Multi-Raft via [`CraftClusterBuilder::raft_machines`] (ADR 031).
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use craft::CraftCluster;
-use craft::core::{Config, RaftGroupId, Role, ShardRouter, StateMachine, place_shard};
-use craft::net::{LocalNetwork, send_client_request};
-use craft::proto::{ClientRequest, ClientResponse, LogIndex, NodeId};
-use serde::{Deserialize, Serialize};
+use craft::core::{RaftGroupId, Role};
+use craft::net::{LocalNetwork, send_client_request, send_group_migrate, send_join_request};
+use craft::proto::{
+    ClientRequest, ClientResponse, GroupMigrateRequest, JoinRequest, JoinResponse, NodeId,
+    PROTOCOL_VERSION,
+};
+use craft_test_support::{
+    KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, await_craft_leader,
+    fast_raft_config_with_seed, find_keys_for_two_groups, wait_for_each_group_cluster_leader,
+    wait_for_group_leader_on_any, wait_for_group_leaders,
+};
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-struct KvMachine {
-    map: BTreeMap<String, String>,
+async fn spawn_three_node_multi_raft_cluster()
+-> (LocalNetwork, [NodeId; 3], Vec<Arc<CraftCluster<KvMachine>>>) {
+    spawn_multi_node_cluster(3, false).await
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-enum KvCommand {
-    Set { key: String, value: String },
+async fn spawn_three_node_multi_raft_cluster_allow_join()
+-> (LocalNetwork, [NodeId; 3], Vec<Arc<CraftCluster<KvMachine>>>) {
+    spawn_multi_node_cluster(3, true).await
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-enum KvQuery {
-    Get { key: String },
-}
-
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-enum KvResponse {
-    Set,
-    Value(Option<String>),
-}
-
-#[derive(Debug)]
-struct KvError;
-impl std::fmt::Display for KvError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("kv error")
-    }
-}
-impl std::error::Error for KvError {}
-
-impl StateMachine for KvMachine {
-    type Command = KvCommand;
-    type Query = KvQuery;
-    type Response = KvResponse;
-    type Error = KvError;
-
-    fn apply(&mut self, _index: LogIndex, command: &KvCommand) -> Result<KvResponse, KvError> {
-        match command {
-            KvCommand::Set { key, value } => {
-                self.map.insert(key.clone(), value.clone());
-                Ok(KvResponse::Set)
-            }
+async fn spawn_multi_node_cluster(
+    node_count: u32,
+    allow_join: bool,
+) -> (LocalNetwork, [NodeId; 3], Vec<Arc<CraftCluster<KvMachine>>>) {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let net = LocalNetwork::new();
+    let shard_count = 64;
+    let mut clusters = Vec::new();
+    for &id in &ids[..node_count as usize] {
+        let mut builder = CraftCluster::builder(id, KvMachine::default())
+            .members(ids)
+            .raft_config(fast_raft_config_with_seed(3))
+            .tick_period(TICK_PERIOD)
+            .shard_count(shard_count)
+            .group_replication_factor(64)
+            .raft_machines([KvMachine::default(), KvMachine::default()]);
+        if allow_join {
+            builder = builder.allow_join(true);
         }
+        let cluster = builder.start_local(&net).await;
+        clusters.push(Arc::new(cluster));
     }
-
-    fn query(&self, query: &KvQuery) -> Result<KvResponse, KvError> {
-        match query {
-            KvQuery::Get { key } => Ok(KvResponse::Value(self.map.get(key).cloned())),
-        }
-    }
-
-    fn snapshot(&self) -> Result<Vec<u8>, KvError> {
-        craft::proto::encode(self).map_err(|_| KvError)
-    }
-
-    fn restore(&mut self, snapshot: &[u8]) -> Result<(), KvError> {
-        *self = craft::proto::decode(snapshot).map_err(|_| KvError)?;
-        Ok(())
-    }
+    (net, ids, clusters)
 }
 
-fn find_keys_for_two_groups(shard_count: u32, groups: &[RaftGroupId]) -> (Vec<u8>, Vec<u8>) {
-    let router = ShardRouter::new(shard_count);
-    let mut by_group: BTreeMap<u32, Vec<u8>> = BTreeMap::new();
-    for i in 0..10_000u32 {
-        let key = format!("route-{i}").into_bytes();
-        let shard = router.shard_for(&key);
-        let Some(group) = place_shard(shard, groups) else {
-            continue;
-        };
-        by_group.entry(group.0).or_insert(key);
-        if by_group.len() >= 2 {
-            break;
-        }
-    }
-    (
-        by_group.get(&groups[0].0).expect("key0").clone(),
-        by_group.get(&groups[1].0).expect("key1").clone(),
-    )
+async fn wait_for_all_group_leaders(clusters: &[Arc<CraftCluster<KvMachine>>]) {
+    let group_count = clusters.first().map(|c| c.raft_groups()).unwrap_or(0);
+    wait_for_each_group_cluster_leader(clusters, group_count).await;
 }
 
-async fn wait_for_group_leaders(cluster: &CraftCluster<KvMachine>) {
+async fn cluster_leader(clusters: &[Arc<CraftCluster<KvMachine>>]) -> Arc<CraftCluster<KvMachine>> {
+    await_craft_leader(clusters).await
+}
+
+async fn propose_group_zero_leave(
+    clusters: &[Arc<CraftCluster<KvMachine>>],
+    joiner: &CraftCluster<KvMachine>,
+    joiner_id: NodeId,
+) {
+    wait_for_group_leader_on_any(clusters, 0, &[joiner]).await;
+
     for _ in 0..500 {
-        let mut leaders = 0usize;
-        for handle in cluster.group_handles() {
-            if let Some(status) = handle.status().await
-                && status.role == Role::Leader
-            {
-                leaders += 1;
+        for cluster in clusters {
+            if try_leave_on(cluster, joiner_id).await {
+                return;
             }
         }
-        if leaders == cluster.raft_groups() as usize {
+        if try_leave_on(joiner, joiner_id).await {
             return;
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::time::sleep(TICK_PERIOD).await;
     }
-    panic!("not all raft groups elected a leader");
+    panic!("group 0 leave propose never succeeded");
+}
+
+async fn try_leave_on(cluster: &CraftCluster<KvMachine>, joiner_id: NodeId) -> bool {
+    let Some(handle) = cluster.group_handle(0) else {
+        return false;
+    };
+    let Some(status) = handle.status().await else {
+        return false;
+    };
+    if status.role != Role::Leader {
+        return false;
+    }
+    let mut voters = status.voters;
+    voters.retain(|id| *id != joiner_id);
+    handle
+        .propose_membership(voters)
+        .await
+        .expect("group 0 leave propose");
+    true
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -119,13 +110,8 @@ async fn builder_hosts_independent_raft_groups() {
 
     let cluster = CraftCluster::builder(node_id, KvMachine::default())
         .members([node_id])
-        .raft_config(Config {
-            election_timeout_min: 5,
-            election_timeout_max: 10,
-            heartbeat_interval: 2,
-            seed: 3,
-        })
-        .tick_period(Duration::from_millis(10))
+        .raft_config(fast_raft_config_with_seed(3))
+        .tick_period(TICK_PERIOD)
         .shard_count(shard_count)
         .raft_machines([KvMachine::default(), KvMachine::default()])
         .start_local(&net)
@@ -209,6 +195,64 @@ async fn builder_hosts_independent_raft_groups() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn follower_serves_keyed_reads_in_multi_raft_cluster() {
+    let (net, ids, clusters) = spawn_three_node_multi_raft_cluster().await;
+    wait_for_all_group_leaders(&clusters).await;
+
+    let leader = cluster_leader(&clusters).await;
+    let follower = ids
+        .into_iter()
+        .find(|id| *id != leader.node_id())
+        .expect("follower node");
+
+    let groups = [RaftGroupId(0), RaftGroupId(1)];
+    let (route_a, _) = find_keys_for_two_groups(64, &groups);
+    let cmd = craft::proto::encode(&KvCommand::Set {
+        key: "k".into(),
+        value: "via-follower-read".into(),
+    })
+    .unwrap();
+    let qry = craft::proto::encode(&KvQuery::Get { key: "k".into() }).unwrap();
+
+    let transport: Arc<dyn craft::net::Transport> = Arc::new(net.clone());
+    let wrote = send_client_request(
+        &*transport,
+        leader.node_id(),
+        &ClientRequest::ProposeKeyed {
+            key: route_a.clone(),
+            command: cmd,
+        },
+    )
+    .await
+    .expect("propose on leader");
+    assert!(matches!(wrote, ClientResponse::Ok(_)));
+
+    let read = send_client_request(
+        &*transport,
+        follower,
+        &ClientRequest::QueryKeyed {
+            key: route_a,
+            query: qry,
+        },
+    )
+    .await
+    .expect("follower keyed read");
+    let ClientResponse::Ok(bytes) = read else {
+        panic!("unexpected follower read response: {read:?}");
+    };
+    let val: KvResponse = craft::proto::decode(&bytes).unwrap();
+    assert_eq!(
+        val,
+        KvResponse::Value(Some("via-follower-read".into())),
+        "follower should serve linearizable read locally after ReadIndex confirm"
+    );
+
+    for c in clusters {
+        c.shutdown();
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn builder_persists_each_raft_group_to_separate_redb_files() {
     let dir = tempfile::tempdir().unwrap();
     let data_dir = dir.path().to_path_buf();
@@ -218,7 +262,7 @@ async fn builder_persists_each_raft_group_to_separate_redb_files() {
     {
         let cluster = CraftCluster::builder(node_id, KvMachine::default())
             .members([node_id])
-            .tick_period(Duration::from_millis(10))
+            .tick_period(TICK_PERIOD)
             .raft_machines([KvMachine::default(), KvMachine::default()])
             .data_dir(&data_dir)
             .start_local(&net)
@@ -233,12 +277,12 @@ async fn builder_persists_each_raft_group_to_separate_redb_files() {
             })
             .await
             .expect("propose on group 0");
-        assert_eq!(resp, KvResponse::Set);
+        assert_eq!(resp, KvResponse::Set { previous: None });
 
         cluster.shutdown();
     }
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
 
     assert!(data_dir.join("group-0.redb").is_file());
     assert!(data_dir.join("group-1.redb").is_file());
@@ -247,4 +291,227 @@ async fn builder_persists_each_raft_group_to_separate_redb_files() {
     let store = layout.open_group(0).unwrap();
     use craft::storage::LogStore;
     assert!(store.last_index().unwrap().0 >= 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn wire_group_migrate_rpc_is_routed() {
+    let net = LocalNetwork::new();
+    let ids = [NodeId(1), NodeId(2)];
+
+    let source = CraftCluster::builder(NodeId(1), KvMachine::default())
+        .members(ids)
+        .raft_config(fast_raft_config_with_seed(3))
+        .tick_period(TICK_PERIOD)
+        .shard_count(64)
+        .raft_machines([KvMachine::default(), KvMachine::default()])
+        .start_local(&net)
+        .await;
+
+    let target = CraftCluster::builder(NodeId(2), KvMachine::default())
+        .members(ids)
+        .raft_config(fast_raft_config_with_seed(3))
+        .tick_period(TICK_PERIOD)
+        .shard_count(64)
+        .raft_machines([KvMachine::default(), KvMachine::default()])
+        .start_local(&net)
+        .await;
+
+    wait_for_group_leaders(&source).await;
+
+    let resp = source.group_handles()[0]
+        .propose(KvCommand::Set {
+            key: "wire".into(),
+            value: "ok".into(),
+        })
+        .await
+        .expect("propose on source group 0");
+    assert_eq!(resp, KvResponse::Set { previous: None });
+
+    let bundle = source.group_handles()[0]
+        .export_migration()
+        .await
+        .expect("export migration bundle");
+
+    let reply = send_group_migrate(
+        &net,
+        NodeId(2),
+        &GroupMigrateRequest {
+            group: 0,
+            from: NodeId(1),
+            bundle,
+        },
+    )
+    .await
+    .expect("group migrate rpc");
+    assert!(reply.adopted, "migrate failed: {:?}", reply.error);
+
+    source.shutdown();
+    target.shutdown();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn join_syncs_non_coordinator_group_membership() {
+    let (net, ids, clusters) = spawn_three_node_multi_raft_cluster_allow_join().await;
+    let (joiner_id, joiner) = join_fourth_node(&net, ids, &clusters).await;
+    wait_for_group_voter(&clusters, 1, joiner_id, true).await;
+    joiner.shutdown();
+    for c in clusters {
+        c.shutdown();
+    }
+}
+
+async fn join_fourth_node(
+    net: &LocalNetwork,
+    ids: [NodeId; 3],
+    clusters: &[Arc<CraftCluster<KvMachine>>],
+) -> (NodeId, CraftCluster<KvMachine>) {
+    wait_for_all_group_leaders(clusters).await;
+    let leader = cluster_leader(clusters).await;
+    let joiner_id = NodeId(4);
+
+    let joiner = CraftCluster::builder(joiner_id, KvMachine::default())
+        .members(ids)
+        .raft_config(fast_raft_config_with_seed(3))
+        .tick_period(TICK_PERIOD)
+        .shard_count(64)
+        .group_replication_factor(64)
+        .raft_machines([KvMachine::default(), KvMachine::default()])
+        .allow_join(true)
+        .start_local(net)
+        .await;
+
+    let request = JoinRequest {
+        protocol_version: PROTOCOL_VERSION,
+        node_id: joiner_id,
+        advertise_addr: "node4.local:7443".to_string(),
+    };
+    let response = send_join_request(net, leader.node_id(), &request)
+        .await
+        .expect("join request");
+    assert!(
+        matches!(response, JoinResponse::Accepted { .. }),
+        "join rejected: {response:?}"
+    );
+    (joiner_id, joiner)
+}
+
+async fn wait_for_group_voter(
+    clusters: &[Arc<CraftCluster<KvMachine>>],
+    group: u32,
+    voter: NodeId,
+    present: bool,
+) {
+    for _ in 0..1000 {
+        let mut active = 0usize;
+        let mut matched = 0usize;
+        for cluster in clusters {
+            let Some(handle) = cluster.group_handle(group) else {
+                continue;
+            };
+            let Some(status) = handle.status().await else {
+                continue;
+            };
+            active += 1;
+            if status.voters.contains(&voter) == present {
+                matched += 1;
+            }
+        }
+        if present {
+            if matched > 0 {
+                return;
+            }
+        } else if active > 0 && matched == active {
+            return;
+        }
+        tokio::time::sleep(TICK_PERIOD).await;
+    }
+    panic!("group {group} voter {voter:?} present={present} did not converge");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn leave_syncs_non_coordinator_group_membership() {
+    let (net, ids, clusters) = spawn_three_node_multi_raft_cluster_allow_join().await;
+    let (joiner_id, joiner) = join_fourth_node(&net, ids, &clusters).await;
+    wait_for_group_voter(&clusters, 1, joiner_id, true).await;
+
+    propose_group_zero_leave(&clusters, &joiner, joiner_id).await;
+
+    joiner.shutdown();
+    wait_for_group_voter(&clusters, 0, joiner_id, false).await;
+    wait_for_group_voter(&clusters, 1, joiner_id, false).await;
+    for c in clusters {
+        c.shutdown();
+    }
+}
+
+/// Partition a follower; keyed traffic on another group still commits, then heal.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn multi_raft_survives_follower_partition() {
+    let (net, ids, clusters) = spawn_three_node_multi_raft_cluster().await;
+    wait_for_all_group_leaders(&clusters).await;
+
+    let leader_cluster = cluster_leader(&clusters).await;
+    let leader_id = leader_cluster.node_id();
+    let follower_id = ids
+        .into_iter()
+        .find(|id| *id != leader_id)
+        .expect("follower");
+    let follower_cluster = clusters
+        .iter()
+        .find(|c| c.node_id() == follower_id)
+        .expect("follower cluster");
+    let follower_handler = follower_cluster.wire_handler();
+
+    let groups = [RaftGroupId(0), RaftGroupId(1)];
+    let (_, route_key) = find_keys_for_two_groups(64, &groups);
+    let cmd = craft::proto::encode(&KvCommand::Set {
+        key: "partition".into(),
+        value: "ok".into(),
+    })
+    .unwrap();
+    let qry = craft::proto::encode(&KvQuery::Get {
+        key: "partition".into(),
+    })
+    .unwrap();
+
+    net.detach(follower_id);
+
+    let transport: Arc<dyn craft::net::Transport> = Arc::new(net.clone());
+    let resp = send_client_request(
+        &*transport,
+        leader_id,
+        &ClientRequest::ProposeKeyed {
+            key: route_key.clone(),
+            command: cmd,
+        },
+    )
+    .await
+    .expect("keyed propose during follower partition");
+    assert!(
+        matches!(resp, ClientResponse::Ok(_)),
+        "partition write failed: {resp:?}"
+    );
+
+    net.attach(follower_id, follower_handler);
+    wait_for_all_group_leaders(&clusters).await;
+
+    let read = send_client_request(
+        &*transport,
+        follower_id,
+        &ClientRequest::QueryKeyed {
+            key: route_key,
+            query: qry,
+        },
+    )
+    .await
+    .expect("follower read after partition heal");
+    let ClientResponse::Ok(bytes) = read else {
+        panic!("unexpected read after heal: {read:?}");
+    };
+    let val: KvResponse = craft::proto::decode(&bytes).unwrap();
+    assert_eq!(val, KvResponse::Value(Some("ok".into())));
+
+    for c in clusters {
+        c.shutdown();
+    }
 }

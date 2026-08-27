@@ -8,78 +8,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use craft::actor::{ConfigCodecError, UserActor};
-use craft::core::{Config, StateMachine};
+use craft::core::Config;
 use craft::net::LocalNetwork;
-use craft::proto::{self, LogIndex};
+use craft::proto;
 use craft::{CraftCluster, NodeId};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use craft_test_support::{Cmd, Kv, Qry, Resp, TICK_PERIOD, fast_raft_config};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-
-// --- Reference KV state machine -------------------------------------------
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-enum Cmd {
-    Set { key: String, value: String },
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-enum Qry {
-    Get { key: String },
-}
-
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-enum Resp {
-    Set,
-    Value(Option<String>),
-}
-
-#[derive(Debug)]
-struct KvError;
-impl std::fmt::Display for KvError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("kv error")
-    }
-}
-impl std::error::Error for KvError {}
-
-#[derive(Default)]
-struct Kv {
-    map: BTreeMap<String, String>,
-}
-
-impl StateMachine for Kv {
-    type Command = Cmd;
-    type Query = Qry;
-    type Response = Resp;
-    type Error = KvError;
-
-    fn apply(&mut self, _index: LogIndex, command: &Cmd) -> Result<Resp, KvError> {
-        match command {
-            Cmd::Set { key, value } => {
-                self.map.insert(key.clone(), value.clone());
-                Ok(Resp::Set)
-            }
-        }
-    }
-
-    fn query(&self, query: &Qry) -> Result<Resp, KvError> {
-        match query {
-            Qry::Get { key } => Ok(Resp::Value(self.map.get(key).cloned())),
-        }
-    }
-
-    fn snapshot(&self) -> Result<Vec<u8>, KvError> {
-        proto::encode(&self.map).map_err(|_| KvError)
-    }
-
-    fn restore(&mut self, snapshot: &[u8]) -> Result<(), KvError> {
-        self.map = proto::decode(snapshot).map_err(|_| KvError)?;
-        Ok(())
-    }
-}
 
 // --- A managed auto-worker ------------------------------------------------
 
@@ -118,15 +54,6 @@ impl UserActor for Worker {
 
 // --- Harness --------------------------------------------------------------
 
-fn raft_config() -> Config {
-    Config {
-        election_timeout_min: 5,
-        election_timeout_max: 10,
-        heartbeat_interval: 2,
-        seed: 7,
-    }
-}
-
 /// Build a 3-node facade cluster on a fresh `LocalNetwork`, managing one
 /// auto-worker group `"w"`.
 async fn spawn_cluster() -> (LocalNetwork, Vec<Arc<CraftCluster<Kv>>>) {
@@ -136,8 +63,8 @@ async fn spawn_cluster() -> (LocalNetwork, Vec<Arc<CraftCluster<Kv>>>) {
     for &id in &ids {
         let cluster = CraftCluster::builder(id, Kv::default())
             .members(ids)
-            .raft_config(raft_config())
-            .tick_period(Duration::from_millis(10))
+            .raft_config(fast_raft_config())
+            .tick_period(TICK_PERIOD)
             .reconcile_period(Duration::from_millis(20))
             .directory_publish_period(Duration::from_millis(20))
             .manage_auto::<Worker>("w", 0)
@@ -160,6 +87,77 @@ where
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     panic!("timed out waiting for: {what}");
+}
+
+/// Async variant of [`eventually`] for conditions that need a fresh await each tick.
+async fn eventually_async<F, Fut>(what: &str, mut cond: F)
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = bool>,
+{
+    for _ in 0..500 {
+        if cond().await {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("timed out waiting for: {what}");
+}
+
+fn reachability_raft_config() -> Config {
+    Config {
+        election_timeout_min: 3,
+        election_timeout_max: 5,
+        heartbeat_interval: 1,
+        seed: 7,
+    }
+}
+
+/// 3-node cluster tuned for fast heartbeat-derived reachability (ADR 032).
+async fn spawn_reachability_cluster() -> (LocalNetwork, Vec<Arc<CraftCluster<Kv>>>) {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let net = LocalNetwork::new();
+    let mut clusters = Vec::new();
+    for &id in &ids {
+        let cluster = CraftCluster::builder(id, Kv::default())
+            .members(ids)
+            .raft_config(reachability_raft_config())
+            .tick_period(Duration::from_millis(5))
+            .refresh_period(Duration::from_millis(15))
+            .reconcile_period(Duration::from_millis(15))
+            .directory_publish_period(Duration::from_millis(20))
+            .manage_auto::<Worker>("w", 0)
+            .start_local(&net)
+            .await;
+        clusters.push(Arc::new(cluster));
+    }
+    (net, clusters)
+}
+
+async fn wait_for_directory_workers(leader: &CraftCluster<Kv>, count: usize) {
+    let directory = leader.directory().clone();
+    eventually(
+        &format!("{count} workers in the leader directory"),
+        move || directory.lookup("w").len() == count,
+    )
+    .await;
+}
+
+async fn pick_follower(clusters: &[Arc<CraftCluster<Kv>>]) -> Arc<CraftCluster<Kv>> {
+    for c in clusters {
+        if !c.is_leader().await {
+            return Arc::clone(c);
+        }
+    }
+    panic!("no follower found");
+}
+
+async fn wait_for_workers_on_every_node(clusters: &[Arc<CraftCluster<Kv>>]) {
+    for c in clusters {
+        let reg = c.registry().clone();
+        let id = c.node_id();
+        eventually(&format!("worker on node {id:?}"), move || reg.contains("w")).await;
+    }
 }
 
 async fn leader(clusters: &[Arc<CraftCluster<Kv>>]) -> Arc<CraftCluster<Kv>> {
@@ -216,7 +214,7 @@ async fn cluster_elects_leader_and_serves_reads_and_writes() {
         })
         .await
         .expect("propose on leader");
-    assert_eq!(resp, Resp::Set);
+    assert_eq!(resp, Resp::Set { previous: None });
 
     let resp = leader
         .handle()
@@ -266,7 +264,7 @@ async fn follower_scale_cluster_forwards_to_leader() {
         let cluster = Arc::new(
             CraftCluster::builder(id, Kv::default())
                 .members(ids)
-                .raft_config(raft_config())
+                .raft_config(fast_raft_config())
                 .tick_period(Duration::from_millis(10))
                 .reconcile_period(Duration::from_millis(20))
                 .directory_publish_period(Duration::from_millis(20))
@@ -314,8 +312,8 @@ async fn admin_endpoints_report_live_state() {
     for &id in &ids {
         let mut builder = CraftCluster::builder(id, Kv::default())
             .members(ids)
-            .raft_config(raft_config())
-            .tick_period(Duration::from_millis(10))
+            .raft_config(fast_raft_config())
+            .tick_period(TICK_PERIOD)
             .reconcile_period(Duration::from_millis(20))
             .directory_publish_period(Duration::from_millis(20))
             .manage_auto::<Worker>("w", 0);
@@ -482,4 +480,104 @@ async fn builder_wires_resource_profile() {
         )
     );
     cluster.shutdown();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn crash_driven_reconcile_reacts_to_reachability_not_membership() {
+    let (net, clusters) = spawn_reachability_cluster().await;
+    wait_for_workers_on_every_node(&clusters).await;
+
+    let leader_node = leader(&clusters).await;
+    leader_node.supervisor().reconcile().await;
+    wait_for_directory_workers(&leader_node, 3).await;
+
+    let victim = pick_follower(&clusters).await.node_id();
+    assert!(net.detach(victim), "victim was attached");
+
+    eventually_async(
+        "leader marks the victim unreachable while it remains a voter",
+        || async {
+            let l = leader(&clusters).await;
+            let Some(status) = l.status().await else {
+                return false;
+            };
+            status.voters.contains(&victim) && !status.reachable.contains(&victim)
+        },
+    )
+    .await;
+
+    eventually_async("supervisor reconciles to two reachable workers", || async {
+        let l = leader(&clusters).await;
+        let report = l.supervisor().reconcile().await;
+        report.is_ok() && report.groups[0].total == 2
+    })
+    .await;
+
+    for c in clusters.iter().filter(|c| c.node_id() != victim) {
+        let reg = c.registry().clone();
+        assert!(
+            reg.contains("w"),
+            "survivor {:?} keeps its worker",
+            c.node_id()
+        );
+    }
+
+    for c in &clusters {
+        c.shutdown();
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn healed_node_gets_auto_worker_respawned_after_partition() {
+    let (net, clusters) = spawn_reachability_cluster().await;
+    wait_for_workers_on_every_node(&clusters).await;
+
+    let leader_node = leader(&clusters).await;
+    leader_node.supervisor().reconcile().await;
+    wait_for_directory_workers(&leader_node, 3).await;
+
+    let healed = pick_follower(&clusters).await;
+    let victim = healed.node_id();
+
+    assert!(net.detach(victim));
+    eventually_async("victim unreachable on leader", || async {
+        let l = leader(&clusters).await;
+        let Some(status) = l.status().await else {
+            return false;
+        };
+        status.voters.contains(&victim) && !status.reachable.contains(&victim)
+    })
+    .await;
+
+    net.attach(victim, healed.wire_handler());
+    eventually_async(
+        "victim reachable again without membership change",
+        || async {
+            let l = leader(&clusters).await;
+            let Some(status) = l.status().await else {
+                return false;
+            };
+            status.voters.contains(&victim) && status.reachable.contains(&victim)
+        },
+    )
+    .await;
+
+    eventually_async(
+        "supervisor reconciles back to three reachable workers",
+        || async {
+            let l = leader(&clusters).await;
+            let report = l.supervisor().reconcile().await;
+            report.is_ok() && report.groups[0].total == 3
+        },
+    )
+    .await;
+
+    assert!(
+        healed.registry().contains("w"),
+        "worker present on the healed node"
+    );
+
+    for c in &clusters {
+        c.shutdown();
+    }
 }

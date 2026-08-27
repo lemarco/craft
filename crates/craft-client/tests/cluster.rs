@@ -6,83 +6,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use craft_actor::craft_core::{Config, RaftNode, Role, StateMachine};
-use craft_actor::craft_proto::{LogIndex, NodeId};
+use craft_actor::craft_core::RaftNode;
+use craft_actor::craft_proto::NodeId;
 use craft_actor::{NodeHandle, NodeService, RaftDriver, RuntimeConfig, spawn_node};
 use craft_client::{Client, RemoteClient, RetryPolicy, TypedClient};
 use craft_net::LocalNetwork;
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use craft_test_support::{Cmd, Kv, Qry, Resp, TICK_PERIOD, await_node_leader, fast_raft_config};
 
-// --- Reference KV state machine -------------------------------------------
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-enum Cmd {
-    Set { key: String, value: String },
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-enum Qry {
-    Get { key: String },
-}
-
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-enum Resp {
-    Set,
-    Value(Option<String>),
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("kv error")]
-struct KvError;
-
-#[derive(Default)]
-struct Kv {
-    map: BTreeMap<String, String>,
-}
-
-impl StateMachine for Kv {
-    type Command = Cmd;
-    type Query = Qry;
-    type Response = Resp;
-    type Error = KvError;
-
-    fn apply(&mut self, _index: LogIndex, command: &Cmd) -> Result<Resp, KvError> {
-        match command {
-            Cmd::Set { key, value } => {
-                self.map.insert(key.clone(), value.clone());
-                Ok(Resp::Set)
-            }
-        }
-    }
-
-    fn query(&self, query: &Qry) -> Result<Resp, KvError> {
-        match query {
-            Qry::Get { key } => Ok(Resp::Value(self.map.get(key).cloned())),
-        }
-    }
-
-    fn snapshot(&self) -> Result<Vec<u8>, KvError> {
-        craft_actor::craft_proto::encode(&self.map).map_err(|_| KvError)
-    }
-
-    fn restore(&mut self, snapshot: &[u8]) -> Result<(), KvError> {
-        self.map = craft_actor::craft_proto::decode(snapshot).map_err(|_| KvError)?;
-        Ok(())
-    }
-}
-
-fn config() -> Config {
-    Config {
-        election_timeout_min: 5,
-        election_timeout_max: 10,
-        heartbeat_interval: 2,
-        seed: 7,
-    }
-}
-
-/// Spawn a 3-node cluster on a fresh `LocalNetwork` and return the network plus
-/// each node's handle.
 fn spawn_cluster() -> (LocalNetwork, Vec<(NodeId, NodeHandle<Kv>)>) {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let net = LocalNetwork::new();
@@ -90,10 +20,10 @@ fn spawn_cluster() -> (LocalNetwork, Vec<(NodeId, NodeHandle<Kv>)>) {
 
     let mut handles = Vec::new();
     for &id in &ids {
-        let node = RaftNode::new(id, ids, config());
+        let node = RaftNode::new(id, ids, fast_raft_config());
         let driver = RaftDriver::new(node, Kv::default());
         let cfg = RuntimeConfig {
-            tick_period: Duration::from_millis(10),
+            tick_period: TICK_PERIOD,
             allow_join: false,
         };
         let handle = spawn_node(driver, Arc::clone(&transport), cfg);
@@ -104,25 +34,10 @@ fn spawn_cluster() -> (LocalNetwork, Vec<(NodeId, NodeHandle<Kv>)>) {
     (net, handles)
 }
 
-/// Poll node statuses until one reports `Leader`, or panic after `~5s`.
-async fn await_leader(handles: &[(NodeId, NodeHandle<Kv>)]) -> NodeId {
-    for _ in 0..500 {
-        for (id, handle) in handles {
-            if let Some(status) = handle.status().await
-                && status.role == Role::Leader
-            {
-                return *id;
-            }
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    panic!("no leader elected");
-}
-
 #[tokio::test]
 async fn typed_client_proposes_and_reads_through_any_node() {
     let (net, handles) = spawn_cluster();
-    let leader = await_leader(&handles).await;
+    let leader = await_node_leader(&handles).await;
 
     // Client contacts all three nodes; forwarding means it need not know which
     // one is the leader.
@@ -136,7 +51,7 @@ async fn typed_client_proposes_and_reads_through_any_node() {
         })
         .await
         .expect("propose");
-    assert_eq!(resp, Resp::Set);
+    assert_eq!(resp, Resp::Set { previous: None });
 
     let resp = client
         .query(&Qry::Get { key: "a".into() })
@@ -155,7 +70,7 @@ async fn typed_client_proposes_and_reads_through_any_node() {
 #[tokio::test]
 async fn client_targeting_only_a_follower_serves_reads_locally() {
     let (net, handles) = spawn_cluster();
-    let leader = await_leader(&handles).await;
+    let leader = await_node_leader(&handles).await;
 
     // Pick a follower as the *only* target: the write must still succeed via
     // transparent server-side forwarding (ADR 003).
@@ -175,7 +90,7 @@ async fn client_targeting_only_a_follower_serves_reads_locally() {
         })
         .await
         .expect("follower forwards write to leader");
-    assert_eq!(resp, Resp::Set);
+    assert_eq!(resp, Resp::Set { previous: None });
 
     let resp = client
         .query(&Qry::Get { key: "k".into() })
@@ -191,7 +106,7 @@ async fn client_targeting_only_a_follower_serves_reads_locally() {
 #[tokio::test]
 async fn client_fails_over_when_the_first_target_is_unreachable() {
     let (net, handles) = spawn_cluster();
-    let _leader = await_leader(&handles).await;
+    let _leader = await_node_leader(&handles).await;
 
     // Detach node 1 from the switch (crash/partition). A client whose first
     // rotation may land on the dead node must still succeed by retrying others.
@@ -212,7 +127,7 @@ async fn client_fails_over_when_the_first_target_is_unreachable() {
     .unwrap();
     let bytes = remote.propose(payload).await.expect("failover write");
     let resp: Resp = craft_actor::craft_proto::decode(&bytes).unwrap();
-    assert_eq!(resp, Resp::Set);
+    assert_eq!(resp, Resp::Set { previous: None });
 
     for (_, h) in &handles {
         h.shutdown();
