@@ -89,6 +89,16 @@ e2e:
     - bash e2e/run.sh
     - bash e2e/chaos.sh
     - bash e2e/cert_renew.sh
+    - CRAFT_LINEARIZABILITY_SKIP_SIM=1 CRAFT_E2E_LINEARIZABILITY=1 bash e2e/linearizability.sh
+
+# Seeded craft-sim linearizability sweep (Jepsen-lite phase 1; read-consistency).
+linearizability-sim:
+  stage: heavy
+  image: rust:latest
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  script:
+    - CRAFT_E2E_LINEARIZABILITY=0 bash e2e/linearizability.sh
 
 # --- Redis-backed ActorStateStore integration tests (Track G, actor-state-redis) ------
 # Runs the `#[ignore]`d testcontainers tests against a real Redis. Scheduled so

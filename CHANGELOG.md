@@ -16,7 +16,17 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ### Added
 
-- **Follower reads** ([read-consistency](docs/decisions/read-consistency.md)) —
+- **Tier 2 production reliability** ([tier2-production-reliability](docs/decisions/tier2-production-reliability.md)) —
+  reachability tuning + phi-accrual detector; rolling wire N/N−1;
+  admin HTTPS; `craft-ops` snapshot backup/restore; `e2e/linearizability.sh`.
+- **Tier 1 multi-Raft advances** ([tier1-multi-raft-advances](docs/decisions/tier1-multi-raft-advances.md)) —
+  per-group learners (`group_learner_factor`), operator shard expansion
+  (`CraftCluster::expand_shard_count`), non-atomic keyed batch propose
+  (`craft_client::propose_keyed_batch`), and `GET /introspect/raft-groups`.
+- **Actor routing Tier 3** ([actor-routing-tier3](docs/decisions/actor-routing-tier3.md)) —
+  consistent-hash ring for keyed actor routing, sticky [`ActorSession`] leases,
+  per-group drain override + `CRAFT_DRAIN_TIMEOUT` / builder wiring,
+  optional `ask_linearizable` and `DirectoryPolicy::ReadYourWrites`.
   etcd-style linearizable reads on followers: `ReadIndexConfirm` /
   `ReadIndexConfirmed`, apply-barrier wait, local `StateMachine::query`.
   Writes still forward to the leader.
@@ -66,7 +76,12 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
   — `POST /raft/v1/actor/stop`: a planned removal on another node now stops that
   node's instance over the wire instead of being silently dropped (scale-down
   previously only took effect on node departure).
-- **Liveness signal, distinct from membership** ([liveness-vs-membership](docs/decisions/liveness-vs-membership.md))
+- **Cluster leave RPC** ([leave-rpc](docs/decisions/leave-rpc.md), ADR 033 follow-up) —
+  `POST /raft/v1/cluster/leave` with `LeaveRequest` / `LeaveResponse`; runtime
+  `allow_leave`, leader joint-consensus remove on group 0, follower forward;
+  `CraftCluster::request_leave` + `CraftCluster::leave()`; `CRAFT_ALLOW_LEAVE` /
+  `CRAFT_GRACEFUL_LEAVE` on `craft-node`. Per-group membership sync unchanged
+  (ADR 033 facts tick).
   — leader-side failure detector from heartbeat acks: `RaftNode::reachable` /
   `reachable_now` in `craft-core`, surfaced as `NodeStatus.reachable` and
   `ClusterState::reachable_nodes()` (defaults to `live_nodes()`). **Crash-driven
