@@ -1,4 +1,4 @@
-//! Integration test: on-disk PEM hot reload over loopback QUIC (ADR 034).
+//! Integration test: on-disk PEM hot reload over loopback QUIC (cert-automation).
 
 use std::path::Path;
 use std::process::Command;

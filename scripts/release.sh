@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# release.sh — cut a synchronized workspace release (ADR 028).
+# release.sh — cut a synchronized workspace release (library-and-publishing).
 #
 # All craft-* crates share one version (`[workspace.package] version`), so a
 # release is: bump that version, refresh the lockfile, run the publish dry-run

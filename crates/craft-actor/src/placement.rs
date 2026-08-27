@@ -1,6 +1,6 @@
 //! Actor control plane: remote spawn + cluster-wide placement (backlog E9,
-//! [ADR 013](../../../docs/decisions/013-cross-node-actors.md),
-//! [ADR 014](../../../docs/decisions/014-one-worker-per-vps.md)).
+//! [cross-node-actors](../../../docs/decisions/cross-node-actors.md),
+//! [one-worker-per-vps](../../../docs/decisions/one-worker-per-vps.md)).
 //!
 //! [`ClusterControl`] places actors across the cluster:
 //!
@@ -11,7 +11,7 @@
 //!   since a node cannot spawn a type it was never told about.
 //! * [`scale_cluster`](ClusterControl::scale_cluster) drives a group to a
 //!   cluster-wide instance count using the **one-worker-per-node** model
-//!   (ADR 014): the pure [`plan_scale`] planner diffs the desired `total`
+//!   (one-worker-per-vps): the pure [`plan_scale`] planner diffs the desired `total`
 //!   against the directory's current placement and the live membership, and
 //!   `scale_cluster` executes the resulting spawns.
 //!
@@ -44,7 +44,7 @@ use crate::supervisor::ClusterState;
 // Placement planner (pure)
 // ---------------------------------------------------------------------------
 
-/// The changes required to bring a group to a target instance count (ADR 014).
+/// The changes required to bring a group to a target instance count (one-worker-per-vps).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ScalePlan {
     /// Nodes that should each spawn one new instance of the group.
@@ -55,7 +55,7 @@ pub struct ScalePlan {
 }
 
 /// Plan the placement to reach `total` instances of a group, **one worker per
-/// node** (ADR 014 production model), given the group's `current` registrations
+/// node** (one-worker-per-vps production model), given the group's `current` registrations
 /// (cluster-wide, from the directory) and the current `live_nodes` (Raft
 /// membership).
 ///
@@ -145,7 +145,7 @@ pub enum RemoteSpawnError {
 /// returns when this node is not (or is no longer) the leader. Distinct from a
 /// planning/placement failure: it is **transient** — leadership is settling or
 /// has moved — so a forwarding caller should re-resolve the leader and retry
-/// rather than surface it (ADR 018).
+/// rather than surface it (supervisor-leader).
 pub const NOT_LEADER_REASON: &str = "not leader";
 
 /// Why a [`scale_cluster`](ClusterControl::scale_cluster) failed (E9).
@@ -163,7 +163,7 @@ pub enum ClusterScaleError {
     Stop(#[from] RemoteError),
 }
 
-/// Why a [`migrate`](ClusterControl::migrate) failed (E12, ADR 013).
+/// Why a [`migrate`](ClusterControl::migrate) failed (E12, cross-node-actors).
 #[derive(Debug, thiserror::Error)]
 pub enum MigrateError {
     /// The instance to migrate is not hosted on this node.
@@ -220,7 +220,7 @@ pub struct ClusterControl {
     transport: Arc<dyn Transport>,
     factories: Mutex<HashMap<ActorTypeId, SpawnFactory>>,
     // Optional leadership/membership view used to leader-gate forwarded scales
-    // and to source authoritative `live_nodes` (ADR 018). `None` in tests /
+    // and to source authoritative `live_nodes` (supervisor-leader). `None` in tests /
     // sim that drive placement directly without a consensus node.
     state: Option<Arc<dyn ClusterState>>,
 }
@@ -246,7 +246,7 @@ impl ClusterControl {
     }
 
     /// Attach a [`ClusterState`] so forwarded scales are leader-gated and source
-    /// their `live_nodes` from this node's own committed voters (ADR 018). The
+    /// their `live_nodes` from this node's own committed voters (supervisor-leader). The
     /// runtime wires the real one; without it, [`handle_scale`](Self::handle_scale)
     /// trusts the requester's view (test/sim behavior).
     #[must_use]
@@ -276,7 +276,7 @@ impl ClusterControl {
             .insert(Self::type_id::<A>(), make_factory::<A>());
     }
 
-    /// Spawn a single `A` named `name` on `node` (ADR 013). Local if `node` is
+    /// Spawn a single `A` named `name` on `node` (cross-node-actors). Local if `node` is
     /// this node, otherwise a [`SpawnRequest`] over `/actor/spawn`.
     ///
     /// # Errors
@@ -289,7 +289,7 @@ impl ClusterControl {
         config: A::Config,
     ) -> Result<ActorId, RemoteSpawnError> {
         if node == self.node_id {
-            // Idempotent (ADR 015/018): a repeat local spawn of an existing
+            // Idempotent (auto-spawn-on-join, supervisor-leader): a repeat local spawn of an existing
             // group is a no-op, so reconciliation can run safely even before
             // the directory reflects the placement.
             match self.registry.spawn::<A>(name, config) {
@@ -323,7 +323,7 @@ impl ClusterControl {
     }
 
     /// Drive group `name` to `total` instances cluster-wide, one worker per node
-    /// (ADR 014). Plans placement with [`plan_scale`] against the directory's
+    /// (one-worker-per-vps). Plans placement with [`plan_scale`] against the directory's
     /// current view and `live_nodes`, executes the spawns (of type `A`), and
     /// applies removals that target this node. Returns the full plan so the
     /// caller / supervisor can enact remote removals (E10).
@@ -403,7 +403,7 @@ impl ClusterControl {
 
     /// Enact the [`ScalePlan`]'s removals: stop the group locally where a removal
     /// targets this node, and send an `/actor/stop` to every *other* node with a
-    /// planned removal (ADR 013/018). One worker per node (ADR 014), so a removal
+    /// planned removal (cross-node-actors, supervisor-leader). One worker per node (one-worker-per-vps), so a removal
     /// on node N means "stop this group on N"; nodes are deduped so at most one
     /// stop is sent per node.
     ///
@@ -445,7 +445,7 @@ impl ClusterControl {
         }
     }
 
-    /// Serve a forwarded [`ScaleRequest`] on the leader (`/actor/scale`, ADR 018).
+    /// Serve a forwarded [`ScaleRequest`] on the leader (`/actor/scale`, supervisor-leader).
     ///
     /// **Leader-gated:** when a [`ClusterState`] is attached
     /// ([`with_cluster_state`](Self::with_cluster_state)), this re-confirms the
@@ -501,9 +501,9 @@ impl ClusterControl {
     }
 
     /// Migrate the locally-hosted instance `from` to `to_node`, transferring
-    /// its state (E12, ADR 013). Captures the instance's migration snapshot,
+    /// its state (E12, cross-node-actors). Captures the instance's migration snapshot,
     /// asks the target to spawn a replacement (of type `A`) and restore it, then
-    /// gracefully drains and stops the source with `drain_timeout` (ADR 022).
+    /// gracefully drains and stops the source with `drain_timeout` (drain-timeout).
     ///
     /// The replacement's generation is bumped past the source's so stale
     /// references are detectable.
@@ -619,7 +619,7 @@ impl ClusterControl {
         let outcome = factory(&self.registry, &request.name, &request.config, &[]);
         match outcome {
             // A fresh spawn, or an idempotent repeat of one already present
-            // (ADR 013 idempotent spawn by name/node/generation), both succeed.
+            // (cross-node-actors idempotent spawn by name/node/generation), both succeed.
             Ok(instance) => SpawnReply {
                 id: Some(ActorId {
                     node: self.node_id,

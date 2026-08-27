@@ -1,5 +1,5 @@
 //! Compile-fail suite for the `#[craft_actor::remote_actor]` attribute (backlog
-//! D3 / T3, ADR 029). Each case in `tests/ui/` must fail to compile with the
+//! D3 / T3, testing-strategy). Each case in `tests/ui/` must fail to compile with the
 //! recorded diagnostic — proving the macro rejects misuse: an unknown option,
 //! and application to something other than an `impl UserActor for T` block.
 //!

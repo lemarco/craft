@@ -1,5 +1,5 @@
 //! JSON snapshot types and the [`Observer`] port the admin server reads from
-//! (ADR 025 readiness, ADR 026 §4 introspection).
+//! (health-admin-port readiness, observability §4 introspection).
 //!
 //! The dashboard crate does not depend on the concrete runtime; instead the
 //! facade/runtime implements [`Observer`], supplying point-in-time snapshots
@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 /// A boxed, `Send` future — object-safe return type for [`Observer`].
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// Readiness snapshot for `GET /ready` (ADR 025). `200` iff
+/// Readiness snapshot for `GET /ready` (health-admin-port). `200` iff
 /// [`is_ready`](Readiness::is_ready).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Readiness {
@@ -24,9 +24,9 @@ pub struct Readiness {
     pub role: String,
     /// Whether the node is a member of the current Raft configuration.
     pub member: bool,
-    /// Whether the node is draining/leaving (ADR 022).
+    /// Whether the node is draining/leaving (drain-timeout).
     pub draining: bool,
-    /// Auto-spawned workers currently hosted (ADR 015).
+    /// Auto-spawned workers currently hosted (auto-spawn-on-join).
     pub workers: Vec<String>,
     /// Human-readable reason when not ready (e.g. `"joining"`).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -52,7 +52,7 @@ pub struct NodeSummary {
     pub member: bool,
 }
 
-/// Cluster-wide view for `GET /introspect/cluster` (ADR 026 §4).
+/// Cluster-wide view for `GET /introspect/cluster` (observability §4).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClusterView {
     /// Current best-known leader.
@@ -65,7 +65,7 @@ pub struct ClusterView {
     pub nodes: Vec<NodeSummary>,
 }
 
-/// One actor's introspection record (ADR 026 §4).
+/// One actor's introspection record (observability §4).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActorView {
     /// Actor identity (registry key / instance id).
@@ -82,16 +82,16 @@ pub struct ActorView {
     pub generation: u32,
 }
 
-/// Per-node view for `GET /introspect/node/{id}` (ADR 026 §4).
+/// Per-node view for `GET /introspect/node/{id}` (observability §4).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeView {
     /// Node id.
     pub id: u64,
     /// Worker pools hosted here.
     pub workers: Vec<String>,
-    /// Logical CPU/parallelism available (ADR 013 resources).
+    /// Logical CPU/parallelism available (cross-node-actors resources).
     pub cpus: u32,
-    /// Whether the external actor-state store is reachable (ADR 021).
+    /// Whether the external actor-state store is reachable (actor-state-redis).
     pub store_healthy: bool,
 }
 
@@ -100,7 +100,7 @@ pub struct NodeView {
 /// Object-safe (boxed futures) so the admin server can hold
 /// `Arc<dyn Observer>` independent of the concrete `StateMachine`.
 pub trait Observer: Send + Sync + 'static {
-    /// Current readiness snapshot (ADR 025).
+    /// Current readiness snapshot (health-admin-port).
     fn readiness(&self) -> BoxFuture<'_, Readiness>;
 
     /// Cluster-wide consensus/membership view.

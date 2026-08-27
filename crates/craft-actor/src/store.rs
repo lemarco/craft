@@ -1,4 +1,4 @@
-//! External state store for stateful actors ([ADR 021](../decisions/021-actor-state-redis.md)).
+//! External state store for stateful actors ([actor-state-redis](../decisions/actor-state-redis.md)).
 //!
 //! craft splits durable state in two:
 //!
@@ -7,7 +7,7 @@
 //! * **Actor workflow state** (session progress, job steps, idempotency keys,
 //!   locks) lives in an *external* store behind [`ActorStateStore`], so it
 //!   survives a VPS crash: the leader respawns the worker elsewhere and it
-//!   reloads its keys (ADR 013, ADR 018). Keeping this out of the Raft log
+//!   reloads its keys (cross-node-actors, supervisor-leader). Keeping this out of the Raft log
 //!   avoids log bloat and the wrong abstraction.
 //!
 //! This module defines the port ([`ActorStateStore`]) plus an in-process
@@ -16,7 +16,7 @@
 //!
 //! The trait uses boxed futures rather than `async fn` in trait position so it
 //! stays object-safe — actors hold an `Arc<dyn ActorStateStore>` and the
-//! concrete backend is chosen at the edge (ADR 010 rationale, matching the
+//! concrete backend is chosen at the edge (wire-transport rationale, matching the
 //! transport port).
 
 use std::collections::HashMap;
@@ -39,7 +39,7 @@ pub enum StoreError {
     Codec(String),
 }
 
-/// A key/value store for stateful-actor workflow data (ADR 021).
+/// A key/value store for stateful-actor workflow data (actor-state-redis).
 ///
 /// Keys are UTF-8 strings (implementations may namespace them); values are
 /// opaque bytes. All methods are async and object-safe so an actor can hold an

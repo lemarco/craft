@@ -10,7 +10,7 @@
 //!   in effect at its boundary.
 //!
 //! These are expressed as the ports [`HardStateStore`], [`LogStore`], and
-//! [`SnapshotStore`] (ADR 030) so the runtime can swap the [`MemoryStorage`]
+//! [`SnapshotStore`] (architecture-style) so the runtime can swap the [`MemoryStorage`]
 //! test double for the durable [`RedbStorage`] adapter without touching the
 //! consensus core.
 

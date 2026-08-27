@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the workspace
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with all
-`craft-*` crates sharing a synchronized version ([ADR 028](docs/decisions/028-library-and-publishing.md)).
+`craft-*` crates sharing a synchronized version ([library-and-publishing](docs/decisions/library-and-publishing.md)).
 
 Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
@@ -12,15 +12,15 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 ### Changed
 
 - **MSRV 1.98** — workspace `rust-version`, Clippy MSRV, CI `msrv` job, and
-  `deploy/Dockerfile` builder image aligned with stable 1.98.0 ([ADR 028](docs/decisions/028-library-and-publishing.md)).
+  `deploy/Dockerfile` builder image aligned with stable 1.98.0 ([library-and-publishing](docs/decisions/library-and-publishing.md)).
 
 ### Added
 
-- **Follower reads** ([ADR 005](docs/decisions/005-read-consistency.md)) —
+- **Follower reads** ([read-consistency](docs/decisions/read-consistency.md)) —
   etcd-style linearizable reads on followers: `ReadIndexConfirm` /
   `ReadIndexConfirmed`, apply-barrier wait, local `StateMachine::query`.
   Writes still forward to the leader.
-- **Multi-Raft runtime wiring** ([ADR 031](docs/decisions/031-write-sharding-multi-raft.md))
+- **Multi-Raft runtime wiring** ([write-sharding-multi-raft](docs/decisions/write-sharding-multi-raft.md))
   — `ShardedNodeService`, `spawn_multi_raft_node`, `GroupTransport`,
   `ProposeKeyed`/`QueryKeyed` wire types, `RemoteClient`/`TypedClient` keyed
   helpers; single-group clusters unchanged.
@@ -28,21 +28,21 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
   `shard_count`; `CraftCluster::group_handles()`.
 - **`CraftClusterBuilder::data_dir`** — per-group `group-<id>.redb` persistence via
   `GroupRedbLayout`.
-- **mTLS cert automation** ([ADR 034](docs/decisions/034-cert-automation.md)) —
+- **mTLS cert automation** ([cert-automation](docs/decisions/cert-automation.md)) —
   `PemSecurity`, `start_quic_pem`, `CertReloadHandle` (poll + `SIGHUP` hot reload);
   `examples/step-ca/`, `deploy/kubernetes/cert-manager/`; `CRAFT_CERT_WATCH_SECS`.
-- **Multi-Raft rebalancing control plane** ([ADR 031](docs/decisions/031-write-sharding-multi-raft.md))
+- **Multi-Raft rebalancing control plane** ([write-sharding-multi-raft](docs/decisions/write-sharding-multi-raft.md))
   — rendezvous group→host placement (`place_group`, `plan_node_group_rebalance`),
   leader-only `RaftGroupReconciler`, local adopt/retire via
   `MultiRaftState::rebalance` on membership change; `CraftEvent::RaftGroupsRebalanced`.
   Cross-node group migration RPC remains deferred.
 
-- **Lease reads** ([ADR 005](docs/decisions/005-read-consistency.md)) — the
+- **Lease reads** ([read-consistency](docs/decisions/read-consistency.md)) — the
   leader serves `query` locally, with no ReadIndex round-trip, while it holds a
   quorum-confirmed leadership lease. `RaftNode::lease_read` in `craft-core`, used
   automatically by the driver's `query` fast path; conservative lease bound
   (`election_timeout_min/2`, surrendered on step-down).
-- **Gossip / seed-set discovery** ([ADR 007](docs/decisions/007-discovery.md)) —
+- **Gossip / seed-set discovery** ([discovery](docs/decisions/discovery.md)) —
   `craft::discovery` (`Seed`, `resolve_dns_seeds`) and
   `CraftClusterBuilder::join_seeds` bootstrap a dynamic join against a resilient
   ordered seed set instead of a single address; DNS resolution maps Kubernetes
@@ -50,7 +50,7 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 - **Dev-only JSON wire** — `craft-proto/json-wire` (forwarded as `craft/json-wire`)
   swaps the wire codec from `postcard` to human-readable JSON for debugging;
   `craft::proto::WIRE_CODEC` reports the active format.
-- **QUIC traffic-priority tuning** ([ADR 027](docs/decisions/027-future-work-and-risks.md)
+- **QUIC traffic-priority tuning** ([future-work-and-risks](docs/decisions/future-work-and-risks.md)
   R2) — `craft_net::TrafficPolicy`/`RateLimiter` add opt-in per-traffic-class
   token-bucket admission control so bulk client/actor traffic cannot starve
   consensus; `CraftClusterBuilder::traffic_policy`.
@@ -58,15 +58,15 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
   image) and `deploy/kubernetes/` (StatefulSet + headless/client Services) wired
   to the `/health` `/ready` admin probes; `craft-node` gains ordinal-derived node
   ids and `CRAFT_JOIN_SEEDS` / `CRAFT_DISCOVERY` / `CRAFT_ALLOW_JOIN` env config.
-- **Multi-Raft routing foundation** ([ADR 031](docs/decisions/031-write-sharding-multi-raft.md))
+- **Multi-Raft routing foundation** ([write-sharding-multi-raft](docs/decisions/write-sharding-multi-raft.md))
   — `craft-core::shard`: `ShardRouter` (stable key→shard hash) and rendezvous
   shard→group placement (`place_shard`/`shard_assignment`) with minimal churn on
   group changes. Full multi-group runtime wiring remains future work.
-- **Remote scale-down stop RPC** ([ADR 018](docs/decisions/018-supervision.md))
+- **Remote scale-down stop RPC** ([supervisor-leader](docs/decisions/supervisor-leader.md))
   — `POST /raft/v1/actor/stop`: a planned removal on another node now stops that
   node's instance over the wire instead of being silently dropped (scale-down
   previously only took effect on node departure).
-- **Liveness signal, distinct from membership** ([ADR 032](docs/decisions/032-liveness-vs-membership.md))
+- **Liveness signal, distinct from membership** ([liveness-vs-membership](docs/decisions/liveness-vs-membership.md))
   — leader-side failure detector from heartbeat acks: `RaftNode::reachable` /
   `reachable_now` in `craft-core`, surfaced as `NodeStatus.reachable` and
   `ClusterState::reachable_nodes()` (defaults to `live_nodes()`). **Crash-driven
@@ -77,7 +77,7 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ### Changed
 
-- **Leader-gated forwarded scale** ([ADR 018](docs/decisions/018-supervision.md))
+- **Leader-gated forwarded scale** ([supervisor-leader](docs/decisions/supervisor-leader.md))
   — `ClusterControl::handle_scale` re-confirms this node is still the leader and
   sources `live_nodes` from its own committed voters (never staler than the
   requester's set), so a node deposed mid-flight cannot double-place against the

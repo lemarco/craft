@@ -19,7 +19,7 @@ workspace = true
 [features]
 default = ["dev-certs"]
 # Self-signed cluster CA + node cert generation (rcgen). On by default for the
-# dev profile (ADR 006); production deployments can disable it and supply certs.
+# dev profile (security); production deployments can disable it and supply certs.
 dev-certs = ["dep:rcgen"]
 
 [dependencies]

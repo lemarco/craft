@@ -1,5 +1,5 @@
 //! `soak` — long-running stability harness over the deterministic simulator
-//! (backlog T10, ADR 029).
+//! (backlog T10, testing-strategy).
 //!
 //! Repeatedly builds fresh clusters with new seeds and drives them hard —
 //! proposing commands while injecting isolations/partitions and healing — for a

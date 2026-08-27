@@ -113,7 +113,7 @@ fn reachability_raft_config() -> Config {
     }
 }
 
-/// 3-node cluster tuned for fast heartbeat-derived reachability (ADR 032).
+/// 3-node cluster tuned for fast heartbeat-derived reachability (liveness-vs-membership).
 async fn spawn_reachability_cluster() -> (LocalNetwork, Vec<Arc<CraftCluster<Kv>>>) {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let net = LocalNetwork::new();
@@ -283,7 +283,7 @@ async fn follower_scale_cluster_forwards_to_leader() {
         .clone();
 
     // Scaling from a *follower* must transparently forward to the leader
-    // (ADR 018), which plans and executes one worker per node.
+    // (supervisor-leader), which plans and executes one worker per node.
     follower
         .scale_cluster::<Worker>("w", 3, 0)
         .await

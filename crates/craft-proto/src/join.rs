@@ -1,4 +1,4 @@
-//! Cluster join handshake wire types over `/cluster/join` (ADR 017, ADR 020).
+//! Cluster join handshake wire types over `/cluster/join` (join-rpc, join-version-skew).
 
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +7,7 @@ use crate::{Membership, NodeId};
 /// A request from a new node asking to join the cluster.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JoinRequest {
-    /// Wire/protocol version of the joining node (ADR 020).
+    /// Wire/protocol version of the joining node (join-version-skew).
     pub protocol_version: u32,
     /// Desired node id.
     pub node_id: NodeId,
@@ -47,7 +47,7 @@ pub struct PeerEntry {
 }
 
 /// A snapshot of a node's known peer addresses, served over `/cluster/peers`
-/// (ADR 007) so a newly joined node — and existing members — can learn how to
+/// (discovery) so a newly joined node — and existing members — can learn how to
 /// reach every peer without static, cluster-wide address configuration. This is
 /// the address-plane counterpart to the Raft-replicated membership (which
 /// carries only [`NodeId`]s, not addresses).
@@ -60,7 +60,7 @@ pub struct PeerBook {
 /// Reason a [`JoinRequest`] was rejected.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum JoinRejection {
-    /// Protocol version mismatch — hard reject (ADR 020).
+    /// Protocol version mismatch — hard reject (join-version-skew).
     VersionSkew {
         /// Version the cluster expects.
         expected: u32,

@@ -21,7 +21,7 @@ real network between separate processes.
   network, asserts the majority re-elects, heals the partition, and asserts the
   whole cluster re-converges on one leader (no split brain). Also an opt-in
   latency scenario via [`pumba`](https://github.com/alexei-led/pumba).
-- `cert_renew.sh` — PEM hot reload (ADR 034): reissues a follower's on-disk
+- `cert_renew.sh` — PEM hot reload (cert-automation): reissues a follower's on-disk
   cert, triggers reload via **SIGHUP** and via **file poll**
   (`CRAFT_CERT_WATCH_SECS`), and asserts the cluster stays healthy without
   process restart.

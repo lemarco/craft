@@ -1,9 +1,9 @@
 //! `craft-store-redis` — Redis implementation of
-//! [`ActorStateStore`] ([ADR 021](../decisions/021-actor-state-redis.md)).
+//! [`ActorStateStore`] ([actor-state-redis](../decisions/actor-state-redis.md)).
 //!
 //! Optional crate for externalizing stateful-actor data (backlog Track G) so it
 //! survives a VPS crash: when the leader respawns a worker on another node it
-//! reloads its keys from Redis (ADR 013, ADR 018). Consensus data stays in the
+//! reloads its keys from Redis (cross-node-actors, supervisor-leader). Consensus data stays in the
 //! Raft [`StateMachine`](craft_actor::craft_core::StateMachine) — Redis holds
 //! only workflow/session/idempotency state.
 //!
@@ -34,7 +34,7 @@
 //! `redis://` and TLS `rediss://` URLs are supported; pass a custom Redis CA
 //! (and optional client cert) via [`RedisTlsConfig`] and
 //! [`RedisStore::connect_with_tls`]. Real Redis behavior is covered by
-//! `testcontainers`-backed integration tests (ADR 029), gated `#[ignore]` so
+//! `testcontainers`-backed integration tests (testing-strategy), gated `#[ignore]` so
 //! they run in the heavy CI lane rather than on every push.
 
 mod tls;

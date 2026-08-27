@@ -13,10 +13,12 @@ use std::time::Duration;
 use craft_actor::craft_core::{RaftNode, Role};
 use craft_actor::craft_net::{
     LocalNetwork, RequestHandler, Transport, send_client_request, send_join_request,
+    send_leave_request,
 };
 use craft_actor::craft_proto::{
-    AppendEntries, ClientRequest, ClientResponse, JoinRejection, JoinRequest, JoinResponse, LogId,
-    LogIndex, NodeId, PROTOCOL_VERSION, RaftRpc, Round, Term,
+    AppendEntries, ClientRequest, ClientResponse, JoinRejection, JoinRequest, JoinResponse,
+    LeaveRejection, LeaveRequest, LeaveResponse, LogId, LogIndex, NodeId, PROTOCOL_VERSION,
+    RaftRpc, Round, Term,
 };
 use craft_actor::{ClientError, NodeHandle, NodeService, RaftDriver, RuntimeConfig, spawn_node};
 use craft_test_support::{
@@ -57,6 +59,7 @@ impl Cluster {
             RuntimeConfig {
                 tick_period: TICK_PERIOD,
                 allow_join: true,
+                allow_leave: true,
             },
         );
         let service: Arc<dyn RequestHandler> =
@@ -160,8 +163,8 @@ async fn propose_on_a_follower_reports_not_leader() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn follower_forwards_writes_and_serves_reads_locally() {
-    // ADR 003: writes hit any node and forward to the leader.
-    // ADR 005: queries on a follower confirm ReadIndex with the leader,
+    // client-routing: writes hit any node and forward to the leader.
+    // read-consistency: queries on a follower confirm ReadIndex with the leader,
     // wait for the apply barrier, then serve from local state.
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let cluster = Cluster::start(&ids);
@@ -186,7 +189,7 @@ async fn follower_forwards_writes_and_serves_reads_locally() {
         other => panic!("expected forwarded Ok, got {other:?}"),
     }
 
-    // Linearizable read through the follower: etcd-style follower read (ADR 005)
+    // Linearizable read through the follower: etcd-style follower read (read-consistency)
     // — confirm ReadIndex with the leader, wait for apply barrier, serve locally.
     let query = ClientRequest::Query(
         craft_actor::craft_proto::encode(&KvQuery::Get { key: "via".into() }).unwrap(),
@@ -346,7 +349,7 @@ async fn client_wire_propose_and_query_round_trip() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_new_node_joins_a_running_cluster() {
-    // E5 (ADR 016/017): a fourth node joins a live 3-node cluster via
+    // E5 (membership-early, join-rpc): a fourth node joins a live 3-node cluster via
     // /cluster/join, the leader runs a joint-consensus membership change, and
     // the joiner catches up as a follower.
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
@@ -427,7 +430,7 @@ async fn a_new_node_joins_a_running_cluster() {
         "expected Duplicate, got {dup:?}"
     );
 
-    // A version-skewed join is hard-rejected (ADR 020).
+    // A version-skewed join is hard-rejected (join-version-skew).
     let skew = JoinRequest {
         protocol_version: PROTOCOL_VERSION + 1,
         node_id: NodeId(5),
@@ -444,6 +447,55 @@ async fn a_new_node_joins_a_running_cluster() {
             }
         ),
         "expected VersionSkew, got {skew_resp:?}"
+    );
+
+    cluster.shutdown();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_node_leaves_a_running_cluster() {
+    let ids = [NodeId(1), NodeId(2), NodeId(3), NodeId(4)];
+    let mut cluster = Cluster::start(&ids[..3]);
+    let leader = cluster.wait_for_leader().await;
+
+    cluster.spawn_one(NodeId(4), ids.iter().copied());
+    cluster.ids.push(NodeId(4));
+    let joiner = NodeId(4);
+    let join_request = JoinRequest {
+        protocol_version: PROTOCOL_VERSION,
+        node_id: joiner,
+        advertise_addr: "node4.local:7443".to_string(),
+    };
+    let join_resp = send_join_request(&cluster.net, leader, &join_request)
+        .await
+        .expect("join");
+    assert!(matches!(join_resp, JoinResponse::Accepted { .. }));
+
+    let leave_request = LeaveRequest {
+        protocol_version: PROTOCOL_VERSION,
+        node_id: joiner,
+    };
+    let leave_resp = send_leave_request(&cluster.net, leader, &leave_request)
+        .await
+        .expect("leave");
+    match leave_resp {
+        LeaveResponse::Accepted { membership, .. } => {
+            assert!(!membership.voters.contains(&joiner));
+        }
+        other => panic!("expected Accepted, got {other:?}"),
+    }
+
+    let dup = send_leave_request(&cluster.net, leader, &leave_request)
+        .await
+        .expect("duplicate leave");
+    assert!(
+        matches!(
+            dup,
+            LeaveResponse::Rejected {
+                reason: LeaveRejection::NotMember
+            }
+        ),
+        "expected NotMember, got {dup:?}"
     );
 
     cluster.shutdown();

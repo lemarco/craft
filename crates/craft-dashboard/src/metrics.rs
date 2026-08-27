@@ -1,4 +1,4 @@
-//! A small, dependency-light Prometheus metrics registry (ADR 026 §2).
+//! A small, dependency-light Prometheus metrics registry (observability §2).
 //!
 //! Supports the three shapes craft needs: monotonic **counters** (request
 //! rates, restarts, leader changes), **gauges** (role, commit index, mailbox

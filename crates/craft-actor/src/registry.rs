@@ -1,11 +1,11 @@
 //! `ActorRegistry` — local actor spawn / pool / scale / stop (backlog E6,
-//! [ADR 012](../../../docs/decisions/012-elastic-cluster.md),
-//! [ADR 014](../../../docs/decisions/014-one-worker-per-vps.md)).
+//! [elastic-cluster](../../../docs/decisions/elastic-cluster.md),
+//! [one-worker-per-vps](../../../docs/decisions/one-worker-per-vps.md)).
 //!
 //! This is the **local** half of the actor fabric: named singletons and pools
 //! of user actors running on the node, with round-robin and keyed message
 //! routing. Cross-node addressing, the cluster directory, and remote
-//! spawn/scale (ADR 013, ADR 019) layer on top of these primitives in later
+//! spawn/scale (cross-node-actors, cluster-routing) layer on top of these primitives in later
 //! increments (E7–E9); the API here is shaped so they can.
 //!
 //! ## Actor model
@@ -21,7 +21,7 @@
 //! external actor framework, keeping the dependency surface small and the whole
 //! thing deterministic and unit-testable.
 //!
-//! ## Production vs development (ADR 014)
+//! ## Production vs development (one-worker-per-vps)
 //!
 //! Production runs **one worker per VPS per name**: [`spawn_pool`] and
 //! [`scale_local`] with a count `> 1` are rejected unless the registry is built
@@ -44,7 +44,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
 /// Default graceful-drain timeout for stopping/migrating an actor instance
-/// ([ADR 022](../../../docs/decisions/022-drain-timeout.md)). Overridable per
+/// ([drain-timeout](../../../docs/decisions/drain-timeout.md)). Overridable per
 /// call; the facade exposes `.drain_timeout(..)` / `CRAFT_DRAIN_TIMEOUT`.
 pub const DEFAULT_DRAIN_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -74,7 +74,7 @@ pub trait UserActor: Send + Sized + 'static {
     type Error: std::error::Error + Send + Sync + 'static;
 
     /// Whether instances carry migratable state that should be snapshotted and
-    /// transferred when their node leaves (ADR 013). Defaults to `false`
+    /// transferred when their node leaves (cross-node-actors). Defaults to `false`
     /// (stateless — the supervisor simply respawns the same count elsewhere).
     const MIGRATABLE: bool = false;
 
@@ -99,7 +99,7 @@ pub trait UserActor: Send + Sized + 'static {
         msg: Self::Message,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send;
 
-    /// Encode this actor's `Config` for a remote spawn (E9, ADR 013
+    /// Encode this actor's `Config` for a remote spawn (E9, cross-node-actors
     /// `/actor/spawn`). The default makes the actor **local-spawn-only**:
     /// `spawn_remote` / `scale_cluster` fail with
     /// [`ConfigCodecError::NotSpawnable`]. Override it (typically with
@@ -125,7 +125,7 @@ pub trait UserActor: Send + Sized + 'static {
 
     /// Capture this actor's migratable state as a byte snapshot, so it can be
     /// transferred to a replacement on another node when this node leaves
-    /// (E12, [ADR 013](../../../docs/decisions/013-cross-node-actors.md)). The
+    /// (E12, [cross-node-actors](../../../docs/decisions/cross-node-actors.md)). The
     /// default is a **stateless** actor: an empty snapshot, meaning the
     /// supervisor simply respawns a fresh instance elsewhere. Stateful actors
     /// (`MIGRATABLE = true`) override this together with
@@ -152,7 +152,7 @@ pub trait UserActor: Send + Sized + 'static {
     }
 
     /// Decode a cross-node wire payload into a message for remote delivery
-    /// (E8, ADR 013 `/actor/deliver`). The default leaves the actor
+    /// (E8, cross-node-actors `/actor/deliver`). The default leaves the actor
     /// **local-only**: a remote `cast` to it fails with
     /// [`MessageDecodeError::NotAddressable`]. Override it (typically with
     /// `craft_proto::decode`) to accept messages sent from other nodes.
@@ -168,7 +168,7 @@ pub trait UserActor: Send + Sized + 'static {
     }
 
     /// Decode a cross-node **ask** into a message carrying a reply port (E8,
-    /// ADR 013/019 `/actor/deliver` with `reply_expected`). Build your ask
+    /// cross-node-actors, cluster-routing `/actor/deliver` with `reply_expected`). Build your ask
     /// message variant, converting the supplied [`WireReplyPort`] into the typed
     /// [`RpcReplyPort<R>`](RpcReplyPort) it expects via
     /// [`WireReplyPort::reply_port`]; whatever the handler replies is
@@ -208,7 +208,7 @@ pub trait UserActor: Send + Sized + 'static {
 /// A port is backed either by an **in-process** channel (local `ask`) or, for a
 /// cross-node `ask` arriving over `/actor/deliver`, by a **wire** channel that
 /// `postcard`-encodes the reply and returns it in the [`DeliverAck`]
-/// (ADR 013/019). A [`WireReplyPort`] is turned into a typed one via
+/// (cross-node-actors, cluster-routing). A [`WireReplyPort`] is turned into a typed one via
 /// [`WireReplyPort::reply_port`] inside [`UserActor::decode_ask`].
 ///
 /// [`DeliverAck`]: craft_proto::DeliverAck
@@ -301,10 +301,10 @@ pub enum SpawnError {
     #[error("actor name `{0}` is already registered")]
     NameExists(String),
     /// A pool count `> 1` was requested in production mode, which allows at most
-    /// one worker per node per name (ADR 014). Enable `--dev-multi-workers` for
+    /// one worker per node per name (one-worker-per-vps). Enable `--dev-multi-workers` for
     /// multiple local instances.
     #[error(
-        "one worker per node in production (ADR 014); count {count} requires --dev-multi-workers"
+        "one worker per node in production (one-worker-per-vps); count {count} requires --dev-multi-workers"
     )]
     MultiWorkerDisabled {
         /// The rejected instance count.
@@ -344,17 +344,17 @@ pub enum ScaleError {
         registered: &'static str,
     },
     /// A count `> 1` was requested in production mode, which allows at most one
-    /// worker per node per name (ADR 014). Enable `--dev-multi-workers` to scale
+    /// worker per node per name (one-worker-per-vps). Enable `--dev-multi-workers` to scale
     /// locally.
     #[error(
-        "one worker per node in production (ADR 014); scaling to {count} requires --dev-multi-workers"
+        "one worker per node in production (one-worker-per-vps); scaling to {count} requires --dev-multi-workers"
     )]
     MultiWorkerDisabled {
         /// The rejected instance count.
         count: usize,
     },
     /// A cluster-wide `total` cannot be placed one-per-node because there are
-    /// fewer live nodes than instances requested (ADR 014, E9).
+    /// fewer live nodes than instances requested (one-worker-per-vps, E9).
     #[error("cannot place {total} instances one-per-node across only {nodes} live node(s)")]
     InsufficientNodes {
         /// The requested cluster-wide total.
@@ -388,14 +388,14 @@ pub enum SendError {
     #[error("actor mailbox is closed")]
     Closed,
     /// The group is draining for stop/migration and rejects new messages
-    /// (E12, [ADR 022](../../../docs/decisions/022-drain-timeout.md)).
+    /// (E12, [drain-timeout](../../../docs/decisions/drain-timeout.md)).
     #[error("actor is draining")]
     Draining,
 }
 
 /// OTP-style supervision policy for an actor instance whose
 /// [`handle`](UserActor::handle) returns an error (E14,
-/// [ADR 026](../../../docs/decisions/026-observability.md) §5).
+/// [observability](../../../docs/decisions/observability.md) §5).
 ///
 /// A handler error is craft's notion of an actor *failure*. The policy decides
 /// what the runtime does with the failing instance; a fresh instance is rebuilt
@@ -420,7 +420,7 @@ pub enum RestartPolicy {
     Always,
 }
 
-/// The outcome of a graceful drain (E12, ADR 022).
+/// The outcome of a graceful drain (E12, drain-timeout).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DrainOutcome {
     /// Every in-flight and queued message finished before the timeout.
@@ -445,7 +445,7 @@ pub enum SnapshotError {
 }
 
 /// A failure capturing or applying a migratable actor's state (E12,
-/// [ADR 013](../../../docs/decisions/013-cross-node-actors.md)).
+/// [cross-node-actors](../../../docs/decisions/cross-node-actors.md)).
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub struct MigrationError(pub String);
@@ -542,7 +542,7 @@ where
     Box::new(move || A::start(config.clone()).ok())
 }
 
-/// Observes actor lifecycle transitions (E14 / ADR 026 Track H) so a telemetry
+/// Observes actor lifecycle transitions (E14 / observability Track H) so a telemetry
 /// layer can surface spawns, stops, restarts, escalations, and per-message
 /// latency as metrics/events **without** the registry depending on it. Install
 /// one with [`ActorRegistry::set_observer`] *before spawning actors* (the facade
@@ -576,7 +576,7 @@ pub trait ActorObserver: Send + Sync {
 type ObserverHook = Arc<Mutex<Option<Arc<dyn ActorObserver>>>>;
 
 /// A point-in-time snapshot of one actor group's runtime counters, for metrics
-/// sampling (ADR 026 §2). Cumulative counters (`messages`, `handle_nanos`) are
+/// sampling (observability §2). Cumulative counters (`messages`, `handle_nanos`) are
 /// monotonic; the sampler derives rates/latency by differencing successive
 /// reads. `mailbox_depth` is instantaneous (queued-but-unhandled messages).
 #[derive(Debug, Clone)]
@@ -613,7 +613,7 @@ struct PoolInner<A: UserActor> {
     /// Group-wide stop signal; flipping it to `true` ends every instance task.
     stop: watch::Sender<bool>,
     /// Set while the group is draining for stop/migration; new sends are
-    /// rejected (E12, ADR 022).
+    /// rejected (E12, drain-timeout).
     draining: AtomicBool,
     /// Cumulative supervised restarts across the group's instances (E14). Held
     /// behind its own `Arc` so instance tasks can bump it without keeping the
@@ -666,7 +666,7 @@ impl<A: UserActor> PoolInner<A> {
         let messages = Arc::clone(&self.messages);
         let handle_nanos = Arc::clone(&self.handle_nanos);
         let queued = Arc::clone(&self.queued);
-        // Bind the observer once (installed before any spawn, ADR 026 Track H),
+        // Bind the observer once (installed before any spawn, observability Track H),
         // so per-message hooks never touch the shared lock.
         let observer = self.observer.lock().unwrap().clone();
         let name = self.name.clone();
@@ -906,7 +906,7 @@ impl<A: UserActor> PoolInner<A> {
 
     /// Gracefully drain every instance: reject new messages, let queued and
     /// in-flight work finish, and force-stop any instance still running when
-    /// `timeout` elapses (E12, ADR 022).
+    /// `timeout` elapses (E12, drain-timeout).
     async fn drain(&self, timeout: Duration) -> DrainOutcome {
         self.draining.store(true, Ordering::SeqCst);
         let drained: Vec<Instance<A>> = std::mem::take(&mut *self.instances.lock().unwrap());
@@ -999,7 +999,7 @@ trait GroupLifecycle: Send + Sync {
     /// Runtime counters `(instances, messages, handle_nanos, mailbox_depth)` for
     /// metrics sampling (Track H).
     fn runtime_stats(&self) -> (usize, u64, u64, i64);
-    /// Gracefully drain and stop the group with `timeout` (E12, ADR 022).
+    /// Gracefully drain and stop the group with `timeout` (E12, drain-timeout).
     fn drain(self: Arc<Self>, timeout: Duration) -> BoxFuture<'static, DrainOutcome>;
     /// Capture a migration snapshot from instance `instance` (E12).
     fn snapshot(
@@ -1136,7 +1136,7 @@ impl<A: UserActor> ActorRef<A> {
         &self.pool.name
     }
 
-    /// How many supervised restarts this actor has undergone (E14, ADR 026 §5).
+    /// How many supervised restarts this actor has undergone (E14, observability §5).
     /// Always `0` for an unsupervised (`RestartPolicy::Never`) actor.
     #[must_use]
     pub fn restart_count(&self) -> u32 {
@@ -1176,7 +1176,7 @@ impl<A: UserActor> PoolRef<A> {
 
     /// Deliver a message to the instance chosen by hashing `key`, so all
     /// messages for the same key reach the same instance (stable within a run;
-    /// true consistent hashing across nodes arrives with E8/ADR 019).
+    /// true consistent hashing across nodes arrives with E8/cluster-routing).
     ///
     /// # Errors
     /// Returns [`SendError`] if the pool has no live instances.
@@ -1253,7 +1253,7 @@ struct GroupEntry {
     wire: Arc<dyn WireIngress>,
 }
 
-/// How the registry places worker instances on this node (ADR 014).
+/// How the registry places worker instances on this node (one-worker-per-vps).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlacementMode {
     /// Production default: at most **one** worker per node per name. Scale out
@@ -1282,7 +1282,7 @@ impl Default for ActorRegistry {
 }
 
 impl ActorRegistry {
-    /// Create a production registry: at most one instance per name (ADR 014).
+    /// Create a production registry: at most one instance per name (one-worker-per-vps).
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -1293,7 +1293,7 @@ impl ActorRegistry {
     }
 
     /// Create a development registry that permits local pools / `scale_local`
-    /// with more than one instance (`--dev-multi-workers`, ADR 014).
+    /// with more than one instance (`--dev-multi-workers`, one-worker-per-vps).
     #[must_use]
     pub fn new_dev() -> Self {
         Self {
@@ -1338,7 +1338,7 @@ impl ActorRegistry {
         self.dev_multi_workers
     }
 
-    /// The registry's placement mode (ADR 014). Production enforces one worker
+    /// The registry's placement mode (one-worker-per-vps). Production enforces one worker
     /// per node per name; development permits multiple local instances.
     #[must_use]
     pub fn placement_mode(&self) -> PlacementMode {
@@ -1381,7 +1381,7 @@ impl ActorRegistry {
     }
 
     /// Spawn a supervised singleton whose handler errors are governed by
-    /// `policy` (E14, ADR 026 §5). On a supervised restart the actor is rebuilt
+    /// `policy` (E14, observability §5). On a supervised restart the actor is rebuilt
     /// with [`UserActor::start`] from `config`, so a supervised `Config` must be
     /// `Clone`. Read the running restart tally via [`ActorRef::restart_count`].
     ///
@@ -1407,7 +1407,7 @@ impl ActorRegistry {
     }
 
     /// Spawn a single named actor and restore migratable state into it from a
-    /// snapshot before it handles any message (E12, ADR 013). Used by the
+    /// snapshot before it handles any message (E12, cross-node-actors). Used by the
     /// `/actor/migrate` target side.
     ///
     /// # Errors
@@ -1523,7 +1523,7 @@ impl ActorRegistry {
 
     /// Gracefully stop and remove the actor group `name`: reject new messages,
     /// let queued and in-flight work finish, and force-stop anything still
-    /// running when `timeout` elapses (E12, ADR 022). Returns whether the drain
+    /// running when `timeout` elapses (E12, drain-timeout). Returns whether the drain
     /// completed or timed out.
     ///
     /// # Errors
@@ -1543,7 +1543,7 @@ impl ActorRegistry {
     }
 
     /// Capture a migration snapshot from instance `instance` of local group
-    /// `name` by asking the live actor (E12, ADR 013). The request is ordered
+    /// `name` by asking the live actor (E12, cross-node-actors). The request is ordered
     /// after any already-queued messages.
     ///
     /// # Errors
@@ -1577,7 +1577,7 @@ impl ActorRegistry {
 
     /// Snapshot every locally-hosted actor instance as an [`ActorRegistration`]
     /// owned by `node_id`, for publication into the cluster directory (E7,
-    /// ADR 013). Generation is `0` (bumped on respawn/migration in E12).
+    /// cross-node-actors). Generation is `0` (bumped on respawn/migration in E12).
     #[must_use]
     pub fn local_registrations(&self, node_id: NodeId) -> Vec<ActorRegistration> {
         let groups = self.groups.lock().unwrap();
@@ -1603,7 +1603,7 @@ impl ActorRegistry {
     }
 
     /// Deliver a cross-node payload to instance `instance` of local group
-    /// `name` (E8, ADR 013). The payload is decoded via the actor's
+    /// `name` (E8, cross-node-actors). The payload is decoded via the actor's
     /// [`UserActor::decode_message`] and enqueued on the target instance's
     /// mailbox. Called by the `/actor/deliver` handler.
     ///
@@ -1630,7 +1630,7 @@ impl ActorRegistry {
 
     /// Deliver a cross-node **ask** to instance `instance` of local group
     /// `name` and return the channel its `postcard`-encoded reply will arrive
-    /// on (E8, ADR 013/019). The payload is decoded via
+    /// on (E8, cross-node-actors, cluster-routing). The payload is decoded via
     /// [`UserActor::decode_ask`]. Called by the `/actor/deliver` handler when
     /// `reply_expected` is set.
     ///

@@ -1,4 +1,4 @@
-//! Raft peer-to-peer RPC wire types (ADR 010, ADR 016).
+//! Raft peer-to-peer RPC wire types (wire-transport, membership-early).
 
 use serde::{Deserialize, Serialize};
 
@@ -30,7 +30,7 @@ pub enum EntryPayload {
     Noop,
     /// Opaque, application-encoded command bytes applied to the state machine.
     Command(Vec<u8>),
-    /// Cluster membership change entry (joint consensus, ADR 016).
+    /// Cluster membership change entry (joint consensus, membership-early).
     Membership(Membership),
 }
 

@@ -1,4 +1,4 @@
-//! Client API wire types sent over `/client/wire` (ADR 002, ADR 003, ADR 005).
+//! Client API wire types sent over `/client/wire` (client-api, client-routing, read-consistency).
 
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +11,7 @@ pub enum ClientRequest {
     Propose(Vec<u8>),
     /// A linearizable read: application-encoded query answered via ReadIndex.
     Query(Vec<u8>),
-    /// A write routed to the Raft group owning `key` (multi-Raft, ADR 031).
+    /// A write routed to the Raft group owning `key` (multi-Raft, write-sharding-multi-raft).
     ProposeKeyed {
         /// Shard routing key (typically the same key the command mutates).
         key: Vec<u8>,
@@ -26,7 +26,7 @@ pub enum ClientRequest {
         query: Vec<u8>,
     },
     /// Ask the leader to confirm a linearizable read index without executing a
-    /// query (etcd-style follower read setup, ADR 005).
+    /// query (etcd-style follower read setup, read-consistency).
     ReadIndexConfirm {
         /// Shard routing key for multi-Raft; `None` targets group 0.
         route_key: Option<Vec<u8>>,

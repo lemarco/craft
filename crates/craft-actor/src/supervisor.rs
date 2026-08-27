@@ -1,5 +1,5 @@
 //! Leader-only cluster supervisor (backlog E10,
-//! [ADR 018](../../../docs/decisions/018-supervisor-leader.md)).
+//! [supervisor-leader](../../../docs/decisions/supervisor-leader.md)).
 //!
 //! Only the Raft **leader** runs cluster-wide actor placement. The
 //! [`ClusterSupervisor`] holds a declarative set of *managed groups* — "keep
@@ -9,13 +9,13 @@
 //! the spawns/stops through the E9 [`ClusterControl`]. Followers and candidates
 //! skip reconciliation entirely (they return [`ReconcileReport::ran_as_leader`]
 //! `= false`); non-leaders that receive a `scale_cluster` call forward it to the
-//! leader in the runtime, mirroring client-request forwarding (ADR 003).
+//! leader in the runtime, mirroring client-request forwarding (client-routing).
 //!
 //! Reconciliation is **idempotent**: once the directory reflects the spawned
-//! instances, a repeat reconcile plans no changes (ADR 018). It is triggered on
-//! membership changes committing (ADR 016), on reachability changes (ADR 032 —
+//! instances, a repeat reconcile plans no changes (supervisor-leader). It is triggered on
+//! membership changes committing (membership-early), on reachability changes (liveness-vs-membership —
 //! crash-driven respawn without waiting for a `ConfChange`), on
-//! `scale_cluster` API calls, and — from E11 — on node join (auto-spawn, ADR 015).
+//! `scale_cluster` API calls, and — from E11 — on node join (auto-spawn, auto-spawn-on-join).
 //!
 //! The [`ClusterState`] port abstracts *where* leadership and membership come
 //! from, so the supervisor is testable without a live consensus node; the
@@ -39,7 +39,7 @@ pub trait ClusterState: Send + Sync {
     /// target: instances are only ever spawned onto committed voters.
     fn live_nodes(&self) -> Vec<NodeId>;
     /// The voters currently believed **reachable** — a liveness signal distinct
-    /// from membership (ADR 032). Defaults to [`live_nodes`](Self::live_nodes)
+    /// from membership (liveness-vs-membership). Defaults to [`live_nodes`](Self::live_nodes)
     /// so an implementation with no failure detector behaves as before (every
     /// committed voter is assumed alive). The runtime overrides this with the
     /// leader's heartbeat-derived reachability, enabling crash detection without
@@ -67,7 +67,7 @@ enum Target {
     /// A fixed cluster-wide count (`manage`).
     Fixed(usize),
     /// One per **reachable** node — the count tracks liveness, not just
-    /// membership (`manage_auto`, ADR 015/032). A crashed-but-still-voter host
+    /// membership (`manage_auto`, auto-spawn-on-join, liveness-vs-membership). A crashed-but-still-voter host
     /// drops out until it acks again; a newly reachable joiner gets a worker on
     /// the next reconcile.
     PerLiveNode,
@@ -162,7 +162,7 @@ impl<S: ClusterState> ClusterSupervisor<S> {
     }
 
     /// Declare that the cluster should keep exactly `total` instances of actor
-    /// `A` named `name`, one per node (ADR 014). Registers `A`'s spawn factory
+    /// `A` named `name`, one per node (one-worker-per-vps). Registers `A`'s spawn factory
     /// on the local control plane so this node can host or place it. Every node
     /// runs the same managed set at startup, so any node that becomes leader
     /// can place the group.
@@ -174,8 +174,8 @@ impl<S: ClusterState> ClusterSupervisor<S> {
         self.push_managed::<A>(name, Target::Fixed(total), config);
     }
 
-    /// Declare an **auto-worker** group (ADR 015): one instance of `A` on every
-    /// reachable node, with the count tracking liveness (ADR 032). A node that
+    /// Declare an **auto-worker** group (auto-spawn-on-join): one instance of `A` on every
+    /// reachable node, with the count tracking liveness (liveness-vs-membership). A node that
     /// joins the cluster gets a worker on the next reconcile; a node that
     /// leaves or crashes has its instance planned for removal / respawned
     /// elsewhere. This is what makes `JOIN_ADDR` + the same binary bring a
@@ -223,7 +223,7 @@ impl<S: ClusterState> ClusterSupervisor<S> {
     }
 
     /// Reconcile every managed group toward its desired placement — but only if
-    /// this node is the leader (ADR 018). On a follower/candidate the pass is
+    /// this node is the leader (supervisor-leader). On a follower/candidate the pass is
     /// skipped and reports `ran_as_leader = false`.
     pub async fn reconcile(&self) -> ReconcileReport {
         if !self.state.is_leader() {
@@ -232,14 +232,14 @@ impl<S: ClusterState> ClusterSupervisor<S> {
                 groups: Vec::new(),
             };
         }
-        // Placement follows liveness, not just committed membership (ADR 032):
+        // Placement follows liveness, not just committed membership (liveness-vs-membership):
         // a crashed-but-still-voter host is excluded until it acks again.
         let reachable = self.state.reachable_nodes();
         let specs = self.managed.lock().unwrap().clone();
         let mut groups = Vec::with_capacity(specs.len());
         for spec in specs {
             let desired = spec.target.resolve(reachable.len());
-            // One-worker-per-node (ADR 014) cannot exceed the reachable set.
+            // One-worker-per-node (one-worker-per-vps) cannot exceed the reachable set.
             let total = desired.min(reachable.len());
             let result =
                 (spec.reconcile)(Arc::clone(&self.control), total, reachable.clone()).await;

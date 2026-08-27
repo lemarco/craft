@@ -1,4 +1,4 @@
-//! Leader-side liveness / reachability tests (ADR 032).
+//! Leader-side liveness / reachability tests (liveness-vs-membership).
 //!
 //! `RaftNode::reachable` reports the voters a leader has heard from recently —
 //! a signal distinct from committed membership. A voter that stops acking is

@@ -1,4 +1,4 @@
-//! `postcard` body framing over HTTP/3 (`docs/protocol.md` §Transport, ADR 011).
+//! `postcard` body framing over HTTP/3 (`docs/protocol.md` §Transport, serialization).
 //!
 //! HTTP/3 already delimits messages (one request/response body per stream), so
 //! "framing" here is thin: bodies are `postcard`-encoded `craft-proto` types

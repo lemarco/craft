@@ -1,15 +1,15 @@
-//! Cluster discovery (ADR 007): how a node finds a live member to bootstrap a
+//! Cluster discovery (discovery): how a node finds a live member to bootstrap a
 //! dynamic join against.
 //!
 //! v1 used a single `JOIN_ADDR`. This module generalizes that to a **seed set**
 //! — an ordered list of candidate members — so a joining node stays resilient
-//! to any one seed being down or having moved (ADR 007's noted "seed address
+//! to any one seed being down or having moved (discovery's noted "seed address
 //! stability" risk), and gossips the full peer-address book from whichever seed
 //! answers first. Cloud/orchestrated environments (e.g. Kubernetes headless
 //! services) resolve their pod DNS into a seed set via [`resolve_dns_seeds`].
 //!
 //! Discovery only bootstraps *first contact*; the authoritative membership
-//! remains the Raft-committed voter set (joint consensus, ADR 016), and peer
+//! remains the Raft-committed voter set (joint consensus, membership-early), and peer
 //! addresses converge through the `/cluster/peers` anti-entropy gossip.
 
 use std::net::SocketAddr;
@@ -18,7 +18,7 @@ use craft_proto::NodeId;
 
 /// A candidate cluster member to bootstrap a dynamic join against: a node id
 /// plus a currently-believed address. Node ids are required because the wire
-/// transport keys connections by id (ADR 010); orchestrated discovery derives
+/// transport keys connections by id (wire-transport); orchestrated discovery derives
 /// them deterministically (e.g. a StatefulSet ordinal `craft-2` → `NodeId(3)`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Seed {

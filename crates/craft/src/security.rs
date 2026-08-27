@@ -1,4 +1,4 @@
-//! mTLS material for the QUIC transport (ADR 006): this node's certificate
+//! mTLS material for the QUIC transport (security): this node's certificate
 //! identity plus the trust root every peer/client is verified against.
 //!
 //! Production deployments build a [`Security`] from operator-provisioned certs

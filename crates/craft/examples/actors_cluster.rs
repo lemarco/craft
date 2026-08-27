@@ -1,7 +1,7 @@
 //! Cluster actors end-to-end: a **managed auto-worker** group placed one-per-node
-//! by the leader (ADR 015), then messages cast round-robin across the whole
-//! cluster (ADR 019) — some delivered locally, some shipped to a peer node over
-//! the actor wire (ADR 013). The `#[remote_actor]` attribute generates the wire
+//! by the leader (auto-spawn-on-join), then messages cast round-robin across the whole
+//! cluster (cluster-routing) — some delivered locally, some shipped to a peer node over
+//! the actor wire (cross-node-actors). The `#[remote_actor]` attribute generates the wire
 //! codecs that make `Worker` remotely addressable.
 //!
 //! Run with: `cargo run -p craft --example actors_cluster`

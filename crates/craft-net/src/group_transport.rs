@@ -1,4 +1,4 @@
-//! Group-scoped peer transport for multi-Raft (ADR 031).
+//! Group-scoped peer transport for multi-Raft (write-sharding-multi-raft).
 
 use std::sync::Arc;
 

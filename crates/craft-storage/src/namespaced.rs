@@ -1,4 +1,4 @@
-//! Per-group storage isolation for multi-Raft (ADR 031).
+//! Per-group storage isolation for multi-Raft (write-sharding-multi-raft).
 //!
 //! Each Raft group gets its own backend so logs, hard state, and snapshots
 //! never collide. In production this is one `redb` file per group under a

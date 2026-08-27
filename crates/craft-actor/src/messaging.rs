@@ -1,6 +1,6 @@
 //! Cross-node actor message delivery (backlog E8,
-//! [ADR 013](../../../docs/decisions/013-cross-node-actors.md),
-//! [ADR 019](../../../docs/decisions/019-cluster-routing.md)).
+//! [cross-node-actors](../../../docs/decisions/cross-node-actors.md),
+//! [cluster-routing](../../../docs/decisions/cluster-routing.md)).
 //!
 //! [`ClusterMessaging`] turns a logical send to a group name into delivery to a
 //! concrete instance: it resolves a target through the cluster directory (E7)
@@ -45,7 +45,7 @@ const DEDUP_CAPACITY: usize = 4096;
 
 /// Remembers the reply produced for each already-served `(origin, req_id)` ask,
 /// so an at-least-once *resend* replays the recorded answer instead of invoking
-/// a side-effecting handler a second time (E8, ADR 013). Eviction is FIFO once
+/// a side-effecting handler a second time (E8, cross-node-actors). Eviction is FIFO once
 /// [`DEDUP_CAPACITY`] entries are held.
 ///
 /// This coalesces **sequential** resends (a retry issued after the first
@@ -90,7 +90,7 @@ pub enum CastError {
     Remote(#[from] RemoteError),
 }
 
-/// Why a cross-node `ask` (request/reply) failed (E8, ADR 013/019).
+/// Why a cross-node `ask` (request/reply) failed (E8, cross-node-actors, cluster-routing).
 #[derive(Debug, thiserror::Error)]
 pub enum AskError {
     /// The directory holds no live instance of the group anywhere.
@@ -129,7 +129,7 @@ pub struct ClusterMessaging {
     registry: ActorRegistry,
     transport: Arc<dyn Transport>,
     next_req: AtomicU64,
-    /// Serve-side dedup of already-answered cross-node asks (ADR 013).
+    /// Serve-side dedup of already-answered cross-node asks (cross-node-actors).
     dedup: Arc<Mutex<DedupCache>>,
 }
 
@@ -160,7 +160,7 @@ impl ClusterMessaging {
     }
 
     /// Cast `payload` to some instance of `group`, chosen round-robin across
-    /// every node hosting the group (ADR 019).
+    /// every node hosting the group (cluster-routing).
     ///
     /// # Errors
     /// Returns [`CastError::NoTarget`] if the group has no instances, or a
@@ -193,7 +193,7 @@ impl ClusterMessaging {
     }
 
     /// Ask some instance of `group` (round-robin) and await its reply
-    /// (ADR 013/019). The target actor must implement
+    /// (cross-node-actors, cluster-routing). The target actor must implement
     /// [`UserActor::decode_ask`](crate::UserActor::decode_ask).
     ///
     /// # Errors
@@ -322,7 +322,7 @@ impl ClusterMessaging {
 /// An `ask` that carries an [`ActorEnvelope::origin`] is deduplicated on
 /// `(origin, req_id)`: a resend of an already-served request replays the
 /// recorded reply instead of re-invoking the handler, so a side-effecting
-/// handler runs at most once per logical request (ADR 013). Casts are
+/// handler runs at most once per logical request (cross-node-actors). Casts are
 /// fire-and-forget and pass straight through.
 async fn serve_envelope(
     registry: &ActorRegistry,
@@ -418,7 +418,7 @@ impl RequestHandler for ClusterMessaging {
             Route::ActorDeliver => {
                 // An `ask` handler may await the actor's reply, so serving is
                 // async; the serve path needs the registry plus the dedup table
-                // to replay an at-least-once resend (ADR 013).
+                // to replay an at-least-once resend (cross-node-actors).
                 let registry = self.registry.clone();
                 let dedup = Arc::clone(&self.dedup);
                 Box::pin(async move {

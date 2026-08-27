@@ -430,7 +430,7 @@ async fn handle_scale_on_a_deposed_node_is_rejected_without_placing() {
     assert_eq!(
         reply.error.as_deref(),
         Some("not leader"),
-        "a deposed node must refuse forwarded placement (ADR 018)"
+        "a deposed node must refuse forwarded placement (supervisor-leader)"
     );
     assert!(!n1.registry.contains("w"), "no local placement");
     assert!(!n2.registry.contains("w"), "no remote placement");

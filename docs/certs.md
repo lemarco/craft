@@ -1,6 +1,6 @@
 # mTLS certificates for a craft cluster
 
-Every production network path in craft is mutually authenticated (ADR 006):
+Every production network path in craft is mutually authenticated (security):
 peers and clients present a certificate issued by the **cluster CA**, and both
 ends verify the other against that CA. This page shows how to mint that PKI —
 with the bundled script or by hand with OpenSSL — and how to hand it to
@@ -165,7 +165,7 @@ CN is free-form.
 2. Mint its cert: `generate.sh --node-id <N> --out ./certs --ca ca.pem --ca-key ca.key`.
 3. Point the new node at **one existing member** as a seed and let it join the
    live cluster — no restart of the running nodes, and no cluster-wide address
-   list required (ADR 007/017):
+   list required (discovery, join-rpc):
 
    ```rust
    let cluster = CraftCluster::builder(NodeId(N), machine)
@@ -195,7 +195,7 @@ CN is free-form.
 3. Either **hot-reload** (below) or restart that node **one at a time** (rolling
    restart) so the cluster keeps quorum.
 
-### Automatic (ADR 034)
+### Automatic (cert-automation)
 
 When `CRAFT_NODE_CERT` / `CRAFT_NODE_KEY` / `CRAFT_CA_CERT` are set, `craft-node`
 uses [`start_quic_pem`](../crates/craft/src/builder.rs) and **polls** those files
@@ -243,7 +243,7 @@ let cluster = CraftCluster::builder(node_id, machine)
 // cluster.cert_reload() → manual reload_now(...)
 ```
 
-See [ADR 034](decisions/034-cert-automation.md).
+See [cert-automation](decisions/cert-automation.md).
 
 ### CA rotation
 
@@ -266,7 +266,7 @@ mTLS material above.
 
 ## Redis TLS (optional)
 
-If you point actor workflow state at Redis (ADR 021) over TLS, that connection
+If you point actor workflow state at Redis (actor-state-redis) over TLS, that connection
 is **managed by you** via the Redis connection URL (`rediss://…`) and your
 Redis server's own certificates — it is independent of the cluster CA above.
 
@@ -288,4 +288,4 @@ let store = RedisStore::connect_with_tls(
 # }
 ```
 
-See [ADR 021](decisions/021-actor-state-redis.md).
+See [actor-state-redis](decisions/actor-state-redis.md).

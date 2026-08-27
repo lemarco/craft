@@ -1,4 +1,4 @@
-//! Typed client wrapper (ADR 002 `TypedClient<M>`, backlog F3).
+//! Typed client wrapper (client-api `TypedClient<M>`, backlog F3).
 
 use std::marker::PhantomData;
 

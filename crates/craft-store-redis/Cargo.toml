@@ -1,6 +1,6 @@
 [package]
 name = "craft-store-redis"
-description = "Redis-backed ActorStateStore for stateful craft actors (ADR 021)."
+description = "Redis-backed ActorStateStore for stateful craft actors (actor-state-redis)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

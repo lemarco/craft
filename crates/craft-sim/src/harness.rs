@@ -1,4 +1,4 @@
-//! Deterministic, seed-reproducible multi-node Raft simulator (ADR 029).
+//! Deterministic, seed-reproducible multi-node Raft simulator (testing-strategy).
 //!
 //! Drives many [`RaftNode`]s through a virtual network with injectable
 //! latency, message loss, partitions, and crashes. Every step asserts core
@@ -239,7 +239,7 @@ impl Cluster {
         self.snapshots_loaded.get(&NodeId(id)).copied()
     }
 
-    /// Issue a linearizable ReadIndex read (ADR 005) via the current leader.
+    /// Issue a linearizable ReadIndex read (read-consistency) via the current leader.
     /// Returns `false` if there is no leader to accept it.
     pub fn read_index(&mut self, id: u64) -> bool {
         let Some(node_id) = self.leader_node() else {

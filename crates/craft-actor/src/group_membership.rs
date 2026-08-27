@@ -1,4 +1,4 @@
-//! Per-group Raft membership sync (ADR 033 Phase 2).
+//! Per-group Raft membership sync (per-group-raft-membership Phase 2).
 
 use std::collections::BTreeMap;
 

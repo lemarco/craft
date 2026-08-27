@@ -1,5 +1,5 @@
-//! Tests for graceful drain-with-timeout (backlog E12, ADR 022) and stateful
-//! actor migration across nodes (E12, ADR 013), driven over a `LocalNetwork`.
+//! Tests for graceful drain-with-timeout (backlog E12, drain-timeout) and stateful
+//! actor migration across nodes (E12, cross-node-actors), driven over a `LocalNetwork`.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -90,7 +90,7 @@ async fn drain_times_out_and_rejects_new_messages() {
     let drain =
         tokio::spawn(async move { reg.stop_graceful("b", Duration::from_millis(50)).await });
 
-    // Once draining begins, new sends are rejected (ADR 022 step 1).
+    // Once draining begins, new sends are rejected (drain-timeout step 1).
     tokio::time::sleep(Duration::from_millis(20)).await;
     assert_eq!(
         actor.send(()),

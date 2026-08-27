@@ -1,6 +1,6 @@
 //! Tests for the local [`craft_actor::ActorRegistry`] (backlog E6): singleton
 //! spawn + cast/ask, pool round-robin and keyed routing, `scale_local`, `stop`,
-//! and the production one-worker-per-name guard (ADR 014).
+//! and the production one-worker-per-name guard (one-worker-per-vps).
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -268,7 +268,7 @@ async fn scale_local_type_mismatch_is_reported() {
 }
 
 // ---------------------------------------------------------------------------
-// Production one-worker-per-name guard (ADR 014)
+// Production one-worker-per-name guard (one-worker-per-vps)
 // ---------------------------------------------------------------------------
 
 #[tokio::test]

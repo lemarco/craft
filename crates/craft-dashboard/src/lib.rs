@@ -1,5 +1,5 @@
 //! `craft-dashboard` — admin HTTP endpoints and the live observability
-//! dashboard (ADR 025 + ADR 026, backlog Track H).
+//! dashboard (health-admin-port + observability, backlog Track H).
 //!
 //! Everything here rides the **admin port** (default `0.0.0.0:8080/tcp`),
 //! separate from the mTLS QUIC craft wire, so ordinary probes and Prometheus

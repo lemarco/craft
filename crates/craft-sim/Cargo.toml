@@ -1,6 +1,6 @@
 [package]
 name = "craft-sim"
-description = "Deterministic simulation harness for testing craft (ADR 029)."
+description = "Deterministic simulation harness for testing craft (testing-strategy)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

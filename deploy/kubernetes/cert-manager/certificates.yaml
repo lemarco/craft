@@ -1,4 +1,4 @@
-# cert-manager automation for craft mTLS (ADR 034)
+# cert-manager automation for craft mTLS (cert-automation)
 #
 # Prerequisites:
 #   - cert-manager installed in the cluster

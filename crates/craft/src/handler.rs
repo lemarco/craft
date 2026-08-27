@@ -1,7 +1,7 @@
 //! The per-node request router: a single [`RequestHandler`] that fans the fixed
 //! `/raft/v1/*` routes out to the sub-handlers a fully-wired node runs
 //! (consensus/client, actor control, actor delivery, and directory sync) and
-//! owns the address plane (`/cluster/peers`, ADR 007).
+//! owns the address plane (`/cluster/peers`, discovery).
 //!
 //! `craft-net` attaches exactly one handler per node, and each sub-handler only
 //! serves the routes it owns (erroring on the rest). The facade owns the glue
@@ -19,7 +19,7 @@ use craft_actor::{ClusterControl, ClusterMessaging, DirectorySync};
 use crate::multi_raft::GroupMigratePort;
 
 /// The address plane: learn peer addresses at runtime and snapshot the current
-/// address book (ADR 007). Backed by the live [`QuicTransport`] directory in
+/// address book (discovery). Backed by the live [`QuicTransport`] directory in
 /// production; a no-op over the in-memory [`LocalNetwork`](craft_net::LocalNetwork),
 /// where nodes are addressed by id and have no socket addresses to gossip.
 pub(crate) trait PeerSource: Send + Sync + 'static {
@@ -66,7 +66,7 @@ impl PeerSource for NoPeers {
     }
 }
 
-/// Routes an inbound request to the sub-handler that owns it (ADR 010 route
+/// Routes an inbound request to the sub-handler that owns it (wire-transport route
 /// table). One of these is attached per node.
 pub(crate) struct NodeRouter {
     service: Arc<dyn RequestHandler>,
@@ -103,13 +103,14 @@ impl RequestHandler for NodeRouter {
             // Consensus, client API, and cluster join are served by the runtime.
             // A join carries the joiner's advertise address; record it here so
             // this node (leader or the forwarding follower) can dial the newcomer
-            // before the address gossip converges (ADR 007/017).
+            // before the address gossip converges (discovery, join-rpc).
             Route::ClusterJoin => {
                 if let Ok(request) = decode_body::<JoinRequest>(&body) {
                     self.peers.learn(request.node_id, &request.advertise_addr);
                 }
                 self.service.handle(route, body)
             }
+            Route::ClusterLeave => self.service.handle(route, body),
             Route::PeerWire | Route::ClientWire => self.service.handle(route, body),
             Route::ClusterGroupMigrate => {
                 let Some(handler) = self.group_migrate.as_ref() else {
@@ -126,7 +127,7 @@ impl RequestHandler for NodeRouter {
                     Ok(encode_body(&reply)?)
                 })
             }
-            // Address-book anti-entropy: hand back what we know (ADR 007).
+            // Address-book anti-entropy: hand back what we know (discovery).
             Route::ClusterPeers => {
                 let book = self.peers.book();
                 Box::pin(async move { Ok(encode_body(&book)?) })
@@ -137,7 +138,7 @@ impl RequestHandler for NodeRouter {
             }
             // A follower forwarded a cluster-wide scale here; execute it via
             // the control plane against the requester's observed voter set
-            // (ADR 018). Async because it drives remote spawns.
+            // (supervisor-leader). Async because it drives remote spawns.
             Route::ActorScale => {
                 let control = Arc::clone(&self.control);
                 Box::pin(async move {

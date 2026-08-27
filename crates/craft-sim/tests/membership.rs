@@ -1,4 +1,4 @@
-//! Cluster-level joint-consensus membership scenarios (ADR 016) driven through
+//! Cluster-level joint-consensus membership scenarios (membership-early) driven through
 //! the deterministic simulator, with safety invariants asserted every step.
 
 use craft_sim::Cluster;

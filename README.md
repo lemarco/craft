@@ -44,10 +44,10 @@
 
 ### What's deferred (good next steps if you resume)
 
-From [ADR 027](docs/decisions/027-future-work-and-risks.md) and [backlog post-v1](docs/backlog.md):
+From [future-work-and-risks](docs/decisions/future-work-and-risks.md) and [backlog post-v1](docs/backlog.md):
 
-1. **Cross-node group migration RPC** — multi-Raft rebalancing adopts/retires locally; wire migration between physical nodes remains deferred ([ADR 031](docs/decisions/031-write-sharding-multi-raft.md))
-2. **Worker migration on node failure** — leader supervisor reconciles against `reachable_nodes()`; crashed hosts lose workers and survivors respawn them without a `ConfChange` ([ADR 032](docs/decisions/032-liveness-vs-membership.md))
+1. **Cross-node group migration RPC** — multi-Raft rebalancing adopts/retires locally; wire migration between physical nodes remains deferred ([write-sharding-multi-raft](docs/decisions/write-sharding-multi-raft.md))
+2. **Worker migration on node failure** — leader supervisor reconciles against `reachable_nodes()`; crashed hosts lose workers and survivors respawn them without a `ConfChange` ([liveness-vs-membership](docs/decisions/liveness-vs-membership.md))
 3. **Production hardening** — real-world soak, fuzzing, docs.rs publish, crates.io release (tooling ready in [docs/releasing.md](docs/releasing.md))
 
 ---
@@ -77,7 +77,7 @@ cargo run -p craft --example actors_cluster
 
 1. [docs/architecture.md](docs/architecture.md) — crate graph, data flow
 2. [docs/backlog.md](docs/backlog.md) — what's done vs deferred (check ✅ columns)
-3. [docs/decisions/027-future-work-and-risks.md](docs/decisions/027-future-work-and-risks.md) — known limits
+3. [docs/decisions/future-work-and-risks.md](docs/decisions/future-work-and-risks.md) — known limits
 4. [crates/craft/src/builder.rs](crates/craft/src/builder.rs) — main public API entry (`CraftCluster::builder`)
 
 **Reference binary env vars** (`craft-node`): `CRAFT_NODE_ID`, `CRAFT_LISTEN` (default `:7443`), `CRAFT_ADMIN` (`:8080`), `CRAFT_PEERS`, `CRAFT_JOIN_SEEDS`, `CRAFT_DISCOVERY`, cert paths — see [docs/certs.md](docs/certs.md).
@@ -106,14 +106,14 @@ let cluster = CraftCluster::builder(NodeId(1), Counter::default())
 
 ## Why craft (design principles)
 
-- **Library-first.** No sidecar — `craft` is a crate you embed ([ADR 004](docs/decisions/004-deployment-model.md)).
+- **Library-first.** No sidecar — `craft` is a crate you embed ([deployment-model](docs/decisions/deployment-model.md)).
 - **One dependency.** The `craft` facade re-exports the stable API.
-- **Linearizable.** Replicated `StateMachine` with leader writes + `ReadIndex`/lease reads ([ADR 005](docs/decisions/005-read-consistency.md)).
-- **Transparent routing.** Clients hit any node; requests forward to the leader ([ADR 003](docs/decisions/003-client-routing.md)).
-- **Cross-node actors.** Supervised actors across nodes; leader auto-places workers ([ADR 013](docs/decisions/013-cross-node-actors.md), [ADR 015](docs/decisions/015-auto-spawn-on-join.md)).
-- **Secure by default.** mTLS on every inter-node connection ([ADR 006](docs/decisions/006-security.md)).
-- **Observable.** Health/admin endpoints + dashboard ([ADR 025](docs/decisions/025-health-admin-port.md), [ADR 026](docs/decisions/026-observability.md)).
-- **Testable.** `craft-core` is I/O-free FSM; effects-as-data ([ADR 030](docs/decisions/030-architecture-style.md)).
+- **Linearizable.** Replicated `StateMachine` with leader writes + `ReadIndex`/lease reads ([read-consistency](docs/decisions/read-consistency.md)).
+- **Transparent routing.** Clients hit any node; requests forward to the leader ([client-routing](docs/decisions/client-routing.md)).
+- **Cross-node actors.** Supervised actors across nodes; leader auto-places workers ([cross-node-actors](docs/decisions/cross-node-actors.md), [auto-spawn-on-join](docs/decisions/auto-spawn-on-join.md)).
+- **Secure by default.** mTLS on every inter-node connection ([security](docs/decisions/security.md)).
+- **Observable.** Health/admin endpoints + dashboard ([health-admin-port](docs/decisions/health-admin-port.md), [observability](docs/decisions/observability.md)).
+- **Testable.** `craft-core` is I/O-free FSM; effects-as-data ([architecture-style](docs/decisions/architecture-style.md)).
 
 ## Install
 
@@ -190,7 +190,7 @@ Bypass: `LEFTHOOK=0 git commit|push …` · lock issues: `./scripts/cargo-status
 
 ## MSRV
 
-Minimum Supported Rust Version is **1.98**. MSRV bumps are a minor-version event ([ADR 028](docs/decisions/028-library-and-publishing.md)).
+Minimum Supported Rust Version is **1.98**. MSRV bumps are a minor-version event ([library-and-publishing](docs/decisions/library-and-publishing.md)).
 
 ## License
 

@@ -1,4 +1,4 @@
-//! Joint-consensus membership-change tests (Raft §6, ADR 016).
+//! Joint-consensus membership-change tests (Raft §6, membership-early).
 
 use craft_core::{Config, MembershipError, RaftNode};
 use craft_proto::{

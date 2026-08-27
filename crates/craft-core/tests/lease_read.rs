@@ -1,4 +1,4 @@
-//! Leader lease-read tests (ADR 005, follower/lease reads).
+//! Leader lease-read tests (read-consistency, follower/lease reads).
 //!
 //! A lease read lets the leader answer `query` locally — with no fresh quorum
 //! round — while it holds a valid leadership lease. The lease is earned when a

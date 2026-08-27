@@ -1,4 +1,4 @@
-//! Multi-Raft wire envelopes (ADR 031).
+//! Multi-Raft wire envelopes (write-sharding-multi-raft).
 
 use serde::{Deserialize, Serialize};
 

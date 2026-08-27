@@ -1,4 +1,4 @@
-//! Multi-Raft in-process soak: keyed proposes + leader partition/heal (ADR 029).
+//! Multi-Raft in-process soak: keyed proposes + leader partition/heal (testing-strategy).
 //!
 //! Configure via env:
 //!   SOAK_MULTI_SECS   wall-clock budget (default 15)

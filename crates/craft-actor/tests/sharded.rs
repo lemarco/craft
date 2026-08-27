@@ -1,5 +1,5 @@
 //! Multi-Raft integration: shard-aware client routing through
-//! [`ShardedNodeService`] (ADR 031).
+//! [`ShardedNodeService`] (write-sharding-multi-raft).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -32,6 +32,7 @@ async fn keyed_writes_route_to_independent_raft_groups() {
         craft_actor::RuntimeConfig {
             tick_period: TICK_PERIOD,
             allow_join: false,
+            allow_leave: false,
         },
         shard_count,
         2,

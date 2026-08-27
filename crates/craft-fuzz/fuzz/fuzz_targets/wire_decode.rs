@@ -1,10 +1,10 @@
-//! Fuzz every production wire type decoded by `craft-proto` (ADR 029 / T4).
+//! Fuzz every production wire type decoded by `craft-proto` (testing-strategy / T4).
 
 #![no_main]
 
 use craft_proto::{
-    ActorEnvelope, ClientRequest, GroupMigrateRequest, GroupPeerEnvelope, JoinRequest, RaftRpc,
-    decode,
+    ActorEnvelope, ClientRequest, GroupMigrateRequest, GroupPeerEnvelope, JoinRequest, LeaveRequest,
+    RaftRpc, decode,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -19,6 +19,7 @@ fuzz_target!(|data: &[u8]| {
     try_decode::<RaftRpc>(data);
     try_decode::<ClientRequest>(data);
     try_decode::<JoinRequest>(data);
+    try_decode::<LeaveRequest>(data);
     try_decode::<GroupPeerEnvelope>(data);
     try_decode::<GroupMigrateRequest>(data);
     try_decode::<ActorEnvelope>(data);

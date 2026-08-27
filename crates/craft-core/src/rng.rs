@@ -1,7 +1,7 @@
 //! Deterministic PRNG for reproducible election timeouts.
 //!
 //! The core must be free of ambient randomness so that a given seed replays
-//! identically in simulation (ADR 029, ADR 030). This is a tiny xorshift64
+//! identically in simulation (testing-strategy, architecture-style). This is a tiny xorshift64
 //! generator — not cryptographic, only for jitter selection.
 
 /// A small deterministic xorshift64 generator.

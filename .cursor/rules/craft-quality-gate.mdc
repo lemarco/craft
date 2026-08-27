@@ -1,5 +1,5 @@
 ---
-description: Local quality gates, conventional commits, and pre-push workflow for craft (ADR 028/029)
+description: Local quality gates, conventional commits, and pre-push workflow for craft (library-and-publishing, testing-strategy)
 alwaysApply: true
 ---
 

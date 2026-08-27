@@ -1,13 +1,13 @@
-//! `craft-client` — client handles for talking to a craft cluster (ADR 002).
+//! `craft-client` — client handles for talking to a craft cluster (client-api).
 //!
-//! Two layers over a shared [`craft_proto`] wire contract (ADR 002):
+//! Two layers over a shared [`craft_proto`] wire contract (client-api):
 //!
 //! * **In-process (L1):** embed a node and use its `craft_actor::NodeHandle`
 //!   directly (`propose`/`query`) — no serialization, no network.
 //! * **Remote (L2):** [`RemoteClient`] speaks `postcard` over any
 //!   [`craft_net`] transport (live QUIC/HTTP/3 with client mTLS, or the
 //!   in-memory `LocalNetwork` in tests). A follower transparently forwards to
-//!   the leader server-side (ADR 003), so a client can connect to any node; the
+//!   the leader server-side (client-routing), so a client can connect to any node; the
 //!   built-in [`RetryPolicy`] adds failover + leader-follow for elections and
 //!   downed nodes.
 //!

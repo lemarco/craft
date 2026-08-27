@@ -1,6 +1,6 @@
 //! Elastic membership: a new node joins a **running** cluster over live QUIC +
 //! mTLS knowing only a single seed address — no static, cluster-wide peer map
-//! (ADR 007/017). The joiner fetches the peer-address book from the seed, the
+//! (discovery, join-rpc). The joiner fetches the peer-address book from the seed, the
 //! leader commits a membership change adding it, and addresses propagate both
 //! ways over `/cluster/peers` so every node can reach the newcomer.
 //!
@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (i, &id) in ids.iter().enumerate() {
         let cluster = CraftCluster::builder(id, Counter::default())
             .members(ids)
-            .allow_join(true) // accept newcomers (ADR 017)
+            .allow_join(true) // accept newcomers (join-rpc)
             .raft_config(raft_config())
             .tick_period(Duration::from_millis(10))
             .start_quic(security(id)?, addrs[i], peers.clone())

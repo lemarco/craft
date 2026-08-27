@@ -1,4 +1,4 @@
-# GitLab CI for craft (ADR 029: fast lane on every push/MR, heavy lane nightly).
+# GitLab CI for craft (testing-strategy: fast lane on every push/MR, heavy lane nightly).
 
 stages:
   - check
@@ -41,7 +41,7 @@ fast:
     - cargo test --workspace --doc --all-features
     - RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 
-# --- Minimum Supported Rust Version check (ADR 028) --------------------------
+# --- Minimum Supported Rust Version check (library-and-publishing) --------------------------
 msrv:
   stage: check
   image: rust:1.98
@@ -90,7 +90,7 @@ e2e:
     - bash e2e/chaos.sh
     - bash e2e/cert_renew.sh
 
-# --- Redis-backed ActorStateStore integration tests (Track G, ADR 021) ------
+# --- Redis-backed ActorStateStore integration tests (Track G, actor-state-redis) ------
 # Runs the `#[ignore]`d testcontainers tests against a real Redis. Scheduled so
 # it does not slow the fast lane; needs a Docker daemon (dind).
 store-redis:
@@ -107,7 +107,7 @@ store-redis:
   script:
     - cargo test -p craft-store-redis -- --ignored
 
-# --- Benchmarks + soak (Track T, T10, ADR 029) ------------------------------
+# --- Benchmarks + soak (Track T, T10, testing-strategy) ------------------------------
 # The `benchmarks/` crate is a standalone workspace (excluded from the root) so
 # criterion never touches the fast lane. Runs on schedule: criterion micro-benches
 # (append/apply/deliver) plus a soak over the deterministic simulator.
@@ -121,7 +121,7 @@ bench:
     - SOAK_SECS=120 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak
     - SOAK_MULTI_SECS=60 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak_multi_raft
 
-# --- Publish (ADR 028) ------------------------------------------------------
+# --- Publish (library-and-publishing) ------------------------------------------------------
 # `cargo publish --workspace` resolves intra-workspace path deps locally and
 # uploads every crate in dependency order. The dry-run gate runs on tags and on
 # schedule; the real publish is a manual button on a `vX.Y.Z` tag pipeline with

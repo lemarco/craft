@@ -1,4 +1,4 @@
-//! Typed serde helpers at the [`ActorStateStore`] boundary (ADR 021, ADR 030).
+//! Typed serde helpers at the [`ActorStateStore`] boundary (actor-state-redis, architecture-style).
 //!
 //! The port stays **opaque bytes** (`get`/`set`/`delete`) so every backend
 //! (Redis, in-memory, a fake in tests) implements one trait. Application types

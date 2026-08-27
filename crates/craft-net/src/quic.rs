@@ -1,4 +1,4 @@
-//! Live HTTP/3-over-QUIC server and client (ADR 010, backlog C2).
+//! Live HTTP/3-over-QUIC server and client (wire-transport, backlog C2).
 //!
 //! [`QuicServer`] runs the mTLS accept loop, turning each authenticated QUIC
 //! connection into an `h3` server connection and dispatching `/raft/v1/*`
@@ -60,7 +60,7 @@ impl QuicServer {
         &self.endpoint
     }
 
-    /// Swap the server TLS configuration for **new** handshakes (ADR 034).
+    /// Swap the server TLS configuration for **new** handshakes (cert-automation).
     ///
     /// Existing connections keep their original TLS session until they close.
     pub fn reload(&self, config: quinn::ServerConfig) {
@@ -74,7 +74,7 @@ impl QuicServer {
     }
 
     /// Like [`run`](Self::run) but keeps the server in an [`Arc`] so other tasks
-    /// (e.g. cert hot-reload, ADR 034) can call [`reload`](Self::reload).
+    /// (e.g. cert hot-reload, cert-automation) can call [`reload`](Self::reload).
     pub async fn run_arc(self: Arc<Self>, handler: Arc<dyn RequestHandler>) {
         Self::accept_loop(&self.endpoint, handler).await;
     }
@@ -156,7 +156,7 @@ type ClientSender = h3::client::SendRequest<h3_quinn::OpenStreams, Bytes>;
 /// [`TrafficClass::Actor`] connection. A burst of slow `ask`s queues on this
 /// gate (backpressure) instead of opening unbounded streams and exhausting the
 /// connection's stream limit — which would stall casts / spawns / directory
-/// sync to that peer (ADR 027 R2). Sized below quinn's default bidi-stream cap
+/// sync to that peer (future-work-and-risks R2). Sized below quinn's default bidi-stream cap
 /// (100) to leave headroom.
 const ACTOR_MAX_INFLIGHT: usize = 64;
 
@@ -172,7 +172,7 @@ fn class_stream_limit(class: TrafficClass) -> Option<usize> {
 
 /// A cached connection to one peer for one [`TrafficClass`], plus its reconnect
 /// backoff (C5). Consensus (`Peer`) traffic gets its own entry, isolated from
-/// bulk client/actor streams (ADR 027 R2).
+/// bulk client/actor streams (future-work-and-risks R2).
 #[derive(Default)]
 struct PeerConn {
     sender: Option<ClientSender>,
@@ -199,12 +199,12 @@ struct Inner {
     client_config: RwLock<quinn::ClientConfig>,
     // Runtime-mutable so peers learned dynamically (a node joining via
     // `/cluster/join`, addresses gossiped over `/cluster/peers`) become dialable
-    // without restarting the transport (ADR 007). Guarded by a std `RwLock`
+    // without restarting the transport (discovery). Guarded by a std `RwLock`
     // held only for the brief address lookup/update, never across an `.await`.
     directory: RwLock<PeerDirectory>,
     policy: BackoffPolicy,
     // Per-traffic-class admission control so bulk client/actor sends cannot
-    // starve Raft heartbeats on the shared socket (ADR 027 R2).
+    // starve Raft heartbeats on the shared socket (future-work-and-risks R2).
     traffic: TrafficPolicy,
     conns: Mutex<HashMap<(NodeId, TrafficClass), PeerConn>>,
 }
@@ -213,7 +213,7 @@ struct Inner {
 /// [`PeerDirectory`], authenticates with mTLS, and performs one request/response
 /// per [`send`](Transport::send). Connections are cached **per peer and traffic
 /// class** and reused, so latency-sensitive consensus RPCs never share a QUIC
-/// connection with bulk client/actor traffic (ADR 027 R2). Failed dials back
+/// connection with bulk client/actor traffic (future-work-and-risks R2). Failed dials back
 /// off exponentially ([`BackoffPolicy`]) so a dead peer is not hammered.
 #[derive(Clone)]
 pub struct QuicTransport {
@@ -253,7 +253,7 @@ impl QuicTransport {
     }
 
     /// Like [`with_backoff`](QuicTransport::with_backoff) but with an explicit
-    /// per-traffic-class [`TrafficPolicy`] (ADR 027 R2): rate-limit bulk
+    /// per-traffic-class [`TrafficPolicy`] (future-work-and-risks R2): rate-limit bulk
     /// client/actor traffic so latency-sensitive consensus RPCs are never
     /// starved on the shared UDP socket.
     #[must_use]
@@ -278,7 +278,7 @@ impl QuicTransport {
 
     /// Learn (or update) a peer's address at runtime — e.g. when a node joins
     /// via `/cluster/join` or its address is gossiped over `/cluster/peers`
-    /// (ADR 007). Subsequent dials to `id` use `addr`.
+    /// (discovery). Subsequent dials to `id` use `addr`.
     pub fn learn_peer(&self, id: NodeId, addr: SocketAddr) {
         self.inner
             .directory
@@ -307,7 +307,7 @@ impl QuicTransport {
     }
 
     /// Swap the outbound client TLS config and drop cached connections so the
-    /// next dial uses the new identity (ADR 034).
+    /// next dial uses the new identity (cert-automation).
     pub async fn reload(&self, client_config: quinn::ClientConfig) {
         *self
             .inner
@@ -415,7 +415,7 @@ async fn round_trip(
 ) -> Result<Body, TransportError> {
     let class = route.traffic_class();
     // Admission control: throttle rate-limited classes before touching the
-    // socket, keeping consensus (unthrottled) ahead of bulk traffic (ADR 027 R2).
+    // socket, keeping consensus (unthrottled) ahead of bulk traffic (future-work-and-risks R2).
     inner.traffic.admit(class).await;
     // Backpressure: cap concurrent in-flight streams on gated classes so a burst
     // of slow `ask`s queues here instead of exhausting the connection's stream

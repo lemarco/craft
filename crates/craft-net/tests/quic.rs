@@ -1,6 +1,6 @@
 //! End-to-end test of the live HTTP/3 transport: a real `QuicServer` and
 //! `QuicTransport` exchanging `postcard` RPCs over a mutually-authenticated
-//! QUIC connection on loopback (ADR 010, backlog C2).
+//! QUIC connection on loopback (wire-transport, backlog C2).
 
 #![cfg(feature = "dev-certs")]
 

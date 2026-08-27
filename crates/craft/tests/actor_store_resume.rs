@@ -1,4 +1,4 @@
-//! ADR 021 / ADR 032: actor workflow state in a shared external store survives
+//! actor-state-redis / liveness-vs-membership: actor workflow state in a shared external store survives
 //! a host becoming unreachable; a survivor's worker reads the same keys and
 //! redeliveries stay idempotent. Uses `InMemoryStore` + `LocalNetwork` (fast lane).
 

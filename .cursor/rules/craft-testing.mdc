@@ -1,10 +1,10 @@
 ---
-description: Testing pyramid and regression rules for craft (ADR 029) — layer choice, determinism, coverage doc
+description: Testing pyramid and regression rules for craft (testing-strategy) — layer choice, determinism, coverage doc
 globs: crates/**/{tests,src}/**/*.rs
 alwaysApply: false
 ---
 
-# craft testing (ADR 029)
+# craft testing (testing-strategy)
 
 ## Pick the lowest layer that reproduces the bug
 

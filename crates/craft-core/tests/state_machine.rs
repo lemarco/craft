@@ -1,6 +1,6 @@
 //! Reference [`StateMachine`] implementation (an in-memory key/value store) and
 //! its behavioural tests. This doubles as the documented example of how a user
-//! wires their own machine into craft (ADR 001).
+//! wires their own machine into craft (state-machine).
 
 use std::collections::BTreeMap;
 use std::fmt;

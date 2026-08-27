@@ -1,4 +1,4 @@
-//! Load mTLS material from PEM files on disk (ADR 024, ADR 034).
+//! Load mTLS material from PEM files on disk (cert-provisioning, cert-automation).
 //!
 //! Production deployments and cert-manager/step-ca renewers write to fixed paths;
 //! [`load_pem_material`] re-reads them when certs rotate.
@@ -13,7 +13,7 @@ use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 
 use crate::tls::{NodeIdentity, TlsError, root_store};
 
-/// Paths to the three PEM files a node reads at startup (ADR 024 env vars).
+/// Paths to the three PEM files a node reads at startup (cert-provisioning env vars).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CertPaths {
     /// Leaf certificate chain (`CRAFT_NODE_CERT`).

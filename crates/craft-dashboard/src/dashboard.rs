@@ -1,9 +1,9 @@
-//! The embedded, read-only live dashboard UI (ADR 026 §6).
+//! The embedded, read-only live dashboard UI (observability §6).
 //!
 //! A single self-contained HTML page (no build step, no external assets) served
 //! at `GET /dashboard`. It polls the introspection JSON endpoints for cluster
 //! and actor state and tails the telemetry SSE feed at `/dashboard/events` for
-//! a live event log. Read-only: it never mutates the cluster (ADR 026 §6).
+//! a live event log. Read-only: it never mutates the cluster (observability §6).
 
 /// The dashboard page markup + inline script.
 pub(crate) const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>

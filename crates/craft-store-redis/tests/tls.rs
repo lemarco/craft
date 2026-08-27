@@ -1,4 +1,4 @@
-//! TLS Redis integration tests (`rediss://`) via testcontainers (ADR 029).
+//! TLS Redis integration tests (`rediss://`) via testcontainers (testing-strategy).
 //!
 //! Run locally with:
 //!

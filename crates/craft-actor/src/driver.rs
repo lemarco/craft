@@ -9,7 +9,7 @@
 //! * [`Output::Apply`] → decode the command and feed it to
 //!   [`StateMachine::apply`], in strict index order, exactly once.
 //! * [`Output::ReadReady`] → the ReadIndex protocol confirmed the leader is
-//!   current (ADR 005), so a previously registered linearizable query is run
+//!   current (read-consistency), so a previously registered linearizable query is run
 //!   against the applied state via [`StateMachine::query`].
 //! * [`Output::ReadFailed`] → leadership was lost before the read could be
 //!   served; the pending query is dropped and reported so the client retries.
@@ -376,7 +376,7 @@ impl<M: StateMachine> RaftDriver<M> {
         Ok((index, step))
     }
 
-    /// Register a linearizable read (ReadIndex, ADR 005). Succeeds only on the
+    /// Register a linearizable read (ReadIndex, read-consistency). Succeeds only on the
     /// leader. The query is held until the core confirms the read is safe, at
     /// which point it is answered and surfaced as [`ReadOutcome::Ready`] in a
     /// later [`Step`] (possibly this one for a single-node cluster).
@@ -388,7 +388,7 @@ impl<M: StateMachine> RaftDriver<M> {
         // Register the query first so a synchronously-confirmed read (single
         // node) finds it during the drain below.
         self.pending_queries.insert(id, query);
-        // Lease-read fast path (ADR 005): if the leader still holds a valid
+        // Lease-read fast path (read-consistency): if the leader still holds a valid
         // leadership lease and has already applied through the lease's read
         // index, serve the query immediately with **no** ReadIndex round-trip.
         // A lease that is held but not yet applied falls through to ReadIndex.
@@ -416,7 +416,7 @@ impl<M: StateMachine> RaftDriver<M> {
     }
 
     /// Confirm a linearizable read index on the leader without executing a
-    /// query (follower-read setup, ADR 005).
+    /// query (follower-read setup, read-consistency).
     ///
     /// # Errors
     /// Returns [`DriverError::NotLeader`] if this node is not the leader.
@@ -451,7 +451,7 @@ impl<M: StateMachine> RaftDriver<M> {
             .map_err(|e| DriverError::Query(Box::new(e)))
     }
 
-    /// Export durable Raft state for cross-node group migration (ADR 031).
+    /// Export durable Raft state for cross-node group migration (write-sharding-multi-raft).
     ///
     /// Flushes pending persistence first, then reads the storage backend. When
     /// the backend drops writes (for example [`NullStorage`]), the live in-memory
@@ -517,7 +517,7 @@ impl<M: StateMachine> RaftDriver<M> {
     }
 
     /// Begin a joint-consensus membership change to `new_voters` (+ optional
-    /// `learners`) — the log entry underpinning a cluster join/leave (ADR 016).
+    /// `learners`) — the log entry underpinning a cluster join/leave (membership-early).
     ///
     /// The outer `Result` reports a fatal drain failure (which stops the node);
     /// the inner `Result` reports whether the change was accepted (returning the

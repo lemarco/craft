@@ -16,7 +16,8 @@ use craft_core::StateMachine;
 use craft_dashboard::{CraftEvent, EventBus, Metrics, StopReason, TraceOpts};
 use craft_net::RemoteError;
 use craft_net::transport::RequestHandler;
-use craft_proto::{NodeId, ScaleRequest};
+use craft_net::{Transport, send_leave_request};
+use craft_proto::{LeaveRequest, LeaveResponse, NodeId, PROTOCOL_VERSION, ScaleRequest};
 use tokio::task::JoinHandle;
 
 use craft_actor::{
@@ -67,7 +68,7 @@ impl ClusterState for ClusterFacts {
 }
 
 /// Bridges the actor registry's lifecycle + per-message hooks (E14 / Track H)
-/// to the telemetry planes (ADR 026): spawns, stops, restarts, and escalations
+/// to the telemetry planes (observability): spawns, stops, restarts, and escalations
 /// emit [`CraftEvent`]s and bump counters, and — when opt-in tracing is enabled
 /// for an actor via [`CraftCluster::trace`] — each handled message emits a
 /// [`CraftEvent::MessageHandled`]. The registry owns no telemetry types, so the
@@ -211,7 +212,7 @@ pub(crate) struct StatusDelta {
     /// Voters present last tick but gone now (crash / leave).
     pub departed: Vec<NodeId>,
     /// Voters that dropped out of the reachable set but remain committed members
-    /// (crash / partition without a `ConfChange`, ADR 032).
+    /// (crash / partition without a `ConfChange`, liveness-vs-membership).
     pub unreachable: Vec<NodeId>,
     /// Whether the committed voter set changed at all (join or leave).
     pub membership_changed: bool,
@@ -397,13 +398,13 @@ impl<M: StateMachine> CraftCluster<M> {
         &self.members
     }
 
-    /// How much of this VPS the worker should use (ADR 014).
+    /// How much of this VPS the worker should use (one-worker-per-vps).
     #[must_use]
     pub fn resource_profile(&self) -> ResourceProfile {
         self.resource_profile
     }
 
-    /// Detected VPS capacity for sizing the single worker's internal pools (ADR 014).
+    /// Detected VPS capacity for sizing the single worker's internal pools (one-worker-per-vps).
     #[must_use]
     pub fn vps_resources(&self) -> VpsResources {
         self.vps_resources
@@ -411,7 +412,7 @@ impl<M: StateMachine> CraftCluster<M> {
 
     /// The workflow-state store wired by
     /// [`CraftClusterBuilder::actor_state_store`](crate::CraftClusterBuilder::actor_state_store),
-    /// if any (ADR 021). Clone the `Arc` into actor `Config` when spawning
+    /// if any (actor-state-redis). Clone the `Arc` into actor `Config` when spawning
     /// stateful workers.
     #[must_use]
     pub fn actor_state_store(&self) -> Option<Arc<dyn craft_actor::ActorStateStore>> {
@@ -511,7 +512,7 @@ impl<M: StateMachine> CraftCluster<M> {
         &self.metrics
     }
 
-    /// Enable opt-in per-message tracing (ADR 026 §7, H6) for the local actor
+    /// Enable opt-in per-message tracing (observability §7, H6) for the local actor
     /// group `name`. While active, every message that group handles emits a
     /// [`CraftEvent::MessageHandled`] (with handling latency) onto
     /// [`events`](Self::events). Tracing auto-expires after `opts.duration`, so
@@ -544,18 +545,42 @@ impl<M: StateMachine> CraftCluster<M> {
             .is_some_and(|s| matches!(s.role, craft_core::Role::Leader))
     }
 
+    /// Request removal of this node from the cluster registry (group 0). Contact
+    /// any live member; followers transparently forward to the leader (symmetric
+    /// to dynamic join). On [`LeaveResponse::Accepted`], per-group membership sync
+    /// removes this node from shard groups (per-group-raft-membership).
+    ///
+    /// # Errors
+    /// Returns a transport error when `contact` is unreachable or the wire
+    /// framing fails.
+    pub async fn request_leave(
+        &self,
+        transport: &dyn Transport,
+        contact: NodeId,
+    ) -> Result<LeaveResponse, craft_net::TransportError> {
+        send_leave_request(
+            transport,
+            contact,
+            &LeaveRequest {
+                protocol_version: PROTOCOL_VERSION,
+                node_id: self.node_id,
+            },
+        )
+        .await
+    }
+
     /// Hot-reload handle when the node was started with [`CraftClusterBuilder::start_quic_pem`]
-    /// (ADR 034). `None` for in-memory or static `Security` starts.
+    /// (cert-automation). `None` for in-memory or static `Security` starts.
     #[must_use]
     pub fn cert_reload(&self) -> Option<&CertReloadHandle> {
         self.cert_reload.as_deref()
     }
 
     /// Drive actor group `name` to `total` instances cluster-wide (one worker
-    /// per node, ADR 014). Cluster-wide placement is the **leader's** job, so
+    /// per node, one-worker-per-vps). Cluster-wide placement is the **leader's** job, so
     /// this transparently forwards to the leader when called on a follower
-    /// (`/actor/scale`, ADR 018) — mirroring how client writes are forwarded
-    /// (ADR 003). On the leader it plans and executes directly against the
+    /// (`/actor/scale`, supervisor-leader) — mirroring how client writes are forwarded
+    /// (client-routing). On the leader it plans and executes directly against the
     /// current voter set.
     ///
     /// Every node that may host the group must have registered the type via

@@ -1,10 +1,10 @@
-//! The admin HTTP/1.1 server (ADR 025) exposing health, readiness, Prometheus
-//! metrics, introspection JSON, and the live dashboard + SSE feed (ADR 026).
+//! The admin HTTP/1.1 server (health-admin-port) exposing health, readiness, Prometheus
+//! metrics, introspection JSON, and the live dashboard + SSE feed (observability).
 //!
 //! Plain HTTP/1.1 on a **separate** port from the mTLS craft wire, so ordinary
 //! probes (`curl`, load balancers) work without QUIC or client certs. It
 //! carries no consensus/client data — only read-only observability — and should
-//! be bound to a private interface or firewalled (ADR 025 security notes).
+//! be bound to a private interface or firewalled (health-admin-port security notes).
 
 use std::convert::Infallible;
 use std::sync::Arc;

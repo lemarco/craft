@@ -4,7 +4,7 @@
 //! The only public entry point is the [`macro@remote_actor`] attribute, which
 //! fills in the boilerplate `postcard` wire codecs on a `UserActor`
 //! implementation so an actor can be spawned on and messaged from remote nodes
-//! (ADR 013). The state-machine "derive" of ADR 001 is instead served by serde
+//! (cross-node-actors). The state-machine "derive" of state-machine is instead served by serde
 //! blanket impls in `craft-core` (see backlog D0/D1), so no `StateMachine`
 //! derive is exported.
 
@@ -15,7 +15,7 @@ use syn::punctuated::Punctuated;
 use syn::{Ident, ImplItem, ItemImpl, Token, parse_macro_input};
 
 /// Fill in the `postcard` wire codecs on a `UserActor` `impl` so the actor is
-/// remotely spawnable and addressable (ADR 013, backlog D2).
+/// remotely spawnable and addressable (cross-node-actors, backlog D2).
 ///
 /// A bare `impl craft_actor::UserActor for MyActor { .. }` is **local-only**:
 /// the trait's `encode_config` / `decode_config` / `decode_message` default to

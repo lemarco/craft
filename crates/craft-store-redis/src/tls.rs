@@ -2,7 +2,7 @@
 
 /// PEM material for a TLS Redis connection (`rediss://…`).
 ///
-/// Redis TLS is **independent** of the craft cluster mTLS CA (ADR 021, ADR 024):
+/// Redis TLS is **independent** of the craft cluster mTLS CA (actor-state-redis, cert-provisioning):
 /// operators supply the Redis server's trust anchor (and optional client cert for
 /// Redis mTLS) here.
 #[derive(Clone, Default, Debug)]

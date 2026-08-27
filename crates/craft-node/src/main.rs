@@ -16,12 +16,13 @@
 //! | `CRAFT_LISTEN` | QUIC listen `addr:port` | `0.0.0.0:7443` |
 //! | `CRAFT_ADMIN` | Admin HTTP `addr:port` (`-` to disable) | `0.0.0.0:8080` |
 //! | `CRAFT_PEERS` | `id@host:port` list of **all** members (static membership) | *self only* |
-//! | `CRAFT_JOIN_SEEDS` | `id@host:port` seed list for a **dynamic** join (ADR 007) | *none* |
+//! | `CRAFT_JOIN_SEEDS` | `id@host:port` seed list for a **dynamic** join (discovery) | *none* |
 //! | `CRAFT_DISCOVERY` | `dns:<prefix>:<service>:<replicas>:<port>` → resolve seeds | *none* |
 //! | `CRAFT_ALLOW_JOIN` | Accept dynamic joins on this node (`1`/`true`) | `false` |
+//! | `CRAFT_ALLOW_LEAVE` | Accept cluster leave RPC on this node (`1`/`true`) | `false` |
 //! | `CRAFT_NODE_CERT` / `CRAFT_NODE_KEY` / `CRAFT_CA_CERT` | PEM cert chain / key / CA | *dev CA* |
 //! | `CRAFT_CERT_ORDINAL_BASE` | Dir with per-ordinal subdirs (`0/tls.crt`, …) for K8s cert-manager | *unset* |
-//! | `CRAFT_CERT_WATCH_SECS` | Poll interval for on-disk cert reload (ADR 034) | `60` |
+//! | `CRAFT_CERT_WATCH_SECS` | Poll interval for on-disk cert reload (cert-automation) | `60` |
 //!
 //! With no cert vars set, a throwaway dev CA is minted for a **single-node**
 //! cluster (great for `cargo run -p craft-node`). A multi-node cluster needs a
@@ -88,7 +89,8 @@ struct NodeConfig {
     /// service; see [`craft::discovery::resolve_dns_seeds`]).
     discovery: Option<DnsSpec>,
     allow_join: bool,
-    /// Production PEM paths when cert env vars are set (ADR 034 hot reload).
+    allow_leave: bool,
+    /// Production PEM paths when cert env vars are set (cert-automation hot reload).
     pem_paths: Option<craft::CertPaths>,
     security: Security,
 }
@@ -277,6 +279,7 @@ fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
         None => None,
     };
     let allow_join = env_bool("CRAFT_ALLOW_JOIN");
+    let allow_leave = env_bool("CRAFT_ALLOW_LEAVE");
 
     let (mut peers, mut members) = match env("CRAFT_PEERS") {
         Some(raw) => parse_peers(&raw)?,
@@ -284,7 +287,7 @@ fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
     };
     // A node that joins dynamically starts knowing only the *current* members
     // (from seeds/discovery) and is added to the voter set once its join
-    // commits — it must not pre-list itself as a member (ADR 007/017).
+    // commits — it must not pre-list itself as a member (discovery, join-rpc).
     let joining = !join_seeds.is_empty() || discovery.is_some();
     if !joining {
         if !members.contains(&node_id) {
@@ -307,6 +310,7 @@ fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
         join_seeds,
         discovery,
         allow_join,
+        allow_leave,
         pem_paths,
         security,
     })
@@ -333,7 +337,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     );
 
     // Assemble the discovery seed set: explicit seeds plus any resolved from a
-    // DNS discovery spec (Kubernetes headless service; ADR 007).
+    // DNS discovery spec (Kubernetes headless service; discovery).
     let mut seeds = cfg.join_seeds.clone();
     if let Some(dns) = &cfg.discovery {
         let resolved = resolve_dns_seeds(&dns.prefix, &dns.service, dns.replicas, dns.port).await?;
@@ -348,6 +352,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     if cfg.allow_join {
         builder = builder.allow_join(true);
+    }
+    if cfg.allow_leave {
+        builder = builder.allow_leave(true);
     }
     if !seeds.is_empty() {
         builder = builder.join_seeds(seeds);

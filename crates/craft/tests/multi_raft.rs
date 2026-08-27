@@ -1,19 +1,19 @@
-//! Multi-Raft via [`CraftClusterBuilder::raft_machines`] (ADR 031).
+//! Multi-Raft via [`CraftClusterBuilder::raft_machines`] (write-sharding-multi-raft).
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use craft::CraftCluster;
-use craft::core::{RaftGroupId, Role};
+use craft::core::RaftGroupId;
 use craft::net::{LocalNetwork, send_client_request, send_group_migrate, send_join_request};
 use craft::proto::{
-    ClientRequest, ClientResponse, GroupMigrateRequest, JoinRequest, JoinResponse, NodeId,
-    PROTOCOL_VERSION,
+    ClientRequest, ClientResponse, GroupMigrateRequest, JoinRequest, JoinResponse, LeaveResponse,
+    NodeId, PROTOCOL_VERSION,
 };
 use craft_test_support::{
     KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, await_craft_leader,
     fast_raft_config_with_seed, find_keys_for_two_groups, wait_for_each_group_cluster_leader,
-    wait_for_group_leader_on_any, wait_for_group_leaders,
+    wait_for_group_leaders,
 };
 
 async fn spawn_three_node_multi_raft_cluster()
@@ -43,7 +43,7 @@ async fn spawn_multi_node_cluster(
             .group_replication_factor(64)
             .raft_machines([KvMachine::default(), KvMachine::default()]);
         if allow_join {
-            builder = builder.allow_join(true);
+            builder = builder.allow_join(true).allow_leave(true);
         }
         let cluster = builder.start_local(&net).await;
         clusters.push(Arc::new(cluster));
@@ -60,44 +60,39 @@ async fn cluster_leader(clusters: &[Arc<CraftCluster<KvMachine>>]) -> Arc<CraftC
     await_craft_leader(clusters).await
 }
 
-async fn propose_group_zero_leave(
+async fn leave_via_cluster_rpc(
+    net: &LocalNetwork,
     clusters: &[Arc<CraftCluster<KvMachine>>],
     joiner: &CraftCluster<KvMachine>,
     joiner_id: NodeId,
 ) {
-    wait_for_group_leader_on_any(clusters, 0, &[joiner]).await;
-
+    let contact = cluster_leader(clusters).await.node_id();
     for _ in 0..500 {
-        for cluster in clusters {
-            if try_leave_on(cluster, joiner_id).await {
+        match joiner.request_leave(net, contact).await {
+            Ok(LeaveResponse::Accepted { membership, .. }) => {
+                assert!(
+                    !membership.voters.contains(&joiner_id),
+                    "joiner still in group 0 voters: {membership:?}"
+                );
                 return;
             }
-        }
-        if try_leave_on(joiner, joiner_id).await {
-            return;
+            Ok(LeaveResponse::Redirect {
+                leader: Some(leader),
+            }) if leader != contact => match joiner.request_leave(net, leader).await {
+                Ok(LeaveResponse::Accepted { membership, .. }) => {
+                    assert!(!membership.voters.contains(&joiner_id));
+                    return;
+                }
+                Ok(LeaveResponse::Rejected { reason }) => panic!("leave rejected: {reason:?}"),
+                _ => {}
+            },
+            Ok(LeaveResponse::Rejected { reason }) => panic!("leave rejected: {reason:?}"),
+            Err(e) => panic!("leave transport error: {e}"),
+            _ => {}
         }
         tokio::time::sleep(TICK_PERIOD).await;
     }
-    panic!("group 0 leave propose never succeeded");
-}
-
-async fn try_leave_on(cluster: &CraftCluster<KvMachine>, joiner_id: NodeId) -> bool {
-    let Some(handle) = cluster.group_handle(0) else {
-        return false;
-    };
-    let Some(status) = handle.status().await else {
-        return false;
-    };
-    if status.role != Role::Leader {
-        return false;
-    }
-    let mut voters = status.voters;
-    voters.retain(|id| *id != joiner_id);
-    handle
-        .propose_membership(voters)
-        .await
-        .expect("group 0 leave propose");
-    true
+    panic!("leave never committed on group 0");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -377,6 +372,7 @@ async fn join_fourth_node(
         .group_replication_factor(64)
         .raft_machines([KvMachine::default(), KvMachine::default()])
         .allow_join(true)
+        .allow_leave(true)
         .start_local(net)
         .await;
 
@@ -417,7 +413,7 @@ async fn wait_for_group_voter(
             }
         }
         if present {
-            if matched > 0 {
+            if active > 0 && matched == active {
                 return;
             }
         } else if active > 0 && matched == active {
@@ -434,7 +430,7 @@ async fn leave_syncs_non_coordinator_group_membership() {
     let (joiner_id, joiner) = join_fourth_node(&net, ids, &clusters).await;
     wait_for_group_voter(&clusters, 1, joiner_id, true).await;
 
-    propose_group_zero_leave(&clusters, &joiner, joiner_id).await;
+    leave_via_cluster_rpc(&net, &clusters, &joiner, joiner_id).await;
 
     joiner.shutdown();
     wait_for_group_voter(&clusters, 0, joiner_id, false).await;

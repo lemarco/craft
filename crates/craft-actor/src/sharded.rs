@@ -1,5 +1,5 @@
 //! Multi-Raft node routing — shard-aware client dispatch and group-scoped peer
-//! RPC demux (ADR 031).
+//! RPC demux (write-sharding-multi-raft).
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -174,6 +174,22 @@ impl RequestHandler for ShardedNodeService {
                         .await
                 })
             }
+            Route::ClusterJoin | Route::ClusterLeave => {
+                let groups = Arc::clone(&self.groups);
+                Box::pin(async move {
+                    let handler = {
+                        let groups = groups.read().expect("sharded groups lock");
+                        groups
+                            .get(&0)
+                            .cloned()
+                            .or_else(|| groups.values().next().cloned())
+                    };
+                    let Some(handler) = handler else {
+                        return Err(TransportError::Io("no raft groups".into()));
+                    };
+                    handler.handle(route, body).await
+                })
+            }
             other => {
                 let groups = Arc::clone(&self.groups);
                 Box::pin(async move {
@@ -274,7 +290,7 @@ where
 
 /// Spawn `group_count` independent Raft groups on one physical node, wired
 /// through a [`ShardedNodeService`]. Each group's bootstrap voters are chosen
-/// by [`group_voters`](craft_core::group_voters) over `live_nodes` (ADR 033).
+/// by [`group_voters`](craft_core::group_voters) over `live_nodes` (per-group-raft-membership).
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_multi_raft_node<M>(
     node_id: NodeId,

@@ -1,4 +1,4 @@
-# A 3-node craft cluster as a StatefulSet (ADR 027 item 6, ADR 034).
+# A 3-node craft cluster as a StatefulSet (future-work-and-risks item 6, cert-automation).
 #
 # Why a StatefulSet: craft nodes have stable identity. Each pod gets a stable
 # ordinal name (`craft-0`, `craft-1`, `craft-2`); the craft-node binary derives
@@ -7,7 +7,7 @@
 # (every pod lists all members by their headless-service DNS name); to grow the
 # cluster elastically instead, use the DNS-discovery variant noted below.
 #
-# mTLS (ADR 006/034): cert-manager issues one Certificate per pod ordinal
+# mTLS (security, cert-automation): cert-manager issues one Certificate per pod ordinal
 # (`craft-tls-0` … `craft-tls-2` in deploy/kubernetes/cert-manager/). Each pod
 # mounts all ordinal Secrets (kubelet keeps them fresh on renew) and selects its
 # own via `CRAFT_CERT_ORDINAL_BASE` + `POD_NAME`. The issued cert SAN must be
@@ -80,7 +80,7 @@ spec:
               value: "60"
             # --- Elastic alternative (comment out CRAFT_PEERS above) -----------
             # Bootstrap craft-0 as a single-node seed that accepts joins, and let
-            # craft-1.. discover peers by DNS and join dynamically (ADR 007):
+            # craft-1.. discover peers by DNS and join dynamically (discovery):
             #   - name: CRAFT_ALLOW_JOIN
             #     value: "1"
             #   - name: CRAFT_DISCOVERY

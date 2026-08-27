@@ -1,4 +1,4 @@
-# cert-manager for craft mTLS (ADR 034)
+# cert-manager for craft mTLS (cert-automation)
 
 Issues per-pod node certificates for the StatefulSet in `../statefulset.yaml`.
 

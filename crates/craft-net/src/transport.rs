@@ -1,6 +1,6 @@
-//! The [`Transport`] port and an in-memory implementation (ADR 010, ADR 030).
+//! The [`Transport`] port and an in-memory implementation (wire-transport, architecture-style).
 //!
-//! ADR 010 requires that the deterministic simulator and the real `quinn`/`h3`
+//! wire-transport requires that the deterministic simulator and the real `quinn`/`h3`
 //! stack expose *the same* transport abstraction, so the runtime is written
 //! once against a trait. That trait is [`Transport`] (the client side: send a
 //! request to a peer, await the response) paired with [`RequestHandler`] (the
@@ -18,9 +18,9 @@ use std::sync::{Arc, Mutex};
 
 use craft_proto::{
     ActorEnvelope, ClientRequest, ClientResponse, DeliverAck, DirectoryUpdate, GroupMigrateReply,
-    GroupMigrateRequest, JoinRequest, JoinResponse, MigrateReply, MigrateRequest, NodeId, PeerBook,
-    RaftRpc, RaftRpcReply, RegisterAck, ScaleReply, ScaleRequest, SpawnReply, SpawnRequest,
-    StopReply, StopRequest,
+    GroupMigrateRequest, JoinRequest, JoinResponse, LeaveRequest, LeaveResponse, MigrateReply,
+    MigrateRequest, NodeId, PeerBook, RaftRpc, RaftRpcReply, RegisterAck, ScaleReply, ScaleRequest,
+    SpawnReply, SpawnRequest, StopReply, StopRequest,
 };
 
 use crate::route::Route;
@@ -105,7 +105,7 @@ pub trait RequestHandler: Send + Sync + 'static {
 }
 
 /// Client side: send a request body to `peer` on `route` and await the response
-/// body. One call is one request/response round-trip (ADR 010).
+/// body. One call is one request/response round-trip (wire-transport).
 pub trait Transport: Send + Sync + 'static {
     /// Send `body` to `peer` and await its response.
     fn send(
@@ -159,7 +159,7 @@ pub async fn send_client_request<T: Transport + ?Sized>(
 }
 
 /// Send a cluster [`JoinRequest`] and decode the [`JoinResponse`]
-/// (`/cluster/join`, ADR 017).
+/// (`/cluster/join`, join-rpc).
 ///
 /// # Errors
 /// Returns [`TransportError`] on a framing failure or if the peer is
@@ -174,8 +174,24 @@ pub async fn send_join_request<T: Transport + ?Sized>(
     Ok(decode_body(&response)?)
 }
 
+/// Send a cluster [`LeaveRequest`] and decode the [`LeaveResponse`]
+/// (`/cluster/leave`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is
+/// unreachable / the send fails.
+pub async fn send_leave_request<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &LeaveRequest,
+) -> Result<LeaveResponse, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::ClusterLeave, body).await?;
+    Ok(decode_body(&response)?)
+}
+
 /// Fetch a peer's [`PeerBook`] for address propagation (`/cluster/peers`,
-/// ADR 007). The request body is empty; the response is the peer's current view
+/// discovery). The request body is empty; the response is the peer's current view
 /// of reachable node addresses.
 ///
 /// # Errors
@@ -192,7 +208,7 @@ pub async fn fetch_peers<T: Transport + ?Sized>(
 }
 
 /// Publish a [`DirectoryUpdate`] to a peer and decode its [`RegisterAck`]
-/// (`/actor/register`, ADR 013).
+/// (`/actor/register`, cross-node-actors).
 ///
 /// # Errors
 /// Returns [`TransportError`] on a framing failure or if the peer is
@@ -208,7 +224,7 @@ pub async fn send_directory_update<T: Transport + ?Sized>(
 }
 
 /// Deliver an [`ActorEnvelope`] to the node hosting the target instance and
-/// decode its [`DeliverAck`] (`/actor/deliver`, ADR 013).
+/// decode its [`DeliverAck`] (`/actor/deliver`, cross-node-actors).
 ///
 /// # Errors
 /// Returns [`TransportError`] on a framing failure or if the peer is
@@ -224,7 +240,7 @@ pub async fn send_actor_deliver<T: Transport + ?Sized>(
 }
 
 /// Ask a peer to spawn an actor and decode its [`SpawnReply`]
-/// (`/actor/spawn`, ADR 013).
+/// (`/actor/spawn`, cross-node-actors).
 ///
 /// # Errors
 /// Returns [`TransportError`] on a framing failure or if the peer is
@@ -240,7 +256,7 @@ pub async fn send_actor_spawn<T: Transport + ?Sized>(
 }
 
 /// Forward a cluster-wide scale to the (leader) peer and decode its
-/// [`ScaleReply`] (`/actor/scale`, ADR 013/018).
+/// [`ScaleReply`] (`/actor/scale`, cross-node-actors, supervisor-leader).
 ///
 /// # Errors
 /// Returns [`TransportError`] on a framing failure or if the peer is
@@ -256,7 +272,7 @@ pub async fn send_actor_scale<T: Transport + ?Sized>(
 }
 
 /// Ask a peer to spawn a migration replacement and decode its [`MigrateReply`]
-/// (`/actor/migrate`, ADR 013).
+/// (`/actor/migrate`, cross-node-actors).
 ///
 /// # Errors
 /// Returns [`TransportError`] on a framing failure or if the peer is
@@ -272,7 +288,7 @@ pub async fn send_actor_migrate<T: Transport + ?Sized>(
 }
 
 /// Ship a Raft group migration bundle to `peer` and decode its
-/// [`GroupMigrateReply`] (`/cluster/group/migrate`, ADR 031).
+/// [`GroupMigrateReply`] (`/cluster/group/migrate`, write-sharding-multi-raft).
 ///
 /// # Errors
 /// Returns [`TransportError`] on a framing failure or if the peer is
@@ -290,7 +306,7 @@ pub async fn send_group_migrate<T: Transport + ?Sized>(
 }
 
 /// Ask a peer to stop a group for a planned scale-down / removal and decode its
-/// [`StopReply`] (`/actor/stop`, ADR 013/018).
+/// [`StopReply`] (`/actor/stop`, cross-node-actors, supervisor-leader).
 ///
 /// # Errors
 /// Returns [`TransportError`] on a framing failure or if the peer is
@@ -306,7 +322,7 @@ pub async fn send_actor_stop<T: Transport + ?Sized>(
 }
 
 /// An in-memory switch that wires several nodes' [`RequestHandler`]s together
-/// with no real network — the deterministic test/simulation transport (ADR 010
+/// with no real network — the deterministic test/simulation transport (wire-transport
 /// mitigations). Cloning shares the same switch, so every node uses one handle.
 ///
 /// [`detach`](LocalNetwork::detach) drops a node from the switch, which models a

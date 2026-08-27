@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Conventional commit message gate (GitLab workflow / ADR 028).
+# Conventional commit message gate (GitLab workflow / library-and-publishing).
 #
 # Usage: scripts/check-commit-msg.sh .git/COMMIT_EDITMSG
 

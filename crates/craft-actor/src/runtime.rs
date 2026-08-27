@@ -19,16 +19,16 @@
 //!
 //! The loop holds an `Arc<dyn Transport>`, so the exact same runtime runs over
 //! the deterministic `LocalNetwork` in tests and over live QUIC in production
-//! (ADR 010) with no code changes.
+//! (wire-transport) with no code changes.
 //!
 //! ## Not yet wired (tracked in the backlog)
 //!
 //! * **Durable persistence** (B4): the in-memory core log is the source of
 //!   truth; hard state and the log are not yet flushed through `craft-storage`,
 //!   so a restart loses state.
-//! * **Log compaction / snapshots** (Track G): the runtime never calls
-//!   `RaftNode::compact`, so the log grows without bound. Inbound
-//!   `InstallSnapshot` restore *is* handled (via the driver).
+//! * **Log compaction / snapshots** (Track G): leaders can compact via
+//!   [`NodeHandle::compact`]; inbound `InstallSnapshot` restore is handled via
+//!   the driver. Automatic background compaction is not wired yet.
 //! * **Per-connection identity** (C5): [`NodeService`] trusts the sender id
 //!   declared inside a peer RPC instead of the presented client certificate.
 //! * **Fatal errors are silent**: a corrupt-log / state-machine failure stops
@@ -42,11 +42,11 @@ use craft_core::{Command as _, MembershipError, Query as _, ReadId, Role, StateM
 use craft_net::transport::{Body, BoxFuture};
 use craft_net::{
     RequestHandler, Route, Transport, TransportError, decode_body, encode_body,
-    send_client_request, send_join_request, send_peer_rpc,
+    send_client_request, send_join_request, send_leave_request, send_peer_rpc,
 };
 use craft_proto::{
-    ClientRequest, ClientResponse, JoinRejection, JoinRequest, JoinResponse, LogIndex, NodeId,
-    PROTOCOL_VERSION, RaftRpc, RaftRpcReply, Term,
+    ClientRequest, ClientResponse, JoinRejection, JoinRequest, JoinResponse, LeaveRejection,
+    LeaveRequest, LeaveResponse, LogIndex, NodeId, PROTOCOL_VERSION, RaftRpc, RaftRpcReply, Term,
 };
 use tokio::sync::{mpsc, oneshot};
 
@@ -56,7 +56,7 @@ use crate::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ClientError {
     /// This node is not the leader; retry against `leader` (transparent
-    /// forwarding is a later increment, ADR 003).
+    /// forwarding is a later increment, client-routing).
     #[error("not leader (leader hint: {leader:?})")]
     NotLeader {
         /// Best-known current leader, if any.
@@ -89,7 +89,7 @@ pub struct NodeStatus {
     /// The current committed voter set (Raft membership), sorted.
     pub voters: Vec<NodeId>,
     /// The voters this node currently considers **reachable** — a liveness
-    /// signal distinct from committed membership (ADR 032). On the leader this
+    /// signal distinct from committed membership (liveness-vs-membership). On the leader this
     /// drops voters that have stopped acking heartbeats (crashed / partitioned)
     /// even though they remain committed voters; a follower reports all voters.
     pub reachable: Vec<NodeId>,
@@ -127,7 +127,11 @@ enum Envelope<M: StateMachine> {
         request: JoinRequest,
         respond: oneshot::Sender<JoinResponse>,
     },
-    /// Leader-only: begin a joint-consensus membership change (ADR 033).
+    Leave {
+        request: LeaveRequest,
+        respond: oneshot::Sender<LeaveResponse>,
+    },
+    /// Leader-only: begin a joint-consensus membership change (per-group-raft-membership).
     ProposeMembership {
         voters: Vec<NodeId>,
         respond: oneshot::Sender<Result<(), ClientError>>,
@@ -138,6 +142,10 @@ enum Envelope<M: StateMachine> {
     },
     ExportMigration {
         respond: oneshot::Sender<Result<craft_proto::GroupMigrationBundle, ClientError>>,
+    },
+    /// Compact the applied log prefix into a durable snapshot (Raft §7).
+    Compact {
+        respond: oneshot::Sender<Result<bool, ClientError>>,
     },
     Shutdown {
         done: Option<oneshot::Sender<()>>,
@@ -150,10 +158,14 @@ pub struct RuntimeConfig {
     /// Wall-clock duration of one logical Raft tick. The core's timeouts are in
     /// ticks (see [`craft_core::Config`]); this maps them onto real time.
     pub tick_period: Duration,
-    /// Whether this node accepts cluster joins (`--allow-join`, ADR 017). When
+    /// Whether this node accepts cluster joins (`--allow-join`, join-rpc). When
     /// `false`, `/cluster/join` requests are rejected with
     /// [`JoinRejection::JoinsDisabled`].
     pub allow_join: bool,
+    /// Whether this node accepts cluster leaves (`--allow-leave`). When `false`,
+    /// `/cluster/leave` requests are rejected with
+    /// [`LeaveRejection::LeavesDisabled`].
+    pub allow_leave: bool,
 }
 
 impl Default for RuntimeConfig {
@@ -161,6 +173,7 @@ impl Default for RuntimeConfig {
         Self {
             tick_period: Duration::from_millis(50),
             allow_join: false,
+            allow_leave: false,
         }
     }
 }
@@ -197,7 +210,7 @@ impl<M: StateMachine> NodeHandle<M> {
     /// [`ClientError::NotLeader`] if this node is not the leader when the
     /// proposal is made **or** if it loses leadership before the command
     /// commits (in the latter case the command may still commit under the new
-    /// leader, so commands should be idempotent — ADR 021), or
+    /// leader, so commands should be idempotent — actor-state-redis), or
     /// [`ClientError::Stopped`] if the runtime shut down before the command
     /// applied.
     pub async fn propose(&self, command: M::Command) -> Result<M::Response, ClientError> {
@@ -208,7 +221,7 @@ impl<M: StateMachine> NodeHandle<M> {
         rx.await.unwrap_or(Err(ClientError::Stopped))
     }
 
-    /// Run a linearizable query (ReadIndex, ADR 005) and await its result.
+    /// Run a linearizable query (ReadIndex, read-consistency) and await its result.
     ///
     /// # Errors
     /// [`ClientError::NotLeader`] if this node is not the leader, or
@@ -240,7 +253,7 @@ impl<M: StateMachine> NodeHandle<M> {
         rx.await.unwrap_or(Err(ClientError::Stopped))
     }
 
-    /// Export durable Raft state for cross-node group migration (ADR 031).
+    /// Export durable Raft state for cross-node group migration (write-sharding-multi-raft).
     pub async fn export_migration(&self) -> Result<craft_proto::GroupMigrationBundle, ClientError> {
         let (respond, rx) = oneshot::channel();
         self.tx
@@ -313,7 +326,7 @@ impl<M: StateMachine> NodeHandle<M> {
         rx.await.map_err(|_| ClientError::Stopped)
     }
 
-    /// Submit a cluster [`JoinRequest`] (ADR 017). On the leader this triggers a
+    /// Submit a cluster [`JoinRequest`] (join-rpc). On the leader this triggers a
     /// membership change and resolves once it commits; on a follower it returns
     /// [`JoinResponse::Redirect`] (the [`NodeService`] proxies for remote
     /// callers).
@@ -328,8 +341,23 @@ impl<M: StateMachine> NodeHandle<M> {
         rx.await.map_err(|_| ClientError::Stopped)
     }
 
+    /// Submit a cluster [`LeaveRequest`]. On the leader this triggers a
+    /// membership change and resolves once it commits; on a follower it returns
+    /// [`LeaveResponse::Redirect`] (the [`NodeService`] proxies for remote
+    /// callers).
+    ///
+    /// # Errors
+    /// [`ClientError::Stopped`] if the runtime shut down before responding.
+    pub async fn leave(&self, request: LeaveRequest) -> Result<LeaveResponse, ClientError> {
+        let (respond, rx) = oneshot::channel();
+        self.tx
+            .send(Envelope::Leave { request, respond })
+            .map_err(|_| ClientError::Stopped)?;
+        rx.await.map_err(|_| ClientError::Stopped)
+    }
+
     /// Propose a joint-consensus membership change to `voters` when this node
-    /// is the Raft leader for the group (ADR 033).
+    /// is the Raft leader for the group (per-group-raft-membership).
     ///
     /// # Errors
     /// [`ClientError::NotLeader`] or [`ClientError::Driver`] when the core
@@ -345,6 +373,21 @@ impl<M: StateMachine> NodeHandle<M> {
     /// Force an immediate election (test/bootstrap helper).
     pub fn campaign(&self) {
         let _ = self.tx.send(Envelope::Campaign);
+    }
+
+    /// Snapshot applied state and purge the compacted log prefix durably.
+    ///
+    /// Returns `Ok(false)` when there is nothing new to compact.
+    ///
+    /// # Errors
+    /// [`ClientError::Driver`] if snapshot capture or persistence fails;
+    /// [`ClientError::Stopped`] if the runtime shut down first.
+    pub async fn compact(&self) -> Result<bool, ClientError> {
+        let (respond, rx) = oneshot::channel();
+        self.tx
+            .send(Envelope::Compact { respond })
+            .map_err(|_| ClientError::Stopped)?;
+        rx.await.map_err(|_| ClientError::Stopped)?
     }
 
     /// Fetch a status snapshot, or `None` if the runtime has stopped.
@@ -381,6 +424,7 @@ struct Runtime<M: StateMachine> {
     transport: Arc<dyn Transport>,
     self_tx: mpsc::UnboundedSender<Envelope<M>>,
     allow_join: bool,
+    allow_leave: bool,
     pending_proposals: HashMap<LogIndex, oneshot::Sender<Result<M::Response, ClientError>>>,
     pending_queries: HashMap<ReadId, oneshot::Sender<Result<M::Response, ClientError>>>,
     /// Leader ReadIndex confirmations awaiting quorum ack (follower-read setup).
@@ -388,6 +432,8 @@ struct Runtime<M: StateMachine> {
     /// Join requests awaiting their membership-change entry to commit, keyed by
     /// that entry's log index.
     pending_joins: HashMap<LogIndex, oneshot::Sender<JoinResponse>>,
+    /// Leave requests awaiting their membership-change entry to commit.
+    pending_leaves: HashMap<LogIndex, oneshot::Sender<LeaveResponse>>,
     next_read_id: u64,
 }
 
@@ -454,8 +500,9 @@ impl<M: StateMachine> Runtime<M> {
         // waiting and retry against the new leader. (A proposal that had
         // already committed applies above before this runs; anything failed
         // here may still commit under the new leader, so proposals must be
-        // idempotent — see ADR 021.)
+        // idempotent — see actor-state-redis.)
         self.resolve_committed_joins();
+        self.resolve_committed_leaves();
         if !self.driver.is_leader() {
             self.fail_pending_requests();
         }
@@ -489,6 +536,33 @@ impl<M: StateMachine> Runtime<M> {
         }
     }
 
+    /// Complete any leave whose membership-change entry has now committed.
+    fn resolve_committed_leaves(&mut self) {
+        if self.pending_leaves.is_empty() {
+            return;
+        }
+        let commit = self.driver.node().commit_index();
+        let ready: Vec<LogIndex> = self
+            .pending_leaves
+            .keys()
+            .copied()
+            .filter(|index| commit >= *index)
+            .collect();
+        if ready.is_empty() {
+            return;
+        }
+        let leader = self.driver.node().id();
+        let membership = self.driver.node().committed_membership();
+        for index in ready {
+            if let Some(tx) = self.pending_leaves.remove(&index) {
+                let _ = tx.send(LeaveResponse::Accepted {
+                    leader,
+                    membership: membership.clone(),
+                });
+            }
+        }
+    }
+
     /// Fail every outstanding client request and join with a leader hint after
     /// losing leadership.
     fn fail_pending_requests(&mut self) {
@@ -504,6 +578,9 @@ impl<M: StateMachine> Runtime<M> {
         }
         for (_, tx) in self.pending_joins.drain() {
             let _ = tx.send(JoinResponse::Redirect { leader });
+        }
+        for (_, tx) in self.pending_leaves.drain() {
+            let _ = tx.send(LeaveResponse::Redirect { leader });
         }
     }
 
@@ -583,6 +660,9 @@ impl<M: StateMachine> Runtime<M> {
             Envelope::Join { request, respond } => {
                 self.on_join(request, respond)?;
             }
+            Envelope::Leave { request, respond } => {
+                self.on_leave(request, respond)?;
+            }
             Envelope::ProposeMembership { voters, respond } => {
                 self.on_propose_membership(voters, respond)?;
             }
@@ -610,19 +690,26 @@ impl<M: StateMachine> Runtime<M> {
                     .map_err(|e| ClientError::Driver(e.to_string()));
                 let _ = respond.send(result);
             }
+            Envelope::Compact { respond } => {
+                let result = self
+                    .driver
+                    .compact()
+                    .map_err(|e| ClientError::Driver(e.to_string()));
+                let _ = respond.send(result);
+            }
         }
         Ok(true)
     }
 
     /// Validate and (on the leader) start a cluster join as a membership change
-    /// (ADR 017/020). The join resolves to [`JoinResponse::Accepted`] once the
+    /// (join-rpc, join-version-skew). The join resolves to [`JoinResponse::Accepted`] once the
     /// membership entry commits (see [`resolve_committed_joins`]).
     fn on_join(
         &mut self,
         request: JoinRequest,
         respond: oneshot::Sender<JoinResponse>,
     ) -> Result<(), DriverError> {
-        // Hard-reject a protocol-version mismatch before anything else (ADR 020).
+        // Hard-reject a protocol-version mismatch before anything else (join-version-skew).
         if request.protocol_version != PROTOCOL_VERSION {
             let _ = respond.send(JoinResponse::Rejected {
                 reason: JoinRejection::VersionSkew {
@@ -671,6 +758,74 @@ impl<M: StateMachine> Runtime<M> {
             Err(MembershipError::EmptyVoters) => {
                 let _ = respond.send(JoinResponse::Rejected {
                     reason: JoinRejection::Other("resulting voter set is empty".to_string()),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Validate and (on the leader) start a cluster leave as a membership change.
+    /// The leave resolves to [`LeaveResponse::Accepted`] once the membership
+    /// entry commits (see [`resolve_committed_leaves`]).
+    fn on_leave(
+        &mut self,
+        request: LeaveRequest,
+        respond: oneshot::Sender<LeaveResponse>,
+    ) -> Result<(), DriverError> {
+        if request.protocol_version != PROTOCOL_VERSION {
+            let _ = respond.send(LeaveResponse::Rejected {
+                reason: LeaveRejection::VersionSkew {
+                    expected: PROTOCOL_VERSION,
+                    got: request.protocol_version,
+                },
+            });
+            return Ok(());
+        }
+        if !self.allow_leave {
+            let _ = respond.send(LeaveResponse::Rejected {
+                reason: LeaveRejection::LeavesDisabled,
+            });
+            return Ok(());
+        }
+        if !self.driver.is_leader() {
+            let _ = respond.send(LeaveResponse::Redirect {
+                leader: self.driver.node().leader_id(),
+            });
+            return Ok(());
+        }
+        let mut voters = self.driver.node().voters();
+        if !voters.contains(&request.node_id) {
+            let _ = respond.send(LeaveResponse::Rejected {
+                reason: LeaveRejection::NotMember,
+            });
+            return Ok(());
+        }
+        if voters.len() <= 1 {
+            let _ = respond.send(LeaveResponse::Rejected {
+                reason: LeaveRejection::LastMember,
+            });
+            return Ok(());
+        }
+        voters.retain(|id| *id != request.node_id);
+
+        match self.driver.propose_membership(voters, Vec::new())? {
+            Ok((index, step)) => {
+                self.pending_leaves.insert(index, respond);
+                let _ = self.settle(step);
+            }
+            Err(MembershipError::NotLeader { leader }) => {
+                let _ = respond.send(LeaveResponse::Redirect { leader });
+            }
+            Err(MembershipError::InProgress) => {
+                let _ = respond.send(LeaveResponse::Rejected {
+                    reason: LeaveRejection::Other(
+                        "a membership change is already in progress".to_string(),
+                    ),
+                });
+            }
+            Err(MembershipError::EmptyVoters) => {
+                let _ = respond.send(LeaveResponse::Rejected {
+                    reason: LeaveRejection::LastMember,
                 });
             }
         }
@@ -727,10 +882,12 @@ where
         transport,
         self_tx: tx.clone(),
         allow_join: config.allow_join,
+        allow_leave: config.allow_leave,
         pending_proposals: HashMap::new(),
         pending_queries: HashMap::new(),
         pending_read_confirms: HashMap::new(),
         pending_joins: HashMap::new(),
+        pending_leaves: HashMap::new(),
         next_read_id: 0,
     };
 
@@ -773,8 +930,8 @@ where
 /// `/client/wire` requests into a running node via its [`NodeHandle`].
 ///
 /// Attach it to a `QuicServer` (or `LocalNetwork`) so remote peers and clients
-/// can reach the node. Client requests use **transparent forwarding** (ADR
-/// 003): a non-leader proxies the request to the current leader over the same
+/// can reach the node. Client requests use **transparent forwarding** (client-routing):
+/// a non-leader proxies the request to the current leader over the same
 /// `transport` and returns the leader's response, so clients can connect to any
 /// node without leader discovery. If no leader is known the request fails with
 /// a [`ClientResponse::Error`]; forward attempts are bounded by
@@ -788,7 +945,7 @@ pub struct NodeService<M: StateMachine> {
 
 impl<M: StateMachine> NodeService<M> {
     /// Wrap a node handle as a request handler. `transport` is used to forward
-    /// client requests to the leader when this node is a follower (ADR 003);
+    /// client requests to the leader when this node is a follower (client-routing);
     /// pass the same transport the node runtime uses.
     #[must_use]
     pub fn new(handle: NodeHandle<M>, transport: Arc<dyn Transport>) -> Self {
@@ -834,6 +991,11 @@ impl<M: StateMachine> RequestHandler for NodeService<M> {
                     let response = route_join(&handle, &transport, forward_timeout, request).await;
                     Ok(encode_body(&response)?)
                 }
+                Route::ClusterLeave => {
+                    let request: LeaveRequest = decode_body(&body)?;
+                    let response = route_leave(&handle, &transport, forward_timeout, request).await;
+                    Ok(encode_body(&response)?)
+                }
                 other => Err(TransportError::Io(format!(
                     "route {other:?} is not served by the node runtime"
                 ))),
@@ -842,8 +1004,8 @@ impl<M: StateMachine> RequestHandler for NodeService<M> {
     }
 }
 
-/// Serve a client request, using follower reads for queries (ADR 005) and
-/// transparent forwarding for writes (ADR 003).
+/// Serve a client request, using follower reads for queries (read-consistency) and
+/// transparent forwarding for writes (client-routing).
 async fn route_client<M: StateMachine>(
     handle: &NodeHandle<M>,
     transport: &Arc<dyn Transport>,
@@ -926,7 +1088,7 @@ async fn forward_to_leader(
 }
 
 /// Serve a cluster join, forwarding to the leader if this node is a follower
-/// (ADR 017 step 2, same transparent pattern as client requests).
+/// (join-rpc step 2, same transparent pattern as client requests).
 async fn route_join<M: StateMachine>(
     handle: &NodeHandle<M>,
     transport: &Arc<dyn Transport>,
@@ -951,6 +1113,29 @@ async fn route_join<M: StateMachine>(
     local
 }
 
+/// Serve a cluster leave, forwarding to the leader if this node is a follower.
+async fn route_leave<M: StateMachine>(
+    handle: &NodeHandle<M>,
+    transport: &Arc<dyn Transport>,
+    forward_timeout: Duration,
+    request: LeaveRequest,
+) -> LeaveResponse {
+    let local = handle
+        .leave(request.clone())
+        .await
+        .unwrap_or_else(|_| LeaveResponse::Rejected {
+            reason: LeaveRejection::Other("node runtime stopped".to_string()),
+        });
+    if let LeaveResponse::Redirect {
+        leader: Some(leader),
+    } = local
+        && leader != handle.id()
+    {
+        return forward_leave(transport, forward_timeout, leader, request).await;
+    }
+    local
+}
+
 /// Proxy a join request to `leader`, bounded by `timeout`.
 async fn forward_join(
     transport: &Arc<dyn Transport>,
@@ -961,6 +1146,21 @@ async fn forward_join(
     match tokio::time::timeout(timeout, send_join_request(&**transport, leader, &request)).await {
         Ok(Ok(response)) => response,
         Ok(Err(_)) | Err(_) => JoinResponse::Redirect {
+            leader: Some(leader),
+        },
+    }
+}
+
+/// Proxy a leave request to `leader`, bounded by `timeout`.
+async fn forward_leave(
+    transport: &Arc<dyn Transport>,
+    timeout: Duration,
+    leader: NodeId,
+    request: LeaveRequest,
+) -> LeaveResponse {
+    match tokio::time::timeout(timeout, send_leave_request(&**transport, leader, &request)).await {
+        Ok(Ok(response)) => response,
+        Ok(Err(_)) | Err(_) => LeaveResponse::Redirect {
             leader: Some(leader),
         },
     }

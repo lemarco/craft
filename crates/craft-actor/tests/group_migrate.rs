@@ -1,4 +1,4 @@
-//! Cross-node Raft group migration helpers (ADR 031).
+//! Cross-node Raft group migration helpers (write-sharding-multi-raft).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,6 +18,7 @@ async fn export_and_respawn_from_bundle_preserves_state() {
     let runtime = RuntimeConfig {
         tick_period: TICK_PERIOD,
         allow_join: false,
+        allow_leave: false,
     };
     let raft = fast_raft_config_with_seed(3);
     let (_service_a, handle_a) = spawn_raft_group(

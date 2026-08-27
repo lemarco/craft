@@ -1,7 +1,7 @@
 # Releasing craft
 
 craft publishes to crates.io as a synchronized workspace: every `craft-*` crate
-shares one version and is released together ([ADR 028](decisions/028-library-and-publishing.md)).
+shares one version and is released together ([library-and-publishing](decisions/library-and-publishing.md)).
 
 ## TL;DR
 
@@ -51,7 +51,7 @@ git push && git push origin v0.2.0
   changelog.
 - **Wire/protocol** compatibility is tracked separately via
   `Raft-Protocol-Version` (see [protocol.md](protocol.md)); protocol changes are
-  breaking and gated by [ADR 020](decisions/020-join-version-skew.md).
+  breaking and gated by [join-version-skew](decisions/join-version-skew.md).
 
 ## CI
 

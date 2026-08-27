@@ -1,6 +1,6 @@
 //! A three-node craft cluster in a single process, driven by a **remote
 //! client** that talks to any node and is transparently forwarded to the leader
-//! (ADR 003). This mirrors a real deployment (client → any node → leader)
+//! (client-routing). This mirrors a real deployment (client → any node → leader)
 //! without needing three machines or certificates — the nodes are wired over
 //! the in-memory [`LocalNetwork`] the simulator and tests use.
 //!

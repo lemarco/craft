@@ -1,5 +1,5 @@
 //! Integration tests for [`RedisStore`] against a real Redis via
-//! `testcontainers` (ADR 029). Gated `#[ignore]` because they need Docker;
+//! `testcontainers` (testing-strategy). Gated `#[ignore]` because they need Docker;
 //! the heavy CI lane runs them with `--run-ignored all` (or `-- --ignored`).
 //!
 //! Run locally with:

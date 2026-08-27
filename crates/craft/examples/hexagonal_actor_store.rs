@@ -1,4 +1,4 @@
-//! Hexagonal wiring: consensus port vs actor workflow store (ADR 030).
+//! Hexagonal wiring: consensus port vs actor workflow store (architecture-style).
 //!
 //! ```text
 //!   ┌─────────────────────────────────────────────────────────┐

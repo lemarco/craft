@@ -1,5 +1,5 @@
 //! VPS resource profile for the one-worker-per-VPS model (backlog E13,
-//! [ADR 014](../../../docs/decisions/014-one-worker-per-vps.md)).
+//! [one-worker-per-vps](../../../docs/decisions/one-worker-per-vps.md)).
 //!
 //! In production `craft` runs a **single** worker actor per VPS and expects
 //! that worker to use the whole machine — parallelism lives *inside* the actor
@@ -10,7 +10,7 @@
 
 use std::num::NonZeroUsize;
 
-/// How much of a VPS the single worker should use (ADR 014).
+/// How much of a VPS the single worker should use (one-worker-per-vps).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ResourceProfile {
     /// Production default: expose the full VPS capacity to the one worker.
@@ -24,7 +24,7 @@ pub enum ResourceProfile {
 }
 
 /// The VPS capacity handed to the single worker so it can size its internal
-/// pools (ADR 014). Cheap value object; derived from a [`ResourceProfile`] and
+/// pools (one-worker-per-vps). Cheap value object; derived from a [`ResourceProfile`] and
 /// the machine's detected parallelism.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VpsResources {

@@ -1,4 +1,4 @@
-# Lefthook v2 — local quality gates aligned with .gitlab-ci.yml fast lane (ADR 028/029).
+# Lefthook v2 — local quality gates aligned with .gitlab-ci.yml fast lane (library-and-publishing, testing-strategy).
 #
 # Setup (once per clone):
 #   lefthook install

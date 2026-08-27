@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # chaos.sh — inject network faults into the docker-compose craft cluster and
-# assert consensus survives them (backlog T9, ADR 029). Two scenarios:
+# assert consensus survives them (backlog T9, testing-strategy). Two scenarios:
 #
 #   1. Partition + heal (always): isolate the leader from the cluster network
 #      (a clean split), assert the majority side re-elects, then reconnect it

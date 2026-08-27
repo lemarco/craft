@@ -1,7 +1,7 @@
 //! End-to-end client tests against a real 3-node cluster wired over the
 //! in-memory `LocalNetwork` transport: the [`RemoteClient`]/[`TypedClient`]
 //! drive live nodes through `craft_actor`'s `NodeService`, exercising
-//! transparent follower→leader forwarding (ADR 003) and failover/retry (F4).
+//! transparent follower→leader forwarding (client-routing) and failover/retry (F4).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,6 +25,7 @@ fn spawn_cluster() -> (LocalNetwork, Vec<(NodeId, NodeHandle<Kv>)>) {
         let cfg = RuntimeConfig {
             tick_period: TICK_PERIOD,
             allow_join: false,
+            allow_leave: false,
         };
         let handle = spawn_node(driver, Arc::clone(&transport), cfg);
         let service = NodeService::new(handle.clone(), Arc::clone(&transport));
@@ -73,7 +74,7 @@ async fn client_targeting_only_a_follower_serves_reads_locally() {
     let leader = await_node_leader(&handles).await;
 
     // Pick a follower as the *only* target: the write must still succeed via
-    // transparent server-side forwarding (ADR 003).
+    // transparent server-side forwarding (client-routing).
     let follower = handles
         .iter()
         .map(|(id, _)| *id)

@@ -1,4 +1,4 @@
-//! The [`Client`] trait and the HTTP/3 [`RemoteClient`] (ADR 002 L2, ADR 003).
+//! The [`Client`] trait and the HTTP/3 [`RemoteClient`] (client-api L2, client-routing).
 
 use std::future::Future;
 use std::sync::Arc;
@@ -25,12 +25,12 @@ pub trait Client {
         payload: Vec<u8>,
     ) -> impl Future<Output = Result<Vec<u8>, ClientError>> + Send;
 
-    /// Submit a linearizable read (ReadIndex, ADR 005). `payload` is the
+    /// Submit a linearizable read (ReadIndex, read-consistency). `payload` is the
     /// application-encoded query; the returned bytes are the encoded response.
     fn query(&self, payload: Vec<u8>) -> impl Future<Output = Result<Vec<u8>, ClientError>> + Send;
 }
 
-/// Extension of [`Client`] for shard-aware multi-Raft routing (ADR 031).
+/// Extension of [`Client`] for shard-aware multi-Raft routing (write-sharding-multi-raft).
 pub trait KeyedClient: Client {
     /// Submit a write to the Raft group owning `key`.
     fn propose_keyed(
@@ -53,8 +53,8 @@ pub struct RetryPolicy {
     /// Total number of send attempts before giving up (each attempt may target
     /// a different node).
     pub max_attempts: u32,
-    /// Deadline for a single attempt (the follower→leader forward hop of ADR
-    /// 003 happens inside this window on the server side).
+    /// Deadline for a single attempt (the follower→leader forward hop of client-routing
+    /// happens inside this window on the server side).
     pub attempt_timeout: Duration,
     /// Delay between attempts, giving an in-progress election time to settle.
     pub backoff: Duration,
@@ -74,7 +74,7 @@ impl Default for RetryPolicy {
 /// (live QUIC/HTTP/3 in production, the in-memory `LocalNetwork` in tests).
 ///
 /// A client may contact **any** node: a follower transparently forwards to the
-/// leader server-side (ADR 003), so a single reachable node is enough. The
+/// leader server-side (client-routing), so a single reachable node is enough. The
 /// client is nonetheless configured with several `targets` and a
 /// [`RetryPolicy`] so it survives a node being down or an election in flight —
 /// it rotates across targets, and follows a `NotLeader` hint straight to the

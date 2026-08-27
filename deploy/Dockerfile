@@ -1,12 +1,12 @@
 # Production-oriented multi-stage image for the craft-node reference binary,
-# used by the Kubernetes manifests in deploy/kubernetes/ (ADR 027 item 6).
+# used by the Kubernetes manifests in deploy/kubernetes/ (future-work-and-risks item 6).
 #
 # Build context is the repo root:
 #   docker build -f deploy/Dockerfile -t craft-node:latest .
 #
 # The runtime image is distroless (no shell/package manager) for a small,
 # hardened surface. Certs are mounted from cert-manager Secrets under
-# /etc/craft/…; the admin port (8080) serves Kubernetes probes (ADR 025).
+# /etc/craft/…; the admin port (8080) serves Kubernetes probes (health-admin-port).
 
 FROM rust:1.98-slim AS build
 WORKDIR /src

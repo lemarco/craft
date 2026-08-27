@@ -1,5 +1,5 @@
 //! Cross-node actor directory (backlog E7,
-//! [ADR 013](../../../docs/decisions/013-cross-node-actors.md)).
+//! [cross-node-actors](../../../docs/decisions/cross-node-actors.md)).
 //!
 //! Every node keeps a **merged view** of which actors live where. Each node is
 //! authoritative for its own instances and publishes its *complete* local set

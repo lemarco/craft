@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# generate.sh — mint an mTLS PKI for a craft cluster (ADR 006, ADR 024).
+# generate.sh — mint an mTLS PKI for a craft cluster (security, cert-provisioning).
 #
 # Produces a cluster CA, per-node certificates (whose name binds to a NodeId as
 # `craft-node-<id>`, matching the SNI craft dials with), and client certificates

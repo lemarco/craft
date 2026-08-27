@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bootstrap.sh — mint cluster certs for the step-ca compose demo (ADR 034).
+# bootstrap.sh — mint cluster certs for the step-ca compose demo (cert-automation).
 #
 # Uses examples/certs/generate.sh (same contract as production). The step-ca
 # service in docker-compose.yml is an optional reference CA; operators can

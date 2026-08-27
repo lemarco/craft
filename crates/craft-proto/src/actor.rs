@@ -1,4 +1,4 @@
-//! Cross-node actor messaging + directory wire types (ADR 013, ADR 019).
+//! Cross-node actor messaging + directory wire types (cross-node-actors, cluster-routing).
 
 use serde::{Deserialize, Serialize};
 
@@ -6,12 +6,12 @@ use crate::NodeId;
 
 /// A compile-time actor type tag. In v1 this is the Rust type name of the
 /// `UserActor`, which is stable within a build; two nodes running the same
-/// binary agree on it (ADR 013).
+/// binary agree on it (cross-node-actors).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ActorTypeId(pub String);
 
 /// A globally-unique address for a single actor instance in the cluster
-/// (ADR 013). `generation` is bumped on respawn/migration so stale references
+/// (cross-node-actors). `generation` is bumped on respawn/migration so stale references
 /// are detectable.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ActorId {
@@ -26,19 +26,19 @@ pub struct ActorId {
 }
 
 /// A directory entry describing one live actor instance, replicated across the
-/// cluster via `/actor/register` (ADR 013).
+/// cluster via `/actor/register` (cross-node-actors).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActorRegistration {
     /// The instance's address.
     pub id: ActorId,
     /// The actor's type tag.
     pub actor_type: ActorTypeId,
-    /// Whether the actor carries migratable state (ADR 013 migration).
+    /// Whether the actor carries migratable state (cross-node-actors migration).
     pub migratable: bool,
 }
 
 /// A state-based directory update: node `node`'s **complete** set of local
-/// registrations at monotonic `epoch` (ADR 013 publish/revoke). Receivers
+/// registrations at monotonic `epoch` (cross-node-actors publish/revoke). Receivers
 /// replace everything they hold for `node`, applying an update only if its
 /// `epoch` is newer — so updates are idempotent and reorder-safe. Publishing an
 /// empty `registrations` revokes all of `node`'s entries (e.g. on leave).
@@ -64,14 +64,14 @@ pub struct RegisterAck {
 pub struct ActorRef {
     /// Logical group / pool name (e.g. `"workers"`).
     pub group: String,
-    /// Optional routing key for consistent-hash routing (ADR 019); when
+    /// Optional routing key for consistent-hash routing (cluster-routing); when
     /// `None`, round-robin routing is used.
     pub key: Option<String>,
     /// Pin to a specific node; when `None`, the registry chooses placement.
     pub node: Option<NodeId>,
 }
 
-/// An actor message crossing a node boundary via `/actor/deliver` (ADR 013).
+/// An actor message crossing a node boundary via `/actor/deliver` (cross-node-actors).
 ///
 /// The sender has already resolved the logical target (group + RR/keyed
 /// selection) to a concrete instance `to` via the cluster directory (E7), so
@@ -114,7 +114,7 @@ pub struct DeliverAck {
 }
 
 /// A request to spawn an actor on a target node's registry (`/actor/spawn`,
-/// ADR 013). The target looks up a factory registered for `actor_type`,
+/// cross-node-actors). The target looks up a factory registered for `actor_type`,
 /// decodes `config`, and starts the actor under `name`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SpawnRequest {
@@ -139,7 +139,7 @@ pub struct SpawnReply {
 }
 
 /// A request to drive a group to a cluster-wide instance count on the leader
-/// (`/actor/scale`, ADR 013/018). Sent when `scale_cluster` is called on a
+/// (`/actor/scale`, cross-node-actors, supervisor-leader). Sent when `scale_cluster` is called on a
 /// follower: the leader owns cluster-wide placement, so the follower forwards
 /// the intent (with the committed voter set it observed) rather than planning
 /// locally. The target reconstructs each placement via the `actor_type`
@@ -150,7 +150,7 @@ pub struct ScaleRequest {
     pub name: String,
     /// The actor's type tag; every hosting node must have a factory for it.
     pub actor_type: ActorTypeId,
-    /// Desired cluster-wide instance count (one worker per node, ADR 014).
+    /// Desired cluster-wide instance count (one worker per node, one-worker-per-vps).
     pub total: u64,
     /// `postcard`-encoded `A::Config` used to construct new instances.
     pub config: Vec<u8>,
@@ -167,9 +167,9 @@ pub struct ScaleReply {
     pub error: Option<String>,
 }
 
-/// A request to stop a group on a target node (`/actor/stop`, ADR 013/018).
+/// A request to stop a group on a target node (`/actor/stop`, cross-node-actors, supervisor-leader).
 /// Sent by the leader when a scale-down (or reconcile) plans a *removal* on
-/// another node: the one-worker-per-node model (ADR 014) means "remove on node
+/// another node: the one-worker-per-node model (one-worker-per-vps) means "remove on node
 /// N" is "stop this group on node N". The target stops the named group
 /// idempotently.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -188,7 +188,7 @@ pub struct StopReply {
 }
 
 /// A request to migrate a stateful actor to a target node (`/actor/migrate`,
-/// ADR 013). The departing node captures the instance's migration snapshot,
+/// cross-node-actors). The departing node captures the instance's migration snapshot,
 /// then asks the target to spawn a replacement under `name` and restore the
 /// snapshot into it before it handles any message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

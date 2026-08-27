@@ -1,5 +1,5 @@
 //! Tests for OTP-style actor restart/supervision policies (backlog E14,
-//! ADR 026 §5).
+//! observability §5).
 
 use std::sync::Arc;
 use std::sync::Mutex;

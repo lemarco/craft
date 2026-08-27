@@ -6,7 +6,7 @@
 //! host supervised actors that can message, spawn, and migrate across nodes.
 //!
 //! This facade re-exports the stable public API; most users depend only on
-//! `craft` (ADR 028). The [`CraftCluster`] builder is the main entry point:
+//! `craft` (library-and-publishing). The [`CraftCluster`] builder is the main entry point:
 //!
 //! ```no_run
 //! use std::time::Duration;

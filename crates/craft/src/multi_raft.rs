@@ -1,4 +1,4 @@
-//! Multi-Raft rebalance execution for the facade (ADR 031).
+//! Multi-Raft rebalance execution for the facade (write-sharding-multi-raft).
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -29,7 +29,7 @@ pub(crate) struct MultiRaftState<M: StateMachine> {
     pub data_dir: Option<PathBuf>,
     pub catalog: Vec<RaftGroupId>,
     pub node_id: NodeId,
-    /// Per-group voter replication factor (ADR 033).
+    /// Per-group voter replication factor (per-group-raft-membership).
     pub replication_factor: u32,
 }
 
@@ -39,7 +39,7 @@ impl<M: StateMachine + Default + 'static> MultiRaftState<M> {
     }
 
     /// For each hosted group where this node is leader, propose the planner's
-    /// desired voter set (ADR 033 Phase 2).
+    /// desired voter set (per-group-raft-membership Phase 2).
     pub async fn sync_group_membership(
         &self,
         facts: Arc<ClusterFacts>,

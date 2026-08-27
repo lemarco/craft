@@ -34,7 +34,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 # Convenience helpers to mint a dev cluster CA + per-node identities. Not for
 # production (operators provide real certs). Forwards to `craft-net/dev-certs`.
 dev-certs = ["craft-net/dev-certs"]
-# Dev-only: switch the entire wire to human-readable JSON (ADR 027 item 4).
+# Dev-only: switch the entire wire to human-readable JSON (future-work-and-risks item 4).
 # Forwards to `craft-proto/json-wire`; never enable in production.
 json-wire = ["craft-proto/json-wire"]
 

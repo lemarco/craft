@@ -1,19 +1,19 @@
-//! Application state-machine API (ADR 001).
+//! Application state-machine API (state-machine).
 //!
 //! A cluster replicates an opaque log; the *application* decides what those
 //! entries mean by implementing [`StateMachine`]. The Raft core commits and
 //! orders entries, then the runtime feeds each committed command to
-//! [`StateMachine::apply`] exactly once, in index order (ADR 030 applier loop).
+//! [`StateMachine::apply`] exactly once, in index order (architecture-style applier loop).
 //!
-//! ## Encode/decode glue (ADR 001)
+//! ## Encode/decode glue (state-machine)
 //!
-//! ADR 001 called for macros to generate `Encode`/`Decode` glue and to check
+//! state-machine called for macros to generate `Encode`/`Decode` glue and to check
 //! that command types are *owned* and *clone-safe* for replication. In this
 //! stack that glue is already provided generically by `serde` + `postcard`, so
 //! instead of a bespoke derive we expose the [`Command`] and [`Query`] marker
 //! traits with **blanket implementations** over any `serde` type that also
 //! satisfies the replication bounds. The bounds (`Clone + Send + 'static`) are
-//! exactly the "owned & clone-safe" compile-time check ADR 001 asked for — a
+//! exactly the "owned & clone-safe" compile-time check state-machine asked for — a
 //! type borrowing a lifetime, or one that is not `Clone`, simply will not
 //! satisfy [`Command`] and the code will not compile.
 
@@ -61,7 +61,7 @@ where
 /// A read-only query served by the [`StateMachine`].
 ///
 /// Queries never enter the log; they are answered locally after the ReadIndex
-/// protocol confirms the leader is current (ADR 005). They still cross task
+/// protocol confirms the leader is current (read-consistency). They still cross task
 /// boundaries and may be sent to a remote leader, hence `Send + 'static` +
 /// `serde`. Unlike a [`Command`], a query need not be `Clone`.
 pub trait Query: Send + 'static {
@@ -93,13 +93,13 @@ where
     }
 }
 
-/// The user-defined, deterministic application state machine (ADR 001).
+/// The user-defined, deterministic application state machine (state-machine).
 ///
 /// Implementations must be **deterministic**: applying the same sequence of
 /// commands from the same snapshot must always yield the same state and the
 /// same per-command [`Response`](StateMachine::Response). This is what lets a
 /// lagging follower rebuild identical state purely from the replicated log, and
-/// what lets the deterministic simulator (ADR 029) reproduce runs. Avoid wall
+/// what lets the deterministic simulator (testing-strategy) reproduce runs. Avoid wall
 /// clocks, RNGs, and external I/O inside [`apply`](StateMachine::apply); feed
 /// any such inputs in through the command instead.
 pub trait StateMachine: Send + 'static {
@@ -118,7 +118,7 @@ pub trait StateMachine: Send + 'static {
     /// The runtime calls this exactly once per committed command, in ascending
     /// index order. `index` is provided so implementations can persist an
     /// applied-through watermark for idempotent external side effects
-    /// (ADR 021), though the in-log state itself needs no such bookkeeping.
+    /// (actor-state-redis), though the in-log state itself needs no such bookkeeping.
     ///
     /// # Errors
     /// Returns [`Self::Error`](StateMachine::Error) if the command is invalid
@@ -134,7 +134,7 @@ pub trait StateMachine: Send + 'static {
     /// Answer a read-only query against the current applied state.
     ///
     /// Must not mutate state. Linearizability is guaranteed by the caller via
-    /// ReadIndex (ADR 005), not by this method.
+    /// ReadIndex (read-consistency), not by this method.
     ///
     /// # Errors
     /// Returns [`Self::Error`](StateMachine::Error) if the query is invalid.

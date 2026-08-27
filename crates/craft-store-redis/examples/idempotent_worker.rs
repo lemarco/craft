@@ -1,8 +1,8 @@
-//! Idempotent stateful-actor worker over an [`ActorStateStore`] (ADR 021 G3).
+//! Idempotent stateful-actor worker over an [`ActorStateStore`] (actor-state-redis G3).
 //!
 //! The store is the durable, crash-surviving home for *workflow* state (here,
 //! per-order progress): if the VPS running this worker crashes, the leader
-//! respawns it elsewhere and it resumes from the same keys (ADR 013/018).
+//! respawns it elsewhere and it resumes from the same keys (cross-node-actors, supervisor-leader).
 //!
 //! This example runs against the in-process [`InMemoryStore`] so it needs no
 //! Redis. In production, swap in `craft_store_redis::RedisStore` — the worker

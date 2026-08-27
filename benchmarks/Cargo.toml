@@ -1,4 +1,4 @@
-# Benchmarks + soak harness (backlog T10, ADR 029). Deliberately a standalone
+# Benchmarks + soak harness (backlog T10, testing-strategy). Deliberately a standalone
 # crate *outside* the main workspace (its own [workspace] table + excluded by the
 # root manifest) so criterion never compiles in the fast CI lane. Run with
 # `cargo bench` / `cargo run --release --bin soak` from this directory.

@@ -2,7 +2,7 @@
 name: craft-add-feature
 description: >-
   Add a feature to craft following crate boundaries, trait ports, facade API,
-  and ADR 029 testing. Use when implementing new functionality, extending
+  and testing-strategy testing. Use when implementing new functionality, extending
   consensus/actors/transport/storage, or adding a public API to the craft facade.
 ---
 
@@ -31,7 +31,7 @@ Do not put I/O in `craft-core`. Do not expose internal crates in public API unle
 
 ## 2. Need a new trait?
 
-Apply ADR 030 litmus test: **≥2 implementations** (prod + test/sim). Otherwise use concrete types until a second adapter exists.
+Apply architecture-style litmus test: **≥2 implementations** (prod + test/sim). Otherwise use concrete types until a second adapter exists.
 
 ## 3. Tests (required)
 

@@ -1,4 +1,4 @@
-//! mTLS configuration for the QUIC transport (ADR 006, `docs/protocol.md`).
+//! mTLS configuration for the QUIC transport (security, `docs/protocol.md`).
 //!
 //! Every production network path is mutually authenticated: peers and clients
 //! present a certificate issued by the cluster CA, and both ends verify the
@@ -158,7 +158,7 @@ pub fn client_config(
 }
 
 /// A self-signed cluster certificate authority for the dev profile and tests
-/// (ADR 006). Issues per-node [`NodeIdentity`]s whose Common Name binds the
+/// (security). Issues per-node [`NodeIdentity`]s whose Common Name binds the
 /// certificate to a [`NodeId`]. **Not** for production — real deployments feed
 /// operator-provisioned certs to [`NodeIdentity::from_der`].
 #[cfg(feature = "dev-certs")]

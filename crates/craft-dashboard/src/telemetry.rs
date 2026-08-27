@@ -1,4 +1,4 @@
-//! BEAM `:telemetry`-style event stream (ADR 026 §3).
+//! BEAM `:telemetry`-style event stream (observability §3).
 //!
 //! The runtime emits [`CraftEvent`]s onto an [`EventBus`] (a bounded broadcast
 //! channel). Subscribers — the live dashboard's SSE feed, user sinks via
@@ -20,9 +20,9 @@ pub enum StopReason {
     Normal,
     /// The actor's `handle` returned an error.
     Failure,
-    /// The restart budget was exhausted (ADR 026 §5) and the actor escalated.
+    /// The restart budget was exhausted (observability §5) and the actor escalated.
     RestartLimit,
-    /// Stopped because it migrated to another node (ADR 013).
+    /// Stopped because it migrated to another node (cross-node-actors).
     Migrated,
 }
 
@@ -93,14 +93,14 @@ pub enum CraftEvent {
         /// New leader.
         leader: u64,
     },
-    /// An opt-in per-message trace record (ADR 026 §7).
+    /// An opt-in per-message trace record (observability §7).
     MessageTraced {
         /// Traced actor identity.
         id: String,
         /// Human-readable message summary.
         message: String,
     },
-    /// Multi-Raft group placement was recomputed on the leader (ADR 031).
+    /// Multi-Raft group placement was recomputed on the leader (write-sharding-multi-raft).
     RaftGroupsRebalanced {
         /// Groups adopted on this node.
         adopt: Vec<u32>,
@@ -109,7 +109,7 @@ pub enum CraftEvent {
     },
 }
 
-/// Options for opt-in per-message tracing (ADR 026 §7). Off by default; when
+/// Options for opt-in per-message tracing (observability §7). Off by default; when
 /// enabled it auto-expires after `duration` so tracing never runs cluster-wide
 /// indefinitely.
 #[derive(Debug, Clone)]

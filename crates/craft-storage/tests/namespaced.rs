@@ -1,4 +1,4 @@
-//! Per-group storage isolation (multi-Raft, ADR 031).
+//! Per-group storage isolation (multi-Raft, write-sharding-multi-raft).
 
 use craft_storage::proto::{EntryPayload, LogEntry, LogIndex, Term};
 use craft_storage::{GroupRedbLayout, HardState, HardStateStore, LogStore, group_redb_path};

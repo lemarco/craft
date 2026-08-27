@@ -2,7 +2,7 @@
 //!
 //! Defines the on-the-wire representation for Raft peer RPCs, the client API,
 //! cluster join handshakes, and actor messaging. All bodies are encoded with
-//! `postcard` (ADR 010, ADR 011). Nothing here performs I/O.
+//! `postcard` (wire-transport, serialization). Nothing here performs I/O.
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,7 @@ pub mod client;
 pub mod group;
 pub mod group_migrate;
 pub mod join;
+pub mod leave;
 pub mod raft;
 
 pub use actor::{
@@ -26,12 +27,13 @@ pub use group_migrate::{
     GroupMigrationSnapshot, GroupMigrationSnapshotMeta,
 };
 pub use join::{JoinRejection, JoinRequest, JoinResponse, PeerBook, PeerEntry};
+pub use leave::{LeaveRejection, LeaveRequest, LeaveResponse};
 pub use raft::{
     AppendEntries, AppendEntriesReply, EntryPayload, InstallSnapshot, InstallSnapshotReply,
     LogEntry, Membership, RaftRpc, RaftRpcReply, RequestVote, RequestVoteReply,
 };
 
-/// Wire/protocol version negotiated on join (ADR 020: hard reject on mismatch).
+/// Wire/protocol version negotiated on join (join-version-skew: hard reject on mismatch).
 pub const PROTOCOL_VERSION: u32 = 1;
 
 /// Stable identifier for a cluster node.
@@ -51,7 +53,7 @@ pub struct Term(pub u64);
 pub struct LogIndex(pub u64);
 
 /// A leader replication/heartbeat round, used to confirm leadership for
-/// linearizable ReadIndex reads (ADR 005). Monotonic per leader term.
+/// linearizable ReadIndex reads (read-consistency). Monotonic per leader term.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
 )]
@@ -119,7 +121,7 @@ impl LogId {
 }
 
 /// The wire codec in effect for this build: `"postcard"` by default, or
-/// `"json"` when the dev-only `json-wire` feature is enabled (ADR 027 item 4).
+/// `"json"` when the dev-only `json-wire` feature is enabled (future-work-and-risks item 4).
 /// Surfaced so a node can log/advertise its wire format at startup.
 pub const WIRE_CODEC: &str = if cfg!(feature = "json-wire") {
     "json"
@@ -140,7 +142,7 @@ pub enum CodecError {
 
 /// Encode a value to a wire byte vector.
 ///
-/// Uses the compact `postcard` binary format (ADR 010/011) unless the dev-only
+/// Uses the compact `postcard` binary format (wire-transport, serialization) unless the dev-only
 /// `json-wire` feature is enabled, in which case bodies are human-readable JSON.
 ///
 /// # Errors

@@ -1,4 +1,4 @@
-//! Export/import helpers for cross-node Raft group migration (ADR 031).
+//! Export/import helpers for cross-node Raft group migration (write-sharding-multi-raft).
 
 use craft_proto::{
     GroupMigrationBundle, GroupMigrationHardState, GroupMigrationSnapshot,

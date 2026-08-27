@@ -4,42 +4,42 @@ Architecture and decision records for the distributive Raft actor system.
 
 ## Decision records
 
-| ID | Topic | Status |
-|----|-------|--------|
-| [001](decisions/001-state-machine.md) | State machine API (trait + macros) | **Accepted** |
-| [002](decisions/002-client-api.md) | Client API (Rust-native, no gRPC) | **Accepted** |
-| [010](decisions/010-wire-transport.md) | Wire transport (HTTP/3 everywhere) | **Accepted** |
-| [011](decisions/011-serialization.md) | Wire serialization (postcard) | **Accepted** |
-| [006](decisions/006-security.md) | TLS / mTLS (peers + client wire) | **Accepted** |
-| [003](decisions/003-client-routing.md) | Client routing (transparent forward) | **Accepted** |
-| [004](decisions/004-deployment-model.md) | Deployment (library-first framework, VPS) | **Accepted** |
-| [012](decisions/012-elastic-cluster.md) | Elastic cluster (incremental join, actors) | **Accepted** |
-| [013](decisions/013-cross-node-actors.md) | Cross-node actors (v1) | **Accepted** |
-| [014](decisions/014-one-worker-per-vps.md) | One worker per VPS (production) | **Accepted** |
-| [007](decisions/007-discovery.md) | Cluster discovery (JOIN_ADDR + Raft config) | **Accepted** |
-| [005](decisions/005-read-consistency.md) | Read consistency (ReadIndex / linearizable) | **Accepted** |
-| [008](decisions/008-scale-targets.md) | Scale targets (1:1 worker:VPS) | **Accepted** |
-| [009](decisions/009-naming.md) | Naming (`craft-*` + facade `craft`) | **Accepted** |
-| [015](decisions/015-auto-spawn-on-join.md) | Auto-spawn workers on VPS join | **Accepted** |
-| [016](decisions/016-membership-early.md) | Joint-consensus membership early | **Accepted** |
-| [017](decisions/017-join-rpc.md) | Join RPC `/cluster/join` | **Accepted** |
-| [018](decisions/018-supervisor-leader.md) | Leader-only ClusterSupervisor | **Accepted** |
-| [019](decisions/019-cluster-routing.md) | Cluster routing (RR + keyed) | **Accepted** |
-| [020](decisions/020-join-version-skew.md) | Join version skew (hard reject) | **Accepted** |
-| [021](decisions/021-actor-state-redis.md) | Stateful actors → Redis / external store | **Accepted** |
-| [022](decisions/022-drain-timeout.md) | Drain timeout (default 60s, configurable) | **Accepted** |
-| [023](decisions/023-default-port.md) | Default port 7443/udp | **Accepted** |
-| [024](decisions/024-cert-provisioning.md) | Cert script + docs | **Accepted** |
-| [025](decisions/025-health-admin-port.md) | Health/admin HTTP port (`:8080`) | **Accepted** |
-| [026](decisions/026-observability.md) | Observability & monitoring (BEAM-style) | **Accepted** |
-| [027](decisions/027-future-work-and-risks.md) | Future work, deferrals & known risks | **Accepted** |
-| [028](decisions/028-library-and-publishing.md) | Library distribution & publishing | **Accepted** |
-| [029](decisions/029-testing-strategy.md) | Testing strategy (sim-first, containers, E2E) | **Accepted** |
-| [030](decisions/030-architecture-style.md) | Architecture style (pragmatic ports & adapters) | **Accepted** |
-| [034](decisions/034-cert-automation.md) | mTLS automation (step-ca, cert-manager, hot reload) | **Accepted** |
-| [031](decisions/031-write-sharding-multi-raft.md) | Write sharding / multi-Raft | **Accepted** |
-| [032](decisions/032-liveness-vs-membership.md) | Liveness signal vs membership | **Accepted** |
-| [033](decisions/033-per-group-raft-membership.md) | Per-group Raft membership (multi-Raft) | **Accepted** |
+| Topic | Status |
+|-------|--------|
+| [State machine API (trait + macros)](decisions/state-machine.md) | **Accepted** |
+| [Client API (Rust-native, no gRPC)](decisions/client-api.md) | **Accepted** |
+| [Wire transport (HTTP/3 everywhere)](decisions/wire-transport.md) | **Accepted** |
+| [Wire serialization (postcard)](decisions/serialization.md) | **Accepted** |
+| [TLS / mTLS (peers + client wire)](decisions/security.md) | **Accepted** |
+| [Client routing (transparent forward)](decisions/client-routing.md) | **Accepted** |
+| [Deployment (library-first framework, VPS)](decisions/deployment-model.md) | **Accepted** |
+| [Elastic cluster (incremental join, actors)](decisions/elastic-cluster.md) | **Accepted** |
+| [Cross-node actors (v1)](decisions/cross-node-actors.md) | **Accepted** |
+| [One worker per VPS (production)](decisions/one-worker-per-vps.md) | **Accepted** |
+| [Cluster discovery (JOIN_ADDR + Raft config)](decisions/discovery.md) | **Accepted** |
+| [Read consistency (ReadIndex / linearizable)](decisions/read-consistency.md) | **Accepted** |
+| [Scale targets (1:1 worker:VPS)](decisions/scale-targets.md) | **Accepted** |
+| [Naming (`craft-*` + facade `craft`)](decisions/naming.md) | **Accepted** |
+| [Auto-spawn workers on VPS join](decisions/auto-spawn-on-join.md) | **Accepted** |
+| [Joint-consensus membership early](decisions/membership-early.md) | **Accepted** |
+| [Join RPC `/cluster/join`](decisions/join-rpc.md) | **Accepted** |
+| [Leader-only ClusterSupervisor](decisions/supervisor-leader.md) | **Accepted** |
+| [Cluster routing (RR + keyed)](decisions/cluster-routing.md) | **Accepted** |
+| [Join version skew (hard reject)](decisions/join-version-skew.md) | **Accepted** |
+| [Stateful actors → Redis / external store](decisions/actor-state-redis.md) | **Accepted** |
+| [Drain timeout (default 60s, configurable)](decisions/drain-timeout.md) | **Accepted** |
+| [Default port 7443/udp](decisions/default-port.md) | **Accepted** |
+| [Cert script + docs](decisions/cert-provisioning.md) | **Accepted** |
+| [Health/admin HTTP port (`:8080`)](decisions/health-admin-port.md) | **Accepted** |
+| [Observability & monitoring (BEAM-style)](decisions/observability.md) | **Accepted** |
+| [Future work, deferrals & known risks](decisions/future-work-and-risks.md) | **Accepted** |
+| [Library distribution & publishing](decisions/library-and-publishing.md) | **Accepted** |
+| [Testing strategy (sim-first, containers, E2E)](decisions/testing-strategy.md) | **Accepted** |
+| [Architecture style (pragmatic ports & adapters)](decisions/architecture-style.md) | **Accepted** |
+| [mTLS automation (step-ca, cert-manager, hot reload)](decisions/cert-automation.md) | **Accepted** |
+| [Write sharding / multi-Raft](decisions/write-sharding-multi-raft.md) | **Accepted** |
+| [Liveness signal vs membership](decisions/liveness-vs-membership.md) | **Accepted** |
+| [Per-group Raft membership (multi-Raft)](decisions/per-group-raft-membership.md) | **Accepted** |
 
 ## Architecture
 

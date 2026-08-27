@@ -2,10 +2,10 @@
 //!
 //! [`RaftNode`] drives leader election and log replication deterministically:
 //! it consumes events and returns [`Output`] effects for an outer runtime to
-//! execute (ADR 030). Because it performs no I/O and derives all randomness
-//! from a seed, an entire cluster can be simulated reproducibly (ADR 029).
+//! execute (architecture-style). Because it performs no I/O and derives all randomness
+//! from a seed, an entire cluster can be simulated reproducibly (testing-strategy).
 //!
-//! Joint-consensus membership (ADR 016), ReadIndex (ADR 005), and snapshots
+//! Joint-consensus membership (membership-early), ReadIndex (read-consistency), and snapshots
 //! build on this foundation in later increments.
 
 pub use craft_proto as proto;

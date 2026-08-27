@@ -1,4 +1,4 @@
-# Client-facing Service for the QUIC client API (ADR 002/003). Load-balances
+# Client-facing Service for the QUIC client API (client-api, client-routing). Load-balances
 # client traffic across all craft pods — any node transparently forwards client
 # requests to the current leader, so clients need not know which pod leads.
 #

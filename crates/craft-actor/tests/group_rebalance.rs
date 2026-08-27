@@ -1,4 +1,4 @@
-//! Multi-Raft group rebalance planner (ADR 031).
+//! Multi-Raft group rebalance planner (write-sharding-multi-raft).
 
 use craft_actor::{ClusterState, RaftGroupReconciler};
 use craft_core::RaftGroupId;

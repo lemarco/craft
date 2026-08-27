@@ -1,4 +1,4 @@
-//! End-to-end mTLS tests over a real loopback `quinn` handshake (ADR 006).
+//! End-to-end mTLS tests over a real loopback `quinn` handshake (security).
 //!
 //! These prove the config builders wire mutual authentication correctly: a peer
 //! with a CA-signed identity connects and both ends observe the other's

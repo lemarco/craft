@@ -5,7 +5,7 @@
 //! summarized by `(snapshot_index, snapshot_term)`; live entries then start at
 //! `snapshot_index + 1`. A production node persists these entries through a
 //! `craft-storage` adapter, but the core keeps its own view for
-//! decision-making (ADR 030).
+//! decision-making (architecture-style).
 
 use craft_proto::{EntryPayload, LogEntry, LogId, LogIndex, Membership, Term};
 

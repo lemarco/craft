@@ -68,7 +68,7 @@ async fn quic_cluster_elects_leader_and_replicates() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn a_new_node_dynamically_joins_over_quic() {
-    // Backlog E5 / ADR 007: a fourth node joins a live 3-node QUIC cluster
+    // Backlog E5 / discovery: a fourth node joins a live 3-node QUIC cluster
     // knowing ONLY the seed's address. It fetches the peer-address book from the
     // seed, is added by the leader via a membership change, and both directions
     // learn each other's addresses over `/cluster/peers`.

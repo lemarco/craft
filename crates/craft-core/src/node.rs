@@ -5,14 +5,14 @@
 //! accumulates [`Output`] effects that an outer runtime executes (send
 //! messages, apply commands, complete reads). Time is logical — the runtime
 //! calls [`RaftNode::tick`] once per logical unit — so a given seed replays
-//! deterministically (ADR 029, ADR 030).
+//! deterministically (testing-strategy, architecture-style).
 //!
-//! * Membership uses **joint consensus** (ADR 016): a change appends a
+//! * Membership uses **joint consensus** (membership-early): a change appends a
 //!   transitional `C_old,new` entry that requires majorities in *both* voter
 //!   sets; once it commits, the leader appends the final `C_new`.
 //! * Elections use **Pre-Vote** (Raft thesis §9.6) so isolated nodes cannot
 //!   disrupt a live leader by inflating terms.
-//! * Linearizable reads use **ReadIndex** (ADR 005): the leader confirms it is
+//! * Linearizable reads use **ReadIndex** (read-consistency): the leader confirms it is
 //!   still leader via a heartbeat round to a quorum before serving the read.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -74,7 +74,7 @@ pub struct Committed {
     pub command: Vec<u8>,
 }
 
-/// Client-supplied token identifying a linearizable read request (ADR 005).
+/// Client-supplied token identifying a linearizable read request (read-consistency).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReadId(pub u64);
 
@@ -90,7 +90,7 @@ pub enum Output {
     /// The node changed role (useful for observability and tests).
     RoleChanged(Role),
     /// A ReadIndex read is safe to serve: the state machine at `index` (or
-    /// later) reflects everything committed before the request (ADR 005).
+    /// later) reflects everything committed before the request (read-consistency).
     ReadReady {
         /// The client's read token.
         id: ReadId,
@@ -228,14 +228,14 @@ pub struct RaftNode {
     pending_reads: Vec<PendingRead>,
     snapshot: Option<StoredSnapshot>,
 
-    // Failure detection (ADR 032 liveness): the `logical_clock` tick at which
+    // Failure detection (liveness-vs-membership liveness): the `logical_clock` tick at which
     // each peer last acked an AppendEntries. Only the leader populates this (it
     // is the only role that solicits acks); it underpins `reachable`, a liveness
     // signal distinct from committed voter membership, so crash detection need
     // not wait for a `ConfChange`.
     last_ack_clock: BTreeMap<NodeId, u64>,
 
-    // Leader lease (ADR 005 lease reads): the leader may serve a read locally,
+    // Leader lease (read-consistency lease reads): the leader may serve a read locally,
     // with no fresh quorum round, while it holds a valid lease. The lease is
     // extended to `lease_round_clock + lease_ticks` whenever a quorum acks the
     // heartbeat round broadcast at `lease_round_clock`; `lease_acks` accumulates
@@ -665,7 +665,7 @@ impl RaftNode {
         Ok(idx)
     }
 
-    /// Request a linearizable read (ReadIndex, ADR 005). The leader captures
+    /// Request a linearizable read (ReadIndex, read-consistency). The leader captures
     /// its commit index and confirms it still leads by a heartbeat round to a
     /// quorum; once confirmed and applied, an [`Output::ReadReady`] is emitted.
     /// If leadership is lost first, an [`Output::ReadFailed`] is emitted.
@@ -735,7 +735,7 @@ impl RaftNode {
 
     /// Begin a joint-consensus membership change to `new_voters` (+ optional
     /// `learners`). Only the leader may call this, and only when no other
-    /// change is in flight (ADR 016).
+    /// change is in flight (membership-early).
     ///
     /// # Errors
     /// Returns [`MembershipError`] if not leader, a change is in progress, or
@@ -872,7 +872,7 @@ impl RaftNode {
         self.match_index.clear();
         self.sent_upper.clear();
         // Reachability is earned afresh each term from this leader's own acks;
-        // stale observations from a prior leadership must not count (ADR 032).
+        // stale observations from a prior leadership must not count (liveness-vs-membership).
         self.last_ack_clock.clear();
         for p in self.peers() {
             self.next_index.insert(p, next);
@@ -1058,7 +1058,7 @@ impl RaftNode {
                 self.match_index.insert(from, upper);
             }
             self.next_index.insert(from, upper.next());
-            // A successful ack is our freshest proof the peer is alive (ADR 032).
+            // A successful ack is our freshest proof the peer is alive (liveness-vs-membership).
             self.last_ack_clock.insert(from, self.logical_clock);
             self.confirm_reads(from, reply.round);
             if reply.round >= self.lease_round {
@@ -1088,7 +1088,7 @@ impl RaftNode {
         self.heartbeat_round = self.heartbeat_round.next();
         // Open a fresh lease-confirmation round: a quorum of acks for it extends
         // the leader lease, measured from *now* (before any follower has even
-        // received the heartbeat), which keeps the lease conservative (ADR 005).
+        // received the heartbeat), which keeps the lease conservative (read-consistency).
         self.lease_round = self.heartbeat_round;
         self.lease_round_clock = self.logical_clock;
         self.lease_acks.clear();
@@ -1195,7 +1195,7 @@ impl RaftNode {
         }
     }
 
-    // ---- ReadIndex (ADR 005) --------------------------------------------
+    // ---- ReadIndex (read-consistency) --------------------------------------------
 
     /// Record that `from` acked a heartbeat at `round`, confirming leadership
     /// for every pending read registered no later than that round.
@@ -1244,7 +1244,7 @@ impl RaftNode {
     /// the *minimum* election timeout so the lease is guaranteed to expire on
     /// the leader before any follower — which reset its election timer when it
     /// received the acked heartbeat — could time out and start an election.
-    /// Halving leaves generous headroom for cross-node clock drift (ADR 005;
+    /// Halving leaves generous headroom for cross-node clock drift (read-consistency;
     /// this is why lease reads were originally deferred as "clock-sensitive").
     fn lease_ticks(&self) -> u64 {
         self.config.election_timeout_min / 2
@@ -1272,7 +1272,7 @@ impl RaftNode {
         self.role == Role::Leader && self.logical_clock < self.lease_expiry
     }
 
-    /// Attempt a **lease read** (ADR 005): if this leader holds a valid lease and
+    /// Attempt a **lease read** (read-consistency): if this leader holds a valid lease and
     /// has committed an entry in its current term, return `Ok(Some(index))` — the
     /// read may be served by running `query` once the state machine has applied
     /// through `index`, with **no** ReadIndex round-trip. Returns `Ok(None)` when
@@ -1298,14 +1298,14 @@ impl RaftNode {
     }
 
     /// The voters this node currently considers **reachable** — a liveness
-    /// signal distinct from committed membership (ADR 032).
+    /// signal distinct from committed membership (liveness-vs-membership).
     ///
     /// On the leader this is itself plus every voter that acked an
     /// AppendEntries within the last `window` logical ticks; a voter silent for
     /// longer is treated as crashed/partitioned even though it is still a
     /// committed voter. A non-leader has no first-hand ack data, so it
     /// conservatively reports the full voter set and leaves crash detection to
-    /// the leader (which is where reconcile runs anyway, ADR 018).
+    /// the leader (which is where reconcile runs anyway, supervisor-leader).
     ///
     /// `window` should comfortably exceed the heartbeat interval so a healthy
     /// follower is never flagged; [`reachable_now`](Self::reachable_now) applies
@@ -1339,7 +1339,7 @@ impl RaftNode {
         self.reachable(self.config.election_timeout_max.saturating_mul(2))
     }
 
-    // ---- Membership finalization (ADR 016) ------------------------------
+    // ---- Membership finalization (membership-early) ------------------------------
 
     /// Once a joint `C_old,new` entry commits, the leader appends the final
     /// `C_new` to leave the transitional configuration.

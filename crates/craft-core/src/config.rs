@@ -3,7 +3,7 @@
 //! [`Configuration`] is the resolved, set-based view of a [`Membership`] that
 //! owns the quorum arithmetic. Keeping this logic in one small, well-tested
 //! value object (rather than scattered `usize` counts across the FSM) makes
-//! joint consensus (ADR 016) hard to get subtly wrong: a joint configuration
+//! joint consensus (membership-early) hard to get subtly wrong: a joint configuration
 //! requires a majority in *both* the incoming and outgoing voter sets.
 
 use std::collections::BTreeSet;
@@ -39,7 +39,7 @@ impl Configuration {
         }
     }
 
-    /// Whether this is a joint (transitional) configuration (ADR 016).
+    /// Whether this is a joint (transitional) configuration (membership-early).
     #[must_use]
     pub fn is_joint(&self) -> bool {
         !self.outgoing.is_empty()

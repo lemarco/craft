@@ -1,4 +1,4 @@
-//! A linearizability checker over recorded operation histories (ADR 029, I5).
+//! A linearizability checker over recorded operation histories (testing-strategy, I5).
 //!
 //! Given a concurrent history of `(invocation, response)` events and a
 //! *sequential specification* ([`Model`]), this decides whether there exists a

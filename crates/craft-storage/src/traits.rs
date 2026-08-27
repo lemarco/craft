@@ -1,4 +1,4 @@
-//! The storage ports (ADR 030). The consensus runtime depends only on these
+//! The storage ports (architecture-style). The consensus runtime depends only on these
 //! traits, never on a concrete backend.
 
 use craft_proto::{LogEntry, LogIndex};

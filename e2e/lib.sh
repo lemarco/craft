@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# lib.sh — shared helpers for the E2E scripts (run.sh, chaos.sh). Source it
-# after `cd`-ing into the e2e directory.
+# lib.sh — shared helpers for the E2E scripts (run.sh, chaos.sh, cert_renew.sh).
+# Source after `cd`-ing into the e2e directory.
 
 COMPOSE="docker compose -f docker-compose.yml"
 
@@ -23,6 +23,11 @@ leader_at() {
     echo "$body" | grep -o '"leader":[0-9]*' | head -1 | cut -d: -f2
 }
 
+# True when /health returns 200 on a node's admin port.
+health_ok() {
+    curl -sf -m 2 "http://$HOST:${PORT[$1]}/health" >/dev/null 2>&1
+}
+
 # Wait until the given node ids all agree on one leader id that is not $exclude
 # (pass "" to accept any). Echoes the agreed leader id on success.
 wait_leader() {
@@ -37,6 +42,33 @@ wait_leader() {
             if [ -z "$first" ]; then first="$l"; elif [ "$l" != "$first" ]; then ok=0; break; fi
         done
         if [ "$ok" = 1 ] && [ -n "$first" ]; then echo "$first"; return 0; fi
+        tries=$((tries + 1)); sleep 1
+    done
+    return 1
+}
+
+# Wait until a majority of nodes (≥2 of 3) report the same leader and pass
+# /health. Tolerates a single lagging peer while the cluster is still live.
+wait_majority_leader() {
+    local tries=0
+    while [ "$tries" -lt 120 ]; do
+        local -A tally=()
+        local healthy=0 id l
+        for id in 1 2 3; do
+            health_ok "$id" || continue
+            healthy=$((healthy + 1))
+            l=$(leader_at "${PORT[$id]}")
+            [ -z "$l" ] && continue
+            tally[$l]=$((${tally[$l]:-0} + 1))
+        done
+        if [ "$healthy" -ge 2 ]; then
+            for l in "${!tally[@]}"; do
+                if [ "${tally[$l]}" -ge 2 ]; then
+                    echo "$l"
+                    return 0
+                fi
+            done
+        fi
         tries=$((tries + 1)); sleep 1
     done
     return 1
@@ -58,27 +90,5 @@ reissue_node_cert() {
         "/app/generate.sh --node-id ${id} --out /certs --ca /certs/ca.pem --ca-key /certs/ca.key"
 }
 
-# Trigger on-disk cert reload (ADR 034) without restarting the process.
+# Trigger on-disk cert reload (cert-automation) without restarting the process.
 sighup_node() { $COMPOSE kill -s HUP "node$1"; }
-
-# True when /health returns 200 on a node's admin port.
-health_ok() {
-    curl -sf -m 2 "http://$HOST:${PORT[$1]}/health" >/dev/null 2>&1
-}
-
-# Wait until all three nodes respond on /health and agree on one leader.
-wait_healthy_cluster() {
-    local tries=0
-    while [ "$tries" -lt 120 ]; do
-        local ok=1 id l first=""
-        for id in 1 2 3; do
-            health_ok "$id" || { ok=0; break; }
-            l=$(leader_at "${PORT[$id]}")
-            [ -z "$l" ] && { ok=0; break; }
-            if [ -z "$first" ]; then first="$l"; elif [ "$l" != "$first" ]; then ok=0; break; fi
-        done
-        if [ "$ok" = 1 ] && [ -n "$first" ]; then echo "$first"; return 0; fi
-        tries=$((tries + 1)); sleep 1
-    done
-    return 1
-}

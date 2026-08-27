@@ -1,5 +1,5 @@
 //! Exponential reconnect backoff for the peer connection pool (backlog C5,
-//! [ADR 027](../../../docs/decisions/027-future-work-and-risks.md) R2).
+//! [future-work-and-risks](../../../docs/decisions/future-work-and-risks.md) R2).
 //!
 //! [`BackoffPolicy`] is a pure, deterministic delay schedule; `BackoffState`
 //! tracks a single endpoint's consecutive failures and the earliest time a

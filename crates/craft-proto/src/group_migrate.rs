@@ -1,4 +1,4 @@
-//! Cross-node Raft group migration wire types (ADR 031).
+//! Cross-node Raft group migration wire types (write-sharding-multi-raft).
 
 use serde::{Deserialize, Serialize};
 
@@ -45,7 +45,7 @@ pub struct GroupMigrationBundle {
 }
 
 /// Request to adopt a Raft group replica on the target node
-/// (`POST /raft/v1/cluster/group/migrate`, ADR 031).
+/// (`POST /raft/v1/cluster/group/migrate`, write-sharding-multi-raft).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupMigrateRequest {
     /// Raft group id being transferred.

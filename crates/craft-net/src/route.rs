@@ -1,9 +1,9 @@
-//! HTTP/3 route table (`docs/protocol.md`, ADR 010).
+//! HTTP/3 route table (`docs/protocol.md`, wire-transport).
 //!
 //! Every craft RPC is a `POST` to a fixed path under `/raft/v1`. A single QUIC
 //! listener serves them all; the path selects the handler, and the
 //! [`TrafficClass`] groups routes so consensus traffic can use a **dedicated
-//! QUIC connection** separate from client/actor traffic (ADR 027 R2), which
+//! QUIC connection** separate from client/actor traffic (future-work-and-risks R2), which
 //! keeps heartbeats from being head-of-line blocked behind bulk payloads.
 
 /// Common prefix for every versioned route.
@@ -13,27 +13,29 @@ pub const API_PREFIX: &str = "/raft/v1";
 pub const PEER_WIRE_PATH: &str = "/raft/v1/peer/wire";
 /// Client API (`ClientRequest` in, `ClientResponse` out).
 pub const CLIENT_WIRE_PATH: &str = "/raft/v1/client/wire";
-/// Cluster join handshake (ADR 017).
+/// Cluster join handshake (join-rpc).
 pub const CLUSTER_JOIN_PATH: &str = "/raft/v1/cluster/join";
-/// Peer-address book exchange for address propagation (ADR 007).
+/// Cluster leave handshake (symmetric to join; removes a node from group 0).
+pub const CLUSTER_LEAVE_PATH: &str = "/raft/v1/cluster/leave";
+/// Peer-address book exchange for address propagation (discovery).
 pub const CLUSTER_PEERS_PATH: &str = "/raft/v1/cluster/peers";
-/// Deliver a message / ask to a remote actor mailbox (ADR 013).
+/// Deliver a message / ask to a remote actor mailbox (cross-node-actors).
 pub const ACTOR_DELIVER_PATH: &str = "/raft/v1/actor/deliver";
-/// Remote spawn / placement (ADR 013).
+/// Remote spawn / placement (cross-node-actors).
 pub const ACTOR_SPAWN_PATH: &str = "/raft/v1/actor/spawn";
-/// Forward a cluster-wide scale to the leader (ADR 013/018).
+/// Forward a cluster-wide scale to the leader (cross-node-actors, supervisor-leader).
 pub const ACTOR_SCALE_PATH: &str = "/raft/v1/actor/scale";
-/// Snapshot transfer + respawn on a target node (ADR 013).
+/// Snapshot transfer + respawn on a target node (cross-node-actors).
 pub const ACTOR_MIGRATE_PATH: &str = "/raft/v1/actor/migrate";
-/// Stop a group on a target node for a planned scale-down / removal (ADR 013/018).
+/// Stop a group on a target node for a planned scale-down / removal (cross-node-actors, supervisor-leader).
 pub const ACTOR_STOP_PATH: &str = "/raft/v1/actor/stop";
-/// Directory publish / revoke (ADR 013).
+/// Directory publish / revoke (cross-node-actors).
 pub const ACTOR_REGISTER_PATH: &str = "/raft/v1/actor/register";
-/// Cross-node Raft group migration (ADR 031).
+/// Cross-node Raft group migration (write-sharding-multi-raft).
 pub const CLUSTER_GROUP_MIGRATE_PATH: &str = "/raft/v1/cluster/group/migrate";
 
 /// The connection class a route belongs to. Peer consensus traffic is isolated
-/// onto its own QUIC connection from everything else (ADR 027 R2).
+/// onto its own QUIC connection from everything else (future-work-and-risks R2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TrafficClass {
     /// Raft consensus RPC — latency-sensitive, isolated connection.
@@ -56,6 +58,8 @@ pub enum Route {
     ClientWire,
     /// [`CLUSTER_JOIN_PATH`].
     ClusterJoin,
+    /// [`CLUSTER_LEAVE_PATH`].
+    ClusterLeave,
     /// [`CLUSTER_PEERS_PATH`].
     ClusterPeers,
     /// [`ACTOR_DELIVER_PATH`].
@@ -76,10 +80,11 @@ pub enum Route {
 
 impl Route {
     /// Every route, in a stable order (handy for building a router or tests).
-    pub const ALL: [Route; 11] = [
+    pub const ALL: [Route; 12] = [
         Route::PeerWire,
         Route::ClientWire,
         Route::ClusterJoin,
+        Route::ClusterLeave,
         Route::ClusterPeers,
         Route::ActorDeliver,
         Route::ActorSpawn,
@@ -97,6 +102,7 @@ impl Route {
             Route::PeerWire => PEER_WIRE_PATH,
             Route::ClientWire => CLIENT_WIRE_PATH,
             Route::ClusterJoin => CLUSTER_JOIN_PATH,
+            Route::ClusterLeave => CLUSTER_LEAVE_PATH,
             Route::ClusterPeers => CLUSTER_PEERS_PATH,
             Route::ActorDeliver => ACTOR_DELIVER_PATH,
             Route::ActorSpawn => ACTOR_SPAWN_PATH,
@@ -120,9 +126,10 @@ impl Route {
         match self {
             Route::PeerWire => TrafficClass::Peer,
             Route::ClientWire => TrafficClass::Client,
-            Route::ClusterJoin | Route::ClusterPeers | Route::ClusterGroupMigrate => {
-                TrafficClass::Cluster
-            }
+            Route::ClusterJoin
+            | Route::ClusterLeave
+            | Route::ClusterPeers
+            | Route::ClusterGroupMigrate => TrafficClass::Cluster,
             Route::ActorDeliver
             | Route::ActorSpawn
             | Route::ActorScale

@@ -1,5 +1,5 @@
-//! [`CraftClusterBuilder`] — the single ergonomic entry point (ADR 004, ADR
-//! 028). Describe a node (its id, membership, state machine, actor types, and
+//! [`CraftClusterBuilder`] — the single ergonomic entry point (deployment-model,
+//! library-and-publishing). Describe a node (its id, membership, state machine, actor types, and
 //! managed groups), then `start_*` it over a transport; the builder assembles
 //! the consensus runtime, the actor control/messaging/directory planes, the
 //! leader-only supervisor, telemetry, and the admin server, and wires the
@@ -64,7 +64,7 @@ type RegisterFn = Box<dyn FnOnce(&ClusterControl) + Send>;
 /// Type-erased "declare this managed group on the supervisor" step.
 type ManageFn = Box<dyn FnOnce(&ClusterSupervisor<Arc<ClusterFacts>>) + Send>;
 
-/// A fluent builder for a single craft node (ADR 004). Create it with
+/// A fluent builder for a single craft node (deployment-model). Create it with
 /// [`CraftCluster::builder`](crate::CraftCluster::builder).
 pub struct CraftClusterBuilder<M: StateMachine> {
     node_id: NodeId,
@@ -145,7 +145,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         self
     }
 
-    /// Host `count` independent Raft groups on this node (multi-Raft, ADR 031).
+    /// Host `count` independent Raft groups on this node (multi-Raft, write-sharding-multi-raft).
     /// Requires `M: Clone`; each group gets a clone of the builder's state
     /// machine. Defaults to `1` (single-group, unchanged behaviour).
     #[must_use]
@@ -162,7 +162,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         self
     }
 
-    /// Replication factor for each shard Raft group's voter set (ADR 033).
+    /// Replication factor for each shard Raft group's voter set (per-group-raft-membership).
     /// Clamped to the live node count at runtime; default 3. Use a value ≥
     /// expected cluster size to replicate on every joined node.
     #[must_use]
@@ -187,7 +187,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     }
 
     /// Persist each Raft group's log/hard-state/snapshot under `path` as
-    /// `group-<id>.redb` files (multi-Raft, ADR 031). Single-group nodes use
+    /// `group-<id>.redb` files (multi-Raft, write-sharding-multi-raft). Single-group nodes use
     /// `group-0.redb`.
     #[must_use]
     pub fn data_dir(mut self, path: impl Into<PathBuf>) -> Self {
@@ -195,7 +195,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         self
     }
 
-    /// External store for **stateful actor workflow data** (ADR 021). The port
+    /// External store for **stateful actor workflow data** (actor-state-redis). The port
     /// is [`craft_actor::ActorStateStore`]; swap `InMemoryStore` (dev/tests) for
     /// `craft_store_redis::RedisStore` in production. Retrieve the same handle
     /// from [`CraftCluster::actor_state_store`] when building actor configs.
@@ -212,16 +212,25 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         self
     }
 
-    /// Accept cluster joins on this node (`--allow-join`, ADR 017).
+    /// Accept cluster joins on this node (`--allow-join`, join-rpc).
     #[must_use]
     pub fn allow_join(mut self, allow: bool) -> Self {
         self.runtime.allow_join = allow;
         self
     }
 
+    /// Accept cluster leaves on this node (`--allow-leave`). When enabled, the
+    /// leader commits a group-0 membership change removing the departing node
+    /// from the request's `node_id` field.
+    #[must_use]
+    pub fn allow_leave(mut self, allow: bool) -> Self {
+        self.runtime.allow_leave = allow;
+        self
+    }
+
     /// Join an **existing** cluster dynamically by contacting `seed` (a member's
-    /// id + address) instead of pre-configuring every peer's address (ADR
-    /// 007/017). On [`start_quic`](Self::start_quic) this node fetches the
+    /// id + address) instead of pre-configuring every peer's address (discovery,
+    /// join-rpc). On [`start_quic`](Self::start_quic) this node fetches the
     /// cluster's peer-address book from the seed, then sends a `/cluster/join`
     /// (the seed forwards to the leader), which commits a membership change
     /// adding this node. Peer addresses propagate both ways over `/cluster/peers`
@@ -237,7 +246,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         self
     }
 
-    /// Join an existing cluster by bootstrapping against a **seed set** (ADR 007
+    /// Join an existing cluster by bootstrapping against a **seed set** (discovery
     /// gossip discovery): an ordered list of candidate members. On
     /// [`start_quic`](Self::start_quic) this node tries each seed in turn — for
     /// pulling the peer-address book and for the join request — so a single dead
@@ -253,7 +262,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         self
     }
 
-    /// Per-traffic-class QUIC admission control (ADR 027 R2). Rate-limit bulk
+    /// Per-traffic-class QUIC admission control (future-work-and-risks R2). Rate-limit bulk
     /// client/actor traffic so latency-sensitive Raft consensus RPCs are never
     /// starved on the shared UDP socket. Defaults to
     /// [`TrafficPolicy::unlimited`]; consensus (`TrafficClass::Peer`) should
@@ -273,14 +282,14 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     }
 
     /// Permit multiple local instances per actor name (`--dev-multi-workers`,
-    /// ADR 014). Off by default: production keeps one worker per node per name.
+    /// one-worker-per-vps). Off by default: production keeps one worker per node per name.
     #[must_use]
     pub fn dev_multi_workers(mut self, dev: bool) -> Self {
         self.dev_multi_workers = dev;
         self
     }
 
-    /// How much of this VPS the single worker should use (ADR 014). Defaults to
+    /// How much of this VPS the single worker should use (one-worker-per-vps). Defaults to
     /// [`ResourceProfile::UseAllAvailable`]; retrieve the detected capacity from
     /// [`CraftCluster::vps_resources`] after start.
     #[must_use]
@@ -289,14 +298,14 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         self
     }
 
-    /// Deadline for proxying a client request to the leader (ADR 003).
+    /// Deadline for proxying a client request to the leader (client-routing).
     #[must_use]
     pub fn forward_timeout(mut self, timeout: Duration) -> Self {
         self.forward_timeout = timeout;
         self
     }
 
-    /// How often the leader reconciles managed/auto-worker groups (ADR 018).
+    /// How often the leader reconciles managed/auto-worker groups (supervisor-leader).
     #[must_use]
     pub fn reconcile_period(mut self, period: Duration) -> Self {
         self.reconcile_period = period;
@@ -312,7 +321,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     }
 
     /// How often consensus status is mirrored into the supervisor and telemetry
-    /// (membership + reachability deltas, ADR 032).
+    /// (membership + reachability deltas, liveness-vs-membership).
     #[must_use]
     pub fn refresh_period(mut self, period: Duration) -> Self {
         self.refresh_period = period;
@@ -327,7 +336,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     }
 
     /// Serve the admin HTTP/1.1 endpoints (health, readiness, metrics,
-    /// introspection, dashboard) on `addr` (default `0.0.0.0:8080`, ADR 025).
+    /// introspection, dashboard) on `addr` (default `0.0.0.0:8080`, health-admin-port).
     #[must_use]
     pub fn admin_addr(mut self, addr: SocketAddr) -> Self {
         self.admin_addr = Some(addr);
@@ -335,7 +344,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     }
 
     /// Poll on-disk PEM files every `period` and hot-reload TLS when they change
-    /// ([ADR 034](decisions/034-cert-automation.md)).
+    /// ([cert-automation](decisions/cert-automation.md)).
     /// Used with [`start_quic_pem`](Self::start_quic_pem); defaults to **60s** when unset.
     #[must_use]
     pub fn cert_watch(mut self, period: Duration) -> Self {
@@ -356,7 +365,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     }
 
     /// Keep exactly `total` instances of actor `A` (named `name`) placed across
-    /// the cluster, reconciled by the leader (ADR 014).
+    /// the cluster, reconciled by the leader (one-worker-per-vps).
     #[must_use]
     pub fn manage<A>(mut self, name: &str, total: usize, config: A::Config) -> Self
     where
@@ -373,7 +382,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     }
 
     /// Declare an auto-worker group: one instance of `A` on every live node,
-    /// tracking membership so new nodes get a worker automatically (ADR 015).
+    /// tracking membership so new nodes get a worker automatically (auto-spawn-on-join).
     #[must_use]
     pub fn manage_auto<A>(mut self, name: &str, config: A::Config) -> Self
     where
@@ -403,8 +412,8 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         cluster
     }
 
-    /// Start the node over the live HTTP/3-over-QUIC transport with mTLS (ADR
-    /// 006/010) — the production path. Binds a QUIC listener on `listen`, dials
+    /// Start the node over the live HTTP/3-over-QUIC transport with mTLS (security,
+    /// wire-transport) — the production path. Binds a QUIC listener on `listen`, dials
     /// peers found in `peers` (a [`NodeId`] → address book), and authenticates
     /// every connection with `security`.
     ///
@@ -412,7 +421,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     /// of every member (this node's own entry is ignored); give each node the
     /// same [`members`](Self::members) set and `peers` map. For **elastic**
     /// growth, pair [`join`](Self::join) with a `peers` map holding just the seed
-    /// — addresses of the rest are discovered over `/cluster/peers` (ADR 007).
+    /// — addresses of the rest are discovered over `/cluster/peers` (discovery).
     ///
     /// Must run inside a Tokio runtime.
     ///
@@ -497,7 +506,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         // Dynamically join an existing cluster: learn peer addresses from a
         // reachable seed, then ask to join (the seed forwards to the leader).
         // Blocks until the membership change commits or a deadline elapses
-        // (ADR 007/017); tries every seed for resilience.
+        // (discovery, join-rpc); tries every seed for resilience.
         if !seeds.is_empty() {
             join_cluster(&quic, node_id, &seeds, listen).await?;
         }
@@ -539,7 +548,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         let resource_profile = self.resource_profile;
 
         // When joining dynamically, bootstrap consensus without this node in the
-        // voter set — group 0 join + per-group sync add it later (ADR 033).
+        // voter set — group 0 join + per-group sync add it later (per-group-raft-membership).
         let dynamic_join = !self.join_seeds.is_empty();
         let bootstrap_voters = consensus_bootstrap_voters(&self.members, node_id, dynamic_join);
 
@@ -630,7 +639,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         let directory = ActorDirectory::new();
         // Live leadership/membership facts, updated by the facts-refresher loop.
         // Created before the control plane so forwarded scales can be
-        // leader-gated against it (ADR 018).
+        // leader-gated against it (supervisor-leader).
         let facts = Arc::new(ClusterFacts::default());
         let facts_state: Arc<dyn ClusterState> = facts.clone();
         let control = Arc::new(
@@ -672,7 +681,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         let events = EventBus::new(self.event_capacity);
         let metrics = Metrics::new();
         // Surface actor lifecycle / restarts / escalations and (opt-in)
-        // per-message traces as metrics + events (E14 → Track H, ADR 026): the
+        // per-message traces as metrics + events (E14 → Track H, observability): the
         // registry stays telemetry-agnostic. Installed *before* any spawn so
         // every instance task binds the observer at launch.
         let telemetry = Arc::new(crate::cluster::ActorTelemetry::new(
@@ -702,7 +711,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         // events (Track H), prune routing to departed nodes, and trigger an
         // immediate reconcile on any membership or reachability change so joiners
         // get workers without waiting for the periodic timer (E11), a departed
-        // or crashed node's managed workers are replaced promptly (E12/ADR 032),
+        // or crashed node's managed workers are replaced promptly (E12/liveness-vs-membership),
         {
             let handle = handle.clone();
             let facts = Arc::clone(&facts);
@@ -732,7 +741,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                     if let Some(mr) = _multi_raft.as_ref() {
                         // Per-group membership converges incrementally (joint
                         // consensus); retry every tick until the planner is
-                        // satisfied (ADR 033).
+                        // satisfied (per-group-raft-membership).
                         let _ = mr.sync_group_membership(Arc::clone(&facts)).await;
                         if delta.membership_changed || delta.reachability_changed {
                             let _ = supervisor.reconcile().await;
@@ -824,7 +833,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         }
 
         // Peer-address anti-entropy: gossip `/cluster/peers` so nodes learn how
-        // to reach members added dynamically via `join` (ADR 007). Skipped for
+        // to reach members added dynamically via `join` (discovery). Skipped for
         // transports without socket addresses (the in-memory network).
         if let Some(period) = peer_sync {
             let peers = Arc::clone(&peers);
@@ -851,7 +860,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             }));
         }
 
-        // Supervisor reconcile: leader-only placement convergence (ADR 018).
+        // Supervisor reconcile: leader-only placement convergence (supervisor-leader).
         {
             let supervisor = Arc::clone(&supervisor);
             let period = self.reconcile_period;
@@ -938,7 +947,7 @@ const JOIN_ATTEMPTS: u32 = 40;
 /// Delay between join attempts (≈`JOIN_ATTEMPTS × JOIN_BACKOFF` total budget).
 const JOIN_BACKOFF: Duration = Duration::from_millis(250);
 
-/// Drive a dynamic join against a **seed set** (ADR 007/017): learn the
+/// Drive a dynamic join against a **seed set** (discovery, join-rpc): learn the
 /// cluster's peer addresses from whichever seed answers first, then submit a
 /// `/cluster/join` (forwarded to the leader) until it commits, the cluster
 /// refuses it, or the retry budget is exhausted. Each attempt rotates through

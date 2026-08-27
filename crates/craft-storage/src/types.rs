@@ -21,7 +21,7 @@ pub struct SnapshotMeta {
     /// log is compacted through this index.
     pub last_included: LogId,
     /// The cluster configuration in effect at the snapshot boundary, so a node
-    /// restoring from the snapshot recovers its membership (ADR 016).
+    /// restoring from the snapshot recovers its membership (membership-early).
     pub membership: Membership,
 }
 

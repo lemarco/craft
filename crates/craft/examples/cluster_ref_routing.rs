@@ -1,4 +1,4 @@
-//! Resolve cluster-wide actor pools via [`ClusterRef`] (ADR 013 E7): pick a
+//! Resolve cluster-wide actor pools via [`ClusterRef`] (cross-node-actors E7): pick a
 //! target instance round-robin or by key, then cast locally or cross-node.
 //!
 //! Run with: `cargo run -p craft --example cluster_ref_routing`

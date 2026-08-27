@@ -1,7 +1,7 @@
 ---
 name: craft-testing
 description: >-
-  Add or extend tests in the craft workspace following ADR 029 — choose unit,
+  Add or extend tests in the craft workspace following testing-strategy — choose unit,
   driver, sim, integration, or E2E layer; use LocalNetwork, run_contract,
   seeded craft-sim; update docs/testing-coverage.md. Use when writing tests,
   fixing test gaps, adding regressions, or asking how to test craft code.
@@ -62,6 +62,6 @@ Print `seed` in assertion messages for replay.
 
 ## References
 
-- [ADR 029](../../docs/decisions/029-testing-strategy.md)
+- [testing-strategy](../../docs/decisions/testing-strategy.md)
 - [testing-coverage.md](../../docs/testing-coverage.md)
 - [cargo-diagnostics](../cargo-diagnostics/SKILL.md) — how to run tests safely

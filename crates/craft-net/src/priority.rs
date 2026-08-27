@@ -1,10 +1,10 @@
-//! Traffic-class priority tuning (ADR 027 R2 — "full tuning" follow-up to the
+//! Traffic-class priority tuning (future-work-and-risks R2 — "full tuning" follow-up to the
 //! v1 per-class connection isolation).
 //!
 //! QUIC connections are independent at the transport layer, so there is no
 //! cross-connection stream priority to lean on: the lever that actually
 //! prevents bulk client/actor payloads from starving latency-sensitive Raft
-//! heartbeats on the shared UDP socket (ADR 027 R2) is **admission control** —
+//! heartbeats on the shared UDP socket (future-work-and-risks R2) is **admission control** —
 //! rate-limiting the bulk [`TrafficClass`]es while consensus traffic flows
 //! unthrottled.
 //!
@@ -83,7 +83,7 @@ impl RateLimiter {
     }
 }
 
-/// Per-[`TrafficClass`] admission control (ADR 027 R2). Classes without a
+/// Per-[`TrafficClass`] admission control (future-work-and-risks R2). Classes without a
 /// configured limiter are unthrottled — notably [`TrafficClass::Peer`], so Raft
 /// consensus is never rate-limited.
 #[derive(Clone, Default)]

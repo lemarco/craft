@@ -47,7 +47,7 @@ impl UserActor for Worker {
 }
 
 /// A test double for cluster leadership + membership + reachability. `nodes` is
-/// the committed voter set; `reachable` tracks liveness (ADR 032). Both are
+/// the committed voter set; `reachable` tracks liveness (liveness-vs-membership). Both are
 /// mutable so a test can simulate join, leave, or crash between reconciles.
 struct MockState {
     leader: AtomicBool,
@@ -201,7 +201,7 @@ async fn an_auto_worker_appears_on_a_newly_joined_node() {
     let n1 = node(&net, 1);
     let state = Arc::new(MockState::new(true, &[1]));
     let sup = ClusterSupervisor::new(Arc::clone(&n1.control), Arc::clone(&state));
-    // One worker per live node — the count tracks the membership (ADR 015).
+    // One worker per live node — the count tracks the membership (auto-spawn-on-join).
     sup.manage_auto::<Worker>("w", 0);
 
     // Single-node cluster: one worker on node 1.

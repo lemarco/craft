@@ -4,7 +4,7 @@ Living inventory of what the craft test suite covers, where gaps remain, and
 which CI lane exercises each layer. Update this file when adding tests or
 closing a gap.
 
-**Strategy (why we test this way):** [ADR 029 — Testing strategy](decisions/029-testing-strategy.md)  
+**Strategy (why we test this way):** [testing-strategy — Testing strategy](decisions/testing-strategy.md)  
 **Implementation status:** [backlog.md — Track T](backlog.md)  
 **Last audit:** 2026-08-27 · **~337** test functions (`cargo test --workspace --lib --tests --all-features`)
 
@@ -39,7 +39,7 @@ Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** sch
 | `craft-net` | 11 | 29 | **40** | Wire framing, `LocalNetwork`, TLS handshake, loopback QUIC |
 | `craft-sim` | 7 | 17 | **24** | Safety/liveness under faults, linearizability, actor scenarios |
 | `craft-dashboard` | 6 | 7 | **13** | Admin HTTP, metrics, telemetry |
-| `craft` (facade) | 2 | 15 | **17** | `CraftCluster` builder, multi-Raft, live QUIC cluster, reachability reconcile, actor store resume |
+| `craft` (facade) | 2 | 17 | **19** | `CraftCluster` builder, multi-Raft, live QUIC cluster, reachability reconcile, actor store resume |
 | `craft-storage` | 0 | 7 | **7** | Store contract (Memory + Redb), namespaced groups, reopen |
 | `craft-proto` | 6 | 0 | **6** | Encode/decode roundtrips |
 | `craft-store-redis` | 0 | 10 (7 `redis` + 3 `tls`, `#[ignore]` except 2 fast) | **10** | Redis CAS/TTL, dual conn, idempotent worker, reconnect, `rediss://` |
@@ -83,7 +83,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Namespaced multi-group layout | — | ✅ | — | — | ✅ |
 | `RaftDriver` restart + replay | — | ✅ driver | — | — | ✅ |
 | **`CraftCluster` + `data_dir` restart** | — | ✅ `persistence` | — | — | ✅ |
-| Snapshot survives facade restart | — | ❌ | — | — | ❌ **gap** |
+| Snapshot survives facade restart | — | ✅ `persistence` | — | — | ✅ |
 | Backend error injection | ❌ | ❌ | — | — | ❌ |
 
 ### Transport (`craft-net`)
@@ -176,8 +176,6 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | **P1** | Client retry edge cases (`NoTargets`, timeout, `NotLeader`) | `craft-client/tests/cluster.rs` | S |
 | **P1** | Keyed client routing (multi-Raft) | `craft-client/tests/` or `craft/tests/` | M |
 | **P1** | `craft-node` env parsing unit tests | extract `config.rs` + `#[cfg(test)]` | S |
-| **P2** | Snapshot survives facade restart | `craft/tests/persistence.rs` | M |
-| **P2** | 3-node majority survives one member restart | `craft/tests/persistence.rs` | M |
 | **P2** | Injectable clock for runtime integration (less `sleep`) | refactor + test updates | L |
 | **P2** | Wire decode fuzz (`cargo-fuzz`) | `craft-fuzz/` (T4) | M |
 | **P2** | Runtime fatal-error observable path | `craft-actor/tests/runtime.rs` | S |
@@ -186,6 +184,8 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 
 | Closed | What | Where |
 |--------|------|-------|
+| 2026-08 | Snapshot survives facade restart (`compact` + `data_dir`) | `craft/tests/persistence.rs` |
+| 2026-08 | 3-node majority survives one member restart | `craft/tests/persistence.rs` |
 | 2026-08 | Shared KV fixtures + harness helpers (dedupe ~8 copies) | `craft-test-support` (`Kv`, `TrackedKv`, `find_keys_for_two_groups`, cluster polling) |
 | 2026-08 | Actor store resume + idempotency after unreachable node | `craft/tests/actor_store_resume.rs` |
 | 2026-08 | Redis dual connection, idempotent worker, reconnect | `craft-store-redis/tests/redis.rs` |
@@ -213,7 +213,7 @@ When adding features, prefer these hooks — they are already used across the co
 | Admin views | `Observer` | `CraftObserver` | `Fake` (dashboard tests) |
 | Consensus | `RaftNode` (pure) | — | Direct tick/deliver in tests |
 
-**Regression rule (ADR 029):** every fixed timing/partition bug gets a test at
+**Regression rule (testing-strategy):** every fixed timing/partition bug gets a test at
 the lowest layer that reproduces it — usually a seeded `craft-sim` case.
 
 ---
@@ -222,5 +222,5 @@ the lowest layer that reproduces it — usually a seeded `craft-sim` case.
 
 1. After adding or removing tests, refresh the **Total** column in [Per-crate inventory](#per-crate-inventory).
 2. When closing a gap, update [Known gaps](#known-gaps-prioritized) → [Closed gaps](#closed-gaps).
-3. Keep [ADR 029](decisions/029-testing-strategy.md) as the *strategy*; this file is the *inventory*.
+3. Keep [testing-strategy](decisions/testing-strategy.md) as the *strategy*; this file is the *inventory*.
 4. Optional: per-crate counts via `cargo test -p <crate> --lib --tests -- --list | rg ': test$' | wc -l`.

@@ -1,7 +1,7 @@
-//! Shard routing for write sharding / multi-Raft (ADR 031).
+//! Shard routing for write sharding / multi-Raft (write-sharding-multi-raft).
 //!
 //! v1 runs a **single** Raft group, so every write funnels through one leader
-//! and one log — the write-throughput ceiling recorded as risk R1 in ADR 027.
+//! and one log — the write-throughput ceiling recorded as risk R1 in future-work-and-risks.
 //! The scaling path is to partition the keyspace across **multiple independent
 //! Raft groups**, each replicating its own shard of state. That is a large
 //! runtime change (N drivers, per-shard storage, cross-shard routing); this
@@ -20,7 +20,7 @@
 //! churn small when they do.
 //!
 //! Per-group Raft membership planning (desired voter sets, join/leave diffs)
-//! lives here too — ADR 033.
+//! lives here too — per-group-raft-membership.
 
 use std::collections::BTreeMap;
 
@@ -33,7 +33,7 @@ pub struct ShardId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RaftGroupId(pub u32);
 
-/// Default replication factor for per-group voter sets (ADR 033).
+/// Default replication factor for per-group voter sets (per-group-raft-membership).
 pub const DEFAULT_GROUP_REPLICATION_FACTOR: u32 = 3;
 
 /// FNV-1a (64-bit): a small, dependency-free, **stable** hash. Stability matters
@@ -151,7 +151,7 @@ pub fn effective_replication_factor(replication_factor: u32, live_count: usize) 
 }
 
 /// Desired voter set for one Raft group: the top [`effective_replication_factor`]
-/// live nodes by rendezvous weight for `group`, sorted by `NodeId` (ADR 033).
+/// live nodes by rendezvous weight for `group`, sorted by `NodeId` (per-group-raft-membership).
 #[must_use]
 pub fn group_voters(
     group: RaftGroupId,
@@ -173,7 +173,7 @@ pub fn group_voters(
     ranked
 }
 
-/// Full desired voter assignment for every group in `groups` (ADR 033).
+/// Full desired voter assignment for every group in `groups` (per-group-raft-membership).
 #[must_use]
 pub fn group_membership_assignment(
     groups: &[RaftGroupId],
@@ -269,7 +269,7 @@ pub fn groups_leaving_node_affects(
         .collect()
 }
 
-/// Groups whose desired voter set differs from `current` (ADR 033). Skips
+/// Groups whose desired voter set differs from `current` (per-group-raft-membership). Skips
 /// coordinator group 0 — its membership is managed by `/cluster/join`.
 #[must_use]
 pub fn plan_group_membership_sync(
@@ -303,7 +303,7 @@ pub struct GroupRebalancePlan {
 }
 
 /// Diff the groups `node_id` currently hosts against groups where it is in
-/// the desired voter set ([`group_voters`](group_voters), ADR 033).
+/// the desired voter set ([`group_voters`](group_voters), per-group-raft-membership).
 #[must_use]
 pub fn plan_node_group_rebalance(
     node_id: craft_proto::NodeId,
