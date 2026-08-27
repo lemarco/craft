@@ -8,7 +8,7 @@
 //! [`shutdown`](CraftCluster::shutdown) or the handle is dropped.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -364,6 +364,7 @@ pub struct CraftCluster<M: StateMachine> {
     pub(crate) supervisor: Arc<ClusterSupervisor<Arc<ClusterFacts>>>,
     pub(crate) events: EventBus,
     pub(crate) metrics: Metrics,
+    pub(crate) catalog_version: Arc<AtomicU32>,
     pub(crate) telemetry: Arc<ActorTelemetry>,
     pub(crate) members: Vec<NodeId>,
     pub(crate) resource_profile: ResourceProfile,
@@ -536,6 +537,24 @@ impl<M: StateMachine> CraftCluster<M> {
         mr.sharded.activate_shards(new_active)
     }
 
+    /// Switch keyed routing from Tier 1 modulus to Tier 2 stable virtual.
+    ///
+    /// Keys **remap** — drain keyed clients before calling.
+    ///
+    /// # Errors
+    /// Returns [`craft_core::ShardRoutingSwitchError::NotMultiRaft`] on single-Raft
+    /// clusters or [`craft_core::ShardRoutingSwitchError::AlreadyStable`] when stable
+    /// routing is already active.
+    pub fn switch_to_stable_shards(
+        &self,
+    ) -> Result<craft_core::ShardRoutingSwitchPlan, craft_core::ShardRoutingSwitchError> {
+        let mr = self
+            .multi_raft
+            .as_ref()
+            .ok_or(craft_core::ShardRoutingSwitchError::NotMultiRaft)?;
+        mr.sharded.switch_to_stable_routing()
+    }
+
     /// The node-local actor registry (spawn / scale / drain local actors).
     #[must_use]
     pub fn registry(&self) -> &ActorRegistry {
@@ -576,6 +595,70 @@ impl<M: StateMachine> CraftCluster<M> {
     #[must_use]
     pub fn metrics(&self) -> &Metrics {
         &self.metrics
+    }
+
+    /// Monotonic catalog generation (starts at 1; bumps on each committed expansion).
+    #[must_use]
+    pub fn catalog_version(&self) -> u32 {
+        self.catalog_version.load(Ordering::SeqCst)
+    }
+
+    /// Record one saga lifecycle event on this node's metrics registry.
+    pub fn record_saga_event(&self, event: craft_client::SagaEvent) {
+        crate::saga::record_saga_event(&self.metrics, self.node_id.0, event);
+    }
+
+    /// Metrics hook for [`craft_client::RunSagaOpts::on_event`].
+    #[must_use]
+    pub fn saga_metrics_callback(&self) -> Arc<dyn Fn(craft_client::SagaEvent) + Send + Sync> {
+        crate::saga::saga_metrics_callback(self.metrics.clone(), self.node_id.0)
+    }
+
+    /// Run a cross-shard saga with catalog version pinned and metrics wired.
+    ///
+    /// # Errors
+    /// Same as [`craft_client::run_saga`].
+    pub async fn run_keyed_saga<C: craft_client::KeyedClient>(
+        &self,
+        client: &C,
+        plan: &craft_client::SagaPlan,
+        journal: &dyn craft_client::SagaJournal,
+    ) -> Result<craft_client::SagaOutcome, craft_client::SagaError> {
+        let on_event = self.saga_metrics_callback();
+        craft_client::run_saga(
+            client,
+            plan,
+            craft_client::RunSagaOpts {
+                journal: Some(journal),
+                catalog_version: Some(self.catalog_version()),
+                catalog_version_live: Some(Arc::clone(&self.catalog_version)),
+                on_event: Some(on_event.as_ref()),
+            },
+        )
+        .await
+    }
+
+    /// Resume a cross-shard saga from its durable journal with metrics wired.
+    ///
+    /// # Errors
+    /// Same as [`craft_client::resume_saga`].
+    pub async fn resume_keyed_saga<C: craft_client::KeyedClient>(
+        &self,
+        client: &C,
+        plan: &craft_client::SagaPlan,
+        journal: &dyn craft_client::SagaJournal,
+    ) -> Result<craft_client::SagaOutcome, craft_client::SagaError> {
+        let on_event = self.saga_metrics_callback();
+        craft_client::resume_saga(
+            client,
+            plan,
+            craft_client::ResumeSagaOpts {
+                journal,
+                catalog_version_live: Some(Arc::clone(&self.catalog_version)),
+                on_event: Some(on_event.as_ref()),
+            },
+        )
+        .await
     }
 
     /// Enable opt-in per-message tracing (observability §7, H6) for the local actor
@@ -761,7 +844,10 @@ impl<M: StateMachine> CraftCluster<M> {
                 .await
                 .map_err(AddRaftGroupsError::Transport)?;
             match response {
-                CatalogAddResponse::Accepted { new_groups, .. } => return Ok(new_groups),
+                CatalogAddResponse::Accepted { new_groups, .. } => {
+                    self.catalog_version.fetch_add(1, Ordering::SeqCst);
+                    return Ok(new_groups);
+                }
                 CatalogAddResponse::Redirect { .. } if Instant::now() >= deadline => {
                     return Err(AddRaftGroupsError::NoLeader);
                 }
@@ -787,7 +873,10 @@ impl<M: StateMachine> CraftCluster<M> {
             .await
             .map_err(|_| CatalogAddLocalError::Stopped)?;
         match response {
-            CatalogAddResponse::Accepted { new_groups, .. } => Ok(new_groups),
+            CatalogAddResponse::Accepted { new_groups, .. } => {
+                self.catalog_version.fetch_add(1, Ordering::SeqCst);
+                Ok(new_groups)
+            }
             CatalogAddResponse::Redirect { leader } => {
                 Err(CatalogAddLocalError::NotLeader { leader })
             }

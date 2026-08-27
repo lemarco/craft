@@ -8,8 +8,9 @@ use std::time::Duration;
 
 use craft_core::{
     RaftGroupId, ShardCountExpansionPlan, ShardExpansionError, ShardId, ShardRouter,
-    ShardRoutingKind, StableShardActivationError, StableShardActivationPlan, StableShardRouter,
-    StateMachine, place_shard,
+    ShardRoutingKind, ShardRoutingSwitchError, ShardRoutingSwitchPlan, StableShardActivationError,
+    StableShardActivationPlan, StableShardRouter, StateMachine, place_shard,
+    plan_switch_to_stable_routing,
 };
 use craft_net::transport::{Body, BoxFuture, RequestHandler};
 use craft_net::{Route, Transport, TransportError, decode_body, encode_body};
@@ -72,6 +73,12 @@ impl KeyedRouter {
             Self::Stable(r) => r.activate_shards(new_active),
             Self::Modulus(_) => Err(StableShardActivationError::ModulusRoutingActive),
         }
+    }
+
+    fn switch_to_stable(&mut self) -> Result<ShardRoutingSwitchPlan, ShardRoutingSwitchError> {
+        let plan = plan_switch_to_stable_routing(self.kind(), self.active_count())?;
+        *self = Self::Stable(StableShardRouter::new(plan.active_count));
+        Ok(plan)
     }
 }
 
@@ -140,6 +147,21 @@ impl ShardedNodeService {
             .write()
             .expect("sharded router lock")
             .activate_shards(new_active)
+    }
+
+    /// Switch keyed routing from Tier 1 modulus to Tier 2 stable virtual.
+    ///
+    /// Keys **remap** — drain clients before calling.
+    ///
+    /// # Errors
+    /// Returns [`ShardRoutingSwitchError`] when stable routing is already active.
+    pub fn switch_to_stable_routing(
+        &self,
+    ) -> Result<ShardRoutingSwitchPlan, ShardRoutingSwitchError> {
+        self.router
+            .write()
+            .expect("sharded router lock")
+            .switch_to_stable()
     }
 
     /// Raft groups currently hosted on this physical node.

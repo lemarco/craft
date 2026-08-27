@@ -2,7 +2,8 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 
 use craft_proto::{decode, encode};
 use serde::{Deserialize, Serialize};
@@ -70,6 +71,12 @@ pub enum SagaError {
     /// Journal persistence failed (saga aborted before mutating client state further).
     #[error("saga journal error: {0}")]
     Journal(#[from] SagaJournalError),
+    /// [`resume_saga`] found no record for `plan.saga_id`.
+    #[error("no journal record for this saga")]
+    NotFound,
+    /// Catalog generation changed mid-saga (dynamic catalog expansion).
+    #[error("catalog version changed during saga (pinned {pinned}, current {current})")]
+    CatalogVersionChanged { pinned: u32, current: u32 },
 }
 
 /// Journal persistence failure.
@@ -114,6 +121,18 @@ pub struct RunSagaOpts<'a> {
     pub journal: Option<&'a dyn SagaJournal>,
     /// Pin catalog version in the journal (dynamic catalog mid-saga).
     pub catalog_version: Option<u32>,
+    /// Live catalog generation checked before each forward step.
+    pub catalog_version_live: Option<Arc<AtomicU32>>,
+    /// Metrics / logging callback.
+    pub on_event: Option<&'a (dyn Fn(SagaEvent) + Send + Sync)>,
+}
+
+/// Hooks for [`resume_saga`] (journal required).
+pub struct ResumeSagaOpts<'a> {
+    /// Durable saga journal to load progress from.
+    pub journal: &'a dyn SagaJournal,
+    /// Live catalog generation checked before each resumed forward step.
+    pub catalog_version_live: Option<Arc<AtomicU32>>,
     /// Metrics / logging callback.
     pub on_event: Option<&'a (dyn Fn(SagaEvent) + Send + Sync)>,
 }
@@ -129,6 +148,12 @@ pub struct SagaJournalRecord {
     pub completed_steps: u32,
     /// Catalog version pinned at start, if any.
     pub catalog_version: Option<u32>,
+    /// Forward step that failed before compensation (if any).
+    #[serde(default)]
+    pub failed_step: Option<u32>,
+    /// Compensate step index that failed when phase is [`SagaJournalPhase::Stuck`].
+    #[serde(default)]
+    pub compensate_failed_at: Option<u32>,
 }
 
 /// Journal phase for resume / observability.
@@ -190,6 +215,14 @@ pub trait SagaJournal: Send + Sync {
         failed_step: usize,
         compensate_failed_at: usize,
     ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>>;
+
+    /// Load the latest journal record for `saga_id`, if any.
+    fn load<'a>(
+        &'a self,
+        saga_id: &'a [u8],
+    ) -> Pin<
+        Box<dyn Future<Output = Result<Option<SagaJournalRecord>, SagaJournalError>> + Send + 'a>,
+    >;
 }
 
 /// In-memory journal for unit tests.
@@ -216,6 +249,8 @@ impl InMemorySagaJournal {
             phase: SagaJournalPhase::Running,
             completed_steps: 0,
             catalog_version: None,
+            failed_step: None,
+            compensate_failed_at: None,
         };
         f(&mut rec);
         guard.push(rec);
@@ -234,6 +269,8 @@ impl SagaJournal for InMemorySagaJournal {
                 rec.phase = SagaJournalPhase::Running;
                 rec.completed_steps = 0;
                 rec.catalog_version = catalog_version;
+                rec.failed_step = None;
+                rec.compensate_failed_at = None;
             });
             Ok(())
         })
@@ -265,10 +302,13 @@ impl SagaJournal for InMemorySagaJournal {
     fn on_compensation_started<'a>(
         &'a self,
         saga_id: &'a [u8],
-        _failed_step: usize,
+        failed_step: usize,
     ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
         Box::pin(async move {
-            self.upsert(saga_id, |rec| rec.phase = SagaJournalPhase::Compensating);
+            self.upsert(saga_id, |rec| {
+                rec.phase = SagaJournalPhase::Compensating;
+                rec.failed_step = Some(failed_step as u32);
+            });
             Ok(())
         })
     }
@@ -279,7 +319,10 @@ impl SagaJournal for InMemorySagaJournal {
         _compensated_steps: usize,
     ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
         Box::pin(async move {
-            self.upsert(saga_id, |rec| rec.phase = SagaJournalPhase::Compensated);
+            self.upsert(saga_id, |rec| {
+                rec.phase = SagaJournalPhase::Compensated;
+                rec.compensate_failed_at = None;
+            });
             Ok(())
         })
     }
@@ -287,12 +330,28 @@ impl SagaJournal for InMemorySagaJournal {
     fn on_stuck<'a>(
         &'a self,
         saga_id: &'a [u8],
-        _failed_step: usize,
-        _compensate_failed_at: usize,
+        failed_step: usize,
+        compensate_failed_at: usize,
     ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
         Box::pin(async move {
-            self.upsert(saga_id, |rec| rec.phase = SagaJournalPhase::Stuck);
+            self.upsert(saga_id, |rec| {
+                rec.phase = SagaJournalPhase::Stuck;
+                rec.failed_step = Some(failed_step as u32);
+                rec.compensate_failed_at = Some(compensate_failed_at as u32);
+            });
             Ok(())
+        })
+    }
+
+    fn load<'a>(
+        &'a self,
+        saga_id: &'a [u8],
+    ) -> Pin<
+        Box<dyn Future<Output = Result<Option<SagaJournalRecord>, SagaJournalError>> + Send + 'a>,
+    > {
+        Box::pin(async move {
+            let guard = self.records.lock().expect("lock");
+            Ok(guard.iter().find(|r| r.saga_id == saga_id).cloned())
         })
     }
 }
@@ -311,6 +370,138 @@ pub fn encode_journal_record(record: &SagaJournalRecord) -> Result<Vec<u8>, Saga
 /// Returns [`SagaJournalError::Codec`] when decoding fails.
 pub fn decode_journal_record(bytes: &[u8]) -> Result<SagaJournalRecord, SagaJournalError> {
     decode(bytes).map_err(|e| SagaJournalError::Codec(e.to_string()))
+}
+
+fn check_catalog_version(opts: &RunSagaOpts<'_>) -> Result<(), SagaError> {
+    if let (Some(pinned), Some(live)) = (opts.catalog_version, &opts.catalog_version_live) {
+        let current = live.load(Ordering::SeqCst);
+        if current != pinned {
+            return Err(SagaError::CatalogVersionChanged { pinned, current });
+        }
+    }
+    Ok(())
+}
+
+async fn run_forward<C: KeyedClient>(
+    client: &C,
+    plan: &SagaPlan,
+    opts: &RunSagaOpts<'_>,
+    start_step: usize,
+    mut responses: Vec<Vec<u8>>,
+) -> Result<(Vec<Vec<u8>>, Option<(usize, ClientError)>), SagaError> {
+    for (step, item) in plan.steps.iter().enumerate().skip(start_step) {
+        check_catalog_version(opts)?;
+        match client
+            .propose_keyed(item.key.clone(), item.command.clone())
+            .await
+        {
+            Ok(bytes) => {
+                responses.push(bytes);
+                if let Some(journal) = opts.journal {
+                    journal.on_step_committed(&plan.saga_id, step).await?;
+                }
+            }
+            Err(forward_error) => {
+                return Ok((responses, Some((step, forward_error))));
+            }
+        }
+    }
+    Ok((responses, None))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_compensation<C: KeyedClient>(
+    client: &C,
+    plan: &SagaPlan,
+    opts: &RunSagaOpts<'_>,
+    failed_step: usize,
+    forward_responses: Vec<Vec<u8>>,
+    forward_error: ClientError,
+    from_rev: usize,
+    record_compensation_start: bool,
+) -> Result<SagaOutcome, SagaError> {
+    if record_compensation_start && let Some(journal) = opts.journal {
+        journal
+            .on_compensation_started(&plan.saga_id, failed_step)
+            .await?;
+    }
+
+    let mut compensated_steps = 0usize;
+    if failed_step == 0 {
+        if let Some(journal) = opts.journal {
+            journal.on_compensated(&plan.saga_id, 0).await?;
+        }
+        if let Some(on) = opts.on_event {
+            on(SagaEvent::Compensated {
+                forward_steps: 0,
+                compensated: 0,
+            });
+        }
+        return Ok(SagaOutcome::Compensated {
+            forward_responses,
+            failed_step: 0,
+            compensated_steps: 0,
+            forward_error,
+        });
+    }
+
+    for rev in (0..=from_rev).rev() {
+        let back = &plan.steps[rev];
+        if let Err(source) = client
+            .propose_keyed(back.key.clone(), back.compensate.clone())
+            .await
+        {
+            if let Some(journal) = opts.journal {
+                journal.on_stuck(&plan.saga_id, failed_step, rev).await?;
+            }
+            if let Some(on) = opts.on_event {
+                on(SagaEvent::Stuck {
+                    failed_step,
+                    compensate_failed_at: rev,
+                });
+            }
+            return Err(SagaError::CompensationFailed {
+                failed_step,
+                forward_completed: failed_step,
+                compensate_failed_at: rev,
+                forward_responses,
+                source,
+            });
+        }
+        compensated_steps += 1;
+    }
+
+    if let Some(journal) = opts.journal {
+        journal
+            .on_compensated(&plan.saga_id, compensated_steps)
+            .await?;
+    }
+    if let Some(on) = opts.on_event {
+        on(SagaEvent::Compensated {
+            forward_steps: failed_step,
+            compensated: compensated_steps,
+        });
+    }
+    Ok(SagaOutcome::Compensated {
+        forward_responses,
+        failed_step,
+        compensated_steps,
+        forward_error,
+    })
+}
+
+fn run_opts_from_record<'a>(
+    journal: &'a dyn SagaJournal,
+    record: &SagaJournalRecord,
+    catalog_version_live: Option<Arc<AtomicU32>>,
+    on_event: Option<&'a (dyn Fn(SagaEvent) + Send + Sync)>,
+) -> RunSagaOpts<'a> {
+    RunSagaOpts {
+        journal: Some(journal),
+        catalog_version: record.catalog_version,
+        catalog_version_live,
+        on_event,
+    }
 }
 
 /// Execute `plan` forward; on failure run compensators in reverse for committed steps.
@@ -333,74 +524,36 @@ pub async fn run_saga<C: KeyedClient>(
     }
 
     if let Some(journal) = opts.journal {
+        if let Some(record) = journal.load(&plan.saga_id).await?
+            && record.phase == SagaJournalPhase::Completed
+        {
+            if let Some(on) = opts.on_event {
+                on(SagaEvent::Completed {
+                    steps: plan.steps.len(),
+                });
+            }
+            return Ok(SagaOutcome::Completed(Vec::new()));
+        }
+
         journal
             .on_started(&plan.saga_id, plan.steps.len(), opts.catalog_version)
             .await?;
     }
 
-    let mut responses = Vec::new();
-    for (step, item) in plan.steps.iter().enumerate() {
-        match client
-            .propose_keyed(item.key.clone(), item.command.clone())
-            .await
-        {
-            Ok(bytes) => {
-                responses.push(bytes);
-                if let Some(journal) = opts.journal {
-                    journal.on_step_committed(&plan.saga_id, step).await?;
-                }
-            }
-            Err(forward_error) => {
-                if let Some(journal) = opts.journal {
-                    journal.on_compensation_started(&plan.saga_id, step).await?;
-                }
-
-                let mut compensated_steps = 0usize;
-                for rev in (0..step).rev() {
-                    let back = &plan.steps[rev];
-                    if let Err(source) = client
-                        .propose_keyed(back.key.clone(), back.compensate.clone())
-                        .await
-                    {
-                        if let Some(journal) = opts.journal {
-                            journal.on_stuck(&plan.saga_id, step, rev).await?;
-                        }
-                        if let Some(on) = opts.on_event {
-                            on(SagaEvent::Stuck {
-                                failed_step: step,
-                                compensate_failed_at: rev,
-                            });
-                        }
-                        return Err(SagaError::CompensationFailed {
-                            failed_step: step,
-                            forward_completed: step,
-                            compensate_failed_at: rev,
-                            forward_responses: responses,
-                            source,
-                        });
-                    }
-                    compensated_steps += 1;
-                }
-
-                if let Some(journal) = opts.journal {
-                    journal
-                        .on_compensated(&plan.saga_id, compensated_steps)
-                        .await?;
-                }
-                if let Some(on) = opts.on_event {
-                    on(SagaEvent::Compensated {
-                        forward_steps: step,
-                        compensated: compensated_steps,
-                    });
-                }
-                return Ok(SagaOutcome::Compensated {
-                    forward_responses: responses,
-                    failed_step: step,
-                    compensated_steps,
-                    forward_error,
-                });
-            }
-        }
+    let (responses, failure) = run_forward(client, plan, &opts, 0, Vec::new()).await?;
+    if let Some((failed_step, forward_error)) = failure {
+        let from_rev = failed_step.saturating_sub(1);
+        return run_compensation(
+            client,
+            plan,
+            &opts,
+            failed_step,
+            responses,
+            forward_error,
+            from_rev,
+            true,
+        )
+        .await;
     }
 
     if let Some(journal) = opts.journal {
@@ -412,6 +565,93 @@ pub async fn run_saga<C: KeyedClient>(
         });
     }
     Ok(SagaOutcome::Completed(responses))
+}
+
+/// Continue a saga from its durable journal record.
+///
+/// # Errors
+/// [`SagaError::NotFound`] when no journal record exists.
+/// Same errors as [`run_saga`] for forward/compensation failures.
+pub async fn resume_saga<C: KeyedClient>(
+    client: &C,
+    plan: &SagaPlan,
+    opts: ResumeSagaOpts<'_>,
+) -> Result<SagaOutcome, SagaError> {
+    let Some(record) = opts.journal.load(&plan.saga_id).await? else {
+        return Err(SagaError::NotFound);
+    };
+
+    let run_opts = run_opts_from_record(
+        opts.journal,
+        &record,
+        opts.catalog_version_live.clone(),
+        opts.on_event,
+    );
+
+    match record.phase {
+        SagaJournalPhase::Completed => {
+            if let Some(on) = opts.on_event {
+                on(SagaEvent::Completed {
+                    steps: plan.steps.len(),
+                });
+            }
+            Ok(SagaOutcome::Completed(Vec::new()))
+        }
+        SagaJournalPhase::Compensated => Ok(SagaOutcome::Compensated {
+            forward_responses: Vec::new(),
+            failed_step: record.failed_step.unwrap_or(0) as usize,
+            compensated_steps: 0,
+            forward_error: ClientError::Server("resumed compensated saga".into()),
+        }),
+        SagaJournalPhase::Running => {
+            let start = record.completed_steps as usize;
+            let (responses, failure) =
+                run_forward(client, plan, &run_opts, start, Vec::new()).await?;
+            if let Some((failed_step, forward_error)) = failure {
+                let from_rev = failed_step.saturating_sub(1);
+                return run_compensation(
+                    client,
+                    plan,
+                    &run_opts,
+                    failed_step,
+                    responses,
+                    forward_error,
+                    from_rev,
+                    true,
+                )
+                .await;
+            }
+            if let Some(journal) = run_opts.journal {
+                journal.on_completed(&plan.saga_id).await?;
+            }
+            if let Some(on) = opts.on_event {
+                on(SagaEvent::Completed {
+                    steps: plan.steps.len(),
+                });
+            }
+            Ok(SagaOutcome::Completed(responses))
+        }
+        SagaJournalPhase::Compensating | SagaJournalPhase::Stuck => {
+            let failed_step = record.failed_step.ok_or(SagaError::NotFound)? as usize;
+            let from_rev = match record.phase {
+                SagaJournalPhase::Stuck => {
+                    record.compensate_failed_at.ok_or(SagaError::NotFound)? as usize
+                }
+                _ => failed_step.saturating_sub(1),
+            };
+            run_compensation(
+                client,
+                plan,
+                &run_opts,
+                failed_step,
+                Vec::new(),
+                ClientError::Server("resumed compensation".into()),
+                from_rev,
+                record.phase == SagaJournalPhase::Compensating,
+            )
+            .await
+        }
+    }
 }
 
 #[cfg(test)]
@@ -585,6 +825,96 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resume_saga_continues_forward_after_partial_journal() {
+        let script = Arc::new(SagaScript {
+            forward_ok: 2,
+            compensate_ok: 0,
+            forward_calls: Arc::new(AtomicU32::new(0)),
+            compensate_calls: Arc::new(AtomicU32::new(0)),
+        });
+        let client = client(Arc::clone(&script));
+        let journal = InMemorySagaJournal::default();
+        let plan = two_step_plan();
+        journal
+            .on_started(&plan.saga_id, plan.steps.len(), None)
+            .await
+            .expect("seed");
+        journal
+            .on_step_committed(&plan.saga_id, 0)
+            .await
+            .expect("seed step");
+
+        let outcome = resume_saga(
+            &client,
+            &plan,
+            ResumeSagaOpts {
+                journal: &journal,
+                catalog_version_live: None,
+                on_event: None,
+            },
+        )
+        .await
+        .expect("resume completes");
+        assert!(matches!(outcome, SagaOutcome::Completed(_)));
+        assert_eq!(script.forward_calls.load(Ordering::Relaxed), 1);
+        assert!(
+            journal
+                .records()
+                .iter()
+                .any(|r| r.phase == SagaJournalPhase::Completed)
+        );
+    }
+
+    #[tokio::test]
+    async fn resume_saga_retries_stuck_compensation() {
+        let script = Arc::new(SagaScript {
+            forward_ok: 0,
+            compensate_ok: 1,
+            forward_calls: Arc::new(AtomicU32::new(0)),
+            compensate_calls: Arc::new(AtomicU32::new(0)),
+        });
+        let client = client(Arc::clone(&script));
+        let journal = InMemorySagaJournal::default();
+        let plan = two_step_plan();
+        journal
+            .on_started(&plan.saga_id, plan.steps.len(), None)
+            .await
+            .expect("seed");
+        journal
+            .on_step_committed(&plan.saga_id, 0)
+            .await
+            .expect("seed step");
+        journal
+            .on_compensation_started(&plan.saga_id, 1)
+            .await
+            .expect("seed compensating");
+        journal
+            .on_stuck(&plan.saga_id, 1, 0)
+            .await
+            .expect("seed stuck");
+
+        let outcome = resume_saga(
+            &client,
+            &plan,
+            ResumeSagaOpts {
+                journal: &journal,
+                catalog_version_live: None,
+                on_event: None,
+            },
+        )
+        .await
+        .expect("resume compensation");
+        assert!(matches!(outcome, SagaOutcome::Compensated { .. }));
+        assert_eq!(script.compensate_calls.load(Ordering::Relaxed), 1);
+        assert!(
+            journal
+                .records()
+                .iter()
+                .any(|r| r.phase == SagaJournalPhase::Compensated)
+        );
+    }
+
+    #[tokio::test]
     async fn saga_rejects_catalog_version_change() {
         let script = Arc::new(SagaScript {
             forward_ok: 1,
@@ -594,7 +924,7 @@ mod tests {
         });
         let client = client(Arc::clone(&script));
         let journal = InMemorySagaJournal::default();
-        let live = Arc::new(Mutex::new(2u32));
+        let live = Arc::new(AtomicU32::new(2));
         let err = run_saga(
             &client,
             &SagaPlan {
@@ -633,10 +963,7 @@ mod tests {
         });
         let client = client(Arc::clone(&script));
         let journal = InMemorySagaJournal::default();
-        journal
-            .on_started(b"done", 1, Some(1))
-            .await
-            .expect("seed");
+        journal.on_started(b"done", 1, Some(1)).await.expect("seed");
         journal.on_completed(b"done").await.expect("seed complete");
 
         let outcome = run_saga(

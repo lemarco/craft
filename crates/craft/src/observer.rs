@@ -8,6 +8,7 @@
 //! everything else reflects real runtime state.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use craft_core::{Role, StateMachine};
 use craft_dashboard::{
@@ -32,6 +33,7 @@ pub(crate) struct CraftObserver<M: StateMachine> {
     replication_factor: u32,
     learner_factor: u32,
     multi_raft: Option<Arc<MultiRaftState<M>>>,
+    catalog_version: Arc<AtomicU32>,
 }
 
 impl<M: StateMachine> CraftObserver<M> {
@@ -47,6 +49,7 @@ impl<M: StateMachine> CraftObserver<M> {
         replication_factor: u32,
         learner_factor: u32,
         multi_raft: Option<Arc<MultiRaftState<M>>>,
+        catalog_version: Arc<AtomicU32>,
     ) -> Self {
         Self {
             node_id,
@@ -59,6 +62,7 @@ impl<M: StateMachine> CraftObserver<M> {
             replication_factor,
             learner_factor,
             multi_raft,
+            catalog_version,
         }
     }
 }
@@ -207,6 +211,7 @@ impl<M: StateMachine> Observer for CraftObserver<M> {
                     .as_ref()
                     .map(|mr| mr.catalog.lock().unwrap().len() as u32)
                     .unwrap_or(self.raft_groups),
+                catalog_version: self.catalog_version.load(Ordering::SeqCst),
                 replication_factor: self.replication_factor,
                 learner_factor: self.learner_factor,
                 hosted_groups: hosted,

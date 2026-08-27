@@ -26,8 +26,8 @@ pub use batch::{BatchError, KeyedBatchStep, propose_keyed_batch};
 pub use error::ClientError;
 pub use remote::{Client, KeyedClient, RemoteClient, RetryPolicy};
 pub use saga::{
-    InMemorySagaJournal, RunSagaOpts, SagaError, SagaEvent, SagaJournal, SagaJournalError,
-    SagaJournalPhase, SagaJournalRecord, SagaOutcome, SagaPlan, SagaStep, decode_journal_record,
-    encode_journal_record, run_saga,
+    InMemorySagaJournal, ResumeSagaOpts, RunSagaOpts, SagaError, SagaEvent, SagaJournal,
+    SagaJournalError, SagaJournalPhase, SagaJournalRecord, SagaOutcome, SagaPlan, SagaStep,
+    decode_journal_record, encode_journal_record, resume_saga, run_saga,
 };
 pub use typed::TypedClient;

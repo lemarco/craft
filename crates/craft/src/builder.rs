@@ -8,6 +8,7 @@
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -992,6 +993,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         }
 
         // Admin/observability HTTP server.
+        let catalog_version = Arc::new(AtomicU32::new(1));
         if let Some(addr) = self.admin_addr {
             let observer: Arc<dyn Observer> = Arc::new(CraftObserver::new(
                 node_id,
@@ -1004,6 +1006,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 self.group_replication_factor,
                 self.group_learner_factor,
                 multi_raft.clone(),
+                Arc::clone(&catalog_version),
             ));
             let admin = AdminServer::new(observer, metrics.clone(), events.clone());
             match TcpListener::bind(addr).await {
@@ -1048,6 +1051,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             supervisor,
             events,
             metrics,
+            catalog_version,
             telemetry,
             members: self.members,
             resource_profile,

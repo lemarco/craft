@@ -32,6 +32,9 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ### Added
 
+- **Tier 2 tails** — `catalog_version` on `/introspect/raft-groups` and
+  `CraftCluster::catalog_version()`; saga hardening (`catalog_version_live`, journal
+  `load`, `resume_saga`, `run_keyed_saga` / `resume_keyed_saga`).
 - **Tier 2 Phase 4 — cross-shard saga coordinator** ([cross-shard-transactions](docs/decisions/cross-shard-transactions.md)) —
   `craft_client::run_saga`, `SagaPlan`/`SagaStep`, `SagaJournal` trait,
   `InMemorySagaJournal`; facade `StoreSagaJournal` + `record_saga_metrics`.

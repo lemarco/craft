@@ -7,8 +7,8 @@ use craft::CraftCluster;
 use craft::StoreSagaJournal;
 use craft::actor::{ActorStateStore, InMemoryStore};
 use craft::client::{
-    RemoteClient, RetryPolicy, RunSagaOpts, SagaJournalPhase, SagaOutcome, SagaPlan, SagaStep,
-    run_saga,
+    RemoteClient, RetryPolicy, RunSagaOpts, SagaJournal, SagaJournalPhase, SagaOutcome, SagaPlan,
+    SagaStep, run_saga,
 };
 use craft::net::{LocalNetwork, Transport, TransportError, decode_body};
 use craft::proto::{ClientRequest, ClientResponse, NodeId};
@@ -248,7 +248,11 @@ async fn cross_shard_saga_resume_completes_second_step() {
     let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
     let journal = StoreSagaJournal::new(Arc::clone(&store));
     journal
-        .on_started(&plan.saga_id, plan.steps.len(), Some(leader.catalog_version()))
+        .on_started(
+            &plan.saga_id,
+            plan.steps.len(),
+            Some(leader.catalog_version()),
+        )
         .await
         .expect("seed journal");
     journal
@@ -262,7 +266,12 @@ async fn cross_shard_saga_resume_completes_second_step() {
         .await
         .expect("resume completes");
     assert!(matches!(outcome, SagaOutcome::Completed(_)));
-    assert!(leader.metrics().render().contains("craft_saga_completed_total"));
+    assert!(
+        leader
+            .metrics()
+            .render()
+            .contains("craft_saga_completed_total")
+    );
 
     for cluster in &clusters {
         cluster.shutdown();
@@ -282,10 +291,17 @@ async fn run_keyed_saga_is_idempotent_when_journal_completed() {
     let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
     let journal = StoreSagaJournal::new(Arc::clone(&store));
     journal
-        .on_started(&plan.saga_id, plan.steps.len(), Some(leader.catalog_version()))
+        .on_started(
+            &plan.saga_id,
+            plan.steps.len(),
+            Some(leader.catalog_version()),
+        )
         .await
         .expect("seed");
-    journal.on_completed(&plan.saga_id).await.expect("seed complete");
+    journal
+        .on_completed(&plan.saga_id)
+        .await
+        .expect("seed complete");
 
     let client = RemoteClient::new(Arc::new(net.clone()), [leader.node_id()]);
     let outcome = leader

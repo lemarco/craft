@@ -125,6 +125,8 @@ pub struct RaftGroupsView {
     pub shard_routing: String,
     /// Number of catalogued Raft groups.
     pub catalog_size: u32,
+    /// Monotonic catalog generation (bumps on each committed expansion).
+    pub catalog_version: u32,
     /// Target voter replication factor per group.
     pub replication_factor: u32,
     /// Target learner replicas per group.

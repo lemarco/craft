@@ -608,6 +608,70 @@ pub fn plan_stable_shard_activation(
     })
 }
 
+/// Why a Tier 1 → Tier 2 routing switch was rejected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShardRoutingSwitchError {
+    /// Stable virtual routing is already active.
+    AlreadyStable,
+    /// Active shard count must be at least 1.
+    InvalidActiveCount,
+    /// Routing switch requires multi-Raft (`raft_groups > 1`).
+    NotMultiRaft,
+}
+
+impl std::fmt::Display for ShardRoutingSwitchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AlreadyStable => {
+                f.write_str("stable virtual shard routing is already active; switch is a no-op")
+            }
+            Self::InvalidActiveCount => {
+                f.write_str("active shard count must be at least 1 to switch routing")
+            }
+            Self::NotMultiRaft => {
+                f.write_str("routing switch requires multi-Raft (raft_groups > 1)")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ShardRoutingSwitchError {}
+
+/// Operator plan for switching keyed routing from modulus to stable virtual.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShardRoutingSwitchPlan {
+    /// Previous routing mode (always [`ShardRoutingKind::Modulus`]).
+    pub from: ShardRoutingKind,
+    /// Target routing mode (always [`ShardRoutingKind::StableVirtual`]).
+    pub to: ShardRoutingKind,
+    /// Active shard count preserved across the switch.
+    pub active_count: u32,
+}
+
+/// Validate switching from Tier 1 modulus to Tier 2 stable virtual routing.
+///
+/// Keys **remap** to the stable formula — drain keyed clients before applying
+/// ([tier2-multi-raft-architecture](../../docs/decisions/tier2-multi-raft-architecture.md)).
+///
+/// # Errors
+/// Returns [`ShardRoutingSwitchError::AlreadyStable`] when already on stable routing.
+pub fn plan_switch_to_stable_routing(
+    current: ShardRoutingKind,
+    active_count: u32,
+) -> Result<ShardRoutingSwitchPlan, ShardRoutingSwitchError> {
+    if current == ShardRoutingKind::StableVirtual {
+        return Err(ShardRoutingSwitchError::AlreadyStable);
+    }
+    if active_count == 0 {
+        return Err(ShardRoutingSwitchError::InvalidActiveCount);
+    }
+    Ok(ShardRoutingSwitchPlan {
+        from: ShardRoutingKind::Modulus,
+        to: ShardRoutingKind::StableVirtual,
+        active_count: active_count.clamp(1, MAX_VIRTUAL_SHARDS),
+    })
+}
+
 /// Router over a fixed virtual space with a tunable active prefix (Tier 2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StableShardRouter {
