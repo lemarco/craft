@@ -25,37 +25,42 @@ pub struct GroupRebalanceReport {
 pub struct RaftGroupReconciler<S: ClusterState> {
     node_id: NodeId,
     catalog: Vec<RaftGroupId>,
+    replication_factor: u32,
     state: S,
 }
 
 impl<S: ClusterState> RaftGroupReconciler<S> {
     /// Plan rebalance for `catalog` groups using leadership/membership from `state`.
     #[must_use]
-    pub fn new(node_id: NodeId, catalog: Vec<RaftGroupId>, state: S) -> Self {
+    pub fn new(
+        node_id: NodeId,
+        catalog: Vec<RaftGroupId>,
+        replication_factor: u32,
+        state: S,
+    ) -> Self {
         Self {
             node_id,
             catalog,
+            replication_factor,
             state,
         }
     }
 
-    /// Diff locally hosted groups against the desired rendezvous assignment.
-    /// Runs on the leader only; followers return an empty plan.
+    /// Diff locally hosted groups against the desired voter placement (ADR 033).
     #[must_use]
     pub fn reconcile_local(&self, currently_hosted: &[RaftGroupId]) -> GroupRebalanceReport {
-        if !self.state.is_leader() {
-            rebalance_log::skipped_follower(self.node_id);
-            return GroupRebalanceReport {
-                ran_as_leader: false,
-                ..GroupRebalanceReport::default()
-            };
-        }
         let live = self.state.live_nodes();
         let assignment = group_host_assignment(&self.catalog, &live);
-        let plan = plan_node_group_rebalance(self.node_id, &self.catalog, &live, currently_hosted);
+        let plan = plan_node_group_rebalance(
+            self.node_id,
+            &self.catalog,
+            &live,
+            currently_hosted,
+            self.replication_factor,
+        );
         rebalance_log::plan(self.node_id, &live, currently_hosted, &plan);
         GroupRebalanceReport {
-            ran_as_leader: true,
+            ran_as_leader: self.state.is_leader(),
             assignment,
             plan,
         }

@@ -127,11 +127,21 @@ enum Envelope<M: StateMachine> {
         request: JoinRequest,
         respond: oneshot::Sender<JoinResponse>,
     },
+    /// Leader-only: begin a joint-consensus membership change (ADR 033).
+    ProposeMembership {
+        voters: Vec<NodeId>,
+        respond: oneshot::Sender<Result<(), ClientError>>,
+    },
     Campaign,
     Status {
         respond: oneshot::Sender<NodeStatus>,
     },
-    Shutdown,
+    ExportMigration {
+        respond: oneshot::Sender<Result<craft_proto::GroupMigrationBundle, ClientError>>,
+    },
+    Shutdown {
+        done: Option<oneshot::Sender<()>>,
+    },
 }
 
 /// Tunables for the runtime loop.
@@ -230,6 +240,15 @@ impl<M: StateMachine> NodeHandle<M> {
         rx.await.unwrap_or(Err(ClientError::Stopped))
     }
 
+    /// Export durable Raft state for cross-node group migration (ADR 031).
+    pub async fn export_migration(&self) -> Result<craft_proto::GroupMigrationBundle, ClientError> {
+        let (respond, rx) = oneshot::channel();
+        self.tx
+            .send(Envelope::ExportMigration { respond })
+            .map_err(|_| ClientError::Stopped)?;
+        rx.await.unwrap_or(Err(ClientError::Stopped))
+    }
+
     /// Etcd-style follower read: confirm with the leader, wait for the apply
     /// barrier, then serve from local state.
     pub async fn follower_query_bytes(
@@ -309,6 +328,20 @@ impl<M: StateMachine> NodeHandle<M> {
         rx.await.map_err(|_| ClientError::Stopped)
     }
 
+    /// Propose a joint-consensus membership change to `voters` when this node
+    /// is the Raft leader for the group (ADR 033).
+    ///
+    /// # Errors
+    /// [`ClientError::NotLeader`] or [`ClientError::Driver`] when the core
+    /// rejects the change; [`ClientError::Stopped`] if the runtime shut down.
+    pub async fn propose_membership(&self, voters: Vec<NodeId>) -> Result<(), ClientError> {
+        let (respond, rx) = oneshot::channel();
+        self.tx
+            .send(Envelope::ProposeMembership { voters, respond })
+            .map_err(|_| ClientError::Stopped)?;
+        rx.await.map_err(|_| ClientError::Stopped)?
+    }
+
     /// Force an immediate election (test/bootstrap helper).
     pub fn campaign(&self) {
         let _ = self.tx.send(Envelope::Campaign);
@@ -323,7 +356,20 @@ impl<M: StateMachine> NodeHandle<M> {
 
     /// Ask the runtime to stop after draining the current message.
     pub fn shutdown(&self) {
-        let _ = self.tx.send(Envelope::Shutdown);
+        let _ = self.tx.send(Envelope::Shutdown { done: None });
+    }
+
+    /// Stop the runtime and wait until it has exited (storage handles released).
+    pub async fn shutdown_and_wait(&self) {
+        let (done, rx) = oneshot::channel();
+        if self
+            .tx
+            .send(Envelope::Shutdown { done: Some(done) })
+            .is_err()
+        {
+            return;
+        }
+        let _ = rx.await;
     }
 }
 
@@ -465,7 +511,7 @@ impl<M: StateMachine> Runtime<M> {
     /// (corrupt log / broken state machine), which stops the node.
     fn on_envelope(&mut self, env: Envelope<M>) -> Result<bool, DriverError> {
         match env {
-            Envelope::Shutdown => return Ok(false),
+            Envelope::Shutdown { .. } => return Ok(false),
             Envelope::Rpc { from, rpc, respond } => {
                 let step = self.driver.deliver_rpc(from, rpc)?;
                 let replies = self.settle(step);
@@ -537,6 +583,9 @@ impl<M: StateMachine> Runtime<M> {
             Envelope::Join { request, respond } => {
                 self.on_join(request, respond)?;
             }
+            Envelope::ProposeMembership { voters, respond } => {
+                self.on_propose_membership(voters, respond)?;
+            }
             Envelope::Campaign => {
                 let step = self.driver.campaign()?;
                 let _ = self.settle(step);
@@ -553,6 +602,13 @@ impl<M: StateMachine> Runtime<M> {
                     voters: node.voters(),
                     reachable: node.reachable_now(),
                 });
+            }
+            Envelope::ExportMigration { respond } => {
+                let result = self
+                    .driver
+                    .export_migration()
+                    .map_err(|e| ClientError::Driver(e.to_string()));
+                let _ = respond.send(result);
             }
         }
         Ok(true)
@@ -620,6 +676,35 @@ impl<M: StateMachine> Runtime<M> {
         }
         Ok(())
     }
+
+    fn on_propose_membership(
+        &mut self,
+        voters: Vec<NodeId>,
+        respond: oneshot::Sender<Result<(), ClientError>>,
+    ) -> Result<(), DriverError> {
+        use craft_core::MembershipError;
+
+        match self.driver.propose_membership(voters, [])? {
+            Ok((_, step)) => {
+                let _ = self.settle(step);
+                let _ = respond.send(Ok(()));
+            }
+            Err(MembershipError::NotLeader { leader }) => {
+                let _ = respond.send(Err(ClientError::NotLeader { leader }));
+            }
+            Err(MembershipError::InProgress) => {
+                let _ = respond.send(Err(ClientError::Driver(
+                    "a membership change is already in progress".to_string(),
+                )));
+            }
+            Err(MembershipError::EmptyVoters) => {
+                let _ = respond.send(Err(ClientError::Driver(
+                    "resulting voter set is empty".to_string(),
+                )));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Spawn a node runtime around `driver`, driving it over `transport`, and
@@ -652,6 +737,7 @@ where
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(config.tick_period);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut shutdown_done = None;
         loop {
             tokio::select! {
                 _ = interval.tick() => {
@@ -662,12 +748,20 @@ where
                 }
                 maybe = rx.recv() => {
                     let Some(env) = maybe else { break };
+                    if let Envelope::Shutdown { done } = env {
+                        shutdown_done = done;
+                        break;
+                    }
                     match runtime.on_envelope(env) {
                         Ok(true) => {}
                         Ok(false) | Err(_) => break,
                     }
                 }
             }
+        }
+        drop(runtime);
+        if let Some(done) = shutdown_done {
+            let _ = done.send(());
         }
         // Pending responders drop here, so blocked clients observe `Stopped`.
     });

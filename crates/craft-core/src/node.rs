@@ -482,6 +482,12 @@ impl RaftNode {
             data: s.data.clone(),
         })
     }
+    /// Live log entries from `from` through the last index (inclusive).
+    #[must_use]
+    pub fn log_entries_from(&self, from: LogIndex) -> Vec<LogEntry> {
+        self.log.entries_from(from).to_vec()
+    }
+
     /// The active voting set (sorted).
     #[must_use]
     pub fn voters(&self) -> Vec<NodeId> {

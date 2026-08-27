@@ -18,6 +18,9 @@
 //! The number of shards is fixed for the life of a cluster (repartitioning is
 //! out of scope); groups may come and go, and rendezvous hashing keeps the
 //! churn small when they do.
+//!
+//! Per-group Raft membership planning (desired voter sets, join/leave diffs)
+//! lives here too — ADR 033.
 
 use std::collections::BTreeMap;
 
@@ -29,6 +32,9 @@ pub struct ShardId(pub u32);
 /// Identifies one of the cluster's independent Raft groups (multi-Raft).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RaftGroupId(pub u32);
+
+/// Default replication factor for per-group voter sets (ADR 033).
+pub const DEFAULT_GROUP_REPLICATION_FACTOR: u32 = 3;
 
 /// FNV-1a (64-bit): a small, dependency-free, **stable** hash. Stability matters
 /// because the mapping must be identical on every node and across process
@@ -134,6 +140,159 @@ pub fn group_host_assignment(
     map
 }
 
+/// Clamp `replication_factor` to `[1, live_count]`. Returns `0` when
+/// `live_count == 0`.
+#[must_use]
+pub fn effective_replication_factor(replication_factor: u32, live_count: usize) -> u32 {
+    if live_count == 0 {
+        return 0;
+    }
+    replication_factor.max(1).min(live_count as u32)
+}
+
+/// Desired voter set for one Raft group: the top [`effective_replication_factor`]
+/// live nodes by rendezvous weight for `group`, sorted by `NodeId` (ADR 033).
+#[must_use]
+pub fn group_voters(
+    group: RaftGroupId,
+    live_nodes: &[craft_proto::NodeId],
+    replication_factor: u32,
+) -> Vec<craft_proto::NodeId> {
+    let rf = effective_replication_factor(replication_factor, live_nodes.len());
+    if rf == 0 {
+        return Vec::new();
+    }
+    let mut ranked: Vec<_> = live_nodes.to_vec();
+    ranked.sort_by(|a, b| {
+        group_node_weight(group, *b)
+            .cmp(&group_node_weight(group, *a))
+            .then_with(|| a.cmp(b))
+    });
+    ranked.truncate(rf as usize);
+    ranked.sort();
+    ranked
+}
+
+/// Full desired voter assignment for every group in `groups` (ADR 033).
+#[must_use]
+pub fn group_membership_assignment(
+    groups: &[RaftGroupId],
+    live_nodes: &[craft_proto::NodeId],
+    replication_factor: u32,
+) -> BTreeMap<RaftGroupId, Vec<craft_proto::NodeId>> {
+    groups
+        .iter()
+        .map(|&group| (group, group_voters(group, live_nodes, replication_factor)))
+        .collect()
+}
+
+/// Per-group membership delta between a committed and desired voter set.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct GroupMembershipChange {
+    /// Voters to add via joint consensus.
+    pub add: Vec<craft_proto::NodeId>,
+    /// Voters to remove via joint consensus.
+    pub remove: Vec<craft_proto::NodeId>,
+}
+
+/// Diff `current_voters` against `desired_voters` (sorted inputs not required).
+#[must_use]
+pub fn plan_group_membership_change(
+    current_voters: &[craft_proto::NodeId],
+    desired_voters: &[craft_proto::NodeId],
+) -> GroupMembershipChange {
+    use std::collections::BTreeSet;
+
+    let current: BTreeSet<_> = current_voters.iter().copied().collect();
+    let desired: BTreeSet<_> = desired_voters.iter().copied().collect();
+    GroupMembershipChange {
+        add: desired.difference(&current).copied().collect(),
+        remove: current.difference(&desired).copied().collect(),
+    }
+}
+
+/// Groups whose desired voter set gains `node` when the live set grows from
+/// `live_nodes_before` to `live_nodes_after` (cluster join).
+#[must_use]
+pub fn groups_joining_node_affects(
+    node: craft_proto::NodeId,
+    all_groups: &[RaftGroupId],
+    live_nodes_before: &[craft_proto::NodeId],
+    live_nodes_after: &[craft_proto::NodeId],
+    replication_factor: u32,
+) -> Vec<RaftGroupId> {
+    debug_assert!(
+        live_nodes_after.contains(&node),
+        "joining node must appear in live_nodes_after"
+    );
+    debug_assert!(
+        !live_nodes_before.contains(&node),
+        "joining node must be absent from live_nodes_before"
+    );
+    all_groups
+        .iter()
+        .copied()
+        .filter(|&group| {
+            let before = group_voters(group, live_nodes_before, replication_factor);
+            let after = group_voters(group, live_nodes_after, replication_factor);
+            !before.contains(&node) && after.contains(&node)
+        })
+        .collect()
+}
+
+/// Groups whose desired voter set loses `node` when it departs the live set
+/// (cluster leave).
+#[must_use]
+pub fn groups_leaving_node_affects(
+    node: craft_proto::NodeId,
+    all_groups: &[RaftGroupId],
+    live_nodes_before: &[craft_proto::NodeId],
+    live_nodes_after: &[craft_proto::NodeId],
+    replication_factor: u32,
+) -> Vec<RaftGroupId> {
+    debug_assert!(
+        live_nodes_before.contains(&node),
+        "departing node must appear in live_nodes_before"
+    );
+    debug_assert!(
+        !live_nodes_after.contains(&node),
+        "departing node must be absent from live_nodes_after"
+    );
+    all_groups
+        .iter()
+        .copied()
+        .filter(|&group| {
+            let before = group_voters(group, live_nodes_before, replication_factor);
+            let after = group_voters(group, live_nodes_after, replication_factor);
+            before.contains(&node) && !after.contains(&node)
+        })
+        .collect()
+}
+
+/// Groups whose desired voter set differs from `current` (ADR 033). Skips
+/// coordinator group 0 — its membership is managed by `/cluster/join`.
+#[must_use]
+pub fn plan_group_membership_sync(
+    catalog: &[RaftGroupId],
+    live_nodes: &[craft_proto::NodeId],
+    current: &BTreeMap<RaftGroupId, Vec<craft_proto::NodeId>>,
+    replication_factor: u32,
+) -> BTreeMap<RaftGroupId, Vec<craft_proto::NodeId>> {
+    let mut out = BTreeMap::new();
+    for &group in catalog {
+        if group.0 == 0 {
+            continue;
+        }
+        let desired = group_voters(group, live_nodes, replication_factor);
+        let cur = current.get(&group).map(Vec::as_slice).unwrap_or(&[]);
+        let change = plan_group_membership_change(cur, &desired);
+        if !change.add.is_empty() || !change.remove.is_empty() {
+            out.insert(group, desired);
+        }
+    }
+    out
+}
+
 /// Local rebalance actions for one physical node (multi-Raft control plane).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GroupRebalancePlan {
@@ -143,22 +302,22 @@ pub struct GroupRebalancePlan {
     pub retire: Vec<RaftGroupId>,
 }
 
-/// Diff the groups `node_id` currently hosts against the rendezvous assignment
-/// for `all_groups` over `live_nodes`.
+/// Diff the groups `node_id` currently hosts against groups where it is in
+/// the desired voter set ([`group_voters`](group_voters), ADR 033).
 #[must_use]
 pub fn plan_node_group_rebalance(
     node_id: craft_proto::NodeId,
     all_groups: &[RaftGroupId],
     live_nodes: &[craft_proto::NodeId],
     currently_hosted: &[RaftGroupId],
+    replication_factor: u32,
 ) -> GroupRebalancePlan {
     use std::collections::BTreeSet;
 
-    let desired = group_host_assignment(all_groups, live_nodes);
-    let should: BTreeSet<RaftGroupId> = desired
-        .into_iter()
-        .filter(|(_, host)| *host == node_id)
-        .map(|(g, _)| g)
+    let should: BTreeSet<RaftGroupId> = all_groups
+        .iter()
+        .copied()
+        .filter(|g| group_voters(*g, live_nodes, replication_factor).contains(&node_id))
         .collect();
     let current: BTreeSet<RaftGroupId> = currently_hosted.iter().copied().collect();
 
@@ -321,8 +480,106 @@ mod tests {
             .copied()
             .find(|n| assignment.values().any(|host| *host == *n))
             .expect("at least one node should host a group");
-        let plan = plan_node_group_rebalance(node_id, &groups, &live, &[]);
+        let plan = plan_node_group_rebalance(node_id, &groups, &live, &[], 1);
         assert!(!plan.adopt.is_empty());
         assert!(plan.retire.is_empty());
+    }
+
+    #[test]
+    fn effective_replication_factor_clamps_to_live_count() {
+        assert_eq!(effective_replication_factor(0, 5), 1);
+        assert_eq!(effective_replication_factor(3, 2), 2);
+        assert_eq!(effective_replication_factor(3, 5), 3);
+        assert_eq!(effective_replication_factor(3, 0), 0);
+    }
+
+    #[test]
+    fn group_voters_rf_one_matches_rendezvous_host() {
+        use craft_proto::NodeId;
+
+        let nodes = [NodeId(1), NodeId(2), NodeId(3)];
+        for g in 0..12 {
+            let group = RaftGroupId(g);
+            let voters = group_voters(group, &nodes, 1);
+            assert_eq!(voters.len(), 1);
+            assert_eq!(voters[0], place_group(group, &nodes).unwrap());
+        }
+    }
+
+    #[test]
+    fn full_replication_assigns_all_live_nodes_to_every_group() {
+        use craft_proto::NodeId;
+
+        let nodes = [NodeId(1), NodeId(2), NodeId(3)];
+        let groups: Vec<_> = (0..4).map(RaftGroupId).collect();
+        let assignment = group_membership_assignment(&groups, &nodes, 3);
+        for voters in assignment.values() {
+            assert_eq!(*voters, vec![NodeId(1), NodeId(2), NodeId(3)]);
+        }
+    }
+
+    #[test]
+    fn join_affects_only_groups_where_node_enters_voter_set() {
+        use craft_proto::NodeId;
+
+        let groups: Vec<_> = (0..12).map(RaftGroupId).collect();
+        let before = [NodeId(1), NodeId(2), NodeId(3)];
+        let after = [NodeId(1), NodeId(2), NodeId(3), NodeId(4)];
+        let affected = groups_joining_node_affects(NodeId(4), &groups, &before, &after, 1);
+        assert!(!affected.is_empty());
+        assert!(affected.len() < groups.len());
+        for g in &affected {
+            assert_eq!(group_voters(*g, &after, 1), vec![NodeId(4)]);
+        }
+        for g in groups.iter().filter(|g| !affected.contains(g)) {
+            assert_eq!(
+                group_voters(*g, &before, 1),
+                group_voters(*g, &after, 1),
+                "group {:?} should be unchanged by join",
+                g
+            );
+        }
+    }
+
+    #[test]
+    fn leave_affects_groups_that_drop_the_departed_node() {
+        use craft_proto::NodeId;
+
+        let groups: Vec<_> = (0..12).map(RaftGroupId).collect();
+        let before = [NodeId(1), NodeId(2), NodeId(3), NodeId(4)];
+        let after = [NodeId(1), NodeId(2), NodeId(3)];
+        let affected = groups_leaving_node_affects(NodeId(4), &groups, &before, &after, 1);
+        for g in &affected {
+            let voters = group_voters(*g, &before, 1);
+            assert_eq!(voters, vec![NodeId(4)]);
+        }
+    }
+
+    #[test]
+    fn plan_group_membership_change_diffs_add_and_remove() {
+        use craft_proto::NodeId;
+
+        let change = plan_group_membership_change(
+            &[NodeId(1), NodeId(2), NodeId(3)],
+            &[NodeId(1), NodeId(2), NodeId(4)],
+        );
+        assert_eq!(change.add, vec![NodeId(4)]);
+        assert_eq!(change.remove, vec![NodeId(3)]);
+    }
+
+    #[test]
+    fn plan_group_membership_sync_skips_coordinator_and_diffs_shards() {
+        use craft_proto::NodeId;
+
+        let catalog: Vec<_> = (0..4).map(RaftGroupId).collect();
+        let live = [NodeId(1), NodeId(2), NodeId(3), NodeId(4)];
+        let mut current = BTreeMap::new();
+        current.insert(RaftGroupId(0), vec![NodeId(1), NodeId(2), NodeId(3)]);
+        current.insert(RaftGroupId(1), vec![NodeId(1), NodeId(2), NodeId(3)]);
+        current.insert(RaftGroupId(2), vec![NodeId(1), NodeId(2), NodeId(3)]);
+
+        let sync = plan_group_membership_sync(&catalog, &live, &current, 3);
+        assert!(!sync.contains_key(&RaftGroupId(0)));
+        assert!(sync.values().all(|v| v.contains(&NodeId(4))));
     }
 }

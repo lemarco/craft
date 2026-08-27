@@ -15,6 +15,7 @@ pub use craft_macros::remote_actor;
 
 mod directory;
 mod driver;
+mod group_membership;
 mod group_rebalance;
 mod messaging;
 mod placement;
@@ -28,6 +29,7 @@ mod supervisor;
 
 pub use directory::{ActorDirectory, ClusterRef, DirectorySync};
 pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
+pub use group_membership::{GroupMembershipSyncReport, sync_hosted_group_membership};
 pub use group_rebalance::{GroupRebalanceReport, RaftGroupReconciler};
 pub use messaging::{AskError as ClusterAskError, CastError, ClusterMessaging};
 pub use placement::{
@@ -45,7 +47,9 @@ pub use runtime::{
     ClientError, NodeHandle, NodeService, NodeStatus, RuntimeConfig, spawn as spawn_node,
 };
 pub mod rebalance_log;
-pub use sharded::{ShardedNodeService, spawn_multi_raft_node, spawn_raft_group};
+pub use sharded::{
+    ShardedNodeService, spawn_multi_raft_node, spawn_raft_group, spawn_raft_group_from_bundle,
+};
 pub use store::{ActorStateStore, BoxFuture, InMemoryStore, StoreError};
 pub use store_codec::{store_get, store_set};
 pub use supervisor::{ClusterState, ClusterSupervisor, GroupReconcile, ReconcileReport};

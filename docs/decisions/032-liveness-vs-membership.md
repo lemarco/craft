@@ -1,6 +1,6 @@
 # ADR 032: Liveness signal, distinct from Raft membership
 
-**Status:** Accepted (foundation landed; crash-driven reconcile deferred)
+**Status:** Accepted (foundation + crash-driven reconcile landed)
 **Date:** 2026-07-06
 
 ## Context
@@ -84,14 +84,17 @@ Properties:
 | Per-peer ack tracking + `reachable`/`reachable_now` (`craft-core`) | **Landed** |
 | `NodeStatus.reachable`, `ClusterState::reachable_nodes`, `ClusterFacts` wiring | **Landed** |
 | Placement still targets committed voters (no behavior change) | **Landed (intentional)** |
-| Supervisor consuming `reachable_nodes()` to migrate/respawn a crashed host's workers | **Deferred** |
+| Supervisor consuming `reachable_nodes()` to migrate/respawn a crashed host's workers | **Landed** |
 | Tuning the detection window / hysteresis under real network jitter | **Deferred** |
 
-The deferred crash-driven reconcile is now *unblocked*: it can read
-`reachable_nodes()` and diff it against `live_nodes()` to find crashed voters,
-then move their managed workers — without waiting for a `ConfChange`. That step
-is intentionally separate so the detector can be observed (via `NodeStatus`)
-and its window tuned before it is allowed to trigger migrations.
+The crash-driven reconcile reads `reachable_nodes()` and diffs it against
+committed membership to find crashed voters, then the leader's
+[`ClusterSupervisor::reconcile`](../../crates/craft-actor/src/supervisor.rs)
+plans removal of workers on unreachable hosts and respawns on survivors
+(`manage_auto` tracks reachable count; fixed groups cap at reachable nodes).
+The facade's facts-refresher triggers reconcile on reachability changes (not
+only membership commits) and prunes unreachable nodes from the local directory
+so routing stops targeting crashed hosts immediately.
 
 ## Consequences
 

@@ -46,23 +46,34 @@ impl UserActor for Worker {
     }
 }
 
-/// A test double for cluster leadership + membership. `nodes` is mutable so a
-/// test can simulate a join or a leave between reconciles.
+/// A test double for cluster leadership + membership + reachability. `nodes` is
+/// the committed voter set; `reachable` tracks liveness (ADR 032). Both are
+/// mutable so a test can simulate join, leave, or crash between reconciles.
 struct MockState {
     leader: AtomicBool,
     nodes: std::sync::Mutex<Vec<NodeId>>,
+    reachable: std::sync::Mutex<Vec<NodeId>>,
 }
 
 impl MockState {
     fn new(leader: bool, nodes: &[u64]) -> Self {
+        let ids: Vec<NodeId> = nodes.iter().copied().map(NodeId).collect();
         Self {
             leader: AtomicBool::new(leader),
-            nodes: std::sync::Mutex::new(nodes.iter().copied().map(NodeId).collect()),
+            nodes: std::sync::Mutex::new(ids.clone()),
+            reachable: std::sync::Mutex::new(ids),
         }
     }
 
     fn set_nodes(&self, nodes: &[u64]) {
-        *self.nodes.lock().unwrap() = nodes.iter().copied().map(NodeId).collect();
+        let ids: Vec<NodeId> = nodes.iter().copied().map(NodeId).collect();
+        *self.nodes.lock().unwrap() = ids.clone();
+        *self.reachable.lock().unwrap() = ids;
+    }
+
+    /// Simulate a crash/partition: still a voter, but no longer reachable.
+    fn set_reachable(&self, nodes: &[u64]) {
+        *self.reachable.lock().unwrap() = nodes.iter().copied().map(NodeId).collect();
     }
 }
 
@@ -72,6 +83,9 @@ impl ClusterState for MockState {
     }
     fn live_nodes(&self) -> Vec<NodeId> {
         self.nodes.lock().unwrap().clone()
+    }
+    fn reachable_nodes(&self) -> Vec<NodeId> {
+        self.reachable.lock().unwrap().clone()
     }
 }
 
@@ -280,4 +294,67 @@ async fn placement_error_is_surfaced_per_group_without_aborting_the_pass() {
     assert!(!report.is_ok(), "the over-capacity group failed to place");
     assert_eq!(report.groups.len(), 1);
     assert!(report.groups[0].result.is_err());
+}
+
+#[tokio::test]
+async fn a_crashed_but_still_voter_node_is_planned_for_removal() {
+    let net = LocalNetwork::new();
+    let n1 = node(&net, 1);
+    let _n2 = node(&net, 2);
+    let _n3 = node(&net, 3);
+    let state = Arc::new(MockState::new(true, &[1, 2, 3]));
+    let sup = ClusterSupervisor::new(Arc::clone(&n1.control), Arc::clone(&state));
+    sup.manage_auto::<Worker>("w", 0);
+
+    sup.reconcile().await;
+    n1.directory.apply(&DirectoryUpdate {
+        node: NodeId(1),
+        epoch: 1,
+        registrations: vec![reg(1, "w", 0), reg(2, "w", 0), reg(3, "w", 0)],
+    });
+
+    // Node 3 crashes but remains a committed voter (no ConfChange yet).
+    state.set_reachable(&[1, 2]);
+    let report = sup.reconcile().await;
+
+    let plan = report.groups[0].result.as_ref().unwrap();
+    assert_eq!(
+        report.groups[0].total, 2,
+        "auto target tracks reachable nodes"
+    );
+    assert!(plan.spawns.is_empty(), "survivors already host the group");
+    assert_eq!(
+        plan.removes,
+        vec![reg(3, "w", 0).id],
+        "crashed host's worker is reaped"
+    );
+}
+
+#[tokio::test]
+async fn a_reachable_again_node_gets_an_auto_worker_respawned() {
+    let net = LocalNetwork::new();
+    let n1 = node(&net, 1);
+    let _n2 = node(&net, 2);
+    let n3 = node(&net, 3);
+    let state = Arc::new(MockState::new(true, &[1, 2, 3]));
+    let sup = ClusterSupervisor::new(Arc::clone(&n1.control), Arc::clone(&state));
+    sup.manage_auto::<Worker>("w", 0);
+
+    sup.reconcile().await;
+    n1.directory.apply(&DirectoryUpdate {
+        node: NodeId(1),
+        epoch: 1,
+        registrations: vec![reg(1, "w", 0), reg(2, "w", 0)],
+    });
+
+    // Node 3 was crashed; it rejoins the reachable set without a membership change.
+    state.set_reachable(&[1, 2, 3]);
+    let report = sup.reconcile().await;
+
+    assert_eq!(report.groups[0].total, 3);
+    assert_eq!(report.spawns(), 1, "respawn on the healed node");
+    assert!(
+        n3.registry.contains("w"),
+        "auto worker respawned on the reachable node"
+    );
 }

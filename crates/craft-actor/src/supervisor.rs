@@ -13,8 +13,9 @@
 //!
 //! Reconciliation is **idempotent**: once the directory reflects the spawned
 //! instances, a repeat reconcile plans no changes (ADR 018). It is triggered on
-//! membership changes committing (ADR 016), on `scale_cluster` API calls, and —
-//! from E11 — on node join (auto-spawn, ADR 015).
+//! membership changes committing (ADR 016), on reachability changes (ADR 032 —
+//! crash-driven respawn without waiting for a `ConfChange`), on
+//! `scale_cluster` API calls, and — from E11 — on node join (auto-spawn, ADR 015).
 //!
 //! The [`ClusterState`] port abstracts *where* leadership and membership come
 //! from, so the supervisor is testable without a live consensus node; the
@@ -65,17 +66,19 @@ impl<T: ClusterState + ?Sized> ClusterState for Arc<T> {
 enum Target {
     /// A fixed cluster-wide count (`manage`).
     Fixed(usize),
-    /// One per live node — the count tracks the membership (`manage_auto`,
-    /// ADR 015). Newly joined nodes get a worker on the next reconcile.
+    /// One per **reachable** node — the count tracks liveness, not just
+    /// membership (`manage_auto`, ADR 015/032). A crashed-but-still-voter host
+    /// drops out until it acks again; a newly reachable joiner gets a worker on
+    /// the next reconcile.
     PerLiveNode,
 }
 
 impl Target {
-    /// Resolve the desired total against the current live membership.
-    fn resolve(self, live_count: usize) -> usize {
+    /// Resolve the desired total against the current reachable node count.
+    fn resolve(self, reachable_count: usize) -> usize {
         match self {
             Target::Fixed(n) => n,
-            Target::PerLiveNode => live_count,
+            Target::PerLiveNode => reachable_count,
         }
     }
 }
@@ -172,10 +175,11 @@ impl<S: ClusterState> ClusterSupervisor<S> {
     }
 
     /// Declare an **auto-worker** group (ADR 015): one instance of `A` on every
-    /// live node, with the count tracking the membership. A node that joins the
-    /// cluster gets a worker on the next reconcile; a node that leaves has its
-    /// instance planned for removal. This is what makes `JOIN_ADDR` + the same
-    /// binary bring a worker up automatically, with no `main` boilerplate.
+    /// reachable node, with the count tracking liveness (ADR 032). A node that
+    /// joins the cluster gets a worker on the next reconcile; a node that
+    /// leaves or crashes has its instance planned for removal / respawned
+    /// elsewhere. This is what makes `JOIN_ADDR` + the same binary bring a
+    /// worker up automatically, with no `main` boilerplate.
     pub fn manage_auto<A>(&self, name: &str, config: A::Config)
     where
         A: UserActor,
@@ -228,12 +232,17 @@ impl<S: ClusterState> ClusterSupervisor<S> {
                 groups: Vec::new(),
             };
         }
-        let live = self.state.live_nodes();
+        // Placement follows liveness, not just committed membership (ADR 032):
+        // a crashed-but-still-voter host is excluded until it acks again.
+        let reachable = self.state.reachable_nodes();
         let specs = self.managed.lock().unwrap().clone();
         let mut groups = Vec::with_capacity(specs.len());
         for spec in specs {
-            let total = spec.target.resolve(live.len());
-            let result = (spec.reconcile)(Arc::clone(&self.control), total, live.clone()).await;
+            let desired = spec.target.resolve(reachable.len());
+            // One-worker-per-node (ADR 014) cannot exceed the reachable set.
+            let total = desired.min(reachable.len());
+            let result =
+                (spec.reconcile)(Arc::clone(&self.control), total, reachable.clone()).await;
             groups.push(GroupReconcile {
                 name: spec.name,
                 total,

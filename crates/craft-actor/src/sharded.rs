@@ -191,6 +191,44 @@ impl RequestHandler for ShardedNodeService {
     }
 }
 
+/// Spawn one Raft group on a physical node, restoring from a migration bundle.
+#[allow(clippy::too_many_arguments)]
+pub fn spawn_raft_group_from_bundle<M>(
+    node_id: NodeId,
+    members: &[NodeId],
+    group: u32,
+    raft: craft_core::Config,
+    runtime: RuntimeConfig,
+    network: Arc<dyn Transport>,
+    forward_timeout: Duration,
+    storage_dir: Option<&Path>,
+    bundle: &craft_proto::GroupMigrationBundle,
+) -> Result<(Arc<dyn RequestHandler>, crate::NodeHandle<M>), StorageError>
+where
+    M: StateMachine + Default + 'static,
+{
+    use craft_net::GroupTransport;
+
+    use crate::{NodeService, RaftDriver, spawn_node};
+
+    let storage: Box<dyn RaftStorage> = if let Some(dir) = storage_dir {
+        let mut storage = GroupRedbLayout::new(dir).open_group(group)?;
+        craft_storage::import_migration(&mut storage, bundle)?;
+        Box::new(storage)
+    } else {
+        craft_storage::import_migration_boxed(bundle)?
+    };
+    let machine = M::default();
+    let driver = RaftDriver::recover(node_id, members.iter().copied(), raft, machine, storage)
+        .map_err(|e| StorageError::Backend(e.to_string()))?;
+    let group_transport = Arc::new(GroupTransport::new(group, network)) as Arc<dyn Transport>;
+    let handle = spawn_node(driver, Arc::clone(&group_transport), runtime);
+    let service = Arc::new(
+        NodeService::new(handle.clone(), group_transport).with_forward_timeout(forward_timeout),
+    ) as Arc<dyn RequestHandler>;
+    Ok((service, handle))
+}
+
 /// Spawn one Raft group on a physical node.
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_raft_group<M>(
@@ -212,11 +250,18 @@ where
 
     use crate::{NodeService, RaftDriver, spawn_node};
 
-    let node = RaftNode::new(node_id, members.iter().copied(), raft);
     let driver = if let Some(dir) = storage_dir {
         let storage = GroupRedbLayout::new(dir).open_group(group)?;
-        RaftDriver::with_storage(node, machine, Box::new(storage) as Box<dyn RaftStorage>)
+        RaftDriver::recover(
+            node_id,
+            members.iter().copied(),
+            raft,
+            machine,
+            Box::new(storage) as Box<dyn RaftStorage>,
+        )
+        .map_err(|e| StorageError::Backend(e.to_string()))?
     } else {
+        let node = RaftNode::new(node_id, members.iter().copied(), raft);
         RaftDriver::new(node, machine)
     };
     let group_transport = Arc::new(GroupTransport::new(group, network)) as Arc<dyn Transport>;
@@ -227,12 +272,14 @@ where
     Ok((service, handle))
 }
 
-/// Spawn `group_count` independent Raft groups on one physical node (same
-/// member set), wired through a [`ShardedNodeService`].
+/// Spawn `group_count` independent Raft groups on one physical node, wired
+/// through a [`ShardedNodeService`]. Each group's bootstrap voters are chosen
+/// by [`group_voters`](craft_core::group_voters) over `live_nodes` (ADR 033).
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_multi_raft_node<M>(
     node_id: NodeId,
-    members: &[NodeId],
+    live_nodes: &[NodeId],
+    replication_factor: u32,
     raft: craft_core::Config,
     runtime: RuntimeConfig,
     shard_count: u32,
@@ -245,15 +292,18 @@ pub fn spawn_multi_raft_node<M>(
 where
     M: StateMachine + 'static,
 {
+    use craft_core::group_voters;
+
     let group_ids: Vec<RaftGroupId> = (0..group_count).map(RaftGroupId).collect();
     let mut handles = Vec::new();
     let mut services = BTreeMap::new();
 
     for (g, machine) in machines.into_iter().enumerate().take(group_count as usize) {
         let g = g as u32;
+        let voters = group_voters(RaftGroupId(g), live_nodes, replication_factor);
         let (service, handle) = spawn_raft_group(
             node_id,
-            members,
+            &voters,
             g,
             raft.clone(),
             runtime.clone(),

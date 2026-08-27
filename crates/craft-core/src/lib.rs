@@ -22,7 +22,10 @@ pub use node::{
     SnapshotState,
 };
 pub use shard::{
-    GroupRebalancePlan, RaftGroupId, ShardId, ShardRouter, group_host_assignment, place_shard,
-    plan_node_group_rebalance,
+    DEFAULT_GROUP_REPLICATION_FACTOR, GroupMembershipChange, GroupRebalancePlan, RaftGroupId,
+    ShardId, ShardRouter, effective_replication_factor, group_host_assignment,
+    group_membership_assignment, group_voters, groups_joining_node_affects,
+    groups_leaving_node_affects, place_shard, plan_group_membership_change,
+    plan_group_membership_sync, plan_node_group_rebalance,
 };
 pub use state_machine::{Command, Query, StateMachine};
