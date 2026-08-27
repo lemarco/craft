@@ -14,6 +14,7 @@ members = [
     "crates/craft",
     "crates/craft-node",
     "crates/craft-test-support",
+    "crates/craft-ops",
 ]
 # `benchmarks/` is a standalone crate (its own workspace) so criterion never
 # compiles in the fast lane; it path-depends on these crates. See backlog T10.
@@ -52,6 +53,7 @@ craft-dashboard = { path = "crates/craft-dashboard", version = "0.1.0" }
 craft-sim = { path = "crates/craft-sim", version = "0.1.0" }
 craft = { path = "crates/craft", version = "0.1.0" }
 craft-test-support = { path = "crates/craft-test-support", version = "0.1.0" }
+craft-ops = { path = "crates/craft-ops", version = "0.1.0" }
 
 # Lints applied across the workspace (library-and-publishing).
 [workspace.lints.rust]
