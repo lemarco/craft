@@ -3,7 +3,8 @@
 # nextest when available, no redundant cargo check phase.
 #
 # Usage:
-#   ./scripts/test-fast.sh                           # default-members (no extra features)
+#   ./scripts/test-fast.sh                           # default-members, nextest profile=fast
+#   ./scripts/test-heavy.sh                          # all tests + 250-case proptest
 #   CRAFT_ALL_FEATURES=1 ./scripts/test-fast.sh      # enable json-wire etc.
 #   ./scripts/test-fast.sh -p craft-actor group_rebalance
 #   ./scripts/test-fast.sh --workspace               # full workspace (same as test-with-log)
@@ -56,7 +57,7 @@ if [[ -n "${CRAFT_FORCE_CHECK:-}" ]]; then
   log "=== phase 1 ok ==="
 fi
 
-NEXTEST_PROFILE="${NEXTEST_PROFILE:-default}"
+NEXTEST_PROFILE="${NEXTEST_PROFILE:-fast}"
 
 if command -v cargo-nextest >/dev/null 2>&1; then
   log "=== cargo nextest run (profile=$NEXTEST_PROFILE) ==="

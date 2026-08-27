@@ -7,6 +7,11 @@ slow-timeout = { period = "120s", terminate-after = 2 }
 status-level = "fail"
 failure-output = "immediate-final"
 
+# Local fast path (./scripts/test-fast.sh): skip slow integration / proptest sweeps.
+[profile.fast]
+inherits = "default"
+filter = 'not binary(/multi_raft|quic|cert_reload/) & not test(/safety_holds_under_arbitrary_faults/)'
+
 # CI / pre-push: retry flaky network-adjacent tests once.
 [profile.ci]
 retries = { backoff = "fixed", count = 1, delay = "500ms" }

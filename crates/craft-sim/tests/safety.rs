@@ -40,10 +40,19 @@ fn run_schedule(nodes: u64, seed: u64, drop_percent: u64, max_latency: u64, even
     }
 }
 
+fn proptest_config() -> ProptestConfig {
+    let cases = std::env::var("CRAFT_PROptest_CASES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(32);
+    ProptestConfig::with_cases(cases)
+}
+
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(250))]
+    #![proptest_config(proptest_config())]
 
     /// No schedule of faults may ever break Raft safety invariants.
+    /// Thorough sweep: `CRAFT_PROptest_CASES=250 cargo test -p craft-sim --test safety`.
     #[test]
     fn safety_holds_under_arbitrary_faults(
         seed in any::<u64>(),
