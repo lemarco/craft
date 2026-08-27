@@ -35,6 +35,7 @@ pub enum AdminTlsError {
 /// # Errors
 /// Returns [`AdminTlsError`] when files are missing or PEM parsing fails.
 pub fn server_config(paths: &AdminTlsPaths) -> Result<Arc<ServerConfig>, AdminTlsError> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let certs = read_certs(&paths.cert)?;
     let key = read_private_key(&paths.key)?;
     let config = ServerConfig::builder()
