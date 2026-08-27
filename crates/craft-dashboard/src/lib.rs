@@ -25,6 +25,7 @@ mod telemetry;
 mod views;
 
 pub use admin_tls::{AdminTlsError, AdminTlsPaths, server_config as admin_tls_config};
+pub use craft_actor::init_tracing;
 pub use metrics::Metrics;
 pub use server::AdminServer;
 pub use telemetry::{CraftEvent, EventBus, EventSubscription, StopReason, TraceOpts};

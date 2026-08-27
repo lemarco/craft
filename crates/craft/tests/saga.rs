@@ -13,7 +13,7 @@ use craft::client::{
 use craft::net::{LocalNetwork, Transport, TransportError, decode_body};
 use craft::proto::{ClientRequest, ClientResponse, NodeId};
 use craft_test_support::{
-    KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, advance, await_craft_leader,
+    KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, advance, assert_eq, await_craft_leader,
     fast_raft_config_with_seed, find_keys_for_two_groups, wait_for_each_group_cluster_leader,
 };
 
