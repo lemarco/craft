@@ -1,0 +1,22 @@
+# Local build acceleration (Arch/Linux). See scripts/install-dev-tools.sh for nextest/mold.
+#
+# RUSTFLAGS from hook-prelude / CI (-D warnings) merges with link args below.
+
+[build]
+# Faster incremental rebuilds in dev; disable only when using sccache as rustc-wrapper.
+incremental = true
+# Uncomment or `export RUSTC_WRAPPER=sccache` for cold-build caching (CI / clean clones).
+# rustc-wrapper = "sccache"
+
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.aarch64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+# macOS: optional faster linker — install `brew install llvm` then uncomment:
+# [target.x86_64-apple-darwin]
+# linker = "clang"
+# rustflags = ["-C", "link-arg=-fuse-ld=/opt/homebrew/opt/llvm/bin/ld64.lld"]

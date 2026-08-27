@@ -27,8 +27,11 @@ Distributed Raft + actor framework in Rust. Read before making changes.
 
 ```bash
 lefthook install
+./scripts/install-dev-tools.sh   # cargo-nextest (parallel tests)
 ./scripts/quality-gate-pre-commit.sh
 ./scripts/quality-gate-pre-push.sh
 ```
+
+Fast iteration while coding: `./scripts/test-fast.sh -p <crate>`.
 
 MSRV **1.98**. Conventional commits. GitLab issues as `#<number>`.

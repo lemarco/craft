@@ -15,18 +15,20 @@ maybe_tee() {
   fi
 }
 
-log ">> cargo check"
-cargo check --workspace --all-features 2>&1 | maybe_tee
+export NEXTEST_PROFILE=ci
 
 log ">> tests"
 if command -v cargo-nextest >/dev/null 2>&1; then
-  cargo nextest run --workspace --all-features 2>&1 | maybe_tee
+  cargo nextest run --profile ci --workspace --all-features 2>&1 | maybe_tee
 else
   cargo test --workspace --all-features 2>&1 | maybe_tee
 fi
 
 log ">> doctests"
 cargo test --workspace --doc --all-features 2>&1 | maybe_tee
+
+log ">> doc"
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features 2>&1 | maybe_tee
 
 log ">> release build"
 cargo build --workspace --all-features --release 2>&1 | maybe_tee

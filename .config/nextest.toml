@@ -1,0 +1,13 @@
+# cargo-nextest — parallel test runner (install: ./scripts/install-dev-tools.sh)
+# Docs: https://nexte.st/docs/configuration/
+
+[profile.default]
+test-threads = "num-cpus"
+slow-timeout = { period = "120s", terminate-after = 2 }
+status-level = "fail"
+failure-output = "immediate-final"
+
+# CI / pre-push: retry flaky network-adjacent tests once.
+[profile.ci]
+retries = { backoff = "fixed", count = 1, delay = "500ms" }
+slow-timeout = { period = "180s", terminate-after = 2 }

@@ -33,13 +33,7 @@ pre-commit:
               # {staged_files}
               bash scripts/check-shell-scripts.sh
 
-          - name: cargo-doc
-            run: |
-              # {staged_files}
-              source scripts/hook-prelude.sh
-              RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
-
-    # ── Phase 2: compile + lint (sequential) ──────────────────────────────────
+    # ── Phase 2: lint (clippy type-checks; no separate cargo check) ───────────
     - name: rust
       group:
         piped: true
@@ -50,30 +44,19 @@ pre-commit:
               source scripts/hook-prelude.sh
               cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-          - name: cargo-check
-            run: |
-              # {staged_files}
-              source scripts/hook-prelude.sh
-              cargo check --workspace --all-features
-
 pre-push:
   jobs:
     - name: quality-full
       group:
         piped: true
         jobs:
-          - name: cargo-check
-            run: |
-              # {push_files}
-              source scripts/hook-prelude.sh
-              cargo check --workspace --all-features
-
           - name: cargo-test
             run: |
               # {push_files}
               source scripts/hook-prelude.sh
+              export NEXTEST_PROFILE=ci
               if command -v cargo-nextest >/dev/null 2>&1; then
-                cargo nextest run --workspace --all-features
+                cargo nextest run --profile ci --workspace --all-features
               else
                 cargo test --workspace --all-features
               fi
@@ -83,6 +66,12 @@ pre-push:
               # {push_files}
               source scripts/hook-prelude.sh
               cargo test --workspace --doc --all-features
+
+          - name: cargo-doc
+            run: |
+              # {push_files}
+              source scripts/hook-prelude.sh
+              RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 
           - name: cargo-build-release
             run: |

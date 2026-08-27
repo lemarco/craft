@@ -11,18 +11,21 @@ Cargo was **not** compiling forever. Parallel agent shells queued on
 `target/.cargo-lock` with **zero stdout** until the lock freed. That looks like
 a hang but is a lock queue.
 
-## Compile before test (required)
+## Compile before test
 
-Always run **check first**, then test — never jump straight to `cargo test`:
+Prefer the fast wrapper while iterating; use check when you only need compile errors:
 
 ```bash
-./scripts/check-with-log.sh              # phase 1 only (~seconds, compile errors)
-./scripts/test-with-log.sh               # check + test (script runs check automatically)
-./scripts/test-with-log.sh -p craft-actor --test group_rebalance
+./scripts/test-fast.sh -p craft-actor --test group_rebalance   # fastest (nextest, no duplicate check)
+./scripts/check-with-log.sh -p craft-actor                     # compile-only
+./scripts/test-with-log.sh --workspace --all-features          # CI parity
 ```
 
-`test-with-log.sh` runs `cargo check` automatically unless `CRAFT_SKIP_CHECK=1`.
-If check fails, tests are skipped.
+Install nextest once: `./scripts/install-dev-tools.sh`
+
+`test-with-log.sh` skips `cargo check` when `cargo-nextest` is installed (set
+`CRAFT_FORCE_CHECK=1` to restore). `test-fast.sh` uses **default-members**
+(skips craft-ops / e2e / redis) unless you pass `--workspace`.
 
 ## One cargo at a time
 
@@ -36,8 +39,8 @@ Prefer project scripts over raw `cargo test`:
 
 ```bash
 ./scripts/cargo-status.sh
+./scripts/test-fast.sh -p craft-actor --test group_rebalance
 ./scripts/test-with-log.sh --workspace --all-features
-./scripts/test-with-log.sh -p craft-actor --test group_rebalance
 ```
 
 Progress is written to **`target/test-run.log`** with timestamps and `CARGO_LOG=cargo::core=info`.
@@ -54,7 +57,7 @@ Progress is written to **`target/test-run.log`** with timestamps and `CARGO_LOG=
 - At most **one** active `cargo` Shell per workspace session.
 - Do not chain diagnostic commands (`echo`, `python`, `rustc`) while cargo is still running.
 - Full workspace gate: single `./scripts/test-with-log.sh --workspace --all-features` (allow several minutes); do not start a second until it finishes.
-- Narrow first when iterating: `./scripts/test-with-log.sh -p <crate> …` before full workspace.
+- Narrow first when iterating: `./scripts/test-fast.sh -p <crate> …` before full workspace.
 
 ## Debug env vars
 

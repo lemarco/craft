@@ -1,5 +1,22 @@
 [workspace]
 resolver = "3"
+# Plain `cargo check` / `cargo test` (no --workspace) skips heavy optional crates
+# (craft-ops/opendal, craft-e2e-client, craft-store-redis). CI always uses
+# `--workspace`. Local fast path: ./scripts/test-fast.sh
+default-members = [
+    "crates/craft-proto",
+    "crates/craft-core",
+    "crates/craft-storage",
+    "crates/craft-net",
+    "crates/craft-macros",
+    "crates/craft-actor",
+    "crates/craft-client",
+    "crates/craft-dashboard",
+    "crates/craft-sim",
+    "crates/craft",
+    "crates/craft-node",
+    "crates/craft-test-support",
+]
 members = [
     "crates/craft-proto",
     "crates/craft-core",
@@ -67,6 +84,20 @@ craft-e2e-client = { path = "crates/craft-e2e-client", version = "0.1.0" }
 # Lints applied across the workspace (library-and-publishing).
 [workspace.lints.rust]
 unsafe_code = "forbid"
+
+# Faster dev/test compile + faster test runtime (deps optimized, own code debuggable).
+[profile.dev]
+debug = 1 # line tables only — much faster compile/link than full debuginfo
+split-debuginfo = "unpacked" # faster linking on Linux
+
+[profile.dev.package."*"]
+opt-level = 3 # optimize dependencies; own crates stay at opt-level 0
+
+[profile.dev.build-override]
+opt-level = 0
+
+[profile.test]
+inherits = "dev"
 
 [profile.release]
 lto = "thin"
