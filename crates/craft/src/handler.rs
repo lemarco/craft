@@ -16,6 +16,8 @@ use craft_proto::{JoinRequest, NodeId, PeerBook, PeerEntry, ScaleRequest};
 
 use craft_actor::{ClusterControl, ClusterMessaging, DirectorySync};
 
+use crate::multi_raft::GroupMigratePort;
+
 /// The address plane: learn peer addresses at runtime and snapshot the current
 /// address book (ADR 007). Backed by the live [`QuicTransport`] directory in
 /// production; a no-op over the in-memory [`LocalNetwork`](craft_net::LocalNetwork),
@@ -72,6 +74,7 @@ pub(crate) struct NodeRouter {
     messaging: Arc<ClusterMessaging>,
     directory_sync: Arc<DirectorySync>,
     peers: Arc<dyn PeerSource>,
+    group_migrate: Option<Arc<dyn GroupMigratePort>>,
 }
 
 impl NodeRouter {
@@ -81,6 +84,7 @@ impl NodeRouter {
         messaging: Arc<ClusterMessaging>,
         directory_sync: Arc<DirectorySync>,
         peers: Arc<dyn PeerSource>,
+        group_migrate: Option<Arc<dyn GroupMigratePort>>,
     ) -> Self {
         Self {
             service,
@@ -88,6 +92,7 @@ impl NodeRouter {
             messaging,
             directory_sync,
             peers,
+            group_migrate,
         }
     }
 }
@@ -106,6 +111,21 @@ impl RequestHandler for NodeRouter {
                 self.service.handle(route, body)
             }
             Route::PeerWire | Route::ClientWire => self.service.handle(route, body),
+            Route::ClusterGroupMigrate => {
+                let Some(handler) = self.group_migrate.as_ref() else {
+                    return Box::pin(async move {
+                        Err(TransportError::Io(
+                            "multi-raft group migration is not enabled".into(),
+                        ))
+                    });
+                };
+                let handler = Arc::clone(handler);
+                Box::pin(async move {
+                    let request: craft_proto::GroupMigrateRequest = decode_body(&body)?;
+                    let reply = handler.handle_group_migrate(request).await;
+                    Ok(encode_body(&reply)?)
+                })
+            }
             // Address-book anti-entropy: hand back what we know (ADR 007).
             Route::ClusterPeers => {
                 let book = self.peers.book();

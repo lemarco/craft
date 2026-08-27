@@ -61,8 +61,10 @@ storage, and client changes behind it.
   `place_group` / `group_host_assignment` / `plan_node_group_rebalance` in
   `craft-core::shard`; `RaftGroupReconciler` in `craft-actor::group_rebalance`;
   `MultiRaftState::rebalance` on membership change via the facade facts refresher;
-  `CraftEvent::RaftGroupsRebalanced`. Local adopt/retire only — cross-node group
-  migration RPC remains deferred.
+  `CraftEvent::RaftGroupsRebalanced`. On retire, the old host exports durable
+  state and pushes `POST /raft/v1/cluster/group/migrate` to the new host before
+  shutting down the local replica; inbound bundles are adopted via
+  `spawn_raft_group_from_bundle`.
 
 ### Cross-shard writes
 
@@ -92,15 +94,19 @@ storage, and client changes behind it.
 - `CraftClusterBuilder::raft_groups`, `raft_machines`, `shard_count`, and
   `data_dir`; `CraftCluster::group_handles()`.
 - `craft-actor::group_rebalance`: `RaftGroupReconciler` (leader-only planning).
-- `craft::MultiRaftState::rebalance` — local adopt/retire on membership change;
+- `craft::MultiRaftState::rebalance` — local adopt/retire on membership change,
+  cross-node group migration RPC on retire (`GroupMigrateRequest` /
+  `send_group_migrate`, `NodeRouter` → `MultiRaftState::adopt_group_migrate`);
   `CraftEvent::RaftGroupsRebalanced`.
+- `craft-storage::migration` — export/import of `GroupMigrationBundle`;
+  `RaftDriver::export_migration` (persists then reads storage, with live-log
+  fallback for `NullStorage`).
 
 ## What is deferred (and why it is safe to defer)
 
-- Cross-node group migration RPC (moving a hosted group replica to another
-  physical node over the wire).
 - Per-group Raft membership across nodes (each group still uses the cluster-wide
-  voter set today).
+  voter set today). **Pure planner landed** — see [ADR 033](033-per-group-raft-membership.md);
+  runtime fan-out deferred.
 
 ## Consequences
 
@@ -117,7 +123,6 @@ storage, and client changes behind it.
 
 - Fixed shard count trades repartitioning flexibility for routing simplicity.
 - Cross-shard atomicity remains unsolved (explicitly out of scope).
-- Cross-node group migration still requires a future RPC path.
 
 ## Related
 
@@ -125,4 +130,5 @@ storage, and client changes behind it.
 - [ADR 008](008-scale-targets.md) — scale targets
 - [ADR 003](003-client-routing.md) — client routing (gains a shard step)
 - [ADR 016](016-membership-early.md) — per-group membership
+- [ADR 033](033-per-group-raft-membership.md) — per-group membership planner (Phase 1)
 - [ADR 018](018-supervisor-leader.md) — leader-owned control plane

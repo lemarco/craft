@@ -18,6 +18,7 @@ pub use craft_proto as proto;
 
 mod error;
 mod memory;
+mod migration;
 mod namespaced;
 mod null;
 mod redb_store;
@@ -29,6 +30,9 @@ pub mod test_util;
 
 pub use error::StorageError;
 pub use memory::MemoryStorage;
+pub use migration::{
+    export_migration, import_migration, import_migration_boxed, import_migration_memory,
+};
 pub use namespaced::{GroupRedbLayout, group_redb_path};
 pub use null::NullStorage;
 pub use redb_store::RedbStorage;

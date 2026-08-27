@@ -17,9 +17,10 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 use craft_proto::{
-    ActorEnvelope, ClientRequest, ClientResponse, DeliverAck, DirectoryUpdate, JoinRequest,
-    JoinResponse, MigrateReply, MigrateRequest, NodeId, PeerBook, RaftRpc, RaftRpcReply,
-    RegisterAck, ScaleReply, ScaleRequest, SpawnReply, SpawnRequest, StopReply, StopRequest,
+    ActorEnvelope, ClientRequest, ClientResponse, DeliverAck, DirectoryUpdate, GroupMigrateReply,
+    GroupMigrateRequest, JoinRequest, JoinResponse, MigrateReply, MigrateRequest, NodeId, PeerBook,
+    RaftRpc, RaftRpcReply, RegisterAck, ScaleReply, ScaleRequest, SpawnReply, SpawnRequest,
+    StopReply, StopRequest,
 };
 
 use crate::route::Route;
@@ -267,6 +268,24 @@ pub async fn send_actor_migrate<T: Transport + ?Sized>(
 ) -> Result<MigrateReply, TransportError> {
     let body = encode_body(request)?;
     let response = transport.send(peer, Route::ActorMigrate, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Ship a Raft group migration bundle to `peer` and decode its
+/// [`GroupMigrateReply`] (`/cluster/group/migrate`, ADR 031).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is
+/// unreachable / the send fails.
+pub async fn send_group_migrate<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &GroupMigrateRequest,
+) -> Result<GroupMigrateReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport
+        .send(peer, Route::ClusterGroupMigrate, body)
+        .await?;
     Ok(decode_body(&response)?)
 }
 

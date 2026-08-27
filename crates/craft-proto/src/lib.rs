@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 pub mod actor;
 pub mod client;
 pub mod group;
+pub mod group_migrate;
 pub mod join;
 pub mod raft;
 
@@ -20,6 +21,10 @@ pub use actor::{
 };
 pub use client::{ClientRequest, ClientResponse};
 pub use group::GroupPeerEnvelope;
+pub use group_migrate::{
+    GroupMigrateReply, GroupMigrateRequest, GroupMigrationBundle, GroupMigrationHardState,
+    GroupMigrationSnapshot, GroupMigrationSnapshotMeta,
+};
 pub use join::{JoinRejection, JoinRequest, JoinResponse, PeerBook, PeerEntry};
 pub use raft::{
     AppendEntries, AppendEntriesReply, EntryPayload, InstallSnapshot, InstallSnapshotReply,

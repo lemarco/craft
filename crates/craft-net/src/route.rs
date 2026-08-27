@@ -29,6 +29,8 @@ pub const ACTOR_MIGRATE_PATH: &str = "/raft/v1/actor/migrate";
 pub const ACTOR_STOP_PATH: &str = "/raft/v1/actor/stop";
 /// Directory publish / revoke (ADR 013).
 pub const ACTOR_REGISTER_PATH: &str = "/raft/v1/actor/register";
+/// Cross-node Raft group migration (ADR 031).
+pub const CLUSTER_GROUP_MIGRATE_PATH: &str = "/raft/v1/cluster/group/migrate";
 
 /// The connection class a route belongs to. Peer consensus traffic is isolated
 /// onto its own QUIC connection from everything else (ADR 027 R2).
@@ -68,11 +70,13 @@ pub enum Route {
     ActorStop,
     /// [`ACTOR_REGISTER_PATH`].
     ActorRegister,
+    /// [`CLUSTER_GROUP_MIGRATE_PATH`].
+    ClusterGroupMigrate,
 }
 
 impl Route {
     /// Every route, in a stable order (handy for building a router or tests).
-    pub const ALL: [Route; 10] = [
+    pub const ALL: [Route; 11] = [
         Route::PeerWire,
         Route::ClientWire,
         Route::ClusterJoin,
@@ -83,6 +87,7 @@ impl Route {
         Route::ActorMigrate,
         Route::ActorStop,
         Route::ActorRegister,
+        Route::ClusterGroupMigrate,
     ];
 
     /// The request path for this route.
@@ -99,6 +104,7 @@ impl Route {
             Route::ActorMigrate => ACTOR_MIGRATE_PATH,
             Route::ActorStop => ACTOR_STOP_PATH,
             Route::ActorRegister => ACTOR_REGISTER_PATH,
+            Route::ClusterGroupMigrate => CLUSTER_GROUP_MIGRATE_PATH,
         }
     }
 
@@ -114,7 +120,9 @@ impl Route {
         match self {
             Route::PeerWire => TrafficClass::Peer,
             Route::ClientWire => TrafficClass::Client,
-            Route::ClusterJoin | Route::ClusterPeers => TrafficClass::Cluster,
+            Route::ClusterJoin | Route::ClusterPeers | Route::ClusterGroupMigrate => {
+                TrafficClass::Cluster
+            }
             Route::ActorDeliver
             | Route::ActorSpawn
             | Route::ActorScale

@@ -451,6 +451,71 @@ impl<M: StateMachine> RaftDriver<M> {
             .map_err(|e| DriverError::Query(Box::new(e)))
     }
 
+    /// Export durable Raft state for cross-node group migration (ADR 031).
+    ///
+    /// Flushes pending persistence first, then reads the storage backend. When
+    /// the backend drops writes (for example [`NullStorage`]), the live in-memory
+    /// log and hard state are exported instead.
+    ///
+    /// # Errors
+    /// Returns [`DriverError::Storage`] if the backend cannot be read.
+    pub fn export_migration(&mut self) -> Result<craft_proto::GroupMigrationBundle, DriverError> {
+        self.persist()?;
+        let bundle =
+            craft_storage::export_migration(self.storage.as_ref()).map_err(DriverError::Storage)?;
+        if bundle.log.is_empty()
+            && bundle.snapshot.is_none()
+            && (self.node.last_log_index().0 > 0 || self.node.current_term().0 > 0)
+        {
+            return self.export_migration_from_live();
+        }
+        Ok(bundle)
+    }
+
+    fn export_migration_from_live(&self) -> Result<craft_proto::GroupMigrationBundle, DriverError> {
+        use craft_proto::{
+            GroupMigrationBundle, GroupMigrationHardState, GroupMigrationSnapshot,
+            GroupMigrationSnapshotMeta, LogIndex,
+        };
+
+        let hard_state = GroupMigrationHardState {
+            current_term: self.node.current_term(),
+            voted_for: self.node.voted_for(),
+        };
+        let purged_through = self.node.snapshot_index();
+        let snapshot = match self.storage.load_snapshot() {
+            Ok(Some(snapshot)) => Some(GroupMigrationSnapshot {
+                meta: GroupMigrationSnapshotMeta {
+                    last_included: snapshot.meta.last_included,
+                    membership: snapshot.meta.membership,
+                },
+                data: snapshot.data,
+            }),
+            _ => self
+                .node
+                .stored_snapshot()
+                .map(|snapshot| GroupMigrationSnapshot {
+                    meta: GroupMigrationSnapshotMeta {
+                        last_included: snapshot.last_included,
+                        membership: snapshot.membership,
+                    },
+                    data: snapshot.data,
+                }),
+        };
+        let first = if purged_through.0 > 0 {
+            purged_through.next()
+        } else {
+            LogIndex(1)
+        };
+        let log = self.node.log_entries_from(first);
+        Ok(GroupMigrationBundle {
+            hard_state,
+            purged_through,
+            snapshot,
+            log,
+        })
+    }
+
     /// Begin a joint-consensus membership change to `new_voters` (+ optional
     /// `learners`) — the log entry underpinning a cluster join/leave (ADR 016).
     ///
