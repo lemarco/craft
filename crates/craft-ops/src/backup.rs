@@ -154,7 +154,8 @@ mod tests {
         let data = tempdir().unwrap();
         let group = data.path().join("group-0.redb");
         std::fs::write(&group, b"snapshot").unwrap();
-        let archive = data.path().join("backup.tar.gz");
+        let out = tempdir().unwrap();
+        let archive = out.path().join("backup.tar.gz");
         export_local(data.path(), &archive).unwrap();
         let restore = tempdir().unwrap();
         import_local(restore.path(), &archive).unwrap();
