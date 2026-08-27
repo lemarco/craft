@@ -77,7 +77,11 @@ pre-push:
             run: |
               # {push_files}
               source scripts/hook-prelude.sh
-              cargo build --workspace --all-features --release
+              if [[ "${CRAFT_SKIP_RELEASE:-1}" != "1" ]]; then
+                cargo build --workspace --all-features --release
+              else
+                echo ">> release build skipped (CRAFT_SKIP_RELEASE=1; set CRAFT_SKIP_RELEASE=0 to enable)"
+              fi
 
 commit-msg:
   jobs:

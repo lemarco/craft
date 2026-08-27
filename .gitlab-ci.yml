@@ -115,7 +115,7 @@ store-redis:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
   script:
-    - cargo test -p craft-store-redis -- --ignored
+    - cargo test -p craft-store-redis --features docker-tests -- --ignored
 
 # --- Benchmarks + soak (Track T, T10, testing-strategy) ------------------------------
 # The `benchmarks/` crate is a standalone workspace (excluded from the root) so

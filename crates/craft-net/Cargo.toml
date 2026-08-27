@@ -17,9 +17,9 @@ all-features = true
 workspace = true
 
 [features]
-default = ["dev-certs"]
-# Self-signed cluster CA + node cert generation (rcgen). On by default for the
-# dev profile (security); production deployments can disable it and supply certs.
+default = []
+# Self-signed cluster CA + node cert generation (rcgen). Enable for dev/tests
+# (`craft-node`, `craft` integration tests); production supplies real certs.
 dev-certs = ["dep:rcgen"]
 
 [dependencies]
@@ -29,13 +29,11 @@ thiserror.workspace = true
 quinn = { version = "0.11", default-features = false, features = [
     "runtime-tokio",
     "rustls-ring",
-    "log",
 ] }
 rustls = { version = "0.23", default-features = false, features = [
     "ring",
     "std",
     "tls12",
-    "logging",
 ] }
 h3 = "0.0.8"
 h3-quinn = "0.0.10"
@@ -48,3 +46,13 @@ rcgen = { version = "0.14", optional = true }
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "test-util"] }
+
+[[test]]
+name = "tls"
+path = "tests/tls.rs"
+required-features = ["dev-certs"]
+
+[[test]]
+name = "quic"
+path = "tests/quic.rs"
+required-features = ["dev-certs"]

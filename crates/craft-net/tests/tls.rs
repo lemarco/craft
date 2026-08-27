@@ -5,8 +5,6 @@
 //! certificate, while a peer whose certificate was issued by a *different* CA is
 //! rejected during the handshake.
 
-#![cfg(feature = "dev-certs")]
-
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::Duration;
 

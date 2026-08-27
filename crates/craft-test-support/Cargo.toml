@@ -12,11 +12,16 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+default = []
+# Pulls the full `craft` facade (dashboard/hyper stack). Enable only in `craft` tests.
+facade = ["dep:craft"]
+
 [dependencies]
 craft-proto.workspace = true
 craft-core.workspace = true
 craft-actor.workspace = true
-craft.workspace = true
+craft = { workspace = true, optional = true }
 serde.workspace = true
 thiserror.workspace = true
 pretty_assertions.workspace = true

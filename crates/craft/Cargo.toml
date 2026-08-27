@@ -39,7 +39,7 @@ dev-certs = ["craft-net/dev-certs"]
 json-wire = ["craft-proto/json-wire"]
 
 [dev-dependencies]
-craft-test-support.workspace = true
+craft-test-support = { workspace = true, features = ["facade"] }
 rcgen = "0.14"
 rustls-pemfile = "2"
 tempfile = "3"

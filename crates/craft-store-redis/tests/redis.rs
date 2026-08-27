@@ -5,7 +5,7 @@
 //! Run locally with:
 //!
 //! ```text
-//! cargo test -p craft-store-redis -- --ignored
+//! cargo test -p craft-store-redis --features docker-tests -- --ignored
 //! ```
 
 use std::sync::Arc;

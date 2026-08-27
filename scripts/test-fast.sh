@@ -3,7 +3,8 @@
 # nextest when available, no redundant cargo check phase.
 #
 # Usage:
-#   ./scripts/test-fast.sh                           # default-members, all features
+#   ./scripts/test-fast.sh                           # default-members (no extra features)
+#   CRAFT_ALL_FEATURES=1 ./scripts/test-fast.sh      # enable json-wire etc.
 #   ./scripts/test-fast.sh -p craft-actor group_rebalance
 #   ./scripts/test-fast.sh --workspace               # full workspace (same as test-with-log)
 #   CRAFT_FORCE_CHECK=1 ./scripts/test-fast.sh -p craft
@@ -31,8 +32,12 @@ fi
 export CARGO_LOG="${CARGO_LOG:-cargo::core=info}"
 
 if [[ $# -eq 0 ]]; then
-  # default-members only — omits craft-ops (opendal), craft-e2e-client, craft-store-redis
-  CARGO_ARGS=(--all-features)
+  # default-members only — omits craft-ops, craft-e2e-client, craft-store-redis,
+  # craft-dashboard, craft-node
+  CARGO_ARGS=()
+  if [[ -n "${CRAFT_ALL_FEATURES:-}" ]]; then
+    CARGO_ARGS+=(--all-features)
+  fi
 else
   CARGO_ARGS=("$@")
 fi

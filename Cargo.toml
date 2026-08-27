@@ -11,10 +11,8 @@ default-members = [
     "crates/craft-macros",
     "crates/craft-actor",
     "crates/craft-client",
-    "crates/craft-dashboard",
     "crates/craft-sim",
     "crates/craft",
-    "crates/craft-node",
     "crates/craft-test-support",
 ]
 members = [

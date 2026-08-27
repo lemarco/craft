@@ -31,6 +31,10 @@ log ">> doc"
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features 2>&1 | maybe_tee
 
 log ">> release build"
-cargo build --workspace --all-features --release 2>&1 | maybe_tee
+if [[ "${CRAFT_SKIP_RELEASE:-1}" != "1" ]]; then
+  cargo build --workspace --all-features --release 2>&1 | maybe_tee
+else
+  log ">> release build skipped (CRAFT_SKIP_RELEASE=1)"
+fi
 
 log ">> pre-push gate ok"

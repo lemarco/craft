@@ -2,8 +2,6 @@
 //! `QuicTransport` exchanging `postcard` RPCs over a mutually-authenticated
 //! QUIC connection on loopback (wire-transport, backlog C2).
 
-#![cfg(feature = "dev-certs")]
-
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 

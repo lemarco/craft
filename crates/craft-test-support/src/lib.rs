@@ -5,6 +5,7 @@
 
 pub mod actor;
 pub mod clock;
+#[cfg(feature = "facade")]
 pub mod facade;
 pub mod harness;
 pub mod kv;
@@ -14,6 +15,7 @@ pub use actor::{await_node_leader, wait_for_all_node_leaders, wait_for_node_lead
 pub use clock::{
     POLL_STEP, advance, eventually, eventually_async, eventually_async_default, eventually_default,
 };
+#[cfg(feature = "facade")]
 pub use facade::{
     await_craft_leader, wait_for_craft_leader, wait_for_craft_stopped,
     wait_for_each_group_cluster_leader, wait_for_group_leader_on_any, wait_for_group_leaders,
