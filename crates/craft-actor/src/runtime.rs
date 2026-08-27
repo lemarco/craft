@@ -38,7 +38,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use craft_core::{Command as _, MembershipError, ReadId, Role, StateMachine};
+use craft_core::{Command as _, MembershipError, Query as _, ReadId, Role, StateMachine};
 use craft_net::transport::{Body, BoxFuture};
 use craft_net::{
     RequestHandler, Route, Transport, TransportError, decode_body, encode_body,
@@ -111,6 +111,15 @@ enum Envelope<M: StateMachine> {
         respond: oneshot::Sender<Result<M::Response, ClientError>>,
     },
     Query {
+        query: M::Query,
+        respond: oneshot::Sender<Result<M::Response, ClientError>>,
+    },
+    /// Leader-only: confirm a ReadIndex without executing a query.
+    ConfirmReadIndex {
+        respond: oneshot::Sender<Result<(LogIndex, Term), ClientError>>,
+    },
+    /// Follower-only: query local state after the apply barrier.
+    LocalQuery {
         query: M::Query,
         respond: oneshot::Sender<Result<M::Response, ClientError>>,
     },
@@ -202,6 +211,65 @@ impl<M: StateMachine> NodeHandle<M> {
         rx.await.unwrap_or(Err(ClientError::Stopped))
     }
 
+    /// Confirm a linearizable read index on the leader (follower-read setup).
+    pub async fn confirm_read_index(&self) -> Result<(LogIndex, Term), ClientError> {
+        let (respond, rx) = oneshot::channel();
+        self.tx
+            .send(Envelope::ConfirmReadIndex { respond })
+            .map_err(|_| ClientError::Stopped)?;
+        rx.await.unwrap_or(Err(ClientError::Stopped))
+    }
+
+    /// Run a query against local applied state (after a confirmed read index
+    /// and apply barrier on a follower).
+    pub async fn local_query(&self, query: M::Query) -> Result<M::Response, ClientError> {
+        let (respond, rx) = oneshot::channel();
+        self.tx
+            .send(Envelope::LocalQuery { query, respond })
+            .map_err(|_| ClientError::Stopped)?;
+        rx.await.unwrap_or(Err(ClientError::Stopped))
+    }
+
+    /// Etcd-style follower read: confirm with the leader, wait for the apply
+    /// barrier, then serve from local state.
+    pub async fn follower_query_bytes(
+        &self,
+        query_bytes: Vec<u8>,
+        leader: NodeId,
+        transport: &Arc<dyn Transport>,
+        timeout: Duration,
+    ) -> Result<M::Response, ClientError> {
+        let query = M::Query::from_bytes(&query_bytes)
+            .map_err(|e| ClientError::Driver(format!("decode query: {e}")))?;
+        let confirm = tokio::time::timeout(
+            timeout,
+            send_client_request(&**transport, leader, &ClientRequest::ReadIndexConfirm),
+        )
+        .await
+        .map_err(|_| ClientError::Driver("read index confirm timed out".to_string()))?
+        .map_err(|e| ClientError::Driver(format!("read index confirm failed: {e}")))?;
+        let ClientResponse::ReadIndexConfirmed { index, .. } = confirm else {
+            return Err(ClientError::Driver(format!(
+                "leader rejected read index confirm: {confirm:?}"
+            )));
+        };
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let Some(status) = self.status().await else {
+                return Err(ClientError::Stopped);
+            };
+            if status.last_applied >= index {
+                return self.local_query(query).await;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return Err(ClientError::Driver(
+                    "apply barrier timed out waiting for read index".to_string(),
+                ));
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+
     /// Deliver an inbound peer request RPC and await the reply to send back.
     /// Used by [`NodeService`]; rarely called directly.
     ///
@@ -260,6 +328,8 @@ struct Runtime<M: StateMachine> {
     allow_join: bool,
     pending_proposals: HashMap<LogIndex, oneshot::Sender<Result<M::Response, ClientError>>>,
     pending_queries: HashMap<ReadId, oneshot::Sender<Result<M::Response, ClientError>>>,
+    /// Leader ReadIndex confirmations awaiting quorum ack (follower-read setup).
+    pending_read_confirms: HashMap<ReadId, oneshot::Sender<Result<(LogIndex, Term), ClientError>>>,
     /// Join requests awaiting their membership-change entry to commit, keyed by
     /// that entry's log index.
     pending_joins: HashMap<LogIndex, oneshot::Sender<JoinResponse>>,
@@ -303,8 +373,18 @@ impl<M: StateMachine> Runtime<M> {
                         let _ = tx.send(Ok(response));
                     }
                 }
+                ReadOutcome::Confirmed { id, index } => {
+                    if let Some(tx) = self.pending_read_confirms.remove(&id) {
+                        let term = self.driver.node().current_term();
+                        let _ = tx.send(Ok((index, term)));
+                    }
+                }
                 ReadOutcome::Failed { id } => {
-                    if let Some(tx) = self.pending_queries.remove(&id) {
+                    if let Some(tx) = self.pending_read_confirms.remove(&id) {
+                        let _ = tx.send(Err(ClientError::NotLeader {
+                            leader: self.driver.node().leader_id(),
+                        }));
+                    } else if let Some(tx) = self.pending_queries.remove(&id) {
                         let _ = tx.send(Err(ClientError::NotLeader {
                             leader: self.driver.node().leader_id(),
                         }));
@@ -364,6 +444,9 @@ impl<M: StateMachine> Runtime<M> {
         for (_, tx) in self.pending_queries.drain() {
             let _ = tx.send(Err(ClientError::NotLeader { leader }));
         }
+        for (_, tx) in self.pending_read_confirms.drain() {
+            let _ = tx.send(Err(ClientError::NotLeader { leader }));
+        }
         for (_, tx) in self.pending_joins.drain() {
             let _ = tx.send(JoinResponse::Redirect { leader });
         }
@@ -412,6 +495,32 @@ impl<M: StateMachine> Runtime<M> {
                     }
                     Err(DriverError::NotLeader { leader }) => {
                         let _ = respond.send(Err(ClientError::NotLeader { leader }));
+                    }
+                    Err(e) => {
+                        let _ = respond.send(Err(ClientError::Driver(e.to_string())));
+                    }
+                }
+            }
+            Envelope::ConfirmReadIndex { respond } => {
+                let id = ReadId(self.next_read_id);
+                self.next_read_id += 1;
+                match self.driver.confirm_read_index(id) {
+                    Ok(step) => {
+                        self.pending_read_confirms.insert(id, respond);
+                        let _ = self.settle(step);
+                    }
+                    Err(DriverError::NotLeader { leader }) => {
+                        let _ = respond.send(Err(ClientError::NotLeader { leader }));
+                    }
+                    Err(e) => {
+                        let _ = respond.send(Err(ClientError::Driver(e.to_string())));
+                    }
+                }
+            }
+            Envelope::LocalQuery { query, respond } => {
+                match self.driver.local_query(&query) {
+                    Ok(response) => {
+                        let _ = respond.send(Ok(response));
                     }
                     Err(e) => {
                         let _ = respond.send(Err(ClientError::Driver(e.to_string())));
@@ -528,6 +637,7 @@ where
         allow_join: config.allow_join,
         pending_proposals: HashMap::new(),
         pending_queries: HashMap::new(),
+        pending_read_confirms: HashMap::new(),
         pending_joins: HashMap::new(),
         next_read_id: 0,
     };
@@ -631,28 +741,68 @@ impl<M: StateMachine> RequestHandler for NodeService<M> {
     }
 }
 
-/// Serve a client request, forwarding to the leader if this node is a follower
-/// (ADR 003 transparent forwarding).
+/// Serve a client request, using follower reads for queries (ADR 005) and
+/// transparent forwarding for writes (ADR 003).
 async fn route_client<M: StateMachine>(
     handle: &NodeHandle<M>,
     transport: &Arc<dyn Transport>,
     forward_timeout: Duration,
     request: ClientRequest,
 ) -> ClientResponse {
-    // Try locally first. `propose`/`query` on a follower are side-effect-free
-    // and return a `NotLeader` hint (they check role before touching the log),
-    // so this doubles as the leader/leader-hint check without a status hop.
+    match request {
+        ClientRequest::Query(bytes) => route_query(handle, transport, forward_timeout, bytes).await,
+        ClientRequest::QueryKeyed { query, .. } => {
+            route_query(handle, transport, forward_timeout, query).await
+        }
+        other => route_write_client(handle, transport, forward_timeout, other).await,
+    }
+}
+
+/// Route a linearizable read: leader serves locally; followers confirm with
+/// the leader then answer from local state (etcd-style follower read).
+async fn route_query<M: StateMachine>(
+    handle: &NodeHandle<M>,
+    transport: &Arc<dyn Transport>,
+    forward_timeout: Duration,
+    bytes: Vec<u8>,
+) -> ClientResponse {
+    let query = match <M::Query as craft_core::Query>::from_bytes(&bytes) {
+        Ok(q) => q,
+        Err(e) => return ClientResponse::Error(format!("decode query: {e}")),
+    };
+    match handle.query(query).await {
+        Ok(response) => encode_client_ok(&response),
+        Err(ClientError::NotLeader {
+            leader: Some(leader),
+        }) if leader != handle.id() => {
+            match handle
+                .follower_query_bytes(bytes, leader, transport, forward_timeout)
+                .await
+            {
+                Ok(response) => encode_client_ok(&response),
+                Err(e) => ClientResponse::Error(e.to_string()),
+            }
+        }
+        Err(ClientError::NotLeader { leader }) => ClientResponse::NotLeader { leader },
+        Err(e) => ClientResponse::Error(e.to_string()),
+    }
+}
+
+/// Proposals (and keyed writes) still forward to the leader when needed.
+async fn route_write_client<M: StateMachine>(
+    handle: &NodeHandle<M>,
+    transport: &Arc<dyn Transport>,
+    forward_timeout: Duration,
+    request: ClientRequest,
+) -> ClientResponse {
     let local = serve_locally(handle, request.clone()).await;
     let ClientResponse::NotLeader { leader } = local else {
         return local;
     };
     match leader {
-        // Forward to the known leader and return its response verbatim.
         Some(leader) if leader != handle.id() => {
             forward_to_leader(transport, forward_timeout, leader, request).await
         }
-        // No leader (election in progress) or a self-referential hint: nothing
-        // to forward to (ADR 003 "no leader known").
         _ => ClientResponse::Error("no leader elected".to_string()),
     }
 }
@@ -720,7 +870,7 @@ async fn serve_locally<M: StateMachine>(
     request: ClientRequest,
 ) -> ClientResponse {
     match request {
-        ClientRequest::Propose(bytes) => {
+        ClientRequest::Propose(bytes) | ClientRequest::ProposeKeyed { command: bytes, .. } => {
             let command = match M::Command::from_bytes(&bytes) {
                 Ok(c) => c,
                 Err(e) => return ClientResponse::Error(format!("decode command: {e}")),
@@ -731,7 +881,7 @@ async fn serve_locally<M: StateMachine>(
                 Err(e) => ClientResponse::Error(e.to_string()),
             }
         }
-        ClientRequest::Query(bytes) => {
+        ClientRequest::Query(bytes) | ClientRequest::QueryKeyed { query: bytes, .. } => {
             let query = match <M::Query as craft_core::Query>::from_bytes(&bytes) {
                 Ok(q) => q,
                 Err(e) => return ClientResponse::Error(format!("decode query: {e}")),
@@ -742,6 +892,11 @@ async fn serve_locally<M: StateMachine>(
                 Err(e) => ClientResponse::Error(e.to_string()),
             }
         }
+        ClientRequest::ReadIndexConfirm => match handle.confirm_read_index().await {
+            Ok((index, term)) => ClientResponse::ReadIndexConfirmed { index, term },
+            Err(ClientError::NotLeader { leader }) => ClientResponse::NotLeader { leader },
+            Err(e) => ClientResponse::Error(e.to_string()),
+        },
     }
 }
 

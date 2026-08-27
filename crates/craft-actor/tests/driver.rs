@@ -211,6 +211,28 @@ fn single_node_linearizable_read_is_served_after_write() {
             assert_eq!(*response, KvResponse::Value(Some("42".into())));
         }
         ReadOutcome::Failed { .. } => panic!("read should succeed on a live leader"),
+        ReadOutcome::Confirmed { .. } => panic!("leader read should not return Confirmed"),
+    }
+}
+
+#[test]
+fn leader_confirms_read_index_without_executing_query() {
+    let mut d = single_node();
+    d.campaign().unwrap();
+    d.propose(&KvCommand::Set {
+        key: "a".into(),
+        value: "42".into(),
+    })
+    .unwrap();
+
+    let step = d.confirm_read_index(ReadId(9)).unwrap();
+    assert_eq!(step.reads.len(), 1);
+    match &step.reads[0] {
+        ReadOutcome::Confirmed { id, index } => {
+            assert_eq!(*id, ReadId(9));
+            assert!(index.0 >= 1);
+        }
+        other => panic!("expected Confirmed, got {other:?}"),
     }
 }
 
@@ -482,6 +504,7 @@ fn three_node_leader_serves_linearizable_read_after_replication() {
             assert_eq!(*response, KvResponse::Value(Some("v".into())));
         }
         ReadOutcome::Failed { .. } => unreachable!(),
+        ReadOutcome::Confirmed { .. } => unreachable!(),
     }
 }
 
@@ -624,6 +647,7 @@ fn state_survives_a_restart_and_replays_committed_log() {
         .find_map(|r| match r {
             ReadOutcome::Ready { response, .. } => Some(response.clone()),
             ReadOutcome::Failed { .. } => None,
+            ReadOutcome::Confirmed { .. } => None,
         })
         .expect("read should resolve on the recovered single-node leader");
     assert_eq!(

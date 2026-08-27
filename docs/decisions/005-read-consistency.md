@@ -24,13 +24,17 @@ The framework has two read paths:
 
 ### Reads (`ClientRequest::Query`)
 
-1. Request arrives at any node; follower **forwards** to leader ([ADR 003](003-client-routing.md)).
-2. Leader runs **ReadIndex** before `StateMachine::query`:
-   - Record `read_index = commit_index` (or current applied barrier).
-   - Confirm leadership (heartbeat quorum / `read_index` ack from majority).
-   - Wait until `applied_index >= read_index`.
-   - Execute `state_machine.query(q)`.
-3. Return `ClientResponse::Ok` with encoded result (directly or via forward proxy).
+1. Request arrives at any node.
+2. **Leader path:** run ReadIndex (or lease-read fast path) before
+   `StateMachine::query` (steps 2–3 below).
+3. **Follower path:** confirm a read index with the leader via
+   `ReadIndexConfirm`, wait for the apply barrier, then query local state
+   ([follower reads](#follower-reads-landed) below).
+4. Record `read_index = commit_index` (or current applied barrier).
+5. Confirm leadership (heartbeat quorum / `read_index` ack from majority).
+6. Wait until `applied_index >= read_index`.
+7. Execute `state_machine.query(q)`.
+8. Return `ClientResponse::Ok` with encoded result.
 
 ```mermaid
 sequenceDiagram
@@ -70,11 +74,38 @@ automatically by the driver's `query` fast path:
   completeness) and the state machine has applied through the read index;
   otherwise `query` falls back to full ReadIndex.
 
+### Follower reads (landed)
+
+Non-leader nodes may serve `ClientRequest::Query` locally using an
+**etcd-style follower read**:
+
+1. Follower receives `Query` and rejects with `NotLeader { leader }`.
+2. Runtime calls the leader with `ClientRequest::ReadIndexConfirm`.
+3. Leader runs ReadIndex (or lease-read fast path) and returns
+   `ReadIndexConfirmed { index, term }`.
+4. Follower waits until `last_applied >= index`, then executes
+   `StateMachine::query` locally and returns `Ok`.
+
+Writes (`Propose`) still forward to the leader (ADR 003). Lease reads remain
+leader-only.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant F as Follower
+    participant L as Leader
+
+    C->>F: Query
+    F->>L: ReadIndexConfirm
+    L->>L: ReadIndex / lease confirm
+    L-->>F: ReadIndexConfirmed(index)
+    F->>F: wait applied >= index
+    F->>F: state_machine.query
+    F-->>C: Ok
+```
+
 ### Still deferred
 
-- **Follower reads** — serving `query` from a non-leader after a leader
-  read-index round-trip (etcd-style). The lease path already removes the
-  round-trip on the leader; cross-node follower reads remain future work.
 - **Linearizable actor `ask`** — out of scope; use `query` for authoritative reads
 
 ### API
@@ -94,7 +125,8 @@ registry.cluster("workers")?.ask(WorkerMsg::Status).await?;
 - ReadIndex logic lives in **`craft-core`** (`read_index.rs`); leader-only path in `RaftCore::step`.
 - Leader tracks pending reads in `ReadState { index, query, reply_port }` until apply barrier satisfied.
 - Read does **not** append to Raft log.
-- Forward path: follower timeout budget covers forward + ReadIndex on leader.
+- Follower-read path: `craft-actor` runtime (`confirm_read_index`, `follower_query_bytes`,
+  `ReadIndexConfirm` wire type); leader lease-read fast path unchanged.
 
 ## Linearizability test plan ([ADR 029](029-testing-strategy.md))
 

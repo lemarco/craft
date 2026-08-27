@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod actor;
 pub mod client;
+pub mod group;
 pub mod join;
 pub mod raft;
 
@@ -18,6 +19,7 @@ pub use actor::{
     StopReply, StopRequest,
 };
 pub use client::{ClientRequest, ClientResponse};
+pub use group::GroupPeerEnvelope;
 pub use join::{JoinRejection, JoinRequest, JoinResponse, PeerBook, PeerEntry};
 pub use raft::{
     AppendEntries, AppendEntriesReply, EntryPayload, InstallSnapshot, InstallSnapshotReply,

@@ -11,6 +11,15 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ### Added
 
+- **Follower reads** ([ADR 005](docs/decisions/005-read-consistency.md)) —
+  etcd-style linearizable reads on followers: `ReadIndexConfirm` /
+  `ReadIndexConfirmed`, apply-barrier wait, local `StateMachine::query`.
+  Writes still forward to the leader.
+- **Multi-Raft runtime wiring** ([ADR 031](docs/decisions/031-write-sharding-multi-raft.md))
+  — `ShardedNodeService`, `spawn_multi_raft_node`, `GroupTransport`,
+  `ProposeKeyed`/`QueryKeyed` wire types, `RemoteClient`/`TypedClient` keyed
+  helpers; single-group clusters unchanged.
+
 - **Lease reads** ([ADR 005](docs/decisions/005-read-consistency.md)) — the
   leader serves `query` locally, with no ReadIndex round-trip, while it holds a
   quorum-confirmed leadership lease. `RaftNode::lease_read` in `craft-core`, used

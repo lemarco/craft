@@ -21,5 +21,5 @@ mod remote;
 mod typed;
 
 pub use error::ClientError;
-pub use remote::{Client, RemoteClient, RetryPolicy};
+pub use remote::{Client, KeyedClient, RemoteClient, RetryPolicy};
 pub use typed::TypedClient;

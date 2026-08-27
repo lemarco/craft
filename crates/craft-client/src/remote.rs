@@ -30,6 +30,23 @@ pub trait Client {
     fn query(&self, payload: Vec<u8>) -> impl Future<Output = Result<Vec<u8>, ClientError>> + Send;
 }
 
+/// Extension of [`Client`] for shard-aware multi-Raft routing (ADR 031).
+pub trait KeyedClient: Client {
+    /// Submit a write to the Raft group owning `key`.
+    fn propose_keyed(
+        &self,
+        key: Vec<u8>,
+        payload: Vec<u8>,
+    ) -> impl Future<Output = Result<Vec<u8>, ClientError>> + Send;
+
+    /// Submit a linearizable read against the Raft group owning `key`.
+    fn query_keyed(
+        &self,
+        key: Vec<u8>,
+        payload: Vec<u8>,
+    ) -> impl Future<Output = Result<Vec<u8>, ClientError>> + Send;
+}
+
 /// How a [`RemoteClient`] retries across nodes and elections (backlog F4).
 #[derive(Debug, Clone)]
 pub struct RetryPolicy {
@@ -128,6 +145,12 @@ impl RemoteClient {
                     last = ClientError::Server(msg);
                     idx += 1;
                 }
+                Ok(Ok(ClientResponse::ReadIndexConfirmed { .. })) => {
+                    last = ClientError::Server(
+                        "unexpected ReadIndexConfirmed on client wire".into(),
+                    );
+                    idx += 1;
+                }
                 Ok(Err(e)) => {
                     last = ClientError::Unreachable {
                         attempts,
@@ -145,6 +168,24 @@ impl RemoteClient {
             }
         }
         Err(last)
+    }
+}
+
+impl KeyedClient for RemoteClient {
+    fn propose_keyed(
+        &self,
+        key: Vec<u8>,
+        payload: Vec<u8>,
+    ) -> impl Future<Output = Result<Vec<u8>, ClientError>> + Send {
+        self.call(ClientRequest::ProposeKeyed { key, command: payload })
+    }
+
+    fn query_keyed(
+        &self,
+        key: Vec<u8>,
+        payload: Vec<u8>,
+    ) -> impl Future<Output = Result<Vec<u8>, ClientError>> + Send {
+        self.call(ClientRequest::QueryKeyed { key, query: payload })
     }
 }
 

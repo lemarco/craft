@@ -153,7 +153,7 @@ async fn typed_client_proposes_and_reads_through_any_node() {
 }
 
 #[tokio::test]
-async fn client_targeting_only_a_follower_is_forwarded_to_the_leader() {
+async fn client_targeting_only_a_follower_serves_reads_locally() {
     let (net, handles) = spawn_cluster();
     let leader = await_leader(&handles).await;
 
@@ -180,7 +180,7 @@ async fn client_targeting_only_a_follower_is_forwarded_to_the_leader() {
     let resp = client
         .query(&Qry::Get { key: "k".into() })
         .await
-        .expect("follower forwards read to leader");
+        .expect("follower serves linearizable read locally after ReadIndex confirm");
     assert_eq!(resp, Resp::Value(Some("v".into())));
 
     for (_, h) in &handles {

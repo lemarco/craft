@@ -19,6 +19,7 @@
 pub use craft_proto as proto;
 
 pub mod backoff;
+pub mod group_transport;
 pub mod peer;
 pub mod priority;
 pub mod quic;
@@ -28,6 +29,7 @@ pub mod transport;
 pub mod wire;
 
 pub use backoff::{BackoffPolicy, BackoffState};
+pub use group_transport::GroupTransport;
 pub use peer::PeerDirectory;
 pub use priority::{RateLimiter, TrafficPolicy};
 pub use quic::{QuicServer, QuicTransport, client_endpoint};

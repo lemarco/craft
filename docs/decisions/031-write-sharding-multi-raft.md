@@ -1,6 +1,6 @@
 # ADR 031: Write sharding / multi-Raft
 
-**Status:** Proposed (foundation landed; full runtime wiring deferred)
+**Status:** Accepted (runtime wiring landed)
 **Date:** 2026-07-06
 
 ## Context
@@ -37,7 +37,7 @@ storage, and client changes behind it.
 - **Groups are elastic**; rendezvous hashing keeps shard movement minimal when
   the group set changes.
 
-### Runtime model (deferred)
+### Runtime model (landed: `craft-actor::sharded`)
 
 ```
                        ┌── RaftGroup 0 (shards {0,4,8,…})  → driver + log + SM slice
@@ -45,17 +45,19 @@ storage, and client changes behind it.
                        └── RaftGroup 2 (shards {2,6,10,…}) …
 ```
 
-- Each node hosts a replica of **several** groups (one `RaftDriver` per group),
-  not just one. `craft-core::RaftNode` is already a self-contained, I/O-free
-  unit, so *N* instances compose without change.
-- Per-group **storage namespaces**: the log/hard-state/snapshot stores key by
-  `(group_id, …)` so groups never collide (extends the current single-group
-  layout in `craft-storage`).
-- The **state machine** is sliced per group; `StateMachine` implementations
-  either shard naturally by key or are instantiated per group.
-- **Client routing** ([ADR 003](003-client-routing.md)) gains a shard step:
-  resolve `key → shard → group → group-leader`, then forward as today. A wrong
-  guess redirects (same retry envelope as a leader miss).
+- Each node may host a replica of **several** groups (one `RaftDriver` per group).
+  `craft-actor::spawn_multi_raft_node` wires *N* drivers on one physical node;
+  `ShardedNodeService` demuxes client and peer traffic by group.
+- `GroupTransport` wraps peer RPCs in `GroupPeerEnvelope` so a single UDP
+  socket carries multiple Raft groups.
+- `GroupMemoryStorage` provides per-group in-memory isolation for tests;
+  production redb namespacing remains deferred.
+- **Client routing:** `ClientRequest::ProposeKeyed` / `QueryKeyed` carry a shard
+  key; [`ShardedNodeService`] resolves `key → shard → group` and forwards to
+  the correct group's [`NodeService`]. Ungrouped `Propose`/`Query` still hit
+  group 0 (single-group default unchanged).
+- **Rebalancing control plane** (leader-owned placement on join/leave) remains
+  deferred.
 
 ### Cross-shard writes
 
@@ -77,15 +79,18 @@ storage, and client changes behind it.
   `shard_assignment` — pure, deterministic, unit-tested (including the
   minimal-churn property of rendezvous hashing). This is the shared vocabulary
   every later layer (client, runtime, control plane) routes against.
+- `craft-actor::sharded`: `ShardedNodeService`, `spawn_multi_raft_node`,
+  `GroupTransport`, keyed client wire types (`ProposeKeyed`/`QueryKeyed`).
+- `craft-client`: `RemoteClient::propose_keyed` / `query_keyed` and matching
+  `TypedClient` helpers.
 
 ## What is deferred (and why it is safe to defer)
 
-- Multiple `RaftDriver`s per node, per-group storage namespacing, sliced state
-  machines, shard-aware client routing, and a rebalancing control plane. These
-  are a substantial, cross-cutting runtime change; landing them incrementally on
-  top of a stable, tested routing primitive avoids destabilizing the working
-  single-group system. Single-group remains the default and only wired mode
-  until then.
+- `CraftClusterBuilder` integration (multi-group QUIC/local start), per-group
+  redb namespacing, cross-node multi-group replication layout, and a
+  rebalancing control plane. Single-group remains the default via
+  `CraftClusterBuilder`; opt into multi-Raft with `spawn_multi_raft_node` or
+  a custom `ShardedNodeService` until the builder path lands.
 
 ## Consequences
 

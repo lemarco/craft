@@ -257,7 +257,8 @@ async fn follower_transparently_forwards_client_wire_to_leader() {
         other => panic!("expected forwarded Ok, got {other:?}"),
     }
 
-    // A linearizable read through the follower must also be forwarded.
+    // Linearizable read through the follower: etcd-style follower read (ADR 005)
+    // — confirm ReadIndex with the leader, wait for apply barrier, serve locally.
     let query = ClientRequest::Query(
         craft_actor::craft_proto::encode(&KvQuery::Get { key: "via".into() }).unwrap(),
     );
@@ -270,6 +271,39 @@ async fn follower_transparently_forwards_client_wire_to_leader() {
             assert_eq!(decoded, KvResponse::Value(Some("follower".into())));
         }
         other => panic!("expected forwarded Ok, got {other:?}"),
+    }
+
+    cluster.shutdown();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn leader_confirms_read_index_for_follower_reads() {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let cluster = Cluster::start(&ids);
+    let leader = cluster.wait_for_leader().await;
+
+    let set = ClientRequest::Propose(
+        craft_actor::craft_proto::encode(&KvCommand::Set {
+            key: "x".into(),
+            value: "1".into(),
+        })
+        .unwrap(),
+    );
+    send_client_request(&cluster.net, leader, &set)
+        .await
+        .expect("seed write");
+
+    let confirm = send_client_request(&cluster.net, leader, &ClientRequest::ReadIndexConfirm)
+        .await
+        .expect("read index confirm");
+    match confirm {
+        ClientResponse::ReadIndexConfirmed { index, term } => {
+            let status = cluster.handles[&leader].status().await.unwrap();
+            assert!(index.0 >= 1);
+            assert_eq!(term, status.term);
+            assert!(status.last_applied >= index);
+        }
+        other => panic!("expected ReadIndexConfirmed, got {other:?}"),
     }
 
     cluster.shutdown();

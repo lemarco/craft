@@ -92,6 +92,14 @@ pub enum ReadOutcome<R> {
         /// The query response.
         response: R,
     },
+    /// ReadIndex confirmed at `index` without executing a query (follower-read
+    /// setup on the leader).
+    Confirmed {
+        /// The client's read token.
+        id: ReadId,
+        /// The linearizable read barrier index.
+        index: LogIndex,
+    },
     /// The read could not be honored (leadership lost); retry it.
     Failed {
         /// The client's read token.
@@ -195,6 +203,8 @@ pub struct RaftDriver<M: StateMachine> {
     storage: Box<dyn RaftStorage>,
     /// Queries awaiting their ReadIndex confirmation, keyed by read token.
     pending_queries: HashMap<ReadId, M::Query>,
+    /// ReadIndex-only confirmations (no query execution on the leader).
+    pending_read_confirms: HashMap<ReadId, ()>,
 }
 
 impl<M: StateMachine> RaftDriver<M> {
@@ -221,6 +231,7 @@ impl<M: StateMachine> RaftDriver<M> {
             machine,
             storage,
             pending_queries: HashMap::new(),
+            pending_read_confirms: HashMap::new(),
         }
     }
 
@@ -404,6 +415,42 @@ impl<M: StateMachine> RaftDriver<M> {
         }
     }
 
+    /// Confirm a linearizable read index on the leader without executing a
+    /// query (follower-read setup, ADR 005).
+    ///
+    /// # Errors
+    /// Returns [`DriverError::NotLeader`] if this node is not the leader.
+    pub fn confirm_read_index(&mut self, id: ReadId) -> Result<Step<M>, DriverError> {
+        match self.node.lease_read() {
+            Ok(Some(index)) if self.node.last_applied() >= index => {
+                let mut step = self.drain()?;
+                step.reads.push(ReadOutcome::Confirmed { id, index });
+                return Ok(step);
+            }
+            Ok(_) => {}
+            Err(e) => return Err(e.into()),
+        }
+        self.pending_read_confirms.insert(id, ());
+        match self.node.read_index(id) {
+            Ok(()) => self.drain(),
+            Err(e) => {
+                self.pending_read_confirms.remove(&id);
+                Err(e.into())
+            }
+        }
+    }
+
+    /// Answer a query against already-applied state (after a follower received
+    /// a confirmed read index and waited for the apply barrier).
+    ///
+    /// # Errors
+    /// Returns [`DriverError::Query`] if the state machine rejects the query.
+    pub fn local_query(&self, query: &M::Query) -> Result<M::Response, DriverError> {
+        self.machine
+            .query(query)
+            .map_err(|e| DriverError::Query(Box::new(e)))
+    }
+
     /// Begin a joint-consensus membership change to `new_voters` (+ optional
     /// `learners`) — the log entry underpinning a cluster join/leave (ADR 016).
     ///
@@ -513,12 +560,16 @@ impl<M: StateMachine> RaftDriver<M> {
                     step.applied.push((index, response));
                 }
                 Output::ReadReady { id, index } => {
-                    if let Some(outcome) = self.serve_read(id, index)? {
+                    if self.pending_read_confirms.remove(&id).is_some() {
+                        step.reads.push(ReadOutcome::Confirmed { id, index });
+                    } else if let Some(outcome) = self.serve_read(id, index)? {
                         step.reads.push(outcome);
                     }
                 }
                 Output::ReadFailed { id } => {
-                    if self.pending_queries.remove(&id).is_some() {
+                    if self.pending_read_confirms.remove(&id).is_some() {
+                        step.reads.push(ReadOutcome::Failed { id });
+                    } else if self.pending_queries.remove(&id).is_some() {
                         step.reads.push(ReadOutcome::Failed { id });
                     }
                 }

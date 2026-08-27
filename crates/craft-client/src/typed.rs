@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use craft_core::{Command, Query, StateMachine};
 
 use crate::error::ClientError;
-use crate::remote::Client;
+use crate::remote::{Client, KeyedClient};
 
 /// A strongly-typed view over any [`Client`], carrying a
 /// [`StateMachine`]'s command/query/response types so callers work with real
@@ -60,6 +60,30 @@ impl<C: Client, M: StateMachine> TypedClient<C, M> {
     pub async fn query(&self, query: &M::Query) -> Result<M::Response, ClientError> {
         let payload = Query::to_bytes(query).map_err(|e| ClientError::Codec(e.to_string()))?;
         let bytes = self.inner.query(payload).await?;
+        craft_proto::decode(&bytes).map_err(|e| ClientError::Codec(e.to_string()))
+    }
+}
+
+impl<C: KeyedClient, M: StateMachine> TypedClient<C, M> {
+    /// Propose a typed command to the Raft group that owns `key`.
+    pub async fn propose_keyed(
+        &self,
+        key: &[u8],
+        command: &M::Command,
+    ) -> Result<M::Response, ClientError> {
+        let payload = Command::to_bytes(command).map_err(|e| ClientError::Codec(e.to_string()))?;
+        let bytes = self.inner.propose_keyed(key.to_vec(), payload).await?;
+        craft_proto::decode(&bytes).map_err(|e| ClientError::Codec(e.to_string()))
+    }
+
+    /// Run a typed linearizable query against the Raft group that owns `key`.
+    pub async fn query_keyed(
+        &self,
+        key: &[u8],
+        query: &M::Query,
+    ) -> Result<M::Response, ClientError> {
+        let payload = Query::to_bytes(query).map_err(|e| ClientError::Codec(e.to_string()))?;
+        let bytes = self.inner.query_keyed(key.to_vec(), payload).await?;
         craft_proto::decode(&bytes).map_err(|e| ClientError::Codec(e.to_string()))
     }
 }
