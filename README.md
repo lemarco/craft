@@ -5,6 +5,85 @@
 [![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![rust](https://img.shields.io/badge/rustc-1.85%2B-orange.svg)](#msrv)
 
+> **Paused since 2026-07-06.** v0.1 milestone is feature-complete per [backlog](docs/backlog.md); not production-hardened. This README is written so you can pick the project up months later without re-reading 32 ADRs.
+
+---
+
+## Why this exists
+
+**Problem:** Running a stateful app on multiple VPS/K8s nodes usually means bolting together separate pieces — a consensus library, an actor runtime, a transport layer, mTLS, membership, observability — and wiring them yourself.
+
+**Idea:** Embed consensus + actors in *your* binary. Same artifact on every node; the cluster bootstraps, elects a leader, replicates a linearizable state machine, and hosts supervised actors that can message and migrate across nodes. No sidecar, no separate control plane.
+
+**Not the same as [lmrc-cloud](https://gitlab.com/lemarco/lmrc-cloud):** `lmrc-cloud` is a Kubernetes-native platform (controller, operators, GitLab CI deploy). `craft` is a **library** for apps that *become* the cluster node. Different deployment model; no shared code today.
+
+**Built in:** intense 2-day sprint (2026-07-05 → 2026-07-06), 46 commits, then paused.
+
+---
+
+## Current status (read this first when returning)
+
+| | |
+|---|---|
+| **Version** | `0.1.0` (pre-1.0, API may change on minor bumps) |
+| **Last commit** | 2026-07-06 — `fix(scale): retry forwarded scale while leadership settles` |
+| **Maturity** | Advanced prototype — E2E, chaos tests, benchmarks, release CI exist; README still says *not for production* |
+| **Backlog** | Waves 0–4 + most post-v1 items marked **done** in [docs/backlog.md](docs/backlog.md) |
+
+### What works (v0.1)
+
+- Pure Raft FSM (`craft-core`) — election, replication, joint-consensus membership, snapshots, ReadIndex + lease reads
+- HTTP/3 / QUIC + mTLS between nodes (`craft-net`)
+- Durable log via redb (`craft-storage`)
+- Cross-node actors, auto-spawn on join, Redis actor state (optional)
+- Transparent client routing (any node → leader)
+- Dynamic join via seed addresses / DNS discovery
+- `craft-node` reference binary + K8s StatefulSet manifests
+- Docker e2e (3-node cluster, partition/heal chaos), Criterion benches, soak harness
+- 32 accepted ADRs documenting every design choice
+
+### What's deferred (good next steps if you resume)
+
+From [ADR 027](docs/decisions/027-future-work-and-risks.md) and [backlog post-v1](docs/backlog.md):
+
+1. **Follower reads** — reads still forward to leader; lease reads cover the main latency win
+2. **Multi-Raft runtime** — routing foundation in `craft-core::shard`; N Raft groups not wired end-to-end
+3. **Worker migration on node failure** — reachability signal exists; respawn/migrate logic deferred
+4. **Production hardening** — real-world soak, fuzzing, docs.rs publish, crates.io release (tooling ready in [docs/releasing.md](docs/releasing.md))
+
+---
+
+## 5-minute re-entry
+
+```sh
+cd craft
+cargo build --workspace
+cargo test --workspace --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+# Single-process examples (no Docker)
+cargo run -p craft --example kv_store
+cargo run -p craft --example three_node_local
+cargo run -p craft --example actors_cluster
+
+# Real QUIC + mTLS cluster (needs Docker)
+./e2e/run.sh
+./e2e/chaos.sh
+```
+
+**Read next (in order):**
+
+1. [docs/architecture.md](docs/architecture.md) — crate graph, data flow
+2. [docs/backlog.md](docs/backlog.md) — what's done vs deferred (check ✅ columns)
+3. [docs/decisions/027-future-work-and-risks.md](docs/decisions/027-future-work-and-risks.md) — known limits
+4. [crates/craft/src/builder.rs](crates/craft/src/builder.rs) — main public API entry (`CraftCluster::builder`)
+
+**Reference binary env vars** (`craft-node`): `CRAFT_NODE_ID`, `CRAFT_LISTEN` (default `:7443`), `CRAFT_ADMIN` (`:8080`), `CRAFT_PEERS`, `CRAFT_JOIN_SEEDS`, `CRAFT_DISCOVERY`, cert paths — see [docs/certs.md](docs/certs.md).
+
+---
+
+## Quick API sketch
+
 Write your state machine and actors once, then run the *same* binary on as many
 nodes as you like. Nodes form a [Raft](https://raft.github.io/) cluster over
 HTTP/3 (QUIC + mTLS), replicate a linearizable state machine, and host
@@ -23,23 +102,16 @@ let cluster = CraftCluster::builder(NodeId(1), Counter::default())
     .await;
 ```
 
-## Why craft
+## Why craft (design principles)
 
-- **Library-first.** No sidecar, no separate control plane — `craft` is a crate
-  you embed. Your app *is* the cluster node ([ADR 004](docs/decisions/004-deployment-model.md)).
-- **One dependency.** The `craft` facade re-exports the whole stable API; add it
-  and go. Advanced users can depend on the sub-crates directly.
-- **Linearizable.** A replicated `StateMachine` with leader-based writes and
-  `ReadIndex` reads ([ADR 005](docs/decisions/005-read-consistency.md)).
-- **Transparent routing.** Clients hit *any* node; requests are forwarded to the
-  leader automatically ([ADR 003](docs/decisions/003-client-routing.md)).
-- **Cross-node actors.** Supervised actors message, spawn, and migrate across
-  nodes; the leader auto-places one worker per node as the cluster grows
-  ([ADR 013](docs/decisions/013-cross-node-actors.md), [ADR 015](docs/decisions/015-auto-spawn-on-join.md)).
-- **Secure by default.** HTTP/3 over QUIC with mutual TLS between every node
-  ([ADR 006](docs/decisions/006-security.md)).
-- **Observable.** Built-in health/admin endpoints and a live introspection view
-  ([ADR 025](docs/decisions/025-health-admin-port.md), [ADR 026](docs/decisions/026-observability.md)).
+- **Library-first.** No sidecar — `craft` is a crate you embed ([ADR 004](docs/decisions/004-deployment-model.md)).
+- **One dependency.** The `craft` facade re-exports the stable API.
+- **Linearizable.** Replicated `StateMachine` with leader writes + `ReadIndex`/lease reads ([ADR 005](docs/decisions/005-read-consistency.md)).
+- **Transparent routing.** Clients hit any node; requests forward to the leader ([ADR 003](docs/decisions/003-client-routing.md)).
+- **Cross-node actors.** Supervised actors across nodes; leader auto-places workers ([ADR 013](docs/decisions/013-cross-node-actors.md), [ADR 015](docs/decisions/015-auto-spawn-on-join.md)).
+- **Secure by default.** mTLS on every inter-node connection ([ADR 006](docs/decisions/006-security.md)).
+- **Observable.** Health/admin endpoints + dashboard ([ADR 025](docs/decisions/025-health-admin-port.md), [ADR 026](docs/decisions/026-observability.md)).
+- **Testable.** `craft-core` is I/O-free FSM; effects-as-data ([ADR 030](docs/decisions/030-architecture-style.md)).
 
 ## Install
 
@@ -58,72 +130,54 @@ cargo install craft-node
 
 | Crate | Purpose |
 |-------|---------|
-| [`craft`](crates/craft) | **Start here.** Facade + `CraftCluster` builder; re-exports the public API |
-| [`craft-core`](crates/craft-core) | Pure Raft consensus state machine (no I/O) |
+| [`craft`](crates/craft) | **Start here.** Facade + `CraftCluster` builder |
+| [`craft-core`](crates/craft-core) | Pure Raft consensus FSM (no I/O) |
 | [`craft-proto`](crates/craft-proto) | Wire types + `postcard` codec |
 | [`craft-storage`](crates/craft-storage) | Durable log, hard state, snapshots |
 | [`craft-net`](crates/craft-net) | HTTP/3 (QUIC) transport with mTLS |
-| [`craft-actor`](crates/craft-actor) | Actor runtime, registry, cluster supervision |
-| [`craft-client`](crates/craft-client) | In-process + remote (HTTP/3) client API |
+| [`craft-actor`](crates/craft-actor) | Actor runtime, registry, supervision |
+| [`craft-client`](crates/craft-client) | In-process + remote client API |
 | [`craft-macros`](crates/craft-macros) | Derive macros (`StateMachine`, `remote_actor`) |
 | [`craft-store-redis`](crates/craft-store-redis) | Redis-backed `ActorStateStore` |
-| [`craft-dashboard`](crates/craft-dashboard) | Observability dashboard + admin endpoints |
+| [`craft-dashboard`](crates/craft-dashboard) | Observability dashboard + admin |
 | [`craft-sim`](crates/craft-sim) | Deterministic simulation harness |
-| [`craft-node`](crates/craft-node) | Reference binary that runs a node from env config |
+| [`craft-node`](crates/craft-node) | Reference binary (env-driven config) |
 
-## Examples
-
-Runnable examples live in [`crates/craft/examples`](crates/craft/examples):
+## Examples & tests
 
 ```sh
-cargo run -p craft --example kv_store          # single-node KV store
-cargo run -p craft --example three_node_local  # 3 nodes + transparent forwarding
-cargo run -p craft --example actors_cluster    # auto-placed, cross-node actors
-cargo run -p craft --example vps_join --features dev-certs  # elastic join from a seed
-```
+cargo run -p craft --example kv_store          # single-node KV
+cargo run -p craft --example three_node_local  # 3 nodes + forwarding
+cargo run -p craft --example actors_cluster    # cross-node actors
+cargo run -p craft --example vps_join --features dev-certs  # elastic join
 
-A full multi-process cluster over **real QUIC + mTLS** lives in [`e2e/`](e2e):
+./e2e/run.sh    # 3-node QUIC/mTLS + failover
+./e2e/chaos.sh  # network partition + heal
 
-```sh
-./e2e/run.sh   # boots 3 craft-node containers, asserts election + failover
-```
-
-Provision certificates for a real deployment with
-[`examples/certs/generate.sh`](examples/certs/generate.sh) — see [docs/certs.md](docs/certs.md).
-
-Benchmarks and a soak harness live in [`benchmarks/`](benchmarks) (a standalone
-crate):
-
-```sh
-cargo bench --manifest-path benchmarks/Cargo.toml               # append / apply / deliver
+cargo bench --manifest-path benchmarks/Cargo.toml
 SOAK_SECS=60 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak
 ```
 
-## Documentation
+Certs for real deploy: [`examples/certs/generate.sh`](examples/certs/generate.sh) — [docs/certs.md](docs/certs.md).
 
-- API docs: [docs.rs/craft](https://docs.rs/craft)
-- Architecture & rationale: [`docs/`](docs) — every design decision is an
-  [ADR](docs/decisions); the wire protocol is in [docs/protocol.md](docs/protocol.md).
-- Roadmap / status: [docs/backlog.md](docs/backlog.md).
+Git hooks: `lefthook install` (fmt + clippy on commit, tests on push).
+
+## Documentation map
+
+| Doc | When to read |
+|-----|----------------|
+| [docs/architecture.md](docs/architecture.md) | System overview |
+| [docs/backlog.md](docs/backlog.md) | Implementation status |
+| [docs/protocol.md](docs/protocol.md) | HTTP/3 routes, wire format |
+| [docs/decisions/](docs/decisions/) | 32 ADRs — full design rationale |
+| [docs/releasing.md](docs/releasing.md) | crates.io publish workflow |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
+| [docs.rs/craft](https://docs.rs/craft) | API reference (when published) |
 
 ## MSRV
 
-Minimum Supported Rust Version is **1.85**. MSRV bumps are a minor-version event
-([ADR 028](docs/decisions/028-library-and-publishing.md)).
-
-## Status
-
-Pre-1.0 (`0.x`): the API may change on minor bumps, documented in
-[CHANGELOG.md](CHANGELOG.md). Not yet recommended for production.
+Minimum Supported Rust Version is **1.85**. MSRV bumps are a minor-version event ([ADR 028](docs/decisions/028-library-and-publishing.md)).
 
 ## License
 
-Dual-licensed under either of
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT license ([LICENSE-MIT](LICENSE-MIT))
-
-at your option. Unless you explicitly state otherwise, any contribution
-intentionally submitted for inclusion in this project by you, as defined in the
-Apache-2.0 license, shall be dual-licensed as above, without any additional
-terms or conditions.
+Dual-licensed under MIT OR Apache-2.0 — see [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE).
