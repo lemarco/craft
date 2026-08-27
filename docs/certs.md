@@ -188,12 +188,64 @@ CN is free-form.
 
 ## Rotation
 
-There is **no auto-rotation in v1**. To rotate a node's cert:
+### Manual (always works)
 
-1. Reissue it from the same CA (`generate.sh --node-id <N> ... --ca ...`).
-2. Deploy the new `node-<N>.pem`/`.key`.
-3. Restart that node. Do this **one node at a time** (rolling restart) so the
-   cluster keeps quorum throughout.
+1. Reissue the leaf cert from the same CA (`generate.sh --node-id <N> ... --ca ...`).
+2. Write the new `node-<N>.pem`/`.key` to the paths in `CRAFT_NODE_*`.
+3. Either **hot-reload** (below) or restart that node **one at a time** (rolling
+   restart) so the cluster keeps quorum.
+
+### Automatic (ADR 034)
+
+When `CRAFT_NODE_CERT` / `CRAFT_NODE_KEY` / `CRAFT_CA_CERT` are set, `craft-node`
+uses [`start_quic_pem`](../crates/craft/src/builder.rs) and **polls** those files
+every `CRAFT_CERT_WATCH_SECS` (default **60**). When a renewer (cert-manager,
+`step ca renew`, or `generate.sh`) rewrites the PEMs, craft reloads TLS **without
+exiting**:
+
+- new QUIC handshakes pick up the fresh server cert;
+- outbound pools are evicted so the next dial presents the new client cert;
+- **`SIGHUP`** triggers the same reload on Unix (`docker compose kill -s HUP …`).
+
+Reload on the **Raft leader** is rejected unless you call
+[`ReloadOpts { allow_leader: true }`](../crates/craft/src/certs.rs) — roll
+**followers first**, leader last.
+
+| Environment | Issuer | Example |
+|-------------|--------|---------|
+| VPS / compose | [step-ca](https://smallstep.com/docs/step-ca/) | [`examples/step-ca/`](../examples/step-ca/) |
+| Kubernetes | [cert-manager](https://cert-manager.io/) | [`deploy/kubernetes/`](../deploy/kubernetes/) + [`cert-manager/README.md`](../deploy/kubernetes/cert-manager/README.md) |
+
+On Kubernetes, the StatefulSet mounts cert-manager Secrets per pod ordinal:
+
+```yaml
+# craft-0 reads /etc/craft/tls-by-ordinal/0/tls.crt (Secret craft-tls-0)
+CRAFT_CERT_ORDINAL_BASE=/etc/craft/tls-by-ordinal
+CRAFT_CA_CERT=/etc/craft/ca/tls.crt
+POD_NAME=craft-0   # downward API
+```
+
+Apply order: populate `craft-ca` → `kubectl apply -f deploy/kubernetes/cert-manager/`
+→ wait for `Certificate` Ready → `kubectl apply -f deploy/kubernetes/`.
+
+Public ACME (Let's Encrypt) is **not** supported for craft wire identities — you
+need a private CA with `serverAuth` + `clientAuth` and SAN `craft-node-<id>`.
+
+Embedding apps use the same API:
+
+```rust
+let pem = PemSecurity::load(node_id, paths)?;
+let cluster = CraftCluster::builder(node_id, machine)
+    .members(members)
+    .cert_watch(Duration::from_secs(60))
+    .start_quic_pem(pem, listen, peers)
+    .await?;
+// cluster.cert_reload() → manual reload_now(...)
+```
+
+See [ADR 034](decisions/034-cert-automation.md).
+
+### CA rotation
 
 To rotate the **CA** itself, run a temporary trust bundle containing both old
 and new CA certs in `ca.pem` (concatenated), roll every node onto certs signed
@@ -217,4 +269,23 @@ mTLS material above.
 If you point actor workflow state at Redis (ADR 021) over TLS, that connection
 is **managed by you** via the Redis connection URL (`rediss://…`) and your
 Redis server's own certificates — it is independent of the cluster CA above.
+
+Use [`craft_store_redis::RedisStore::connect`] when the Redis CA is in the
+OS / public trust store, or [`RedisStore::connect_with_tls`] with a PEM trust
+anchor (and optional client cert for Redis mTLS):
+
+```rust,no_run
+# async fn demo() -> Result<(), Box<dyn std::error::Error>> {
+use craft_store_redis::{RedisStore, RedisTlsConfig};
+
+let ca = std::fs::read("/etc/redis/ca.pem")?;
+let store = RedisStore::connect_with_tls(
+    "rediss://redis.internal:6379",
+    &RedisTlsConfig::with_root_ca_pem(ca),
+)
+.await?;
+# Ok(())
+# }
+```
+
 See [ADR 021](decisions/021-actor-state-redis.md).

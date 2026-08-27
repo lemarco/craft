@@ -1,0 +1,87 @@
+# step-ca reference + 3-node craft cluster (ADR 034)
+#
+# Quick start:
+#   cd examples/step-ca
+#   ./bootstrap.sh                 # mint certs/ via generate.sh
+#   docker compose up --build      # 3 craft-node containers + optional step-ca
+#
+# Hot reload: reissue a node cert, then SIGHUP or wait for CRAFT_CERT_WATCH_SECS:
+#   ./../certs/generate.sh --node-id 1 --out ./certs --ca ./certs/ca.pem --ca-key ./certs/ca.key
+#   docker compose kill -s HUP craft-1
+#
+# Full step-ca ACME/JWK issuance is documented in docs/certs.md — initialize
+# step-ca separately, then replace bootstrap with `step ca certificate …`.
+
+services:
+  step-ca:
+    image: smallstep/step-ca:latest
+    profiles: ["step-ca"]
+    ports:
+      - "9000:9000"
+    volumes:
+      - step-ca-data:/home/step
+    # Initialize out-of-band: https://smallstep.com/docs/step-ca/installation/
+
+  craft-1:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile
+    image: craft-node:step-ca-demo
+    hostname: craft-1
+    environment:
+      CRAFT_NODE_ID: "1"
+      CRAFT_LISTEN: "0.0.0.0:7443"
+      CRAFT_ADMIN: "0.0.0.0:8080"
+      CRAFT_PEERS: "1@craft-1:7443,2@craft-2:7443,3@craft-3:7443"
+      CRAFT_NODE_CERT: /etc/craft/node.pem
+      CRAFT_NODE_KEY: /etc/craft/node.key
+      CRAFT_CA_CERT: /etc/craft/ca.pem
+      CRAFT_CERT_WATCH_SECS: "30"
+    volumes:
+      - ./certs/node-1.pem:/etc/craft/node.pem
+      - ./certs/node-1.key:/etc/craft/node.key
+      - ./certs/ca.pem:/etc/craft/ca.pem
+    ports:
+      - "7441:7443/udp"
+      - "8081:8080"
+
+  craft-2:
+    image: craft-node:step-ca-demo
+    hostname: craft-2
+    depends_on:
+      - craft-1
+    environment:
+      CRAFT_NODE_ID: "2"
+      CRAFT_LISTEN: "0.0.0.0:7443"
+      CRAFT_ADMIN: "0.0.0.0:8080"
+      CRAFT_PEERS: "1@craft-1:7443,2@craft-2:7443,3@craft-3:7443"
+      CRAFT_NODE_CERT: /etc/craft/node.pem
+      CRAFT_NODE_KEY: /etc/craft/node.key
+      CRAFT_CA_CERT: /etc/craft/ca.pem
+      CRAFT_CERT_WATCH_SECS: "30"
+    volumes:
+      - ./certs/node-2.pem:/etc/craft/node.pem
+      - ./certs/node-2.key:/etc/craft/node.key
+      - ./certs/ca.pem:/etc/craft/ca.pem
+
+  craft-3:
+    image: craft-node:step-ca-demo
+    hostname: craft-3
+    depends_on:
+      - craft-2
+    environment:
+      CRAFT_NODE_ID: "3"
+      CRAFT_LISTEN: "0.0.0.0:7443"
+      CRAFT_ADMIN: "0.0.0.0:8080"
+      CRAFT_PEERS: "1@craft-1:7443,2@craft-2:7443,3@craft-3:7443"
+      CRAFT_NODE_CERT: /etc/craft/node.pem
+      CRAFT_NODE_KEY: /etc/craft/node.key
+      CRAFT_CA_CERT: /etc/craft/ca.pem
+      CRAFT_CERT_WATCH_SECS: "30"
+    volumes:
+      - ./certs/node-3.pem:/etc/craft/node.pem
+      - ./certs/node-3.key:/etc/craft/node.key
+      - ./certs/ca.pem:/etc/craft/ca.pem
+
+volumes:
+  step-ca-data:

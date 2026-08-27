@@ -37,6 +37,7 @@
 //! See the `docs/` directory for architecture and the accepted ADRs.
 
 mod builder;
+mod certs;
 mod cluster;
 pub mod discovery;
 mod handler;
@@ -57,6 +58,7 @@ pub use {craft_dashboard as dashboard, craft_macros as macros, craft_net as net}
 pub use craft_storage as storage;
 
 pub use builder::{CraftClusterBuilder, StartError};
+pub use certs::{CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_from_env};
 pub use cluster::{ClusterFacts, CraftCluster, ScaleClusterError};
 pub use craft_actor::{ResourceProfile, VpsResources};
 pub use security::Security;
@@ -65,6 +67,8 @@ pub use security::Security;
 /// over QUIC. Re-exported for building [`CraftClusterBuilder::start_quic`] args.
 #[doc(no_inline)]
 pub use craft_net::PeerDirectory;
+#[doc(no_inline)]
+pub use craft_net::{CertPaths, load_pem_material};
 
 /// Commonly used telemetry/observability types, re-exported for convenience.
 #[doc(no_inline)]

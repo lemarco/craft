@@ -43,6 +43,7 @@ services:
       CRAFT_CA_CERT: /certs/ca.pem
       CRAFT_NODE_CERT: /certs/node-1.pem
       CRAFT_NODE_KEY: /certs/node-1.key
+      CRAFT_CERT_WATCH_SECS: "${CRAFT_CERT_WATCH_SECS:-60}"
     volumes:
       - certs:/certs
     ports:
@@ -61,6 +62,7 @@ services:
       CRAFT_CA_CERT: /certs/ca.pem
       CRAFT_NODE_CERT: /certs/node-2.pem
       CRAFT_NODE_KEY: /certs/node-2.key
+      CRAFT_CERT_WATCH_SECS: "${CRAFT_CERT_WATCH_SECS:-60}"
     volumes:
       - certs:/certs
     ports:
@@ -79,6 +81,7 @@ services:
       CRAFT_CA_CERT: /certs/ca.pem
       CRAFT_NODE_CERT: /certs/node-3.pem
       CRAFT_NODE_KEY: /certs/node-3.key
+      CRAFT_CERT_WATCH_SECS: "${CRAFT_CERT_WATCH_SECS:-60}"
     volumes:
       - certs:/certs
     ports:

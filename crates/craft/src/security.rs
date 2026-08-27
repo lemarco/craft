@@ -2,12 +2,12 @@
 //! identity plus the trust root every peer/client is verified against.
 //!
 //! Production deployments build a [`Security`] from operator-provisioned certs
-//! ([`Security::new`] / [`Security::from_ca_certs`]); the dev profile and tests
-//! can mint a throwaway cluster CA with [`Security::dev`] (requires the
-//! `dev-certs` feature).
+//! ([`Security::new`] / [`Security::from_ca_certs`] / [`PemSecurity::load`](crate::certs::PemSecurity));
+//! the dev profile and tests can mint a throwaway cluster CA with
+//! [`Security::dev`] (requires the `dev-certs` feature).
 
 use craft_net::tls::root_store;
-use craft_net::{NodeIdentity, TlsError};
+use craft_net::{NodeIdentity, PemMaterial, TlsError};
 use rustls::RootCertStore;
 use rustls::pki_types::CertificateDer;
 
@@ -36,6 +36,15 @@ impl Security {
     ) -> Result<Self, TlsError> {
         let roots = root_store(ca_certs.iter())?;
         Ok(Self { identity, roots })
+    }
+
+    /// Build from material loaded off disk ([`craft_net::load_pem_material`]).
+    #[must_use]
+    pub fn from_material(material: PemMaterial) -> Self {
+        Self {
+            identity: material.identity,
+            roots: material.roots,
+        }
     }
 
     /// Mint a dev identity for `node_id` issued by `ca`, trusting only `ca`.

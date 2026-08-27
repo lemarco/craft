@@ -50,3 +50,35 @@ network_of() {
     docker inspect -f '{{range $k,$_ := .NetworkSettings.Networks}}{{$k}} {{end}}' "$1" \
         | awk '{print $1}'
 }
+
+# Reissue node $1's PEM in the shared /certs volume (via node $2's container).
+reissue_node_cert() {
+    local id="$1" via="${2:-1}"
+    $COMPOSE exec -T "node${via}" /bin/sh -c \
+        "/app/generate.sh --node-id ${id} --out /certs --ca /certs/ca.pem --ca-key /certs/ca.key"
+}
+
+# Trigger on-disk cert reload (ADR 034) without restarting the process.
+sighup_node() { $COMPOSE kill -s HUP "node$1"; }
+
+# True when /health returns 200 on a node's admin port.
+health_ok() {
+    curl -sf -m 2 "http://$HOST:${PORT[$1]}/health" >/dev/null 2>&1
+}
+
+# Wait until all three nodes respond on /health and agree on one leader.
+wait_healthy_cluster() {
+    local tries=0
+    while [ "$tries" -lt 120 ]; do
+        local ok=1 id l first=""
+        for id in 1 2 3; do
+            health_ok "$id" || { ok=0; break; }
+            l=$(leader_at "${PORT[$id]}")
+            [ -z "$l" ] && { ok=0; break; }
+            if [ -z "$first" ]; then first="$l"; elif [ "$l" != "$first" ]; then ok=0; break; fi
+        done
+        if [ "$ok" = 1 ] && [ -n "$first" ]; then echo "$first"; return 0; fi
+        tries=$((tries + 1)); sleep 1
+    done
+    return 1
+}

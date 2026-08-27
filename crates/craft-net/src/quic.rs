@@ -60,10 +60,27 @@ impl QuicServer {
         &self.endpoint
     }
 
+    /// Swap the server TLS configuration for **new** handshakes (ADR 034).
+    ///
+    /// Existing connections keep their original TLS session until they close.
+    pub fn reload(&self, config: quinn::ServerConfig) {
+        self.endpoint.set_server_config(Some(config));
+    }
+
     /// Accept connections forever, dispatching each request to `handler`.
     /// Returns once the endpoint is closed.
     pub async fn run(self, handler: Arc<dyn RequestHandler>) {
-        while let Some(incoming) = self.endpoint.accept().await {
+        Self::accept_loop(&self.endpoint, handler).await;
+    }
+
+    /// Like [`run`](Self::run) but keeps the server in an [`Arc`] so other tasks
+    /// (e.g. cert hot-reload, ADR 034) can call [`reload`](Self::reload).
+    pub async fn run_arc(self: Arc<Self>, handler: Arc<dyn RequestHandler>) {
+        Self::accept_loop(&self.endpoint, handler).await;
+    }
+
+    async fn accept_loop(endpoint: &quinn::Endpoint, handler: Arc<dyn RequestHandler>) {
+        while let Some(incoming) = endpoint.accept().await {
             let handler = handler.clone();
             tokio::spawn(async move {
                 match incoming.await {
@@ -179,7 +196,7 @@ impl PeerConn {
 
 struct Inner {
     endpoint: quinn::Endpoint,
-    client_config: quinn::ClientConfig,
+    client_config: RwLock<quinn::ClientConfig>,
     // Runtime-mutable so peers learned dynamically (a node joining via
     // `/cluster/join`, addresses gossiped over `/cluster/peers`) become dialable
     // without restarting the transport (ADR 007). Guarded by a std `RwLock`
@@ -250,7 +267,7 @@ impl QuicTransport {
         Self {
             inner: Arc::new(Inner {
                 endpoint,
-                client_config,
+                client_config: RwLock::new(client_config),
                 directory: RwLock::new(directory),
                 policy,
                 traffic,
@@ -287,6 +304,17 @@ impl QuicTransport {
             .read()
             .expect("peer directory poisoned")
             .clone()
+    }
+
+    /// Swap the outbound client TLS config and drop cached connections so the
+    /// next dial uses the new identity (ADR 034).
+    pub async fn reload(&self, client_config: quinn::ClientConfig) {
+        *self
+            .inner
+            .client_config
+            .write()
+            .expect("client config poisoned") = client_config;
+        self.inner.conns.lock().await.clear();
     }
 }
 
@@ -358,9 +386,14 @@ async fn dial(inner: &Inner, peer: NodeId) -> Result<ClientSender, TransportErro
         .addr(peer)
         .ok_or(TransportError::Unreachable(peer))?;
     let server_name = node_server_name(peer);
+    let client_cfg = inner
+        .client_config
+        .read()
+        .expect("client config poisoned")
+        .clone();
     let connecting = inner
         .endpoint
-        .connect_with(inner.client_config.clone(), addr, &server_name)
+        .connect_with(client_cfg, addr, &server_name)
         .map_err(io)?;
     let conn = connecting.await.map_err(io)?;
 

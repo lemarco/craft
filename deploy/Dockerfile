@@ -5,8 +5,8 @@
 #   docker build -f deploy/Dockerfile -t craft-node:latest .
 #
 # The runtime image is distroless (no shell/package manager) for a small,
-# hardened surface. Certs are mounted from a Secret at /etc/craft/certs; the
-# admin port (8080) serves the Kubernetes liveness/readiness probes (ADR 025).
+# hardened surface. Certs are mounted from cert-manager Secrets under
+# /etc/craft/…; the admin port (8080) serves Kubernetes probes (ADR 025).
 
 FROM rust:1.98-slim AS build
 WORKDIR /src

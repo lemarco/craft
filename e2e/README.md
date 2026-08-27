@@ -21,6 +21,10 @@ real network between separate processes.
   network, asserts the majority re-elects, heals the partition, and asserts the
   whole cluster re-converges on one leader (no split brain). Also an opt-in
   latency scenario via [`pumba`](https://github.com/alexei-led/pumba).
+- `cert_renew.sh` — PEM hot reload (ADR 034): reissues a follower's on-disk
+  cert, triggers reload via **SIGHUP** and via **file poll**
+  (`CRAFT_CERT_WATCH_SECS`), and asserts the cluster stays healthy without
+  process restart.
 - `lib.sh` — shared helpers (compose wrapper, leader polling) sourced by both.
 
 ## Run it
@@ -28,6 +32,7 @@ real network between separate processes.
 ```sh
 ./e2e/run.sh                    # election + failover
 ./e2e/chaos.sh                  # partition + heal
+./e2e/cert_renew.sh             # PEM reissue + SIGHUP/poll hot reload
 CRAFT_E2E_PUMBA=1 ./e2e/chaos.sh  # also inject 250ms±50ms latency via pumba
 ```
 

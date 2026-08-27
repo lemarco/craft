@@ -42,7 +42,9 @@ h3-quinn = "0.0.10"
 http = "1"
 bytes = "1"
 tokio = { version = "1", features = ["rt", "sync", "time"] }
+rustls-pemfile = "2"
 rcgen = { version = "0.14", optional = true }
 
 [dev-dependencies]
+tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "test-util"] }

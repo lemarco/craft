@@ -20,6 +20,8 @@
 //! | `CRAFT_DISCOVERY` | `dns:<prefix>:<service>:<replicas>:<port>` → resolve seeds | *none* |
 //! | `CRAFT_ALLOW_JOIN` | Accept dynamic joins on this node (`1`/`true`) | `false` |
 //! | `CRAFT_NODE_CERT` / `CRAFT_NODE_KEY` / `CRAFT_CA_CERT` | PEM cert chain / key / CA | *dev CA* |
+//! | `CRAFT_CERT_ORDINAL_BASE` | Dir with per-ordinal subdirs (`0/tls.crt`, …) for K8s cert-manager | *unset* |
+//! | `CRAFT_CERT_WATCH_SECS` | Poll interval for on-disk cert reload (ADR 034) | `60` |
 //!
 //! With no cert vars set, a throwaway dev CA is minted for a **single-node**
 //! cluster (great for `cargo run -p craft-node`). A multi-node cluster needs a
@@ -35,9 +37,8 @@ use std::net::{SocketAddr, ToSocketAddrs};
 
 use craft::core::StateMachine;
 use craft::discovery::{Seed, resolve_dns_seeds};
-use craft::net::NodeIdentity;
 use craft::proto::LogIndex;
-use craft::{CraftCluster, NodeId, PeerDirectory, Security};
+use craft::{CraftCluster, NodeId, PeerDirectory, PemSecurity, Security, cert_paths_from_env};
 
 /// A minimal built-in state machine: counts applied commands. Real apps supply
 /// their own; this keeps the reference runner self-contained.
@@ -87,6 +88,8 @@ struct NodeConfig {
     /// service; see [`craft::discovery::resolve_dns_seeds`]).
     discovery: Option<DnsSpec>,
     allow_join: bool,
+    /// Production PEM paths when cert env vars are set (ADR 034 hot reload).
+    pem_paths: Option<craft::CertPaths>,
     security: Security,
 }
 
@@ -123,6 +126,63 @@ fn node_id_from_env() -> Result<NodeId, Box<dyn Error>> {
         return Ok(NodeId(ordinal + 1));
     }
     Ok(NodeId(1))
+}
+
+/// StatefulSet pod ordinal from `POD_NAME` (`craft-2` → `2`).
+fn pod_ordinal_from_env() -> Result<u64, Box<dyn Error>> {
+    let pod = env("POD_NAME")
+        .ok_or("CRAFT_CERT_ORDINAL_BASE requires POD_NAME (Kubernetes downward API)")?;
+    pod.rsplit_once('-')
+        .and_then(|(_, ord)| ord.parse().ok())
+        .ok_or_else(|| format!("POD_NAME {pod:?} has no trailing ordinal (want name-N)").into())
+}
+
+/// Load mTLS material from explicit PEM paths or cert-manager ordinal mounts.
+fn load_security_from_env(
+    node_id: NodeId,
+    members: &[NodeId],
+    joining: bool,
+) -> Result<(Security, Option<craft::CertPaths>), Box<dyn Error>> {
+    if let Some(base) = env("CRAFT_CERT_ORDINAL_BASE") {
+        let ca = env("CRAFT_CA_CERT").ok_or("CRAFT_CERT_ORDINAL_BASE requires CRAFT_CA_CERT")?;
+        let ordinal = pod_ordinal_from_env()?;
+        let paths = cert_paths_from_env(
+            format!("{base}/{ordinal}/tls.crt"),
+            format!("{base}/{ordinal}/tls.key"),
+            ca,
+        );
+        let pem = PemSecurity::load(node_id, paths.clone())?;
+        return Ok((pem.security, Some(paths)));
+    }
+
+    match (
+        env("CRAFT_NODE_CERT"),
+        env("CRAFT_NODE_KEY"),
+        env("CRAFT_CA_CERT"),
+    ) {
+        (Some(cert), Some(key), Some(ca)) => {
+            let paths = cert_paths_from_env(cert, key, ca);
+            let pem = PemSecurity::load(node_id, paths.clone())?;
+            Ok((pem.security, Some(paths)))
+        }
+        (None, None, None) => {
+            if members.len() > 1 || joining {
+                return Err("multi-node clusters need shared certs: set \
+                     CRAFT_NODE_CERT/CRAFT_NODE_KEY/CRAFT_CA_CERT on every node \
+                     (mint them with examples/certs/generate.sh; see docs/certs.md), \
+                     or CRAFT_CERT_ORDINAL_BASE + CRAFT_CA_CERT for cert-manager. \
+                     A per-process dev CA only works for a single node."
+                    .into());
+            }
+            let ca = craft::net::tls::ClusterCa::generate()?;
+            Ok((Security::dev(&ca, node_id)?, None))
+        }
+        _ => Err(
+            "set all of CRAFT_NODE_CERT, CRAFT_NODE_KEY, CRAFT_CA_CERT together, \
+             or CRAFT_CERT_ORDINAL_BASE + CRAFT_CA_CERT + POD_NAME, or none for dev mode"
+                .into(),
+        ),
+    }
 }
 
 /// Parse `CRAFT_JOIN_SEEDS` (`id@host:port,...`) into a discovery seed set.
@@ -196,28 +256,6 @@ fn parse_peers(raw: &str) -> Result<(PeerDirectory, Vec<NodeId>), Box<dyn Error>
     Ok((map.into_iter().collect(), members))
 }
 
-/// Load an mTLS identity + trust root from PEM files.
-fn load_pem_security(
-    node_id: NodeId,
-    cert_path: &str,
-    key_path: &str,
-    ca_path: &str,
-) -> Result<Security, Box<dyn Error>> {
-    let cert_chain = rustls_pemfile::certs(&mut std::io::BufReader::new(std::fs::File::open(
-        cert_path,
-    )?))
-    .collect::<Result<Vec<_>, _>>()?;
-    let key =
-        rustls_pemfile::private_key(&mut std::io::BufReader::new(std::fs::File::open(key_path)?))?
-            .ok_or_else(|| format!("no private key in {key_path}"))?;
-    let ca_certs =
-        rustls_pemfile::certs(&mut std::io::BufReader::new(std::fs::File::open(ca_path)?))
-            .collect::<Result<Vec<_>, _>>()?;
-
-    let identity = NodeIdentity::from_der(node_id, cert_chain, key);
-    Ok(Security::from_ca_certs(identity, &ca_certs)?)
-}
-
 fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
     let node_id = node_id_from_env()?;
     let listen: SocketAddr = env("CRAFT_LISTEN")
@@ -258,30 +296,7 @@ fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
         }
     }
 
-    let security = match (
-        env("CRAFT_NODE_CERT"),
-        env("CRAFT_NODE_KEY"),
-        env("CRAFT_CA_CERT"),
-    ) {
-        (Some(cert), Some(key), Some(ca)) => load_pem_security(node_id, &cert, &key, &ca)?,
-        (None, None, None) => {
-            if members.len() > 1 || joining {
-                return Err("multi-node clusters need shared certs: set \
-                     CRAFT_NODE_CERT/CRAFT_NODE_KEY/CRAFT_CA_CERT on every node \
-                     (mint them with examples/certs/generate.sh; see docs/certs.md). \
-                     A per-process dev CA only works for a single node."
-                    .into());
-            }
-            // Single-node dev: mint a throwaway CA and self identity.
-            let ca = craft::net::tls::ClusterCa::generate()?;
-            Security::dev(&ca, node_id)?
-        }
-        _ => {
-            return Err("set all of CRAFT_NODE_CERT, CRAFT_NODE_KEY, CRAFT_CA_CERT \
-                 together, or none for dev mode"
-                .into());
-        }
-    };
+    let (security, pem_paths) = load_security_from_env(node_id, &members, joining)?;
 
     Ok(NodeConfig {
         node_id,
@@ -292,8 +307,19 @@ fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
         join_seeds,
         discovery,
         allow_join,
+        pem_paths,
         security,
     })
+}
+
+/// Parse `CRAFT_CERT_WATCH_SECS` (default 60) for PEM hot reload polling.
+fn cert_watch_period_from_env() -> std::time::Duration {
+    env("CRAFT_CERT_WATCH_SECS")
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .map_or(
+            std::time::Duration::from_secs(60),
+            std::time::Duration::from_secs,
+        )
 }
 
 #[tokio::main]
@@ -327,9 +353,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
         builder = builder.join_seeds(seeds);
     }
 
-    let cluster = builder
-        .start_quic(cfg.security, cfg.listen, cfg.peers)
-        .await?;
+    let cluster = if let Some(paths) = cfg.pem_paths {
+        let pem = PemSecurity {
+            security: cfg.security,
+            paths,
+        };
+        builder
+            .cert_watch(cert_watch_period_from_env())
+            .start_quic_pem(pem, cfg.listen, cfg.peers)
+            .await?
+    } else {
+        builder
+            .start_quic(cfg.security, cfg.listen, cfg.peers)
+            .await?
+    };
 
     println!(
         "node {:?} listening on {} — members {:?}{}",

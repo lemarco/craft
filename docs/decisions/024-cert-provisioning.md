@@ -57,9 +57,9 @@ CRAFT_CLIENT_KEY=/etc/craft/client.key
 - Rotation: reissue node cert, rolling restart (no auto-rotation in v1)
 - Redis TLS (optional) — pointer only; user-managed ([ADR 021](021-actor-state-redis.md))
 
-### Out of scope v1
+### Out of scope v1 (see [ADR 034](034-cert-automation.md) for automation)
 
-- ACME, step-ca, cert-manager integration (defer)
+- ACME, step-ca, cert-manager integration (defer → **done in ADR 034**)
 
 ## Related
 
