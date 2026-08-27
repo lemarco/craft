@@ -715,6 +715,9 @@ async fn switch_to_stable_shards_from_modulus() {
     assert_eq!(cluster.shard_routing(), ShardRoutingKind::StableVirtual);
     assert!(cluster.switch_to_stable_shards().is_err());
 
+    let groups = [RaftGroupId(0), RaftGroupId(1)];
+    let (key, _) = find_keys_for_two_groups(64, &groups);
+
     let cmd = craft::proto::encode(&KvCommand::Set {
         key: "k".into(),
         value: "v".into(),
@@ -724,7 +727,7 @@ async fn switch_to_stable_shards_from_modulus() {
         &*Arc::new(net.clone()),
         node_id,
         &ClientRequest::ProposeKeyed {
-            key: b"route-a".to_vec(),
+            key,
             command: cmd,
         },
     )
