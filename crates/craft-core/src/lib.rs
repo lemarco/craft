@@ -11,21 +11,28 @@
 pub use craft_proto as proto;
 
 mod config;
+mod failure_detector;
 mod log;
 mod node;
 mod rng;
 mod shard;
 mod state_machine;
 
+pub use failure_detector::{
+    AckWindowLiveness, FailureDetectorKind, PhiAccrualDetector, PhiAccrualLiveness,
+    ReachabilityConfig,
+};
 pub use node::{
     Committed, Config, MembershipError, NotLeader, Output, Persist, RaftNode, ReadId, Role,
     SnapshotState,
 };
 pub use shard::{
-    DEFAULT_GROUP_REPLICATION_FACTOR, GroupMembershipChange, GroupRebalancePlan, RaftGroupId,
-    ShardId, ShardRouter, effective_replication_factor, group_host_assignment,
+    DEFAULT_GROUP_LEARNER_FACTOR, DEFAULT_GROUP_REPLICATION_FACTOR, GroupMembershipChange,
+    GroupRebalancePlan, GroupReplicationTarget, MAX_VIRTUAL_SHARDS, RaftGroupId,
+    ShardCountExpansionPlan, ShardExpansionError, ShardId, ShardRouter,
+    effective_replication_factor, group_host_assignment, group_learners,
     group_membership_assignment, group_voters, groups_joining_node_affects,
     groups_leaving_node_affects, place_shard, plan_group_membership_change,
-    plan_group_membership_sync, plan_node_group_rebalance,
+    plan_group_membership_sync, plan_node_group_rebalance, plan_shard_count_expansion,
 };
 pub use state_machine::{Command, Query, StateMachine};

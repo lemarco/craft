@@ -24,6 +24,9 @@ use craft_proto::{
 };
 
 use crate::config::Configuration;
+use crate::failure_detector::{
+    AckWindowLiveness, FailureDetectorKind, PhiAccrualLiveness, ReachabilityConfig,
+};
 use crate::log::Log;
 use crate::rng::Rng;
 
@@ -52,6 +55,8 @@ pub struct Config {
     pub heartbeat_interval: u64,
     /// Seed mixed with the node id for deterministic timeout jitter.
     pub seed: u64,
+    /// Leader-side reachability tuning (liveness-vs-membership Tier 2).
+    pub reachability: ReachabilityConfig,
 }
 
 impl Default for Config {
@@ -61,6 +66,7 @@ impl Default for Config {
             election_timeout_max: 20,
             heartbeat_interval: 3,
             seed: 0,
+            reachability: ReachabilityConfig::default(),
         }
     }
 }
@@ -234,6 +240,8 @@ pub struct RaftNode {
     // signal distinct from committed voter membership, so crash detection need
     // not wait for a `ConfChange`.
     last_ack_clock: BTreeMap<NodeId, u64>,
+    ack_liveness: AckWindowLiveness,
+    phi_liveness: PhiAccrualLiveness,
 
     // Leader lease (read-consistency lease reads): the leader may serve a read locally,
     // with no fresh quorum round, while it holds a valid lease. The lease is
@@ -278,6 +286,7 @@ impl RaftNode {
     pub fn with_membership(id: NodeId, membership: Membership, config: Config) -> Self {
         let mut rng = Rng::new(config.seed ^ id.0 ^ 0x9E37_79B9_7F4A_7C15);
         let election_timeout = rng.range(config.election_timeout_min, config.election_timeout_max);
+        let phi_threshold = config.reachability.phi_threshold;
         Self {
             id,
             initial: membership,
@@ -300,6 +309,8 @@ impl RaftNode {
             pending_reads: Vec::new(),
             snapshot: None,
             last_ack_clock: BTreeMap::new(),
+            ack_liveness: AckWindowLiveness::default(),
+            phi_liveness: PhiAccrualLiveness::new(phi_threshold),
             lease_round: Round::ZERO,
             lease_round_clock: 0,
             lease_acks: BTreeSet::new(),
@@ -602,6 +613,7 @@ impl RaftNode {
     pub fn tick(&mut self) {
         self.logical_clock += 1;
         if self.role == Role::Leader {
+            self.update_liveness();
             self.heartbeat_elapsed += 1;
             if self.heartbeat_elapsed >= self.config.heartbeat_interval {
                 self.heartbeat_elapsed = 0;
@@ -1060,6 +1072,9 @@ impl RaftNode {
             self.next_index.insert(from, upper.next());
             // A successful ack is our freshest proof the peer is alive (liveness-vs-membership).
             self.last_ack_clock.insert(from, self.logical_clock);
+            if self.config.reachability.detector == FailureDetectorKind::PhiAccrual {
+                self.phi_liveness.record_heartbeat(from, self.logical_clock);
+            }
             self.confirm_reads(from, reply.round);
             if reply.round >= self.lease_round {
                 self.lease_acks.insert(from);
@@ -1329,14 +1344,54 @@ impl RaftNode {
             .collect()
     }
 
-    /// [`reachable`](Self::reachable) with a default detection window of twice
-    /// the maximum election timeout: a follower acks every heartbeat (far more
-    /// often than an election timeout), so silence this long is strong evidence
-    /// it is down rather than merely slow, while staying well clear of the
-    /// heartbeat cadence to avoid flapping.
+    /// [`reachable`](Self::reachable) with configured window, hysteresis, or
+    /// phi-accrual (liveness-vs-membership Tier 2). Updated every leader
+    /// [`tick`](Self::tick).
     #[must_use]
     pub fn reachable_now(&self) -> Vec<NodeId> {
-        self.reachable(self.config.election_timeout_max.saturating_mul(2))
+        let voters = self.configuration().voters();
+        if self.role != Role::Leader {
+            return voters;
+        }
+        let now = self.logical_clock;
+        voters
+            .into_iter()
+            .filter(|&v| match self.config.reachability.detector {
+                FailureDetectorKind::AckWindow => v == self.id || self.ack_liveness.is_reachable(v),
+                FailureDetectorKind::PhiAccrual => {
+                    v == self.id || self.phi_liveness.is_reachable(v, now)
+                }
+            })
+            .collect()
+    }
+
+    fn update_liveness(&mut self) {
+        if self.role != Role::Leader {
+            return;
+        }
+        let voters = self.configuration().voters();
+        let now = self.logical_clock;
+        match self.config.reachability.detector {
+            FailureDetectorKind::AckWindow => {
+                let window = self
+                    .config
+                    .reachability
+                    .window(self.config.election_timeout_max);
+                let hysteresis = self
+                    .config
+                    .reachability
+                    .hysteresis(self.config.election_timeout_min);
+                self.ack_liveness.update(
+                    now,
+                    self.id,
+                    &voters,
+                    &self.last_ack_clock,
+                    window,
+                    hysteresis,
+                );
+            }
+            FailureDetectorKind::PhiAccrual => {}
+        }
     }
 
     // ---- Membership finalization (membership-early) ------------------------------

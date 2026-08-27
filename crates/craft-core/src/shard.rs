@@ -36,6 +36,12 @@ pub struct RaftGroupId(pub u32);
 /// Default replication factor for per-group voter sets (per-group-raft-membership).
 pub const DEFAULT_GROUP_REPLICATION_FACTOR: u32 = 3;
 
+/// Default non-voting learner replicas per group beyond voters (Tier 1). `0` disables.
+pub const DEFAULT_GROUP_LEARNER_FACTOR: u32 = 0;
+
+/// Upper bound for [`ShardRouter`] active shard counts (Tier 1 expansion).
+pub const MAX_VIRTUAL_SHARDS: u32 = 4096;
+
 /// FNV-1a (64-bit): a small, dependency-free, **stable** hash. Stability matters
 /// because the mapping must be identical on every node and across process
 /// restarts — unlike `DefaultHasher`, whose output is not guaranteed stable.
@@ -66,11 +72,11 @@ pub struct ShardRouter {
 }
 
 impl ShardRouter {
-    /// A router over `shard_count` shards (clamped to at least 1).
+    /// A router over `shard_count` shards (clamped to `[1, MAX_VIRTUAL_SHARDS]`).
     #[must_use]
     pub fn new(shard_count: u32) -> Self {
         Self {
-            shard_count: shard_count.max(1),
+            shard_count: shard_count.clamp(1, MAX_VIRTUAL_SHARDS),
         }
     }
 
@@ -85,6 +91,98 @@ impl ShardRouter {
     pub fn shard_for(&self, key: &[u8]) -> ShardId {
         ShardId((fnv1a(key) % u64::from(self.shard_count)) as u32)
     }
+
+    /// Increase the active shard count (operator-driven expansion). Keys
+    /// **remap** when the modulus changes — drain clients before applying.
+    ///
+    /// # Errors
+    /// Returns an error when `new_count` shrinks the space or exceeds
+    /// [`MAX_VIRTUAL_SHARDS`].
+    pub fn expand_shard_count(
+        &mut self,
+        new_count: u32,
+    ) -> Result<ShardCountExpansionPlan, ShardExpansionError> {
+        let plan = plan_shard_count_expansion(self.shard_count, new_count)?;
+        self.shard_count = plan.to;
+        Ok(plan)
+    }
+}
+
+/// Why a shard-count expansion request was rejected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShardExpansionError {
+    /// `new_count` must be strictly greater than the current count.
+    CannotShrink {
+        /// Current active shard count.
+        current: u32,
+        /// Requested count.
+        requested: u32,
+    },
+    /// `new_count` exceeds [`MAX_VIRTUAL_SHARDS`].
+    ExceedsMax {
+        /// Requested count.
+        requested: u32,
+    },
+    /// Keyed routing / expansion requires multi-Raft (`raft_groups > 1`).
+    NotMultiRaft,
+}
+
+impl std::fmt::Display for ShardExpansionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CannotShrink { current, requested } => write!(
+                f,
+                "shard count can only increase (have {current}, requested {requested})"
+            ),
+            Self::ExceedsMax { requested } => write!(
+                f,
+                "requested {requested} shards exceeds MAX_VIRTUAL_SHARDS ({MAX_VIRTUAL_SHARDS})"
+            ),
+            Self::NotMultiRaft => {
+                f.write_str("shard expansion requires multi-Raft (raft_groups > 1)")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ShardExpansionError {}
+
+/// Plan for expanding the active shard keyspace (Tier 1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShardCountExpansionPlan {
+    /// Previous active shard count.
+    pub from: u32,
+    /// New active shard count.
+    pub to: u32,
+    /// Shard ids entering the active range `[from, to)`.
+    pub new_shard_ids: Vec<ShardId>,
+}
+
+/// Plan a shard-count increase. Shrinking is rejected — pick a larger
+/// [`MAX_VIRTUAL_SHARDS`] up front or migrate data explicitly.
+///
+/// # Errors
+/// Returns [`ShardExpansionError`] when `to` is not a strict increase within
+/// [`MAX_VIRTUAL_SHARDS`].
+pub fn plan_shard_count_expansion(
+    from: u32,
+    to: u32,
+) -> Result<ShardCountExpansionPlan, ShardExpansionError> {
+    let from = from.max(1);
+    if to <= from {
+        return Err(ShardExpansionError::CannotShrink {
+            current: from,
+            requested: to,
+        });
+    }
+    if to > MAX_VIRTUAL_SHARDS {
+        return Err(ShardExpansionError::ExceedsMax { requested: to });
+    }
+    Ok(ShardCountExpansionPlan {
+        from,
+        to,
+        new_shard_ids: (from..to).map(ShardId).collect(),
+    })
 }
 
 /// The Raft group that owns `shard`, chosen by rendezvous (highest-random-weight)
@@ -171,6 +269,44 @@ pub fn group_voters(
     ranked.truncate(rf as usize);
     ranked.sort();
     ranked
+}
+
+/// Desired learner set for one Raft group: live nodes ranked after the voter
+/// set, up to `learner_factor` nodes (Tier 1 per-group-raft-membership).
+#[must_use]
+pub fn group_learners(
+    group: RaftGroupId,
+    live_nodes: &[craft_proto::NodeId],
+    replication_factor: u32,
+    learner_factor: u32,
+) -> Vec<craft_proto::NodeId> {
+    if learner_factor == 0 || live_nodes.is_empty() {
+        return Vec::new();
+    }
+    use std::collections::BTreeSet;
+
+    let voters: BTreeSet<_> = group_voters(group, live_nodes, replication_factor)
+        .into_iter()
+        .collect();
+    let mut ranked: Vec<_> = live_nodes.to_vec();
+    ranked.sort_by(|a, b| {
+        group_node_weight(group, *b)
+            .cmp(&group_node_weight(group, *a))
+            .then_with(|| a.cmp(b))
+    });
+    ranked.retain(|n| !voters.contains(n));
+    ranked.truncate(learner_factor as usize);
+    ranked.sort();
+    ranked
+}
+
+/// Desired voters + learners for one group.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupReplicationTarget {
+    /// Joint-consensus voters.
+    pub voters: Vec<craft_proto::NodeId>,
+    /// Non-voting learners (catch-up replicas).
+    pub learners: Vec<craft_proto::NodeId>,
 }
 
 /// Full desired voter assignment for every group in `groups` (per-group-raft-membership).
@@ -269,25 +405,45 @@ pub fn groups_leaving_node_affects(
         .collect()
 }
 
-/// Groups whose desired voter set differs from `current` (per-group-raft-membership). Skips
-/// coordinator group 0 — its membership is managed by `/cluster/join`.
+/// Groups whose desired voter/learner sets differ from `current`
+/// (per-group-raft-membership). Skips coordinator group 0 — its membership is
+/// managed by `/cluster/join`.
 #[must_use]
 pub fn plan_group_membership_sync(
     catalog: &[RaftGroupId],
     live_nodes: &[craft_proto::NodeId],
-    current: &BTreeMap<RaftGroupId, Vec<craft_proto::NodeId>>,
+    current_voters: &BTreeMap<RaftGroupId, Vec<craft_proto::NodeId>>,
+    current_learners: &BTreeMap<RaftGroupId, Vec<craft_proto::NodeId>>,
     replication_factor: u32,
-) -> BTreeMap<RaftGroupId, Vec<craft_proto::NodeId>> {
+    learner_factor: u32,
+) -> BTreeMap<RaftGroupId, GroupReplicationTarget> {
     let mut out = BTreeMap::new();
     for &group in catalog {
         if group.0 == 0 {
             continue;
         }
-        let desired = group_voters(group, live_nodes, replication_factor);
-        let cur = current.get(&group).map(Vec::as_slice).unwrap_or(&[]);
-        let change = plan_group_membership_change(cur, &desired);
-        if !change.add.is_empty() || !change.remove.is_empty() {
-            out.insert(group, desired);
+        let desired_voters = group_voters(group, live_nodes, replication_factor);
+        let desired_learners =
+            group_learners(group, live_nodes, replication_factor, learner_factor);
+        let cur_v = current_voters.get(&group).map(Vec::as_slice).unwrap_or(&[]);
+        let cur_l = current_learners
+            .get(&group)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let voter_change = plan_group_membership_change(cur_v, &desired_voters);
+        let learner_change = plan_group_membership_change(cur_l, &desired_learners);
+        if !voter_change.add.is_empty()
+            || !voter_change.remove.is_empty()
+            || !learner_change.add.is_empty()
+            || !learner_change.remove.is_empty()
+        {
+            out.insert(
+                group,
+                GroupReplicationTarget {
+                    voters: desired_voters,
+                    learners: desired_learners,
+                },
+            );
         }
     }
     out
@@ -573,13 +729,44 @@ mod tests {
 
         let catalog: Vec<_> = (0..4).map(RaftGroupId).collect();
         let live = [NodeId(1), NodeId(2), NodeId(3), NodeId(4)];
-        let mut current = BTreeMap::new();
-        current.insert(RaftGroupId(0), vec![NodeId(1), NodeId(2), NodeId(3)]);
-        current.insert(RaftGroupId(1), vec![NodeId(1), NodeId(2), NodeId(3)]);
-        current.insert(RaftGroupId(2), vec![NodeId(1), NodeId(2), NodeId(3)]);
+        let mut current_voters = BTreeMap::new();
+        current_voters.insert(RaftGroupId(0), vec![NodeId(1), NodeId(2), NodeId(3)]);
+        current_voters.insert(RaftGroupId(1), vec![NodeId(1), NodeId(2), NodeId(3)]);
+        current_voters.insert(RaftGroupId(2), vec![NodeId(1), NodeId(2), NodeId(3)]);
 
-        let sync = plan_group_membership_sync(&catalog, &live, &current, 3);
+        let sync =
+            plan_group_membership_sync(&catalog, &live, &current_voters, &BTreeMap::new(), 3, 0);
         assert!(!sync.contains_key(&RaftGroupId(0)));
-        assert!(sync.values().all(|v| v.contains(&NodeId(4))));
+        assert!(sync.values().all(|t| t.voters.contains(&NodeId(4))));
+    }
+
+    #[test]
+    fn group_learners_picks_nodes_after_voters() {
+        use craft_proto::NodeId;
+
+        let nodes = [NodeId(1), NodeId(2), NodeId(3), NodeId(4), NodeId(5)];
+        let voters = group_voters(RaftGroupId(1), &nodes, 3);
+        let learners = group_learners(RaftGroupId(1), &nodes, 3, 2);
+        assert_eq!(learners.len(), 2);
+        for l in &learners {
+            assert!(!voters.contains(l));
+        }
+    }
+
+    #[test]
+    fn shard_count_expansion_plans_new_shard_range() {
+        let plan = plan_shard_count_expansion(256, 512).expect("expand");
+        assert_eq!(plan.from, 256);
+        assert_eq!(plan.to, 512);
+        assert_eq!(plan.new_shard_ids.len(), 256);
+        assert_eq!(plan.new_shard_ids[0], ShardId(256));
+    }
+
+    #[test]
+    fn shard_router_expand_updates_count() {
+        let mut router = ShardRouter::new(64);
+        let plan = router.expand_shard_count(128).expect("expand");
+        assert_eq!(plan.to, 128);
+        assert_eq!(router.shard_count(), 128);
     }
 }

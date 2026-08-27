@@ -11,6 +11,7 @@ fn cfg() -> Config {
         election_timeout_max: 100,
         heartbeat_interval: 3,
         seed: 1,
+        ..Default::default()
     }
 }
 
