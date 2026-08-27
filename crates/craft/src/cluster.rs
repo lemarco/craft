@@ -17,7 +17,9 @@ use craft_dashboard::{CraftEvent, EventBus, Metrics, StopReason, TraceOpts};
 use craft_net::RemoteError;
 use craft_net::transport::RequestHandler;
 use craft_net::{Transport, send_leave_request};
-use craft_proto::{LeaveRequest, LeaveResponse, NodeId, PROTOCOL_VERSION, ScaleRequest};
+use craft_proto::{
+    LeaveRejection, LeaveRequest, LeaveResponse, Membership, NodeId, PROTOCOL_VERSION, ScaleRequest,
+};
 use tokio::task::JoinHandle;
 
 use craft_actor::{
@@ -368,10 +370,12 @@ pub struct CraftCluster<M: StateMachine> {
     /// Full `/raft/v1/*` handler attached to the transport (stored so tests can
     /// re-attach a node after simulating partition on [`LocalNetwork`]).
     pub(crate) wire_handler: Arc<dyn RequestHandler>,
+    pub(crate) transport: Arc<dyn Transport>,
     pub(crate) facts: Arc<ClusterFacts>,
     /// Live multi-Raft state when `raft_groups > 1` (handles move on rebalance).
     pub(crate) multi_raft: Option<Arc<MultiRaftState<M>>>,
     pub(crate) cert_reload: Option<Arc<CertReloadHandle>>,
+    pub(crate) drain_timeout: Duration,
     pub(crate) tasks: Mutex<Vec<JoinHandle<()>>>,
 }
 
@@ -467,7 +471,28 @@ impl<M: StateMachine> CraftCluster<M> {
     /// Shard count used for keyed client routing when `raft_groups > 1`.
     #[must_use]
     pub fn shard_count(&self) -> u32 {
-        self.shard_count
+        if let Some(mr) = &self.multi_raft {
+            mr.sharded.shard_count()
+        } else {
+            self.shard_count
+        }
+    }
+
+    /// Expand the virtual shard keyspace (multi-Raft only). Keys **remap** when
+    /// the modulus changes — drain keyed clients before calling.
+    ///
+    /// # Errors
+    /// Returns [`craft_core::ShardExpansionError::NotMultiRaft`] on single-Raft
+    /// clusters, or planner errors when `new_count` is invalid.
+    pub fn expand_shard_count(
+        &self,
+        new_count: u32,
+    ) -> Result<craft_core::ShardCountExpansionPlan, craft_core::ShardExpansionError> {
+        let mr = self
+            .multi_raft
+            .as_ref()
+            .ok_or(craft_core::ShardExpansionError::NotMultiRaft)?;
+        mr.sharded.expand_shard_count(new_count)
     }
 
     /// The node-local actor registry (spawn / scale / drain local actors).
@@ -569,6 +594,100 @@ impl<M: StateMachine> CraftCluster<M> {
         .await
     }
 
+    /// Graceful self-removal from the cluster registry (group 0) via
+    /// [`request_leave`](Self::request_leave), retrying live peers on this
+    /// node's transport until the membership change commits or the deadline
+    /// expires. Per-group sync removes this node from shard groups on the
+    /// facts tick (per-group-raft-membership ADR).
+    ///
+    /// Callers hosting actors should drain or migrate workers first
+    /// (cross-node-actors); this method only removes Raft membership.
+    ///
+    /// # Errors
+    /// Returns [`LeaveError`] when no peer is reachable, the cluster refuses
+    /// the leave, or the retry budget is exhausted.
+    pub async fn leave(&self) -> Result<Membership, LeaveError> {
+        let deadline = Instant::now() + LEAVE_TIMEOUT;
+        let contacts = self.leave_contacts().await;
+        if contacts.is_empty() {
+            return Err(LeaveError::NoContact);
+        }
+        loop {
+            for &contact in &contacts {
+                match self.leave_via_contact(contact).await {
+                    Ok(membership) => {
+                        self.events.emit(CraftEvent::NodeLeft {
+                            node_id: self.node_id.0,
+                            graceful: true,
+                        });
+                        return Ok(membership);
+                    }
+                    Err(LeaveError::Rejected(LeaveRejection::NotMember)) => {
+                        if let Some(status) = self.status().await {
+                            return Ok(Membership {
+                                voters: status.voters,
+                                voters_outgoing: Vec::new(),
+                                learners: Vec::new(),
+                            });
+                        }
+                        return Err(LeaveError::Rejected(LeaveRejection::NotMember));
+                    }
+                    Err(LeaveError::Rejected(reason)) => {
+                        return Err(LeaveError::Rejected(reason));
+                    }
+                    Err(LeaveError::Transport(_)) => {}
+                    Err(e) => return Err(e),
+                }
+            }
+            if Instant::now() >= deadline {
+                return Err(LeaveError::Timeout);
+            }
+            tokio::time::sleep(LEAVE_RETRY).await;
+        }
+    }
+
+    async fn leave_contacts(&self) -> Vec<NodeId> {
+        if let Some(status) = self.status().await {
+            status
+                .voters
+                .iter()
+                .copied()
+                .filter(|id| *id != self.node_id)
+                .collect()
+        } else {
+            self.members
+                .iter()
+                .copied()
+                .filter(|id| *id != self.node_id)
+                .collect()
+        }
+    }
+
+    async fn leave_via_contact(&self, contact: NodeId) -> Result<Membership, LeaveError> {
+        let first = self
+            .request_leave(self.transport.as_ref(), contact)
+            .await
+            .map_err(LeaveError::Transport)?;
+        match first {
+            LeaveResponse::Accepted { membership, .. } => Ok(membership),
+            LeaveResponse::Redirect {
+                leader: Some(leader),
+            } if leader != contact => {
+                let second = self
+                    .request_leave(self.transport.as_ref(), leader)
+                    .await
+                    .map_err(LeaveError::Transport)?;
+                match second {
+                    LeaveResponse::Accepted { membership, .. } => Ok(membership),
+                    LeaveResponse::Rejected { reason } => Err(LeaveError::Rejected(reason)),
+                    _ => Err(LeaveError::Timeout),
+                }
+            }
+            LeaveResponse::Rejected { reason } => Err(LeaveError::Rejected(reason)),
+            _ => Err(LeaveError::Timeout),
+        }
+    }
+
     /// Hot-reload handle when the node was started with [`CraftClusterBuilder::start_quic_pem`]
     /// (cert-automation). `None` for in-memory or static `Security` starts.
     #[must_use]
@@ -653,6 +772,46 @@ impl<M: StateMachine> CraftCluster<M> {
         self.directory_sync.publish(&self.members, regs).await
     }
 
+    /// Publish and wait until group `name` is visible locally (read-your-writes).
+    /// Useful immediately after spawn/scale when
+    /// [`DirectoryPolicy::ReadYourWrites`](craft_actor::DirectoryPolicy::ReadYourWrites) is enabled.
+    pub async fn publish_directory_visible(
+        &self,
+        group: &str,
+        min_instances: usize,
+        timeout: Duration,
+    ) -> bool {
+        let _ = self.publish_directory().await;
+        self.directory
+            .wait_until(timeout, || {
+                self.directory.has_at_least(group, min_instances)
+            })
+            .await
+    }
+
+    /// Cluster-wide default graceful-drain timeout ([drain-timeout]).
+    #[must_use]
+    pub fn drain_timeout(&self) -> Duration {
+        self.drain_timeout
+    }
+
+    /// Per-group drain override on the local registry.
+    pub fn set_group_drain_timeout(
+        &self,
+        name: &str,
+        timeout: Option<Duration>,
+    ) -> Result<(), craft_actor::StopError> {
+        self.registry.set_group_drain_timeout(name, timeout)
+    }
+
+    /// Gracefully stop a local actor group using the cluster drain default.
+    pub async fn stop_group_graceful(
+        &self,
+        name: &str,
+    ) -> Result<craft_actor::DrainOutcome, craft_actor::StopError> {
+        self.registry.stop_graceful(name, self.drain_timeout).await
+    }
+
     /// Stop the node: shut the runtime down and abort all background tasks.
     pub fn shutdown(&self) {
         if let Some(mr) = &self.multi_raft {
@@ -701,6 +860,27 @@ impl<M: StateMachine> Drop for CraftCluster<M> {
 const SCALE_FORWARD_TIMEOUT: Duration = Duration::from_secs(5);
 /// Delay between forward retries within [`SCALE_FORWARD_TIMEOUT`].
 const SCALE_FORWARD_RETRY: Duration = Duration::from_millis(25);
+/// Total budget for [`CraftCluster::leave`] peer retries.
+const LEAVE_TIMEOUT: Duration = Duration::from_secs(30);
+/// Delay between leave attempts within [`LEAVE_TIMEOUT`].
+const LEAVE_RETRY: Duration = Duration::from_millis(50);
+
+/// Why [`CraftCluster::leave`] failed.
+#[derive(Debug, thiserror::Error)]
+pub enum LeaveError {
+    /// No other member is configured to contact.
+    #[error("no peer to submit leave to")]
+    NoContact,
+    /// Retries against live peers were exhausted.
+    #[error("leave did not commit before deadline")]
+    Timeout,
+    /// The leader refused the leave request.
+    #[error("leave rejected: {0:?}")]
+    Rejected(LeaveRejection),
+    /// A peer was unreachable or the wire framing failed.
+    #[error(transparent)]
+    Transport(#[from] craft_net::TransportError),
+}
 
 /// Why a cluster-wide [`scale_cluster`](CraftCluster::scale_cluster) failed.
 #[derive(Debug, thiserror::Error)]
@@ -741,6 +921,7 @@ mod tests {
             commit_index: LogIndex(0),
             last_applied: LogIndex(0),
             voters: voters.iter().copied().map(NodeId).collect(),
+            learners: vec![],
             reachable: reachable.iter().copied().map(NodeId).collect(),
         }
     }

@@ -8,7 +8,7 @@ use craft::net::LocalNetwork;
 use craft::proto::NodeId;
 use craft::storage::{GroupRedbLayout, LogStore, SnapshotStore};
 use craft_test_support::{
-    KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, TrackedKv, await_craft_leader,
+    KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, TrackedKv, advance, await_craft_leader,
     fast_raft_config_with_seed, wait_for_craft_leader, wait_for_craft_stopped,
     wait_for_group_leaders,
 };
@@ -36,7 +36,7 @@ where
         .await
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn single_node_data_dir_survives_restart() {
     let dir = tempfile::tempdir().expect("tempdir");
     let data_dir = dir.path().to_path_buf();
@@ -98,7 +98,7 @@ async fn single_node_data_dir_survives_restart() {
     );
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn multi_raft_data_dir_survives_restart() {
     let dir = tempfile::tempdir().expect("tempdir");
     let data_dir = dir.path().to_path_buf();
@@ -159,7 +159,7 @@ async fn multi_raft_data_dir_survives_restart() {
     assert!(data_dir.join("group-1.redb").is_file());
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn compacted_snapshot_survives_facade_restart() {
     let dir = tempfile::tempdir().expect("tempdir");
     let data_dir = dir.path().to_path_buf();
@@ -249,7 +249,7 @@ async fn compacted_snapshot_survives_facade_restart() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn three_node_majority_survives_one_member_restart() {
     let dir = tempfile::tempdir().expect("tempdir");
     let base = dir.path().to_path_buf();
@@ -331,7 +331,7 @@ async fn three_node_majority_survives_one_member_restart() {
         {
             break;
         }
-        tokio::time::sleep(TICK_PERIOD).await;
+        advance(TICK_PERIOD).await;
     }
 
     let status = restarted.status().await.expect("follower status");

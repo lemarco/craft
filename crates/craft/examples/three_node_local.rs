@@ -88,6 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 election_timeout_max: 10,
                 heartbeat_interval: 2,
                 seed: 7,
+                ..Default::default()
             })
             .tick_period(Duration::from_millis(10))
             .start_local(&net)

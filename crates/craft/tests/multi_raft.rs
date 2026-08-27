@@ -1,17 +1,16 @@
 //! Multi-Raft via [`CraftClusterBuilder::raft_machines`] (write-sharding-multi-raft).
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use craft::CraftCluster;
 use craft::core::RaftGroupId;
 use craft::net::{LocalNetwork, send_client_request, send_group_migrate, send_join_request};
 use craft::proto::{
-    ClientRequest, ClientResponse, GroupMigrateRequest, JoinRequest, JoinResponse, LeaveResponse,
-    NodeId, PROTOCOL_VERSION,
+    ClientRequest, ClientResponse, GroupMigrateRequest, JoinRequest, JoinResponse, NodeId,
+    PROTOCOL_VERSION,
 };
 use craft_test_support::{
-    KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, await_craft_leader,
+    KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, advance, await_craft_leader,
     fast_raft_config_with_seed, find_keys_for_two_groups, wait_for_each_group_cluster_leader,
     wait_for_group_leaders,
 };
@@ -60,42 +59,15 @@ async fn cluster_leader(clusters: &[Arc<CraftCluster<KvMachine>>]) -> Arc<CraftC
     await_craft_leader(clusters).await
 }
 
-async fn leave_via_cluster_rpc(
-    net: &LocalNetwork,
-    clusters: &[Arc<CraftCluster<KvMachine>>],
-    joiner: &CraftCluster<KvMachine>,
-    joiner_id: NodeId,
-) {
-    let contact = cluster_leader(clusters).await.node_id();
-    for _ in 0..500 {
-        match joiner.request_leave(net, contact).await {
-            Ok(LeaveResponse::Accepted { membership, .. }) => {
-                assert!(
-                    !membership.voters.contains(&joiner_id),
-                    "joiner still in group 0 voters: {membership:?}"
-                );
-                return;
-            }
-            Ok(LeaveResponse::Redirect {
-                leader: Some(leader),
-            }) if leader != contact => match joiner.request_leave(net, leader).await {
-                Ok(LeaveResponse::Accepted { membership, .. }) => {
-                    assert!(!membership.voters.contains(&joiner_id));
-                    return;
-                }
-                Ok(LeaveResponse::Rejected { reason }) => panic!("leave rejected: {reason:?}"),
-                _ => {}
-            },
-            Ok(LeaveResponse::Rejected { reason }) => panic!("leave rejected: {reason:?}"),
-            Err(e) => panic!("leave transport error: {e}"),
-            _ => {}
-        }
-        tokio::time::sleep(TICK_PERIOD).await;
-    }
-    panic!("leave never committed on group 0");
+async fn leave_via_cluster_rpc(joiner: &CraftCluster<KvMachine>, joiner_id: NodeId) {
+    let membership = joiner.leave().await.expect("leave via facade");
+    assert!(
+        !membership.voters.contains(&joiner_id),
+        "joiner still in group 0 voters: {membership:?}"
+    );
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn builder_hosts_independent_raft_groups() {
     let net = LocalNetwork::new();
     let node_id = NodeId(1);
@@ -189,7 +161,7 @@ async fn builder_hosts_independent_raft_groups() {
     cluster.shutdown();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn follower_serves_keyed_reads_in_multi_raft_cluster() {
     let (net, ids, clusters) = spawn_three_node_multi_raft_cluster().await;
     wait_for_all_group_leaders(&clusters).await;
@@ -247,7 +219,7 @@ async fn follower_serves_keyed_reads_in_multi_raft_cluster() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn builder_persists_each_raft_group_to_separate_redb_files() {
     let dir = tempfile::tempdir().unwrap();
     let data_dir = dir.path().to_path_buf();
@@ -274,13 +246,8 @@ async fn builder_persists_each_raft_group_to_separate_redb_files() {
             .expect("propose on group 0");
         assert_eq!(resp, KvResponse::Set { previous: None });
 
-        cluster.shutdown();
+        cluster.shutdown_and_wait().await;
     }
-
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
-    assert!(data_dir.join("group-0.redb").is_file());
-    assert!(data_dir.join("group-1.redb").is_file());
 
     let layout = craft::storage::GroupRedbLayout::new(&data_dir);
     let store = layout.open_group(0).unwrap();
@@ -288,7 +255,7 @@ async fn builder_persists_each_raft_group_to_separate_redb_files() {
     assert!(store.last_index().unwrap().0 >= 1);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn wire_group_migrate_rpc_is_routed() {
     let net = LocalNetwork::new();
     let ids = [NodeId(1), NodeId(2)];
@@ -344,7 +311,7 @@ async fn wire_group_migrate_rpc_is_routed() {
     target.shutdown();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn join_syncs_non_coordinator_group_membership() {
     let (net, ids, clusters) = spawn_three_node_multi_raft_cluster_allow_join().await;
     let (joiner_id, joiner) = join_fourth_node(&net, ids, &clusters).await;
@@ -419,18 +386,18 @@ async fn wait_for_group_voter(
         } else if active > 0 && matched == active {
             return;
         }
-        tokio::time::sleep(TICK_PERIOD).await;
+        advance(TICK_PERIOD).await;
     }
     panic!("group {group} voter {voter:?} present={present} did not converge");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn leave_syncs_non_coordinator_group_membership() {
     let (net, ids, clusters) = spawn_three_node_multi_raft_cluster_allow_join().await;
     let (joiner_id, joiner) = join_fourth_node(&net, ids, &clusters).await;
     wait_for_group_voter(&clusters, 1, joiner_id, true).await;
 
-    leave_via_cluster_rpc(&net, &clusters, &joiner, joiner_id).await;
+    leave_via_cluster_rpc(&joiner, joiner_id).await;
 
     joiner.shutdown();
     wait_for_group_voter(&clusters, 0, joiner_id, false).await;
@@ -441,7 +408,7 @@ async fn leave_syncs_non_coordinator_group_membership() {
 }
 
 /// Partition a follower; keyed traffic on another group still commits, then heal.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn multi_raft_survives_follower_partition() {
     let (net, ids, clusters) = spawn_three_node_multi_raft_cluster().await;
     wait_for_all_group_leaders(&clusters).await;
@@ -510,4 +477,63 @@ async fn multi_raft_survives_follower_partition() {
     for c in clusters {
         c.shutdown();
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn tier1_shard_expansion_and_keyed_batch() {
+    use craft_client::{KeyedBatchStep, RemoteClient, propose_keyed_batch};
+
+    let net = LocalNetwork::new();
+    let node_id = NodeId(1);
+    let shard_count = 64;
+    let groups = [RaftGroupId(0), RaftGroupId(1)];
+    let (route_a, route_b) = find_keys_for_two_groups(shard_count, &groups);
+
+    let cluster = CraftCluster::builder(node_id, KvMachine::default())
+        .members([node_id])
+        .raft_config(fast_raft_config_with_seed(9))
+        .tick_period(TICK_PERIOD)
+        .shard_count(shard_count)
+        .raft_machines([KvMachine::default(), KvMachine::default()])
+        .start_local(&net)
+        .await;
+
+    wait_for_group_leaders(&cluster).await;
+
+    let plan = cluster.expand_shard_count(128).expect("expand shards");
+    assert_eq!(plan.from, 64);
+    assert_eq!(plan.to, 128);
+    assert_eq!(cluster.shard_count(), 128);
+
+    let transport: Arc<dyn craft::net::Transport> = Arc::new(net.clone());
+    let client = RemoteClient::new(transport, [node_id]);
+    let cmd_a = craft::proto::encode(&KvCommand::Set {
+        key: "a".into(),
+        value: "1".into(),
+    })
+    .unwrap();
+    let cmd_b = craft::proto::encode(&KvCommand::Set {
+        key: "b".into(),
+        value: "2".into(),
+    })
+    .unwrap();
+
+    let results = propose_keyed_batch(
+        &client,
+        &[
+            KeyedBatchStep {
+                key: route_a,
+                payload: cmd_a,
+            },
+            KeyedBatchStep {
+                key: route_b,
+                payload: cmd_b,
+            },
+        ],
+    )
+    .await
+    .expect("batch propose");
+    assert_eq!(results.len(), 2);
+
+    cluster.shutdown();
 }

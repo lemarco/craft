@@ -31,6 +31,8 @@ pub(crate) struct MultiRaftState<M: StateMachine> {
     pub node_id: NodeId,
     /// Per-group voter replication factor (per-group-raft-membership).
     pub replication_factor: u32,
+    /// Non-voting learners per group beyond voters (Tier 1).
+    pub learner_factor: u32,
 }
 
 impl<M: StateMachine + Default + 'static> MultiRaftState<M> {
@@ -52,7 +54,14 @@ impl<M: StateMachine + Default + 'static> MultiRaftState<M> {
                 .map(|(id, handle)| (*id, handle.clone()))
                 .collect()
         };
-        sync_hosted_group_membership(&hosted, &live, &self.catalog, self.replication_factor).await
+        sync_hosted_group_membership(
+            &hosted,
+            &live,
+            &self.catalog,
+            self.replication_factor,
+            self.learner_factor,
+        )
+        .await
     }
 
     /// Plan and apply local adopt/retire actions, pushing retired groups to

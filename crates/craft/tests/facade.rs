@@ -12,7 +12,10 @@ use craft::core::Config;
 use craft::net::LocalNetwork;
 use craft::proto;
 use craft::{CraftCluster, NodeId};
-use craft_test_support::{Cmd, Kv, Qry, Resp, TICK_PERIOD, fast_raft_config};
+use craft_test_support::{
+    Cmd, Kv, Qry, Resp, TICK_PERIOD, advance, await_craft_leader, eventually_async_default,
+    eventually_default, fast_raft_config,
+};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -75,33 +78,22 @@ async fn spawn_cluster() -> (LocalNetwork, Vec<Arc<CraftCluster<Kv>>>) {
     (net, clusters)
 }
 
-/// Poll until `cond` holds (checked every 10ms), or panic after ~5s.
-async fn eventually<F>(what: &str, mut cond: F)
-where
-    F: FnMut() -> bool,
-{
-    for _ in 0..500 {
-        if cond() {
-            return;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    panic!("timed out waiting for: {what}");
+async fn wait_for_directory_workers(leader: &CraftCluster<Kv>, count: usize) {
+    let directory = leader.directory().clone();
+    eventually_default(
+        &format!("{count} workers in the leader directory"),
+        move || directory.lookup("w").len() == count,
+    )
+    .await;
 }
 
-/// Async variant of [`eventually`] for conditions that need a fresh await each tick.
-async fn eventually_async<F, Fut>(what: &str, mut cond: F)
-where
-    F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = bool>,
-{
-    for _ in 0..500 {
-        if cond().await {
-            return;
+async fn pick_follower(clusters: &[Arc<CraftCluster<Kv>>]) -> Arc<CraftCluster<Kv>> {
+    for c in clusters {
+        if !c.is_leader().await {
+            return Arc::clone(c);
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    panic!("timed out waiting for: {what}");
+    panic!("no follower found");
 }
 
 fn reachability_raft_config() -> Config {
@@ -110,6 +102,7 @@ fn reachability_raft_config() -> Config {
         election_timeout_max: 5,
         heartbeat_interval: 1,
         seed: 7,
+        ..Default::default()
     }
 }
 
@@ -134,42 +127,12 @@ async fn spawn_reachability_cluster() -> (LocalNetwork, Vec<Arc<CraftCluster<Kv>
     (net, clusters)
 }
 
-async fn wait_for_directory_workers(leader: &CraftCluster<Kv>, count: usize) {
-    let directory = leader.directory().clone();
-    eventually(
-        &format!("{count} workers in the leader directory"),
-        move || directory.lookup("w").len() == count,
-    )
-    .await;
-}
-
-async fn pick_follower(clusters: &[Arc<CraftCluster<Kv>>]) -> Arc<CraftCluster<Kv>> {
-    for c in clusters {
-        if !c.is_leader().await {
-            return Arc::clone(c);
-        }
-    }
-    panic!("no follower found");
-}
-
 async fn wait_for_workers_on_every_node(clusters: &[Arc<CraftCluster<Kv>>]) {
     for c in clusters {
         let reg = c.registry().clone();
         let id = c.node_id();
-        eventually(&format!("worker on node {id:?}"), move || reg.contains("w")).await;
+        eventually_default(&format!("worker on node {id:?}"), move || reg.contains("w")).await;
     }
-}
-
-async fn leader(clusters: &[Arc<CraftCluster<Kv>>]) -> Arc<CraftCluster<Kv>> {
-    for _ in 0..500 {
-        for c in clusters {
-            if c.is_leader().await {
-                return Arc::clone(c);
-            }
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    panic!("no leader elected");
 }
 
 /// Minimal blocking-free HTTP/1.1 GET returning `(status_code, body)`.
@@ -201,10 +164,10 @@ fn free_port() -> std::net::SocketAddr {
 
 // --- Tests ----------------------------------------------------------------
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(start_paused = true)]
 async fn cluster_elects_leader_and_serves_reads_and_writes() {
     let (_net, clusters) = spawn_cluster().await;
-    let leader = leader(&clusters).await;
+    let leader = await_craft_leader(&clusters).await;
 
     let resp = leader
         .handle()
@@ -228,10 +191,10 @@ async fn cluster_elects_leader_and_serves_reads_and_writes() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(start_paused = true)]
 async fn supervisor_auto_places_a_worker_on_every_node() {
     let (_net, clusters) = spawn_cluster().await;
-    let leader = leader(&clusters).await;
+    let leader = await_craft_leader(&clusters).await;
 
     // Drive reconcile explicitly via the public supervisor accessor.
     let report = leader.supervisor().reconcile().await;
@@ -240,7 +203,7 @@ async fn supervisor_auto_places_a_worker_on_every_node() {
     // The leader's reconcile loop should place one "w" worker per live node.
     for c in &clusters {
         let reg = c.registry().clone();
-        eventually(&format!("worker on node {:?}", c.node_id()), move || {
+        eventually_default(&format!("worker on node {:?}", c.node_id()), move || {
             reg.contains("w")
         })
         .await;
@@ -251,7 +214,7 @@ async fn supervisor_auto_places_a_worker_on_every_node() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(start_paused = true)]
 async fn follower_scale_cluster_forwards_to_leader() {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let net = LocalNetwork::new();
@@ -275,7 +238,7 @@ async fn follower_scale_cluster_forwards_to_leader() {
         clusters.push(cluster);
     }
 
-    let leader = leader(&clusters).await;
+    let leader = await_craft_leader(&clusters).await;
     let follower = clusters
         .iter()
         .find(|c| c.node_id() != leader.node_id())
@@ -291,7 +254,7 @@ async fn follower_scale_cluster_forwards_to_leader() {
 
     for c in &clusters {
         let reg = c.registry().clone();
-        eventually(&format!("worker on node {:?}", c.node_id()), move || {
+        eventually_default(&format!("worker on node {:?}", c.node_id()), move || {
             reg.contains("w")
         })
         .await;
@@ -302,7 +265,7 @@ async fn follower_scale_cluster_forwards_to_leader() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(start_paused = true)]
 async fn admin_endpoints_report_live_state() {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let net = LocalNetwork::new();
@@ -324,7 +287,7 @@ async fn admin_endpoints_report_live_state() {
         clusters.push(Arc::new(builder.start_local(&net).await));
     }
 
-    let _leader = leader(&clusters).await;
+    let _leader = await_craft_leader(&clusters).await;
 
     // Health is OK once the server is up (bind is awaited during start_local,
     // but the accept loop is spawned; retry briefly).
@@ -334,7 +297,7 @@ async fn admin_endpoints_report_live_state() {
         if health.0 == 200 {
             break;
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        advance(TICK_PERIOD).await;
     }
     assert_eq!(health.0, 200, "health body: {}", health.1);
 
@@ -346,7 +309,7 @@ async fn admin_endpoints_report_live_state() {
             cluster_body = b;
             break;
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        advance(TICK_PERIOD).await;
     }
     assert!(
         cluster_body.contains("\"id\":1")
@@ -363,7 +326,7 @@ async fn admin_endpoints_report_live_state() {
             actors_body = b;
             break;
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        advance(TICK_PERIOD).await;
     }
     assert!(
         actors_body.contains("Worker"),
@@ -379,15 +342,15 @@ async fn admin_endpoints_report_live_state() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(start_paused = true)]
 async fn telemetry_publishes_consensus_and_actor_metrics() {
     let (_net, clusters) = spawn_cluster().await;
-    let leader = leader(&clusters).await;
+    let leader = await_craft_leader(&clusters).await;
 
     // A worker is placed on the leader, and its lifecycle spawn bumps the
     // spawn counter; the consensus sampler publishes Raft gauges.
     let metrics = leader.metrics().clone();
-    eventually("consensus + actor metrics on leader", move || {
+    eventually_default("consensus + actor metrics on leader", move || {
         let out = metrics.render();
         out.contains("craft_raft_is_leader")
             && out.contains("craft_actor_spawns_total")
@@ -400,16 +363,16 @@ async fn telemetry_publishes_consensus_and_actor_metrics() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(start_paused = true)]
 async fn opt_in_tracing_emits_message_handled_events() {
     use craft::TraceOpts;
 
     let (_net, clusters) = spawn_cluster().await;
-    let leader = leader(&clusters).await;
+    let leader = await_craft_leader(&clusters).await;
 
     // Wait for the worker group to be placed on the leader.
     let reg = leader.registry().clone();
-    eventually("worker on leader", move || reg.contains("w")).await;
+    eventually_default("worker on leader", move || reg.contains("w")).await;
 
     // Subscribe, enable tracing for "w", then drive one message through it.
     let mut sub = leader.events().subscribe();
@@ -442,7 +405,7 @@ async fn opt_in_tracing_emits_message_handled_events() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn builder_wires_actor_state_store() {
     use craft::actor::{ActorStateStore, InMemoryStore};
 
@@ -458,7 +421,7 @@ async fn builder_wires_actor_state_store() {
     cluster.shutdown();
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn builder_wires_resource_profile() {
     use craft::{ResourceProfile, VpsResources};
 
@@ -482,22 +445,22 @@ async fn builder_wires_resource_profile() {
     cluster.shutdown();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn crash_driven_reconcile_reacts_to_reachability_not_membership() {
     let (net, clusters) = spawn_reachability_cluster().await;
     wait_for_workers_on_every_node(&clusters).await;
 
-    let leader_node = leader(&clusters).await;
+    let leader_node = await_craft_leader(&clusters).await;
     leader_node.supervisor().reconcile().await;
     wait_for_directory_workers(&leader_node, 3).await;
 
     let victim = pick_follower(&clusters).await.node_id();
     assert!(net.detach(victim), "victim was attached");
 
-    eventually_async(
+    eventually_async_default(
         "leader marks the victim unreachable while it remains a voter",
         || async {
-            let l = leader(&clusters).await;
+            let l = await_craft_leader(&clusters).await;
             let Some(status) = l.status().await else {
                 return false;
             };
@@ -506,8 +469,8 @@ async fn crash_driven_reconcile_reacts_to_reachability_not_membership() {
     )
     .await;
 
-    eventually_async("supervisor reconciles to two reachable workers", || async {
-        let l = leader(&clusters).await;
+    eventually_async_default("supervisor reconciles to two reachable workers", || async {
+        let l = await_craft_leader(&clusters).await;
         let report = l.supervisor().reconcile().await;
         report.is_ok() && report.groups[0].total == 2
     })
@@ -527,12 +490,12 @@ async fn crash_driven_reconcile_reacts_to_reachability_not_membership() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn healed_node_gets_auto_worker_respawned_after_partition() {
     let (net, clusters) = spawn_reachability_cluster().await;
     wait_for_workers_on_every_node(&clusters).await;
 
-    let leader_node = leader(&clusters).await;
+    let leader_node = await_craft_leader(&clusters).await;
     leader_node.supervisor().reconcile().await;
     wait_for_directory_workers(&leader_node, 3).await;
 
@@ -540,8 +503,8 @@ async fn healed_node_gets_auto_worker_respawned_after_partition() {
     let victim = healed.node_id();
 
     assert!(net.detach(victim));
-    eventually_async("victim unreachable on leader", || async {
-        let l = leader(&clusters).await;
+    eventually_async_default("victim unreachable on leader", || async {
+        let l = await_craft_leader(&clusters).await;
         let Some(status) = l.status().await else {
             return false;
         };
@@ -550,10 +513,10 @@ async fn healed_node_gets_auto_worker_respawned_after_partition() {
     .await;
 
     net.attach(victim, healed.wire_handler());
-    eventually_async(
+    eventually_async_default(
         "victim reachable again without membership change",
         || async {
-            let l = leader(&clusters).await;
+            let l = await_craft_leader(&clusters).await;
             let Some(status) = l.status().await else {
                 return false;
             };
@@ -562,20 +525,20 @@ async fn healed_node_gets_auto_worker_respawned_after_partition() {
     )
     .await;
 
-    eventually_async(
+    eventually_async_default(
         "supervisor reconciles back to three reachable workers",
         || async {
-            let l = leader(&clusters).await;
+            let l = await_craft_leader(&clusters).await;
             let report = l.supervisor().reconcile().await;
             report.is_ok() && report.groups[0].total == 3
         },
     )
     .await;
 
-    assert!(
-        healed.registry().contains("w"),
-        "worker present on the healed node"
-    );
+    eventually_default("worker present on the healed node", || {
+        healed.registry().contains("w")
+    })
+    .await;
 
     for c in &clusters {
         c.shutdown();

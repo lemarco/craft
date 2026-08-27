@@ -5,16 +5,15 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
 
 use craft::net::tls::ClusterCa;
 use craft::proto::LogIndex;
 use craft::{CraftCluster, NodeId, PeerDirectory, Security};
 use craft_test_support::{
-    Cmd, Kv, Qry, Resp, TICK_PERIOD, await_craft_leader, fast_raft_config, free_udp,
+    Cmd, Kv, Qry, Resp, TICK_PERIOD, advance, await_craft_leader, fast_raft_config, free_udp,
 };
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn quic_cluster_elects_leader_and_replicates() {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let addrs: Vec<SocketAddr> = ids.iter().map(|_| free_udp()).collect();
@@ -66,7 +65,7 @@ async fn quic_cluster_elects_leader_and_replicates() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+#[tokio::test(start_paused = true)]
 async fn a_new_node_dynamically_joins_over_quic() {
     // Backlog E5 / discovery: a fourth node joins a live 3-node QUIC cluster
     // knowing ONLY the seed's address. It fetches the peer-address book from the
@@ -136,7 +135,7 @@ async fn a_new_node_dynamically_joins_over_quic() {
             joined = true;
             break;
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        advance(TICK_PERIOD).await;
     }
     assert!(joined, "node 4 did not become a voter and catch up");
 
@@ -160,7 +159,7 @@ async fn a_new_node_dynamically_joins_over_quic() {
             caught_up = true;
             break;
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        advance(TICK_PERIOD).await;
     }
     assert!(caught_up, "node 4 did not replicate the post-join proposal");
 

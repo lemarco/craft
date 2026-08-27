@@ -11,8 +11,13 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use craft_core::{Config, DEFAULT_GROUP_REPLICATION_FACTOR, RaftNode, StateMachine};
-use craft_dashboard::{AdminServer, CraftEvent, EventBus, Metrics, Observer};
+use craft_core::{
+    Config, DEFAULT_GROUP_LEARNER_FACTOR, DEFAULT_GROUP_REPLICATION_FACTOR, RaftNode,
+    ReachabilityConfig, StateMachine,
+};
+use craft_dashboard::{
+    AdminServer, AdminTlsPaths, CraftEvent, EventBus, Metrics, Observer, admin_tls_config,
+};
 use craft_net::transport::RequestHandler;
 use craft_net::{
     BackoffPolicy, LocalNetwork, PeerDirectory, QuicServer, QuicTransport, TrafficPolicy,
@@ -24,8 +29,9 @@ use tokio::net::TcpListener;
 
 use craft_actor::{
     ActorDirectory, ActorRegistry, ClusterControl, ClusterMessaging, ClusterState,
-    ClusterSupervisor, DirectorySync, NodeService, RaftDriver, ResourceProfile, RuntimeConfig,
-    UserActor, VpsResources, spawn_multi_raft_node, spawn_node,
+    ClusterSupervisor, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy, DirectoryRetry, DirectorySync,
+    NodeService, RaftDriver, ResourceProfile, RuntimeConfig, UserActor, VpsResources,
+    spawn_multi_raft_node, spawn_node,
 };
 
 use crate::certs::{CertReloadHandle, PemSecurity};
@@ -80,14 +86,19 @@ pub struct CraftClusterBuilder<M: StateMachine> {
     refresh_period: Duration,
     event_capacity: usize,
     admin_addr: Option<SocketAddr>,
+    admin_tls: Option<AdminTlsPaths>,
     join_seeds: Vec<Seed>,
     traffic_policy: TrafficPolicy,
     raft_groups: u32,
     shard_count: u32,
     group_replication_factor: u32,
+    group_learner_factor: u32,
     raft_machines: Option<Vec<M>>,
     data_dir: Option<PathBuf>,
     actor_state_store: Option<Arc<dyn craft_actor::ActorStateStore>>,
+    drain_timeout: Duration,
+    directory_policy: DirectoryPolicy,
+    directory_retry: DirectoryRetry,
     /// Poll interval for on-disk PEM rotation when using [`start_quic_pem`](Self::start_quic_pem).
     cert_watch: Option<Duration>,
     registrations: Vec<RegisterFn>,
@@ -114,14 +125,19 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             refresh_period: Duration::from_millis(50),
             event_capacity: 1024,
             admin_addr: None,
+            admin_tls: None,
             join_seeds: Vec::new(),
             traffic_policy: TrafficPolicy::unlimited(),
             raft_groups: 1,
             shard_count: 256,
             group_replication_factor: DEFAULT_GROUP_REPLICATION_FACTOR,
+            group_learner_factor: DEFAULT_GROUP_LEARNER_FACTOR,
             raft_machines: None,
             data_dir: None,
             actor_state_store: None,
+            drain_timeout: DEFAULT_DRAIN_TIMEOUT,
+            directory_policy: DirectoryPolicy::default(),
+            directory_retry: DirectoryRetry::default(),
             cert_watch: None,
             registrations: Vec::new(),
             managed: Vec::new(),
@@ -168,6 +184,15 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     #[must_use]
     pub fn group_replication_factor(mut self, factor: u32) -> Self {
         self.group_replication_factor = factor.max(1);
+        self
+    }
+
+    /// Non-voting learner replicas per Raft group beyond
+    /// [`group_replication_factor`](Self::group_replication_factor) voters (Tier 1).
+    /// `0` disables learners (default).
+    #[must_use]
+    pub fn group_learner_factor(mut self, factor: u32) -> Self {
+        self.group_learner_factor = factor;
         self
     }
 
@@ -320,6 +345,29 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         self
     }
 
+    /// Graceful-drain timeout for actor stop/migration ([drain-timeout]).
+    #[must_use]
+    pub fn drain_timeout(mut self, timeout: Duration) -> Self {
+        self.drain_timeout = timeout;
+        self
+    }
+
+    /// Directory visibility for cross-node casts/asks. [`DirectoryPolicy::ReadYourWrites`]
+    /// retries briefly when a target is not yet visible after spawn/scale.
+    #[must_use]
+    pub fn directory_policy(mut self, policy: DirectoryPolicy) -> Self {
+        self.directory_policy = policy;
+        self
+    }
+
+    /// Retry budget when [`directory_policy`](Self::directory_policy) is
+    /// [`DirectoryPolicy::ReadYourWrites`].
+    #[must_use]
+    pub fn directory_retry(mut self, retry: DirectoryRetry) -> Self {
+        self.directory_retry = retry;
+        self
+    }
+
     /// How often consensus status is mirrored into the supervisor and telemetry
     /// (membership + reachability deltas, liveness-vs-membership).
     #[must_use]
@@ -340,6 +388,24 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     #[must_use]
     pub fn admin_addr(mut self, addr: SocketAddr) -> Self {
         self.admin_addr = Some(addr);
+        self
+    }
+
+    /// Serve admin over **TLS** (server-only) using PEM `cert` and `key`
+    /// (health-admin-port Tier 2). Plain HTTP is used when unset.
+    #[must_use]
+    pub fn admin_tls(mut self, cert: impl Into<PathBuf>, key: impl Into<PathBuf>) -> Self {
+        self.admin_tls = Some(AdminTlsPaths {
+            cert: cert.into(),
+            key: key.into(),
+        });
+        self
+    }
+
+    /// Tune leader-side reachability detection (liveness-vs-membership Tier 2).
+    #[must_use]
+    pub fn reachability(mut self, config: ReachabilityConfig) -> Self {
+        self.raft.reachability = config;
         self
     }
 
@@ -602,6 +668,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 catalog,
                 node_id,
                 replication_factor: self.group_replication_factor,
+                learner_factor: self.group_learner_factor,
             }));
             (primary, group_handles, sharded as Arc<dyn RequestHandler>)
         } else {
@@ -651,11 +718,13 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             )
             .with_cluster_state(facts_state),
         );
-        let messaging = Arc::new(ClusterMessaging::new(
+        let messaging = Arc::new(ClusterMessaging::with_policy(
             node_id,
             Arc::clone(&directory),
             registry.clone(),
             Arc::clone(&transport),
+            self.directory_policy,
+            self.directory_retry,
         ));
         let directory_sync = Arc::new(DirectorySync::new(
             node_id,
@@ -880,13 +949,31 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 handle.clone(),
                 Arc::clone(&directory),
                 registry.clone(),
+                self.shard_count,
+                self.raft_groups,
+                self.group_replication_factor,
+                self.group_learner_factor,
+                multi_raft.clone(),
             ));
             let admin = AdminServer::new(observer, metrics.clone(), events.clone());
             match TcpListener::bind(addr).await {
                 Ok(listener) => {
-                    tasks.push(tokio::spawn(async move {
-                        let _ = admin.serve(listener).await;
-                    }));
+                    if let Some(paths) = self.admin_tls.clone() {
+                        match admin_tls_config(&paths) {
+                            Ok(tls) => {
+                                tasks.push(tokio::spawn(async move {
+                                    let _ = admin.serve_tls(listener, tls).await;
+                                }));
+                            }
+                            Err(e) => {
+                                eprintln!("craft: admin TLS config failed: {e}");
+                            }
+                        }
+                    } else {
+                        tasks.push(tokio::spawn(async move {
+                            let _ = admin.serve(listener).await;
+                        }));
+                    }
                 }
                 Err(e) => {
                     // A bad admin bind must not take the node down; surface it
@@ -916,9 +1003,11 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             vps_resources,
             actor_state_store: self.actor_state_store,
             wire_handler: Arc::clone(&router),
+            transport,
             facts,
             multi_raft,
             cert_reload: None,
+            drain_timeout: self.drain_timeout,
             tasks: Mutex::new(tasks),
         };
         (cluster, router)

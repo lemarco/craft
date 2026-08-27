@@ -59,8 +59,10 @@ pub use craft_storage as storage;
 
 pub use builder::{CraftClusterBuilder, StartError};
 pub use certs::{CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_from_env};
-pub use cluster::{ClusterFacts, CraftCluster, ScaleClusterError};
+pub use cluster::{ClusterFacts, CraftCluster, LeaveError, ScaleClusterError};
+pub use craft_actor::{ActorSession, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy, DirectoryRetry};
 pub use craft_actor::{ResourceProfile, VpsResources};
+pub use craft_core::ReachabilityConfig;
 pub use security::Security;
 
 /// The peer address book ([`NodeId`] → socket) used to dial cluster members

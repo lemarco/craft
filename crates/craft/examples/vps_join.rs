@@ -51,6 +51,7 @@ fn raft_config() -> Config {
         election_timeout_max: 10,
         heartbeat_interval: 2,
         seed: 7,
+        ..Default::default()
     }
 }
 

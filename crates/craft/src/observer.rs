@@ -11,11 +11,14 @@ use std::sync::Arc;
 
 use craft_core::{Role, StateMachine};
 use craft_dashboard::{
-    ActorView, BoxFuture, ClusterView, NodeSummary, NodeView, Observer, Readiness,
+    ActorView, BoxFuture, ClusterView, NodeSummary, NodeView, Observer, RaftGroupSummary,
+    RaftGroupsView, Readiness,
 };
 use craft_proto::NodeId;
 
 use craft_actor::{ActorDirectory, ActorRegistry, NodeHandle};
+
+use crate::multi_raft::MultiRaftState;
 
 /// A read-only view onto one running node for the admin/dashboard endpoints.
 pub(crate) struct CraftObserver<M: StateMachine> {
@@ -23,20 +26,36 @@ pub(crate) struct CraftObserver<M: StateMachine> {
     handle: NodeHandle<M>,
     directory: Arc<ActorDirectory>,
     registry: ActorRegistry,
+    shard_count: u32,
+    raft_groups: u32,
+    replication_factor: u32,
+    learner_factor: u32,
+    multi_raft: Option<Arc<MultiRaftState<M>>>,
 }
 
 impl<M: StateMachine> CraftObserver<M> {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         node_id: NodeId,
         handle: NodeHandle<M>,
         directory: Arc<ActorDirectory>,
         registry: ActorRegistry,
+        shard_count: u32,
+        raft_groups: u32,
+        replication_factor: u32,
+        learner_factor: u32,
+        multi_raft: Option<Arc<MultiRaftState<M>>>,
     ) -> Self {
         Self {
             node_id,
             handle,
             directory,
             registry,
+            shard_count,
+            raft_groups,
+            replication_factor,
+            learner_factor,
+            multi_raft,
         }
     }
 }
@@ -95,8 +114,6 @@ impl<M: StateMachine> Observer for CraftObserver<M> {
                 .voters
                 .iter()
                 .map(|id| {
-                    // We know our own role precisely; peers are summarised as
-                    // leader (if the leader hint points at them) or follower.
                     let role = if *id == self.node_id {
                         role_str(status.role)
                     } else if Some(*id) == leader {
@@ -116,6 +133,70 @@ impl<M: StateMachine> Observer for CraftObserver<M> {
                 term: status.term.0,
                 commit_index: status.commit_index.0,
                 nodes,
+            }
+        })
+    }
+
+    fn raft_groups(&self) -> BoxFuture<'_, RaftGroupsView> {
+        Box::pin(async move {
+            let active_shard_count = self
+                .multi_raft
+                .as_ref()
+                .map(|mr| mr.sharded.shard_count())
+                .unwrap_or(self.shard_count);
+            let hosted: Vec<u32> = self
+                .multi_raft
+                .as_ref()
+                .map(|mr| mr.handles.lock().unwrap().keys().copied().collect())
+                .unwrap_or_default();
+            let mut groups = Vec::new();
+            if let Some(mr) = &self.multi_raft {
+                let snapshots: Vec<(u32, NodeHandle<M>)> = {
+                    let handles = mr.handles.lock().unwrap();
+                    mr.catalog
+                        .iter()
+                        .filter_map(|group| {
+                            handles
+                                .get(&group.0)
+                                .map(|handle| (group.0, handle.clone()))
+                        })
+                        .collect()
+                };
+                for (group_id, handle) in snapshots {
+                    if let Some(status) = handle.status().await {
+                        groups.push(RaftGroupSummary {
+                            group_id,
+                            role: role_str(status.role).to_string(),
+                            leader: status.leader.map(|n| n.0),
+                            term: status.term.0,
+                            commit_index: status.commit_index.0,
+                            voters: status.voters.iter().map(|n| n.0).collect(),
+                            learners: status.learners.iter().map(|n| n.0).collect(),
+                            hosted_on_this_node: true,
+                        });
+                    }
+                }
+            } else if self.raft_groups <= 1
+                && let Some(status) = self.handle.status().await
+            {
+                groups.push(RaftGroupSummary {
+                    group_id: 0,
+                    role: role_str(status.role).to_string(),
+                    leader: status.leader.map(|n| n.0),
+                    term: status.term.0,
+                    commit_index: status.commit_index.0,
+                    voters: status.voters.iter().map(|n| n.0).collect(),
+                    learners: status.learners.iter().map(|n| n.0).collect(),
+                    hosted_on_this_node: true,
+                });
+            }
+            RaftGroupsView {
+                shard_count: active_shard_count,
+                catalog_size: self.raft_groups,
+                replication_factor: self.replication_factor,
+                learner_factor: self.learner_factor,
+                hosted_groups: hosted,
+                groups,
             }
         })
     }
@@ -158,8 +239,6 @@ impl<M: StateMachine> Observer for CraftObserver<M> {
                         .any(|reg| reg.id.node == target)
                 })
                 .collect();
-            // The local node also knows its own live registry directly, even
-            // before the next directory publish.
             if target == self.node_id {
                 for name in self.registry.names() {
                     if !workers.contains(&name) {
@@ -170,7 +249,6 @@ impl<M: StateMachine> Observer for CraftObserver<M> {
             workers.sort();
             workers.dedup();
 
-            // Report a node only if it is a known voter or hosts actors.
             let is_voter = self
                 .handle
                 .status()

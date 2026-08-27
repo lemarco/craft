@@ -5,9 +5,9 @@ use std::process::Command;
 use std::time::Duration;
 
 use craft::{CertPaths, CraftCluster, NodeId, PemSecurity, ReloadOpts};
-use craft_test_support::free_udp;
+use craft_test_support::{advance, free_udp};
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn pem_hot_reload_reissues_leaf_without_restart() {
     let ws = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let script = ws.join("examples/certs/generate.sh");
@@ -59,6 +59,7 @@ async fn pem_hot_reload_reissues_leaf_without_restart() {
         election_timeout_max: 10,
         heartbeat_interval: 2,
         seed: 11,
+        ..Default::default()
     };
 
     let cluster1 = CraftCluster::builder(NodeId(1), Counter::default())
@@ -104,7 +105,7 @@ async fn pem_hot_reload_reissues_leaf_without_restart() {
             if cluster1.is_leader().await || cluster2.is_leader().await {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            advance(Duration::from_millis(50)).await;
         }
     })
     .await;

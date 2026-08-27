@@ -13,6 +13,7 @@ use craft::core::{Config, StateMachine};
 use craft::net::LocalNetwork;
 use craft::proto::{self, LogIndex};
 use craft::{CraftCluster, NodeId};
+use craft_test_support::{await_craft_leader, eventually_async_default};
 use serde::{Deserialize, Serialize};
 
 // --- Minimal KV state machine (cluster consensus only) ----------------------
@@ -165,6 +166,7 @@ fn reachability_raft_config() -> Config {
         election_timeout_max: 5,
         heartbeat_interval: 1,
         seed: 21,
+        ..Default::default()
     }
 }
 
@@ -192,42 +194,16 @@ async fn spawn_store_cluster(
     (net, clusters)
 }
 
-async fn eventually_async<F, Fut>(what: &str, mut cond: F)
-where
-    F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = bool>,
-{
-    for _ in 0..500 {
-        if cond().await {
-            return;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    panic!("timed out waiting for: {what}");
-}
-
 async fn wait_for_workers_on_every_node(clusters: &[Arc<CraftCluster<Kv>>]) {
     for c in clusters {
         let reg = c.registry().clone();
         let id = c.node_id();
-        eventually_async(&format!("order worker on node {id:?}"), || {
+        eventually_async_default(&format!("order worker on node {id:?}"), || {
             let reg = reg.clone();
             async move { reg.contains("orders") }
         })
         .await;
     }
-}
-
-async fn leader(clusters: &[Arc<CraftCluster<Kv>>]) -> Arc<CraftCluster<Kv>> {
-    for _ in 0..500 {
-        for c in clusters {
-            if c.is_leader().await {
-                return Arc::clone(c);
-            }
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    panic!("no leader elected");
 }
 
 fn cluster_by_id(clusters: &[Arc<CraftCluster<Kv>>], id: NodeId) -> Arc<CraftCluster<Kv>> {
@@ -240,7 +216,7 @@ fn cluster_by_id(clusters: &[Arc<CraftCluster<Kv>>], id: NodeId) -> Arc<CraftClu
 }
 
 async fn wait_for_effects(effects: Arc<AtomicU32>, want: u32) {
-    eventually_async(&format!("side effects == {want}"), || {
+    eventually_async_default(&format!("side effects == {want}"), || {
         let effects = Arc::clone(&effects);
         async move { effects.load(Ordering::SeqCst) == want }
     })
@@ -249,7 +225,7 @@ async fn wait_for_effects(effects: Arc<AtomicU32>, want: u32) {
 
 async fn wait_for_order_done(store: &dyn ActorStateStore, order_id: u64) {
     let key = format!("order:{order_id}");
-    eventually_async(&format!("{key} marked done"), || async {
+    eventually_async_default(&format!("{key} marked done"), || async {
         matches!(
             store.get(&key).await.ok().flatten().as_deref(),
             Some(b"done")
@@ -260,7 +236,7 @@ async fn wait_for_order_done(store: &dyn ActorStateStore, order_id: u64) {
 
 // --- Tests ------------------------------------------------------------------
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn actor_store_redelivery_is_idempotent_on_one_node() {
     let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
     let (cfg_id, effects) = register_fixture(Arc::clone(&store));
@@ -283,7 +259,7 @@ async fn actor_store_redelivery_is_idempotent_on_one_node() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn actor_store_survives_unreachable_node_and_resumes_on_survivor() {
     let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
     let (cfg_id, effects) = register_fixture(Arc::clone(&store));
@@ -302,8 +278,8 @@ async fn actor_store_survives_unreachable_node_and_resumes_on_survivor() {
     wait_for_order_done(store.as_ref(), 42).await;
 
     assert!(net.detach(victim), "victim was attached");
-    eventually_async("leader marks victim unreachable", || async {
-        let l = leader(&clusters).await;
+    eventually_async_default("leader marks victim unreachable", || async {
+        let l = await_craft_leader(&clusters).await;
         let Some(status) = l.status().await else {
             return false;
         };
