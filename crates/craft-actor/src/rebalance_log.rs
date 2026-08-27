@@ -1,24 +1,21 @@
-//! Opt-in rebalance tracing via `CRAFT_LOG_REBALANCE=1`.
+//! Opt-in rebalance tracing via `CRAFT_LOG_REBALANCE=1` or
+//! `RUST_LOG=craft::rebalance=debug`.
 
 use craft_core::{GroupRebalancePlan, RaftGroupId};
 use craft_proto::NodeId;
 
-/// When `CRAFT_LOG_REBALANCE` is set, write a line to stderr (visible in tests/CI logs).
-pub(crate) fn enabled() -> bool {
-    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| std::env::var_os("CRAFT_LOG_REBALANCE").is_some())
-}
+use crate::tracing_init;
 
+/// Emit a rebalance planner/executor line when the tracing filter enables
+/// target `craft::rebalance` (see `CRAFT_LOG_REBALANCE=1` or `RUST_LOG`).
 pub fn line(msg: impl AsRef<str>) {
-    if enabled() {
-        eprintln!("[craft:rebalance] {}", msg.as_ref());
+    if std::env::var_os("CRAFT_LOG_REBALANCE").is_some() {
+        tracing_init::init_tracing();
     }
+    tracing::debug!(target: "craft::rebalance", "{}", msg.as_ref());
 }
 
 pub fn plan(node_id: NodeId, live: &[NodeId], hosted: &[RaftGroupId], plan: &GroupRebalancePlan) {
-    if !enabled() {
-        return;
-    }
     line(format!(
         "node={} leader plan live={:?} hosted={:?} adopt={:?} retire={:?}",
         node_id.0,

@@ -11,6 +11,10 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ### Added
 
+- **`tracing` + `pretty_assertions`** — workspace dependencies; structured logs via
+  `craft::init_tracing()` (`RUST_LOG` / `CRAFT_LOG`, legacy `CRAFT_LOG_REBALANCE=1`);
+  rebalance planner lines and Raft role transitions emit `tracing` events;
+  `craft_test_support::{assert_eq, assert_ne, init_tracing, test_setup}` for tests.
 - **Tier 2 Phase 4 — cross-shard saga coordinator** ([cross-shard-transactions](docs/decisions/cross-shard-transactions.md)) —
   `craft_client::run_saga`, `SagaPlan`/`SagaStep`, `SagaJournal` trait,
   `InMemorySagaJournal`; facade `StoreSagaJournal` + `record_saga_metrics`.

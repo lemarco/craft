@@ -29,3 +29,13 @@ pub fn free_udp() -> SocketAddr {
     let sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind udp");
     sock.local_addr().expect("local addr")
 }
+
+/// Optional test setup: install the tracing subscriber when log env vars are set.
+pub fn test_setup() {
+    if std::env::var_os("CRAFT_LOG_REBALANCE").is_some()
+        || std::env::var_os("RUST_LOG").is_some()
+        || std::env::var_os("CRAFT_LOG").is_some()
+    {
+        crate::init_tracing();
+    }
+}

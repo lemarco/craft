@@ -19,3 +19,4 @@ workspace = true
 [dependencies]
 craft-proto.workspace = true
 serde.workspace = true
+tracing.workspace = true

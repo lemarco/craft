@@ -828,6 +828,13 @@ impl RaftNode {
 
     fn set_role(&mut self, role: Role) {
         if self.role != role {
+            tracing::debug!(
+                target: "craft::raft",
+                node = self.id.0,
+                term = self.current_term.0,
+                ?role,
+                "raft role changed"
+            );
             self.role = role;
             self.outbox.push(Output::RoleChanged(role));
         }

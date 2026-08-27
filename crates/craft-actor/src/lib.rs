@@ -29,6 +29,7 @@ mod sharded;
 mod store;
 mod store_codec;
 mod supervisor;
+mod tracing_init;
 
 pub use directory::{ActorDirectory, ClusterRef, DirectorySync};
 pub use directory_policy::{DirectoryPolicy, DirectoryRetry};
@@ -52,6 +53,7 @@ pub use runtime::{
     ClientError, NodeHandle, NodeService, NodeStatus, RuntimeConfig, spawn as spawn_node,
 };
 pub use session::ActorSession;
+pub use tracing_init::init_tracing;
 pub mod rebalance_log;
 pub use sharded::{
     ShardedNodeService, spawn_multi_raft_node, spawn_raft_group, spawn_raft_group_from_bundle,

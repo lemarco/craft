@@ -8,7 +8,8 @@
 #
 # Env:
 #   CARGO_LOG         — cargo internals (default: cargo::core=info for this script)
-#   CRAFT_LOG_REBALANCE — eprintln rebalance planner/executor steps in tests/runtime
+#   CRAFT_LOG_REBALANCE — enable `craft::rebalance=debug` tracing (call
+#     `craft_test_support::test_setup()` in tests, or use `craft-node` binary)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."

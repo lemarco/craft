@@ -24,6 +24,8 @@ craft-net.workspace = true
 craft-macros.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
 
 [dev-dependencies]

@@ -25,6 +25,8 @@
 //! | `CRAFT_NODE_CERT` / `CRAFT_NODE_KEY` / `CRAFT_CA_CERT` | PEM cert chain / key / CA | *dev CA* |
 //! | `CRAFT_CERT_ORDINAL_BASE` | Dir with per-ordinal subdirs (`0/tls.crt`, …) for K8s cert-manager | *unset* |
 //! | `CRAFT_CERT_WATCH_SECS` | Poll interval for on-disk cert reload (cert-automation) | `60` |
+//! | `RUST_LOG` / `CRAFT_LOG` | `tracing` filter directives (see [`craft::init_tracing`]) | `warn` |
+//! | `CRAFT_LOG_REBALANCE` | Enable `craft::rebalance=debug` rebalance planner logs | *off* |
 //!
 //! With no cert vars set, a throwaway dev CA is minted for a **single-node**
 //! cluster (great for `cargo run -p craft-node`). A multi-node cluster needs a
@@ -82,6 +84,7 @@ impl StateMachine for Demo {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    craft::init_tracing();
     let cfg = config_from_env()?;
     println!(
         "craft-node v{} (protocol v{}, wire {})",

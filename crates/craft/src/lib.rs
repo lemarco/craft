@@ -77,7 +77,7 @@ pub use craft_net::{CertPaths, load_pem_material};
 /// Commonly used telemetry/observability types, re-exported for convenience.
 #[doc(no_inline)]
 pub use craft_dashboard::{
-    CraftEvent, EventBus, EventSubscription, Metrics, StopReason, TraceOpts,
+    CraftEvent, EventBus, EventSubscription, Metrics, StopReason, TraceOpts, init_tracing,
 };
 
 /// Library version string (from `Cargo.toml`).
