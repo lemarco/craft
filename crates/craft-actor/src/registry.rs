@@ -33,7 +33,7 @@
 
 use std::any::Any;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -628,6 +628,8 @@ struct PoolInner<A: UserActor> {
     /// Enqueued-but-unhandled messages (mailbox depth gauge, Track H). Signed
     /// so a transient dequeue-before-increment race can't underflow.
     queued: Arc<AtomicI64>,
+    /// Per-group drain override; falls back to cluster default when unset.
+    drain_timeout: Mutex<Option<Duration>>,
 }
 
 impl<A: UserActor> PoolInner<A> {
@@ -645,7 +647,16 @@ impl<A: UserActor> PoolInner<A> {
             messages: Arc::new(AtomicU64::new(0)),
             handle_nanos: Arc::new(AtomicU64::new(0)),
             queued: Arc::new(AtomicI64::new(0)),
+            drain_timeout: Mutex::new(None),
         })
+    }
+
+    fn set_drain_timeout(&self, timeout: Option<Duration>) {
+        *self.drain_timeout.lock().unwrap() = timeout;
+    }
+
+    fn drain_timeout(&self) -> Option<Duration> {
+        *self.drain_timeout.lock().unwrap()
     }
 
     /// Launch the mailbox task for an already-constructed `state`, register the
@@ -823,14 +834,15 @@ impl<A: UserActor> PoolInner<A> {
         Some(instances[i].tx.clone())
     }
 
-    /// A clone of the instance selected by hashing `key` (stable within a run).
+    /// A clone of the instance selected by the consistent hash ring for `key`.
     fn pick_keyed(&self, key: u64) -> Option<mpsc::UnboundedSender<Mailbox<A>>> {
         let instances = self.instances.lock().unwrap();
         if instances.is_empty() {
             return None;
         }
-        let i = (key % instances.len() as u64) as usize;
-        Some(instances[i].tx.clone())
+        let index =
+            crate::ring::pick_index(key, instances.len(), crate::ring::group_salt(&self.name));
+        Some(instances[index].tx.clone())
     }
 
     fn send_rr(&self, msg: A::Message) -> Result<(), SendError> {
@@ -1001,6 +1013,9 @@ trait GroupLifecycle: Send + Sync {
     fn runtime_stats(&self) -> (usize, u64, u64, i64);
     /// Gracefully drain and stop the group with `timeout` (E12, drain-timeout).
     fn drain(self: Arc<Self>, timeout: Duration) -> BoxFuture<'static, DrainOutcome>;
+    /// Per-group graceful-drain override ([drain-timeout]).
+    fn set_drain_timeout(&self, timeout: Option<Duration>);
+    fn drain_timeout(&self) -> Option<Duration>;
     /// Capture a migration snapshot from instance `instance` (E12).
     fn snapshot(
         self: Arc<Self>,
@@ -1034,6 +1049,12 @@ impl<A: UserActor> GroupLifecycle for PoolInner<A> {
     }
     fn drain(self: Arc<Self>, timeout: Duration) -> BoxFuture<'static, DrainOutcome> {
         Box::pin(async move { PoolInner::drain(&self, timeout).await })
+    }
+    fn set_drain_timeout(&self, timeout: Option<Duration>) {
+        PoolInner::set_drain_timeout(self, timeout);
+    }
+    fn drain_timeout(&self) -> Option<Duration> {
+        PoolInner::drain_timeout(self)
     }
     fn snapshot(
         self: Arc<Self>,
@@ -1181,7 +1202,7 @@ impl<A: UserActor> PoolRef<A> {
     /// # Errors
     /// Returns [`SendError`] if the pool has no live instances.
     pub fn send_keyed<K: Hash>(&self, key: &K, msg: A::Message) -> Result<(), SendError> {
-        self.pool.send_keyed(hash_key(key), msg)
+        self.pool.send_keyed(crate::ring::hash_key(key), msg)
     }
 
     /// Ask the next instance (round-robin). See [`ActorRef::ask`].
@@ -1231,15 +1252,6 @@ impl<A: UserActor> PoolRef<A> {
         self.pool.stop().await;
     }
 }
-
-fn hash_key<K: Hash>(key: &K) -> u64 {
-    // `DefaultHasher::new()` is seeded deterministically (unlike `RandomState`),
-    // so keyed routing is stable across the process.
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    key.hash(&mut hasher);
-    hasher.finish()
-}
-
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
@@ -1523,15 +1535,15 @@ impl ActorRegistry {
 
     /// Gracefully stop and remove the actor group `name`: reject new messages,
     /// let queued and in-flight work finish, and force-stop anything still
-    /// running when `timeout` elapses (E12, drain-timeout). Returns whether the drain
-    /// completed or timed out.
+    /// running when `default_timeout` elapses (E12, drain-timeout). Uses the
+    /// group's per-actor override when set via [`Self::set_group_drain_timeout`].
     ///
     /// # Errors
     /// Returns [`StopError::NotFound`] if no such group exists.
     pub async fn stop_graceful(
         &self,
         name: &str,
-        timeout: Duration,
+        default_timeout: Duration,
     ) -> Result<DrainOutcome, StopError> {
         let entry = self
             .groups
@@ -1539,7 +1551,44 @@ impl ActorRegistry {
             .unwrap()
             .remove(name)
             .ok_or_else(|| StopError::NotFound(name.to_string()))?;
+        let timeout = entry.lifecycle.drain_timeout().unwrap_or(default_timeout);
         Ok(entry.lifecycle.drain(timeout).await)
+    }
+
+    /// Override the graceful-drain timeout for group `name` (per-actor drain).
+    ///
+    /// # Errors
+    /// Returns [`StopError::NotFound`] if no such group exists.
+    pub fn set_group_drain_timeout(
+        &self,
+        name: &str,
+        timeout: Option<Duration>,
+    ) -> Result<(), StopError> {
+        let groups = self.groups.lock().unwrap();
+        let entry = groups
+            .get(name)
+            .ok_or_else(|| StopError::NotFound(name.to_string()))?;
+        entry.lifecycle.set_drain_timeout(timeout);
+        Ok(())
+    }
+
+    /// Effective drain timeout for `name`, if a per-group override is set.
+    #[must_use]
+    pub fn group_drain_timeout(&self, name: &str) -> Option<Duration> {
+        let groups = self.groups.lock().unwrap();
+        groups.get(name).and_then(|e| e.lifecycle.drain_timeout())
+    }
+
+    /// Gracefully stop and remove the actor group `name` (deprecated alias).
+    ///
+    /// # Errors
+    /// Returns [`StopError::NotFound`] if no such group exists.
+    pub async fn stop_graceful_with_timeout(
+        &self,
+        name: &str,
+        timeout: Duration,
+    ) -> Result<DrainOutcome, StopError> {
+        self.stop_graceful(name, timeout).await
     }
 
     /// Capture a migration snapshot from instance `instance` of local group

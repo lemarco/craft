@@ -53,3 +53,26 @@ fn leader_plans_adopt_for_a_new_node() {
     assert!(!report.plan.adopt.is_empty());
     assert_eq!(report.assignment.len(), 12);
 }
+
+#[test]
+fn fourth_node_join_plans_group_adopts() {
+    let catalog: Vec<_> = (0..12).map(RaftGroupId).collect();
+    let live = vec![NodeId(1), NodeId(2), NodeId(3), NodeId(4)];
+    let reconciler = RaftGroupReconciler::new(
+        NodeId(4),
+        catalog,
+        3,
+        MockState {
+            leader: true,
+            live: live.clone(),
+        },
+    );
+    let report = reconciler.reconcile_local(&[]);
+    assert!(report.ran_as_leader);
+    assert!(
+        !report.plan.adopt.is_empty(),
+        "new node should adopt groups from existing hosts: {:?}",
+        report.plan
+    );
+    assert_eq!(report.assignment.len(), 12);
+}

@@ -11,7 +11,7 @@ use craft_test_support::{
     wait_for_node_leader,
 };
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn export_and_respawn_from_bundle_preserves_state() {
     let net = LocalNetwork::new();
     let ids = [NodeId(1)];

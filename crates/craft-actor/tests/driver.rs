@@ -11,11 +11,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use craft_actor::craft_core::{Config, RaftNode, ReadId, Role, StateMachine};
-use craft_actor::craft_proto::{LogEntry, LogIndex, NodeId};
+use craft_actor::craft_proto::{EntryPayload, LogEntry, LogId, LogIndex, Membership, NodeId, Term};
 use craft_actor::craft_storage::{
-    HardState, HardStateStore, LogStore, MemoryStorage, Snapshot, SnapshotStore, StorageError,
+    HardState, HardStateStore, LogStore, MemoryStorage, Snapshot, SnapshotMeta, SnapshotStore,
+    StorageError,
 };
-use craft_actor::{NetEffect, RaftDriver, ReadOutcome, Step};
+use craft_actor::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
 use craft_test_support::{KvCommand, KvQuery, KvResponse, TrackedKv};
 
 // ---------------------------------------------------------------------------
@@ -28,6 +29,7 @@ fn config() -> Config {
         election_timeout_max: 20,
         heartbeat_interval: 3,
         seed: 42,
+        ..Default::default()
     }
 }
 
@@ -758,4 +760,238 @@ fn recovered_node_persists_a_higher_term_after_restart() {
     );
     // The advanced term is durable, not just in memory.
     assert_eq!(storage.load_hard_state().unwrap().current_term, term_after);
+}
+
+// ---------------------------------------------------------------------------
+// Malformed persistence + backend error injection
+// ---------------------------------------------------------------------------
+
+/// Fail `load_hard_state` while delegating other operations to memory.
+#[derive(Default)]
+struct FailHardStateLoad(MemoryStorage);
+
+impl HardStateStore for FailHardStateLoad {
+    fn load_hard_state(&self) -> Result<HardState, StorageError> {
+        Err(StorageError::Backend("injected load failure".into()))
+    }
+
+    fn save_hard_state(&mut self, state: &HardState) -> Result<(), StorageError> {
+        self.0.save_hard_state(state)
+    }
+}
+
+impl LogStore for FailHardStateLoad {
+    fn first_index(&self) -> Result<LogIndex, StorageError> {
+        self.0.first_index()
+    }
+    fn last_index(&self) -> Result<LogIndex, StorageError> {
+        self.0.last_index()
+    }
+    fn read(&self, index: LogIndex) -> Result<Option<LogEntry>, StorageError> {
+        self.0.read(index)
+    }
+    fn read_from(&self, from: LogIndex) -> Result<Vec<LogEntry>, StorageError> {
+        self.0.read_from(from)
+    }
+    fn append(&mut self, entries: &[LogEntry]) -> Result<(), StorageError> {
+        self.0.append(entries)
+    }
+    fn truncate_suffix(&mut self, from: LogIndex) -> Result<(), StorageError> {
+        self.0.truncate_suffix(from)
+    }
+    fn purge_prefix(&mut self, through: LogIndex) -> Result<(), StorageError> {
+        self.0.purge_prefix(through)
+    }
+}
+
+impl SnapshotStore for FailHardStateLoad {
+    fn save_snapshot(&mut self, snapshot: &Snapshot) -> Result<(), StorageError> {
+        self.0.save_snapshot(snapshot)
+    }
+    fn load_snapshot(&self) -> Result<Option<Snapshot>, StorageError> {
+        self.0.load_snapshot()
+    }
+}
+
+/// Fail every append after `allow` successful appends.
+struct FailAppendAfter {
+    inner: MemoryStorage,
+    allow: usize,
+    seen: Mutex<usize>,
+}
+
+impl FailAppendAfter {
+    fn new(allow: usize) -> Self {
+        Self {
+            inner: MemoryStorage::default(),
+            allow,
+            seen: Mutex::new(0),
+        }
+    }
+}
+
+impl HardStateStore for FailAppendAfter {
+    fn load_hard_state(&self) -> Result<HardState, StorageError> {
+        self.inner.load_hard_state()
+    }
+    fn save_hard_state(&mut self, state: &HardState) -> Result<(), StorageError> {
+        self.inner.save_hard_state(state)
+    }
+}
+
+impl LogStore for FailAppendAfter {
+    fn first_index(&self) -> Result<LogIndex, StorageError> {
+        self.inner.first_index()
+    }
+    fn last_index(&self) -> Result<LogIndex, StorageError> {
+        self.inner.last_index()
+    }
+    fn read(&self, index: LogIndex) -> Result<Option<LogEntry>, StorageError> {
+        self.inner.read(index)
+    }
+    fn read_from(&self, from: LogIndex) -> Result<Vec<LogEntry>, StorageError> {
+        self.inner.read_from(from)
+    }
+    fn append(&mut self, entries: &[LogEntry]) -> Result<(), StorageError> {
+        let mut seen = self.seen.lock().unwrap();
+        *seen += 1;
+        if *seen > self.allow {
+            Err(StorageError::Backend("injected append failure".into()))
+        } else {
+            self.inner.append(entries)
+        }
+    }
+    fn truncate_suffix(&mut self, from: LogIndex) -> Result<(), StorageError> {
+        self.inner.truncate_suffix(from)
+    }
+    fn purge_prefix(&mut self, through: LogIndex) -> Result<(), StorageError> {
+        self.inner.purge_prefix(through)
+    }
+}
+
+impl SnapshotStore for FailAppendAfter {
+    fn save_snapshot(&mut self, snapshot: &Snapshot) -> Result<(), StorageError> {
+        self.inner.save_snapshot(snapshot)
+    }
+    fn load_snapshot(&self) -> Result<Option<Snapshot>, StorageError> {
+        self.inner.load_snapshot()
+    }
+}
+
+#[test]
+fn recover_surfaces_storage_error_when_hard_state_unreadable() {
+    let err = match RaftDriver::recover(
+        NodeId(1),
+        [NodeId(1)],
+        config(),
+        TrackedKv::default(),
+        Box::new(FailHardStateLoad::default()),
+    ) {
+        Err(err) => err,
+        Ok(_) => panic!("expected recover to fail on hard-state load"),
+    };
+    assert!(
+        matches!(err, DriverError::Storage(StorageError::Backend(_))),
+        "expected backend load failure, got {err:?}"
+    );
+}
+
+#[test]
+fn recover_rejects_corrupt_snapshot_bytes() {
+    let mut storage = MemoryStorage::default();
+    storage
+        .save_hard_state(&HardState {
+            current_term: Term(1),
+            voted_for: Some(NodeId(1)),
+        })
+        .unwrap();
+    storage
+        .save_snapshot(&Snapshot {
+            meta: SnapshotMeta {
+                last_included: LogId::new(Term(1), LogIndex(1)),
+                membership: Membership {
+                    voters: vec![NodeId(1)],
+                    voters_outgoing: vec![],
+                    learners: vec![],
+                },
+            },
+            data: vec![0xDE, 0xAD, 0xBE, 0xEF],
+        })
+        .unwrap();
+
+    let err = match RaftDriver::recover(
+        NodeId(1),
+        [NodeId(1)],
+        config(),
+        TrackedKv::default(),
+        Box::new(storage),
+    ) {
+        Err(err) => err,
+        Ok(_) => panic!("expected recover to fail on corrupt snapshot"),
+    };
+    assert!(
+        matches!(err, DriverError::Restore(_)),
+        "expected restore failure, got {err:?}"
+    );
+}
+
+#[test]
+fn replaying_corrupt_command_returns_apply_error() {
+    let mut storage = MemoryStorage::default();
+    storage
+        .save_hard_state(&HardState {
+            current_term: Term(1),
+            voted_for: Some(NodeId(1)),
+        })
+        .unwrap();
+    storage
+        .append(&[
+            LogEntry {
+                term: Term(1),
+                index: LogIndex(1),
+                payload: EntryPayload::Noop,
+            },
+            LogEntry {
+                term: Term(1),
+                index: LogIndex(2),
+                payload: EntryPayload::Command(vec![0xDE, 0xAD]),
+            },
+        ])
+        .unwrap();
+
+    let mut d = RaftDriver::recover(
+        NodeId(1),
+        [NodeId(1)],
+        config(),
+        TrackedKv::default(),
+        Box::new(storage),
+    )
+    .unwrap();
+    let err = match d.campaign() {
+        Err(err) => err,
+        Ok(_) => panic!("expected apply failure for corrupt command"),
+    };
+    assert!(
+        matches!(err, DriverError::Apply { .. } | DriverError::Codec(_)),
+        "expected apply/codec failure for corrupt command, got {err:?}"
+    );
+}
+
+#[test]
+fn storage_append_failure_surfaces_as_fatal_storage_error() {
+    // Allow the leader election no-op, then fail the first client append.
+    let storage = FailAppendAfter::new(1);
+    let node = RaftNode::new(NodeId(1), [NodeId(1)], config());
+    let mut d = RaftDriver::with_storage(node, TrackedKv::default(), Box::new(storage));
+    d.campaign().unwrap();
+    let err = d
+        .propose(&KvCommand::Set {
+            key: "k".into(),
+            value: "v".into(),
+        })
+        .unwrap_err();
+    assert!(
+        matches!(err, DriverError::Storage(StorageError::Backend(_))),
+        "expected append backend failure, got {err:?}"
+    );
 }

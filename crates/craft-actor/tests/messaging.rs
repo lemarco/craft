@@ -13,7 +13,7 @@ use craft_actor::craft_proto::{
 };
 use craft_actor::{
     ActorDirectory, ActorRegistry, CastError, ClusterAskError, ClusterMessaging, DeliverError,
-    MessageDecodeError, RpcReplyPort, UserActor, WireReplyPort,
+    DirectoryPolicy, DirectoryRetry, MessageDecodeError, RpcReplyPort, UserActor, WireReplyPort,
 };
 use serde::{Deserialize, Serialize, Serializer};
 
@@ -560,4 +560,62 @@ async fn reply_encode_failure_surfaces_as_a_real_error() {
         error.contains("reply encode failed"),
         "distinct from a dropped reply: {error}"
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn ask_linearizable_retries_until_directory_has_a_target() {
+    let net = LocalNetwork::new();
+    let counter = Arc::new(AtomicU64::new(0));
+    let registry = ActorRegistry::new();
+    registry.spawn::<Bump>("bump", counter.clone()).unwrap();
+    let directory = ActorDirectory::new();
+    let transport: Arc<dyn Transport> = Arc::new(net.clone());
+    let messaging = Arc::new(ClusterMessaging::with_policy(
+        NodeId(1),
+        Arc::clone(&directory),
+        registry,
+        transport,
+        DirectoryPolicy::ReadYourWrites,
+        DirectoryRetry {
+            max_attempts: 10,
+            backoff: Duration::from_millis(10),
+        },
+    ));
+    net.attach(NodeId(1), messaging.clone());
+
+    let payload = craft_proto::encode(&BumpReq).unwrap();
+    let ask = {
+        let messaging = Arc::clone(&messaging);
+        tokio::spawn(async move { messaging.ask_linearizable("bump", payload).await })
+    };
+
+    tokio::time::advance(Duration::from_millis(15)).await;
+    directory.apply(&update(1, vec![reg(1, "bump", 0)]));
+
+    let reply = ask.await.expect("task").expect("linearizable ask");
+    let got: u64 = craft_proto::decode(&reply).unwrap();
+    assert_eq!(got, 1);
+    assert_eq!(counter.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn cast_session_pins_to_the_same_instance() {
+    let net = LocalNetwork::new();
+    let counter = Arc::new(AtomicU64::new(0));
+    let registry = ActorRegistry::new();
+    registry.spawn::<Worker>("w", counter.clone()).unwrap();
+    let (messaging, directory) = messaging_on(&net, 1, registry);
+    directory.apply(&update(1, vec![reg(1, "w", 0)]));
+
+    let cluster = directory.cluster("w");
+    let session = cluster
+        .session_keyed(&"tenant-1", Some(Duration::from_secs(60)))
+        .expect("session");
+    let payload = craft_proto::encode(&Work::Add(1)).unwrap();
+    messaging
+        .cast_session(&session, payload.clone())
+        .await
+        .unwrap();
+    messaging.cast_session(&session, payload).await.unwrap();
+    eventually(|| counter.load(Ordering::SeqCst) == 2).await;
 }

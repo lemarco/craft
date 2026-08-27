@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use craft_core::{RaftGroupId, Role, plan_group_membership_sync};
+use craft_core::{GroupReplicationTarget, RaftGroupId, Role, plan_group_membership_sync};
 use craft_proto::NodeId;
 
 use crate::NodeHandle;
@@ -20,34 +20,51 @@ pub struct GroupMembershipSyncReport {
     pub skipped_in_progress: Vec<RaftGroupId>,
 }
 
-/// Collect committed voter sets for hosted groups from live handles.
-pub async fn collect_group_voters<M: StateMachine>(
+/// Collect committed voter and learner sets for hosted groups from live handles.
+pub async fn collect_group_membership<M: StateMachine>(
     hosted: &[(u32, NodeHandle<M>)],
-) -> BTreeMap<RaftGroupId, Vec<NodeId>> {
-    let mut current = BTreeMap::new();
+) -> (
+    BTreeMap<RaftGroupId, Vec<NodeId>>,
+    BTreeMap<RaftGroupId, Vec<NodeId>>,
+) {
+    let mut voters = BTreeMap::new();
+    let mut learners = BTreeMap::new();
     for (id, handle) in hosted {
         if let Some(status) = handle.status().await {
-            current.insert(RaftGroupId(*id), status.voters);
+            voters.insert(RaftGroupId(*id), status.voters);
+            learners.insert(RaftGroupId(*id), status.learners);
         }
     }
-    current
+    (voters, learners)
 }
 
 /// Apply one membership sync pass: for each hosted group where this node is
-/// leader, propose the desired voter set from the pure planner.
+/// leader, propose the desired voter + learner sets from the pure planner.
 pub async fn sync_hosted_group_membership<M: StateMachine>(
     hosted: &[(u32, NodeHandle<M>)],
     live_nodes: &[NodeId],
     catalog: &[RaftGroupId],
     replication_factor: u32,
+    learner_factor: u32,
 ) -> GroupMembershipSyncReport {
-    let current = collect_group_voters(hosted).await;
-    let desired = plan_group_membership_sync(catalog, live_nodes, &current, replication_factor);
+    let (current_voters, current_learners) = collect_group_membership(hosted).await;
+    let desired = plan_group_membership_sync(
+        catalog,
+        live_nodes,
+        &current_voters,
+        &current_learners,
+        replication_factor,
+        learner_factor,
+    );
     let mut report = GroupMembershipSyncReport::default();
 
     for (id, handle) in hosted {
         let group = RaftGroupId(*id);
-        let Some(target_voters) = desired.get(&group) else {
+        let Some(GroupReplicationTarget {
+            voters: target_voters,
+            learners: target_learners,
+        }) = desired.get(&group)
+        else {
             continue;
         };
         let Some(status) = handle.status().await else {
@@ -57,7 +74,10 @@ pub async fn sync_hosted_group_membership<M: StateMachine>(
             report.skipped_not_leader.push(group);
             continue;
         }
-        match handle.propose_membership(target_voters.clone()).await {
+        match handle
+            .propose_membership(target_voters.clone(), target_learners.clone())
+            .await
+        {
             Ok(()) => report.proposed.push(group),
             Err(ClientError::Driver(msg)) if msg.contains("in progress") => {
                 report.skipped_in_progress.push(group);

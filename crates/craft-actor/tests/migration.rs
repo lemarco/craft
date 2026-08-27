@@ -102,6 +102,29 @@ async fn drain_times_out_and_rejects_new_messages() {
     assert_eq!(outcome, DrainOutcome::TimedOut, "force stopped on timeout");
 }
 
+#[tokio::test]
+async fn per_group_drain_timeout_overrides_cluster_default() {
+    let registry = ActorRegistry::new();
+    let processed = Arc::new(AtomicUsize::new(0));
+    let actor = registry.spawn::<Counting>("c", processed.clone()).unwrap();
+    for _ in 0..3 {
+        actor.send(()).unwrap();
+    }
+    registry
+        .set_group_drain_timeout("c", Some(Duration::from_secs(30)))
+        .unwrap();
+    assert_eq!(
+        registry.group_drain_timeout("c"),
+        Some(Duration::from_secs(30))
+    );
+    let outcome = registry
+        .stop_graceful("c", Duration::from_millis(1))
+        .await
+        .unwrap();
+    assert_eq!(outcome, DrainOutcome::Completed);
+    assert_eq!(processed.load(Ordering::SeqCst), 3);
+}
+
 // ---------------------------------------------------------------------------
 // Migration: a stateful counter that snapshots/restores its count
 // ---------------------------------------------------------------------------

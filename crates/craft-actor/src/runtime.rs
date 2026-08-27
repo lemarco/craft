@@ -47,6 +47,7 @@ use craft_net::{
 use craft_proto::{
     ClientRequest, ClientResponse, JoinRejection, JoinRequest, JoinResponse, LeaveRejection,
     LeaveRequest, LeaveResponse, LogIndex, NodeId, PROTOCOL_VERSION, RaftRpc, RaftRpcReply, Term,
+    protocol_version_compatible,
 };
 use tokio::sync::{mpsc, oneshot};
 
@@ -88,6 +89,8 @@ pub struct NodeStatus {
     pub last_applied: LogIndex,
     /// The current committed voter set (Raft membership), sorted.
     pub voters: Vec<NodeId>,
+    /// Non-voting learners in the committed configuration, sorted.
+    pub learners: Vec<NodeId>,
     /// The voters this node currently considers **reachable** — a liveness
     /// signal distinct from committed membership (liveness-vs-membership). On the leader this
     /// drops voters that have stopped acking heartbeats (crashed / partitioned)
@@ -134,6 +137,7 @@ enum Envelope<M: StateMachine> {
     /// Leader-only: begin a joint-consensus membership change (per-group-raft-membership).
     ProposeMembership {
         voters: Vec<NodeId>,
+        learners: Vec<NodeId>,
         respond: oneshot::Sender<Result<(), ClientError>>,
     },
     Campaign,
@@ -362,10 +366,18 @@ impl<M: StateMachine> NodeHandle<M> {
     /// # Errors
     /// [`ClientError::NotLeader`] or [`ClientError::Driver`] when the core
     /// rejects the change; [`ClientError::Stopped`] if the runtime shut down.
-    pub async fn propose_membership(&self, voters: Vec<NodeId>) -> Result<(), ClientError> {
+    pub async fn propose_membership(
+        &self,
+        voters: Vec<NodeId>,
+        learners: Vec<NodeId>,
+    ) -> Result<(), ClientError> {
         let (respond, rx) = oneshot::channel();
         self.tx
-            .send(Envelope::ProposeMembership { voters, respond })
+            .send(Envelope::ProposeMembership {
+                voters,
+                learners,
+                respond,
+            })
             .map_err(|_| ClientError::Stopped)?;
         rx.await.map_err(|_| ClientError::Stopped)?
     }
@@ -663,8 +675,12 @@ impl<M: StateMachine> Runtime<M> {
             Envelope::Leave { request, respond } => {
                 self.on_leave(request, respond)?;
             }
-            Envelope::ProposeMembership { voters, respond } => {
-                self.on_propose_membership(voters, respond)?;
+            Envelope::ProposeMembership {
+                voters,
+                learners,
+                respond,
+            } => {
+                self.on_propose_membership(voters, learners, respond)?;
             }
             Envelope::Campaign => {
                 let step = self.driver.campaign()?;
@@ -680,6 +696,7 @@ impl<M: StateMachine> Runtime<M> {
                     commit_index: node.commit_index(),
                     last_applied: node.last_applied(),
                     voters: node.voters(),
+                    learners: node.committed_membership().learners,
                     reachable: node.reachable_now(),
                 });
             }
@@ -710,7 +727,7 @@ impl<M: StateMachine> Runtime<M> {
         respond: oneshot::Sender<JoinResponse>,
     ) -> Result<(), DriverError> {
         // Hard-reject a protocol-version mismatch before anything else (join-version-skew).
-        if request.protocol_version != PROTOCOL_VERSION {
+        if !protocol_version_compatible(request.protocol_version) {
             let _ = respond.send(JoinResponse::Rejected {
                 reason: JoinRejection::VersionSkew {
                     expected: PROTOCOL_VERSION,
@@ -772,7 +789,7 @@ impl<M: StateMachine> Runtime<M> {
         request: LeaveRequest,
         respond: oneshot::Sender<LeaveResponse>,
     ) -> Result<(), DriverError> {
-        if request.protocol_version != PROTOCOL_VERSION {
+        if !protocol_version_compatible(request.protocol_version) {
             let _ = respond.send(LeaveResponse::Rejected {
                 reason: LeaveRejection::VersionSkew {
                     expected: PROTOCOL_VERSION,
@@ -835,11 +852,12 @@ impl<M: StateMachine> Runtime<M> {
     fn on_propose_membership(
         &mut self,
         voters: Vec<NodeId>,
+        learners: Vec<NodeId>,
         respond: oneshot::Sender<Result<(), ClientError>>,
     ) -> Result<(), DriverError> {
         use craft_core::MembershipError;
 
-        match self.driver.propose_membership(voters, [])? {
+        match self.driver.propose_membership(voters, learners)? {
             Ok((_, step)) => {
                 let _ = self.settle(step);
                 let _ = respond.send(Ok(()));

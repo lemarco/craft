@@ -7,7 +7,8 @@
 //! `/client/wire` path through the [`NodeService`] request handler.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use craft_actor::craft_core::{RaftNode, Role};
@@ -17,12 +18,16 @@ use craft_actor::craft_net::{
 };
 use craft_actor::craft_proto::{
     AppendEntries, ClientRequest, ClientResponse, JoinRejection, JoinRequest, JoinResponse,
-    LeaveRejection, LeaveRequest, LeaveResponse, LogId, LogIndex, NodeId, PROTOCOL_VERSION,
-    RaftRpc, Round, Term,
+    LeaveRejection, LeaveRequest, LeaveResponse, LogEntry, LogId, LogIndex, NodeId,
+    PROTOCOL_VERSION, RaftRpc, Round, Term,
+};
+use craft_actor::craft_storage::{
+    HardState, HardStateStore, LogStore, MemoryStorage, Snapshot, SnapshotStore, StorageError,
 };
 use craft_actor::{ClientError, NodeHandle, NodeService, RaftDriver, RuntimeConfig, spawn_node};
 use craft_test_support::{
-    Kv, KvCommand, KvQuery, KvResponse, TICK_PERIOD, fast_raft_config_with_seed,
+    Kv, KvCommand, KvQuery, KvResponse, TICK_PERIOD, advance, await_node_leader,
+    fast_raft_config_with_seed,
 };
 
 /// A running cluster of async node runtimes wired over one `LocalNetwork`.
@@ -70,26 +75,12 @@ impl Cluster {
 
     /// Poll node statuses until exactly one leader exists, or panic on timeout.
     async fn wait_for_leader(&self) -> NodeId {
-        let deadline = Duration::from_secs(5);
-        let poll = async {
-            loop {
-                let mut leaders = Vec::new();
-                for &id in &self.ids {
-                    if let Some(status) = self.handles[&id].status().await
-                        && matches!(status.role, craft_actor::craft_core::Role::Leader)
-                    {
-                        leaders.push(id);
-                    }
-                }
-                if leaders.len() == 1 {
-                    return leaders[0];
-                }
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
-        };
-        tokio::time::timeout(deadline, poll)
-            .await
-            .expect("cluster failed to elect a single leader in time")
+        let handles: Vec<_> = self
+            .ids
+            .iter()
+            .map(|&id| (id, self.handles[&id].clone()))
+            .collect();
+        await_node_leader(&handles).await
     }
 
     fn shutdown(&self) {
@@ -99,7 +90,7 @@ impl Cluster {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn three_nodes_elect_a_leader() {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let cluster = Cluster::start(&ids);
@@ -108,7 +99,7 @@ async fn three_nodes_elect_a_leader() {
     cluster.shutdown();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn leader_serves_propose_and_linearizable_query() {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let cluster = Cluster::start(&ids);
@@ -134,7 +125,7 @@ async fn leader_serves_propose_and_linearizable_query() {
     cluster.shutdown();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn propose_on_a_follower_reports_not_leader() {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let cluster = Cluster::start(&ids);
@@ -161,7 +152,7 @@ async fn propose_on_a_follower_reports_not_leader() {
     cluster.shutdown();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn follower_forwards_writes_and_serves_reads_locally() {
     // client-routing: writes hit any node and forward to the leader.
     // read-consistency: queries on a follower confirm ReadIndex with the leader,
@@ -208,7 +199,7 @@ async fn follower_forwards_writes_and_serves_reads_locally() {
     cluster.shutdown();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn leader_confirms_read_index_for_follower_reads() {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let cluster = Cluster::start(&ids);
@@ -245,7 +236,7 @@ async fn leader_confirms_read_index_for_follower_reads() {
     cluster.shutdown();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn pending_proposal_fails_when_leadership_is_lost() {
     // Regression: a proposal that cannot reach quorum must not hang forever.
     // Isolate the leader (detach its followers), start a proposal that can
@@ -275,7 +266,7 @@ async fn pending_proposal_fails_when_leadership_is_lost() {
     });
 
     // Give the proposal a moment to be appended and left pending.
-    tokio::time::sleep(Duration::from_millis(30)).await;
+    advance(Duration::from_millis(30)).await;
 
     // A higher-term heartbeat from a "new leader" forces the old leader to
     // step down to a follower.
@@ -304,7 +295,7 @@ async fn pending_proposal_fails_when_leadership_is_lost() {
     cluster.shutdown();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn client_wire_propose_and_query_round_trip() {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let cluster = Cluster::start(&ids);
@@ -347,7 +338,7 @@ async fn client_wire_propose_and_query_round_trip() {
     cluster.shutdown();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn a_new_node_joins_a_running_cluster() {
     // E5 (membership-early, join-rpc): a fourth node joins a live 3-node cluster via
     // /cluster/join, the leader runs a joint-consensus membership change, and
@@ -410,7 +401,7 @@ async fn a_new_node_joins_a_running_cluster() {
             {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            advance(TICK_PERIOD).await;
         }
     })
     .await;
@@ -452,7 +443,7 @@ async fn a_new_node_joins_a_running_cluster() {
     cluster.shutdown();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(start_paused = true)]
 async fn a_node_leaves_a_running_cluster() {
     let ids = [NodeId(1), NodeId(2), NodeId(3), NodeId(4)];
     let mut cluster = Cluster::start(&ids[..3]);
@@ -499,4 +490,115 @@ async fn a_node_leaves_a_running_cluster() {
     );
 
     cluster.shutdown();
+}
+
+/// Fail every append after `allow` successful appends.
+struct FailAppendAfter {
+    inner: MemoryStorage,
+    allow: usize,
+    seen: Mutex<AtomicUsize>,
+}
+
+impl FailAppendAfter {
+    fn new(allow: usize) -> Self {
+        Self {
+            inner: MemoryStorage::default(),
+            allow,
+            seen: Mutex::new(AtomicUsize::new(0)),
+        }
+    }
+}
+
+impl HardStateStore for FailAppendAfter {
+    fn load_hard_state(&self) -> Result<HardState, StorageError> {
+        self.inner.load_hard_state()
+    }
+
+    fn save_hard_state(&mut self, state: &HardState) -> Result<(), StorageError> {
+        self.inner.save_hard_state(state)
+    }
+}
+
+impl LogStore for FailAppendAfter {
+    fn first_index(&self) -> Result<LogIndex, StorageError> {
+        self.inner.first_index()
+    }
+    fn last_index(&self) -> Result<LogIndex, StorageError> {
+        self.inner.last_index()
+    }
+    fn read(&self, index: LogIndex) -> Result<Option<LogEntry>, StorageError> {
+        self.inner.read(index)
+    }
+    fn read_from(&self, from: LogIndex) -> Result<Vec<LogEntry>, StorageError> {
+        self.inner.read_from(from)
+    }
+    fn append(&mut self, entries: &[LogEntry]) -> Result<(), StorageError> {
+        let seen = self.seen.lock().unwrap();
+        let n = seen.fetch_add(1, Ordering::SeqCst) + 1;
+        drop(seen);
+        if n > self.allow {
+            Err(StorageError::Backend("injected append failure".into()))
+        } else {
+            self.inner.append(entries)
+        }
+    }
+    fn truncate_suffix(&mut self, from: LogIndex) -> Result<(), StorageError> {
+        self.inner.truncate_suffix(from)
+    }
+    fn purge_prefix(&mut self, through: LogIndex) -> Result<(), StorageError> {
+        self.inner.purge_prefix(through)
+    }
+}
+
+impl SnapshotStore for FailAppendAfter {
+    fn save_snapshot(&mut self, snapshot: &Snapshot) -> Result<(), StorageError> {
+        self.inner.save_snapshot(snapshot)
+    }
+    fn load_snapshot(&self) -> Result<Option<Snapshot>, StorageError> {
+        self.inner.load_snapshot()
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn fatal_storage_error_stops_the_runtime() {
+    let net = LocalNetwork::new();
+    let node = RaftNode::new(NodeId(1), [NodeId(1)], fast_raft_config_with_seed(7));
+    let driver = RaftDriver::with_storage(node, Kv::default(), Box::new(FailAppendAfter::new(0)));
+    let transport: Arc<dyn Transport> = Arc::new(net.clone());
+    let handle = spawn_node(
+        driver,
+        Arc::clone(&transport),
+        RuntimeConfig {
+            tick_period: TICK_PERIOD,
+            allow_join: false,
+            allow_leave: false,
+        },
+    );
+    let service: Arc<dyn RequestHandler> =
+        Arc::new(NodeService::new(handle.clone(), Arc::clone(&transport)));
+    net.attach(NodeId(1), service);
+
+    handle.campaign();
+    for _ in 0..500 {
+        if handle.status().await.is_none() {
+            break;
+        }
+        advance(TICK_PERIOD).await;
+    }
+
+    assert!(
+        handle.status().await.is_none(),
+        "runtime must stop after a fatal storage error"
+    );
+    let err = handle
+        .propose(KvCommand::Set {
+            key: "k".into(),
+            value: "v".into(),
+        })
+        .await
+        .expect_err("propose after fatal error");
+    assert!(
+        matches!(err, ClientError::Stopped),
+        "expected Stopped, got {err:?}"
+    );
 }

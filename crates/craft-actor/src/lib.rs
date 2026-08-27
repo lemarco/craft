@@ -14,6 +14,7 @@ pub use {craft_core, craft_net, craft_proto, craft_storage};
 pub use craft_macros::remote_actor;
 
 mod directory;
+mod directory_policy;
 mod driver;
 mod group_membership;
 mod group_rebalance;
@@ -21,13 +22,16 @@ mod messaging;
 mod placement;
 mod registry;
 mod resources;
+mod ring;
 mod runtime;
+mod session;
 mod sharded;
 mod store;
 mod store_codec;
 mod supervisor;
 
 pub use directory::{ActorDirectory, ClusterRef, DirectorySync};
+pub use directory_policy::{DirectoryPolicy, DirectoryRetry};
 pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
 pub use group_membership::{GroupMembershipSyncReport, sync_hosted_group_membership};
 pub use group_rebalance::{GroupRebalanceReport, RaftGroupReconciler};
@@ -43,9 +47,11 @@ pub use registry::{
     SnapshotError, SpawnError, StopError, UserActor, WireReplyPort,
 };
 pub use resources::{ResourceProfile, VpsResources};
+pub use ring::{VIRTUAL_NODES, group_salt, hash_bytes, hash_key as ring_hash_key, pick_index};
 pub use runtime::{
     ClientError, NodeHandle, NodeService, NodeStatus, RuntimeConfig, spawn as spawn_node,
 };
+pub use session::ActorSession;
 pub mod rebalance_log;
 pub use sharded::{
     ShardedNodeService, spawn_multi_raft_node, spawn_raft_group, spawn_raft_group_from_bundle,

@@ -6,7 +6,10 @@ use std::path::Path;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use craft_core::{RaftGroupId, ShardRouter, StateMachine, place_shard};
+use craft_core::{
+    RaftGroupId, ShardCountExpansionPlan, ShardExpansionError, ShardRouter, StateMachine,
+    place_shard,
+};
 use craft_net::transport::{Body, BoxFuture, RequestHandler};
 use craft_net::{Route, Transport, TransportError, decode_body, encode_body};
 use craft_proto::{ClientRequest, ClientResponse, GroupPeerEnvelope, NodeId};
@@ -17,7 +20,7 @@ use crate::RuntimeConfig;
 /// Routes client and peer traffic to one of several Raft groups hosted on the
 /// same physical node.
 pub struct ShardedNodeService {
-    router: ShardRouter,
+    router: RwLock<ShardRouter>,
     group_ids: Arc<RwLock<Vec<RaftGroupId>>>,
     groups: Arc<RwLock<BTreeMap<u32, Arc<dyn RequestHandler>>>>,
 }
@@ -31,10 +34,33 @@ impl ShardedNodeService {
         groups: BTreeMap<u32, Arc<dyn RequestHandler>>,
     ) -> Self {
         Self {
-            router: ShardRouter::new(shard_count),
+            router: RwLock::new(ShardRouter::new(shard_count)),
             group_ids: Arc::new(RwLock::new(group_ids)),
             groups: Arc::new(RwLock::new(groups)),
         }
+    }
+
+    /// Active shard count for keyed routing.
+    #[must_use]
+    pub fn shard_count(&self) -> u32 {
+        self.router
+            .read()
+            .expect("sharded router lock")
+            .shard_count()
+    }
+
+    /// Expand the active shard keyspace (Tier 1). Keys remap — drain clients first.
+    ///
+    /// # Errors
+    /// Returns [`ShardExpansionError`] when `new_count` is invalid.
+    pub fn expand_shard_count(
+        &self,
+        new_count: u32,
+    ) -> Result<ShardCountExpansionPlan, ShardExpansionError> {
+        self.router
+            .write()
+            .expect("sharded router lock")
+            .expand_shard_count(new_count)
     }
 
     /// Raft groups currently hosted on this physical node.
@@ -71,7 +97,11 @@ impl ShardedNodeService {
     }
 
     fn group_for_key(&self, key: &[u8]) -> Option<RaftGroupId> {
-        let shard = self.router.shard_for(key);
+        let shard = self
+            .router
+            .read()
+            .expect("sharded router lock")
+            .shard_for(key);
         let ids = self.group_ids.read().expect("sharded group_ids lock");
         place_shard(shard, &ids)
     }

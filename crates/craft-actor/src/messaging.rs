@@ -31,7 +31,9 @@ use craft_proto::{ActorEnvelope, ActorRegistration, DeliverAck, NodeId};
 
 use crate::ActorRegistry;
 use crate::directory::ActorDirectory;
+use crate::directory_policy::{DirectoryPolicy, DirectoryRetry};
 use crate::registry::DeliverError;
+use crate::session::ActorSession;
 
 /// How long the receiving node waits for an actor to answer a cross-node `ask`
 /// before giving up and returning an empty reply. Bounds how long a
@@ -131,6 +133,8 @@ pub struct ClusterMessaging {
     next_req: AtomicU64,
     /// Serve-side dedup of already-answered cross-node asks (cross-node-actors).
     dedup: Arc<Mutex<DedupCache>>,
+    directory_policy: DirectoryPolicy,
+    directory_retry: DirectoryRetry,
 }
 
 impl ClusterMessaging {
@@ -143,6 +147,26 @@ impl ClusterMessaging {
         registry: ActorRegistry,
         transport: Arc<dyn Transport>,
     ) -> Self {
+        Self::with_policy(
+            node_id,
+            directory,
+            registry,
+            transport,
+            DirectoryPolicy::default(),
+            DirectoryRetry::default(),
+        )
+    }
+
+    /// Same as [`new`](Self::new) with an explicit directory visibility policy.
+    #[must_use]
+    pub fn with_policy(
+        node_id: NodeId,
+        directory: Arc<ActorDirectory>,
+        registry: ActorRegistry,
+        transport: Arc<dyn Transport>,
+        directory_policy: DirectoryPolicy,
+        directory_retry: DirectoryRetry,
+    ) -> Self {
         Self {
             node_id,
             directory,
@@ -150,7 +174,15 @@ impl ClusterMessaging {
             transport,
             next_req: AtomicU64::new(0),
             dedup: Arc::new(Mutex::new(DedupCache::default())),
+            directory_policy,
+            directory_retry,
         }
+    }
+
+    /// Active directory visibility policy.
+    #[must_use]
+    pub fn directory_policy(&self) -> DirectoryPolicy {
+        self.directory_policy
     }
 
     /// This node's id.
@@ -166,10 +198,7 @@ impl ClusterMessaging {
     /// Returns [`CastError::NoTarget`] if the group has no instances, or a
     /// delivery/transport error otherwise.
     pub async fn cast(&self, group: &str, payload: Vec<u8>) -> Result<(), CastError> {
-        let target = self
-            .directory
-            .pick_rr(group)
-            .ok_or_else(|| CastError::NoTarget(group.to_string()))?;
+        let target = self.resolve_rr(group, self.directory_policy).await?;
         self.deliver(target, payload).await
     }
 
@@ -186,9 +215,20 @@ impl ClusterMessaging {
         payload: Vec<u8>,
     ) -> Result<(), CastError> {
         let target = self
-            .directory
-            .pick_keyed(group, key)
-            .ok_or_else(|| CastError::NoTarget(group.to_string()))?;
+            .resolve_keyed(group, key, self.directory_policy)
+            .await?;
+        self.deliver(target, payload).await
+    }
+
+    /// Cast through a sticky [`ActorSession`] (same instance until TTL/expiry).
+    pub async fn cast_session(
+        &self,
+        session: &ActorSession,
+        payload: Vec<u8>,
+    ) -> Result<(), CastError> {
+        let target = self
+            .resolve_session(session)
+            .ok_or_else(|| CastError::NoTarget(session.target().name.clone()))?;
         self.deliver(target, payload).await
     }
 
@@ -200,10 +240,7 @@ impl ClusterMessaging {
     /// Returns [`AskError`] if the group has no instances, delivery fails, or
     /// the actor never replies.
     pub async fn ask(&self, group: &str, payload: Vec<u8>) -> Result<Vec<u8>, AskError> {
-        let target = self
-            .directory
-            .pick_rr(group)
-            .ok_or_else(|| AskError::NoTarget(group.to_string()))?;
+        let target = self.resolve_rr_ask(group, self.directory_policy).await?;
         self.deliver_ask(target, payload).await
     }
 
@@ -221,9 +258,34 @@ impl ClusterMessaging {
         payload: Vec<u8>,
     ) -> Result<Vec<u8>, AskError> {
         let target = self
-            .directory
-            .pick_keyed(group, key)
-            .ok_or_else(|| AskError::NoTarget(group.to_string()))?;
+            .resolve_keyed_ask(group, key, self.directory_policy)
+            .await?;
+        self.deliver_ask(target, payload).await
+    }
+
+    /// Ask with read-your-writes directory visibility (retries until the target
+    /// appears locally). Use for rare cases that need a fresh directory view;
+    /// default [`ask`](Self::ask) stays fast/local.
+    pub async fn ask_linearizable(
+        &self,
+        group: &str,
+        payload: Vec<u8>,
+    ) -> Result<Vec<u8>, AskError> {
+        let target = self
+            .resolve_rr_ask(group, DirectoryPolicy::ReadYourWrites)
+            .await?;
+        self.deliver_ask(target, payload).await
+    }
+
+    /// Ask through a sticky [`ActorSession`].
+    pub async fn ask_session(
+        &self,
+        session: &ActorSession,
+        payload: Vec<u8>,
+    ) -> Result<Vec<u8>, AskError> {
+        let target = self
+            .resolve_session(session)
+            .ok_or_else(|| AskError::NoTarget(session.target().name.clone()))?;
         self.deliver_ask(target, payload).await
     }
 
@@ -238,6 +300,78 @@ impl ClusterMessaging {
     #[must_use]
     pub fn handle_deliver(&self, envelope: &ActorEnvelope) -> DeliverAck {
         deliver_cast(&self.registry, envelope)
+    }
+
+    async fn resolve_rr(
+        &self,
+        group: &str,
+        policy: DirectoryPolicy,
+    ) -> Result<ActorRegistration, CastError> {
+        self.pick_with_policy(group, policy, || self.directory.pick_rr(group))
+            .await
+            .ok_or_else(|| CastError::NoTarget(group.to_string()))
+    }
+
+    async fn resolve_keyed<K: Hash>(
+        &self,
+        group: &str,
+        key: &K,
+        policy: DirectoryPolicy,
+    ) -> Result<ActorRegistration, CastError> {
+        self.pick_with_policy(group, policy, || self.directory.pick_keyed(group, key))
+            .await
+            .ok_or_else(|| CastError::NoTarget(group.to_string()))
+    }
+
+    async fn resolve_rr_ask(
+        &self,
+        group: &str,
+        policy: DirectoryPolicy,
+    ) -> Result<ActorRegistration, AskError> {
+        self.pick_with_policy(group, policy, || self.directory.pick_rr(group))
+            .await
+            .ok_or_else(|| AskError::NoTarget(group.to_string()))
+    }
+
+    async fn resolve_keyed_ask<K: Hash>(
+        &self,
+        group: &str,
+        key: &K,
+        policy: DirectoryPolicy,
+    ) -> Result<ActorRegistration, AskError> {
+        self.pick_with_policy(group, policy, || self.directory.pick_keyed(group, key))
+            .await
+            .ok_or_else(|| AskError::NoTarget(group.to_string()))
+    }
+
+    fn resolve_session(&self, session: &ActorSession) -> Option<ActorRegistration> {
+        session.resolve(&self.directory)
+    }
+
+    async fn pick_with_policy<F>(
+        &self,
+        _group: &str,
+        policy: DirectoryPolicy,
+        mut pick: F,
+    ) -> Option<ActorRegistration>
+    where
+        F: FnMut() -> Option<ActorRegistration>,
+    {
+        match policy {
+            DirectoryPolicy::Eventual => pick(),
+            DirectoryPolicy::ReadYourWrites => {
+                let attempts = self.directory_retry.max_attempts.max(1);
+                for attempt in 0..attempts {
+                    if let Some(reg) = pick() {
+                        return Some(reg);
+                    }
+                    if attempt + 1 < attempts {
+                        tokio::time::sleep(self.directory_retry.backoff).await;
+                    }
+                }
+                None
+            }
+        }
     }
 
     async fn deliver_ask(

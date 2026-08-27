@@ -18,7 +18,7 @@
 //! **where** a message should go (a target [`ActorRegistration`]).
 
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -28,6 +28,8 @@ use craft_net::{
     send_directory_update,
 };
 use craft_proto::{ActorId, ActorRegistration, DirectoryUpdate, NodeId, RegisterAck};
+
+use crate::ring::{self, group_salt, hash_key};
 
 /// A node-local, merged view of every actor known in the cluster (E7).
 ///
@@ -160,8 +162,32 @@ impl ActorDirectory {
         if members.is_empty() {
             return None;
         }
-        let index = (hash_key(key) % members.len() as u64) as usize;
+        let index = ring::pick_index(hash_key(key), members.len(), group_salt(name));
         members.into_iter().nth(index)
+    }
+
+    /// Poll until `predicate` holds or `timeout` elapses. Returns whether the
+    /// predicate was satisfied (read-your-writes helper after spawn/scale).
+    pub async fn wait_until<F>(&self, timeout: std::time::Duration, mut predicate: F) -> bool
+    where
+        F: FnMut() -> bool,
+    {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            if predicate() {
+                return true;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return predicate();
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    }
+
+    /// Whether group `name` has at least `min_instances` registrations locally.
+    #[must_use]
+    pub fn has_at_least(&self, name: &str, min_instances: usize) -> bool {
+        self.lookup(name).len() >= min_instances
     }
 
     /// A routing handle to the cluster-wide pool `name`.
@@ -184,12 +210,6 @@ impl ActorDirectory {
         out.sort_by(|a, b| a.id.cmp(&b.id));
         out
     }
-}
-
-fn hash_key<K: Hash>(key: &K) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    key.hash(&mut hasher);
-    hasher.finish()
 }
 
 /// A handle to a cluster-wide actor pool that resolves a target instance for a
@@ -240,11 +260,21 @@ impl ClusterRef {
         self.directory.pick_rr(&self.name)
     }
 
-    /// Resolve the target instance for `key` (consistent while membership is
-    /// stable).
+    /// Resolve the target instance for `key` (consistent hash ring).
     #[must_use]
     pub fn pick_keyed<K: Hash>(&self, key: &K) -> Option<ActorRegistration> {
         self.directory.pick_keyed(&self.name, key)
+    }
+
+    /// Open a sticky session pinned to the instance `key` maps to.
+    #[must_use]
+    pub fn session_keyed<K: Hash>(
+        &self,
+        key: &K,
+        ttl: Option<std::time::Duration>,
+    ) -> Option<crate::session::ActorSession> {
+        self.pick_keyed(key)
+            .map(|r| crate::session::ActorSession::new(&r, ttl))
     }
 }
 
