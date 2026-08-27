@@ -14,6 +14,14 @@
 //!
 //! # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
 //! let store = RedisStore::connect("redis://127.0.0.1:6379").await?.with_prefix("orders:");
+//! // Private CA:
+//! // let ca = std::fs::read("/etc/redis/ca.pem")?;
+//! // let store = RedisStore::connect_with_tls(
+//! //     "rediss://redis.internal:6379",
+//! //     &RedisTlsConfig::with_root_ca_pem(ca),
+//! // )
+//! // .await?
+//! // .with_prefix("orders:");
 //! let store: Arc<dyn ActorStateStore> = Arc::new(store);
 //! store.set("order:42", b"processing", None).await?;
 //! assert_eq!(store.get("order:42").await?, Some(b"processing".to_vec()));
@@ -22,10 +30,16 @@
 //! ```
 //!
 //! Connections use a [`ConnectionManager`],
-//! which multiplexes over one connection and transparently reconnects. Real
-//! Redis behavior is covered by a `testcontainers`-backed integration test
-//! (ADR 029), gated `#[ignore]` so it runs in the heavy CI lane rather than on
-//! every push.
+//! which multiplexes over one connection and transparently reconnects. Plain
+//! `redis://` and TLS `rediss://` URLs are supported; pass a custom Redis CA
+//! (and optional client cert) via [`RedisTlsConfig`] and
+//! [`RedisStore::connect_with_tls`]. Real Redis behavior is covered by
+//! `testcontainers`-backed integration tests (ADR 029), gated `#[ignore]` so
+//! they run in the heavy CI lane rather than on every push.
+
+mod tls;
+
+pub use tls::RedisTlsConfig;
 
 pub use craft_actor;
 
@@ -64,14 +78,37 @@ pub struct RedisStore {
 }
 
 impl RedisStore {
-    /// Connect to Redis at `url` (e.g. `redis://127.0.0.1:6379` or
-    /// `rediss://…` for TLS) and build a multiplexed, auto-reconnecting store.
+    /// Connect to Redis at `url` (`redis://…` or `rediss://…` with a public /
+    /// webpki-trusted CA) and build a multiplexed, auto-reconnecting store.
+    ///
+    /// For `rediss://` with a **private CA** or Redis **mTLS**, use
+    /// [`connect_with_tls`](Self::connect_with_tls).
     ///
     /// # Errors
     /// [`StoreError::Backend`] if the URL is invalid or the initial connection
     /// cannot be established.
     pub async fn connect(url: &str) -> Result<Self, StoreError> {
-        let client = redis::Client::open(url).map_err(backend)?;
+        Self::connect_client(redis::Client::open(url).map_err(backend)?).await
+    }
+
+    /// Connect to Redis over TLS at `url` (`rediss://…`) with explicit trust /
+    /// client material. Use this when the Redis CA is not in the OS store.
+    ///
+    /// # Errors
+    /// [`StoreError::Backend`] if TLS material is inconsistent, the URL is not
+    /// `rediss://`, or the initial connection cannot be established.
+    pub async fn connect_with_tls(url: &str, tls: &RedisTlsConfig) -> Result<Self, StoreError> {
+        if !url.starts_with("rediss://") {
+            return Err(StoreError::Backend(
+                "connect_with_tls requires a rediss:// URL".into(),
+            ));
+        }
+        let certs = tls::redis_tls_certificates(tls)?;
+        let client = redis::Client::build_with_tls(url, certs).map_err(backend)?;
+        Self::connect_client(client).await
+    }
+
+    async fn connect_client(client: redis::Client) -> Result<Self, StoreError> {
         let conn = ConnectionManager::new(client).await.map_err(backend)?;
         Ok(Self {
             conn,
