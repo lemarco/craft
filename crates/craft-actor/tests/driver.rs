@@ -11,7 +11,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use craft_actor::craft_core::{Config, RaftNode, ReadId, Role, StateMachine};
-use craft_actor::craft_proto::{EntryPayload, LogEntry, LogId, LogIndex, Membership, NodeId, Term};
+use craft_actor::craft_proto::{
+    EntryPayload, LogEntry, LogId, LogIndex, Membership, NodeId, SagaJournalCommand, Term,
+};
 use craft_actor::craft_storage::{
     HardState, HardStateStore, LogStore, MemoryStorage, Snapshot, SnapshotMeta, SnapshotStore,
     StorageError,
@@ -993,5 +995,25 @@ fn storage_append_failure_surfaces_as_fatal_storage_error() {
     assert!(
         matches!(err, DriverError::Storage(StorageError::Backend(_))),
         "expected append backend failure, got {err:?}"
+    );
+}
+
+#[test]
+fn propose_saga_journal_commits_without_user_sm_apply() {
+    let mut d = single_node();
+    d.campaign().unwrap();
+
+    let command = SagaJournalCommand {
+        saga_id: b"saga-a".to_vec(),
+        record: vec![4, 5, 6],
+    };
+    let (index, step) = d
+        .propose_saga_journal(command.clone())
+        .unwrap()
+        .expect("leader propose");
+    assert_eq!(step.saga_journal_applied, vec![(index, command)]);
+    assert!(
+        step.applied.is_empty(),
+        "saga journal must not apply user SM"
     );
 }

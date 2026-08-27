@@ -19,7 +19,7 @@ use craft_actor::craft_net::{
 use craft_actor::craft_proto::{
     AppendEntries, ClientRequest, ClientResponse, JoinRejection, JoinRequest, JoinResponse,
     LeaveRejection, LeaveRequest, LeaveResponse, LogEntry, LogId, LogIndex, NodeId,
-    PROTOCOL_VERSION, RaftRpc, Round, Term,
+    PROTOCOL_VERSION, RaftRpc, Round, SagaJournalCommand, Term,
 };
 use craft_actor::craft_storage::{
     HardState, HardStateStore, LogStore, MemoryStorage, Snapshot, SnapshotStore, StorageError,
@@ -603,4 +603,88 @@ async fn fatal_storage_error_stops_the_runtime() {
         matches!(err, ClientError::Stopped),
         "expected Stopped, got {err:?}"
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn upsert_saga_journal_invokes_hook_on_commit() {
+    let ids = [NodeId(1)];
+    let net = LocalNetwork::new();
+    let applied = Arc::new(Mutex::new(Vec::<SagaJournalCommand>::new()));
+    let hook_reg = Arc::clone(&applied);
+    let on_saga_journal_applied = Arc::new(move |cmd: SagaJournalCommand| {
+        hook_reg.lock().unwrap().push(cmd);
+    });
+
+    let node = RaftNode::new(ids[0], ids, fast_raft_config_with_seed(7));
+    let driver = RaftDriver::new(node, Kv::default());
+    let transport: Arc<dyn Transport> = Arc::new(net.clone());
+    let handle = spawn_node(
+        driver,
+        Arc::clone(&transport),
+        RuntimeConfig {
+            tick_period: TICK_PERIOD,
+            on_saga_journal_applied: Some(on_saga_journal_applied),
+            ..RuntimeConfig::default()
+        },
+    );
+    let service: Arc<dyn RequestHandler> =
+        Arc::new(NodeService::new(handle.clone(), Arc::clone(&transport)));
+    net.attach(ids[0], service);
+
+    for _ in 0..50 {
+        if handle
+            .status()
+            .await
+            .is_some_and(|s| s.role == Role::Leader)
+        {
+            break;
+        }
+        advance(TICK_PERIOD).await;
+    }
+    assert!(
+        handle
+            .status()
+            .await
+            .is_some_and(|s| s.role == Role::Leader),
+        "single node must become leader"
+    );
+
+    let command = SagaJournalCommand {
+        saga_id: b"journal-hook".to_vec(),
+        record: vec![1, 2],
+    };
+    handle
+        .upsert_saga_journal(command.clone())
+        .await
+        .expect("leader upsert");
+
+    let got = applied.lock().unwrap();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0], command);
+    handle.shutdown();
+}
+
+#[tokio::test(start_paused = true)]
+async fn upsert_saga_journal_on_follower_returns_not_leader() {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let cluster = Cluster::start(&ids);
+    let leader = cluster.wait_for_leader().await;
+    let follower = ids
+        .iter()
+        .copied()
+        .find(|id| *id != leader)
+        .expect("follower");
+
+    let err = cluster.handles[&follower]
+        .upsert_saga_journal(SagaJournalCommand {
+            saga_id: b"x".to_vec(),
+            record: vec![1],
+        })
+        .await
+        .expect_err("follower must reject saga journal upsert");
+    assert!(
+        matches!(err, ClientError::NotLeader { .. }),
+        "expected NotLeader, got {err:?}"
+    );
+    cluster.shutdown();
 }

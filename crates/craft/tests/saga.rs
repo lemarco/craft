@@ -434,3 +434,75 @@ async fn cross_shard_saga_survives_coordinator_restart_via_group0_journal() {
         }
     }
 }
+
+#[tokio::test(start_paused = true)]
+async fn run_keyed_saga_with_group0_journal_completes() {
+    let (net, clusters) = spawn_two_group_cluster().await;
+    wait_for_each_group_cluster_leader(&clusters, 2).await;
+    let leader = await_craft_leader(&clusters).await;
+
+    let groups = [craft::core::RaftGroupId(0), craft::core::RaftGroupId(1)];
+    let (key_a, key_b) = find_keys_for_two_groups(64, &groups);
+    let plan = two_shard_plan(key_a.clone(), key_b.clone());
+
+    let client = RemoteClient::new(Arc::new(net.clone()), [leader.node_id()]);
+    let journal = leader.saga_journal();
+    let outcome = leader
+        .run_keyed_saga(&client, &plan, journal.as_ref())
+        .await
+        .expect("group0 journal saga");
+    assert!(matches!(outcome, SagaOutcome::Completed(_)));
+
+    let loaded = journal.load(&plan.saga_id).await.expect("load");
+    let record = loaded.expect("journal record");
+    assert_eq!(record.phase, SagaJournalPhase::Completed);
+    assert_eq!(record.completed_steps, 2);
+
+    for cluster in &clusters {
+        cluster.shutdown();
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn composite_saga_journal_mirrors_to_actor_state_store() {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let net = LocalNetwork::new();
+    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
+    let mut clusters = Vec::new();
+    for &id in &ids {
+        let cluster = CraftCluster::builder(id, KvMachine::default())
+            .members(ids)
+            .raft_config(fast_raft_config_with_seed(11))
+            .tick_period(TICK_PERIOD)
+            .shard_count(64)
+            .raft_machines([KvMachine::default(), KvMachine::default()])
+            .actor_state_store(Arc::clone(&store))
+            .start_local(&net)
+            .await;
+        clusters.push(Arc::new(cluster));
+    }
+    wait_for_each_group_cluster_leader(&clusters, 2).await;
+    let leader = await_craft_leader(&clusters).await;
+    let journal = leader.saga_journal();
+
+    journal
+        .on_started(b"mirror-saga", 2, Some(leader.catalog_version()))
+        .await
+        .expect("start");
+    journal
+        .on_step_committed(b"mirror-saga", 0)
+        .await
+        .expect("step 0");
+
+    let mirrored = store
+        .get("craft:saga:mirror-saga")
+        .await
+        .expect("store read")
+        .expect("mirrored journal bytes");
+    let record = craft::client::decode_journal_record(&mirrored).expect("decode");
+    assert_eq!(record.completed_steps, 1);
+
+    for cluster in &clusters {
+        cluster.shutdown();
+    }
+}

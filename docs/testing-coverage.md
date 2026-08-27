@@ -76,6 +76,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Dynamic catalog expansion (runtime) | — | ✅ `multi_raft` | — | — | ✅ |
 | Stable shard routing (runtime) | — | ✅ `multi_raft`, `sharded` | — | — | ✅ |
 | Cross-shard atomic transactions | — | ✅ `saga`, `two_phase`, `craft-client` | — | — | ✅ |
+| Saga journal group 0 metadata (`EntryPayload::SagaJournal`) | ✅ `saga_journal` | ✅ `driver`, `runtime`, `saga` | — | — | ✅ |
 | Per-group membership planner (`group_voters`, join/leave affects) | ✅ | ✅ | — | — | ✅ |
 | Per-group membership runtime sync on cluster join | — | ✅ | — | — | ✅ |
 | Per-group learners (`group_learners`, membership sync) | ✅ | — | — | — | ✅ |
@@ -220,6 +221,7 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-08 | Tier 2 tails: `catalog_version`, `switch_to_stable_shards`, saga hardening | `craft-core/shard.rs`, `craft/src/cluster.rs`, `craft-client/src/saga.rs`, `craft/tests/{multi_raft,saga}.rs` |
 | 2026-08 | Tier 2 Phase 4: cross-shard saga coordinator (`run_saga`, `StoreSagaJournal`) | `craft-client/src/saga.rs`, `craft/src/saga.rs`, `craft/tests/saga.rs`, `docs/decisions/cross-shard-transactions.md` |
 | 2026-08 | Saga hardening v2: group 0 journal fallback + coordinator restart resume | `craft-proto/saga_journal`, `craft-core/node`, `craft-actor/runtime`, `craft/src/saga.rs`, `craft/tests/saga.rs` |
+| 2026-08 | Saga journal layered tests (proto/core/driver/runtime/facade) | `craft-proto`, `craft-core/tests/saga_journal.rs`, `craft-actor/tests/{driver,runtime}.rs`, `craft/tests/saga.rs` |
 | 2026-08 | Optional cross-shard 2PC (`propose_cross_shard_2pc`, `cross_shard_2pc`) | `craft-core/src/two_phase.rs`, `craft-actor/src/two_phase.rs`, `craft-client/src/two_phase.rs`, `craft/tests/two_phase.rs` |
 | 2026-08 | Tier 2 Phase 2: dynamic catalog runtime (`add_raft_groups`, `/cluster/catalog/add`) | `craft-proto/catalog`, `craft-actor/runtime`, `craft/tests/multi_raft.rs`, `docs/decisions/tier2-multi-raft-architecture.md` |
 | 2026-08 | Tier 2 multi-Raft architecture ADR + Phase 1 pure planners | `craft-core/src/shard.rs`, `docs/decisions/tier2-multi-raft-architecture.md` |

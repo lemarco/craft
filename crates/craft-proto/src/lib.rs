@@ -215,6 +215,21 @@ mod tests {
     }
 
     #[test]
+    fn roundtrip_saga_journal_entry() {
+        let entry = LogEntry {
+            term: Term(2),
+            index: LogIndex(4),
+            payload: EntryPayload::SagaJournal(SagaJournalCommand {
+                saga_id: b"saga-1".to_vec(),
+                record: vec![1, 2, 3],
+            }),
+        };
+        let bytes = encode(&entry).expect("encode");
+        let back: LogEntry = decode(&bytes).expect("decode");
+        assert_eq!(entry, back);
+    }
+
+    #[test]
     fn roundtrip_raft_rpc() {
         let rpc = RaftRpc::AppendEntries(AppendEntries {
             term: Term(2),
