@@ -25,8 +25,14 @@ hyper = { version = "1.10.1", features = ["server", "http1"] }
 hyper-util = { version = "0.1.20", features = ["tokio"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0.150"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pemfile = "2"
+thiserror.workspace = true
+tokio-rustls = "0.26"
 tokio = { version = "1.52.3", features = ["net", "io-util", "rt", "sync", "time", "macros"] }
 tokio-stream = "0.1.18"
 
 [dev-dependencies]
+rcgen = "0.14"
+tempfile = "3"
 tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }

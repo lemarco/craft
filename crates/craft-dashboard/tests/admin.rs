@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use craft_dashboard::{
     ActorView, AdminServer, BoxFuture, ClusterView, EventBus, Metrics, NodeSummary, NodeView,
-    Observer, Readiness,
+    Observer, RaftGroupsView, Readiness,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -49,6 +49,19 @@ impl Observer for Fake {
                         member: true,
                     },
                 ],
+            }
+        })
+    }
+
+    fn raft_groups(&self) -> BoxFuture<'_, RaftGroupsView> {
+        Box::pin(async move {
+            RaftGroupsView {
+                shard_count: 64,
+                catalog_size: 2,
+                replication_factor: 3,
+                learner_factor: 1,
+                hosted_groups: vec![0, 1],
+                groups: vec![],
             }
         })
     }
@@ -162,6 +175,10 @@ async fn introspection_routes_return_json() {
     let (status, body) = get(addr, "/introspect/cluster").await;
     assert_eq!(status, 200);
     assert!(body.contains("\"leader\":1") && body.contains("\"term\":4"));
+
+    let (status, body) = get(addr, "/introspect/raft-groups").await;
+    assert_eq!(status, 200);
+    assert!(body.contains("\"shard_count\":64") && body.contains("\"catalog_size\":2"));
 
     let (status, body) = get(addr, "/introspect/actors").await;
     assert_eq!(status, 200);

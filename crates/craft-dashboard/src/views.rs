@@ -95,6 +95,44 @@ pub struct NodeView {
     pub store_healthy: bool,
 }
 
+/// One multi-Raft group's consensus snapshot (Tier 1 observability).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RaftGroupSummary {
+    /// Raft group id (shard coordinator index).
+    pub group_id: u32,
+    /// Role on this node for the group.
+    pub role: String,
+    /// Current leader node id, if known.
+    pub leader: Option<u64>,
+    /// Current term.
+    pub term: u64,
+    /// Highest committed index.
+    pub commit_index: u64,
+    /// Voting members.
+    pub voters: Vec<u64>,
+    /// Learner members (non-voting replicas).
+    pub learners: Vec<u64>,
+    /// Whether this node hosts the group's Raft runtime.
+    pub hosted_on_this_node: bool,
+}
+
+/// Multi-Raft routing and per-group status for `GET /introspect/raft-groups`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RaftGroupsView {
+    /// Active virtual shard count (may grow via expansion).
+    pub shard_count: u32,
+    /// Number of catalogued Raft groups.
+    pub catalog_size: u32,
+    /// Target voter replication factor per group.
+    pub replication_factor: u32,
+    /// Target learner replicas per group.
+    pub learner_factor: u32,
+    /// Group ids hosted on this node.
+    pub hosted_groups: Vec<u32>,
+    /// Per-group snapshots for groups hosted here.
+    pub groups: Vec<RaftGroupSummary>,
+}
+
 /// Read-only observability port implemented by the runtime/facade.
 ///
 /// Object-safe (boxed futures) so the admin server can hold
@@ -105,6 +143,9 @@ pub trait Observer: Send + Sync + 'static {
 
     /// Cluster-wide consensus/membership view.
     fn cluster(&self) -> BoxFuture<'_, ClusterView>;
+
+    /// Multi-Raft shard routing and per-group status on this node.
+    fn raft_groups(&self) -> BoxFuture<'_, RaftGroupsView>;
 
     /// All actors known to this node (cluster-wide when served by the leader).
     fn actors(&self) -> BoxFuture<'_, Vec<ActorView>>;

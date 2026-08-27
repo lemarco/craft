@@ -16,7 +16,9 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
+use rustls::ServerConfig;
 use tokio::net::TcpListener;
+use tokio_rustls::TlsAcceptor;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::dashboard::DASHBOARD_HTML;
@@ -55,18 +57,40 @@ impl AdminServer {
     /// # Errors
     /// Returns the first [`std::io::Error`] from `accept`.
     pub async fn serve(self, listener: TcpListener) -> std::io::Result<()> {
+        self.serve_inner(listener, None).await
+    }
+
+    /// Serve admin requests over **TLS** (server-only, no client certificates).
+    ///
+    /// # Errors
+    /// Returns the first accept or TLS handshake error.
+    pub async fn serve_tls(
+        self,
+        listener: TcpListener,
+        tls: Arc<ServerConfig>,
+    ) -> std::io::Result<()> {
+        self.serve_inner(listener, Some(tls)).await
+    }
+
+    async fn serve_inner(
+        self,
+        listener: TcpListener,
+        tls: Option<Arc<ServerConfig>>,
+    ) -> std::io::Result<()> {
         let state = Arc::new(self);
+        let acceptor = tls.map(TlsAcceptor::from);
         loop {
             let (stream, _peer) = listener.accept().await?;
-            let io = TokioIo::new(stream);
             let state = Arc::clone(&state);
+            let acceptor = acceptor.clone();
             tokio::spawn(async move {
-                let service = service_fn(move |req| {
-                    let state = Arc::clone(&state);
-                    async move { Ok::<_, Infallible>(state.route(req).await) }
-                });
-                // Ignore per-connection errors (client hangups etc.).
-                let _ = http1::Builder::new().serve_connection(io, service).await;
+                if let Some(acc) = acceptor {
+                    if let Ok(s) = acc.accept(stream).await {
+                        serve_connection(TokioIo::new(s), state).await;
+                    }
+                } else {
+                    serve_connection(TokioIo::new(stream), state).await;
+                }
             });
         }
     }
@@ -88,6 +112,7 @@ impl AdminServer {
                 self.metrics.render(),
             ),
             "/introspect/cluster" => json(StatusCode::OK, &self.observer.cluster().await),
+            "/introspect/raft-groups" => json(StatusCode::OK, &self.observer.raft_groups().await),
             "/introspect/actors" => json(StatusCode::OK, &self.observer.actors().await),
             "/dashboard" => text(
                 StatusCode::OK,
@@ -156,6 +181,17 @@ impl AdminServer {
             .body(body)
             .expect("valid response")
     }
+}
+
+async fn serve_connection<S>(io: TokioIo<S>, state: Arc<AdminServer>)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    let service = service_fn(move |req| {
+        let state = Arc::clone(&state);
+        async move { Ok::<_, Infallible>(state.route(req).await) }
+    });
+    let _ = http1::Builder::new().serve_connection(io, service).await;
 }
 
 /// A trivial JSON message envelope for status endpoints.

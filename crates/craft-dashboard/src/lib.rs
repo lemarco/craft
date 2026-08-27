@@ -17,13 +17,18 @@
 
 pub use {craft_actor, craft_net};
 
+mod admin_tls;
 mod dashboard;
 mod metrics;
 mod server;
 mod telemetry;
 mod views;
 
+pub use admin_tls::{AdminTlsError, AdminTlsPaths, server_config as admin_tls_config};
 pub use metrics::Metrics;
 pub use server::AdminServer;
 pub use telemetry::{CraftEvent, EventBus, EventSubscription, StopReason, TraceOpts};
-pub use views::{ActorView, BoxFuture, ClusterView, NodeSummary, NodeView, Observer, Readiness};
+pub use views::{
+    ActorView, BoxFuture, ClusterView, NodeSummary, NodeView, Observer, RaftGroupSummary,
+    RaftGroupsView, Readiness,
+};
