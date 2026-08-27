@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use craft::actor::{ConfigCodecError, UserActor};
-use craft::core::Config;
+use craft::core::{Config, FailureDetectorKind, ReachabilityConfig};
 use craft::net::LocalNetwork;
 use craft::proto;
 use craft::{CraftCluster, NodeId};
@@ -106,15 +106,36 @@ fn reachability_raft_config() -> Config {
     }
 }
 
+fn phi_accrual_raft_config() -> Config {
+    Config {
+        election_timeout_min: 5,
+        election_timeout_max: 10,
+        heartbeat_interval: 1,
+        seed: 11,
+        reachability: ReachabilityConfig {
+            window_ticks: None,
+            hysteresis_ticks: 0,
+            detector: FailureDetectorKind::PhiAccrual,
+            phi_threshold: 4.0,
+        },
+    }
+}
+
 /// 3-node cluster tuned for fast heartbeat-derived reachability (liveness-vs-membership).
 async fn spawn_reachability_cluster() -> (LocalNetwork, Vec<Arc<CraftCluster<Kv>>>) {
+    spawn_reachability_cluster_with(reachability_raft_config()).await
+}
+
+async fn spawn_reachability_cluster_with(
+    raft: Config,
+) -> (LocalNetwork, Vec<Arc<CraftCluster<Kv>>>) {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let net = LocalNetwork::new();
     let mut clusters = Vec::new();
     for &id in &ids {
         let cluster = CraftCluster::builder(id, Kv::default())
             .members(ids)
-            .raft_config(reachability_raft_config())
+            .raft_config(raft.clone())
             .tick_period(Duration::from_millis(5))
             .refresh_period(Duration::from_millis(15))
             .reconcile_period(Duration::from_millis(15))
@@ -153,6 +174,65 @@ async fn http_get(addr: std::net::SocketAddr, path: &str) -> (u16, String) {
         .map(|(_, b)| b.to_string())
         .unwrap_or_default();
     (status, body)
+}
+
+async fn https_get(
+    addr: std::net::SocketAddr,
+    path: &str,
+    trust_anchor: &rustls::pki_types::CertificateDer<'static>,
+) -> (u16, String) {
+    use std::sync::Arc;
+
+    use rustls::pki_types::ServerName;
+    use rustls::{ClientConfig, RootCertStore};
+    use tokio_rustls::TlsConnector;
+
+    let mut roots = RootCertStore::empty();
+    roots.add(trust_anchor.clone()).unwrap();
+    let config = ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    let connector = TlsConnector::from(Arc::new(config));
+    let stream = TcpStream::connect(addr).await.expect("connect admin tls");
+    let server_name = ServerName::try_from("localhost").unwrap();
+    let mut tls = connector
+        .connect(server_name, stream)
+        .await
+        .expect("tls handshake");
+    let req = format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    tls.write_all(req.as_bytes()).await.expect("send req");
+    let mut raw = Vec::new();
+    tls.read_to_end(&mut raw).await.expect("read resp");
+    let text = String::from_utf8_lossy(&raw).into_owned();
+    let status = text
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let body = text
+        .split_once("\r\n\r\n")
+        .map(|(_, b)| b.to_string())
+        .unwrap_or_default();
+    (status, body)
+}
+
+fn mint_admin_tls_files() -> (
+    tempfile::TempDir,
+    std::path::PathBuf,
+    std::path::PathBuf,
+    rustls::pki_types::CertificateDer<'static>,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+    let cert_path = dir.path().join("cert.pem");
+    let key_path = dir.path().join("key.pem");
+    std::fs::write(&cert_path, cert.cert.pem()).unwrap();
+    std::fs::write(&key_path, cert.signing_key.serialize_pem()).unwrap();
+    let der = rustls_pemfile::certs(&mut cert.cert.pem().as_bytes())
+        .next()
+        .expect("cert pem")
+        .expect("parse cert");
+    (dir, cert_path, key_path, der)
 }
 
 /// Grab a currently-free localhost port (best-effort; used to bind the admin
@@ -340,6 +420,27 @@ async fn admin_endpoints_report_live_state() {
     for c in &clusters {
         c.shutdown();
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn admin_serves_https_when_builder_tls_configured() {
+    let (_dir, cert_path, key_path, trust) = mint_admin_tls_files();
+    let admin_addr = free_port();
+    let net = LocalNetwork::new();
+    let cluster = CraftCluster::builder(NodeId(1), Kv::default())
+        .members([NodeId(1)])
+        .raft_config(fast_raft_config())
+        .tick_period(TICK_PERIOD)
+        .admin_addr(admin_addr)
+        .admin_tls(cert_path, key_path)
+        .start_local(&net)
+        .await;
+
+    let (status, body) = https_get(admin_addr, "/ready", &trust).await;
+    assert_eq!(status, 200, "body: {body}");
+    assert!(body.contains("\"member\":true"));
+
+    cluster.shutdown();
 }
 
 #[tokio::test(start_paused = true)]
@@ -537,6 +638,39 @@ async fn healed_node_gets_auto_worker_respawned_after_partition() {
 
     eventually_default("worker present on the healed node", || {
         healed.registry().contains("w")
+    })
+    .await;
+
+    for c in &clusters {
+        c.shutdown();
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn phi_accrual_reachability_triggers_supervisor_shrink_under_silence() {
+    let (net, clusters) = spawn_reachability_cluster_with(phi_accrual_raft_config()).await;
+    wait_for_workers_on_every_node(&clusters).await;
+
+    let leader_node = await_craft_leader(&clusters).await;
+    leader_node.supervisor().reconcile().await;
+    wait_for_directory_workers(&leader_node, 3).await;
+
+    let victim = pick_follower(&clusters).await.node_id();
+    assert!(net.detach(victim));
+
+    eventually_async_default("phi-accrual marks victim unreachable on leader", || async {
+        let l = await_craft_leader(&clusters).await;
+        let Some(status) = l.status().await else {
+            return false;
+        };
+        status.voters.contains(&victim) && !status.reachable.contains(&victim)
+    })
+    .await;
+
+    eventually_async_default("supervisor shrinks to reachable workers", || async {
+        let l = await_craft_leader(&clusters).await;
+        let report = l.supervisor().reconcile().await;
+        report.is_ok() && report.groups[0].total == 2
     })
     .await;
 

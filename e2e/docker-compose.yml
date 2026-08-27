@@ -1,11 +1,13 @@
 # A 3-node craft cluster over real QUIC + mTLS (backlog T8).
 #
-# `certgen` mints a shared cluster CA + one cert per node into a shared volume,
-# then the three nodes boot and elect a leader. Peers address each other by
-# service DNS name; mTLS still validates each node against `craft-node-<id>`
-# (the cert SAN), independent of the container hostname.
+# `certgen` mints a shared cluster CA + one cert per node (and node 4 for the
+# linclient mTLS identity) into a shared volume, then the three nodes boot and
+# elect a leader. Peers address each other by service DNS name; mTLS still
+# validates each peer against `craft-node-<id>` (the cert SAN).
 #
 # Bring it up with `./e2e/run.sh` (which also asserts election + failover).
+# Linearizability phase 2 runs `linclient` (`craft-e2e-client`) on profile
+# `linclient` — see `./e2e/linearizability.sh`.
 
 x-node-build: &node-build
   build:
@@ -21,7 +23,7 @@ services:
         set -e
         if [ ! -f /certs/ca.pem ]; then
           /app/generate.sh --ca-only --out /certs
-          for id in 1 2 3; do
+          for id in 1 2 3 4; do
             /app/generate.sh --node-id "$$id" --out /certs \
               --ca /certs/ca.pem --ca-key /certs/ca.key
           done
@@ -86,6 +88,29 @@ services:
       - certs:/certs
     ports:
       - "18083:8080"
+
+  # One-shot QUIC load generator + external linearizability checker (phase 2).
+  linclient:
+    <<: *node-build
+    depends_on:
+      node1:
+        condition: service_started
+      node2:
+        condition: service_started
+      node3:
+        condition: service_started
+    entrypoint: ["/usr/local/bin/craft-e2e-client"]
+    environment:
+      CRAFT_NODE_ID: "4"
+      CRAFT_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
+      CRAFT_CA_CERT: /certs/ca.pem
+      CRAFT_NODE_CERT: /certs/node-4.pem
+      CRAFT_NODE_KEY: /certs/node-4.key
+      CRAFT_LIN_ROUNDS: "${CRAFT_LIN_ROUNDS:-6}"
+    volumes:
+      - certs:/certs
+    profiles: ["linclient"]
+    restart: "no"
 
 volumes:
   certs: {}

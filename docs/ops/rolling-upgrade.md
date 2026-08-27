@@ -1,0 +1,54 @@
+# Rolling upgrade runbook
+
+How to upgrade a craft cluster without downtime. Distinguishes **wire protocol**
+(rolling N/N−1 band) from **application semver** (exact match required).
+
+## Two version axes
+
+| Axis | Field | Rolling policy |
+|------|-------|----------------|
+| **Wire protocol** | `protocol_version` / `Raft-Protocol-Version` header | **Band** `[MIN_COMPATIBLE_PROTOCOL_VERSION .. PROTOCOL_VERSION]` — adjacent releases may coexist during staggered restarts |
+| **App state machine** | `app_version` in join RPC | **Exact match** — mixed semver risks incompatible `StateMachine` / actor behaviour |
+
+See [join-version-skew.md](../decisions/join-version-skew.md).
+
+## Wire-only rolling restart (same app semver)
+
+Use when the release bumps `PROTOCOL_VERSION` but not your app build.
+
+1. Ensure every running node reports the **same** `app_version` (your semver string).
+2. Upgrade nodes **one at a time** to the new binary (new wire, same app).
+3. Each node accepts peers in the compatibility band; old and new wire may coexist briefly.
+4. After the fleet is on the new binary, raise `MIN_COMPATIBLE_PROTOCOL_VERSION` only in a **subsequent** release once no N−1 nodes remain.
+
+Verify with `./scripts/test-with-log.sh -p craft-net --test protocol_compat`.
+
+## App semver upgrade (state machine change)
+
+When your `StateMachine`, actors, or command encoding changes:
+
+1. **Stop** adding nodes.
+2. Upgrade **all** existing members to the **same** new app semver (rolling wire OK, app must match before join completes).
+3. Configure `CRAFT_APP_VERSION` (or equivalent builder field) identically on every node.
+4. Only then deploy new VPS joiners with the matching semver.
+
+Join rejects with `409 VERSION_MISMATCH` if either axis fails.
+
+## Why app_version stays strict
+
+Mixed app versions can produce divergent apply results on the same committed log
+entries — silent corruption. Wire compatibility only guarantees framing and RPC
+shape, not application semantics.
+
+## Checklist
+
+- [ ] Same `app_version` on all nodes before expanding membership
+- [ ] Protocol in band: `MIN_COMPATIBLE .. PROTOCOL_VERSION`
+- [ ] Snapshot / `craft-ops backup export` before risky upgrades
+- [ ] Post-upgrade: `/ready`, sample propose/query, `e2e/run.sh` or nightly linearizability gate
+
+## Related
+
+- [join-version-skew.md](../decisions/join-version-skew.md)
+- [tier2-production-reliability.md](../decisions/tier2-production-reliability.md)
+- [docs/ops/backup-restore.md](backup-restore.md)

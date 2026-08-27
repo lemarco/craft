@@ -25,7 +25,10 @@ real network between separate processes.
   cert, triggers reload via **SIGHUP** and via **file poll**
   (`CRAFT_CERT_WATCH_SECS`), and asserts the cluster stays healthy without
   process restart.
-- `lib.sh` — shared helpers (compose wrapper, leader polling) sourced by both.
+- `linearizability.sh` — Jepsen-lite gate: craft-sim checker sweep, then docker
+  E2E with concurrent QUIC clients (`craft-e2e-client` + `craft_sim::History`)
+  and partition chaos under admin poll.
+- `lib.sh` — shared helpers (compose wrapper, leader polling, `run_linclient`) sourced by E2E scripts.
 
 ## Run it
 
@@ -33,6 +36,7 @@ real network between separate processes.
 ./e2e/run.sh                    # election + failover
 ./e2e/chaos.sh                  # partition + heal
 ./e2e/cert_renew.sh             # PEM reissue + SIGHUP/poll hot reload
+./e2e/linearizability.sh        # sim checker + docker QUIC linearizability
 CRAFT_E2E_PUMBA=1 ./e2e/chaos.sh  # also inject 250ms±50ms latency via pumba
 ```
 

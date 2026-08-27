@@ -20,7 +20,7 @@ Land six production-oriented capabilities:
 | **Snapshot backup / restore** | `craft-ops` CLI: local gzip-tar export/import + `s3://` / `gs://` / `file://` push/pull via opendal |
 | **Rolling wire upgrade (N/N−1)** | `MIN_COMPATIBLE_PROTOCOL_VERSION` + `protocol_version_compatible()` on join, leave, and wire decode |
 | **Admin TLS** | `AdminServer::serve_tls`, builder `.admin_tls()`, `CRAFT_ADMIN_TLS_*` on `craft-node` |
-| **Jepsen-lite gate** | `e2e/linearizability.sh` — craft-sim checker sweep + docker partition under concurrent admin polls |
+| **Jepsen-lite gate** | `e2e/linearizability.sh` — craft-sim checker sweep; docker phase runs `craft-e2e-client` (concurrent QUIC inc/read + `craft_sim::History` checker) before/after partition chaos |
 
 `app_version` join skew remains **exact match** (state-machine safety); only
 **protocol/wire** accepts a compatibility band.
@@ -36,8 +36,8 @@ Land six production-oriented capabilities:
 
 **Negative / follow-ups**
 
-- E2E linearizability phase 2 polls admin HTTP only — full concurrent QUIC
-  client history + external checker remains future work.
+- Partition chaos during concurrent QUIC load (not just before/after) remains
+  future work.
 - `craft-ops` object URIs use standard cloud SDK env vars (AWS/GCP); no vault integration.
 
 ## Related

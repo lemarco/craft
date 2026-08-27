@@ -40,7 +40,10 @@ json-wire = ["craft-proto/json-wire"]
 
 [dev-dependencies]
 craft-test-support.workspace = true
+rcgen = "0.14"
+rustls-pemfile = "2"
 tempfile = "3"
+tokio-rustls = "0.26"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "io-util", "test-util"] }
 serde = { workspace = true, features = ["derive"] }
 # The QUIC/mTLS integration test mints a shared dev cluster CA.

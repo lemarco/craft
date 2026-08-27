@@ -38,8 +38,8 @@ Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** sch
 | `craft-actor` | 10 | 99 | **109** | `RaftDriver`, runtime, registry, placement, supervision, migration, trybuild |
 | `craft-net` | 11 | 31 | **42** | Wire framing, `LocalNetwork`, TLS handshake, loopback QUIC, protocol compat |
 | `craft-sim` | 8 | 19 | **27** | Safety/liveness under faults, linearizability, actor scenarios, multi-Raft |
-| `craft-dashboard` | 8 | 7 | **15** | Admin HTTP, admin TLS, metrics, telemetry |
-| `craft` (facade) | 2 | 19 | **21** | `CraftCluster` builder, multi-Raft, keyed client, live QUIC cluster, reachability reconcile, actor store resume |
+| `craft-dashboard` | 8 | **8** | **16** | Admin HTTP, admin TLS, metrics, telemetry |
+| `craft` (facade) | 2 | **21** | **23** | `CraftCluster` builder, multi-Raft, keyed client, live QUIC cluster, reachability reconcile, actor store resume, graceful leave, admin TLS |
 | `craft-storage` | 0 | 7 | **7** | Store contract (Memory + Redb), namespaced groups, reopen |
 | `craft-proto` | 7 | 0 | **7** | Encode/decode roundtrips, protocol compat band |
 | `craft-store-redis` | 0 | 10 (7 `redis` + 3 `tls`, `#[ignore]` except 2 fast) | **10** | Redis CAS/TTL, dual conn, idempotent worker, reconnect, `rediss://` |
@@ -71,6 +71,10 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Snapshots + log compaction | ✅ | ✅ | ✅ | — | ✅ |
 | `take_persist` / `restore` (core) | ✅ | ✅ | — | — | ✅ |
 | Write sharding / multi-Raft routing | ⚠️ | ✅ `multi_raft` | ✅ | — | ✅ |
+| Tier 2 catalog expansion (pure planner) | ✅ `shard` | — | — | — | ⚠️ |
+| Tier 2 stable virtual shards (pure planner) | ✅ `shard` | — | — | — | ⚠️ |
+| Dynamic catalog expansion (runtime) | — | ❌ | — | — | ❌ |
+| Cross-shard atomic transactions | — | ❌ | — | — | ❌ |
 | Per-group membership planner (`group_voters`, join/leave affects) | ✅ | ✅ | — | — | ✅ |
 | Per-group membership runtime sync on cluster join | — | ✅ | — | — | ✅ |
 | Per-group learners (`group_learners`, membership sync) | ✅ | — | — | — | ✅ |
@@ -78,9 +82,9 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Cluster leave RPC (`/cluster/leave`, `CraftCluster::leave`) | — | ✅ `runtime`, `multi_raft` | — | — | ✅ |
 | Leader-side reachability / hysteresis / phi-accrual | ✅ | ✅ | — | — | ✅ |
 | Wire protocol N/N−1 compat band | ✅ | ✅ | — | — | ✅ |
-| Admin HTTPS (server TLS) | ✅ | — | — | ⚠️ | ✅ |
+| Admin HTTPS (server TLS) | ✅ | ✅ `admin`, `facade` | — | 🔒 nightly | ✅ |
 | Snapshot backup CLI (`craft-ops`) | — | ✅ | — | — | ✅ |
-| External linearizability (Jepsen-lite) | — | — | ✅ | ⚠️ admin poll | ⚠️ |
+| External linearizability (Jepsen-lite) | — | — | ✅ | ✅ `linearizability.sh` | ✅ |
 | Malformed persistence payloads | — | ✅ driver | — | — | ✅ | (`craft-storage` + B4)
 
 | Area | Unit | Integration | Sim | E2E | Status |
@@ -153,7 +157,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | DNS discovery | ⚠️ 2 unit | ❌ | — | ⚠️ K8s | ⚠️ |
 | **`craft-node` env parsing** | ✅ `config` | — | — | ✅ implicit | ✅ |
 | **`craft-node` drain timeout (`CRAFT_DRAIN_TIMEOUT`)** | ✅ `config` | — | — | ✅ implicit | ✅ |
-| **`craft-node` graceful leave on shutdown** | — | — | — | ⚠️ manual | ⚠️ |
+| **`craft-node` graceful leave on shutdown** | ✅ `config` | ✅ `graceful_leave` | — | ⚠️ manual | ✅ |
 
 ### Macros & wire
 
@@ -190,7 +194,9 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 
 | Priority | Gap | Suggested test location | Effort |
 |----------|-----|-------------------------|--------|
-| **P2** | Wire decode fuzz (`cargo-fuzz`) | `craft-fuzz/` (T4) | M |
+| **P1** | Dynamic catalog expansion runtime (`add_raft_groups`) | `craft/tests/multi_raft.rs`, `craft-actor` rebalance | L |
+| **P1** | Stable shard router in runtime (`StableShardRouter` wiring) | `craft-actor/sharded`, `craft/tests/multi_raft.rs` | L |
+| **P2** | Cross-shard saga coordinator | `craft-client`, ADR Phase 4 | XL |
 
 ### Closed gaps
 
@@ -205,9 +211,13 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-08 | Snapshot survives facade restart (`compact` + `data_dir`) | `craft/tests/persistence.rs` |
 | 2026-08 | 3-node majority survives one member restart | `craft/tests/persistence.rs` |
 | 2026-08 | Shared KV fixtures + harness helpers (dedupe ~8 copies) | `craft-test-support` (`Kv`, `TrackedKv`, `find_keys_for_two_groups`, cluster polling) |
+| 2026-08 | Linearizability E2E phase 2 (QUIC `craft-e2e-client` + external checker) | `crates/craft-e2e-client`, `e2e/linearizability.sh`, `e2e/docker-compose.yml` |
+| 2026-08 | Hardening: graceful leave integration, admin HTTPS E2E | `craft/tests/graceful_leave.rs`, `craft/tests/facade.rs`, `craft-dashboard/tests/admin.rs` |
+| 2026-08 | Wire decode fuzz (`cargo-fuzz` wire_decode, scheduled CI) | `crates/craft-fuzz/`, `.gitlab-ci.yml` `fuzz` job |
 | 2026-08 | Tier 1 multi-Raft: learners planner, shard expansion, keyed batch, `/introspect/raft-groups` | `craft-core`, `craft-client`, `craft-dashboard`, `craft/tests/multi_raft.rs`, `docs/decisions/tier1-multi-raft-advances.md` |
 | 2026-08 | Client retry edge cases (`NoTargets`, timeout, `NotLeader`, unreachable) | `craft-client/tests/retry.rs` |
 | 2026-08 | Keyed client routing (multi-Raft propose/query) | `craft/tests/client_keyed.rs` |
+| 2026-08 | Tier 2 multi-Raft architecture ADR + Phase 1 pure planners | `craft-core/src/shard.rs`, `docs/decisions/tier2-multi-raft-architecture.md` |
 | 2026-08 | Actor routing Tier 3: ring, session, drain override, `ask_linearizable`, directory RYW | `craft-actor` (`ring`, `session`, `directory_policy`), `craft-actor/tests/{messaging,migration}.rs`, `docs/decisions/actor-routing-tier3.md` |
 | 2026-08 | `craft-node` env parsing unit tests | `craft-node/src/config.rs` (`#[cfg(test)]`) |
 | 2026-08 | Actor store resume + idempotency after unreachable node | `craft/tests/actor_store_resume.rs` |

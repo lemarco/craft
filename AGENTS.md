@@ -16,6 +16,7 @@ Distributed Raft + actor framework in Rust. Read before making changes.
 | `.cursor/rules/craft-architecture.mdc` | No I/O in core; ports & adapters |
 | `.cursor/rules/craft-testing.mdc` | Test layer choice; update coverage doc |
 | `.cursor/rules/craft-quality-gate.mdc` | Pre-commit/push gates |
+| `.cursor/rules/craft-commits.mdc` | Small, focused, testable commits |
 | `.cursor/rules/cargo-shell-safety.mdc` | One cargo, logging wrappers |
 | `.cursor/skills/craft-testing/` | How to write tests |
 | `.cursor/skills/craft-quality-gate/` | Merge-ready verification |

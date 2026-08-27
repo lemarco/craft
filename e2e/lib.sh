@@ -6,26 +6,49 @@
 COMPOSE="docker compose -f docker-compose.yml"
 
 # NodeId -> host admin port (see docker-compose.yml).
-declare -A PORT=([1]=18081 [2]=18082 [3]=18083)
+declare -A PORT=([1]=18443 [2]=18082 [3]=18083)
+# node1 serves admin HTTPS; nodes 2/3 plain HTTP.
+declare -A ADMIN_TLS=([1]=1 [2]=0 [3]=0)
 
 # Host the published admin ports are reachable on. Localhost normally; under
 # GitLab dind the ports live on the `docker` service host, so set
 # CRAFT_E2E_HOST=docker there.
 HOST="${CRAFT_E2E_HOST:-127.0.0.1}"
 
+# Cluster CA PEM for HTTPS probes (populated by ensure_ca_file after compose up).
+CA_FILE="${CRAFT_E2E_CA_FILE:-}"
+
 # Tear the cluster + volumes down. Register with `trap cleanup EXIT`.
 cleanup() { $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true; }
 
+# Copy the cluster CA out of node1 for curl --cacert (admin TLS on node1).
+ensure_ca_file() {
+    if [ -n "$CA_FILE" ] && [ -f "$CA_FILE" ]; then
+        return 0
+    fi
+    CA_FILE="$(mktemp)"
+    $COMPOSE exec -T node1 cat /certs/ca.pem >"$CA_FILE"
+}
+
+admin_curl() {
+    local id="$1" path="$2"
+    if [ "${ADMIN_TLS[$id]:-0}" = "1" ]; then
+        ensure_ca_file
+        curl -sf -m 2 --cacert "$CA_FILE" "https://$HOST:${PORT[$id]}$path"
+    else
+        curl -sf -m 2 "http://$HOST:${PORT[$id]}$path"
+    fi
+}
+
 # Print the leader id a node currently reports, or empty if unreachable/none.
 leader_at() {
-    local body
-    body=$(curl -s -m 2 "http://$HOST:$1/introspect/cluster" 2>/dev/null) || return 0
-    echo "$body" | grep -o '"leader":[0-9]*' | head -1 | cut -d: -f2
+    admin_curl "$1" "/introspect/cluster" 2>/dev/null \
+        | grep -o '"leader":[0-9]*' | head -1 | cut -d: -f2
 }
 
 # True when /health returns 200 on a node's admin port.
 health_ok() {
-    curl -sf -m 2 "http://$HOST:${PORT[$1]}/health" >/dev/null 2>&1
+    admin_curl "$1" "/health" >/dev/null 2>&1
 }
 
 # Wait until the given node ids all agree on one leader id that is not $exclude
@@ -36,12 +59,12 @@ wait_leader() {
     while [ "$tries" -lt 120 ]; do
         local first="" ok=1 l
         for id in "${ids[@]}"; do
-            l=$(leader_at "${PORT[$id]}")
+            l=$(leader_at "$id")
             { [ -z "$l" ]; } && { ok=0; break; }
             { [ -n "$exclude" ] && [ "$l" = "$exclude" ]; } && { ok=0; break; }
             if [ -z "$first" ]; then first="$l"; elif [ "$l" != "$first" ]; then ok=0; break; fi
         done
-        if [ "$ok" = 1 ] && [ -n "$first" ]; then echo "$first"; return 0; fi
+        if [ "$ok" = "1" ] && [ -n "$first" ]; then echo "$first"; return 0; fi
         tries=$((tries + 1)); sleep 1
     done
     return 1
@@ -57,7 +80,7 @@ wait_majority_leader() {
         for id in 1 2 3; do
             health_ok "$id" || continue
             healthy=$((healthy + 1))
-            l=$(leader_at "${PORT[$id]}")
+            l=$(leader_at "$id")
             [ -z "$l" ] && continue
             tally[$l]=$((${tally[$l]:-0} + 1))
         done
@@ -81,6 +104,11 @@ container_of() { $COMPOSE ps -q "node$1"; }
 network_of() {
     docker inspect -f '{{range $k,$_ := .NetworkSettings.Networks}}{{$k}} {{end}}' "$1" \
         | awk '{print $1}'
+}
+
+# Run concurrent QUIC inc/read rounds and check with craft_sim::History (phase 2).
+run_linclient() {
+    $COMPOSE --profile linclient run --rm linclient
 }
 
 # Reissue node $1's PEM in the shared /certs volume (via node $2's container).

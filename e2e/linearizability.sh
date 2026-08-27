@@ -2,11 +2,8 @@
 #
 # linearizability.sh — Jepsen-lite nightly gate (read-consistency ADR):
 #   1) seeded craft-sim linearizability sweep (checker in-process)
-#   2) docker chaos partition while the cluster stays live (wire + majority)
-#
-# Sim checker is the primary linearizability gate; docker proves the real
-# stack survives partition under concurrent admin polling (concurrent clients
-# without a QUIC load generator in E2E is tracked separately).
+#   2) docker E2E: concurrent QUIC clients + external checker, then partition
+#      chaos under admin poll, then QUIC checker again after heal
 #
 # Requires Docker for phase 2. Run from anywhere:
 #   ./e2e/linearizability.sh
@@ -30,12 +27,12 @@ else
 fi
 
 if [ "${CRAFT_E2E_LINEARIZABILITY:-1}" != "1" ]; then
-  echo "SKIP phase 2 (set CRAFT_E2E_LINEARIZABILITY=1 to enable docker partition gate)"
+  echo "SKIP phase 2 (set CRAFT_E2E_LINEARIZABILITY=1 to enable docker E2E gate)"
   echo "LINEARIZABILITY OK ✓ (sim only)"
   exit 0
 fi
 
-echo "=== phase 2: docker partition + concurrent admin poll ==="
+echo "=== phase 2: docker QUIC linearizability + partition chaos ==="
 cd e2e
 # shellcheck source=lib.sh
 . ./lib.sh
@@ -43,6 +40,11 @@ trap cleanup EXIT
 
 $COMPOSE up -d --build
 LEADER=$(wait_leader "" 1 2 3) || { echo "FAIL: no leader"; exit 1; }
+echo "cluster leader = node $LEADER"
+
+echo "--- 2a: concurrent QUIC inc/read + craft_sim checker (healthy cluster) ---"
+run_linclient || { echo "FAIL: QUIC linearizability before partition"; exit 1; }
+
 CID=$(container_of "$LEADER")
 NET=$(network_of "$CID")
 
@@ -58,6 +60,7 @@ poll_concurrent() {
   [ "$ok" = 1 ]
 }
 
+echo "--- 2b: partition leader + concurrent admin poll ---"
 poll_concurrent || { echo "FAIL: cluster unhealthy before partition"; exit 1; }
 
 docker network disconnect "$NET" "$CID"
@@ -65,5 +68,8 @@ poll_concurrent || { echo "FAIL: majority lost during partition"; exit 1; }
 docker network connect "$NET" "$CID"
 wait_leader "" 1 2 3 >/dev/null || { echo "FAIL: no heal"; exit 1; }
 poll_concurrent || { echo "FAIL: cluster unhealthy after heal"; exit 1; }
+
+echo "--- 2c: concurrent QUIC inc/read + checker after heal ---"
+run_linclient || { echo "FAIL: QUIC linearizability after partition"; exit 1; }
 
 echo "LINEARIZABILITY OK ✓"

@@ -537,3 +537,67 @@ async fn tier1_shard_expansion_and_keyed_batch() {
 
     cluster.shutdown();
 }
+
+fn find_key_for_group(shard_count: u32, groups: &[RaftGroupId], target: u32) -> Vec<u8> {
+    use craft::core::{ShardRouter, place_shard};
+
+    let router = ShardRouter::new(shard_count);
+    for i in 0..10_000u32 {
+        let key = format!("catalog-{target}-{i}").into_bytes();
+        let shard = router.shard_for(&key);
+        if place_shard(shard, groups).is_some_and(|g| g.0 == target) {
+            return key;
+        }
+    }
+    panic!("no routing key for group {target}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn add_raft_groups_expands_catalog_without_restart() {
+    let (net, _ids, clusters) = spawn_three_node_multi_raft_cluster().await;
+    wait_for_all_group_leaders(&clusters).await;
+
+    let leader = cluster_leader(&clusters).await;
+    assert_eq!(leader.raft_groups(), 2);
+
+    let new_groups = leader.add_raft_groups(1).await.expect("add raft group");
+    assert_eq!(new_groups, vec![2]);
+
+    for _ in 0..40 {
+        advance(TICK_PERIOD).await;
+    }
+
+    for cluster in &clusters {
+        assert_eq!(
+            cluster.raft_groups(),
+            3,
+            "node {} catalog",
+            cluster.node_id().0
+        );
+    }
+
+    let contact = clusters[0].node_id();
+    let transport: Arc<dyn craft::net::Transport> = Arc::new(net.clone());
+    let groups = [RaftGroupId(0), RaftGroupId(1), RaftGroupId(2)];
+    let route_g2 = find_key_for_group(64, &groups, 2);
+    let cmd = craft::proto::encode(&KvCommand::Set {
+        key: "k".into(),
+        value: "g2".into(),
+    })
+    .unwrap();
+    let resp = send_client_request(
+        &*transport,
+        contact,
+        &ClientRequest::ProposeKeyed {
+            key: route_g2,
+            command: cmd,
+        },
+    )
+    .await
+    .expect("propose group 2");
+    assert!(matches!(resp, ClientResponse::Ok(_)));
+
+    for cluster in &clusters {
+        cluster.shutdown();
+    }
+}

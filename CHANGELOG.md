@@ -16,6 +16,11 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ### Added
 
+- **Tier 2 multi-Raft architecture** ([tier2-multi-raft-architecture](docs/decisions/tier2-multi-raft-architecture.md)) —
+  ADR for dynamic catalog expansion, stable virtual shard activation, and phased
+  write-scaling path; Phase 1 pure planners in `craft-core::shard`
+  (`StableShardRouter`, `validate_catalog`, `plan_catalog_expansion`).
+  Cross-shard atomicity scoped in [cross-shard-transactions](docs/decisions/cross-shard-transactions.md).
 - **Tier 2 production reliability** ([tier2-production-reliability](docs/decisions/tier2-production-reliability.md)) —
   reachability tuning + phi-accrual detector; rolling wire N/N−1;
   admin HTTPS; `craft-ops` snapshot backup/restore; `e2e/linearizability.sh`.
@@ -23,6 +28,10 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
   per-group learners (`group_learner_factor`), operator shard expansion
   (`CraftCluster::expand_shard_count`), non-atomic keyed batch propose
   (`craft_client::propose_keyed_batch`), and `GET /introspect/raft-groups`.
+- **Hardening** — graceful leave integration test (`craft/tests/graceful_leave.rs`);
+  admin HTTPS E2E (`craft-dashboard/tests/admin.rs`, `craft/tests/facade.rs`).
+- **Linearizability E2E phase 2** — `craft-e2e-client` concurrent QUIC load +
+  external `craft_sim::History` checker in `e2e/linearizability.sh`.
 - **Actor routing Tier 3** ([actor-routing-tier3](docs/decisions/actor-routing-tier3.md)) —
   consistent-hash ring for keyed actor routing, sticky [`ActorSession`] leases,
   per-group drain override + `CRAFT_DRAIN_TIMEOUT` / builder wiring,

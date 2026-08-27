@@ -41,9 +41,12 @@ expansion is an explicit, rare operator action.
 
 ### Deferred (Tier 2+)
 
+See [tier2-multi-raft-architecture](tier2-multi-raft-architecture.md):
+
+- **Dynamic catalog expansion** — Phase 2 runtime (pure planners landed)
+- **Stable shard activation** — Phase 3 runtime (`StableShardRouter`)
+- **Cross-shard atomic transactions** — [cross-shard-transactions](cross-shard-transactions.md)
 - **Meta-Raft group** for membership — group 0 coordinator remains sufficient
-- **Cross-shard atomic transactions** — separate ADR required
-- **Stable shard expansion without remapping** — needs fixed virtual shard space migration
 
 ## Related
 

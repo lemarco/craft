@@ -6,8 +6,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use craft_dashboard::{
-    ActorView, AdminServer, BoxFuture, ClusterView, EventBus, Metrics, NodeSummary, NodeView,
-    Observer, RaftGroupsView, Readiness,
+    ActorView, AdminServer, AdminTlsPaths, BoxFuture, ClusterView, EventBus, Metrics, NodeSummary,
+    NodeView, Observer, RaftGroupsView, Readiness, admin_tls_config,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -136,6 +136,87 @@ async fn get(addr: SocketAddr, path: &str) -> (u16, String) {
         .map(|(_, b)| b.to_owned())
         .unwrap_or_default();
     (status, body)
+}
+
+async fn https_get(
+    addr: SocketAddr,
+    path: &str,
+    trust_anchor: &rustls::pki_types::CertificateDer<'static>,
+) -> (u16, String) {
+    use std::sync::Arc;
+
+    use rustls::pki_types::ServerName;
+    use rustls::{ClientConfig, RootCertStore};
+    use tokio_rustls::TlsConnector;
+
+    let mut roots = RootCertStore::empty();
+    roots.add(trust_anchor.clone()).unwrap();
+    let config = ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    let connector = TlsConnector::from(Arc::new(config));
+    let stream = TcpStream::connect(addr).await.unwrap();
+    let server_name = ServerName::try_from("localhost").unwrap();
+    let mut tls = connector.connect(server_name, stream).await.unwrap();
+    let req = format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    tls.write_all(req.as_bytes()).await.unwrap();
+    let mut raw = String::new();
+    tls.read_to_string(&mut raw).await.unwrap();
+    let status = raw
+        .lines()
+        .next()
+        .and_then(|l| l.split_whitespace().nth(1))
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(0);
+    let body = raw
+        .split_once("\r\n\r\n")
+        .map(|(_, b)| b.to_owned())
+        .unwrap_or_default();
+    (status, body)
+}
+
+fn mint_admin_tls() -> (
+    tempfile::TempDir,
+    AdminTlsPaths,
+    rustls::pki_types::CertificateDer<'static>,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+    let cert_path = dir.path().join("cert.pem");
+    let key_path = dir.path().join("key.pem");
+    std::fs::write(&cert_path, cert.cert.pem()).unwrap();
+    std::fs::write(&key_path, cert.signing_key.serialize_pem()).unwrap();
+    let der = rustls_pemfile::certs(&mut cert.cert.pem().as_bytes())
+        .next()
+        .expect("cert pem")
+        .expect("parse cert");
+    let paths = AdminTlsPaths {
+        cert: cert_path,
+        key: key_path,
+    };
+    (dir, paths, der)
+}
+
+#[tokio::test]
+async fn admin_serves_https_when_tls_configured() {
+    let (_dir, paths, trust) = mint_admin_tls();
+    let tls = admin_tls_config(&paths).expect("tls config");
+    let metrics = Metrics::new();
+    let events = EventBus::new(16);
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = AdminServer::new(Arc::new(Fake { ready: true }), metrics, events);
+    tokio::spawn(async move {
+        let _ = server.serve_tls(listener, tls).await;
+    });
+
+    let (status, body) = https_get(addr, "/health", &trust).await;
+    assert_eq!(status, 200);
+    assert!(body.contains("\"status\":\"ok\""));
+
+    let (status, body) = https_get(addr, "/introspect/raft-groups", &trust).await;
+    assert_eq!(status, 200);
+    assert!(body.contains("\"shard_count\":64"));
 }
 
 #[tokio::test]

@@ -40,6 +40,12 @@ Architecture and decision records for the distributive Raft actor system.
 | [Write sharding / multi-Raft](decisions/write-sharding-multi-raft.md) | **Accepted** |
 | [Liveness signal vs membership](decisions/liveness-vs-membership.md) | **Accepted** |
 | [Per-group Raft membership (multi-Raft)](decisions/per-group-raft-membership.md) | **Accepted** |
+| [Tier 2 production reliability](decisions/tier2-production-reliability.md) | **Accepted** |
+
+## Operations runbooks
+
+- [ops/backup-restore.md](ops/backup-restore.md) — `craft-ops` snapshot export/import and object storage
+- [ops/rolling-upgrade.md](ops/rolling-upgrade.md) — wire N/N−1 vs app semver exact match
 
 ## Architecture
 
