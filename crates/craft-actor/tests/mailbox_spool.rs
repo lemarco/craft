@@ -5,7 +5,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use craft_actor::{
-    ActorDirectory, ActorRegistry, ClusterMessaging, InMemoryMailboxSpool, MailboxSpool, UserActor,
+    ActorDirectory, ActorRegistry, ClusterMessaging, InMemoryMailboxSpool, MailboxSpool,
+    MessageDecodeError, UserActor,
 };
 use craft_net::{LocalNetwork, Transport};
 use craft_proto::{ActorId, ActorRegistration, ActorTypeId, DirectoryUpdate, NodeId};
@@ -33,6 +34,10 @@ impl UserActor for Worker {
         let Work::Add(n) = msg;
         self.counter.fetch_add(n, Ordering::SeqCst);
         Ok(())
+    }
+
+    fn decode_message(payload: &[u8]) -> Result<Self::Message, MessageDecodeError> {
+        craft_proto::decode(payload).map_err(|e| MessageDecodeError::Decode(e.to_string()))
     }
 }
 
