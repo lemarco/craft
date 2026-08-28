@@ -495,7 +495,10 @@ mod tests {
             &[
                 ("POD_NAME", Some("crafty-2")),
                 ("CRAFTY_CERT_ORDINAL_BASE", Some(base.to_str().unwrap())),
-                ("CRAFTY_CA_CERT", Some(base.join("ca.pem").to_str().unwrap())),
+                (
+                    "CRAFTY_CA_CERT",
+                    Some(base.join("ca.pem").to_str().unwrap()),
+                ),
             ],
             || {
                 let cfg = config_from_env().expect("config");
@@ -510,7 +513,10 @@ mod tests {
     #[test]
     fn node_id_prefers_crafty_node_id_over_pod_name() {
         with_crafty_env(
-            &[("CRAFTY_NODE_ID", Some("7")), ("POD_NAME", Some("crafty-2"))],
+            &[
+                ("CRAFTY_NODE_ID", Some("7")),
+                ("POD_NAME", Some("crafty-2")),
+            ],
             || assert_eq!(node_id_from_env().unwrap(), NodeId(7)),
         );
     }

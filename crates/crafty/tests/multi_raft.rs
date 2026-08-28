@@ -16,20 +16,30 @@ use crafty_test_support::{
     wait_for_each_group_cluster_leader, wait_for_group_leaders,
 };
 
-async fn spawn_three_node_multi_raft_cluster()
--> (LocalNetwork, [NodeId; 3], Vec<Arc<CraftyCluster<KvMachine>>>) {
+async fn spawn_three_node_multi_raft_cluster() -> (
+    LocalNetwork,
+    [NodeId; 3],
+    Vec<Arc<CraftyCluster<KvMachine>>>,
+) {
     spawn_multi_node_cluster(3, false).await
 }
 
-async fn spawn_three_node_multi_raft_cluster_allow_join()
--> (LocalNetwork, [NodeId; 3], Vec<Arc<CraftyCluster<KvMachine>>>) {
+async fn spawn_three_node_multi_raft_cluster_allow_join() -> (
+    LocalNetwork,
+    [NodeId; 3],
+    Vec<Arc<CraftyCluster<KvMachine>>>,
+) {
     spawn_multi_node_cluster(3, true).await
 }
 
 async fn spawn_multi_node_cluster(
     node_count: u32,
     allow_join: bool,
-) -> (LocalNetwork, [NodeId; 3], Vec<Arc<CraftyCluster<KvMachine>>>) {
+) -> (
+    LocalNetwork,
+    [NodeId; 3],
+    Vec<Arc<CraftyCluster<KvMachine>>>,
+) {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let net = LocalNetwork::new();
     let shard_count = 64;
@@ -56,7 +66,9 @@ async fn wait_for_all_group_leaders(clusters: &[Arc<CraftyCluster<KvMachine>>]) 
     wait_for_each_group_cluster_leader(clusters, group_count).await;
 }
 
-async fn cluster_leader(clusters: &[Arc<CraftyCluster<KvMachine>>]) -> Arc<CraftyCluster<KvMachine>> {
+async fn cluster_leader(
+    clusters: &[Arc<CraftyCluster<KvMachine>>],
+) -> Arc<CraftyCluster<KvMachine>> {
     await_crafty_leader(clusters).await
 }
 

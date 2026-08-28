@@ -36,11 +36,13 @@ impl UserActor for Worker {
     }
 
     fn encode_config(config: &Self::Config) -> Result<Vec<u8>, ConfigCodecError> {
-        crafty_actor::crafty_proto::encode(config).map_err(|e| ConfigCodecError::Codec(e.to_string()))
+        crafty_actor::crafty_proto::encode(config)
+            .map_err(|e| ConfigCodecError::Codec(e.to_string()))
     }
 
     fn decode_config(bytes: &[u8]) -> Result<Self::Config, ConfigCodecError> {
-        crafty_actor::crafty_proto::decode(bytes).map_err(|e| ConfigCodecError::Codec(e.to_string()))
+        crafty_actor::crafty_proto::decode(bytes)
+            .map_err(|e| ConfigCodecError::Codec(e.to_string()))
     }
 }
 

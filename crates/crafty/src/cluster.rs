@@ -641,7 +641,8 @@ impl<M: StateMachine> CraftyCluster<M> {
     pub fn activate_shards(
         &self,
         new_active: u32,
-    ) -> Result<crafty_core::StableShardActivationPlan, crafty_core::StableShardActivationError> {
+    ) -> Result<crafty_core::StableShardActivationPlan, crafty_core::StableShardActivationError>
+    {
         let mr = self
             .multi_raft
             .as_ref()

@@ -8,7 +8,9 @@
 use std::sync::Arc;
 
 use crafty_actor::crafty_net::{LocalNetwork, Transport};
-use crafty_actor::crafty_proto::{ActorId, ActorRegistration, ActorTypeId, DirectoryUpdate, NodeId};
+use crafty_actor::crafty_proto::{
+    ActorId, ActorRegistration, ActorTypeId, DirectoryUpdate, NodeId,
+};
 use crafty_actor::{ActorDirectory, ActorRegistry, DirectorySync, UserActor};
 
 // ---------------------------------------------------------------------------

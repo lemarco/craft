@@ -1012,8 +1012,9 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                 self.raft_groups as usize,
                 "raft_machines length must match raft_groups"
             );
-            let initial_catalog: Vec<crafty_core::RaftGroupId> =
-                (0..self.raft_groups).map(crafty_core::RaftGroupId).collect();
+            let initial_catalog: Vec<crafty_core::RaftGroupId> = (0..self.raft_groups)
+                .map(crafty_core::RaftGroupId)
+                .collect();
             let catalog = Arc::new(Mutex::new(initial_catalog.clone()));
             let (catalog_tx, catalog_rx) = tokio::sync::mpsc::unbounded_channel::<CatalogCommand>();
             catalog_event_rx = Some(catalog_rx);

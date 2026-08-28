@@ -13,9 +13,9 @@ use crafty::client::{
 use crafty::net::{LocalNetwork, Transport, TransportError, decode_body};
 use crafty::proto::{ClientRequest, ClientResponse, NodeId};
 use crafty_test_support::{
-    KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, advance, assert_eq, await_crafty_leader,
-    fast_raft_config_with_seed, find_keys_for_two_groups, wait_for_crafty_stopped,
-    wait_for_each_group_cluster_leader,
+    KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, advance, assert_eq,
+    await_crafty_leader, fast_raft_config_with_seed, find_keys_for_two_groups,
+    wait_for_crafty_stopped, wait_for_each_group_cluster_leader,
 };
 use std::path::{Path, PathBuf};
 

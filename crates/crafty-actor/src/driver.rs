@@ -486,8 +486,8 @@ impl<M: StateMachine> RaftDriver<M> {
     /// Returns [`DriverError::Storage`] if the backend cannot be read.
     pub fn export_migration(&mut self) -> Result<crafty_proto::GroupMigrationBundle, DriverError> {
         self.persist()?;
-        let bundle =
-            crafty_storage::export_migration(self.storage.as_ref()).map_err(DriverError::Storage)?;
+        let bundle = crafty_storage::export_migration(self.storage.as_ref())
+            .map_err(DriverError::Storage)?;
         if bundle.log.is_empty()
             && bundle.snapshot.is_none()
             && (self.node.last_log_index().0 > 0 || self.node.current_term().0 > 0)

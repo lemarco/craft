@@ -33,8 +33,10 @@ impl Transport for ScriptTransport {
         peer: NodeId,
         _route: Route,
         _body: crafty_net::transport::Body,
-    ) -> crafty_net::transport::BoxFuture<'static, Result<crafty_net::transport::Body, TransportError>>
-    {
+    ) -> crafty_net::transport::BoxFuture<
+        'static,
+        Result<crafty_net::transport::Body, TransportError>,
+    > {
         let step = self.steps.lock().expect("poisoned").pop_front();
         Box::pin(async move {
             match step {

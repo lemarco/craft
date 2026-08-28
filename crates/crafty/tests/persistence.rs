@@ -8,9 +8,9 @@ use crafty::net::LocalNetwork;
 use crafty::proto::NodeId;
 use crafty::storage::{GroupRedbLayout, LogStore, SnapshotStore};
 use crafty_test_support::{
-    KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, TrackedKv, advance, await_crafty_leader,
-    fast_raft_config_with_seed, wait_for_crafty_leader, wait_for_crafty_stopped,
-    wait_for_group_leaders,
+    KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, TrackedKv, advance,
+    await_crafty_leader, fast_raft_config_with_seed, wait_for_crafty_leader,
+    wait_for_crafty_stopped, wait_for_group_leaders,
 };
 
 fn node_data_dir(base: &Path, id: NodeId) -> PathBuf {

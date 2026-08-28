@@ -393,7 +393,9 @@ impl<M: StateMachine> NodeHandle<M> {
     /// # Errors
     /// Returns [`ClientError::Stopped`] if the node is shutting down, or a
     /// driver/storage error from the runtime task.
-    pub async fn export_migration(&self) -> Result<crafty_proto::GroupMigrationBundle, ClientError> {
+    pub async fn export_migration(
+        &self,
+    ) -> Result<crafty_proto::GroupMigrationBundle, ClientError> {
         let (respond, rx) = oneshot::channel();
         self.tx
             .send(Envelope::ExportMigration { respond })
