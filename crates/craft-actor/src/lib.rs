@@ -21,6 +21,8 @@ mod group_rebalance;
 mod messaging;
 mod meta;
 mod placement;
+mod queue;
+mod redb_queue;
 mod registry;
 mod resources;
 mod ring;
@@ -44,6 +46,11 @@ pub use placement::{
     ClusterControl, ClusterScaleError, MigrateError, NOT_LEADER_REASON, RemoteSpawnError,
     ScalePlan, plan_scale,
 };
+pub use queue::{
+    InMemoryJobQueue, JobId, JobQueue, LeaseId, LeasedJob, QueueError, QueueMetrics, WorkerId,
+    run_queue_consumer,
+};
+pub use redb_queue::RedbJobQueue;
 pub use registry::{
     ASK_TIMEOUT, ActorGroupStats, ActorObserver, ActorRef, ActorRegistry, AskError,
     ConfigCodecError, DEFAULT_DRAIN_TIMEOUT, DeliverError, DrainOutcome, MessageDecodeError,

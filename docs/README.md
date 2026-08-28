@@ -38,6 +38,7 @@ Architecture and decision records for the distributive Raft actor system.
 |-------|--------|
 | Cross-node actors (v1) | [cross-node-actors](decisions/cross-node-actors.md) |
 | Stateful actors → Redis / external store | [actor-state-redis](decisions/actor-state-redis.md) |
+| Durable job queue (mailbox vs backlog, autoscale) | [job-queue](decisions/job-queue.md) |
 | Drain timeout (default 60s, configurable) | [drain-timeout](decisions/drain-timeout.md) |
 | Actor / routing UX — Tier 3 | [actor-routing-tier3](decisions/actor-routing-tier3.md) |
 

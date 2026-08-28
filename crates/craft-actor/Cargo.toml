@@ -22,7 +22,9 @@ craft-core.workspace = true
 craft-storage.workspace = true
 craft-net.workspace = true
 craft-macros.workspace = true
-serde.workspace = true
+serde = { workspace = true, features = ["derive"] }
+postcard.workspace = true
+redb = "2"
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -31,5 +33,6 @@ tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
 [dev-dependencies]
 craft-test-support.workspace = true
 serde = { workspace = true, features = ["derive"] }
+tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "test-util"] }
 trybuild = "1"

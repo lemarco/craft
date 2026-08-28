@@ -40,6 +40,7 @@
 - Consistent-hash ring keyed routing, sticky `ActorSession`, per-group drain override (`CRAFT_DRAIN_TIMEOUT`)
 - Optional `DirectoryPolicy::ReadYourWrites` and `ask_linearizable` (directory visibility, not Raft-linearizable actor state)
 - Redis-backed `ActorStateStore` (`craft-store-redis`); actor migration RPC
+- **`JobQueue`** port — `InMemoryJobQueue`, `RedbJobQueue`, `run_queue_consumer` ([job-queue](decisions/job-queue.md)); leader queue wire + autoscale deferred
 
 ### Multi-Raft write scaling
 
@@ -72,6 +73,7 @@ Global serializable isolation across shards is **not** a goal — see [cross-sha
 | Item | Notes | ADR |
 |------|-------|-----|
 | **Linearizable actor `ask`** | Use Raft `query` for SM data; `ask` stays fast/local | [read-consistency](decisions/read-consistency.md) |
+| **Queue leader wire + autoscale** | Local `JobQueue` landed; cluster `/queue/*` RPC + `QueueAutoscaler` not yet | [job-queue](decisions/job-queue.md) |
 | **PostgreSQL `ActorStateStore`** | Redis is the v1 external store | [actor-state-redis](decisions/actor-state-redis.md) |
 | **Redis Cluster auto-discovery** | Single Redis URL per node | [actor-state-redis](decisions/actor-state-redis.md) |
 | **Jepsen / Antithesis validation** | Aspirational before 1.0 stability claim | [testing-strategy](decisions/testing-strategy.md) |

@@ -21,6 +21,7 @@ Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `craft-core`, I/
 | Keyed routing | Shard → group → leader (multi-Raft) | [multi-raft](decisions/multi-raft.md) |
 | Read consistency | ReadIndex / lease / follower reads | [client-and-routing](decisions/client-and-routing.md) |
 | Actor runtime | tokio tasks + supervision | [cross-node-actors](decisions/cross-node-actors.md) |
+| Job backlog (planned) | `JobQueue` port; default `redb`; leader queue service | [job-queue](decisions/job-queue.md) |
 | Persistence | redb (per-group files in multi-Raft) | — |
 | TLS | mTLS peers + mTLS client wire | [security](decisions/security.md) |
 | Observability | metrics, telemetry, dashboard | [observability](decisions/observability.md) |
