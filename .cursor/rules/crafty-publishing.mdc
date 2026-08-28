@@ -1,0 +1,58 @@
+---
+description: crates.io workspace publish workflow — rate limits, resume, tag release, never cargo publish --workspace for real uploads
+alwaysApply: false
+---
+
+# crafty publishing (library-and-publishing)
+
+## Never do this on a real release
+
+```bash
+cargo publish --workspace   # ❌ bursts ~11 new crates → HTTP 429 on first release
+```
+
+Use **`./scripts/publish-workspace.sh`** (one crate at a time, skip indexed, retry 429).
+
+## Release flow
+
+```bash
+# 1. CHANGELOG: move [Unreleased] → new version section
+# 2. Prepare tag (dry-run gate + commit if bumped + tag)
+./scripts/release.sh 0.2.0
+git push && git push origin v0.2.0
+
+# 3. Publish (after tag push; or CI manual job)
+./scripts/release.sh 0.2.0 --publish-only
+# commits post-publish docs separately — see skill
+```
+
+First release when manifest is already at target version: step 2 skips bump; step 3 uses `--publish-only` if tag exists.
+
+## crates.io rate limits (first release)
+
+| Fact | Implication |
+|------|-------------|
+| **New-crate burst limit** | ~5 uploads in quick succession → `429 Too Many Requests` |
+| **`cargo publish --workspace`** | Uploads multiple new crates in one run → hits limit |
+| **429 body** | Contains `try again after <RFC7231 date> GMT` — parse and wait |
+| **Partial publish** | Re-running `cargo publish --workspace` fails with *already exists* |
+| **Resume** | `./scripts/publish-workspace.sh` skips crates already at version on index |
+
+Defaults: **30s** between successful uploads (`CRAFTY_PUBLISH_DELAY_SECS`), **5s** buffer after 429 retry time (`CRAFTY_PUBLISH_429_BUFFER_SECS`).
+
+## Prerequisites
+
+- `CARGO_REGISTRY_TOKEN` or `cargo login`
+- Clean tree for **prepare** (`release.sh` without `--publish-only`)
+- Tag pushed before CI manual `publish` job
+
+## CI
+
+- Fast lane / tag `publish-dry-run`: `cargo publish --workspace --dry-run` (OK — no uploads)
+- Tag manual `publish`: `./scripts/publish-workspace.sh` (not bare `--workspace`)
+
+## Docs after publish
+
+`post-publish-docs.sh` adds crates.io/docs.rs badges and updates `docs/status.md`. Run automatically via `release.sh --publish-only`; commit the diff.
+
+See [docs/releasing.md](../../docs/releasing.md) and skill `.cursor/skills/crafty-publishing/`.

@@ -14,7 +14,7 @@ use crafty_net::transport::{Body, BoxFuture, RequestHandler};
 use crafty_net::{QuicTransport, Route, TransportError, decode_body, encode_body};
 use crafty_proto::{JoinRequest, NodeId, PeerBook, PeerEntry, ScaleRequest};
 
-use crafty_actor::{ClusterControl, ClusterMessaging, DirectorySync, QueueService};
+use crafty_actor::{ClusterControl, ClusterMessaging, DirectorySync, QueueService, StoreService};
 
 use crate::multi_raft::GroupMigratePort;
 
@@ -74,17 +74,20 @@ pub(crate) struct NodeRouter {
     messaging: Arc<ClusterMessaging>,
     directory_sync: Arc<DirectorySync>,
     queue: Option<Arc<QueueService>>,
+    store: Option<Arc<StoreService>>,
     peers: Arc<dyn PeerSource>,
     group_migrate: Option<Arc<dyn GroupMigratePort>>,
 }
 
 impl NodeRouter {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         service: Arc<dyn RequestHandler>,
         control: Arc<ClusterControl>,
         messaging: Arc<ClusterMessaging>,
         directory_sync: Arc<DirectorySync>,
         queue: Option<Arc<QueueService>>,
+        store: Option<Arc<StoreService>>,
         peers: Arc<dyn PeerSource>,
         group_migrate: Option<Arc<dyn GroupMigratePort>>,
     ) -> Self {
@@ -94,6 +97,7 @@ impl NodeRouter {
             messaging,
             directory_sync,
             queue,
+            store,
             peers,
             group_migrate,
         }
@@ -168,6 +172,18 @@ impl RequestHandler for NodeRouter {
                 let queue = Arc::clone(queue);
                 Box::pin(async move { queue.handle_request(route, body).await })
             }
+            Route::ActorStoreSet
+            | Route::ActorStoreDelete
+            | Route::ActorStoreCompareAndSet
+            | Route::ActorStoreReplicate => {
+                let Some(store) = self.store.as_ref() else {
+                    return Box::pin(async move {
+                        Err(TransportError::Io("actor store is not enabled".into()))
+                    });
+                };
+                let store = Arc::clone(store);
+                Box::pin(async move { store.handle_request(route, body).await })
+            }
             // Directory publish / anti-entropy.
             Route::ActorRegister => self.directory_sync.handle(route, body),
         }
@@ -185,7 +201,29 @@ impl RequestHandler for NodeRouter {
             | Route::QueueAck
             | Route::QueueNack
             | Route::QueueMetrics
-            | Route::QueueReplicate => {
+            | Route::QueueReplicate
+            | Route::ActorStoreSet
+            | Route::ActorStoreDelete
+            | Route::ActorStoreCompareAndSet
+            | Route::ActorStoreReplicate => {
+                let route_store = matches!(
+                    route,
+                    Route::ActorStoreSet
+                        | Route::ActorStoreDelete
+                        | Route::ActorStoreCompareAndSet
+                        | Route::ActorStoreReplicate
+                );
+                if route_store {
+                    let Some(store) = self.store.as_ref() else {
+                        return Box::pin(async move {
+                            Err(TransportError::Io("actor store is not enabled".into()))
+                        });
+                    };
+                    let store = Arc::clone(store);
+                    return Box::pin(
+                        async move { store.handle_request_from(from, route, body).await },
+                    );
+                }
                 let Some(queue) = self.queue.as_ref() else {
                     return Box::pin(async move {
                         Err(TransportError::Io("job queue is not enabled".into()))

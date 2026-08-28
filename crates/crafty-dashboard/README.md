@@ -16,7 +16,7 @@ the mTLS QUIC cluster wire.
 | `/dashboard/events` | SSE event feed |
 
 Enable via `CraftyCluster::builder(...).admin_addr(...)` or run
-[`crafty-node`](https://crates.io/crates/crafty-node) with `CRAFTY_ADMIN` set.
+[`crafty-node`](../crafty-node) from the repository with `CRAFTY_ADMIN` set.
 
 ## Documentation
 

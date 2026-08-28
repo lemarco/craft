@@ -3,94 +3,61 @@
 # Setup (once per clone):
 #   lefthook install
 #
-# lefthook v2 skips jobs unless {staged_files} appears in `run`.
-# _LH='{staged_files}' forces workspace-wide Rust gates on every commit.
+# lefthook v2 skips jobs unless {staged_files} appears in `run` (or `glob` is set).
+# Jobs with `glob` run only when matching paths are staged/pushed.
 #
 # Bypass:  LEFTHOOK=0 git commit|push …
 # Log:     CRAFTY_HOOK_LOG=1 git push
+# Release: lefthook run pre-push --tags release
 
-min_version: '1.6.0'
-
-env:
-  PATH: '$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH'
-  RUSTFLAGS: '-D warnings -A missing_docs'
-  RUSTDOCFLAGS: '-D warnings -A missing_docs'
+min_version: '1.12.0'
 
 pre-commit:
   jobs:
-    # ── Phase 1: static checks (parallel) ─────────────────────────────────────
     - name: static
       group:
         parallel: true
         jobs:
           - name: cargo-fmt
-            run: |
-              # {staged_files}
-              source scripts/hook-prelude.sh
-              cargo fmt --all -- --check
+            glob: '*.{rs,toml,lock}'
+            stage_fixed: true
+            fail_text: |
+              rustfmt failed. Fix with:
+                ./scripts/gate-fmt.sh
+            run: bash scripts/gate-fmt.sh
 
           - name: shellcheck
-            run: |
-              # {staged_files}
-              bash scripts/check-shell-scripts.sh
+            glob: '*.sh'
+            fail_text: |
+              shellcheck failed. Fix staged scripts or run:
+                bash scripts/check-shell-scripts.sh
+            run: bash scripts/check-shell-scripts.sh {staged_files}
 
-    # ── Phase 2: lint (clippy type-checks; no separate cargo check) ───────────
     - name: rust
-      group:
-        piped: true
-        jobs:
-          - name: cargo-clippy
-            run: |
-              # {staged_files}
-              source scripts/hook-prelude.sh
-              source scripts/clippy-args.sh
-              cargo clippy --workspace --all-targets --all-features -- "${CLIPPY_ARGS[@]}"
+      glob: '*.{rs,toml,lock}'
+      fail_text: |
+        clippy failed. Fix warnings or run:
+          ./scripts/quality-gate-pre-commit.sh
+      run: bash scripts/gate-clippy.sh
 
 pre-push:
   jobs:
     - name: quality-full
-      group:
-        piped: true
-        jobs:
-          - name: cargo-clippy
-            run: |
-              # {push_files}
-              source scripts/hook-prelude.sh
-              source scripts/clippy-args.sh
-              cargo clippy --workspace --all-targets --all-features -- "${CLIPPY_ARGS[@]}"
+      fail_text: |
+        Pre-push gate failed. Re-run:
+          ./scripts/quality-gate-pre-push.sh
+        With log:
+          CRAFTY_HOOK_LOG=1 git push
+      run: bash scripts/quality-gate-pre-push.sh
 
-          - name: cargo-test
-            run: |
-              # {push_files}
-              source scripts/hook-prelude.sh
-              export NEXTEST_PROFILE=ci
-              if command -v cargo-nextest >/dev/null 2>&1; then
-                cargo nextest run --profile ci --workspace --all-features
-              else
-                cargo test --workspace --all-features
-              fi
-
-          - name: cargo-doctest
-            run: |
-              # {push_files}
-              source scripts/hook-prelude.sh
-              cargo test --workspace --doc --all-features
-
-          - name: cargo-doc
-            run: |
-              # {push_files}
-              source scripts/hook-prelude.sh
-              cargo doc --workspace --no-deps --all-features
-
-          - name: cargo-build-release
-            run: |
-              # {push_files}
-              source scripts/hook-prelude.sh
-              if [[ "${CRAFTY_SKIP_RELEASE:-1}" != "1" ]]; then
-                cargo build --workspace --all-features --release
-              else
-                echo ">> release build skipped (CRAFTY_SKIP_RELEASE=1; set CRAFTY_SKIP_RELEASE=0 to enable)"
-              fi
+    - name: release-build
+      tags: [release]
+      fail_text: |
+        Release build failed. Run:
+          cargo build --workspace --all-features --release
+      run: |
+        source scripts/hook-prelude.sh
+        cargo build --workspace --all-features --release
 
 commit-msg:
   jobs:

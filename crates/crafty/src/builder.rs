@@ -33,13 +33,13 @@ use crafty_storage::GroupRedbLayout;
 use tokio::net::TcpListener;
 
 use crafty_actor::{
-    ActorDirectory, ActorRegistry, AutoscalePolicy, ClusterControl, ClusterJobQueue,
-    ClusterMessaging, ClusterState, ClusterSupervisor, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy,
-    DirectoryRetry, DirectorySync, JobQueue, MailboxSpool, MembershipAutoscalePolicy, NodeService,
-    QueueAutoscaleRegistry, QueueService, RaftDriver, RedbJobQueue, RedbMailboxSpool,
-    ResourceProfile, RuntimeConfig, ShardedJobQueue, UserActor, VpsResources,
-    run_mailbox_spool_drainer, run_queue_autoscaler, run_queue_membership_autoscaler,
-    spawn_multi_raft_node, spawn_node,
+    ActorDirectory, ActorRegistry, AutoscalePolicy, ClusterActorStateStore, ClusterControl,
+    ClusterJobQueue, ClusterMessaging, ClusterState, ClusterSupervisor, DEFAULT_DRAIN_TIMEOUT,
+    DirectoryPolicy, DirectoryRetry, DirectorySync, JobQueue, MailboxSpool,
+    MembershipAutoscalePolicy, NodeService, QueueAutoscaleRegistry, QueueService, RaftDriver,
+    RedbActorStateStore, RedbJobQueue, RedbMailboxSpool, ResourceProfile, RuntimeConfig,
+    ShardedJobQueue, StoreService, UserActor, VpsResources, run_mailbox_spool_drainer,
+    run_queue_autoscaler, run_queue_membership_autoscaler, spawn_multi_raft_node, spawn_node,
 };
 
 use crate::certs::{CertReloadHandle, PemSecurity};
@@ -153,6 +153,8 @@ pub struct CraftyClusterBuilder<M: StateMachine> {
     raft_machines: Option<Vec<M>>,
     data_dir: Option<PathBuf>,
     actor_state_store: Option<Arc<dyn crafty_actor::ActorStateStore>>,
+    /// Open `{data_dir}/actor-store.redb` with voter replication when no explicit store is set.
+    auto_durable_actor_store: bool,
     drain_timeout: Duration,
     directory_policy: DirectoryPolicy,
     directory_retry: DirectoryRetry,
@@ -200,6 +202,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             raft_machines: None,
             data_dir: None,
             actor_state_store: None,
+            auto_durable_actor_store: true,
             drain_timeout: DEFAULT_DRAIN_TIMEOUT,
             directory_policy: DirectoryPolicy::default(),
             directory_retry: DirectoryRetry::default(),
@@ -360,13 +363,19 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         self
     }
 
-    /// External store for **stateful actor workflow data** (actor-state-redis). The port
-    /// is [`crafty_actor::ActorStateStore`]; swap `InMemoryStore` (dev/tests) for
-    /// `crafty_store_redis::RedisStore` in production. Retrieve the same handle
-    /// from [`CraftyCluster::actor_state_store`] when building actor configs.
+    /// External store for **stateful actor workflow data** ([`RedbActorStateStore`](crafty_actor::RedbActorStateStore)
+    /// when [`data_dir`](Self::data_dir) is set). Override with an explicit store when needed.
     #[must_use]
     pub fn actor_state_store(mut self, store: Arc<dyn crafty_actor::ActorStateStore>) -> Self {
         self.actor_state_store = Some(store);
+        self
+    }
+
+    /// When `true` (default) and [`data_dir`](Self::data_dir) is set without an explicit
+    /// [`actor_state_store`](Self::actor_state_store), open `{data_dir}/actor-store.redb`.
+    #[must_use]
+    pub fn auto_durable_actor_store(mut self, enabled: bool) -> Self {
+        self.auto_durable_actor_store = enabled;
         self
     }
 
@@ -1254,6 +1263,33 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             }
         }
 
+        // --- Actor workflow store (redb + voter replication) ----------------
+        let mut actor_state_store = self.actor_state_store.clone();
+        let store_service: Option<Arc<StoreService>> =
+            if actor_state_store.is_none() && self.auto_durable_actor_store {
+                self.data_dir.as_ref().map(|data_dir| {
+                    let path = data_dir.join("actor-store.redb");
+                    let local =
+                        Arc::new(RedbActorStateStore::open(&path).unwrap_or_else(|e| {
+                            panic!("open actor store at {}: {e}", path.display())
+                        }));
+                    let service = Arc::new(StoreService::new(
+                        node_id,
+                        Arc::clone(&local),
+                        Arc::clone(&facts) as Arc<dyn ClusterState>,
+                        Arc::clone(&transport),
+                    ));
+                    actor_state_store = Some(Arc::new(ClusterActorStateStore::new(
+                        Arc::clone(&local),
+                        Arc::clone(&facts) as Arc<dyn ClusterState>,
+                        Arc::clone(&transport),
+                    )));
+                    service
+                })
+            } else {
+                None
+            };
+
         // --- Router -------------------------------------------------------
         let router: Arc<dyn RequestHandler> = Arc::new(NodeRouter::new(
             consensus_service,
@@ -1261,6 +1297,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             Arc::clone(&messaging),
             Arc::clone(&directory_sync),
             queue_service,
+            store_service,
             Arc::clone(&peers),
             multi_raft.as_ref().map(|state| {
                 Arc::new(ArcGroupMigrate(Arc::clone(state))) as Arc<dyn GroupMigratePort>
@@ -1567,7 +1604,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             members: self.members,
             resource_profile,
             vps_resources,
-            actor_state_store: self.actor_state_store,
+            actor_state_store,
             job_queues,
             wire_handler: Arc::clone(&router),
             transport,

@@ -2,17 +2,17 @@
 //!
 //! ```text
 //!   ┌─────────────────────────────────────────────────────────┐
-//!   │  CraftyCluster (facade / runtime)                        │
+//!   │  CraftyCluster / CraftyApp (facade)                      │
 //!   │    Raft StateMachine  ←── linearizable, replicated      │
 //!   │    ActorStateStore    ←── workflow keys, survives crash │
 //!   └─────────────────────────────────────────────────────────┘
 //!          ▲                           ▲
 //!          │ Command/Query             │ opaque bytes + store_get/store_set
-//!          │ (serde/postcard)          │ (same codec, no extra trait)
 //!   ┌──────┴──────┐             ┌──────┴──────────────────┐
-//!   │  Kv SM      │             │  InMemoryStore (dev)    │
-//!   │  (in Raft)  │             │  RedisStore (prod)      │
-//!   └─────────────┘             └─────────────────────────┘
+//!   │  Kv SM      │             │  RedbActorStateStore    │
+//!   │  (in Raft)  │             │  (auto with data_dir)   │
+//!   └─────────────┘             │  InMemoryStore (dev)    │
+//!                               └─────────────────────────┘
 //! ```
 //!
 //! Run with: `cargo run -p crafty --example hexagonal_actor_store`

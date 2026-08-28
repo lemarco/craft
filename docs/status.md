@@ -6,7 +6,7 @@
 |---|---|
 | **Version** | `0.1.0` (pre-1.0 — API may change on minor bumps) |
 | **MSRV** | 1.90 |
-| **Maturity** | Advanced prototype — full test pyramid, E2E/chaos, release-ready ([releasing.md](releasing.md)) |
+| **Maturity** | Advanced prototype — full test pyramid, E2E/chaos, published on [crates.io](https://crates.io/crates/crafty) |
 
 ---
 
@@ -40,6 +40,8 @@
 - Consistent-hash ring keyed routing, sticky `ActorSession`, per-group drain override (`CRAFTY_DRAIN_TIMEOUT`)
 - Optional `DirectoryPolicy::ReadYourWrites` and `ask_linearizable` (directory visibility, not Raft-linearizable actor state)
 - **Durable mailbox spool** — redb outbox/inbox for cross-node `/actor/deliver` (`.durable_mailbox(true)` + `data_dir`)
+- **Durable actor workflow store** — `RedbActorStateStore` + voter replication; auto with `.data_dir()` ([actor-state-store](decisions/actor-state-store.md))
+- **Product API** — [`CraftyApp`](../crates/crafty/src/app.rs), [getting-started.md](getting-started.md)
 - Redis-backed `ActorStateStore` (`crafty-store-redis`); actor migration RPC
 - **`JobQueue`** — `InMemoryJobQueue`, `RedbJobQueue`, sharded streams, priority/delayed enqueue, leader `QueueService` with parallel sync voter replication + replicate auth, `ClusterJobQueue`, worker + membership autoscale, Meta-Raft autoscale policy ([job-queue](decisions/job-queue.md))
 - **Job queue E2E** — `./e2e/queue.sh` (QUIC/mTLS, enqueue → follower worker → leader failover); `crafty-node` env `CRAFTY_DATA_DIR` + `CRAFTY_JOB_QUEUE`
@@ -76,7 +78,7 @@ Global serializable isolation across shards is **not** a goal — see [cross-sha
 | Item | Notes | ADR |
 |------|-------|-----|
 | **Linearizable actor `ask`** | Use Raft `query` for SM data; `ask` stays fast/local | [read-consistency](decisions/read-consistency.md) |
-| **PostgreSQL `ActorStateStore`** | Redis is the v1 external store | [actor-state-redis](decisions/actor-state-redis.md) |
+| **PostgreSQL `ActorStateStore`** | redb is the product default; Redis optional | [actor-state-store](decisions/actor-state-store.md) |
 | **Redis Cluster auto-discovery** | Single Redis URL per node | [actor-state-redis](decisions/actor-state-redis.md) |
 | **Jepsen / Antithesis validation** | Aspirational before 1.0 stability claim | [testing-strategy](decisions/testing-strategy.md) |
 | **`loom` concurrency tests** | On-demand only | [testing-strategy](decisions/testing-strategy.md) |
@@ -85,7 +87,7 @@ Global serializable isolation across shards is **not** a goal — see [cross-sha
 
 ## Release & ops (process, not missing code)
 
-- **crates.io / docs.rs publish** — run [releasing.md](releasing.md) (`./scripts/release.sh 0.1.0`)
+- **crates.io / docs.rs publish** — published v0.1.0 — see [CHANGELOG.md](../CHANGELOG.md)
 - **Public API docs** — `missing_docs = "warn"` on published crates; CI allows pre-1.0 (`-A missing_docs`). Audit: `./scripts/docs-missing-audit.sh`
 - **Real-world soak** — harness exists (`benchmarks/soak`, `soak_queue` for job queue enqueue/drain); long-running production soak is operator responsibility
 - **Heavy integration tests** — Redis/docker tests gated `#[ignore]` in fast CI; scheduled heavy lane
@@ -107,10 +109,28 @@ Documented in [future-work-and-risks](decisions/future-work-and-risks.md):
 
 ---
 
+## Product scenarios (guides + backlog)
+
+Four application patterns on one runtime — **no mandatory Redis or Kubernetes**:
+
+| Scenario | Guide | Runtime |
+|----------|-------|---------|
+| Background jobs | [scenarios/background-jobs.md](scenarios/background-jobs.md) | ✅ `RedbJobQueue` |
+| Stateful workers | [scenarios/stateful-workers.md](scenarios/stateful-workers.md) | ✅ `RedbActorStateStore` |
+| Real-time / session | [scenarios/realtime-sessions.md](scenarios/realtime-sessions.md) | ✅ `ActorSession` |
+| Workflows | [scenarios/workflows.md](scenarios/workflows.md) | ✅ Meta-Raft saga journal |
+| Product API | [getting-started.md](getting-started.md) | ✅ `CraftyApp` |
+
+Decision: [decisions/product-scenarios.md](decisions/product-scenarios.md) · Backlog: [backlog.md](backlog.md)
+
+---
+
 ## Where to read next
 
 | Doc | Purpose |
 |-----|---------|
+| [scenarios/README.md](scenarios/README.md) | Product scenario index |
+| [backlog.md](backlog.md) | Planned work (0.2.x → 1.0) |
 | [architecture.md](architecture.md) | Crate graph, data flows |
 | [decisions/](decisions/) | Design decision records |
 | [testing-coverage.md](testing-coverage.md) | Test inventory |

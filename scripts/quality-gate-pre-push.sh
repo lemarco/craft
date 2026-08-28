@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Pre-push quality gate — run manually or via lefthook pre-push.
+# Aligned with .gitlab-ci.yml fast lane (+ optional release build).
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -18,14 +19,14 @@ maybe_tee() {
 export NEXTEST_PROFILE=ci
 
 log ">> clippy (pedantic)"
-source scripts/clippy-args.sh
-cargo clippy --workspace --all-targets --all-features -- "${CLIPPY_ARGS[@]}" 2>&1 | maybe_tee
+bash scripts/gate-clippy.sh 2>&1 | maybe_tee
 
 log ">> tests"
 if command -v cargo-nextest >/dev/null 2>&1; then
-  cargo nextest run --profile ci --workspace --all-features 2>&1 | maybe_tee
+  # Examples are clippy-checked above; skip linking them again (CI fast lane).
+  cargo nextest run --profile ci --workspace --all-features --lib --tests --bins 2>&1 | maybe_tee
 else
-  cargo test --workspace --all-features 2>&1 | maybe_tee
+  cargo test --workspace --all-features --lib --tests --bins 2>&1 | maybe_tee
 fi
 
 log ">> doctests"
@@ -34,11 +35,17 @@ cargo test --workspace --doc --all-features 2>&1 | maybe_tee
 log ">> doc"
 cargo doc --workspace --no-deps --all-features 2>&1 | maybe_tee
 
+log ">> publish dry-run"
+cargo publish --workspace --dry-run 2>&1 | maybe_tee
+
+log ">> msrv"
+bash scripts/check-msrv.sh 2>&1 | maybe_tee
+
 log ">> release build"
 if [[ "${CRAFTY_SKIP_RELEASE:-1}" != "1" ]]; then
   cargo build --workspace --all-features --release 2>&1 | maybe_tee
 else
-  log ">> release build skipped (CRAFTY_SKIP_RELEASE=1)"
+  log ">> release build skipped (CRAFTY_SKIP_RELEASE=1; lefthook: lefthook run pre-push --tags release)"
 fi
 
 log ">> pre-push gate ok"

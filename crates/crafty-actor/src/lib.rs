@@ -26,6 +26,7 @@ mod queue;
 mod queue_autoscale;
 mod queue_service;
 mod redb_queue;
+mod redb_store;
 mod registry;
 mod resources;
 mod ring;
@@ -35,6 +36,7 @@ mod sharded;
 mod sharded_queue;
 mod store;
 mod store_codec;
+mod store_service;
 mod supervisor;
 mod tracing_init;
 mod two_phase;
@@ -65,6 +67,7 @@ pub use queue_autoscale::{
 };
 pub use queue_service::{ClusterJobQueue, QueueService};
 pub use redb_queue::RedbJobQueue;
+pub use redb_store::{RedbActorStateStore, StoreReplicationOps};
 pub use registry::{
     ASK_TIMEOUT, ActorGroupStats, ActorObserver, ActorRef, ActorRegistry, AskError,
     ConfigCodecError, DEFAULT_DRAIN_TIMEOUT, DeliverError, DrainOutcome, MessageDecodeError,
@@ -87,4 +90,5 @@ pub use sharded::{
 };
 pub use store::{ActorStateStore, BoxFuture, InMemoryStore, StoreError};
 pub use store_codec::{store_get, store_set};
+pub use store_service::{ClusterActorStateStore, StoreService};
 pub use supervisor::{ClusterState, ClusterSupervisor, GroupReconcile, ReconcileReport};

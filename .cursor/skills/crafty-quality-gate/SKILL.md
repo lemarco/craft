@@ -48,4 +48,8 @@ description: >-
 
 ## CI parity
 
-Fast lane matches pre-push + fmt/clippy/doc. Heavy (e2e, Redis `--ignored`) runs on schedule only — note in MR if change needs nightly.
+Fast lane matches pre-push (clippy, nextest `--lib --tests --bins`, doctests, doc,
+publish dry-run, MSRV) plus pre-commit fmt/shellcheck. Release build is opt-in:
+`lefthook run pre-push --tags release` or `CRAFTY_SKIP_RELEASE=0 ./scripts/quality-gate-pre-push.sh`.
+
+Heavy (e2e, Redis `--ignored`) runs on schedule only — note in MR if change needs nightly.

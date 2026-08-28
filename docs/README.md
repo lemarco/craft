@@ -4,6 +4,8 @@ Architecture and decision records for the distributive Raft actor system.
 
 **Start here:** [status.md](status.md) (current capabilities and limits) · [architecture.md](architecture.md) (crate graph)
 
+**Product teams:** [scenarios/](scenarios/README.md) (jobs, workers, sessions, workflows — no mandatory Redis) · [backlog.md](backlog.md)
+
 ## Decision records
 
 ### Core & API
@@ -37,7 +39,9 @@ Architecture and decision records for the distributive Raft actor system.
 | Topic | Record |
 |-------|--------|
 | Cross-node actors (v1) | [cross-node-actors](decisions/cross-node-actors.md) |
-| Stateful actors → Redis / external store | [actor-state-redis](decisions/actor-state-redis.md) |
+| Product scenarios (actor-first platform) | [product-scenarios](decisions/product-scenarios.md) |
+| Stateful actors → workflow store (redb-first) | [actor-state-store](decisions/actor-state-store.md) |
+| Stateful actors → Redis (optional adapter) | [actor-state-redis](decisions/actor-state-redis.md) |
 | Durable job queue (mailbox vs backlog, autoscale) | [job-queue](decisions/job-queue.md) |
 | Drain timeout (default 60s, configurable) | [drain-timeout](decisions/drain-timeout.md) |
 | Actor / routing UX — Tier 3 | [actor-routing-tier3](decisions/actor-routing-tier3.md) |
@@ -69,7 +73,10 @@ Architecture and decision records for the distributive Raft actor system.
 | [architecture.md](architecture.md) | System design |
 | [protocol.md](protocol.md) | HTTP/3 routes and wire format |
 | [certs.md](certs.md) | mTLS provisioning |
+| [getting-started.md](getting-started.md) | **CraftyApp** quick start |
 | [status.md](status.md) | **Current capabilities and limits** |
+| [scenarios/](scenarios/README.md) | **Product scenario guides** (jobs, workers, sessions, workflows) |
+| [backlog.md](backlog.md) | Implementation backlog (0.2.x → 1.0) |
 | [testing-coverage.md](testing-coverage.md) | Test inventory and coverage matrix |
 | [releasing.md](releasing.md) | crates.io publish workflow |
 | [../CHANGELOG.md](../CHANGELOG.md) | Version history |

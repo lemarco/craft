@@ -10,6 +10,24 @@ cd "$(dirname "$0")/.."
 
 export PATH="${HOME}/.cargo/bin:/usr/local/bin:/opt/homebrew/bin:${PATH}"
 
+install_lefthook() {
+  if command -v lefthook >/dev/null 2>&1; then
+    echo "lefthook already installed: $(lefthook version 2>&1 | head -1)"
+    return 0
+  fi
+  echo ">> installing lefthook (git hooks — see lefthook.yml)"
+  if command -v brew >/dev/null 2>&1; then
+    brew install lefthook
+  elif command -v pacman >/dev/null 2>&1; then
+    echo "   install: sudo pacman -S lefthook   # or: go install github.com/evilmartians/lefthook@v1.12.0"
+    return 0
+  else
+    echo "   install: https://lefthook.dev/installation/"
+    return 0
+  fi
+  lefthook install
+}
+
 install_nextest() {
   if command -v cargo-nextest >/dev/null 2>&1; then
     echo "cargo-nextest already installed: $(cargo nextest --version)"
@@ -54,6 +72,7 @@ enable_sccache() {
   sccache --show-stats 2>/dev/null || true
 }
 
+install_lefthook
 install_nextest
 install_mold
 

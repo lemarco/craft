@@ -5,15 +5,19 @@
 # All crafty-* crates share one version (`[workspace.package] version`), so a
 # release is: bump that version (when needed), refresh the lockfile, run the
 # publish dry-run gate, commit, tag `vX.Y.Z`, and (optionally) publish every
-# crate in dependency order via `cargo publish --workspace`.
+# crate in dependency order via `./scripts/publish-workspace.sh`.
 #
 # Usage:
-#   ./scripts/release.sh <version>            # prepare: bump + verify + commit + tag
-#   ./scripts/release.sh <version> --publish  # the above, then publish to crates.io
-#   ./scripts/release.sh --dry-run            # just run the publish dry-run gate
+#   ./scripts/release.sh <version>                 # prepare: bump + verify + commit + tag
+#   ./scripts/release.sh <version> --publish         # prepare (if needed) + publish
+#   ./scripts/release.sh <version> --publish-only    # publish when tag already exists
+#   ./scripts/release.sh --dry-run                   # just run the publish dry-run gate
 #
 # When the workspace version already matches <version> (typical for the first
 # release), the bump step is skipped and the current HEAD is tagged.
+#
+# Real publishes use publish-workspace.sh (rate-limit safe). Do not run
+# `cargo publish --workspace` by hand for a multi-crate first release.
 #
 # Publishing needs CARGO_REGISTRY_TOKEN (or `cargo login`) and push access for
 # the tag. Update CHANGELOG.md's [Unreleased] section before running.
@@ -34,6 +38,15 @@ current_version() {
 dry_run() {
     echo ">> publish dry-run (all crates, dependency order)…"
     cargo publish --workspace --dry-run
+}
+
+do_publish() {
+    local version=$1
+    echo ">> publishing to crates.io (rate-limit safe, dependency order)…"
+    ./scripts/publish-workspace.sh "$version"
+    echo ">> updating docs for published release…"
+    ./scripts/post-publish-docs.sh "$version"
+    echo "OK: published crafty v$version."
 }
 
 # Bump the workspace version: the `[workspace.package]` version *and* the
@@ -64,7 +77,7 @@ prepare_release() {
     [ -n "$old" ] || die "could not read current [workspace.package] version"
 
     git rev-parse "v$version" >/dev/null 2>&1 \
-        && die "tag v$version already exists"
+        && die "tag v$version already exists (use --publish-only to publish)"
 
     if [ "$old" = "$version" ]; then
         echo ">> version already $version (skipping bump)"
@@ -102,22 +115,29 @@ fi
 
 VERSION="${1:-}"
 PUBLISH=0
-[ "${2:-}" = "--publish" ] && PUBLISH=1
-[ -n "$VERSION" ] || die "usage: $0 <version> [--publish] | --dry-run"
+PUBLISH_ONLY=0
+case "${2:-}" in
+    --publish) PUBLISH=1 ;;
+    --publish-only) PUBLISH=1; PUBLISH_ONLY=1 ;;
+esac
+[ -n "$VERSION" ] || die "usage: $0 <version> [--publish|--publish-only] | --dry-run"
 echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.].+)?$' \
     || die "version must look like X.Y.Z (got: $VERSION)"
+
+if [ "$PUBLISH_ONLY" = 1 ]; then
+    git rev-parse "v$VERSION" >/dev/null 2>&1 \
+        || die "tag v$VERSION not found; run without --publish-only to prepare first"
+    do_publish "$VERSION"
+    exit 0
+fi
 
 [ -z "$(git status --porcelain)" ] || die "working tree not clean; commit or stash first"
 
 prepare_release "$VERSION"
 
 if [ "$PUBLISH" = 1 ]; then
-    echo ">> publishing to crates.io (dependency order)…"
-    cargo publish --workspace
-    echo ">> updating docs for published release…"
-    ./scripts/post-publish-docs.sh "$VERSION"
-    echo "OK: published crafty v$VERSION."
+    do_publish "$VERSION"
 else
-    echo "OK: prepared crafty v$VERSION. Re-run with --publish (or run 'cargo publish --workspace') to release."
-    echo "tip: after publish, run ./scripts/post-publish-docs.sh $VERSION if you did not use --publish."
+    echo "OK: prepared crafty v$VERSION. Push tag, then:"
+    echo "  ./scripts/release.sh $VERSION --publish-only"
 fi

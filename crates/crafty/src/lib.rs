@@ -36,10 +36,12 @@
 //!
 //! See the `docs/` directory for architecture and design decision records.
 
+mod app;
 mod builder;
 mod certs;
 mod cluster;
 pub mod discovery;
+mod env_config;
 mod handler;
 mod multi_raft;
 mod observer;
@@ -59,19 +61,22 @@ pub use {crafty_dashboard as dashboard, crafty_macros as macros, crafty_net as n
 #[doc(inline)]
 pub use crafty_storage as storage;
 
+pub use app::{CraftyApp, CraftyAppBuilder, EmptyStateMachine};
 pub use builder::{CraftyClusterBuilder, StartError};
 pub use certs::{CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_from_env};
 pub use cluster::{AddRaftGroupsError, ClusterFacts, CraftyCluster, LeaveError, ScaleClusterError};
-pub use crafty_actor::{ActorSession, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy, DirectoryRetry};
 pub use crafty_actor::{
-    AutoscalePolicy, ClusterJobQueue, EnqueueOptions, InMemoryJobQueue, InMemoryMailboxSpool,
-    JobId, JobQueue, LeaseId, LeasedJob, MailboxSpool, MembershipAutoscalePolicy, QueueError,
-    QueueMetrics, QueueService, RedbJobQueue, RedbMailboxSpool, ShardedJobQueue, WorkerId,
-    run_queue_autoscaler, run_queue_consumer, run_queue_membership_autoscaler,
+    ActorSession, AutoscalePolicy, ClusterActorStateStore, ClusterJobQueue, DEFAULT_DRAIN_TIMEOUT,
+    DirectoryPolicy, DirectoryRetry, EnqueueOptions, InMemoryJobQueue, InMemoryMailboxSpool, JobId,
+    JobQueue, LeaseId, LeasedJob, MailboxSpool, MembershipAutoscalePolicy, QueueError,
+    QueueMetrics, QueueService, RedbActorStateStore, RedbJobQueue, RedbMailboxSpool,
+    ShardedJobQueue, StoreService, WorkerId, run_queue_autoscaler, run_queue_consumer,
+    run_queue_membership_autoscaler,
 };
 pub use crafty_actor::{ResourceProfile, VpsResources};
 pub use crafty_core::ReachabilityConfig;
 pub use crafty_core::{CompactionPolicy, DEFAULT_COMPACT_BYTES, DEFAULT_COMPACT_ENTRIES};
+pub use env_config::{AppConfig, app_config_from_env};
 pub use saga::{
     CompositeSagaJournal, Group0SagaJournal, MetaRaftSagaJournal, SagaRegistry, StoreSagaJournal,
     record_saga_metrics, saga_metrics_callback,

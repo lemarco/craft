@@ -199,8 +199,10 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | `bench` | Scheduled | criterion (`append`/`apply`/`deliver`/`queue`) + 120s soak + 60s `soak_multi_raft` + 60s `soak_queue` |
 | `fuzz` | Scheduled | `cargo-fuzz` wire_decode in `crates/crafty-fuzz` |
 
-Local hooks mirror the fast lane: `lefthook` pre-commit (fmt, clippy, check) and
-pre-push (check → tests → doctests → release build). See `scripts/quality-gate-*.sh`.
+Local hooks mirror the fast lane: `lefthook` pre-commit (fmt, shellcheck, clippy —
+skipped when no matching staged files) and pre-push (clippy → tests → doctests → doc
+→ publish dry-run → MSRV; optional release via `--tags release`). See
+`scripts/quality-gate-*.sh`.
 
 ---
 

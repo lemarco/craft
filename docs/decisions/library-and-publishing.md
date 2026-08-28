@@ -21,7 +21,7 @@
 | `crafty-store-redis` | Yes (optional) | Redis `ActorStateStore` |
 | `crafty-dashboard` | Yes (optional) | Monitoring UI |
 | `crafty-sim` | Yes (dev) | Testing / simulation |
-| `crafty-node` | Published as binary (`cargo install`) | Reference/demo runner |
+| `crafty-node` | **No** (`publish = false`) | Reference/demo runner — build from repo or e2e Docker |
 
 `crafty` facade re-exports the stable public API so users typically add **one dependency**.
 
@@ -52,7 +52,7 @@
 ### Release process
 
 - `cargo release` (or workspace script) publishes crates in dependency order:
-  `crafty-proto → crafty-core / crafty-storage / crafty-macros → crafty-net → crafty-actor → crafty-client → crafty-store-redis / crafty-dashboard / crafty-sim → crafty → crafty-node`.
+  `crafty-proto → crafty-core / crafty-storage / crafty-macros → crafty-net → crafty-actor → crafty-client → crafty-store-redis / crafty-dashboard / crafty-sim → crafty`.
 - Tag `vX.Y.Z`; GitLab release with CHANGELOG excerpt.
 - `docs.rs` builds automatically on publish.
 

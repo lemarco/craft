@@ -8,6 +8,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 pub mod actor;
+pub mod actor_store;
 pub mod catalog;
 pub mod client;
 pub mod group;
@@ -25,6 +26,10 @@ pub use actor::{
     ActorEnvelope, ActorId, ActorRef, ActorRegistration, ActorTypeId, DeliverAck, DirectoryUpdate,
     MigrateReply, MigrateRequest, RegisterAck, ScaleReply, ScaleRequest, SpawnReply, SpawnRequest,
     StopReply, StopRequest,
+};
+pub use actor_store::{
+    StoreCompareAndSetReply, StoreCompareAndSetRequest, StoreDeleteReply, StoreDeleteRequest,
+    StoreReplicateOp, StoreReplicateReply, StoreReplicateRequest, StoreSetReply, StoreSetRequest,
 };
 pub use catalog::{CatalogAddRequest, CatalogAddResponse, CatalogCommand, CatalogRejection};
 pub use client::{ClientRequest, ClientResponse};

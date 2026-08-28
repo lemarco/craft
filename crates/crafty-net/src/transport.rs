@@ -23,7 +23,9 @@ use crafty_proto::{
     QueueAckRequest, QueueEnqueueReply, QueueEnqueueRequest, QueueLeaseReply, QueueLeaseRequest,
     QueueMetricsReply, QueueMetricsRequest, QueueNackReply, QueueNackRequest, QueueReplicateReply,
     QueueReplicateRequest, RaftRpc, RaftRpcReply, RegisterAck, ScaleReply, ScaleRequest,
-    SpawnReply, SpawnRequest, StopReply, StopRequest,
+    SpawnReply, SpawnRequest, StopReply, StopRequest, StoreCompareAndSetReply,
+    StoreCompareAndSetRequest, StoreDeleteReply, StoreDeleteRequest, StoreReplicateReply,
+    StoreReplicateRequest, StoreSetReply, StoreSetRequest,
 };
 
 use crate::route::Route;
@@ -432,6 +434,66 @@ pub async fn send_queue_replicate<T: Transport + ?Sized>(
 ) -> Result<QueueReplicateReply, TransportError> {
     let body = encode_body(request)?;
     let response = transport.send(peer, Route::QueueReplicate, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Set an actor workflow key on the store leader (`/actor-store/set`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_store_set<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &StoreSetRequest,
+) -> Result<StoreSetReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::ActorStoreSet, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Delete an actor workflow key on the store leader (`/actor-store/delete`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_store_delete<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &StoreDeleteRequest,
+) -> Result<StoreDeleteReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::ActorStoreDelete, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Compare-and-set on the store leader (`/actor-store/compare-and-set`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_store_compare_and_set<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &StoreCompareAndSetRequest,
+) -> Result<StoreCompareAndSetReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport
+        .send(peer, Route::ActorStoreCompareAndSet, body)
+        .await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Apply replicated actor-store mutations from the leader (`/actor-store/replicate`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_store_replicate<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &StoreReplicateRequest,
+) -> Result<StoreReplicateReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport
+        .send(peer, Route::ActorStoreReplicate, body)
+        .await?;
     Ok(decode_body(&response)?)
 }
 

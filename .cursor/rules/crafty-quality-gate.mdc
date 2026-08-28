@@ -8,13 +8,14 @@ alwaysApply: true
 ## Before commit
 
 ```bash
-./scripts/quality-gate-pre-commit.sh   # or lefthook (fmt, shellcheck, doc, clippy, check)
+./scripts/quality-gate-pre-commit.sh   # or lefthook (fmt, shellcheck, clippy)
 ```
 
 ## Before push / MR
 
 ```bash
-./scripts/quality-gate-pre-push.sh     # check → tests → doctests → release build
+./scripts/quality-gate-pre-push.sh     # clippy → tests → doctests → doc → publish dry-run → MSRV
+lefthook run pre-push --tags release   # optional release build
 ```
 
 While iterating: `./scripts/test-with-log.sh -p <crate> --test <name>` — see `cargo-shell-safety` rule.

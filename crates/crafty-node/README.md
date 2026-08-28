@@ -4,15 +4,12 @@ Reference binary that runs a single
 [crafty](https://crates.io/crates/crafty) cluster node from environment
 variables.
 
+**Not published to crates.io** (`publish = false`). Build from the repository
+or use the e2e Docker image.
+
 Use it to smoke-test deployments, explore the admin dashboard, or as a template
 for your own binary. Real applications embed `CraftyCluster` with their own
 `StateMachine` and actors instead.
-
-## Install
-
-```bash
-cargo install crafty-node
-```
 
 ## Run locally
 
@@ -27,10 +24,10 @@ Configuration is entirely via environment variables — see the `crafty-node`
 crate docs (`CRAFTY_NODE_ID`, `CRAFTY_LISTEN`, `CRAFTY_ADMIN`, `CRAFTY_PEERS`,
 `CRAFTY_DATA_DIR`, …).
 
-## Documentation
+## Repository
 
-- [docs.rs/crafty-node](https://docs.rs/crafty-node)
-- [Repository](https://gitlab.com/lemarco/craft)
+- [crafty on GitLab](https://gitlab.com/lemarco/craft)
+- [docs/certs.md](../../docs/certs.md) — mTLS provisioning
 
 ## License
 

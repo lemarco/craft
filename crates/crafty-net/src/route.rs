@@ -47,6 +47,14 @@ pub const QUEUE_NACK_PATH: &str = "/raft/v1/queue/nack";
 pub const QUEUE_METRICS_PATH: &str = "/raft/v1/queue/metrics";
 /// Leader → follower replication of queue mutations (failover durability).
 pub const QUEUE_REPLICATE_PATH: &str = "/raft/v1/queue/replicate";
+/// Set an actor workflow key on the store leader ([actor-state-store](../../../docs/decisions/actor-state-store.md)).
+pub const ACTOR_STORE_SET_PATH: &str = "/raft/v1/actor-store/set";
+/// Delete an actor workflow key on the store leader.
+pub const ACTOR_STORE_DELETE_PATH: &str = "/raft/v1/actor-store/delete";
+/// Compare-and-set on the store leader.
+pub const ACTOR_STORE_COMPARE_AND_SET_PATH: &str = "/raft/v1/actor-store/compare-and-set";
+/// Leader → follower replication of actor-store mutations.
+pub const ACTOR_STORE_REPLICATE_PATH: &str = "/raft/v1/actor-store/replicate";
 
 /// The connection class a route belongs to. Peer consensus traffic is isolated
 /// onto its own QUIC connection from everything else (future-work-and-risks R2).
@@ -104,11 +112,19 @@ pub enum Route {
     QueueMetrics,
     /// [`QUEUE_REPLICATE_PATH`].
     QueueReplicate,
+    /// [`ACTOR_STORE_SET_PATH`].
+    ActorStoreSet,
+    /// [`ACTOR_STORE_DELETE_PATH`].
+    ActorStoreDelete,
+    /// [`ACTOR_STORE_COMPARE_AND_SET_PATH`].
+    ActorStoreCompareAndSet,
+    /// [`ACTOR_STORE_REPLICATE_PATH`].
+    ActorStoreReplicate,
 }
 
 impl Route {
     /// Every route, in a stable order (handy for building a router or tests).
-    pub const ALL: [Route; 19] = [
+    pub const ALL: [Route; 23] = [
         Route::PeerWire,
         Route::ClientWire,
         Route::ClusterJoin,
@@ -128,6 +144,10 @@ impl Route {
         Route::QueueNack,
         Route::QueueMetrics,
         Route::QueueReplicate,
+        Route::ActorStoreSet,
+        Route::ActorStoreDelete,
+        Route::ActorStoreCompareAndSet,
+        Route::ActorStoreReplicate,
     ];
 
     /// The request path for this route.
@@ -153,6 +173,10 @@ impl Route {
             Route::QueueNack => QUEUE_NACK_PATH,
             Route::QueueMetrics => QUEUE_METRICS_PATH,
             Route::QueueReplicate => QUEUE_REPLICATE_PATH,
+            Route::ActorStoreSet => ACTOR_STORE_SET_PATH,
+            Route::ActorStoreDelete => ACTOR_STORE_DELETE_PATH,
+            Route::ActorStoreCompareAndSet => ACTOR_STORE_COMPARE_AND_SET_PATH,
+            Route::ActorStoreReplicate => ACTOR_STORE_REPLICATE_PATH,
         }
     }
 
@@ -184,7 +208,11 @@ impl Route {
             | Route::QueueAck
             | Route::QueueNack
             | Route::QueueMetrics
-            | Route::QueueReplicate => TrafficClass::Actor,
+            | Route::QueueReplicate
+            | Route::ActorStoreSet
+            | Route::ActorStoreDelete
+            | Route::ActorStoreCompareAndSet
+            | Route::ActorStoreReplicate => TrafficClass::Actor,
         }
     }
 

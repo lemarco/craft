@@ -14,11 +14,12 @@ alwaysApply: false
 
 ## Ports & adapters
 
-| Port | Prod | Test / sim |
-|------|------|------------|
+| Port | Prod (target) | Test / sim |
+|------|---------------|------------|
 | `RaftStorage` | `RedbStorage` | `MemoryStorage` |
 | `Transport` | QUIC | `LocalNetwork` |
-| `ActorStateStore` | Redis | `InMemoryStore` |
+| `JobQueue` | `RedbJobQueue` | `InMemoryJobQueue` |
+| `ActorStateStore` | `RedbActorStateStore` (backlog B-01); optional `RedisStore` | `InMemoryStore` |
 
 - New port = trait + **≥2 implementations**. One impl → do not abstract yet.
 - Adapters depend on core; **never** core → adapter.

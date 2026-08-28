@@ -5,6 +5,9 @@
 [![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![rust](https://img.shields.io/badge/rustc-1.90%2B-orange.svg)](#msrv)
 
+[![crates.io](https://img.shields.io/crates/v/crafty.svg)](https://crates.io/crates/crafty)
+[![docs.rs](https://docs.rs/crafty/badge.svg)](https://docs.rs/crafty)
+
 ---
 
 ## Why this exists
@@ -113,7 +116,7 @@ crafty = "0.1"
 ```
 
 ```sh
-cargo install crafty-node
+cargo run -p crafty-node   # reference runner (repo only; not on crates.io)
 ```
 
 ## Workspace crates
@@ -132,7 +135,7 @@ cargo install crafty-node
 | [`crafty-dashboard`](crates/crafty-dashboard) | Admin + observability |
 | [`crafty-sim`](crates/crafty-sim) | Deterministic sim harness |
 | [`crafty-ops`](crates/crafty-ops) | Backup/restore CLI |
-| [`crafty-node`](crates/crafty-node) | Reference binary |
+| [`crafty-node`](crates/crafty-node) | Reference binary (repo/e2e only) |
 
 ## Documentation map
 

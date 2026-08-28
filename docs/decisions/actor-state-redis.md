@@ -1,7 +1,12 @@
 # Stateful actors — external store (Redis)
 
-**Status:** Accepted  
-**Date:** 2026-07-05
+> **Product default (2026-08-28):** embedded **redb** via [`ActorStateStore`](actor-state-store.md) —
+> no mandatory Redis. This record remains for the **optional** `crafty-store-redis` adapter and
+> integration with non-crafty services. Scenario guides: [stateful-workers](../scenarios/stateful-workers.md).
+
+**Status:** Accepted (optional adapter path)  
+**Date:** 2026-07-05  
+**Amended:** 2026-08-28 — superseded as default by [actor-state-store](actor-state-store.md)
 
 ## Context
 

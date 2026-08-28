@@ -158,6 +158,27 @@ Content-Type: application/x-postcard
 | `.../metrics` | `QueueMetricsRequest` | `QueueMetricsReply` | `pending`, `leased`, `oldest_pending_age_ms` for autoscale |
 | `.../replicate` | `QueueReplicateRequest` | `QueueReplicateReply { error }` | Idempotent `QueueReplicateOp` batch; leader-authenticated |
 
+### Actor workflow store (tier — workflow keys)
+
+Leader-gated durable KV for stateful actors ([actor-state-store](decisions/actor-state-store.md)). Same leader-forward + voter-replicate pattern as the job queue. Default file: `{data_dir}/actor-store.redb`.
+
+```
+POST /raft/v1/actor-store/set
+POST /raft/v1/actor-store/delete
+POST /raft/v1/actor-store/compare-and-set
+POST /raft/v1/actor-store/replicate   # leader → voter sync only
+Content-Type: application/x-postcard
+```
+
+| Route | Request | Response | Notes |
+|-------|---------|----------|-------|
+| `.../set` | `StoreSetRequest` | `StoreSetReply { error }` | Optional `ttl_secs` |
+| `.../delete` | `StoreDeleteRequest` | `StoreDeleteReply { error }` | Idempotent |
+| `.../compare-and-set` | `StoreCompareAndSetRequest` | `StoreCompareAndSetReply { applied, error }` | Optimistic concurrency |
+| `.../replicate` | `StoreReplicateRequest` | `StoreReplicateReply { error }` | Idempotent `StoreReplicateOp` batch; leader-authenticated |
+
+Local reads use `ClusterActorStateStore::get` on the voter's redb file (no RPC).
+
 Types live in `crafty-proto` (`queue.rs`). Facade client: [`ClusterJobQueue`](../../crates/crafty-actor/src/queue_service.rs) via [`CraftyCluster::job_queue`](../../crates/crafty/src/cluster.rs).
 
 ### Actor mailbox spool (tier B durability)
