@@ -13,7 +13,7 @@ Architecture and decision records for the distributive Raft actor system.
 | State machine API (trait + macros) | [state-machine](decisions/state-machine.md) |
 | Client API, routing & read consistency | [client-and-routing](decisions/client-and-routing.md) |
 | Architecture style (ports & adapters) | [architecture-style](decisions/architecture-style.md) |
-| Naming (`craft-*` + facade `craft`) | [naming](decisions/naming.md) |
+| Naming (`crafty-*` + facade `crafty`) | [naming](decisions/naming.md) |
 | Library distribution & publishing | [library-and-publishing](decisions/library-and-publishing.md) |
 
 ### Wire, transport & security
@@ -58,7 +58,7 @@ Architecture and decision records for the distributive Raft actor system.
 
 ## Operations runbooks
 
-- [ops/backup-restore.md](ops/backup-restore.md) — `craft-ops` snapshot export/import
+- [ops/backup-restore.md](ops/backup-restore.md) — `crafty-ops` snapshot export/import
 - [ops/rolling-upgrade.md](ops/rolling-upgrade.md) — wire N/N−1 vs app semver
 
 ## Reference

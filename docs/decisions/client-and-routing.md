@@ -6,11 +6,11 @@
 
 ## Context
 
-Craft is **Rust-native, no gRPC**. Clients may connect to any node; only the leader appends to the log. Actor messages need cluster-wide routing. Reads of authoritative state must define a consistency level.
+Crafty is **Rust-native, no gRPC**. Clients may connect to any node; only the leader appends to the log. Actor messages need cluster-wide routing. Reads of authoritative state must define a consistency level.
 
 ## Client API — no gRPC
 
-Layered client API sharing **`craft-proto` message types**:
+Layered client API sharing **`crafty-proto` message types**:
 
 | Layer | Transport | Audience |
 |-------|-----------|----------|
@@ -38,11 +38,11 @@ Body: postcard(ClientRequest)
 200 → postcard(ClientResponse)
 ```
 
-Wire types in `craft-proto/src/client.rs`: `ClientRequest { Propose, Query }`, `ClientResponse { Ok, NotLeader, Error }`.
+Wire types in `crafty-proto/src/client.rs`: `ClientRequest { Propose, Query }`, `ClientResponse { Ok, NotLeader, Error }`.
 
 **Rejected:** gRPC/tonic, framed TCP, tarpc.
 
-Crates: `craft-client`, `craft-net`, `craft-proto`.
+Crates: `crafty-client`, `crafty-net`, `crafty-proto`.
 
 ## Client routing — transparent forward
 
@@ -110,7 +110,7 @@ Leader may serve `query` without ReadIndex round-trip while holding a valid leas
 - Surrendered on step-down; requires current-term committed entry.
 - Fallback to full ReadIndex when lease invalid.
 
-Implemented: `RaftNode::lease_read` in `craft-core`; driver's `query` fast path.
+Implemented: `RaftNode::lease_read` in `crafty-core`; driver's `query` fast path.
 
 ### Follower reads (landed)
 
@@ -128,7 +128,7 @@ Linearizable actor `ask` — use Raft `query` for authoritative SM reads.
 
 ### Linearizability testing
 
-Layered verification per [testing-strategy](testing-strategy.md): unit (`craft-core` ReadIndex FSM), property (proptest), deterministic sim + porcupine-style checker, E2E nightly (`e2e/linearizability.sh`). Stale-under-partition must surface as error/timeout, never wrong value.
+Layered verification per [testing-strategy](testing-strategy.md): unit (`crafty-core` ReadIndex FSM), property (proptest), deterministic sim + porcupine-style checker, E2E nightly (`e2e/linearizability.sh`). Stale-under-partition must surface as error/timeout, never wrong value.
 
 ## Consequences
 

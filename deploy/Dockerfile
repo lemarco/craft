@@ -1,12 +1,12 @@
-# Production-oriented multi-stage image for the craft-node reference binary,
+# Production-oriented multi-stage image for the crafty-node reference binary,
 # used by the Kubernetes manifests in deploy/kubernetes/ (future-work-and-risks item 6).
 #
 # Build context is the repo root:
-#   docker build -f deploy/Dockerfile -t craft-node:latest .
+#   docker build -f deploy/Dockerfile -t crafty-node:latest .
 #
 # The runtime image is distroless (no shell/package manager) for a small,
 # hardened surface. Certs are mounted from cert-manager Secrets under
-# /etc/craft/…; the admin port (8080) serves Kubernetes probes (health-admin-port).
+# /etc/crafty/…; the admin port (8080) serves Kubernetes probes (health-admin-port).
 
 FROM rust:1.98-slim AS build
 WORKDIR /src
@@ -14,10 +14,10 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 # A release build: this image is meant for real deployments, not just smoke E2E.
-RUN cargo build --release -p craft-node
+RUN cargo build --release -p crafty-node
 
 FROM gcr.io/distroless/cc-debian12 AS runtime
-COPY --from=build /src/target/release/craft-node /usr/local/bin/craft-node
+COPY --from=build /src/target/release/crafty-node /usr/local/bin/crafty-node
 # QUIC (peer + client + actor) and the admin HTTP port.
 EXPOSE 7443/udp 8080/tcp
-ENTRYPOINT ["craft-node"]
+ENTRYPOINT ["crafty-node"]

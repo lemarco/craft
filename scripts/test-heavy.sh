@@ -7,5 +7,5 @@
 
 set -euo pipefail
 export NEXTEST_PROFILE=default
-export CRAFT_PROptest_CASES=250
+export CRAFTY_PROptest_CASES=250
 exec "$(dirname "$0")/test-fast.sh" "$@"

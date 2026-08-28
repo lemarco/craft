@@ -1,0 +1,13 @@
+# Fuzz targets for crafty wire decoders (backlog T4). Standalone crate — run
+# `cargo fuzz` from this directory (see README.md).
+[package]
+name = "crafty-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+crafty-proto = { path = "../crafty-proto" }

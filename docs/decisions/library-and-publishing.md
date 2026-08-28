@@ -5,29 +5,29 @@
 
 ## Context
 
-[deployment-model](deployment-model.md) sets craft as a **library-first framework**; [naming](naming.md) reserves publish-ready `craft-*` names. This ADR makes the **publishing contract** explicit: craft is intended to be **published to crates.io** as a reusable library, not just an internal repo.
+[deployment-model](deployment-model.md) sets crafty as a **library-first framework**; [naming](naming.md) reserves publish-ready `crafty-*` names. This ADR makes the **publishing contract** explicit: crafty is intended to be **published to crates.io** as a reusable library, not just an internal repo.
 
 ## Decision
 
-**craft is a public, open-source Rust library published on crates.io.**
+**crafty is a public, open-source Rust library published on crates.io.**
 
 ### Public vs internal crates
 
 | Crate | Published | Audience |
 |-------|-----------|----------|
-| `craft` | **Yes** — primary | Framework users depend on this |
-| `craft-macros` | Yes | Re-exported by `craft`; also direct |
-| `craft-proto`, `craft-core`, `craft-storage`, `craft-net`, `craft-actor`, `craft-client` | Yes | Advanced users / composability |
-| `craft-store-redis` | Yes (optional) | Redis `ActorStateStore` |
-| `craft-dashboard` | Yes (optional) | Monitoring UI |
-| `craft-sim` | Yes (dev) | Testing / simulation |
-| `craft-node` | Published as binary (`cargo install`) | Reference/demo runner |
+| `crafty` | **Yes** — primary | Framework users depend on this |
+| `crafty-macros` | Yes | Re-exported by `crafty`; also direct |
+| `crafty-proto`, `crafty-core`, `crafty-storage`, `crafty-net`, `crafty-actor`, `crafty-client` | Yes | Advanced users / composability |
+| `crafty-store-redis` | Yes (optional) | Redis `ActorStateStore` |
+| `crafty-dashboard` | Yes (optional) | Monitoring UI |
+| `crafty-sim` | Yes (dev) | Testing / simulation |
+| `crafty-node` | Published as binary (`cargo install`) | Reference/demo runner |
 
-`craft` facade re-exports the stable public API so users typically add **one dependency**.
+`crafty` facade re-exports the stable public API so users typically add **one dependency**.
 
 ### Versioning
 
-- **SemVer** across the workspace; all `craft-*` crates share a synchronized version.
+- **SemVer** across the workspace; all `crafty-*` crates share a synchronized version.
 - Pre-1.0 (`0.x`): breaking changes allowed on minor bumps, documented in CHANGELOG.
 - Wire/protocol compatibility tracked separately via `Raft-Protocol-Version` ([protocol.md](../protocol.md)); protocol changes are breaking and gated by [cluster-membership](cluster-membership.md#version-skew--hard-reject).
 
@@ -52,7 +52,7 @@
 ### Release process
 
 - `cargo release` (or workspace script) publishes crates in dependency order:
-  `craft-proto → craft-core / craft-storage / craft-macros → craft-net → craft-actor → craft-client → craft-store-redis / craft-dashboard / craft-sim → craft → craft-node`.
+  `crafty-proto → crafty-core / crafty-storage / crafty-macros → crafty-net → crafty-actor → crafty-client → crafty-store-redis / crafty-dashboard / crafty-sim → crafty → crafty-node`.
 - Tag `vX.Y.Z`; GitLab release with CHANGELOG excerpt.
 - `docs.rs` builds automatically on publish.
 
@@ -65,15 +65,15 @@
 
 **Positive**
 
-- Clear expectation: craft is a distributable library, not just app code
-- Users get one dep (`craft`) + optional advanced crates
+- Clear expectation: crafty is a distributable library, not just app code
+- Users get one dep (`crafty`) + optional advanced crates
 - Publishing discipline (SemVer, MSRV, docs, license) set from day one
 
 **Negative**
 
 - Publishing overhead (docs, CHANGELOG, dry-run CI, name reservation)
 - Synchronized versioning couples crate releases
-- `craft` name must be secured on crates.io (fallback: org scope or `craft-rs`)
+- `crafty` name must be secured on crates.io (fallback: org scope or `crafty-rs`)
 
 ## Related
 

@@ -8,8 +8,8 @@ source scripts/hook-prelude.sh
 log() { printf '[%s] %s\n' "$(date -Is)" "$*"; }
 
 maybe_tee() {
-  if [[ -n "${CRAFT_HOOK_LOG:-}" ]]; then
-    tee -a "${CRAFT_TEST_LOG:-target/test-run.log}"
+  if [[ -n "${CRAFTY_HOOK_LOG:-}" ]]; then
+    tee -a "${CRAFTY_TEST_LOG:-target/test-run.log}"
   else
     cat
   fi
@@ -35,10 +35,10 @@ log ">> doc"
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features 2>&1 | maybe_tee
 
 log ">> release build"
-if [[ "${CRAFT_SKIP_RELEASE:-1}" != "1" ]]; then
+if [[ "${CRAFTY_SKIP_RELEASE:-1}" != "1" ]]; then
   cargo build --workspace --all-features --release 2>&1 | maybe_tee
 else
-  log ">> release build skipped (CRAFT_SKIP_RELEASE=1)"
+  log ">> release build skipped (CRAFTY_SKIP_RELEASE=1)"
 fi
 
 log ">> pre-push gate ok"

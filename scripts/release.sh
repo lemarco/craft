@@ -2,7 +2,7 @@
 #
 # release.sh — cut a synchronized workspace release (library-and-publishing).
 #
-# All craft-* crates share one version (`[workspace.package] version`), so a
+# All crafty-* crates share one version (`[workspace.package] version`), so a
 # release is: bump that version, refresh the lockfile, run the publish dry-run
 # gate, commit, tag `vX.Y.Z`, and (optionally) publish every crate in
 # dependency order via `cargo publish --workspace`.
@@ -30,7 +30,7 @@ dry_run() {
 }
 
 # Bump the workspace version: the `[workspace.package]` version *and* the
-# `version = "…"` pin on every internal `craft-* = { path = …, version = … }`
+# `version = "…"` pin on every internal `crafty-* = { path = …, version = … }`
 # dependency (so a bumped crate depends on the bumped, not the previous, crates).
 set_version() {
     local version="$1" old tmp
@@ -40,7 +40,7 @@ set_version() {
     tmp="$(mktemp)"
     awk -v old="$old" -v ver="$version" '
         $0 == "version = \"" old "\"" { print "version = \"" ver "\""; next }
-        /^craft[a-z-]* = / {
+        /^crafty[a-z-]* = / {
             gsub("version = \"" old "\"", "version = \"" ver "\""); print; next
         }
         { print }
@@ -72,14 +72,14 @@ cargo update --workspace >/dev/null 2>&1 || true   # refresh Cargo.lock versions
 dry_run
 
 git add "$ROOT_MANIFEST" Cargo.lock CHANGELOG.md
-git commit -m "chore(release): craft v$VERSION"
-git tag -a "v$VERSION" -m "craft v$VERSION"
+git commit -m "chore(release): crafty v$VERSION"
+git tag -a "v$VERSION" -m "crafty v$VERSION"
 echo ">> committed and tagged v$VERSION (push with: git push && git push origin v$VERSION)"
 
 if [ "$PUBLISH" = 1 ]; then
     echo ">> publishing to crates.io (dependency order)…"
     cargo publish --workspace
-    echo "OK: published craft v$VERSION."
+    echo "OK: published crafty v$VERSION."
 else
-    echo "OK: prepared craft v$VERSION. Re-run with --publish (or run 'cargo publish --workspace') to release."
+    echo "OK: prepared crafty v$VERSION. Re-run with --publish (or run 'cargo publish --workspace') to release."
 fi

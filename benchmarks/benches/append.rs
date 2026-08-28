@@ -5,8 +5,8 @@
 //! iteration appends one contiguous batch to a *fresh* store so the measurement
 //! is a clean append, not amortized over a growing log.
 
-use craft_benchmarks::command_entries;
-use craft_storage::{LogStore, MemoryStorage, RedbStorage};
+use crafty_benchmarks::command_entries;
+use crafty_storage::{LogStore, MemoryStorage, RedbStorage};
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 use std::hint::black_box;
 

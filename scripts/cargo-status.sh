@@ -9,7 +9,7 @@ ROOT="$(pwd)"
 LOCK="$ROOT/target/.cargo-lock"
 LOG="$ROOT/target/test-run.log"
 
-echo "=== craft cargo status @ $(date -Is) ==="
+echo "=== crafty cargo status @ $(date -Is) ==="
 echo "root: $ROOT"
 echo
 

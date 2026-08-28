@@ -1,7 +1,7 @@
 # Backup and restore runbook
 
-Operational guide for snapshotting a craft node's on-disk Raft layout and
-restoring it after failure or migration. Uses the [`craft-ops`](../../crates/craft-ops/)
+Operational guide for snapshotting a crafty node's on-disk Raft layout and
+restoring it after failure or migration. Uses the [`crafty-ops`](../../crates/crafty-ops/)
 CLI (Tier 2 production reliability).
 
 ## When to use
@@ -19,7 +19,7 @@ the committed voter set or join via `/cluster/join`.
 Multi-group clusters store one Redb file per Raft group:
 
 ```text
-/data/craft/
+/data/crafty/
   group-meta.redb # Meta-Raft coordinator (multi-Raft only)
   group-0.redb    # user raft group 0
   group-1.redb
@@ -34,20 +34,20 @@ Single-group nodes use only `group-0.redb`.
 corruption):
 
 ```bash
-craft-ops backup export \
-  --data-dir /var/lib/craft/data \
-  --archive /tmp/craft-backup.tar.gz
+crafty-ops backup export \
+  --data-dir /var/lib/crafty/data \
+  --archive /tmp/crafty-backup.tar.gz
 ```
 
 **Restore** on a fresh machine:
 
 ```bash
-craft-ops backup import \
-  --data-dir /var/lib/craft/data \
-  --archive /tmp/craft-backup.tar.gz
+crafty-ops backup import \
+  --data-dir /var/lib/crafty/data \
+  --archive /tmp/crafty-backup.tar.gz
 ```
 
-Then start `craft-node` with the same `CRAFT_NODE_ID`, peers, and certs as
+Then start `crafty-node` with the same `CRAFTY_NODE_ID`, peers, and certs as
 before the outage.
 
 ## Object storage (S3 / GCS)
@@ -55,17 +55,17 @@ before the outage.
 Push after export:
 
 ```bash
-craft-ops backup push \
-  --archive /tmp/craft-backup.tar.gz \
-  --dest s3://my-bucket/craft/node-2/2026-08-27.tar.gz
+crafty-ops backup push \
+  --archive /tmp/crafty-backup.tar.gz \
+  --dest s3://my-bucket/crafty/node-2/2026-08-27.tar.gz
 ```
 
 Pull before import:
 
 ```bash
-craft-ops backup pull \
-  --src s3://my-bucket/craft/node-2/2026-08-27.tar.gz \
-  --archive /tmp/craft-backup.tar.gz
+crafty-ops backup pull \
+  --src s3://my-bucket/crafty/node-2/2026-08-27.tar.gz \
+  --archive /tmp/crafty-backup.tar.gz
 ```
 
 GCS uses the same URI shape: `gs://bucket/key`. Local smoke tests use
@@ -76,7 +76,7 @@ No vault integration — inject secrets via your orchestrator.
 
 ## Verification checklist
 
-1. Stop the node (`systemctl stop craft-node` or container exit).
+1. Stop the node (`systemctl stop crafty-node` or container exit).
 2. Export → push to object storage.
 3. On a staging host: pull → import → start with matching identity.
 4. Confirm `/ready` is `200`, `/introspect/cluster` shows expected `commit_index`.

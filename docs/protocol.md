@@ -91,7 +91,7 @@ Content-Type: application/x-postcard
 | `403` | Join disabled (`--allow-join` not set) |
 | `409` | Version mismatch ([cluster-membership](decisions/cluster-membership.md#version-skew--hard-reject)), duplicate `NODE_ID`, or invalid cert |
 
-Request/response types: `JoinRequest` / `JoinResponse` in `craft-proto` ([cluster-membership](decisions/cluster-membership.md#join-rpc)).
+Request/response types: `JoinRequest` / `JoinResponse` in `crafty-proto` ([cluster-membership](decisions/cluster-membership.md#join-rpc)).
 
 ### Cluster leave (node ↔ node)
 
@@ -102,7 +102,7 @@ Content-Type: application/x-postcard
 
 **Requires** target node started with `--allow-leave`. The leader applies a **joint-consensus membership change** removing `LeaveRequest.node_id` from Meta-Raft (or group 0 in single-group mode) ([cluster-membership](decisions/cluster-membership.md)); per-group sync removes the node from shard groups.
 
-Request/response types: `LeaveRequest` / `LeaveResponse` in `craft-proto` ([cluster-membership](decisions/cluster-membership.md#leave-rpc)).
+Request/response types: `LeaveRequest` / `LeaveResponse` in `crafty-proto` ([cluster-membership](decisions/cluster-membership.md#leave-rpc)).
 
 ### Cluster catalog add (multi-Raft, node ↔ node)
 
@@ -111,9 +111,9 @@ POST /raft/v1/cluster/catalog/add
 Content-Type: application/x-postcard
 ```
 
-**Multi-Raft only.** The Meta-Raft leader appends a [`CatalogCommand::AddGroups`](../../crates/craft-proto/src/catalog.rs) entry to the Meta-Raft log (not the user state machine). All nodes replay the entry, update the in-memory catalog, extend keyed routing, and rebalance to adopt new groups ([multi-raft](decisions/multi-raft.md)).
+**Multi-Raft only.** The Meta-Raft leader appends a [`CatalogCommand::AddGroups`](../../crates/crafty-proto/src/catalog.rs) entry to the Meta-Raft log (not the user state machine). All nodes replay the entry, update the in-memory catalog, extend keyed routing, and rebalance to adopt new groups ([multi-raft](decisions/multi-raft.md)).
 
-Request/response types: `CatalogAddRequest` / `CatalogAddResponse` in `craft-proto`. Facade: `CraftCluster::add_raft_groups(count)`.
+Request/response types: `CatalogAddRequest` / `CatalogAddResponse` in `crafty-proto`. Facade: `CraftyCluster::add_raft_groups(count)`.
 
 ### Actor delivery (cross-node, v1)
 
@@ -158,7 +158,7 @@ Content-Type: application/x-postcard
 | `.../metrics` | `QueueMetricsRequest` | `QueueMetricsReply` | `pending`, `leased`, `oldest_pending_age_ms` for autoscale |
 | `.../replicate` | `QueueReplicateRequest` | `QueueReplicateReply { error }` | Idempotent `QueueReplicateOp` batch; leader-authenticated |
 
-Types live in `craft-proto` (`queue.rs`). Facade client: [`ClusterJobQueue`](../../crates/craft-actor/src/queue_service.rs) via [`CraftCluster::job_queue`](../../crates/craft/src/cluster.rs).
+Types live in `crafty-proto` (`queue.rs`). Facade client: [`ClusterJobQueue`](../../crates/crafty-actor/src/queue_service.rs) via [`CraftyCluster::job_queue`](../../crates/crafty/src/cluster.rs).
 
 ### Actor mailbox spool (tier B durability)
 
@@ -170,7 +170,7 @@ Optional write-ahead **`MailboxSpool`** (`RedbMailboxSpool` at `{data_dir}/mailb
 | **Inbox** | Envelope persisted before local mailbox enqueue; removed after accept |
 | **Recovery** | Background drainer + startup replay of pending rows |
 
-Enable via [`CraftClusterBuilder::durable_mailbox`](../../crates/craft/src/builder.rs)(`true`) with [`data_dir`](../../crates/craft/src/builder.rs).
+Enable via [`CraftyClusterBuilder::durable_mailbox`](../../crates/crafty/src/builder.rs)(`true`) with [`data_dir`](../../crates/crafty/src/builder.rs).
 
 ## Connections
 
@@ -193,7 +193,7 @@ Added as an HTTP request header when breaking changes ship. v1 omits the header 
 | **dev** | Self-signed CA; `insecure-dev` | Same; skip verify in tests | No TLS |
 | **production** | mTLS — cert maps to `NodeId` | **mTLS required** — client cert from cluster CA | No TLS |
 
-User **browser HTTPS** (port 443) is separate — user’s own TLS, not craft `/client/wire`.
+User **browser HTTPS** (port 443) is separate — user’s own TLS, not crafty `/client/wire`.
 
 Details in [security](decisions/security.md).
 

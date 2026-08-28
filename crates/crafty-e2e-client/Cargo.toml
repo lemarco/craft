@@ -1,0 +1,23 @@
+[package]
+name = "crafty-e2e-client"
+description = "E2E linearizability load generator over live QUIC/mTLS (Jepsen-lite)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "crafty-e2e-client"
+path = "src/main.rs"
+
+[dependencies]
+crafty-client.workspace = true
+crafty-net.workspace = true
+crafty-proto.workspace = true
+crafty-sim.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }

@@ -20,12 +20,12 @@ User chose **Option C — configurable** with a sensible default.
 | Source | Key | Example |
 |--------|-----|---------|
 | Builder | `.drain_timeout(Duration)` | `Duration::from_secs(120)` |
-| Environment | `CRAFT_DRAIN_TIMEOUT` | `90s`, `2m`, `120` (seconds) |
+| Environment | `CRAFTY_DRAIN_TIMEOUT` | `90s`, `2m`, `120` (seconds) |
 
 Builder overrides env when both set.
 
 ```rust
-CraftCluster::builder()
+CraftyCluster::builder()
     .drain_timeout(Duration::from_secs(60)) // default if omitted
     .spawn()
     .await?;
@@ -41,7 +41,7 @@ CraftCluster::builder()
 ### Scope
 
 - Applies per **actor instance** being migrated/stopped.
-- Cluster-wide default via builder / `CRAFT_DRAIN_TIMEOUT`.
+- Cluster-wide default via builder / `CRAFTY_DRAIN_TIMEOUT`.
 - Per-group override via `ActorRegistry::set_group_drain_timeout` ([actor-routing-tier3](actor-routing-tier3.md)).
 
 ## Consequences

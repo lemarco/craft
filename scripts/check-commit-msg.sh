@@ -21,7 +21,7 @@ cat >&2 <<'EOF'
 commit message must follow conventional commits, e.g.:
 
   feat: add group rebalance control plane
-  fix(craft-actor): correct NodeId comparison in test
+  fix(crafty-actor): correct NodeId comparison in test
   chore: update lefthook gates
 
 types: feat | fix | chore | docs | refactor | test | ci | build | perf

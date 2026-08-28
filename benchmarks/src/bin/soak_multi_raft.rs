@@ -8,11 +8,11 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use craft::CraftCluster;
-use craft::core::{Config, RaftGroupId, StableShardRouter, StateMachine, place_shard};
-use craft::net::{LocalNetwork, Transport, send_client_request};
-use craft::proto::{ClientRequest, ClientResponse, LogIndex, NodeId};
-use craft_benchmarks::TinyRng;
+use crafty::CraftyCluster;
+use crafty::core::{Config, RaftGroupId, StableShardRouter, StateMachine, place_shard};
+use crafty::net::{LocalNetwork, Transport, send_client_request};
+use crafty::proto::{ClientRequest, ClientResponse, LogIndex, NodeId};
+use crafty_benchmarks::TinyRng;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -67,11 +67,11 @@ impl StateMachine for KvMachine {
     }
 
     fn snapshot(&self) -> Result<Vec<u8>, KvError> {
-        craft::proto::encode(self).map_err(|_| KvError)
+        crafty::proto::encode(self).map_err(|_| KvError)
     }
 
     fn restore(&mut self, snapshot: &[u8]) -> Result<(), KvError> {
-        *self = craft::proto::decode(snapshot).map_err(|_| KvError)?;
+        *self = crafty::proto::decode(snapshot).map_err(|_| KvError)?;
         Ok(())
     }
 }
@@ -121,7 +121,7 @@ async fn main() {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = CraftCluster::builder(id, KvMachine::default())
+        let cluster = CraftyCluster::builder(id, KvMachine::default())
             .members(ids)
             .raft_config(raft_config(base_seed ^ id.0))
             .tick_period(Duration::from_millis(10))
@@ -143,7 +143,7 @@ async fn main() {
         rounds += 1;
         let round_seed = base_seed ^ rounds;
         let key = route_key(base_seed, rounds);
-        let cmd = craft::proto::encode(&KvCommand::Set {
+        let cmd = crafty::proto::encode(&KvCommand::Set {
             key: String::from_utf8_lossy(&key).into_owned(),
             value: format!("v{rounds}"),
         })

@@ -16,9 +16,9 @@ Operational model: **not Kubernetes-first** — bare VPS, cloud VM, or container
 
 | Artifact | Role |
 |----------|------|
-| **`craft-*` crates + `CraftCluster` API** | Primary product — user embeds in their app |
+| **`crafty-*` crates + `CraftyCluster` API** | Primary product — user embeds in their app |
 | **`examples/`** | Reference apps (KV, multi-VPS join) |
-| **`craft-node` (optional)** | Thin wrapper around the same API for demos only — not a plugin host |
+| **`crafty-node` (optional)** | Thin wrapper around the same API for demos only — not a plugin host |
 
 The user ships **one binary** built from their app. Production runs **N processes** (N VPSes), each process = **one Raft peer** + **local actor runtime**. Same codebase everywhere; config differs per VPS (`node_id`, listen addr, join target).
 
@@ -27,7 +27,7 @@ The user ships **one binary** built from their app. Production runs **N processe
 ```rust
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cluster = CraftCluster::builder()
+    let cluster = CraftyCluster::builder()
         .node_id(env("NODE_ID"))
         .listen(env("LISTEN_ADDR"))           // e.g. 0.0.0.0:7443
         .join(env_optional("JOIN_ADDR"))      // None = seed/first node; Some = join existing

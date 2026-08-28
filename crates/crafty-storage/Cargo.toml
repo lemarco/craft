@@ -1,0 +1,27 @@
+[package]
+name = "crafty-storage"
+description = "Durable Raft log, hard state, and snapshot storage for crafty."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints]
+workspace = true
+
+[dependencies]
+crafty-proto.workspace = true
+serde.workspace = true
+postcard.workspace = true
+thiserror.workspace = true
+redb = "4.2.0"
+
+[dev-dependencies]
+tempfile = "3"

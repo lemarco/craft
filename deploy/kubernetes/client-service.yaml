@@ -1,5 +1,5 @@
 # Client-facing Service for the QUIC client API (client-api, client-routing). Load-balances
-# client traffic across all craft pods — any node transparently forwards client
+# client traffic across all crafty pods — any node transparently forwards client
 # requests to the current leader, so clients need not know which pod leads.
 #
 # Type is ClusterIP (in-cluster clients). For external clients, change to
@@ -10,13 +10,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: craft-client
+  name: crafty-client
   labels:
-    app: craft
+    app: crafty
 spec:
   type: ClusterIP
   selector:
-    app: craft
+    app: crafty
   ports:
     - name: quic
       port: 7443

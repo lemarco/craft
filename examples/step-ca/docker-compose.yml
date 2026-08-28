@@ -1,13 +1,13 @@
-# step-ca reference + 3-node craft cluster (cert-automation)
+# step-ca reference + 3-node crafty cluster (cert-automation)
 #
 # Quick start:
 #   cd examples/step-ca
 #   ./bootstrap.sh                 # mint certs/ via generate.sh
-#   docker compose up --build      # 3 craft-node containers + optional step-ca
+#   docker compose up --build      # 3 crafty-node containers + optional step-ca
 #
-# Hot reload: reissue a node cert, then SIGHUP or wait for CRAFT_CERT_WATCH_SECS:
+# Hot reload: reissue a node cert, then SIGHUP or wait for CRAFTY_CERT_WATCH_SECS:
 #   ./../certs/generate.sh --node-id 1 --out ./certs --ca ./certs/ca.pem --ca-key ./certs/ca.key
-#   docker compose kill -s HUP craft-1
+#   docker compose kill -s HUP crafty-1
 #
 # Full step-ca ACME/JWK issuance is documented in docs/certs.md — initialize
 # step-ca separately, then replace bootstrap with `step ca certificate …`.
@@ -22,66 +22,66 @@ services:
       - step-ca-data:/home/step
     # Initialize out-of-band: https://smallstep.com/docs/step-ca/installation/
 
-  craft-1:
+  crafty-1:
     build:
       context: ../..
       dockerfile: deploy/Dockerfile
-    image: craft-node:step-ca-demo
-    hostname: craft-1
+    image: crafty-node:step-ca-demo
+    hostname: crafty-1
     environment:
-      CRAFT_NODE_ID: "1"
-      CRAFT_LISTEN: "0.0.0.0:7443"
-      CRAFT_ADMIN: "0.0.0.0:8080"
-      CRAFT_PEERS: "1@craft-1:7443,2@craft-2:7443,3@craft-3:7443"
-      CRAFT_NODE_CERT: /etc/craft/node.pem
-      CRAFT_NODE_KEY: /etc/craft/node.key
-      CRAFT_CA_CERT: /etc/craft/ca.pem
-      CRAFT_CERT_WATCH_SECS: "30"
+      CRAFTY_NODE_ID: "1"
+      CRAFTY_LISTEN: "0.0.0.0:7443"
+      CRAFTY_ADMIN: "0.0.0.0:8080"
+      CRAFTY_PEERS: "1@crafty-1:7443,2@crafty-2:7443,3@crafty-3:7443"
+      CRAFTY_NODE_CERT: /etc/crafty/node.pem
+      CRAFTY_NODE_KEY: /etc/crafty/node.key
+      CRAFTY_CA_CERT: /etc/crafty/ca.pem
+      CRAFTY_CERT_WATCH_SECS: "30"
     volumes:
-      - ./certs/node-1.pem:/etc/craft/node.pem
-      - ./certs/node-1.key:/etc/craft/node.key
-      - ./certs/ca.pem:/etc/craft/ca.pem
+      - ./certs/node-1.pem:/etc/crafty/node.pem
+      - ./certs/node-1.key:/etc/crafty/node.key
+      - ./certs/ca.pem:/etc/crafty/ca.pem
     ports:
       - "7441:7443/udp"
       - "8081:8080"
 
-  craft-2:
-    image: craft-node:step-ca-demo
-    hostname: craft-2
+  crafty-2:
+    image: crafty-node:step-ca-demo
+    hostname: crafty-2
     depends_on:
-      - craft-1
+      - crafty-1
     environment:
-      CRAFT_NODE_ID: "2"
-      CRAFT_LISTEN: "0.0.0.0:7443"
-      CRAFT_ADMIN: "0.0.0.0:8080"
-      CRAFT_PEERS: "1@craft-1:7443,2@craft-2:7443,3@craft-3:7443"
-      CRAFT_NODE_CERT: /etc/craft/node.pem
-      CRAFT_NODE_KEY: /etc/craft/node.key
-      CRAFT_CA_CERT: /etc/craft/ca.pem
-      CRAFT_CERT_WATCH_SECS: "30"
+      CRAFTY_NODE_ID: "2"
+      CRAFTY_LISTEN: "0.0.0.0:7443"
+      CRAFTY_ADMIN: "0.0.0.0:8080"
+      CRAFTY_PEERS: "1@crafty-1:7443,2@crafty-2:7443,3@crafty-3:7443"
+      CRAFTY_NODE_CERT: /etc/crafty/node.pem
+      CRAFTY_NODE_KEY: /etc/crafty/node.key
+      CRAFTY_CA_CERT: /etc/crafty/ca.pem
+      CRAFTY_CERT_WATCH_SECS: "30"
     volumes:
-      - ./certs/node-2.pem:/etc/craft/node.pem
-      - ./certs/node-2.key:/etc/craft/node.key
-      - ./certs/ca.pem:/etc/craft/ca.pem
+      - ./certs/node-2.pem:/etc/crafty/node.pem
+      - ./certs/node-2.key:/etc/crafty/node.key
+      - ./certs/ca.pem:/etc/crafty/ca.pem
 
-  craft-3:
-    image: craft-node:step-ca-demo
-    hostname: craft-3
+  crafty-3:
+    image: crafty-node:step-ca-demo
+    hostname: crafty-3
     depends_on:
-      - craft-2
+      - crafty-2
     environment:
-      CRAFT_NODE_ID: "3"
-      CRAFT_LISTEN: "0.0.0.0:7443"
-      CRAFT_ADMIN: "0.0.0.0:8080"
-      CRAFT_PEERS: "1@craft-1:7443,2@craft-2:7443,3@craft-3:7443"
-      CRAFT_NODE_CERT: /etc/craft/node.pem
-      CRAFT_NODE_KEY: /etc/craft/node.key
-      CRAFT_CA_CERT: /etc/craft/ca.pem
-      CRAFT_CERT_WATCH_SECS: "30"
+      CRAFTY_NODE_ID: "3"
+      CRAFTY_LISTEN: "0.0.0.0:7443"
+      CRAFTY_ADMIN: "0.0.0.0:8080"
+      CRAFTY_PEERS: "1@crafty-1:7443,2@crafty-2:7443,3@crafty-3:7443"
+      CRAFTY_NODE_CERT: /etc/crafty/node.pem
+      CRAFTY_NODE_KEY: /etc/crafty/node.key
+      CRAFTY_CA_CERT: /etc/crafty/ca.pem
+      CRAFTY_CERT_WATCH_SECS: "30"
     volumes:
-      - ./certs/node-3.pem:/etc/craft/node.pem
-      - ./certs/node-3.key:/etc/craft/node.key
-      - ./certs/ca.pem:/etc/craft/ca.pem
+      - ./certs/node-3.pem:/etc/crafty/node.pem
+      - ./certs/node-3.key:/etc/crafty/node.key
+      - ./certs/ca.pem:/etc/crafty/ca.pem
 
 volumes:
   step-ca-data:

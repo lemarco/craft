@@ -3,12 +3,12 @@
 #
 # Usage:
 #   ./scripts/check-with-log.sh                    # full workspace
-#   ./scripts/check-with-log.sh -p craft-actor
+#   ./scripts/check-with-log.sh -p crafty-actor
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-LOG="${CRAFT_TEST_LOG:-target/test-run.log}"
+LOG="${CRAFTY_TEST_LOG:-target/test-run.log}"
 mkdir -p target
 
 log() {

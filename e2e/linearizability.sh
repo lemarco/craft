@@ -1,33 +1,33 @@
 #!/usr/bin/env bash
 #
 # linearizability.sh — Jepsen-lite nightly gate (read-consistency ADR):
-#   1) seeded craft-sim linearizability sweep (checker in-process)
+#   1) seeded crafty-sim linearizability sweep (checker in-process)
 #   2) docker E2E: concurrent QUIC clients + external checker, then partition
 #      chaos under admin poll, then QUIC checker again after heal
 #
 # Requires Docker for phase 2. Run from anywhere:
 #   ./e2e/linearizability.sh
-#   CRAFT_E2E_LINEARIZABILITY=1 ./e2e/linearizability.sh  # CI nightly
+#   CRAFTY_E2E_LINEARIZABILITY=1 ./e2e/linearizability.sh  # CI nightly
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-if [ "${CRAFT_LINEARIZABILITY_SKIP_SIM:-0}" != "1" ]; then
-  echo "=== phase 1: craft-sim linearizability (seed sweep) ==="
-  ./scripts/test-with-log.sh -p craft-sim --test linearizability 2>&1 | tail -5
+if [ "${CRAFTY_LINEARIZABILITY_SKIP_SIM:-0}" != "1" ]; then
+  echo "=== phase 1: crafty-sim linearizability (seed sweep) ==="
+  ./scripts/test-with-log.sh -p crafty-sim --test linearizability 2>&1 | tail -5
 
-  SEEDS="${CRAFT_LINEARIZABILITY_SEEDS:-42 99 1234}"
+  SEEDS="${CRAFTY_LINEARIZABILITY_SEEDS:-42 99 1234}"
   for seed in $SEEDS; do
     echo "  read_index adversarial seed=$seed"
-    CRAFT_SIM_SEED="$seed" ./scripts/test-with-log.sh -p craft-sim --test read_index 2>&1 | tail -3
+    CRAFTY_SIM_SEED="$seed" ./scripts/test-with-log.sh -p crafty-sim --test read_index 2>&1 | tail -3
   done
 else
-  echo "SKIP phase 1 (CRAFT_LINEARIZABILITY_SKIP_SIM=1)"
+  echo "SKIP phase 1 (CRAFTY_LINEARIZABILITY_SKIP_SIM=1)"
 fi
 
-if [ "${CRAFT_E2E_LINEARIZABILITY:-1}" != "1" ]; then
-  echo "SKIP phase 2 (set CRAFT_E2E_LINEARIZABILITY=1 to enable docker E2E gate)"
+if [ "${CRAFTY_E2E_LINEARIZABILITY:-1}" != "1" ]; then
+  echo "SKIP phase 2 (set CRAFTY_E2E_LINEARIZABILITY=1 to enable docker E2E gate)"
   echo "LINEARIZABILITY OK ✓ (sim only)"
   exit 0
 fi
@@ -42,7 +42,7 @@ $COMPOSE up -d --build
 LEADER=$(wait_leader "" 1 2 3) || { echo "FAIL: no leader"; exit 1; }
 echo "cluster leader = node $LEADER"
 
-echo "--- 2a: concurrent QUIC inc/read + craft_sim checker (healthy cluster) ---"
+echo "--- 2a: concurrent QUIC inc/read + crafty_sim checker (healthy cluster) ---"
 run_linclient || { echo "FAIL: QUIC linearizability before partition"; exit 1; }
 
 CID=$(container_of "$LEADER")

@@ -1,6 +1,6 @@
-//! Shared helpers for the craft benchmarks + soak harness (backlog T10).
+//! Shared helpers for the crafty benchmarks + soak harness (backlog T10).
 
-use craft_proto::{EntryPayload, LogEntry, LogIndex, Term};
+use crafty_proto::{EntryPayload, LogEntry, LogIndex, Term};
 
 /// Parse a `u64` from the environment, falling back to `default`.
 #[must_use]

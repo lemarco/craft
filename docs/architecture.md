@@ -1,6 +1,6 @@
 # Architecture overview
 
-Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `craft-core`, I/O at the edges (network, storage, client). Consensus and actors run on **tokio** tasks in `craft-actor` (one `RaftDriver` per Raft group on a physical node).
+Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `crafty-core`, I/O at the edges (network, storage, client). Consensus and actors run on **tokio** tasks in `crafty-actor` (one `RaftDriver` per Raft group on a physical node).
 
 > Decision records in [decisions/](decisions/) are authoritative for design detail. Current capability list: [status.md](status.md).
 
@@ -30,20 +30,20 @@ Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `craft-core`, I/
 
 ```
 crates/
-├── craft/              # facade — primary user dependency (CraftCluster builder)
-├── craft-proto/        # IDs, log, wire types, encode/decode
-├── craft-core/         # pure Raft FSM + shard planners
-├── craft-storage/      # LogStore, HardState, Snapshot (+ redb)
-├── craft-net/          # HTTP/3 server, QUIC transport, PeerDirectory
-├── craft-actor/        # NodeService, ShardedNodeService, registry, supervisor
-├── craft-client/       # ClientHandle, RemoteClient, saga, keyed/batch APIs
-├── craft-macros/       # StateMachine + UserActor derives
-├── craft-node/         # reference binary
-├── craft-sim/          # deterministic sim harness + linearizability checker
-├── craft-store-redis/  # optional ActorStateStore (Redis)
-├── craft-dashboard/    # admin HTTP + observability views
-├── craft-ops/          # backup/restore CLI
-└── craft-test-support/ # shared test harness helpers
+├── crafty/              # facade — primary user dependency (CraftyCluster builder)
+├── crafty-proto/        # IDs, log, wire types, encode/decode
+├── crafty-core/         # pure Raft FSM + shard planners
+├── crafty-storage/      # LogStore, HardState, Snapshot (+ redb)
+├── crafty-net/          # HTTP/3 server, QUIC transport, PeerDirectory
+├── crafty-actor/        # NodeService, ShardedNodeService, registry, supervisor
+├── crafty-client/       # ClientHandle, RemoteClient, saga, keyed/batch APIs
+├── crafty-macros/       # StateMachine + UserActor derives
+├── crafty-node/         # reference binary
+├── crafty-sim/          # deterministic sim harness + linearizability checker
+├── crafty-store-redis/  # optional ActorStateStore (Redis)
+├── crafty-dashboard/    # admin HTTP + observability views
+├── crafty-ops/          # backup/restore CLI
+└── crafty-test-support/ # shared test harness helpers
 ```
 
 See [naming](decisions/naming.md).

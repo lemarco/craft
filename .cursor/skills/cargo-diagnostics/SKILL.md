@@ -4,10 +4,10 @@ description: >-
   Run and debug Rust cargo builds/tests in this workspace without deadlocking
   on target/.cargo-lock or silent agent-shell hangs. Use when running cargo test,
   cargo build, quality gates, CI locally, tests appear stuck with no output,
-  multiple terminals are queued, or debugging compile/test failures in craft.
+  multiple terminals are queued, or debugging compile/test failures in crafty.
 ---
 
-# Cargo diagnostics (craft workspace)
+# Cargo diagnostics (crafty workspace)
 
 ## Problem this skill prevents
 
@@ -20,7 +20,7 @@ This is infrastructure, not a Rust compile loop.
 ### 1. Preflight
 
 ```bash
-cd /path/to/craft   # workspace root (contains Cargo.toml workspace)
+cd /path/to/crafty   # workspace root (contains Cargo.toml workspace)
 ./scripts/cargo-status.sh
 ```
 
@@ -30,27 +30,27 @@ If lock present and cargo processes exist, wait or clean up **before** starting 
 
 ```bash
 # Fastest local iteration (default-members, nextest, no duplicate check)
-./scripts/test-fast.sh -p craft-core
+./scripts/test-fast.sh -p crafty-core
 
 # Full workspace (CI parity)
 ./scripts/test-with-log.sh --workspace --all-features
 
 # Compile-only gate
-./scripts/check-with-log.sh -p craft-actor
+./scripts/check-with-log.sh -p crafty-actor
 ```
 
 Install parallel test runner once: `./scripts/install-dev-tools.sh`
 
 If `cargo check` fails, **do not** run test — fix compile errors first.
 `test-with-log.sh` skips the check phase when `cargo-nextest` is installed
-(set `CRAFT_FORCE_CHECK=1` to restore it). `test-fast.sh` never runs check
-unless `CRAFT_FORCE_CHECK=1`.
+(set `CRAFTY_FORCE_CHECK=1` to restore it). `test-fast.sh` never runs check
+unless `CRAFTY_FORCE_CHECK=1`.
 
 ### 3. Run tests (one command)
 
 ```bash
 # Narrow (preferred while fixing)
-./scripts/test-fast.sh -p craft-actor --test group_rebalance
+./scripts/test-fast.sh -p crafty-actor --test group_rebalance
 
 # Full quality gate (only when ready; one invocation)
 ./scripts/test-with-log.sh --workspace --all-features
@@ -92,12 +92,12 @@ Then a **single** `./scripts/test-with-log.sh …`.
 | `scripts/install-dev-tools.sh` | Install cargo-nextest (+ optional sccache) |
 
 Env overrides:
-- `CRAFT_TEST_LOG` — alternate log path (default `target/test-run.log`)
+- `CRAFTY_TEST_LOG` — alternate log path (default `target/test-run.log`)
 - `CARGO_LOG` — cargo verbosity (script default `cargo::core=info`)
-- `CRAFT_FORCE_CHECK` — run cargo check before tests in fast/test-with-log scripts
-- `CRAFT_SKIP_CHECK` — skip check phase in test-with-log.sh
+- `CRAFTY_FORCE_CHECK` — run cargo check before tests in fast/test-with-log scripts
+- `CRAFTY_SKIP_CHECK` — skip check phase in test-with-log.sh
 - `NEXTEST_PROFILE` — nextest profile (`default` or `ci`)
-- `CRAFT_LOG_REBALANCE=1` — multi-Raft rebalance debug lines
+- `CRAFTY_LOG_REBALANCE=1` — multi-Raft rebalance debug lines
 
 ## Agent rules of thumb
 

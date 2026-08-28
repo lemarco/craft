@@ -5,9 +5,9 @@
 
 ## Context
 
-Is craft built with **hexagonal architecture** (ports & adapters)? The concern: consensus + actor systems are notoriously hard to test if consensus logic is tangled with sockets, disk, and clocks. We already leaned this way implicitly:
+Is crafty built with **hexagonal architecture** (ports & adapters)? The concern: consensus + actor systems are notoriously hard to test if consensus logic is tangled with sockets, disk, and clocks. We already leaned this way implicitly:
 
-- `craft-core` is a **pure FSM** — no I/O ([architecture-style](architecture-style.md)).
+- `crafty-core` is a **pure FSM** — no I/O ([architecture-style](architecture-style.md)).
 - Persistence, transport, and external state are **traits** ([wire-protocol](wire-protocol.md), Track B, [actor-state-redis](actor-state-redis.md)).
 - Deterministic simulation ([testing-strategy](testing-strategy.md)) depends on swapping real adapters for in-memory/virtual ones.
 
@@ -19,16 +19,16 @@ The open question is how *strictly* to apply the pattern.
 
 ### The core is pure (hard rule)
 
-`craft-core` (and `craft-proto`) contain **no I/O**: no `tokio`, no sockets, no disk, no wall-clock. Consensus is expressed as `RaftInput → (state, RaftOutput)`. Effects are returned as data for an outer runtime to execute. Enforced by keeping `tokio`/`quinn`/`redb` out of those crates' dependency trees.
+`crafty-core` (and `crafty-proto`) contain **no I/O**: no `tokio`, no sockets, no disk, no wall-clock. Consensus is expressed as `RaftInput → (state, RaftOutput)`. Effects are returned as data for an outer runtime to execute. Enforced by keeping `tokio`/`quinn`/`redb` out of those crates' dependency trees.
 
 ### Ports are traits, adapters are crates
 
 | Port (trait) | Prod adapter | Test adapter |
 |--------------|--------------|--------------|
-| `LogStore` / `HardStateStore` / `SnapshotStore` | `redb` (`craft-storage`) | in-memory |
-| `Transport` | `quinn`/`h3` (`craft-net`) | sim transport (`craft-sim`) |
-| `ActorStateStore` | Redis (`craft-store-redis`) | in-memory / fake |
-| `Clock` | system time (runtime) | virtual clock (`craft-sim`) |
+| `LogStore` / `HardStateStore` / `SnapshotStore` | `redb` (`crafty-storage`) | in-memory |
+| `Transport` | `quinn`/`h3` (`crafty-net`) | sim transport (`crafty-sim`) |
+| `ActorStateStore` | Redis (`crafty-store-redis`) | in-memory / fake |
+| `Clock` | system time (runtime) | virtual clock (`crafty-sim`) |
 
 **Litmus test:** every port must have **≥ 2 implementations** (production + test/sim). A trait with one impl is probably not a real boundary and should not be abstracted yet.
 
@@ -41,18 +41,18 @@ A `Clock` port is injected wherever timing matters (election/heartbeat timers). 
 Adapters depend on the core, never the reverse:
 
 ```
-craft-node → craft → craft-actor → { craft-core, craft-net, craft-storage }
+crafty-node → crafty → crafty-actor → { crafty-core, crafty-net, crafty-storage }
                           │                  ▲  (adapters implement traits the
-                          └── craft-client ──┘   inner crates/core define)
+                          └── crafty-client ──┘   inner crates/core define)
 ```
 
-`craft-core` depends only on `craft-proto`. Runtime crates wire adapters into the core.
+`crafty-core` depends only on `crafty-proto`. Runtime crates wire adapters into the core.
 
 ### Deliberate non-goals (the "ceremony" we skip)
 
 - **No** `domain/application/infrastructure` sub-layering inside each crate.
 - **No** DTO mapping between internal layers; types flow directly.
-- **`craft-proto` is a shared kernel**, not a leak: wire types are the *contract* that crosses boundaries by design. The rule is about **no I/O in core logic**, not "no shared types."
+- **`crafty-proto` is a shared kernel**, not a leak: wire types are the *contract* that crosses boundaries by design. The rule is about **no I/O in core logic**, not "no shared types."
 - **No** abstracting a port until a second implementation actually exists.
 
 ## Consequences
@@ -66,7 +66,7 @@ craft-node → craft → craft-actor → { craft-core, craft-net, craft-storage 
 
 **Negative**
 
-- Effects-as-data in `craft-core` is less obvious than direct calls (documented pattern)
+- Effects-as-data in `crafty-core` is less obvious than direct calls (documented pattern)
 - Discipline required: reviewers must reject I/O creeping into core crates
 - Some indirection through traits on hot paths (acceptable; monomorphized)
 

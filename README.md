@@ -1,4 +1,4 @@
-# craft
+# crafty
 
 **A distributed Raft + actor framework for Rust: one codebase, N nodes, elastic and self-healing.**
 
@@ -30,7 +30,7 @@
 - Pure Raft FSM, HTTP/3/mTLS, redb persistence, cross-node actors
 - Multi-Raft write scaling: **Meta-Raft coordinator** (join/catalog/saga isolated from user groups), dynamic catalog, stable shards, group migration, per-group membership
 - Cross-shard saga coordinator + optional 2PC; follower/lease reads
-- K8s manifests, cert hot reload, reachability-driven supervisor, `craft-ops` backup
+- K8s manifests, cert hot reload, reachability-driven supervisor, `crafty-ops` backup
 - **Durable job queue** (tier C): `job_queue`, worker autoscale, sync voter replication — [job-queue](docs/decisions/job-queue.md)
 - Design decision records — [docs/decisions/](docs/decisions/)
 
@@ -45,32 +45,32 @@
 ## Quick start
 
 ```sh
-cd craft
+cd crafty
 lefthook install
 ./scripts/quality-gate-pre-commit.sh
 
-cargo run -p craft --example kv_store
-cargo run -p craft --example three_node_local
-cargo run -p craft --example actors_cluster
-cargo run -p craft --example job_queue_worker   # cluster queue: follower worker + failover
-cargo run -p craft --example job_queue_cluster  # sharded queue, dedup, autoscale
+cargo run -p crafty --example kv_store
+cargo run -p crafty --example three_node_local
+cargo run -p crafty --example actors_cluster
+cargo run -p crafty --example job_queue_worker   # cluster queue: follower worker + failover
+cargo run -p crafty --example job_queue_cluster  # sharded queue, dedup, autoscale
 
 ./e2e/run.sh      # 3-node QUIC/mTLS election + failover
 ./e2e/queue.sh    # job queue over QUIC (enqueue, follower lease/ack, leader failover)
 ./e2e/chaos.sh    # partition + heal
 ```
 
-**Read next:** [docs/status.md](docs/status.md) → [docs/architecture.md](docs/architecture.md) → [crates/craft/src/builder.rs](crates/craft/src/builder.rs)
+**Read next:** [docs/status.md](docs/status.md) → [docs/architecture.md](docs/architecture.md) → [crates/crafty/src/builder.rs](crates/crafty/src/builder.rs)
 
-**`craft-node` env:** `CRAFT_NODE_ID`, `CRAFT_LISTEN` (`:7443`), `CRAFT_ADMIN` (`:8080`), `CRAFT_PEERS`, `CRAFT_JOIN_SEEDS`, `CRAFT_DISCOVERY` — [docs/certs.md](docs/certs.md)
+**`crafty-node` env:** `CRAFTY_NODE_ID`, `CRAFTY_LISTEN` (`:7443`), `CRAFTY_ADMIN` (`:8080`), `CRAFTY_PEERS`, `CRAFTY_JOIN_SEEDS`, `CRAFTY_DISCOVERY` — [docs/certs.md](docs/certs.md)
 
-**Job queue on `craft-node`** (optional, requires `CRAFT_DATA_DIR`):
+**Job queue on `crafty-node`** (optional, requires `CRAFTY_DATA_DIR`):
 
 | Var | Meaning |
 |-----|---------|
-| `CRAFT_DATA_DIR` | Persistent redb directory (Raft log + queue file) |
-| `CRAFT_JOB_QUEUE` | Enable durable queue stream name (e.g. `jobs`) |
-| `CRAFT_JOB_QUEUE_LEASE_SECS` | Lease visibility timeout (default `60`) |
+| `CRAFTY_DATA_DIR` | Persistent redb directory (Raft log + queue file) |
+| `CRAFTY_JOB_QUEUE` | Enable durable queue stream name (e.g. `jobs`) |
+| `CRAFTY_JOB_QUEUE_LEASE_SECS` | Lease visibility timeout (default `60`) |
 
 See [job-queue](docs/decisions/job-queue.md) and [protocol.md](docs/protocol.md#job-queue-cross-node-tier-c).
 
@@ -80,11 +80,11 @@ See [job-queue](docs/decisions/job-queue.md) and [protocol.md](docs/protocol.md#
 
 ```rust
 use std::time::Duration;
-use craft::{CraftCluster, NodeId};
-use craft::net::LocalNetwork;
+use crafty::{CraftyCluster, NodeId};
+use crafty::net::LocalNetwork;
 
 let net = LocalNetwork::new();
-let cluster = CraftCluster::builder(NodeId(1), Counter::default())
+let cluster = CraftyCluster::builder(NodeId(1), Counter::default())
     .members([NodeId(1), NodeId(2), NodeId(3)])
     .tick_period(Duration::from_millis(10))
     .start_local(&net)
@@ -99,40 +99,40 @@ Durable mailbox (tier B spool): `.data_dir(path).durable_mailbox(true)` — writ
 
 ## Design principles
 
-- **Library-first** — embed `craft`, no sidecar ([deployment-model](docs/decisions/deployment-model.md))
+- **Library-first** — embed `crafty`, no sidecar ([deployment-model](docs/decisions/deployment-model.md))
 - **Linearizable SM** — `propose` / `query` via Raft ([client-and-routing](docs/decisions/client-and-routing.md))
 - **Transparent routing** — any node forwards to leader ([client-and-routing](docs/decisions/client-and-routing.md))
-- **Pure core** — `craft-core` is I/O-free; ports & adapters ([architecture-style](docs/decisions/architecture-style.md))
+- **Pure core** — `crafty-core` is I/O-free; ports & adapters ([architecture-style](docs/decisions/architecture-style.md))
 - **Testable** — sim-first + E2E ([testing-strategy](docs/decisions/testing-strategy.md))
 
 ## Install
 
 ```toml
 [dependencies]
-craft = "0.1"
+crafty = "0.1"
 ```
 
 ```sh
-cargo install craft-node
+cargo install crafty-node
 ```
 
 ## Workspace crates
 
 | Crate | Purpose |
 |-------|---------|
-| [`craft`](crates/craft) | Facade + `CraftCluster` builder |
-| [`craft-core`](crates/craft-core) | Pure Raft FSM + shard planners |
-| [`craft-proto`](crates/craft-proto) | Wire types + codec |
-| [`craft-storage`](crates/craft-storage) | Durable log, snapshots |
-| [`craft-net`](crates/craft-net) | HTTP/3 / QUIC + mTLS |
-| [`craft-actor`](crates/craft-actor) | Runtime, registry, supervisor |
-| [`craft-client`](crates/craft-client) | Client, saga, keyed/batch APIs |
-| [`craft-macros`](crates/craft-macros) | Derive macros |
-| [`craft-store-redis`](crates/craft-store-redis) | Redis `ActorStateStore` |
-| [`craft-dashboard`](crates/craft-dashboard) | Admin + observability |
-| [`craft-sim`](crates/craft-sim) | Deterministic sim harness |
-| [`craft-ops`](crates/craft-ops) | Backup/restore CLI |
-| [`craft-node`](crates/craft-node) | Reference binary |
+| [`crafty`](crates/crafty) | Facade + `CraftyCluster` builder |
+| [`crafty-core`](crates/crafty-core) | Pure Raft FSM + shard planners |
+| [`crafty-proto`](crates/crafty-proto) | Wire types + codec |
+| [`crafty-storage`](crates/crafty-storage) | Durable log, snapshots |
+| [`crafty-net`](crates/crafty-net) | HTTP/3 / QUIC + mTLS |
+| [`crafty-actor`](crates/crafty-actor) | Runtime, registry, supervisor |
+| [`crafty-client`](crates/crafty-client) | Client, saga, keyed/batch APIs |
+| [`crafty-macros`](crates/crafty-macros) | Derive macros |
+| [`crafty-store-redis`](crates/crafty-store-redis) | Redis `ActorStateStore` |
+| [`crafty-dashboard`](crates/crafty-dashboard) | Admin + observability |
+| [`crafty-sim`](crates/crafty-sim) | Deterministic sim harness |
+| [`crafty-ops`](crates/crafty-ops) | Backup/restore CLI |
+| [`crafty-node`](crates/crafty-node) | Reference binary |
 
 ## Documentation map
 

@@ -11,12 +11,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use craft::core::{Config, StateMachine};
-use craft::net::LocalNetwork;
-use craft::proto::LogIndex;
-use craft::{CraftCluster, NodeId};
-use craft_actor::{WorkerId};
-use craft_benchmarks::{env_u64, queue_payload};
+use crafty::core::{Config, StateMachine};
+use crafty::net::LocalNetwork;
+use crafty::proto::LogIndex;
+use crafty::{CraftyCluster, NodeId};
+use crafty_actor::{WorkerId};
+use crafty_benchmarks::{env_u64, queue_payload};
 
 const STREAM: &str = "soak-jobs";
 
@@ -62,7 +62,7 @@ fn raft_config(seed: u64) -> Config {
     }
 }
 
-async fn await_leader(clusters: &[Arc<CraftCluster<Empty>>]) -> NodeId {
+async fn await_leader(clusters: &[Arc<CraftyCluster<Empty>>]) -> NodeId {
     for _ in 0..500 {
         for c in clusters {
             if c.is_leader().await {
@@ -93,7 +93,7 @@ async fn main() {
     for &id in &ids {
         let data_dir = base.path().join(format!("node-{}", id.0));
         std::fs::create_dir_all(&data_dir).expect("mkdir data_dir");
-        let cluster = CraftCluster::builder(id, Empty)
+        let cluster = CraftyCluster::builder(id, Empty)
             .members(ids)
             .raft_config(raft_config(base_seed ^ id.0))
             .tick_period(Duration::from_millis(10))

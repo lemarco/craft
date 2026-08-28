@@ -1,0 +1,21 @@
+[package]
+name = "crafty-e2e-queue-client"
+description = "E2E job queue smoke test over live QUIC/mTLS (enqueue, follower lease/ack, failover)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "crafty-e2e-queue-client"
+path = "src/main.rs"
+
+[dependencies]
+crafty-net.workspace = true
+crafty-proto.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

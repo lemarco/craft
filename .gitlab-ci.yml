@@ -1,4 +1,4 @@
-# GitLab CI for craft (testing-strategy: fast lane on every push/MR, heavy lane nightly).
+# GitLab CI for crafty (testing-strategy: fast lane on every push/MR, heavy lane nightly).
 
 stages:
   - check
@@ -76,14 +76,14 @@ fuzz:
     - !reference [.rust_linux_linker, before_script]
   script:
     - cargo install cargo-fuzz
-    - cd crates/craft-fuzz && cargo fuzz run wire_decode -- -max_total_time=300
+    - cd crates/crafty-fuzz && cargo fuzz run wire_decode -- -max_total_time=300
 
 # --- E2E docker-compose cluster over real QUIC + mTLS (Track T, T8/T9) -------
-# Builds the craft-node image, mints a shared CA + per-node certs, boots a
+# Builds the crafty-node image, mints a shared CA + per-node certs, boots a
 # 3-node cluster, and asserts election + failover (run.sh) then network
 # partition + heal (chaos.sh). Scheduled so it does not slow the fast lane;
 # needs a Docker daemon (dind). The pumba latency scenario is opt-in
-# (CRAFT_E2E_PUMBA=1) and left off here since dind lacks a mountable socket.
+# (CRAFTY_E2E_PUMBA=1) and left off here since dind lacks a mountable socket.
 e2e:
   stage: heavy
   image: docker:27
@@ -93,7 +93,7 @@ e2e:
     DOCKER_HOST: "tcp://docker:2375"
     DOCKER_TLS_CERTDIR: ""
     # Published container ports live on the dind daemon host, not localhost.
-    CRAFT_E2E_HOST: "docker"
+    CRAFTY_E2E_HOST: "docker"
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
   before_script:
@@ -104,16 +104,16 @@ e2e:
     - bash e2e/queue.sh
     - bash e2e/chaos.sh
     - bash e2e/cert_renew.sh
-    - CRAFT_LINEARIZABILITY_SKIP_SIM=1 CRAFT_E2E_LINEARIZABILITY=1 bash e2e/linearizability.sh
+    - CRAFTY_LINEARIZABILITY_SKIP_SIM=1 CRAFTY_E2E_LINEARIZABILITY=1 bash e2e/linearizability.sh
 
-# Seeded craft-sim linearizability sweep (Jepsen-lite phase 1; read-consistency).
+# Seeded crafty-sim linearizability sweep (Jepsen-lite phase 1; read-consistency).
 linearizability-sim:
   stage: heavy
   image: rust:latest
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
   script:
-    - CRAFT_E2E_LINEARIZABILITY=0 bash e2e/linearizability.sh
+    - CRAFTY_E2E_LINEARIZABILITY=0 bash e2e/linearizability.sh
 
 # --- Redis-backed ActorStateStore integration tests (Track G, actor-state-redis) ------
 # Runs the `#[ignore]`d testcontainers tests against a real Redis. Scheduled so
@@ -130,7 +130,7 @@ store-redis:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
   script:
-    - cargo test -p craft-store-redis --features docker-tests -- --ignored
+    - cargo test -p crafty-store-redis --features docker-tests -- --ignored
 
 # --- Benchmarks + soak (Track T, T10, testing-strategy) ------------------------------
 # The `benchmarks/` crate is a standalone workspace (excluded from the root) so

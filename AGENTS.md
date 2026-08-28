@@ -1,4 +1,4 @@
-# Agent guide (craft)
+# Agent guide (crafty)
 
 Distributed Raft + actor framework in Rust. Read before making changes.
 
@@ -14,14 +14,14 @@ Distributed Raft + actor framework in Rust. Read before making changes.
 
 | Path | Purpose |
 |------|---------|
-| `.cursor/rules/craft-architecture.mdc` | No I/O in core; ports & adapters |
-| `.cursor/rules/craft-testing.mdc` | Test layer choice; update coverage doc |
-| `.cursor/rules/craft-quality-gate.mdc` | Pre-commit/push gates |
-| `.cursor/rules/craft-commits.mdc` | Small, focused, testable commits |
+| `.cursor/rules/crafty-architecture.mdc` | No I/O in core; ports & adapters |
+| `.cursor/rules/crafty-testing.mdc` | Test layer choice; update coverage doc |
+| `.cursor/rules/crafty-quality-gate.mdc` | Pre-commit/push gates |
+| `.cursor/rules/crafty-commits.mdc` | Small, focused, testable commits |
 | `.cursor/rules/cargo-shell-safety.mdc` | One cargo, logging wrappers |
-| `.cursor/skills/craft-testing/` | How to write tests |
-| `.cursor/skills/craft-quality-gate/` | Merge-ready verification |
-| `.cursor/skills/craft-add-feature/` | Feature placement workflow |
+| `.cursor/skills/crafty-testing/` | How to write tests |
+| `.cursor/skills/crafty-quality-gate/` | Merge-ready verification |
+| `.cursor/skills/crafty-add-feature/` | Feature placement workflow |
 | `.cursor/skills/cargo-diagnostics/` | Debug cargo lock / silent hangs |
 
 ## Quality (local)

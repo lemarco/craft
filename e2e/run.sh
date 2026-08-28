@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# run.sh — bring up the docker-compose craft cluster (real QUIC + mTLS) and
+# run.sh — bring up the docker-compose crafty cluster (real QUIC + mTLS) and
 # assert it (1) elects a single agreed leader and (2) re-elects after the
 # leader is killed. Tears everything down on exit. (Backlog T8.)
 #

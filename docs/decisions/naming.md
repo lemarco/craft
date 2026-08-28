@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-05  
-**Amended:** 2026-07-05 — product name **craft** (replaces `drafs`)
+**Amended:** 2026-07-05 — product name **crafty** (replaces `drafs`)
 
 ## Context
 
@@ -10,42 +10,42 @@ Repository: `distributive_raft_actor_system`. Crates need a unique, memorable na
 
 ## Decision
 
-**Product name: `craft`.** Prefixed workspace crates **`craft-*`** + facade crate **`craft`**.
+**Product name: `crafty`.** Prefixed workspace crates **`crafty-*`** + facade crate **`crafty`**.
 
 | Name | Role |
 |------|------|
-| **craft** | Product / project name |
-| **`craft`** | Primary dependency — re-exports `CraftCluster`, `ClientHandle`, `ActorRegistry`, macros |
-| **`craft-*`** | Internal workspace crates |
+| **crafty** | Product / project name |
+| **`crafty`** | Primary dependency — re-exports `CraftyCluster`, `ClientHandle`, `ActorRegistry`, macros |
+| **`crafty-*`** | Internal workspace crates |
 | **`distributive_raft_actor_system`** | Git repo folder (unchanged) |
 
 ### Crate map
 
 ```
 crates/
-├── craft/              # facade — what most users depend on
-├── craft-proto/
-├── craft-core/
-├── craft-storage/
-├── craft-net/
-├── craft-actor/
-├── craft-client/
-├── craft-macros/
-├── craft-sim/
-└── craft-node/         # optional reference binary
+├── crafty/              # facade — what most users depend on
+├── crafty-proto/
+├── crafty-core/
+├── crafty-storage/
+├── crafty-net/
+├── crafty-actor/
+├── crafty-client/
+├── crafty-macros/
+├── crafty-sim/
+└── crafty-node/         # optional reference binary
 ```
 
 ### User `Cargo.toml`
 
 ```toml
 [dependencies]
-craft = { path = "../craft" }   # or crates.io when published
-craft-macros = { path = "../craft-macros" }
+crafty = { path = "../crafty" }   # or crates.io when published
+crafty-macros = { path = "../crafty-macros" }
 ```
 
 ```rust
-use craft::{CraftCluster, ResourceProfile, ClientHandle};
-use craft_macros::{UserActor, StateMachine};
+use crafty::{CraftyCluster, ResourceProfile, ClientHandle};
+use crafty_macros::{UserActor, StateMachine};
 ```
 
 ### Main cluster type
@@ -53,20 +53,20 @@ use craft_macros::{UserActor, StateMachine};
 Public builder type renamed to match the product:
 
 ```rust
-CraftCluster::builder()
+CraftyCluster::builder()
     .node_id(1)
     .listen("0.0.0.0:7443")
     .spawn()
     .await?;
 ```
 
-(`RaftCluster` alias may exist temporarily for docs migration; **`CraftCluster` is canonical**.)
+(`RaftCluster` alias may exist temporarily for docs migration; **`CraftyCluster` is canonical**.)
 
-### Why `craft`
+### Why `crafty`
 
 - Short, memorable, distinct from generic `raft-*`
-- Reads as a **framework you craft applications with** — fits library-first embed model
-- Publish-ready prefix `craft-*` without ecosystem collision
+- Reads as a **framework you crafty applications with** — fits library-first embed model
+- Publish-ready prefix `crafty-*` without ecosystem collision
 
 ### Rejected
 
@@ -77,8 +77,8 @@ CraftCluster::builder()
 
 ## Consequences
 
-- **Positive:** Clear brand; single `craft` import
-- **Negative:** Verify `craft` availability on crates.io before publish (reserve or use org scope if taken)
+- **Positive:** Clear brand; single `crafty` import
+- **Negative:** Verify `crafty` availability on crates.io before publish (reserve or use org scope if taken)
 
 ## Related
 

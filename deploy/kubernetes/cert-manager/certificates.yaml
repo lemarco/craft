@@ -1,88 +1,88 @@
-# cert-manager automation for craft mTLS (cert-automation)
+# cert-manager automation for crafty mTLS (cert-automation)
 #
 # Prerequisites:
 #   - cert-manager installed in the cluster
-#   - Secret `craft-ca` in the same namespace (see README.md)
+#   - Secret `crafty-ca` in the same namespace (see README.md)
 #
 # Apply:
 #   kubectl apply -f deploy/kubernetes/cert-manager/
-#   kubectl wait --for=condition=Ready certificate/craft-node-1 certificate/craft-node-2 certificate/craft-node-3
+#   kubectl wait --for=condition=Ready certificate/crafty-node-1 certificate/crafty-node-2 certificate/crafty-node-3
 #   kubectl apply -f deploy/kubernetes/
 #
 # Mapping (must stay in sync with StatefulSet `replicas`):
-#   Pod craft-0  →  Secret craft-tls-0  →  SAN craft-node-1
-#   Pod craft-1  →  Secret craft-tls-1  →  SAN craft-node-2
-#   Pod craft-2  →  Secret craft-tls-2  →  SAN craft-node-3
+#   Pod crafty-0  →  Secret crafty-tls-0  →  SAN crafty-node-1
+#   Pod crafty-1  →  Secret crafty-tls-1  →  SAN crafty-node-2
+#   Pod crafty-2  →  Secret crafty-tls-2  →  SAN crafty-node-3
 #
 # cert-manager writes tls.crt/tls.key into each Secret; the StatefulSet mounts
-# them under /etc/craft/tls-by-ordinal/<ordinal>/. craft-node hot-reloads when
-# kubelet refreshes the mount (CRAFT_CERT_WATCH_SECS).
+# them under /etc/crafty/tls-by-ordinal/<ordinal>/. crafty-node hot-reloads when
+# kubelet refreshes the mount (CRAFTY_CERT_WATCH_SECS).
 
 ---
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
-  name: craft-ca
+  name: crafty-ca
 spec:
   ca:
-    secretName: craft-ca
+    secretName: crafty-ca
 
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: craft-node-1
+  name: crafty-node-1
   namespace: default
 spec:
-  secretName: craft-tls-0
+  secretName: crafty-tls-0
   duration: 720h
   renewBefore: 168h
-  commonName: craft-node-1
+  commonName: crafty-node-1
   dnsNames:
-    - craft-node-1
+    - crafty-node-1
   usages:
     - server auth
     - client auth
   issuerRef:
-    name: craft-ca
+    name: crafty-ca
     kind: ClusterIssuer
 
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: craft-node-2
+  name: crafty-node-2
   namespace: default
 spec:
-  secretName: craft-tls-1
+  secretName: crafty-tls-1
   duration: 720h
   renewBefore: 168h
-  commonName: craft-node-2
+  commonName: crafty-node-2
   dnsNames:
-    - craft-node-2
+    - crafty-node-2
   usages:
     - server auth
     - client auth
   issuerRef:
-    name: craft-ca
+    name: crafty-ca
     kind: ClusterIssuer
 
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: craft-node-3
+  name: crafty-node-3
   namespace: default
 spec:
-  secretName: craft-tls-2
+  secretName: crafty-tls-2
   duration: 720h
   renewBefore: 168h
-  commonName: craft-node-3
+  commonName: crafty-node-3
   dnsNames:
-    - craft-node-3
+    - crafty-node-3
   usages:
     - server auth
     - client auth
   issuerRef:
-    name: craft-ca
+    name: crafty-ca
     kind: ClusterIssuer

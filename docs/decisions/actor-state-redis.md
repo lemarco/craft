@@ -22,18 +22,18 @@ Options considered: document-only, Raft log snapshots, hybrid. User chose **exte
 
 ### Redis as default recommendation
 
-Redis fits craft’s VPS model:
+Redis fits crafty’s VPS model:
 
 - Survives **node crash** — new worker on any VPS reads same keys
 - Fast read/write for actor `handle` loops
 - TTL, pub/sub, locks (Redlock patterns) for distributed workers
-- User operates Redis HA (Sentinel/Cluster) — **outside** craft core
+- User operates Redis HA (Sentinel/Cluster) — **outside** crafty core
 
 Other backends may implement the same trait (PostgreSQL, Valkey, etc.).
 
 ### Framework surface
 
-Optional crate **`craft-store`** (or module in `craft-actor`):
+Optional crate **`crafty-store`** (or module in `crafty-actor`):
 
 ```rust
 #[async_trait]
@@ -45,7 +45,7 @@ pub trait ActorStateStore: Send + Sync {
 }
 
 // User-facing builder
-CraftCluster::builder()
+CraftyCluster::builder()
     .actor_state_store(RedisStore::new(redis_url)?)
     .auto_workers([...])
 ```
@@ -83,7 +83,7 @@ Raft `migration_snapshot` remains for **small hot buffers**; **Redis is source o
 ### What Redis is not
 
 - **Not** a replacement for Raft `StateMachine` for consensus data
-- **Not** managed by craft — user provisions Redis (single instance dev, HA prod)
+- **Not** managed by crafty — user provisions Redis (single instance dev, HA prod)
 - **Not** linearizable with Raft reads unless user designs transactions carefully
 
 ### v1 scope
@@ -91,10 +91,10 @@ Raft `migration_snapshot` remains for **small hot buffers**; **Redis is source o
 | In v1 | Deferred |
 |-------|----------|
 | `ActorStateStore` trait | Built-in PostgreSQL impl |
-| **`craft-store-redis`** example impl (`redis` / `fred` crate) | Redis Cluster auto-discovery |
+| **`crafty-store-redis`** example impl (`redis` / `fred` crate) | Redis Cluster auto-discovery |
 | Docs + example worker using Redis | Framework-hosted Redis |
 
-Core craft **works without Redis** — stateless actors + Raft SM only. Redis is **recommended pattern** for stateful actors.
+Core crafty **works without Redis** — stateless actors + Raft SM only. Redis is **recommended pattern** for stateful actors.
 
 ## Consequences
 
@@ -102,7 +102,7 @@ Core craft **works without Redis** — stateless actors + Raft SM only. Redis is
 
 - Clear durability story on crash without Raft log pollution
 - Natural fit with 1 worker/VPS + cross-node workers
-- Users know Redis ops; craft stays focused
+- Users know Redis ops; crafty stays focused
 
 **Negative**
 

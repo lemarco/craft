@@ -8,12 +8,12 @@ use std::hint::black_box;
 use std::sync::Arc;
 use std::time::Duration;
 
-use craft::core::{Config, StateMachine};
-use craft::net::LocalNetwork;
-use craft::proto::LogIndex;
-use craft::{CraftCluster, JobQueue, NodeId};
-use craft_actor::{InMemoryJobQueue, RedbJobQueue, WorkerId};
-use craft_benchmarks::{env_u64, queue_payload};
+use crafty::core::{Config, StateMachine};
+use crafty::net::LocalNetwork;
+use crafty::proto::LogIndex;
+use crafty::{CraftyCluster, JobQueue, NodeId};
+use crafty_actor::{InMemoryJobQueue, RedbJobQueue, WorkerId};
+use crafty_benchmarks::{env_u64, queue_payload};
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 
 const STREAM: &str = "bench-jobs";
@@ -55,13 +55,13 @@ fn raft_config(seed: u64) -> Config {
 struct ClusterBench {
     _base: tempfile::TempDir,
     #[allow(dead_code)]
-    clusters: Vec<Arc<CraftCluster<Empty>>>,
+    clusters: Vec<Arc<CraftyCluster<Empty>>>,
     submit: Arc<dyn JobQueue>,
     drain: Arc<dyn JobQueue>,
     worker: WorkerId,
 }
 
-async fn await_leader(clusters: &[Arc<CraftCluster<Empty>>]) {
+async fn await_leader(clusters: &[Arc<CraftyCluster<Empty>>]) {
     for _ in 0..500 {
         for c in clusters {
             if c.is_leader().await {
@@ -82,7 +82,7 @@ async fn setup_cluster() -> ClusterBench {
     for &id in &ids {
         let data_dir = base.path().join(format!("node-{}", id.0));
         std::fs::create_dir_all(&data_dir).expect("mkdir data_dir");
-        let cluster = CraftCluster::builder(id, Empty)
+        let cluster = CraftyCluster::builder(id, Empty)
             .members(ids)
             .raft_config(raft_config(0x51_0AD ^ id.0))
             .tick_period(Duration::from_millis(10))

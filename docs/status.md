@@ -1,6 +1,6 @@
 # Project status
 
-**Current-state index** for the craft workspace. Feature rationale lives in [decisions/](decisions/); test inventory in [testing-coverage.md](testing-coverage.md).
+**Current-state index** for the crafty workspace. Feature rationale lives in [decisions/](decisions/); test inventory in [testing-coverage.md](testing-coverage.md).
 
 | | |
 |---|---|
@@ -14,35 +14,35 @@
 
 ### Consensus & storage
 
-- Pure Raft FSM (`craft-core`) — election, replication, joint-consensus membership, snapshots, compaction
+- Pure Raft FSM (`crafty-core`) — election, replication, joint-consensus membership, snapshots, compaction
 - ReadIndex linearizable reads, leader lease-read fast path, follower linearizable reads
-- Durable log via redb (`craft-storage`); per-group `group-<id>.redb` with `CraftClusterBuilder::data_dir`
+- Durable log via redb (`crafty-storage`); per-group `group-<id>.redb` with `CraftyClusterBuilder::data_dir`
 
 ### Network & security
 
-- HTTP/3 / QUIC + mTLS (`craft-net`); dedicated peer connection per traffic class
+- HTTP/3 / QUIC + mTLS (`crafty-net`); dedicated peer connection per traffic class
 - Opt-in per-class token-bucket rate limiting (`TrafficPolicy` / `RateLimiter`)
 - mTLS hot reload (`PemSecurity`, `CertReloadHandle`, step-ca / cert-manager examples)
-- Dev-only JSON wire (`craft/json-wire` feature)
+- Dev-only JSON wire (`crafty/json-wire` feature)
 
 ### Cluster operations
 
-- Dynamic join via seed set + DNS discovery (`craft::discovery`, `join_seeds`)
-- Cluster leave RPC (`CraftCluster::leave`, `CRAFT_ALLOW_LEAVE`)
+- Dynamic join via seed set + DNS discovery (`crafty::discovery`, `join_seeds`)
+- Cluster leave RPC (`CraftyCluster::leave`, `CRAFTY_ALLOW_LEAVE`)
 - Health/admin HTTP (`:8080`) with optional TLS; K8s StatefulSet manifests (`deploy/kubernetes/`)
 - Reachability signal distinct from membership; crash-driven supervisor reconcile against `reachable_nodes()`
 - Phi-accrual / tunable reachability (`ReachabilityConfig`)
-- `craft-ops` snapshot backup/restore; rolling wire N/N−1 compatibility
+- `crafty-ops` snapshot backup/restore; rolling wire N/N−1 compatibility
 
 ### Actors
 
 - Cross-node actors, auto-spawn on join, one worker per VPS (production)
-- Consistent-hash ring keyed routing, sticky `ActorSession`, per-group drain override (`CRAFT_DRAIN_TIMEOUT`)
+- Consistent-hash ring keyed routing, sticky `ActorSession`, per-group drain override (`CRAFTY_DRAIN_TIMEOUT`)
 - Optional `DirectoryPolicy::ReadYourWrites` and `ask_linearizable` (directory visibility, not Raft-linearizable actor state)
 - **Durable mailbox spool** — redb outbox/inbox for cross-node `/actor/deliver` (`.durable_mailbox(true)` + `data_dir`)
-- Redis-backed `ActorStateStore` (`craft-store-redis`); actor migration RPC
+- Redis-backed `ActorStateStore` (`crafty-store-redis`); actor migration RPC
 - **`JobQueue`** — `InMemoryJobQueue`, `RedbJobQueue`, sharded streams, priority/delayed enqueue, leader `QueueService` with parallel sync voter replication + replicate auth, `ClusterJobQueue`, worker + membership autoscale, Meta-Raft autoscale policy ([job-queue](decisions/job-queue.md))
-- **Job queue E2E** — `./e2e/queue.sh` (QUIC/mTLS, enqueue → follower worker → leader failover); `craft-node` env `CRAFT_DATA_DIR` + `CRAFT_JOB_QUEUE`
+- **Job queue E2E** — `./e2e/queue.sh` (QUIC/mTLS, enqueue → follower worker → leader failover); `crafty-node` env `CRAFTY_DATA_DIR` + `CRAFTY_JOB_QUEUE`
 - **Examples** — `job_queue_worker` (follower `ClusterJobQueue` + failover), `job_queue_cluster` (sharding, dedup, autoscale)
 
 ### Multi-Raft write scaling

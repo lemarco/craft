@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# chaos.sh — inject network faults into the docker-compose craft cluster and
+# chaos.sh — inject network faults into the docker-compose crafty cluster and
 # assert consensus survives them (backlog T9, testing-strategy). Two scenarios:
 #
 #   1. Partition + heal (always): isolate the leader from the cluster network
 #      (a clean split), assert the majority side re-elects, then reconnect it
 #      and assert the whole cluster re-converges on one leader.
-#   2. Latency (opt-in, CRAFT_E2E_PUMBA=1): use `pumba` to add delay + jitter to
+#   2. Latency (opt-in, CRAFTY_E2E_PUMBA=1): use `pumba` to add delay + jitter to
 #      every node for a window and assert a leader stays agreed throughout.
 #
 # Partition uses only `docker network disconnect/connect` — no extra tooling.
@@ -57,10 +57,10 @@ echo "PASS: cluster re-converged on node $HEALED after heal (old leader $LEADER 
 # --- Scenario 2: latency injection via pumba (opt-in) ----------------------
 # Off by default: needs to pull the pumba + iproute2 images and a reachable
 # docker socket, which isn't guaranteed under dind. Enable locally with
-# CRAFT_E2E_PUMBA=1.
-if [ "${CRAFT_E2E_PUMBA:-0}" = "1" ]; then
+# CRAFTY_E2E_PUMBA=1.
+if [ "${CRAFTY_E2E_PUMBA:-0}" = "1" ]; then
     echo "injecting 250ms±50ms latency on all nodes for 30s (pumba)…"
-    docker run -d --rm --name craft-pumba \
+    docker run -d --rm --name crafty-pumba \
         -v /var/run/docker.sock:/var/run/docker.sock \
         gaiaadm/pumba:latest \
         netem --duration 30s --tc-image gaiadocker/iproute2 \
@@ -71,9 +71,9 @@ if [ "${CRAFT_E2E_PUMBA:-0}" = "1" ]; then
         echo "FAIL: lost consensus under injected latency"; $COMPOSE logs --tail 40; exit 1
     fi
     echo "PASS: leader = node $LAT stayed agreed under latency"
-    docker rm -f craft-pumba >/dev/null 2>&1 || true
+    docker rm -f crafty-pumba >/dev/null 2>&1 || true
 else
-    echo "SKIP: latency scenario (set CRAFT_E2E_PUMBA=1 to enable pumba netem)"
+    echo "SKIP: latency scenario (set CRAFTY_E2E_PUMBA=1 to enable pumba netem)"
 fi
 
 echo "CHAOS OK ✓"

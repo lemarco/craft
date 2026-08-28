@@ -6,13 +6,13 @@
 
 ## Context
 
-Structural limits and mitigations for craft. Shipped capabilities are listed in [status.md](../status.md); this ADR records **risks that remain by design** and **safeguards in place**.
+Structural limits and mitigations for crafty. Shipped capabilities are listed in [status.md](../status.md); this ADR records **risks that remain by design** and **safeguards in place**.
 
 ## Safeguards (adopted)
 
 **Peer RPC connection isolation** — consensus traffic (`/peer/wire`) uses a dedicated QUIC connection, separate from client (`/client/wire`) and actor (`/actor/*`) traffic on the same listener/port.
 
-**Traffic admission control** — opt-in per-traffic-class token-bucket rate limiting (`craft_net::TrafficPolicy` / `RateLimiter`) so bulk client/actor sends cannot starve consensus RPCs.
+**Traffic admission control** — opt-in per-traffic-class token-bucket rate limiting (`crafty_net::TrafficPolicy` / `RateLimiter`) so bulk client/actor sends cannot starve consensus RPCs.
 
 ## Known risks
 

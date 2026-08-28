@@ -1,0 +1,683 @@
+//! End-to-end tests for the [`CraftyCluster`] facade over the in-memory
+//! `LocalNetwork`: a 3-node cluster elects a leader, serves proposals/queries
+//! through the in-process handle (with transparent forwarding), auto-places a
+//! managed worker group on every node via the leader-only supervisor, and
+//! exposes live state through the admin/observability endpoints.
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use crafty::actor::{ConfigCodecError, UserActor};
+use crafty::core::{Config, FailureDetectorKind, ReachabilityConfig};
+use crafty::net::LocalNetwork;
+use crafty::proto;
+use crafty::{CraftyCluster, NodeId};
+use crafty_test_support::{
+    Cmd, Kv, Qry, Resp, TICK_PERIOD, advance, await_crafty_leader, eventually_async_default,
+    eventually_default, fast_raft_config,
+};
+
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+
+// --- A managed auto-worker ------------------------------------------------
+
+#[derive(Debug)]
+struct WorkerErr;
+impl std::fmt::Display for WorkerErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("worker error")
+    }
+}
+impl std::error::Error for WorkerErr {}
+
+struct Worker;
+
+impl UserActor for Worker {
+    type Config = u32;
+    type Message = ();
+    type Error = WorkerErr;
+
+    fn start(_seed: Self::Config) -> Result<Self, Self::Error> {
+        Ok(Worker)
+    }
+
+    fn handle(
+        &mut self,
+        _msg: Self::Message,
+    ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
+        std::future::ready(Ok(()))
+    }
+
+    fn encode_config(config: &Self::Config) -> Result<Vec<u8>, ConfigCodecError> {
+        proto::encode(config).map_err(|e| ConfigCodecError::Codec(e.to_string()))
+    }
+
+    fn decode_config(bytes: &[u8]) -> Result<Self::Config, ConfigCodecError> {
+        proto::decode(bytes).map_err(|e| ConfigCodecError::Codec(e.to_string()))
+    }
+}
+
+// --- Harness --------------------------------------------------------------
+
+/// Build a 3-node facade cluster on a fresh `LocalNetwork`, managing one
+/// auto-worker group `"w"`.
+async fn spawn_cluster() -> (LocalNetwork, Vec<Arc<CraftyCluster<Kv>>>) {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let net = LocalNetwork::new();
+    let mut clusters = Vec::new();
+    for &id in &ids {
+        let cluster = CraftyCluster::builder(id, Kv::default())
+            .members(ids)
+            .raft_config(fast_raft_config())
+            .tick_period(TICK_PERIOD)
+            .reconcile_period(Duration::from_millis(20))
+            .directory_publish_period(Duration::from_millis(20))
+            .manage_auto::<Worker>("w", 0)
+            .start_local(&net)
+            .await;
+        clusters.push(Arc::new(cluster));
+    }
+    (net, clusters)
+}
+
+async fn wait_for_directory_workers(leader: &CraftyCluster<Kv>, count: usize) {
+    let directory = leader.directory().clone();
+    eventually_default(
+        &format!("{count} workers in the leader directory"),
+        move || directory.lookup("w").len() == count,
+    )
+    .await;
+}
+
+async fn pick_follower(clusters: &[Arc<CraftyCluster<Kv>>]) -> Arc<CraftyCluster<Kv>> {
+    for c in clusters {
+        if !c.is_leader().await {
+            return Arc::clone(c);
+        }
+    }
+    panic!("no follower found");
+}
+
+fn reachability_raft_config() -> Config {
+    Config {
+        election_timeout_min: 3,
+        election_timeout_max: 5,
+        heartbeat_interval: 1,
+        seed: 7,
+        ..Default::default()
+    }
+}
+
+fn phi_accrual_raft_config() -> Config {
+    Config {
+        election_timeout_min: 5,
+        election_timeout_max: 10,
+        heartbeat_interval: 1,
+        seed: 11,
+        reachability: ReachabilityConfig {
+            window_ticks: None,
+            hysteresis_ticks: 0,
+            detector: FailureDetectorKind::PhiAccrual,
+            phi_threshold: 4.0,
+        },
+    }
+}
+
+/// 3-node cluster tuned for fast heartbeat-derived reachability (liveness-vs-membership).
+async fn spawn_reachability_cluster() -> (LocalNetwork, Vec<Arc<CraftyCluster<Kv>>>) {
+    spawn_reachability_cluster_with(reachability_raft_config()).await
+}
+
+async fn spawn_reachability_cluster_with(
+    raft: Config,
+) -> (LocalNetwork, Vec<Arc<CraftyCluster<Kv>>>) {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let net = LocalNetwork::new();
+    let mut clusters = Vec::new();
+    for &id in &ids {
+        let cluster = CraftyCluster::builder(id, Kv::default())
+            .members(ids)
+            .raft_config(raft.clone())
+            .tick_period(Duration::from_millis(5))
+            .refresh_period(Duration::from_millis(15))
+            .reconcile_period(Duration::from_millis(15))
+            .directory_publish_period(Duration::from_millis(20))
+            .manage_auto::<Worker>("w", 0)
+            .start_local(&net)
+            .await;
+        clusters.push(Arc::new(cluster));
+    }
+    (net, clusters)
+}
+
+async fn wait_for_workers_on_every_node(clusters: &[Arc<CraftyCluster<Kv>>]) {
+    for c in clusters {
+        let reg = c.registry().clone();
+        let id = c.node_id();
+        eventually_default(&format!("worker on node {id:?}"), move || reg.contains("w")).await;
+    }
+}
+
+/// Minimal blocking-free HTTP/1.1 GET returning `(status_code, body)`.
+async fn http_get(addr: std::net::SocketAddr, path: &str) -> (u16, String) {
+    let mut stream = TcpStream::connect(addr).await.expect("connect admin");
+    let req = format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    stream.write_all(req.as_bytes()).await.expect("send req");
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).await.expect("read resp");
+    let text = String::from_utf8_lossy(&raw).into_owned();
+    let status = text
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let body = text
+        .split_once("\r\n\r\n")
+        .map(|(_, b)| b.to_string())
+        .unwrap_or_default();
+    (status, body)
+}
+
+async fn https_get(
+    addr: std::net::SocketAddr,
+    path: &str,
+    trust_anchor: &rustls::pki_types::CertificateDer<'static>,
+) -> (u16, String) {
+    use std::sync::Arc;
+
+    use rustls::pki_types::ServerName;
+    use rustls::{ClientConfig, RootCertStore};
+    use tokio_rustls::TlsConnector;
+
+    let mut roots = RootCertStore::empty();
+    roots.add(trust_anchor.clone()).unwrap();
+    let config = ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    let connector = TlsConnector::from(Arc::new(config));
+    let stream = TcpStream::connect(addr).await.expect("connect admin tls");
+    let server_name = ServerName::try_from("localhost").unwrap();
+    let mut tls = connector
+        .connect(server_name, stream)
+        .await
+        .expect("tls handshake");
+    let req = format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    tls.write_all(req.as_bytes()).await.expect("send req");
+    let mut raw = Vec::new();
+    tls.read_to_end(&mut raw).await.expect("read resp");
+    let text = String::from_utf8_lossy(&raw).into_owned();
+    let status = text
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let body = text
+        .split_once("\r\n\r\n")
+        .map(|(_, b)| b.to_string())
+        .unwrap_or_default();
+    (status, body)
+}
+
+fn mint_admin_tls_files() -> (
+    tempfile::TempDir,
+    std::path::PathBuf,
+    std::path::PathBuf,
+    rustls::pki_types::CertificateDer<'static>,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+    let cert_path = dir.path().join("cert.pem");
+    let key_path = dir.path().join("key.pem");
+    std::fs::write(&cert_path, cert.cert.pem()).unwrap();
+    std::fs::write(&key_path, cert.signing_key.serialize_pem()).unwrap();
+    let der = rustls_pemfile::certs(&mut cert.cert.pem().as_bytes())
+        .next()
+        .expect("cert pem")
+        .expect("parse cert");
+    (dir, cert_path, key_path, der)
+}
+
+/// Grab a currently-free localhost port (best-effort; used to bind the admin
+/// server to a knowable address).
+fn free_port() -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.local_addr().unwrap()
+}
+
+// --- Tests ----------------------------------------------------------------
+
+#[tokio::test(start_paused = true)]
+async fn cluster_elects_leader_and_serves_reads_and_writes() {
+    let (_net, clusters) = spawn_cluster().await;
+    let leader = await_crafty_leader(&clusters).await;
+
+    let resp = leader
+        .handle()
+        .propose(Cmd::Set {
+            key: "a".into(),
+            value: "1".into(),
+        })
+        .await
+        .expect("propose on leader");
+    assert_eq!(resp, Resp::Set { previous: None });
+
+    let resp = leader
+        .handle()
+        .query(Qry::Get { key: "a".into() })
+        .await
+        .expect("query on leader");
+    assert_eq!(resp, Resp::Value(Some("1".into())));
+
+    for c in &clusters {
+        c.shutdown();
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn supervisor_auto_places_a_worker_on_every_node() {
+    let (_net, clusters) = spawn_cluster().await;
+    let leader = await_crafty_leader(&clusters).await;
+
+    // Drive reconcile explicitly via the public supervisor accessor.
+    let report = leader.supervisor().reconcile().await;
+    assert!(report.is_ok(), "initial reconcile should succeed");
+
+    // The leader's reconcile loop should place one "w" worker per live node.
+    for c in &clusters {
+        let reg = c.registry().clone();
+        eventually_default(&format!("worker on node {:?}", c.node_id()), move || {
+            reg.contains("w")
+        })
+        .await;
+    }
+
+    for c in &clusters {
+        c.shutdown();
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn follower_scale_cluster_forwards_to_leader() {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let net = LocalNetwork::new();
+
+    // A 3-node cluster with no managed groups: placement is driven purely by an
+    // imperative `scale_cluster`. Every node registers the type so any of them
+    // can host / reconstruct it.
+    let mut clusters = Vec::new();
+    for &id in &ids {
+        let cluster = Arc::new(
+            CraftyCluster::builder(id, Kv::default())
+                .members(ids)
+                .raft_config(fast_raft_config())
+                .tick_period(Duration::from_millis(10))
+                .reconcile_period(Duration::from_millis(20))
+                .directory_publish_period(Duration::from_millis(20))
+                .start_local(&net)
+                .await,
+        );
+        cluster.control().register_type::<Worker>();
+        clusters.push(cluster);
+    }
+
+    let leader = await_crafty_leader(&clusters).await;
+    let follower = clusters
+        .iter()
+        .find(|c| c.node_id() != leader.node_id())
+        .expect("a follower exists")
+        .clone();
+
+    // Scaling from a *follower* must transparently forward to the leader
+    // (supervisor-leader), which plans and executes one worker per node.
+    follower
+        .scale_cluster::<Worker>("w", 3, 0)
+        .await
+        .expect("scale forwarded to leader and applied");
+
+    for c in &clusters {
+        let reg = c.registry().clone();
+        eventually_default(&format!("worker on node {:?}", c.node_id()), move || {
+            reg.contains("w")
+        })
+        .await;
+    }
+
+    for c in &clusters {
+        c.shutdown();
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn admin_endpoints_report_live_state() {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let net = LocalNetwork::new();
+    let admin_addr = free_port();
+
+    let mut clusters = Vec::new();
+    for &id in &ids {
+        let mut builder = CraftyCluster::builder(id, Kv::default())
+            .members(ids)
+            .raft_config(fast_raft_config())
+            .tick_period(TICK_PERIOD)
+            .reconcile_period(Duration::from_millis(20))
+            .directory_publish_period(Duration::from_millis(20))
+            .manage_auto::<Worker>("w", 0);
+        // Only node 1 serves the admin port in this test.
+        if id == NodeId(1) {
+            builder = builder.admin_addr(admin_addr);
+        }
+        clusters.push(Arc::new(builder.start_local(&net).await));
+    }
+
+    let _leader = await_crafty_leader(&clusters).await;
+
+    // Health is OK once the server is up (bind is awaited during start_local,
+    // but the accept loop is spawned; retry briefly).
+    let mut health = (0, String::new());
+    for _ in 0..200 {
+        health = http_get(admin_addr, "/health").await;
+        if health.0 == 200 {
+            break;
+        }
+        advance(TICK_PERIOD).await;
+    }
+    assert_eq!(health.0, 200, "health body: {}", health.1);
+
+    // Cluster view eventually shows a leader and all three voters.
+    let mut cluster_body = String::new();
+    for _ in 0..500 {
+        let (s, b) = http_get(admin_addr, "/introspect/cluster").await;
+        if s == 200 && b.contains("\"leader\"") && b.contains("\"id\":3") {
+            cluster_body = b;
+            break;
+        }
+        advance(TICK_PERIOD).await;
+    }
+    assert!(
+        cluster_body.contains("\"id\":1")
+            && cluster_body.contains("\"id\":2")
+            && cluster_body.contains("\"id\":3"),
+        "cluster view missing voters: {cluster_body}"
+    );
+
+    // Actors show up in introspection once the directory has published.
+    let mut actors_body = String::new();
+    for _ in 0..500 {
+        let (s, b) = http_get(admin_addr, "/introspect/actors").await;
+        if s == 200 && b.contains("w#") {
+            actors_body = b;
+            break;
+        }
+        advance(TICK_PERIOD).await;
+    }
+    assert!(
+        actors_body.contains("Worker"),
+        "actors view missing worker type: {actors_body}"
+    );
+
+    // Metrics endpoint renders Prometheus text (may be empty families).
+    let (status, _) = http_get(admin_addr, "/metrics").await;
+    assert_eq!(status, 200);
+
+    for c in &clusters {
+        c.shutdown();
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn admin_serves_https_when_builder_tls_configured() {
+    let (_dir, cert_path, key_path, trust) = mint_admin_tls_files();
+    let admin_addr = free_port();
+    let net = LocalNetwork::new();
+    let cluster = CraftyCluster::builder(NodeId(1), Kv::default())
+        .members([NodeId(1)])
+        .raft_config(fast_raft_config())
+        .tick_period(TICK_PERIOD)
+        .admin_addr(admin_addr)
+        .admin_tls(cert_path, key_path)
+        .start_local(&net)
+        .await;
+
+    let (status, body) = https_get(admin_addr, "/ready", &trust).await;
+    assert_eq!(status, 200, "body: {body}");
+    assert!(body.contains("\"member\":true"));
+
+    cluster.shutdown();
+}
+
+#[tokio::test(start_paused = true)]
+async fn telemetry_publishes_consensus_and_actor_metrics() {
+    let (_net, clusters) = spawn_cluster().await;
+    let leader = await_crafty_leader(&clusters).await;
+
+    // A worker is placed on the leader, and its lifecycle spawn bumps the
+    // spawn counter; the consensus sampler publishes Raft gauges.
+    let metrics = leader.metrics().clone();
+    eventually_default("consensus + actor metrics on leader", move || {
+        let out = metrics.render();
+        out.contains("crafty_raft_is_leader")
+            && out.contains("crafty_actor_spawns_total")
+            && out.contains("crafty_actor_instances{actor=\"w\"}")
+    })
+    .await;
+
+    for c in &clusters {
+        c.shutdown();
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn opt_in_tracing_emits_message_handled_events() {
+    use crafty::TraceOpts;
+
+    let (_net, clusters) = spawn_cluster().await;
+    let leader = await_crafty_leader(&clusters).await;
+
+    // Wait for the worker group to be placed on the leader.
+    let reg = leader.registry().clone();
+    eventually_default("worker on leader", move || reg.contains("w")).await;
+
+    // Subscribe, enable tracing for "w", then drive one message through it.
+    let mut sub = leader.events().subscribe();
+    leader.trace("w", &TraceOpts::default());
+    leader
+        .registry()
+        .pool::<Worker>("w")
+        .expect("worker pool")
+        .send(())
+        .expect("cast to worker");
+
+    // A MessageHandled event should surface for the traced group.
+    let got = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match sub.recv().await {
+                Some(crafty::CraftyEvent::MessageHandled { id, .. }) if id.starts_with("w#") => {
+                    break true;
+                }
+                Some(_) => {}
+                None => break false,
+            }
+        }
+    })
+    .await
+    .expect("did not receive MessageHandled within timeout");
+    assert!(got, "event bus closed before a MessageHandled arrived");
+
+    for c in &clusters {
+        c.shutdown();
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn builder_wires_actor_state_store() {
+    use crafty::actor::{ActorStateStore, InMemoryStore};
+
+    let net = LocalNetwork::new();
+    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
+    let cluster = CraftyCluster::builder(NodeId(1), Kv::default())
+        .actor_state_store(Arc::clone(&store))
+        .start_local(&net)
+        .await;
+
+    let wired = cluster.actor_state_store().expect("store configured");
+    assert!(Arc::ptr_eq(&store, &wired));
+    cluster.shutdown();
+}
+
+#[tokio::test(start_paused = true)]
+async fn builder_wires_resource_profile() {
+    use crafty::{ResourceProfile, VpsResources};
+
+    let net = LocalNetwork::new();
+    let cluster = CraftyCluster::builder(NodeId(1), Kv::default())
+        .resource_profile(ResourceProfile::Limited { worker_threads: 2 })
+        .start_local(&net)
+        .await;
+
+    assert_eq!(
+        cluster.resource_profile(),
+        ResourceProfile::Limited { worker_threads: 2 }
+    );
+    assert_eq!(
+        cluster.vps_resources(),
+        VpsResources::from_parallelism(
+            cluster.vps_resources().available_parallelism,
+            ResourceProfile::Limited { worker_threads: 2 },
+        )
+    );
+    cluster.shutdown();
+}
+
+#[tokio::test(start_paused = true)]
+async fn crash_driven_reconcile_reacts_to_reachability_not_membership() {
+    let (net, clusters) = spawn_reachability_cluster().await;
+    wait_for_workers_on_every_node(&clusters).await;
+
+    let leader_node = await_crafty_leader(&clusters).await;
+    leader_node.supervisor().reconcile().await;
+    wait_for_directory_workers(&leader_node, 3).await;
+
+    let victim = pick_follower(&clusters).await.node_id();
+    assert!(net.detach(victim), "victim was attached");
+
+    eventually_async_default(
+        "leader marks the victim unreachable while it remains a voter",
+        || async {
+            let l = await_crafty_leader(&clusters).await;
+            let Some(status) = l.status().await else {
+                return false;
+            };
+            status.voters.contains(&victim) && !status.reachable.contains(&victim)
+        },
+    )
+    .await;
+
+    eventually_async_default("supervisor reconciles to two reachable workers", || async {
+        let l = await_crafty_leader(&clusters).await;
+        let report = l.supervisor().reconcile().await;
+        report.is_ok() && report.groups[0].total == 2
+    })
+    .await;
+
+    for c in clusters.iter().filter(|c| c.node_id() != victim) {
+        let reg = c.registry().clone();
+        assert!(
+            reg.contains("w"),
+            "survivor {:?} keeps its worker",
+            c.node_id()
+        );
+    }
+
+    for c in &clusters {
+        c.shutdown();
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn healed_node_gets_auto_worker_respawned_after_partition() {
+    let (net, clusters) = spawn_reachability_cluster().await;
+    wait_for_workers_on_every_node(&clusters).await;
+
+    let leader_node = await_crafty_leader(&clusters).await;
+    leader_node.supervisor().reconcile().await;
+    wait_for_directory_workers(&leader_node, 3).await;
+
+    let healed = pick_follower(&clusters).await;
+    let victim = healed.node_id();
+
+    assert!(net.detach(victim));
+    eventually_async_default("victim unreachable on leader", || async {
+        let l = await_crafty_leader(&clusters).await;
+        let Some(status) = l.status().await else {
+            return false;
+        };
+        status.voters.contains(&victim) && !status.reachable.contains(&victim)
+    })
+    .await;
+
+    net.attach(victim, healed.wire_handler());
+    eventually_async_default(
+        "victim reachable again without membership change",
+        || async {
+            let l = await_crafty_leader(&clusters).await;
+            let Some(status) = l.status().await else {
+                return false;
+            };
+            status.voters.contains(&victim) && status.reachable.contains(&victim)
+        },
+    )
+    .await;
+
+    eventually_async_default(
+        "supervisor reconciles back to three reachable workers",
+        || async {
+            let l = await_crafty_leader(&clusters).await;
+            let report = l.supervisor().reconcile().await;
+            report.is_ok() && report.groups[0].total == 3
+        },
+    )
+    .await;
+
+    eventually_default("worker present on the healed node", || {
+        healed.registry().contains("w")
+    })
+    .await;
+
+    for c in &clusters {
+        c.shutdown();
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn phi_accrual_reachability_triggers_supervisor_shrink_under_silence() {
+    let (net, clusters) = spawn_reachability_cluster_with(phi_accrual_raft_config()).await;
+    wait_for_workers_on_every_node(&clusters).await;
+
+    let leader_node = await_crafty_leader(&clusters).await;
+    leader_node.supervisor().reconcile().await;
+    wait_for_directory_workers(&leader_node, 3).await;
+
+    let victim = pick_follower(&clusters).await.node_id();
+    assert!(net.detach(victim));
+
+    eventually_async_default("phi-accrual marks victim unreachable on leader", || async {
+        let l = await_crafty_leader(&clusters).await;
+        let Some(status) = l.status().await else {
+            return false;
+        };
+        status.voters.contains(&victim) && !status.reachable.contains(&victim)
+    })
+    .await;
+
+    eventually_async_default("supervisor shrinks to reachable workers", || async {
+        let l = await_crafty_leader(&clusters).await;
+        let report = l.supervisor().reconcile().await;
+        report.is_ok() && report.groups[0].total == 2
+    })
+    .await;
+
+    for c in &clusters {
+        c.shutdown();
+    }
+}

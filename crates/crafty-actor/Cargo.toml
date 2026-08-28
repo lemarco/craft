@@ -1,0 +1,38 @@
+[package]
+name = "crafty-actor"
+description = "Actor runtime, registry, and cluster supervision for crafty."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints]
+workspace = true
+
+[dependencies]
+crafty-proto.workspace = true
+crafty-core.workspace = true
+crafty-storage.workspace = true
+crafty-net.workspace = true
+crafty-macros.workspace = true
+serde = { workspace = true, features = ["derive"] }
+postcard.workspace = true
+redb = "4.2.0"
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
+
+[dev-dependencies]
+crafty-test-support.workspace = true
+serde = { workspace = true, features = ["derive"] }
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "test-util"] }
+trybuild = "1"

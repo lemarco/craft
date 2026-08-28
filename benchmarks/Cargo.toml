@@ -4,7 +4,7 @@
 # `cargo bench` / `cargo run --release --bin soak` from this directory.
 # Queue hotspot: `cargo bench --bench queue`, `SOAK_QUEUE_SECS=60 cargo run --release --bin soak_queue`.
 [package]
-name = "craft-benchmarks"
+name = "crafty-benchmarks"
 version = "0.0.0"
 edition = "2024"
 publish = false
@@ -12,12 +12,12 @@ publish = false
 [workspace]
 
 [dependencies]
-craft-core = { path = "../crates/craft-core" }
-craft-storage = { path = "../crates/craft-storage" }
-craft-actor = { path = "../crates/craft-actor" }
-craft-proto = { path = "../crates/craft-proto" }
-craft-sim = { path = "../crates/craft-sim" }
-craft = { path = "../crates/craft" }
+crafty-core = { path = "../crates/crafty-core" }
+crafty-storage = { path = "../crates/crafty-storage" }
+crafty-actor = { path = "../crates/crafty-actor" }
+crafty-proto = { path = "../crates/crafty-proto" }
+crafty-sim = { path = "../crates/crafty-sim" }
+crafty = { path = "../crates/crafty" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 serde = { version = "1", features = ["derive"] }
 tempfile = "3"

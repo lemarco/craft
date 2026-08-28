@@ -35,7 +35,7 @@ Macro responsibilities (crate `raft-macros` or `raft-core` proc-macro):
 
 ## Implementation note (2026-07-06)
 
-The trait landed in `craft-core` (`StateMachine`, with associated
+The trait landed in `crafty-core` (`StateMachine`, with associated
 `Command`/`Query`/`Response`/`Error`). The "Encode/Decode glue" and the
 "owned & clone-safe" compile-time check are delivered **without a bespoke
 derive**: `Command` and `Query` are marker traits with blanket impls over any
@@ -45,7 +45,7 @@ derive**: `Command` and `Query` are marker traits with blanket impls over any
 that borrows a lifetime or is not `Clone` fails to satisfy `Command` and will
 not compile. This keeps the public macro surface smaller (a plus for a
 published library, library-and-publishing), so the originally planned `StateMachine` derive is
-not needed. Actor message ergonomics use the `remote_actor` attribute macro in `craft-macros`.
+not needed. Actor message ergonomics use the `remote_actor` attribute macro in `crafty-macros`.
 
 ## Consequences
 

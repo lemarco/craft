@@ -49,7 +49,7 @@ Dev mode (`--dev-multi-workers`): `spawn_pool`, `scale_local` on one machine.
 Parallelism on a VPS lives **inside** the single worker via `ResourceProfile::UseAllAvailable` and `VpsResources` — not multiple worker actors.
 
 ```rust
-CraftCluster::builder()
+CraftyCluster::builder()
     .resource_profile(ResourceProfile::UseAllAvailable)
     .auto_workers([AutoWorkerSpec::new("workers", WorkerConfig::default)])
 ```
@@ -61,7 +61,7 @@ Migration on node leave targets a node **without** an existing worker for that n
 **Framework auto-spawns configured workers when a node becomes a cluster member.**
 
 ```rust
-CraftCluster::builder()
+CraftyCluster::builder()
     .auto_workers([
         AutoWorkerSpec {
             name: "workers",

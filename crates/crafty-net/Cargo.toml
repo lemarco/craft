@@ -1,0 +1,58 @@
+[package]
+name = "crafty-net"
+description = "HTTP/3 (QUIC) transport with mTLS for the crafty framework."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# Self-signed cluster CA + node cert generation (rcgen). Enable for dev/tests
+# (`crafty-node`, `crafty` integration tests); production supplies real certs.
+dev-certs = ["dep:rcgen"]
+
+[dependencies]
+crafty-proto.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+quinn = { version = "0.11", default-features = false, features = [
+    "runtime-tokio",
+    "rustls-ring",
+] }
+rustls = { version = "0.23", default-features = false, features = [
+    "ring",
+    "std",
+    "tls12",
+] }
+h3 = "0.0.8"
+h3-quinn = "0.0.10"
+http = "1"
+bytes = "1"
+tokio = { version = "1", features = ["rt", "sync", "time"] }
+rustls-pemfile = "2"
+rcgen = { version = "0.14", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "test-util"] }
+
+[[test]]
+name = "tls"
+path = "tests/tls.rs"
+required-features = ["dev-certs"]
+
+[[test]]
+name = "quic"
+path = "tests/quic.rs"
+required-features = ["dev-certs"]

@@ -1,6 +1,6 @@
-# Releasing craft
+# Releasing crafty
 
-craft publishes to crates.io as a synchronized workspace: every `craft-*` crate
+crafty publishes to crates.io as a synchronized workspace: every `crafty-*` crate
 shares one version and is released together ([library-and-publishing](decisions/library-and-publishing.md)).
 
 ## TL;DR
@@ -25,13 +25,13 @@ git push && git push origin v0.2.0
   order:
 
   ```
-  craft-macros, craft-proto → craft-core, craft-storage, craft-net →
-  craft-actor → craft-client, craft-dashboard, craft-sim, craft-store-redis →
-  craft → craft-node
+  crafty-macros, crafty-proto → crafty-core, crafty-storage, crafty-net →
+  crafty-actor → crafty-client, crafty-dashboard, crafty-sim, crafty-store-redis →
+  crafty → crafty-node
   ```
 
   (`--dry-run` does everything except the upload — this is the CI gate.)
-- **Tagging.** The script commits `chore(release): craft vX.Y.Z` and creates an
+- **Tagging.** The script commits `chore(release): crafty vX.Y.Z` and creates an
   annotated `vX.Y.Z` tag. Push the tag to trigger the tagged CI pipeline.
 - **docs.rs** builds automatically on publish, using the
   `[package.metadata.docs.rs] all-features = true` metadata on each crate.
@@ -39,7 +39,7 @@ git push && git push origin v0.2.0
 ## Prerequisites
 
 - `CARGO_REGISTRY_TOKEN` in the environment (or `cargo login`) with publish
-  rights to the `craft*` crate names.
+  rights to the `crafty*` crate names.
 - Push access for the release commit and tag.
 - A clean working tree (the script refuses to run otherwise).
 

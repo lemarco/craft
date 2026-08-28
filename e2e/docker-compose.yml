@@ -1,13 +1,13 @@
-# A 3-node craft cluster over real QUIC + mTLS (backlog T8).
+# A 3-node crafty cluster over real QUIC + mTLS (backlog T8).
 #
 # `certgen` mints a shared cluster CA + one cert per node (and node 4 for the
 # linclient / queueclient mTLS identity) into a shared volume, then the three
 # nodes boot and elect a leader. Peers address each other by service DNS name;
-# mTLS still validates each peer against `craft-node-<id>` (the cert SAN).
+# mTLS still validates each peer against `crafty-node-<id>` (the cert SAN).
 #
 # Bring it up with `./e2e/run.sh` (election + failover) or `./e2e/queue.sh`
 # (job queue over QUIC). Linearizability phase 2 runs `linclient`
-# (`craft-e2e-client`) on profile `linclient` — see `./e2e/linearizability.sh`.
+# (`crafty-e2e-client`) on profile `linclient` — see `./e2e/linearizability.sh`.
 
 x-node-build: &node-build
   build:
@@ -15,8 +15,8 @@ x-node-build: &node-build
     dockerfile: e2e/Dockerfile
 
 x-node-queue-env: &node-queue-env
-  CRAFT_DATA_DIR: /data
-  CRAFT_JOB_QUEUE: jobs
+  CRAFTY_DATA_DIR: /data
+  CRAFTY_JOB_QUEUE: jobs
 
 services:
   certgen:
@@ -43,14 +43,14 @@ services:
         condition: service_completed_successfully
     environment:
       <<: *node-queue-env
-      CRAFT_NODE_ID: "1"
-      CRAFT_LISTEN: "0.0.0.0:7443"
-      CRAFT_ADMIN: "0.0.0.0:8080"
-      CRAFT_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
-      CRAFT_CA_CERT: /certs/ca.pem
-      CRAFT_NODE_CERT: /certs/node-1.pem
-      CRAFT_NODE_KEY: /certs/node-1.key
-      CRAFT_CERT_WATCH_SECS: "${CRAFT_CERT_WATCH_SECS:-60}"
+      CRAFTY_NODE_ID: "1"
+      CRAFTY_LISTEN: "0.0.0.0:7443"
+      CRAFTY_ADMIN: "0.0.0.0:8080"
+      CRAFTY_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
+      CRAFTY_CA_CERT: /certs/ca.pem
+      CRAFTY_NODE_CERT: /certs/node-1.pem
+      CRAFTY_NODE_KEY: /certs/node-1.key
+      CRAFTY_CERT_WATCH_SECS: "${CRAFTY_CERT_WATCH_SECS:-60}"
     volumes:
       - certs:/certs
       - node1-data:/data
@@ -64,14 +64,14 @@ services:
         condition: service_completed_successfully
     environment:
       <<: *node-queue-env
-      CRAFT_NODE_ID: "2"
-      CRAFT_LISTEN: "0.0.0.0:7443"
-      CRAFT_ADMIN: "0.0.0.0:8080"
-      CRAFT_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
-      CRAFT_CA_CERT: /certs/ca.pem
-      CRAFT_NODE_CERT: /certs/node-2.pem
-      CRAFT_NODE_KEY: /certs/node-2.key
-      CRAFT_CERT_WATCH_SECS: "${CRAFT_CERT_WATCH_SECS:-60}"
+      CRAFTY_NODE_ID: "2"
+      CRAFTY_LISTEN: "0.0.0.0:7443"
+      CRAFTY_ADMIN: "0.0.0.0:8080"
+      CRAFTY_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
+      CRAFTY_CA_CERT: /certs/ca.pem
+      CRAFTY_NODE_CERT: /certs/node-2.pem
+      CRAFTY_NODE_KEY: /certs/node-2.key
+      CRAFTY_CERT_WATCH_SECS: "${CRAFTY_CERT_WATCH_SECS:-60}"
     volumes:
       - certs:/certs
       - node2-data:/data
@@ -85,16 +85,16 @@ services:
         condition: service_completed_successfully
     environment:
       <<: *node-queue-env
-      CRAFT_NODE_ID: "3"
-      CRAFT_LISTEN: "0.0.0.0:7443"
-      CRAFT_ADMIN: "0.0.0.0:8080"
-      CRAFT_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
-      CRAFT_CA_CERT: /certs/ca.pem
-      CRAFT_NODE_CERT: /certs/node-3.pem
-      CRAFT_NODE_KEY: /certs/node-3.key
-      CRAFT_CERT_WATCH_SECS: "${CRAFT_CERT_WATCH_SECS:-60}"
-      CRAFT_ALLOW_LEAVE: "1"
-      CRAFT_GRACEFUL_LEAVE: "1"
+      CRAFTY_NODE_ID: "3"
+      CRAFTY_LISTEN: "0.0.0.0:7443"
+      CRAFTY_ADMIN: "0.0.0.0:8080"
+      CRAFTY_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
+      CRAFTY_CA_CERT: /certs/ca.pem
+      CRAFTY_NODE_CERT: /certs/node-3.pem
+      CRAFTY_NODE_KEY: /certs/node-3.key
+      CRAFTY_CERT_WATCH_SECS: "${CRAFTY_CERT_WATCH_SECS:-60}"
+      CRAFTY_ALLOW_LEAVE: "1"
+      CRAFTY_GRACEFUL_LEAVE: "1"
     volumes:
       - certs:/certs
       - node3-data:/data
@@ -111,14 +111,14 @@ services:
         condition: service_started
       node3:
         condition: service_started
-    entrypoint: ["/usr/local/bin/craft-e2e-client"]
+    entrypoint: ["/usr/local/bin/crafty-e2e-client"]
     environment:
-      CRAFT_NODE_ID: "4"
-      CRAFT_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
-      CRAFT_CA_CERT: /certs/ca.pem
-      CRAFT_NODE_CERT: /certs/node-4.pem
-      CRAFT_NODE_KEY: /certs/node-4.key
-      CRAFT_LIN_ROUNDS: "${CRAFT_LIN_ROUNDS:-6}"
+      CRAFTY_NODE_ID: "4"
+      CRAFTY_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
+      CRAFTY_CA_CERT: /certs/ca.pem
+      CRAFTY_NODE_CERT: /certs/node-4.pem
+      CRAFTY_NODE_KEY: /certs/node-4.key
+      CRAFTY_LIN_ROUNDS: "${CRAFTY_LIN_ROUNDS:-6}"
     volumes:
       - certs:/certs
     profiles: ["linclient"]
@@ -134,20 +134,20 @@ services:
         condition: service_started
       node3:
         condition: service_started
-    entrypoint: ["/usr/local/bin/craft-e2e-queue-client"]
+    entrypoint: ["/usr/local/bin/crafty-e2e-queue-client"]
     environment:
-      CRAFT_NODE_ID: "4"
-      CRAFT_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
-      CRAFT_CA_CERT: /certs/ca.pem
-      CRAFT_NODE_CERT: /certs/node-4.pem
-      CRAFT_NODE_KEY: /certs/node-4.key
-      CRAFT_JOB_QUEUE: jobs
-      CRAFT_QUEUE_SUBMIT_NODE: "1"
-      CRAFT_QUEUE_WORKER_PEER: "2"
-      CRAFT_QUEUE_WORKER_NODE: "2"
-      CRAFT_QUEUE_WORKER_INSTANCE: "1"
-      CRAFT_E2E_QUEUE_PHASE: "${CRAFT_E2E_QUEUE_PHASE:-before_failover}"
-      CRAFT_QUEUE_CONTACT_NODE: "${CRAFT_QUEUE_CONTACT_NODE:-1}"
+      CRAFTY_NODE_ID: "4"
+      CRAFTY_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
+      CRAFTY_CA_CERT: /certs/ca.pem
+      CRAFTY_NODE_CERT: /certs/node-4.pem
+      CRAFTY_NODE_KEY: /certs/node-4.key
+      CRAFTY_JOB_QUEUE: jobs
+      CRAFTY_QUEUE_SUBMIT_NODE: "1"
+      CRAFTY_QUEUE_WORKER_PEER: "2"
+      CRAFTY_QUEUE_WORKER_NODE: "2"
+      CRAFTY_QUEUE_WORKER_INSTANCE: "1"
+      CRAFTY_E2E_QUEUE_PHASE: "${CRAFTY_E2E_QUEUE_PHASE:-before_failover}"
+      CRAFTY_QUEUE_CONTACT_NODE: "${CRAFTY_QUEUE_CONTACT_NODE:-1}"
     volumes:
       - certs:/certs
     profiles: ["queueclient"]

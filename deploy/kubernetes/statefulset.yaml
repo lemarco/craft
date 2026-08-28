@@ -1,53 +1,53 @@
-# A 3-node craft cluster as a StatefulSet (future-work-and-risks item 6, cert-automation).
+# A 3-node crafty cluster as a StatefulSet (future-work-and-risks item 6, cert-automation).
 #
-# Why a StatefulSet: craft nodes have stable identity. Each pod gets a stable
-# ordinal name (`craft-0`, `craft-1`, `craft-2`); the craft-node binary derives
-# its node id from that ordinal (`craft-0` → NodeId(1)) via the downward-API
+# Why a StatefulSet: crafty nodes have stable identity. Each pod gets a stable
+# ordinal name (`crafty-0`, `crafty-1`, `crafty-2`); the crafty-node binary derives
+# its node id from that ordinal (`crafty-0` → NodeId(1)) via the downward-API
 # `POD_NAME`, so no per-pod configuration is needed. Membership here is static
 # (every pod lists all members by their headless-service DNS name); to grow the
 # cluster elastically instead, use the DNS-discovery variant noted below.
 #
 # mTLS (security, cert-automation): cert-manager issues one Certificate per pod ordinal
-# (`craft-tls-0` … `craft-tls-2` in deploy/kubernetes/cert-manager/). Each pod
+# (`crafty-tls-0` … `crafty-tls-2` in deploy/kubernetes/cert-manager/). Each pod
 # mounts all ordinal Secrets (kubelet keeps them fresh on renew) and selects its
-# own via `CRAFT_CERT_ORDINAL_BASE` + `POD_NAME`. The issued cert SAN must be
-# `craft-node-<id>` where `<id>` = ordinal + 1 (craft-0 → craft-node-1).
+# own via `CRAFTY_CERT_ORDINAL_BASE` + `POD_NAME`. The issued cert SAN must be
+# `crafty-node-<id>` where `<id>` = ordinal + 1 (crafty-0 → crafty-node-1).
 #
 # Prerequisites:
 #   1. cert-manager installed
 #   2. kubectl apply -f deploy/kubernetes/cert-manager/
-#   3. Secret `craft-ca` populated (see cert-manager/README.md)
+#   3. Secret `crafty-ca` populated (see cert-manager/README.md)
 #   4. Wait until Certificate resources report Ready
 #   5. kubectl apply -f deploy/kubernetes/
 #
-# Manual/static certs: use explicit CRAFT_NODE_* paths and a single Secret; see
+# Manual/static certs: use explicit CRAFTY_NODE_* paths and a single Secret; see
 # docs/certs.md.
 #
 # Apply:  kubectl apply -f deploy/kubernetes/
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: craft
+  name: crafty
   labels:
-    app: craft
+    app: crafty
 spec:
-  serviceName: craft-headless
+  serviceName: crafty-headless
   replicas: 3
-  # OrderedReady boots craft-0 first, so an initial leader can form before the
+  # OrderedReady boots crafty-0 first, so an initial leader can form before the
   # rest come up. Keep `replicas` in sync with Certificate CRs in cert-manager/.
   podManagementPolicy: OrderedReady
   selector:
     matchLabels:
-      app: craft
+      app: crafty
   template:
     metadata:
       labels:
-        app: craft
+        app: crafty
     spec:
       terminationGracePeriodSeconds: 20
       containers:
-        - name: craft-node
-          image: craft-node:latest
+        - name: crafty-node
+          image: crafty-node:latest
           imagePullPolicy: IfNotPresent
           ports:
             - name: quic
@@ -62,29 +62,29 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            - name: CRAFT_LISTEN
+            - name: CRAFTY_LISTEN
               value: "0.0.0.0:7443"
-            - name: CRAFT_ADMIN
+            - name: CRAFTY_ADMIN
               value: "0.0.0.0:8080"
             # Static membership: every pod lists all members by stable DNS. Node
             # ids are ordinal + 1. Keep this in sync with `replicas` above.
-            - name: CRAFT_PEERS
+            - name: CRAFTY_PEERS
               value: >-
-                1@craft-0.craft-headless:7443,2@craft-1.craft-headless:7443,3@craft-2.craft-headless:7443
-            # cert-manager: pod `craft-N` reads `/etc/craft/tls-by-ordinal/N/tls.{crt,key}`.
-            - name: CRAFT_CERT_ORDINAL_BASE
-              value: /etc/craft/tls-by-ordinal
-            - name: CRAFT_CA_CERT
-              value: /etc/craft/ca/tls.crt
-            - name: CRAFT_CERT_WATCH_SECS
+                1@crafty-0.crafty-headless:7443,2@crafty-1.crafty-headless:7443,3@crafty-2.crafty-headless:7443
+            # cert-manager: pod `crafty-N` reads `/etc/crafty/tls-by-ordinal/N/tls.{crt,key}`.
+            - name: CRAFTY_CERT_ORDINAL_BASE
+              value: /etc/crafty/tls-by-ordinal
+            - name: CRAFTY_CA_CERT
+              value: /etc/crafty/ca/tls.crt
+            - name: CRAFTY_CERT_WATCH_SECS
               value: "60"
-            # --- Elastic alternative (comment out CRAFT_PEERS above) -----------
-            # Bootstrap craft-0 as a single-node seed that accepts joins, and let
-            # craft-1.. discover peers by DNS and join dynamically (discovery):
-            #   - name: CRAFT_ALLOW_JOIN
+            # --- Elastic alternative (comment out CRAFTY_PEERS above) -----------
+            # Bootstrap crafty-0 as a single-node seed that accepts joins, and let
+            # crafty-1.. discover peers by DNS and join dynamically (discovery):
+            #   - name: CRAFTY_ALLOW_JOIN
             #     value: "1"
-            #   - name: CRAFT_DISCOVERY
-            #     value: "dns:craft:craft-headless:3:7443"
+            #   - name: CRAFTY_DISCOVERY
+            #     value: "dns:crafty:crafty-headless:3:7443"
             # ------------------------------------------------------------------
           livenessProbe:
             httpGet:
@@ -102,16 +102,16 @@ spec:
             failureThreshold: 3
           volumeMounts:
             - name: ca
-              mountPath: /etc/craft/ca
+              mountPath: /etc/crafty/ca
               readOnly: true
             - name: tls-0
-              mountPath: /etc/craft/tls-by-ordinal/0
+              mountPath: /etc/crafty/tls-by-ordinal/0
               readOnly: true
             - name: tls-1
-              mountPath: /etc/craft/tls-by-ordinal/1
+              mountPath: /etc/crafty/tls-by-ordinal/1
               readOnly: true
             - name: tls-2
-              mountPath: /etc/craft/tls-by-ordinal/2
+              mountPath: /etc/crafty/tls-by-ordinal/2
               readOnly: true
           resources:
             requests:
@@ -123,13 +123,13 @@ spec:
       volumes:
         - name: ca
           secret:
-            secretName: craft-ca
+            secretName: crafty-ca
         - name: tls-0
           secret:
-            secretName: craft-tls-0
+            secretName: crafty-tls-0
         - name: tls-1
           secret:
-            secretName: craft-tls-1
+            secretName: crafty-tls-1
         - name: tls-2
           secret:
-            secretName: craft-tls-2
+            secretName: crafty-tls-2

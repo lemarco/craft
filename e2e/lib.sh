@@ -7,16 +7,16 @@ COMPOSE="docker compose -f docker-compose.yml"
 
 # NodeId -> host admin port (see docker-compose.yml).
 declare -A PORT=([1]=18081 [2]=18082 [3]=18083)
-# node1 serves admin HTTPS when CRAFT_ADMIN_TLS_* is set; e2e compose uses plain HTTP.
+# node1 serves admin HTTPS when CRAFTY_ADMIN_TLS_* is set; e2e compose uses plain HTTP.
 declare -A ADMIN_TLS=([1]=0 [2]=0 [3]=0)
 
 # Host the published admin ports are reachable on. Localhost normally; under
 # GitLab dind the ports live on the `docker` service host, so set
-# CRAFT_E2E_HOST=docker there.
-HOST="${CRAFT_E2E_HOST:-127.0.0.1}"
+# CRAFTY_E2E_HOST=docker there.
+HOST="${CRAFTY_E2E_HOST:-127.0.0.1}"
 
 # Cluster CA PEM for HTTPS probes (populated by ensure_ca_file after compose up).
-CA_FILE="${CRAFT_E2E_CA_FILE:-}"
+CA_FILE="${CRAFTY_E2E_CA_FILE:-}"
 
 # Tear the cluster + volumes down. Register with `trap cleanup EXIT`.
 cleanup() { $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true; }
@@ -106,15 +106,15 @@ network_of() {
         | awk '{print $1}'
 }
 
-# Run concurrent QUIC inc/read rounds and check with craft_sim::History (phase 2).
+# Run concurrent QUIC inc/read rounds and check with crafty_sim::History (phase 2).
 run_linclient() {
     $COMPOSE --profile linclient run --rm linclient
 }
 
-# Run the QUIC job-queue client (`CRAFT_E2E_QUEUE_PHASE` = before/after_failover).
+# Run the QUIC job-queue client (`CRAFTY_E2E_QUEUE_PHASE` = before/after_failover).
 run_queue_client() {
     local phase="$1"
-    CRAFT_E2E_QUEUE_PHASE="$phase" $COMPOSE --profile queueclient run --rm queueclient
+    CRAFTY_E2E_QUEUE_PHASE="$phase" $COMPOSE --profile queueclient run --rm queueclient
 }
 
 # Reissue node $1's PEM in the shared /certs volume (via node $2's container).

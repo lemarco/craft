@@ -1,0 +1,5 @@
+error: `#[remote_actor]` must be applied to an `impl crafty_actor::UserActor for T` block
+ --> tests/ui/wrong_target.rs:6:6
+  |
+6 | impl Widget {
+  |      ^^^^^^

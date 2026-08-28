@@ -6,7 +6,7 @@
 
 ## Context
 
-Users need mTLS material for VPS deploys ([security](security.md)). v1 ships manual PKI; operators also want **automatic issuance and renewal** without full process restarts. Public ACME (Let's Encrypt) is **out of scope** — craft mTLS requires a private cluster CA with `serverAuth` + `clientAuth` EKU and SAN/CN of `craft-node-<NodeId>`.
+Users need mTLS material for VPS deploys ([security](security.md)). v1 ships manual PKI; operators also want **automatic issuance and renewal** without full process restarts. Public ACME (Let's Encrypt) is **out of scope** — crafty mTLS requires a private cluster CA with `serverAuth` + `clientAuth` EKU and SAN/CN of `crafty-node-<NodeId>`.
 
 ## Manual provisioning (v1 baseline)
 
@@ -26,11 +26,11 @@ Ship **both**:
 ### Environment variables
 
 ```bash
-CRAFT_CA_CERT=/etc/craft/ca.pem
-CRAFT_NODE_CERT=/etc/craft/node.pem
-CRAFT_NODE_KEY=/etc/craft/node.key
-CRAFT_CLIENT_CERT=/etc/craft/client.pem
-CRAFT_CLIENT_KEY=/etc/craft/client.key
+CRAFTY_CA_CERT=/etc/crafty/ca.pem
+CRAFTY_NODE_CERT=/etc/crafty/node.pem
+CRAFTY_NODE_KEY=/etc/crafty/node.key
+CRAFTY_CLIENT_CERT=/etc/crafty/client.pem
+CRAFTY_CLIENT_KEY=/etc/crafty/client.key
 ```
 
 Docs cover: first VPS (create CA), joining VPS N, client cert for `RemoteClient`, `insecure-dev` for local sim, rolling restart rotation (no auto-rotation in manual-only mode).
@@ -39,7 +39,7 @@ Docs cover: first VPS (create CA), joining VPS N, client cert for `RemoteClient`
 
 ### Issuance stays external
 
-craft **does not embed an ACME client**. CAs and renewers run outside the binary:
+crafty **does not embed an ACME client**. CAs and renewers run outside the binary:
 
 | Environment | Issuer | Renewal |
 |-------------|--------|---------|
@@ -48,7 +48,7 @@ craft **does not embed an ACME client**. CAs and renewers run outside the binary
 
 Issued certs must match the manual contract above. Env vars unchanged.
 
-### Hot reload in `craft-net`
+### Hot reload in `crafty-net`
 
 When PEM paths are configured, reload TLS without exiting:
 
@@ -59,7 +59,7 @@ When PEM paths are configured, reload TLS without exiting:
 
 | Trigger | Default |
 |---------|---------|
-| **File poll** | on when `PemSecurity` used; every `CRAFT_CERT_WATCH_SECS` (default 60) |
+| **File poll** | on when `PemSecurity` used; every `CRAFTY_CERT_WATCH_SECS` (default 60) |
 | **`SIGHUP`** | on when PEM paths set |
 
 Builder: `Security::from_pem_files` → `PemSecurity`; `.cert_watch(period)` enables polling. Admin HTTP stays read-only — no POST reload endpoint.
@@ -77,8 +77,8 @@ Builder: `Security::from_pem_files` → `PemSecurity`; `.cert_watch(period)` ena
 | `examples/step-ca/` | docker-compose + bootstrap + renewal demo |
 | `deploy/kubernetes/cert-manager/` | ClusterIssuer + per-ordinal Certificate CRs |
 | `docs/certs.md` § Automation | Operator runbook |
-| `craft-net` pem + reload | Load + apply |
-| `craft` `PemSecurity` / `CertReloadHandle` | Facade + `craft-node` wiring |
+| `crafty-net` pem + reload | Load + apply |
+| `crafty` `PemSecurity` / `CertReloadHandle` | Facade + `crafty-node` wiring |
 
 ## Consequences
 

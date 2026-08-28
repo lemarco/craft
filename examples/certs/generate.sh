@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# generate.sh — mint an mTLS PKI for a craft cluster (security, cert-provisioning).
+# generate.sh — mint an mTLS PKI for a crafty cluster (security, cert-provisioning).
 #
 # Produces a cluster CA, per-node certificates (whose name binds to a NodeId as
-# `craft-node-<id>`, matching the SNI craft dials with), and client certificates
+# `crafty-node-<id>`, matching the SNI crafty dials with), and client certificates
 # for the RemoteClient. Uses only `openssl` so it works on Linux (OpenSSL) and
 # macOS (LibreSSL) alike — no Rust toolchain required.
 #
@@ -20,7 +20,7 @@
 #   # Just the CA:
 #   ./generate.sh --ca-only --out ./certs
 #
-# See docs/certs.md for the manual OpenSSL equivalent, the env vars craft-node
+# See docs/certs.md for the manual OpenSSL equivalent, the env vars crafty-node
 # reads, and rotation guidance.
 
 set -euo pipefail
@@ -85,7 +85,7 @@ distinguished_name = dn
 x509_extensions = v3_ca
 prompt = no
 [dn]
-CN = craft cluster CA
+CN = crafty cluster CA
 [v3_ca]
 basicConstraints = critical,CA:TRUE
 keyUsage = critical,keyCertSign,cRLSign
@@ -115,7 +115,7 @@ sign() {
 
 make_node() {
     local id="$1" key csr crt ext cn
-    cn="craft-node-$id"
+    cn="crafty-node-$id"
     key="$OUT/node-$id.key"; csr="$OUT/node-$id.csr"; crt="$OUT/node-$id.pem"; ext="$(mktemp)"
     gen_key "$key"
     openssl req -new -key "$key" -out "$csr" -subj "/CN=$cn" 2>/dev/null
@@ -128,13 +128,13 @@ EOF
     sign "$csr" "$crt" "$ext"
     rm -f "$csr" "$ext"
     echo "node $id cert: $crt (CN/SAN=$cn)"
-    echo "  CRAFT_NODE_CERT=$crt CRAFT_NODE_KEY=$key CRAFT_CA_CERT=$CA_CERT"
+    echo "  CRAFTY_NODE_CERT=$crt CRAFTY_NODE_KEY=$key CRAFTY_CA_CERT=$CA_CERT"
 }
 
 make_client() {
     local name="$1" key csr crt ext cn
     [ -n "$name" ] || die "--client requires --name NAME"
-    cn="craft-client-$name"
+    cn="crafty-client-$name"
     key="$OUT/client-$name.key"; csr="$OUT/client-$name.csr"; crt="$OUT/client-$name.pem"; ext="$(mktemp)"
     gen_key "$key"
     openssl req -new -key "$key" -out "$csr" -subj "/CN=$cn" 2>/dev/null
@@ -146,7 +146,7 @@ EOF
     sign "$csr" "$crt" "$ext"
     rm -f "$csr" "$ext"
     echo "client cert: $crt (CN=$cn)"
-    echo "  CRAFT_CLIENT_CERT=$crt CRAFT_CLIENT_KEY=$key CRAFT_CA_CERT=$CA_CERT"
+    echo "  CRAFTY_CLIENT_CERT=$crt CRAFTY_CLIENT_KEY=$key CRAFTY_CA_CERT=$CA_CERT"
 }
 
 case "$MODE" in
