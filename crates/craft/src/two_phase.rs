@@ -159,11 +159,8 @@ impl MetaRaftTwoPhaseJournal {
         Self { upsert, registry }
     }
 
-    fn read(
-        &self,
-        tx_id: &[u8],
-    ) -> Result<Option<TwoPhaseJournalRecord>, TwoPhaseJournalError> {
-        Ok(self.registry.lock().expect("lock").get(tx_id).cloned())
+    fn read(&self, tx_id: &[u8]) -> Option<TwoPhaseJournalRecord> {
+        self.registry.lock().expect("lock").get(tx_id).cloned()
     }
 
     async fn update(
@@ -171,7 +168,7 @@ impl MetaRaftTwoPhaseJournal {
         tx_id: &[u8],
         f: impl FnOnce(TwoPhaseJournalRecord) -> TwoPhaseJournalRecord,
     ) -> Result<(), TwoPhaseJournalError> {
-        let prev = self.read(tx_id)?;
+        let prev = self.read(tx_id);
         let updated = f(prev.unwrap_or_else(|| fresh_record(tx_id)));
         let command = TwoPhaseJournalCommand {
             tx_id: tx_id.to_vec(),
@@ -239,7 +236,7 @@ impl TwoPhaseJournal for MetaRaftTwoPhaseJournal {
                 + 'a,
         >,
     > {
-        Box::pin(async move { self.read(tx_id).await })
+        Box::pin(async move { Ok(self.read(tx_id)) })
     }
 }
 

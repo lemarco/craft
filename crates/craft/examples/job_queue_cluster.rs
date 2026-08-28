@@ -98,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .manage::<Worker>("workers", 1, 0)
             .job_queue_autoscale::<Worker>(
                 "jobs",
-                AutoscalePolicy {
+                &AutoscalePolicy {
                     worker_group: "workers".into(),
                     target_pending_per_worker: 2,
                     min_workers: 1,
@@ -110,7 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .job_queue_membership_autoscale(
                 "jobs",
-                MembershipAutoscalePolicy {
+                &MembershipAutoscalePolicy {
                     pending_per_node_threshold: 100,
                     max_nodes: 3,
                     cooldown: Duration::from_secs(30),

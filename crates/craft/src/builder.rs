@@ -50,6 +50,21 @@ use crate::multi_raft::{ArcGroupMigrate, GroupMigratePort, MultiRaftState};
 use crate::observer::CraftObserver;
 use crate::security::Security;
 
+#[allow(clippy::cast_precision_loss)] // Prometheus gauges use f64; actor counts fit in practice.
+fn metric_usize(v: usize) -> f64 {
+    v as f64
+}
+
+#[allow(clippy::cast_precision_loss)] // Prometheus gauges use f64; mailbox depths fit in practice.
+fn metric_i64(v: i64) -> f64 {
+    v as f64
+}
+
+#[allow(clippy::cast_precision_loss)] // Prometheus counters use f64; message counts fit in practice.
+fn metric_u64(v: u64) -> f64 {
+    v as f64
+}
+
 /// An error starting a node over the live QUIC transport
 /// ([`start_quic`](CraftClusterBuilder::start_quic)).
 #[derive(Debug, thiserror::Error)]
@@ -313,6 +328,9 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     /// One state machine instance per Raft group. Required when
     /// [`raft_groups`](Self::raft_groups) is greater than 1; sets the group
     /// count from the slice length.
+    ///
+    /// # Panics
+    /// If `machines` is empty.
     #[must_use]
     pub fn raft_machines(mut self, machines: impl IntoIterator<Item = M>) -> Self {
         let machines: Vec<M> = machines.into_iter().collect();
@@ -320,7 +338,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             !machines.is_empty(),
             "raft_machines requires at least one machine"
         );
-        self.raft_groups = machines.len() as u32;
+        self.raft_groups = u32::try_from(machines.len()).expect("raft group count fits u32");
         self.raft_machines = Some(machines);
         self
     }
@@ -616,11 +634,14 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     /// Leader-only autoscale loop for `stream` depth → `policy.worker_group` count.
     /// Registers `A` on the control plane; pair with [`manage`](Self::manage) or
     /// [`manage_auto`](Self::manage_auto) for the same group name.
+    ///
+    /// # Panics
+    /// If `stream` was not registered via [`job_queue`](Self::job_queue).
     #[must_use]
     pub fn job_queue_autoscale<A: UserActor>(
         mut self,
         stream: &str,
-        policy: AutoscalePolicy,
+        policy: &AutoscalePolicy,
         config: A::Config,
     ) -> Self
     where
@@ -685,6 +706,9 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
 
     /// Federated queue over `shard_count` independent redb streams (`{name}~0` …)
     /// to spread leader replication load ([job-queue](../../docs/decisions/job-queue.md)).
+    ///
+    /// # Panics
+    /// If `shard_count` is zero.
     #[must_use]
     pub fn job_queue_sharded(
         mut self,
@@ -712,11 +736,15 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
 
     /// Leader-only loop: when queue depth per live node exceeds a threshold, call
     /// `join` to add a VPS (production scale-out beyond worker autoscale).
+    ///
+    /// # Panics
+    /// If `stream` was not registered via [`job_queue`](Self::job_queue) or
+    /// [`job_queue_sharded`](Self::job_queue_sharded).
     #[must_use]
     pub fn job_queue_membership_autoscale(
         mut self,
         stream: &str,
-        policy: MembershipAutoscalePolicy,
+        policy: &MembershipAutoscalePolicy,
         join: impl Fn() -> craft_actor::BoxFuture<'static, Result<(), craft_actor::ClusterScaleError>>
         + Send
         + Sync
@@ -914,6 +942,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
 
     /// Assemble every runtime component over `transport`, spawn the background
     /// loops, and return the cluster handle plus the router to attach.
+    #[allow(clippy::too_many_lines)] // single bootstrap path wiring transport, raft, actors, and background loops.
     async fn assemble(
         mut self,
         transport: Arc<dyn Transport>,
@@ -1020,7 +1049,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             meta_handle = Some(spawn.meta_handle);
             let mut handle_map = BTreeMap::new();
             for (i, h) in spawn.user_handles.into_iter().enumerate() {
-                handle_map.insert(i as u32, h);
+                handle_map.insert(u32::try_from(i).expect("group index fits u32"), h);
             }
             let primary = handle_map.get(&0).cloned().expect("group 0 handle");
             let group_handles: Vec<_> = initial_catalog
@@ -1254,7 +1283,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             let events = events.clone();
             let period = self.refresh_period;
             // Explicit keepalive: rebalance state must outlive this task.
-            let _multi_raft = multi_raft.clone();
+            let multi_raft_keepalive = multi_raft.clone();
             let meta_for_facts = meta_handle.clone();
             let mut catalog_events = catalog_event_rx;
             let mut telemetry =
@@ -1263,7 +1292,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 let mut interval = tokio::time::interval(period);
                 loop {
                     interval.tick().await;
-                    if let Some(mr) = _multi_raft.as_ref()
+                    if let Some(mr) = multi_raft_keepalive.as_ref()
                         && let Some(ref mut rx) = catalog_events
                     {
                         while let Ok(cmd) = rx.try_recv() {
@@ -1291,7 +1320,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                     for node in delta.departed.iter().chain(&delta.unreachable) {
                         directory.remove_node(*node);
                     }
-                    if let Some(mr) = _multi_raft.as_ref() {
+                    if let Some(mr) = multi_raft_keepalive.as_ref() {
                         // Per-group membership converges incrementally (joint
                         // consensus); retry every tick until the planner is
                         // satisfied (per-group-raft-membership).
@@ -1332,18 +1361,18 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                             "craft_actor_instances",
                             "Live actor instances in a group.",
                             &[("actor", actor)],
-                            stat.instances as f64,
+                            metric_usize(stat.instances),
                         );
                         metrics.set(
                             "craft_actor_mailbox_depth",
                             "Queued-but-unhandled messages in a group's mailboxes.",
                             &[("actor", actor)],
-                            stat.mailbox_depth as f64,
+                            metric_i64(stat.mailbox_depth),
                         );
                         if stat.mailbox_depth > 0 {
-                            events.emit(CraftEvent::MailboxDepth {
+                            let _ = events.emit(CraftEvent::MailboxDepth {
                                 id: format!("{actor}@n{}", node_id.0),
-                                len: stat.mailbox_depth as u64,
+                                len: stat.mailbox_depth.cast_unsigned(),
                             });
                         }
                         let (pm, pn) = prev.get(actor).copied().unwrap_or((0, 0));
@@ -1354,13 +1383,13 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                                 "craft_actor_messages_total",
                                 "Cumulative messages handled by a group.",
                                 &[("actor", actor)],
-                                dm as f64,
+                                metric_u64(dm),
                             );
                             metrics.incr(
                                 "craft_actor_handle_seconds_total",
                                 "Cumulative time spent in a group's handlers.",
                                 &[("actor", actor)],
-                                dn as f64 / 1e9,
+                                metric_u64(dn) / 1e9,
                             );
                         }
                         prev.insert(stat.name, (stat.messages, stat.handle_nanos));
@@ -1666,11 +1695,13 @@ async fn join_cluster(
         for (i, seed) in seeds.iter().enumerate() {
             let last_seed = last && i + 1 == seeds.len();
             match send_join_request(&**quic, seed.node_id, &request).await {
-                Ok(JoinResponse::Accepted { .. }) => return Ok(()),
                 // A restart of an already-joined node is a no-op, not a failure.
-                Ok(JoinResponse::Rejected {
-                    reason: JoinRejection::Duplicate,
-                }) => return Ok(()),
+                Ok(
+                    JoinResponse::Accepted { .. }
+                    | JoinResponse::Rejected {
+                        reason: JoinRejection::Duplicate,
+                    },
+                ) => return Ok(()),
                 Ok(JoinResponse::Rejected { reason }) => {
                     return Err(StartError::Join(format!(
                         "cluster rejected join: {reason:?}"

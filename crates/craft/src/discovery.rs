@@ -69,15 +69,12 @@ pub async fn resolve_dns_seeds(
     let mut seeds = Vec::new();
     for ordinal in 0..replicas {
         let host = seed_host(prefix, ordinal, service);
-        match tokio::net::lookup_host((host.as_str(), port)).await {
-            Ok(addrs) => {
-                if let Some(addr) = addrs.into_iter().next() {
-                    seeds.push(Seed::new(NodeId(ordinal + 1), addr));
-                }
-            }
-            // A not-yet-scheduled pod fails to resolve; skip it and keep going.
-            Err(_) => {}
+        if let Ok(addrs) = tokio::net::lookup_host((host.as_str(), port)).await
+            && let Some(addr) = addrs.into_iter().next()
+        {
+            seeds.push(Seed::new(NodeId(ordinal + 1), addr));
         }
+        // A not-yet-scheduled pod fails to resolve; skip it and keep going.
     }
     if seeds.is_empty() {
         return Err(DiscoveryError::Unresolved(format!(

@@ -202,8 +202,8 @@ impl MetaRaftSagaJournal {
         Self { upsert, registry }
     }
 
-    fn read(&self, saga_id: &[u8]) -> Result<Option<SagaJournalRecord>, SagaJournalError> {
-        Ok(self.registry.lock().expect("lock").get(saga_id).cloned())
+    fn read(&self, saga_id: &[u8]) -> Option<SagaJournalRecord> {
+        self.registry.lock().expect("lock").get(saga_id).cloned()
     }
 
     async fn update(
@@ -211,7 +211,7 @@ impl MetaRaftSagaJournal {
         saga_id: &[u8],
         f: impl FnOnce(SagaJournalRecord) -> SagaJournalRecord,
     ) -> Result<(), SagaJournalError> {
-        let prev = self.read(saga_id)?;
+        let prev = self.read(saga_id);
         let updated = f(prev.unwrap_or_else(|| fresh_record(saga_id)));
         let command = SagaJournalCommand {
             saga_id: saga_id.to_vec(),
@@ -322,7 +322,7 @@ impl SagaJournal for MetaRaftSagaJournal {
     ) -> Pin<
         Box<dyn Future<Output = Result<Option<SagaJournalRecord>, SagaJournalError>> + Send + 'a>,
     > {
-        Box::pin(async move { self.read(saga_id).await })
+        Box::pin(async move { Ok(self.read(saga_id)) })
     }
 }
 

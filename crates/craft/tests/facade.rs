@@ -477,7 +477,7 @@ async fn opt_in_tracing_emits_message_handled_events() {
 
     // Subscribe, enable tracing for "w", then drive one message through it.
     let mut sub = leader.events().subscribe();
-    leader.trace("w", TraceOpts::default());
+    leader.trace("w", &TraceOpts::default());
     leader
         .registry()
         .pool::<Worker>("w")

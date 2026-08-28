@@ -44,11 +44,6 @@ fn metric_usize(v: usize) -> f64 {
     v as f64
 }
 
-#[allow(clippy::cast_precision_loss)] // Prometheus gauges use f64; mailbox depths fit in practice.
-fn metric_i64(v: i64) -> f64 {
-    v as f64
-}
-
 /// The live leadership/membership facts the supervisor reconciles against
 /// (implements [`ClusterState`]), refreshed from the node's consensus status by
 /// a background task. Exposed only so [`CraftCluster::supervisor`] has a nameable
@@ -1235,6 +1230,9 @@ impl<M: StateMachine> CraftCluster<M> {
 
     /// Stop the node and wait until every consensus runtime has exited so
     /// durable storage files can be reopened (for example on process restart).
+    ///
+    /// # Panics
+    /// If the background task-list mutex is poisoned.
     pub async fn shutdown_and_wait(&self) {
         for task in self.tasks.lock().unwrap().drain(..) {
             task.abort();

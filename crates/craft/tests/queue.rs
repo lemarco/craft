@@ -82,7 +82,7 @@ async fn spawn_queue_cluster_n(
             .job_queue_at("jobs", queue_path, Duration::from_secs(60))
             .manage::<Worker>("w", 1, 0);
         if autoscale {
-            builder = builder.job_queue_autoscale::<Worker>("jobs", policy.clone(), 0);
+            builder = builder.job_queue_autoscale::<Worker>("jobs", &policy, 0);
         }
         clusters.push(Arc::new(builder.start_local(&net).await));
     }
@@ -456,7 +456,7 @@ async fn membership_autoscale_invokes_join_hook() {
             .data_dir(&data_dir)
             .job_queue_at("jobs", queue_path, Duration::from_secs(60))
             .manage::<Worker>("w", 1, 0)
-            .job_queue_membership_autoscale("jobs", policy.clone(), join_hook);
+            .job_queue_membership_autoscale("jobs", &policy, join_hook);
         clusters.push(Arc::new(builder.start_local(&net).await));
     }
 
