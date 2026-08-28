@@ -14,6 +14,7 @@ pub mod group;
 pub mod group_migrate;
 pub mod join;
 pub mod leave;
+pub mod queue;
 pub mod raft;
 pub mod saga_journal;
 pub mod two_phase;
@@ -33,6 +34,11 @@ pub use group_migrate::{
 };
 pub use join::{JoinRejection, JoinRequest, JoinResponse, PeerBook, PeerEntry};
 pub use leave::{LeaveRejection, LeaveRequest, LeaveResponse};
+pub use queue::{
+    QueueAckReply, QueueAckRequest, QueueEnqueueReply, QueueEnqueueRequest, QueueLeaseReply,
+    QueueLeaseRequest, QueueLeasedJobWire, QueueMetricsReply, QueueMetricsRequest, QueueNackReply,
+    QueueNackRequest,
+};
 pub use raft::{
     AppendEntries, AppendEntriesReply, EntryPayload, InstallSnapshot, InstallSnapshotReply,
     LogEntry, Membership, RaftRpc, RaftRpcReply, RequestVote, RequestVoteReply,

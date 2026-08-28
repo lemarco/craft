@@ -130,15 +130,21 @@ Queue-backed workers are still **`UserActor`** instances, but **jobs are not pus
 - The **mailbox** handles **control** messages only: drain, health, migration snapshot ([cross-node-actors](cross-node-actors.md)).
 
 ```rust
-// Facade helper (sketch)
-CraftCluster::builder()
-    .job_queue_stream("workers", JobQueueStreamConfig {
-        path: data_dir.join("queue-workers.redb"),
-        lease_timeout: Duration::from_secs(60),
-        autoscale: Some(AutoscalePolicy { .. }),
-    })
-    .auto_workers([AutoWorkerSpec::queue_consumer("workers", WorkerConfig::...)])
+CraftCluster::builder(node_id, machine)
+    .data_dir("/var/craft")
+    .job_queue("workers", Duration::from_secs(60))
+    .manage::<Worker>("workers", 1, WorkerConfig { .. })
+    .job_queue_autoscale::<Worker>("workers", AutoscalePolicy {
+        worker_group: "workers".into(),
+        target_pending_per_worker: 10,
+        min_workers: 1,
+        max_workers: 3,
+        cooldown: Duration::from_secs(30),
+        poll_interval: Duration::from_secs(5),
+    }, WorkerConfig { .. })
 ```
+
+Use [`job_queue_at`](../../crates/craft/src/builder.rs) when the redb path is not under `data_dir`.
 
 ### Queue-driven autoscale (leader)
 
@@ -166,11 +172,12 @@ Scaling **out beyond node count** in production still means **add VPS + join** (
 | `JobQueue` trait + `InMemoryJobQueue` | **landed** |
 | `RedbJobQueue` + crash/reopen tests | **landed** |
 | Worker consumer helper + example | **landed** |
-| Leader `QueueService` + wire routes | deferred |
-| `QueueAutoscaler` → `scale_cluster` | deferred |
-| Facade builder + metrics hook | partial (facade re-exports) |
+| Leader `QueueService` + wire routes (`/raft/v1/queue/*`) | **landed** |
+| `ClusterJobQueue` client + follower forward | **landed** |
+| `run_queue_autoscaler` → `scale_cluster` | **landed** |
+| Facade builder (`job_queue`, `job_queue_autoscale`) | **landed** |
 
-Implementation status: **core port landed**; leader wire + autoscale deferred — see [status.md](../status.md).
+Implementation status: **v1 cluster queue landed** — Redis adapter and sharded streams remain deferred; see [status.md](../status.md).
 
 ### Deferred (post-v1)
 

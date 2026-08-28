@@ -41,6 +41,7 @@ use crate::certs::CertReloadHandle;
 #[derive(Default)]
 pub struct ClusterFacts {
     leader: AtomicBool,
+    leader_id: Mutex<Option<NodeId>>,
     voters: Mutex<Vec<NodeId>>,
     reachable: Mutex<Vec<NodeId>>,
 }
@@ -51,8 +52,15 @@ impl ClusterFacts {
             matches!(status.role, craft_core::Role::Leader),
             Ordering::SeqCst,
         );
+        *self.leader_id.lock().unwrap() = status.leader;
         *self.voters.lock().unwrap() = status.voters.clone();
         *self.reachable.lock().unwrap() = status.reachable.clone();
+    }
+
+    /// Current Raft leader hint (refreshed with consensus status).
+    #[must_use]
+    pub fn leader_id(&self) -> Option<NodeId> {
+        *self.leader_id.lock().unwrap()
     }
 }
 
@@ -67,6 +75,10 @@ impl ClusterState for ClusterFacts {
 
     fn reachable_nodes(&self) -> Vec<NodeId> {
         self.reachable.lock().unwrap().clone()
+    }
+
+    fn leader_id(&self) -> Option<NodeId> {
+        *self.leader_id.lock().unwrap()
     }
 }
 
@@ -374,6 +386,8 @@ pub struct CraftCluster<M: StateMachine> {
     pub(crate) resource_profile: ResourceProfile,
     pub(crate) vps_resources: VpsResources,
     pub(crate) actor_state_store: Option<Arc<dyn craft_actor::ActorStateStore>>,
+    /// Cluster-facing queue clients keyed by stream name.
+    pub(crate) job_queues: HashMap<String, Arc<dyn craft_actor::JobQueue>>,
     /// Full `/raft/v1/*` handler attached to the transport (stored so tests can
     /// re-attach a node after simulating partition on [`LocalNetwork`]).
     pub(crate) wire_handler: Arc<dyn RequestHandler>,
@@ -428,6 +442,13 @@ impl<M: StateMachine> CraftCluster<M> {
     #[must_use]
     pub fn actor_state_store(&self) -> Option<Arc<dyn craft_actor::ActorStateStore>> {
         self.actor_state_store.clone()
+    }
+
+    /// Cluster-facing queue client for `stream`, routing through the leader wire
+    /// service ([`CraftClusterBuilder::job_queue`](crate::CraftClusterBuilder::job_queue)).
+    #[must_use]
+    pub fn job_queue(&self, stream: &str) -> Option<Arc<dyn craft_actor::JobQueue>> {
+        self.job_queues.get(stream).cloned()
     }
 
     /// Default saga journal: Meta-Raft metadata (multi-Raft) or group 0 (single-group),

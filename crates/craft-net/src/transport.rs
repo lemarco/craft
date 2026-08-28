@@ -19,7 +19,9 @@ use std::sync::{Arc, Mutex};
 use craft_proto::{
     ActorEnvelope, CatalogAddRequest, CatalogAddResponse, ClientRequest, ClientResponse,
     DeliverAck, DirectoryUpdate, GroupMigrateReply, GroupMigrateRequest, JoinRequest, JoinResponse,
-    LeaveRequest, LeaveResponse, MigrateReply, MigrateRequest, NodeId, PeerBook, RaftRpc,
+    LeaveRequest, LeaveResponse, MigrateReply, MigrateRequest, NodeId, PeerBook, QueueAckReply,
+    QueueAckRequest, QueueEnqueueReply, QueueEnqueueRequest, QueueLeaseReply, QueueLeaseRequest,
+    QueueMetricsReply, QueueMetricsRequest, QueueNackReply, QueueNackRequest, RaftRpc,
     RaftRpcReply, RegisterAck, ScaleReply, ScaleRequest, SpawnReply, SpawnRequest, StopReply,
     StopRequest,
 };
@@ -335,6 +337,61 @@ pub async fn send_actor_stop<T: Transport + ?Sized>(
 ) -> Result<StopReply, TransportError> {
     let body = encode_body(request)?;
     let response = transport.send(peer, Route::ActorStop, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Enqueue a job on the leader queue service (`/queue/enqueue`).
+pub async fn send_queue_enqueue<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &QueueEnqueueRequest,
+) -> Result<QueueEnqueueReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::QueueEnqueue, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Lease jobs from a queue stream (`/queue/lease`).
+pub async fn send_queue_lease<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &QueueLeaseRequest,
+) -> Result<QueueLeaseReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::QueueLease, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Ack a leased job (`/queue/ack`).
+pub async fn send_queue_ack<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &QueueAckRequest,
+) -> Result<QueueAckReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::QueueAck, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Nack a leased job (`/queue/nack`).
+pub async fn send_queue_nack<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &QueueNackRequest,
+) -> Result<QueueNackReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::QueueNack, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Fetch queue depth metrics (`/queue/metrics`).
+pub async fn send_queue_metrics<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &QueueMetricsRequest,
+) -> Result<QueueMetricsReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::QueueMetrics, body).await?;
     Ok(decode_body(&response)?)
 }
 

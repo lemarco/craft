@@ -35,6 +35,16 @@ pub const ACTOR_REGISTER_PATH: &str = "/raft/v1/actor/register";
 pub const CLUSTER_GROUP_MIGRATE_PATH: &str = "/raft/v1/cluster/group/migrate";
 /// Dynamic multi-Raft catalog expansion (Tier 2).
 pub const CLUSTER_CATALOG_ADD_PATH: &str = "/raft/v1/cluster/catalog/add";
+/// Enqueue a job on the leader queue service ([job-queue](../../../docs/decisions/job-queue.md)).
+pub const QUEUE_ENQUEUE_PATH: &str = "/raft/v1/queue/enqueue";
+/// Lease jobs from a queue stream.
+pub const QUEUE_LEASE_PATH: &str = "/raft/v1/queue/lease";
+/// Acknowledge a leased job.
+pub const QUEUE_ACK_PATH: &str = "/raft/v1/queue/ack";
+/// Return a leased job to pending.
+pub const QUEUE_NACK_PATH: &str = "/raft/v1/queue/nack";
+/// Queue depth gauges for autoscale / observability.
+pub const QUEUE_METRICS_PATH: &str = "/raft/v1/queue/metrics";
 
 /// The connection class a route belongs to. Peer consensus traffic is isolated
 /// onto its own QUIC connection from everything else (future-work-and-risks R2).
@@ -80,11 +90,21 @@ pub enum Route {
     ClusterGroupMigrate,
     /// [`CLUSTER_CATALOG_ADD_PATH`].
     ClusterCatalogAdd,
+    /// [`QUEUE_ENQUEUE_PATH`].
+    QueueEnqueue,
+    /// [`QUEUE_LEASE_PATH`].
+    QueueLease,
+    /// [`QUEUE_ACK_PATH`].
+    QueueAck,
+    /// [`QUEUE_NACK_PATH`].
+    QueueNack,
+    /// [`QUEUE_METRICS_PATH`].
+    QueueMetrics,
 }
 
 impl Route {
     /// Every route, in a stable order (handy for building a router or tests).
-    pub const ALL: [Route; 13] = [
+    pub const ALL: [Route; 18] = [
         Route::PeerWire,
         Route::ClientWire,
         Route::ClusterJoin,
@@ -98,6 +118,11 @@ impl Route {
         Route::ActorRegister,
         Route::ClusterGroupMigrate,
         Route::ClusterCatalogAdd,
+        Route::QueueEnqueue,
+        Route::QueueLease,
+        Route::QueueAck,
+        Route::QueueNack,
+        Route::QueueMetrics,
     ];
 
     /// The request path for this route.
@@ -117,6 +142,11 @@ impl Route {
             Route::ActorRegister => ACTOR_REGISTER_PATH,
             Route::ClusterGroupMigrate => CLUSTER_GROUP_MIGRATE_PATH,
             Route::ClusterCatalogAdd => CLUSTER_CATALOG_ADD_PATH,
+            Route::QueueEnqueue => QUEUE_ENQUEUE_PATH,
+            Route::QueueLease => QUEUE_LEASE_PATH,
+            Route::QueueAck => QUEUE_ACK_PATH,
+            Route::QueueNack => QUEUE_NACK_PATH,
+            Route::QueueMetrics => QUEUE_METRICS_PATH,
         }
     }
 
@@ -142,7 +172,12 @@ impl Route {
             | Route::ActorScale
             | Route::ActorMigrate
             | Route::ActorStop
-            | Route::ActorRegister => TrafficClass::Actor,
+            | Route::ActorRegister
+            | Route::QueueEnqueue
+            | Route::QueueLease
+            | Route::QueueAck
+            | Route::QueueNack
+            | Route::QueueMetrics => TrafficClass::Actor,
         }
     }
 

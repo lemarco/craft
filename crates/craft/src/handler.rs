@@ -14,7 +14,7 @@ use craft_net::transport::{Body, BoxFuture, RequestHandler};
 use craft_net::{QuicTransport, Route, TransportError, decode_body, encode_body};
 use craft_proto::{JoinRequest, NodeId, PeerBook, PeerEntry, ScaleRequest};
 
-use craft_actor::{ClusterControl, ClusterMessaging, DirectorySync};
+use craft_actor::{ClusterControl, ClusterMessaging, DirectorySync, QueueService};
 
 use crate::multi_raft::GroupMigratePort;
 
@@ -73,6 +73,7 @@ pub(crate) struct NodeRouter {
     control: Arc<ClusterControl>,
     messaging: Arc<ClusterMessaging>,
     directory_sync: Arc<DirectorySync>,
+    queue: Option<Arc<QueueService>>,
     peers: Arc<dyn PeerSource>,
     group_migrate: Option<Arc<dyn GroupMigratePort>>,
 }
@@ -83,6 +84,7 @@ impl NodeRouter {
         control: Arc<ClusterControl>,
         messaging: Arc<ClusterMessaging>,
         directory_sync: Arc<DirectorySync>,
+        queue: Option<Arc<QueueService>>,
         peers: Arc<dyn PeerSource>,
         group_migrate: Option<Arc<dyn GroupMigratePort>>,
     ) -> Self {
@@ -91,6 +93,7 @@ impl NodeRouter {
             control,
             messaging,
             directory_sync,
+            queue,
             peers,
             group_migrate,
         }
@@ -150,6 +153,19 @@ impl RequestHandler for NodeRouter {
             }
             // Cross-node actor message delivery.
             Route::ActorDeliver => self.messaging.handle(route, body),
+            Route::QueueEnqueue
+            | Route::QueueLease
+            | Route::QueueAck
+            | Route::QueueNack
+            | Route::QueueMetrics => {
+                let Some(queue) = self.queue.as_ref() else {
+                    return Box::pin(async move {
+                        Err(TransportError::Io("job queue is not enabled".into()))
+                    });
+                };
+                let queue = Arc::clone(queue);
+                queue.handle_request(route, body)
+            }
             // Directory publish / anti-entropy.
             Route::ActorRegister => self.directory_sync.handle(route, body),
         }

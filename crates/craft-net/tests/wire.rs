@@ -40,6 +40,11 @@ fn traffic_classes_isolate_peer_consensus_from_the_rest() {
         Route::ActorSpawn,
         Route::ActorMigrate,
         Route::ActorRegister,
+        Route::QueueEnqueue,
+        Route::QueueLease,
+        Route::QueueAck,
+        Route::QueueNack,
+        Route::QueueMetrics,
     ] {
         assert_eq!(actor.traffic_class(), TrafficClass::Actor);
     }

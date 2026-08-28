@@ -47,6 +47,10 @@ pub trait ClusterState: Send + Sync {
     fn reachable_nodes(&self) -> Vec<NodeId> {
         self.live_nodes()
     }
+    /// The current Raft leader hint for forwarding (queue wire, client routing).
+    fn leader_id(&self) -> Option<NodeId> {
+        None
+    }
 }
 
 impl<T: ClusterState + ?Sized> ClusterState for Arc<T> {
@@ -58,6 +62,9 @@ impl<T: ClusterState + ?Sized> ClusterState for Arc<T> {
     }
     fn reachable_nodes(&self) -> Vec<NodeId> {
         (**self).reachable_nodes()
+    }
+    fn leader_id(&self) -> Option<NodeId> {
+        (**self).leader_id()
     }
 }
 

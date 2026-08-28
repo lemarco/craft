@@ -135,7 +135,8 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Group migrate RPC (facade wire) | — | ✅ `multi_raft` | — | — | ✅ |
 | Runtime fatal-error path | — | ✅ `runtime` | — | — | ✅ |
 | Actor state store (in-memory) | ✅ | ✅ | — | — | ✅ |
-| **Job queue (`JobQueue`, in-memory + redb)** | ✅ `queue`, `redb_queue` | — | — | — | ✅ |
+| **Job queue (`JobQueue`, in-memory + redb)** | ✅ `queue`, `redb_queue` | ✅ `queue` | — | — | ✅ |
+| **Job queue wire + cluster client** | ✅ `queue_service` | ✅ `queue` (facade, autoscale) | — | — | ✅ |
 | Actor state store resume + idempotency (facade) | — | ✅ `actor_store_resume` | — | — | ✅ |
 | Actor state store (Redis) | — | 🔒 ignore | — | — | 🔒 |
 | Actor state store (`rediss://` + private CA) | — | 🔒 ignore | — | — | 🔒 |

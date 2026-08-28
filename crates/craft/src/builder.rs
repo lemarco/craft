@@ -5,7 +5,7 @@
 //! leader-only supervisor, telemetry, and the admin server, and wires the
 //! background loops that keep them current.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU32;
@@ -31,9 +31,10 @@ use craft_storage::GroupRedbLayout;
 use tokio::net::TcpListener;
 
 use craft_actor::{
-    ActorDirectory, ActorRegistry, ClusterControl, ClusterMessaging, ClusterState,
-    ClusterSupervisor, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy, DirectoryRetry, DirectorySync,
-    NodeService, RaftDriver, ResourceProfile, RuntimeConfig, UserActor, VpsResources,
+    ActorDirectory, ActorRegistry, AutoscalePolicy, ClusterControl, ClusterJobQueue,
+    ClusterMessaging, ClusterState, ClusterSupervisor, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy,
+    DirectoryRetry, DirectorySync, JobQueue, NodeService, QueueService, RaftDriver, RedbJobQueue,
+    ResourceProfile, RuntimeConfig, UserActor, VpsResources, run_queue_autoscaler,
     spawn_multi_raft_node, spawn_node,
 };
 
@@ -72,6 +73,23 @@ pub enum StartError {
 type RegisterFn = Box<dyn FnOnce(&ClusterControl) + Send>;
 /// Type-erased "declare this managed group on the supervisor" step.
 type ManageFn = Box<dyn FnOnce(&ClusterSupervisor<Arc<ClusterFacts>>) + Send>;
+/// Type-erased queue autoscale background task spawned at node start.
+type AutoscaleTask = Box<
+    dyn FnOnce(
+            Arc<ClusterControl>,
+            Arc<dyn ClusterState>,
+            Arc<ActorDirectory>,
+            HashMap<String, Arc<dyn JobQueue>>,
+        ) -> tokio::task::JoinHandle<()>
+        + Send,
+>;
+
+#[derive(Debug, Clone)]
+struct JobStreamSpec {
+    name: String,
+    path: Option<PathBuf>,
+    lease_timeout: Duration,
+}
 
 /// A fluent builder for a single craft node (deployment-model). Create it with
 /// [`CraftCluster::builder`](crate::CraftCluster::builder).
@@ -107,6 +125,8 @@ pub struct CraftClusterBuilder<M: StateMachine> {
     cert_watch: Option<Duration>,
     registrations: Vec<RegisterFn>,
     managed: Vec<ManageFn>,
+    job_streams: Vec<JobStreamSpec>,
+    job_autoscale: Vec<AutoscaleTask>,
 }
 
 impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
@@ -146,6 +166,8 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             cert_watch: None,
             registrations: Vec::new(),
             managed: Vec::new(),
+            job_streams: Vec::new(),
+            job_autoscale: Vec::new(),
         }
     }
 
@@ -526,6 +548,94 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         self
     }
 
+    /// Enable a durable job queue stream at `{data_dir}/queue-{name}.redb`
+    /// ([job-queue](../../docs/decisions/job-queue.md)). Requires [`data_dir`](Self::data_dir).
+    #[must_use]
+    pub fn job_queue(mut self, name: &str, lease_timeout: Duration) -> Self {
+        self.job_streams.push(JobStreamSpec {
+            name: name.to_string(),
+            path: None,
+            lease_timeout,
+        });
+        self
+    }
+
+    /// Like [`job_queue`](Self::job_queue) but opens an explicit redb path (tests, custom layout).
+    #[must_use]
+    pub fn job_queue_at(
+        mut self,
+        name: &str,
+        path: impl Into<PathBuf>,
+        lease_timeout: Duration,
+    ) -> Self {
+        self.job_streams.push(JobStreamSpec {
+            name: name.to_string(),
+            path: Some(path.into()),
+            lease_timeout,
+        });
+        self
+    }
+
+    /// Leader-only autoscale loop for `stream` depth → `policy.worker_group` count.
+    /// Registers `A` on the control plane; pair with [`manage`](Self::manage) or
+    /// [`manage_auto`](Self::manage_auto) for the same group name.
+    #[must_use]
+    pub fn job_queue_autoscale<A: UserActor>(
+        mut self,
+        stream: &str,
+        policy: AutoscalePolicy,
+        config: A::Config,
+    ) -> Self
+    where
+        A::Config: Clone + Send + Sync + 'static,
+    {
+        let stream = stream.to_string();
+        let worker_group = policy.worker_group.clone();
+        let policy = policy.clone();
+        self.registrations
+            .push(Box::new(|control: &ClusterControl| {
+                control.register_type::<A>();
+            }));
+        self.job_autoscale
+            .push(Box::new(move |control, state, directory, queues| {
+                let Some(queue) = queues.get(&stream).cloned() else {
+                    panic!(
+                        "job_queue_autoscale stream {stream:?} was not registered via job_queue"
+                    );
+                };
+                let policy = policy.clone();
+                let config = config.clone();
+                let worker_group = worker_group.clone();
+                tokio::spawn(async move {
+                    run_queue_autoscaler(
+                        queue,
+                        directory,
+                        Arc::clone(&state),
+                        policy,
+                        move |desired| {
+                            let control = Arc::clone(&control);
+                            let state = Arc::clone(&state);
+                            let config = config.clone();
+                            let worker_group = worker_group.clone();
+                            async move {
+                                control
+                                    .scale_cluster::<A>(
+                                        &worker_group,
+                                        desired,
+                                        config,
+                                        &state.reachable_nodes(),
+                                    )
+                                    .await
+                                    .map(|_| ())
+                            }
+                        },
+                    )
+                    .await;
+                })
+            }));
+        self
+    }
+
     /// Declare an auto-worker group: one instance of `A` on every live node,
     /// tracking membership so new nodes get a worker automatically (auto-spawn-on-join).
     #[must_use]
@@ -890,12 +1000,53 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         ));
         registry.set_observer(telemetry.clone());
 
+        // --- Job queue (leader wire service) ------------------------------
+        let queue_service: Option<Arc<QueueService>> = if self.job_streams.is_empty() {
+            None
+        } else {
+            Some(Arc::new(QueueService::new(
+                Arc::clone(&facts) as Arc<dyn ClusterState>,
+                Arc::clone(&transport),
+            )))
+        };
+        let mut job_queues: HashMap<String, Arc<dyn JobQueue>> = HashMap::new();
+        for spec in &self.job_streams {
+            let path = match &spec.path {
+                Some(path) => path.clone(),
+                None => self
+                    .data_dir
+                    .as_ref()
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "job_queue({:?}) requires data_dir or job_queue_at with an explicit path",
+                            spec.name
+                        )
+                    })
+                    .join(format!("queue-{}.redb", spec.name)),
+            };
+            let local: Arc<dyn JobQueue> = Arc::new(
+                RedbJobQueue::open(&path, spec.lease_timeout)
+                    .unwrap_or_else(|e| panic!("open job queue at {}: {e}", path.display())),
+            );
+            if let Some(service) = queue_service.as_ref() {
+                service.register_stream(&spec.name, Arc::clone(&local));
+            }
+            let client: Arc<dyn JobQueue> = Arc::new(ClusterJobQueue::new(
+                &spec.name,
+                node_id,
+                Arc::clone(&facts) as Arc<dyn ClusterState>,
+                Arc::clone(&transport),
+            ));
+            job_queues.insert(spec.name.clone(), client);
+        }
+
         // --- Router -------------------------------------------------------
         let router: Arc<dyn RequestHandler> = Arc::new(NodeRouter::new(
             consensus_service,
             Arc::clone(&control),
             Arc::clone(&messaging),
             Arc::clone(&directory_sync),
+            queue_service,
             Arc::clone(&peers),
             multi_raft.as_ref().map(|state| {
                 Arc::new(ArcGroupMigrate(Arc::clone(state))) as Arc<dyn GroupMigratePort>
@@ -1091,6 +1242,15 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             }));
         }
 
+        for spawn in self.job_autoscale {
+            tasks.push(spawn(
+                Arc::clone(&control),
+                Arc::clone(&facts) as Arc<dyn ClusterState>,
+                Arc::clone(&directory),
+                job_queues.clone(),
+            ));
+        }
+
         // Admin/observability HTTP server.
         let catalog_version = Arc::new(AtomicU32::new(1));
         if let Some(addr) = self.admin_addr {
@@ -1159,6 +1319,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             resource_profile,
             vps_resources,
             actor_state_store: self.actor_state_store,
+            job_queues,
             wire_handler: Arc::clone(&router),
             transport,
             facts,
