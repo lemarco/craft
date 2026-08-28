@@ -293,6 +293,7 @@ async fn three_node_majority_survives_one_member_restart() {
     let follower_id = follower.handle().id();
 
     wait_for_crafty_stopped(follower.as_ref()).await;
+    drop(follower);
     let _ = net.detach(follower_id);
     clusters.retain(|c| c.handle().id() != follower_id);
 
