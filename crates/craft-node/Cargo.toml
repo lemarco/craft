@@ -23,5 +23,5 @@ craft-actor.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 
 [dev-dependencies]
-temp-env = "0.1"
+temp-env = "0.3.6"
 tempfile = "3"
