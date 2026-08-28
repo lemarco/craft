@@ -19,7 +19,7 @@ use crate::security::Security;
 pub struct PemSecurity {
     /// The initial TLS material.
     pub security: Security,
-    /// On-disk locations written by cert-manager, step-ca renewals, or `generate.sh`.
+    /// On-disk locations written by step-ca renewals or `generate.sh`.
     pub paths: CertPaths,
 }
 

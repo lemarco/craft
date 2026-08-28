@@ -11,7 +11,8 @@
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
-source scripts/hook-prelude.sh
+./scripts/cargo-wait-lock.sh
+export PATH="${HOME}/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:${PATH}"
 
 scope=(--workspace)
 if [[ "${1:-}" != "--workspace" ]]; then
@@ -35,8 +36,11 @@ log "missing documentation warnings: ${count}"
 if [[ "$count" -gt 0 ]]; then
   grep 'missing documentation' <<<"$out" | head -40
   if [[ "$count" -gt 40 ]]; then
-    log "... ($(("$count" - 40)) more; re-run and pipe to a file for full list)"
+    log "... ($((count - 40)) more; re-run and pipe to a file for full list)"
   fi
+  log "tip: flip workspace lint to deny and clear warnings before 1.0"
 fi
 
-exit "$status"
+if [[ "$status" -ne 0 ]]; then
+  exit "$status"
+fi

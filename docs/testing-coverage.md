@@ -170,7 +170,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Multi-Raft introspection (`/introspect/raft-groups`) | — | ✅ `admin`, `multi_raft` | — | — | ✅ |
 | Actors + auto-spawn | — | ✅ | ✅ `auto_spawn` | — | ✅ |
 | Multi-Raft file layout (`data_dir`) | — | ✅ `persistence` + `multi_raft` | — | — | ✅ |
-| DNS discovery | ✅ | ✅ `discovery` | — | ✅ K8s | ✅ |
+| DNS discovery | ✅ | ✅ `discovery` | — | ✅ | ✅ |
 | **`crafty-node` env parsing** | ✅ `config` | — | — | ✅ implicit | ✅ |
 | **`crafty-node` drain timeout (`CRAFTY_DRAIN_TIMEOUT`)** | ✅ `config` | — | — | ✅ implicit | ✅ |
 | **`crafty-node` graceful leave on shutdown** | ✅ `config` | ✅ `graceful_leave` | — | ✅ `leave.sh` | ✅ |
@@ -192,7 +192,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Job | When | What runs |
 |-----|------|-----------|
 | `fast` | Every MR / push | fmt, clippy `-D warnings`, nextest (all non-ignored tests), doctests, doc |
-| `msrv` | Every MR / push | `cargo check` on Rust 1.98 |
+| `msrv` | Every MR / push | `cargo check` on Rust 1.90 |
 | `e2e` | Scheduled | `e2e/run.sh` + `e2e/leave.sh` + `e2e/chaos.sh` + `e2e/cert_renew.sh` + docker phase of `e2e/linearizability.sh` |
 | `linearizability-sim` | Scheduled | crafty-sim linearizability + read_index seed sweep (`e2e/linearizability.sh`) |
 | `store-redis` | Scheduled | `cargo test -p crafty-store-redis -- --ignored` |

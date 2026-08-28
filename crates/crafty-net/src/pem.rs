@@ -1,6 +1,6 @@
 //! Load mTLS material from PEM files on disk (cert-provisioning, cert-automation).
 //!
-//! Production deployments and cert-manager/step-ca renewers write to fixed paths;
+//! Production deployments and step-ca renewers write to fixed paths;
 //! [`load_pem_material`] re-reads them when certs rotate.
 
 use std::fs::File;

@@ -1,14 +1,13 @@
-# Production-oriented multi-stage image for the crafty-node reference binary,
-# used by the Kubernetes manifests in deploy/kubernetes/ (future-work-and-risks item 6).
+# Production-oriented multi-stage image for the crafty-node reference binary.
 #
 # Build context is the repo root:
 #   docker build -f deploy/Dockerfile -t crafty-node:latest .
 #
 # The runtime image is distroless (no shell/package manager) for a small,
-# hardened surface. Certs are mounted from cert-manager Secrets under
-# /etc/crafty/…; the admin port (8080) serves Kubernetes probes (health-admin-port).
+# hardened surface. Mount TLS PEMs under /etc/crafty/…; the admin port (8080)
+# serves health and introspection endpoints.
 
-FROM rust:1.98-slim AS build
+FROM rust:1.90-slim AS build
 WORKDIR /src
 # Cache dependencies separately from source for faster incremental rebuilds.
 COPY Cargo.toml Cargo.lock ./

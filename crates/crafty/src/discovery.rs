@@ -5,8 +5,8 @@
 //! — an ordered list of candidate members — so a joining node stays resilient
 //! to any one seed being down or having moved (discovery's noted "seed address
 //! stability" risk), and gossips the full peer-address book from whichever seed
-//! answers first. Cloud/orchestrated environments (e.g. Kubernetes headless
-//! services) resolve their pod DNS into a seed set via [`resolve_dns_seeds`].
+//! answers first. VPS fleets with predictable DNS (`node-0.cluster`, …) resolve
+//! their hostnames into a seed set via [`resolve_dns_seeds`].
 //!
 //! Discovery only bootstraps *first contact*; the authoritative membership
 //! remains the Raft-committed voter set (joint consensus, membership-early), and peer
@@ -18,8 +18,8 @@ use crafty_proto::NodeId;
 
 /// A candidate cluster member to bootstrap a dynamic join against: a node id
 /// plus a currently-believed address. Node ids are required because the wire
-/// transport keys connections by id (wire-transport); orchestrated discovery derives
-/// them deterministically (e.g. a `StatefulSet` ordinal `crafty-2` → `NodeId(3)`).
+/// transport keys connections by id (wire-transport); DNS discovery derives
+/// them deterministically from host ordinals (e.g. `crafty-2` → `NodeId(3)`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Seed {
     /// The seed member's node id.
@@ -47,19 +47,18 @@ pub enum DiscoveryError {
     Resolver(String),
 }
 
-/// Resolve a Kubernetes-style **headless-service** seed set: for each ordinal in
-/// `0..replicas`, resolve `{prefix}-{ordinal}.{service}` to an address and pair
-/// it with `NodeId(ordinal + 1)` (the one-based node-id convention). Unresolved
-/// ordinals are skipped (a pod may not be up yet); the result is every seed that
-/// currently resolves, in ordinal order.
+/// Resolve an **ordinal DNS** seed set: for each ordinal in `0..replicas`, resolve
+/// `{prefix}-{ordinal}.{service}` to an address and pair it with
+/// `NodeId(ordinal + 1)` (the one-based node-id convention). Unresolved ordinals
+/// are skipped (a node may not be up yet); the result is every seed that currently
+/// resolves, in ordinal order.
 ///
-/// This is the DNS the Kubernetes `StatefulSet` + headless `Service` manifests
-/// in `deploy/kubernetes/` expose: a stable per-pod DNS name whose ordinal maps
-/// one-to-one to a crafty node id.
+/// Typical VPS layout: a private DNS zone with stable names like
+/// `crafty-0.internal`, `crafty-1.internal`, … mapped one-to-one to node ids.
 ///
 /// # Errors
 /// Returns [`DiscoveryError::Unresolved`] only if *no* ordinal resolves (so the
-/// caller can retry while the `StatefulSet` is still coming up).
+/// caller can retry while the fleet is still coming up).
 pub async fn resolve_dns_seeds(
     prefix: &str,
     service: &str,
@@ -74,7 +73,7 @@ pub async fn resolve_dns_seeds(
         {
             seeds.push(Seed::new(NodeId(ordinal + 1), addr));
         }
-        // A not-yet-scheduled pod fails to resolve; skip it and keep going.
+        // A not-yet-provisioned host fails to resolve; skip it and keep going.
     }
     if seeds.is_empty() {
         return Err(DiscoveryError::Unresolved(format!(
@@ -84,9 +83,8 @@ pub async fn resolve_dns_seeds(
     Ok(seeds)
 }
 
-/// The per-ordinal DNS name a Kubernetes headless service exposes for a
-/// `StatefulSet` pod: `{prefix}-{ordinal}.{service}` (a trailing-empty `service`
-/// yields the bare pod name, used in tests).
+/// Per-ordinal DNS hostname: `{prefix}-{ordinal}.{service}` (a trailing-empty
+/// `service` yields the bare host name, used in tests).
 #[must_use]
 pub(crate) fn seed_host(prefix: &str, ordinal: u64, service: &str) -> String {
     if service.is_empty() {
@@ -138,16 +136,16 @@ mod tests {
     }
 
     #[test]
-    fn dns_host_names_follow_the_statefulset_convention() {
+    fn dns_host_names_follow_ordinal_convention() {
         assert_eq!(
-            seed_host("crafty", 0, "crafty.default.svc"),
-            "crafty-0.crafty.default.svc"
+            seed_host("crafty", 0, "crafty.internal"),
+            "crafty-0.crafty.internal"
         );
         assert_eq!(
             seed_host("crafty", 2, "crafty-headless"),
             "crafty-2.crafty-headless"
         );
-        // Empty service → bare pod name (test/util form).
+        // Empty service → bare host name (test/util form).
         assert_eq!(seed_host("crafty", 1, ""), "crafty-1");
     }
 }

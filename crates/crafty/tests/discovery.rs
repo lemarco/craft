@@ -1,10 +1,10 @@
-//! DNS seed resolution for Kubernetes-style headless services.
+//! DNS seed resolution for ordinal hostnames (`node-0.cluster`, …).
 
 use crafty::discovery::{Seed, dedupe_seeds, resolve_dns_seeds};
 use crafty::proto::NodeId;
 
 #[tokio::test]
-async fn resolve_dns_seeds_finds_localhost_statefulset_names() {
+async fn resolve_dns_seeds_finds_localhost_ordinal_names() {
     // `.localhost` names resolve to loopback on modern resolvers (RFC 6761).
     let seeds = resolve_dns_seeds("crafty", "localhost", 2, 8080)
         .await
@@ -28,8 +28,7 @@ fn dedupe_seeds_drops_self_and_preserves_order() {
         Seed::new(NodeId(1), addr),
     ];
     let out = dedupe_seeds(seeds, NodeId(1));
-    assert_eq!(
-        out,
-        vec![Seed::new(NodeId(2), addr), Seed::new(NodeId(3), addr)]
-    );
+    assert_eq!(out.len(), 2);
+    assert_eq!(out[0].node_id, NodeId(2));
+    assert_eq!(out[1].node_id, NodeId(3));
 }

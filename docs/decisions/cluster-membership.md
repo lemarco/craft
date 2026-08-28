@@ -44,7 +44,7 @@ Membership changes always go through the Raft log — HTTP routes are **entry po
 ### Seed-set discovery
 
 - `CraftyClusterBuilder::join_seeds` / `crafty::discovery::Seed` — ordered candidate list; tries each in turn.
-- `crafty::discovery::resolve_dns_seeds` — Kubernetes StatefulSet pod DNS → seed set.
+- `crafty::discovery::resolve_dns_seeds` — ordinal DNS names (`node-0.cluster`, …) → seed set.
 - Peer addresses converge via `/cluster/peers` anti-entropy gossip.
 
 Full cloud-metadata auto-discovery beyond a seed set remains out of scope.

@@ -11,6 +11,11 @@ variables:
   RUSTDOCFLAGS: "-D warnings -A missing_docs"
   # Keep cargo's registry/build output inside the project so it can be cached.
   CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
+  # saas-linux-small runners (~25G root). Local dev uses unpacked debuginfo for
+  # faster links; CI disables it so cached target/ + test linking fits on disk.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_DEV_SPLIT_DEBUGINFO: "off"
+  NEXTEST_PROFILE: ci
 
 # .cargo/config.toml uses clang + mold on Linux; rust:* images omit both.
 .rust_linux_linker:
@@ -25,6 +30,8 @@ default:
     key:
       files:
         - Cargo.lock
+      # Bust pre-slim caches that stored unpacked debuginfo under target/.
+      prefix: ci-slim-v1
     paths:
       - .cargo/registry/index/
       - .cargo/registry/cache/
@@ -44,10 +51,14 @@ fast:
     - rustup component add rustfmt clippy
     - mkdir -p "$CARGO_HOME/bin" && curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C "$CARGO_HOME/bin"
   script:
+    - df -h .
     - cargo fmt --all -- --check
     - source scripts/clippy-args.sh
     - cargo clippy --workspace --all-targets --all-features -- "${CLIPPY_ARGS[@]}"
-    - cargo nextest run --workspace --all-features
+    - bash scripts/ci-disk-prune.sh
+    # Examples are clippy-checked above; skip linking them again for tests.
+    - cargo nextest run --profile ci --workspace --all-features --lib --tests --bins
+    - bash scripts/ci-disk-prune.sh
     - cargo test --workspace --doc --all-features
     - cargo doc --workspace --no-deps --all-features
     - cargo publish --workspace --dry-run
@@ -55,7 +66,7 @@ fast:
 # --- Minimum Supported Rust Version check (library-and-publishing) --------------------------
 msrv:
   stage: check
-  image: rust:1.98
+  image: rust:1.90
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "schedule"

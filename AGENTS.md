@@ -35,4 +35,4 @@ lefthook install
 
 Fast iteration while coding: `./scripts/test-fast.sh -p <crate>`.
 
-MSRV **1.98**. Conventional commits. GitLab issues as `#<number>`.
+MSRV **1.90**. Conventional commits. GitLab issues as `#<number>`.

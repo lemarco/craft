@@ -8,7 +8,7 @@
 
 Should this repo ship a standalone binary, an embeddable library, or both? The product goal is a **framework** where the user writes **one application codebase** (state machine + actors + business logic), deploys it to **any VPS**, and **adds more VPS instances over time** — each new instance **joins the existing cluster** (first node, then second connects to first, and so on).
 
-Operational model: **not Kubernetes-first** — bare VPS, cloud VM, or container as a single process per node.
+Operational model: **VPS / bare metal** — one process per node; docker-compose optional for local multi-node demos.
 
 ## Decision
 
@@ -80,7 +80,7 @@ Raft gives **consistent replicated state** (via user `StateMachine`). **Actors**
 
 ## What we do not require
 
-- Kubernetes or cloud-specific orchestration (optional integrations later)
+- Cloud-specific orchestration or container platforms
 - Dynamic `.so` plugins or separate `raft-node` config language
 - Multiple Raft peers inside one OS process (dev/sim only)
 

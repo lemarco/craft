@@ -199,9 +199,8 @@ CN is free-form.
 
 When `CRAFTY_NODE_CERT` / `CRAFTY_NODE_KEY` / `CRAFTY_CA_CERT` are set, `crafty-node`
 uses [`start_quic_pem`](../crates/crafty/src/builder.rs) and **polls** those files
-every `CRAFTY_CERT_WATCH_SECS` (default **60**). When a renewer (cert-manager,
-`step ca renew`, or `generate.sh`) rewrites the PEMs, crafty reloads TLS **without
-exiting**:
+every `CRAFTY_CERT_WATCH_SECS` (default **60**). When a renewer (`step ca renew`
+or `generate.sh`) rewrites the PEMs, crafty reloads TLS **without exiting**:
 
 - new QUIC handshakes pick up the fresh server cert;
 - outbound pools are evicted so the next dial presents the new client cert;
@@ -214,19 +213,6 @@ Reload on the **Raft leader** is rejected unless you call
 | Environment | Issuer | Example |
 |-------------|--------|---------|
 | VPS / compose | [step-ca](https://smallstep.com/docs/step-ca/) | [`examples/step-ca/`](../examples/step-ca/) |
-| Kubernetes | [cert-manager](https://cert-manager.io/) | [`deploy/kubernetes/`](../deploy/kubernetes/) + [`cert-manager/README.md`](../deploy/kubernetes/cert-manager/README.md) |
-
-On Kubernetes, the StatefulSet mounts cert-manager Secrets per pod ordinal:
-
-```yaml
-# crafty-0 reads /etc/crafty/tls-by-ordinal/0/tls.crt (Secret crafty-tls-0)
-CRAFTY_CERT_ORDINAL_BASE=/etc/crafty/tls-by-ordinal
-CRAFTY_CA_CERT=/etc/crafty/ca/tls.crt
-POD_NAME=crafty-0   # downward API
-```
-
-Apply order: populate `crafty-ca` → `kubectl apply -f deploy/kubernetes/cert-manager/`
-→ wait for `Certificate` Ready → `kubectl apply -f deploy/kubernetes/`.
 
 Public ACME (Let's Encrypt) is **not** supported for crafty wire identities — you
 need a private CA with `serverAuth` + `clientAuth` and SAN `crafty-node-<id>`.

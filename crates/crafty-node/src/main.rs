@@ -11,8 +11,7 @@
 //!
 //! | Var | Meaning | Default |
 //! |-----|---------|---------|
-//! | `CRAFTY_NODE_ID` | This node's id (`u64`) | *from `POD_NAME` ordinal, else `1`* |
-//! | `POD_NAME` | Kubernetes pod name (`crafty-0`); its ordinal → `NodeId(ordinal+1)` | *unset* |
+//! | `CRAFTY_NODE_ID` | This node's id (`u64`) | `1` |
 //! | `CRAFTY_LISTEN` | QUIC listen `addr:port` | `0.0.0.0:7443` |
 //! | `CRAFTY_ADMIN` | Admin HTTP `addr:port` (`-` to disable) | `0.0.0.0:8080` |
 //! | `CRAFTY_ADMIN_TLS_CERT` / `CRAFTY_ADMIN_TLS_KEY` | PEM paths for admin HTTPS (both required) | *plain HTTP* |
@@ -26,7 +25,6 @@
 //! | `CRAFTY_JOB_QUEUE` | Durable job queue stream name (requires `CRAFTY_DATA_DIR`) | *unset* |
 //! | `CRAFTY_JOB_QUEUE_LEASE_SECS` | Queue lease visibility timeout (seconds) | `60` |
 //! | `CRAFTY_NODE_CERT` / `CRAFTY_NODE_KEY` / `CRAFTY_CA_CERT` | PEM cert chain / key / CA | *dev CA* |
-//! | `CRAFTY_CERT_ORDINAL_BASE` | Dir with per-ordinal subdirs (`0/tls.crt`, …) for K8s cert-manager | *unset* |
 //! | `CRAFTY_CERT_WATCH_SECS` | Poll interval for on-disk cert reload (cert-automation) | `60` |
 //! | `RUST_LOG` / `CRAFTY_LOG` | `tracing` filter directives (see [`crafty::init_tracing`]) | `warn` |
 //! | `CRAFTY_LOG_REBALANCE` | Enable `crafty::rebalance=debug` rebalance planner logs | *off* |
@@ -36,8 +34,7 @@
 //! shared CA: provide `CRAFTY_NODE_CERT`/`CRAFTY_NODE_KEY`/`CRAFTY_CA_CERT` on
 //! every node (mint them with `examples/certs/generate.sh`; see `docs/certs.md`)
 //! and either list every member in `CRAFTY_PEERS` (static) or point new nodes at
-//! `CRAFTY_JOIN_SEEDS` / `CRAFTY_DISCOVERY` to grow the cluster dynamically. See
-//! `deploy/kubernetes/` for a `StatefulSet` using ordinal-derived ids + DNS.
+//! `CRAFTY_JOIN_SEEDS` / `CRAFTY_DISCOVERY` to grow the cluster dynamically.
 
 mod config;
 

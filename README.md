@@ -3,13 +3,13 @@
 **A distributed Raft + actor framework for Rust: one codebase, N nodes, elastic and self-healing.**
 
 [![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
-[![rust](https://img.shields.io/badge/rustc-1.98%2B-orange.svg)](#msrv)
+[![rust](https://img.shields.io/badge/rustc-1.90%2B-orange.svg)](#msrv)
 
 ---
 
 ## Why this exists
 
-**Problem:** Running a stateful app on multiple VPS/K8s nodes usually means bolting together separate pieces — a consensus library, an actor runtime, a transport layer, mTLS, membership, observability — and wiring them yourself.
+**Problem:** Running a stateful app on multiple VPS or bare-metal nodes usually means bolting together separate pieces — a consensus library, an actor runtime, a transport layer, mTLS, membership, observability — and wiring them yourself.
 
 **Idea:** Embed consensus + actors in *your* binary. Same artifact on every node; the cluster bootstraps, elects a leader, replicates a linearizable state machine, and hosts supervised actors that can message and migrate across nodes. No sidecar, no separate control plane.
 
@@ -30,7 +30,7 @@
 - Pure Raft FSM, HTTP/3/mTLS, redb persistence, cross-node actors
 - Multi-Raft write scaling: **Meta-Raft coordinator** (join/catalog/saga isolated from user groups), dynamic catalog, stable shards, group migration, per-group membership
 - Cross-shard saga coordinator + optional 2PC; follower/lease reads
-- K8s manifests, cert hot reload, reachability-driven supervisor, `crafty-ops` backup
+- mTLS hot reload, reachability-driven supervisor, `crafty-ops` backup
 - **Durable job queue** (tier C): `job_queue`, worker autoscale, sync voter replication — [job-queue](docs/decisions/job-queue.md)
 - Design decision records — [docs/decisions/](docs/decisions/)
 
@@ -148,7 +148,7 @@ cargo install crafty-node
 
 ## MSRV
 
-Minimum Supported Rust Version is **1.98** ([library-and-publishing](docs/decisions/library-and-publishing.md)).
+Minimum Supported Rust Version is **1.90** ([library-and-publishing](docs/decisions/library-and-publishing.md)).
 
 ## License
 

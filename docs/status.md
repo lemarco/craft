@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | **Version** | `0.1.0` (pre-1.0 — API may change on minor bumps) |
-| **MSRV** | 1.98 |
+| **MSRV** | 1.90 |
 | **Maturity** | Advanced prototype — full test pyramid, E2E/chaos, release tooling; not yet published to crates.io |
 
 ---
@@ -22,14 +22,14 @@
 
 - HTTP/3 / QUIC + mTLS (`crafty-net`); dedicated peer connection per traffic class
 - Opt-in per-class token-bucket rate limiting (`TrafficPolicy` / `RateLimiter`)
-- mTLS hot reload (`PemSecurity`, `CertReloadHandle`, step-ca / cert-manager examples)
+- mTLS hot reload (`PemSecurity`, `CertReloadHandle`, step-ca example)
 - Dev-only JSON wire (`crafty/json-wire` feature)
 
 ### Cluster operations
 
 - Dynamic join via seed set + DNS discovery (`crafty::discovery`, `join_seeds`)
 - Cluster leave RPC (`CraftyCluster::leave`, `CRAFTY_ALLOW_LEAVE`)
-- Health/admin HTTP (`:8080`) with optional TLS; K8s StatefulSet manifests (`deploy/kubernetes/`)
+- Health/admin HTTP (`:8080`) with optional TLS
 - Reachability signal distinct from membership; crash-driven supervisor reconcile against `reachable_nodes()`
 - Phi-accrual / tunable reachability (`ReachabilityConfig`)
 - `crafty-ops` snapshot backup/restore; rolling wire N/N−1 compatibility
@@ -103,7 +103,7 @@ Documented in [future-work-and-risks](decisions/future-work-and-risks.md):
 | **R3** | Actor directory is eventually consistent — mitigated by TTL, RYW policy, anti-entropy |
 | **R4** | Actor memory without Redis is lost on crash — use write-through to `ActorStateStore` |
 | **R5** | Deep tracing has a performance cost — metrics on by default, tracing opt-in |
-| **R6** | mTLS ops burden — mitigated by hot reload + cert-manager examples |
+| **R6** | mTLS ops burden — mitigated by hot reload + step-ca example |
 
 ---
 

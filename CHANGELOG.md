@@ -59,7 +59,7 @@ tested; APIs are still evolving toward a 1.0 stabilization.
 - **Actor routing Tier 3** ([actor-routing-tier3](docs/decisions/actor-routing-tier3.md)) — consistent-hash ring, `ActorSession`, per-group drain, `DirectoryPolicy::ReadYourWrites`.
 - **Follower + lease reads** ([read-consistency](docs/decisions/client-and-routing.md#read-consistency)) — `ReadIndexConfirm` path, `RaftNode::lease_read` fast path.
 - **Liveness vs membership** ([liveness-vs-membership](docs/decisions/cluster-membership.md#liveness-vs-membership)) — `reachable_nodes()`, crash-driven supervisor reconcile.
-- **Discovery & ops** — seed-set + DNS discovery; cluster leave RPC; mTLS hot reload; K8s manifests; `TrafficPolicy`; `crafty-ops` backup/restore; admin HTTPS; linearizability E2E.
+- **Discovery & ops** — seed-set + DNS discovery; cluster leave RPC; mTLS hot reload; `TrafficPolicy`; `crafty-ops` backup/restore; admin HTTPS; linearizability E2E.
 - **Dev JSON wire** — `crafty/json-wire` feature.
 - **Durable job queue (tier C)** ([job-queue](docs/decisions/job-queue.md)) — `JobQueue` port, `RedbJobQueue`, leader `QueueService`, sync voter replication, `ClusterJobQueue`, worker autoscale.
 - **Job queue v2** — sharded streams (`job_queue_sharded`), priority/delayed enqueue (`EnqueueOptions`), enqueue dedup keys, membership autoscale hook (`job_queue_membership_autoscale`); examples in `job_queue_cluster`.
@@ -69,7 +69,7 @@ tested; APIs are still evolving toward a 1.0 stabilization.
 
 ### Changed
 
-- **MSRV 1.98** — workspace, CI, and `deploy/Dockerfile` aligned.
+- **MSRV 1.90** — workspace MSRV probe (`cargo check --workspace --all-features` on 1.85–1.95 toolchains); floor set by `redb 4.2.0` (requires 1.90) and transitive `time 0.3.55` (requires 1.88); CI, `deploy/Dockerfile`, and `clippy.toml` aligned.
 - **Leader-gated forwarded scale** — deposed nodes cannot double-place against the real leader.
 - **Shared `crafty_net::RemoteError`** — unified remote error variant across actor/cluster APIs.
 

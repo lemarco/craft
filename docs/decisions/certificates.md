@@ -44,7 +44,6 @@ crafty **does not embed an ACME client**. CAs and renewers run outside the binar
 | Environment | Issuer | Renewal |
 |-------------|--------|---------|
 | **VPS / docker-compose** | step-ca | `step ca renew` cron/sidecar rewrites PEM files |
-| **Kubernetes** | cert-manager `Certificate` + CA issuer | cert-manager renews Secret; kubelet syncs into pod |
 
 Issued certs must match the manual contract above. Env vars unchanged.
 
@@ -66,7 +65,7 @@ Builder: `Security::from_pem_files` → `PemSecurity`; `.cert_watch(period)` ena
 
 ### Rolling order
 
-1. Reload **followers** first (stagger cert-manager schedules).
+1. Reload **followers** first (stagger renewal schedules).
 2. Reload **leader** last — `CertReloadHandle::reload_now` returns `ReloadLeaderLast` unless `allow_leader: true`.
 3. CA rotation: dual-CA bundle in `ca.pem` until all nodes trust new CA, then roll leaf certs, then trim old CA.
 
@@ -75,14 +74,13 @@ Builder: `Security::from_pem_files` → `PemSecurity`; `.cert_watch(period)` ena
 | Path | Purpose |
 |------|---------|
 | `examples/step-ca/` | docker-compose + bootstrap + renewal demo |
-| `deploy/kubernetes/cert-manager/` | ClusterIssuer + per-ordinal Certificate CRs |
 | `docs/certs.md` § Automation | Operator runbook |
 | `crafty-net` pem + reload | Load + apply |
 | `crafty` `PemSecurity` / `CertReloadHandle` | Facade + `crafty-node` wiring |
 
 ## Consequences
 
-**Positive:** Script + docs for day-one deploy; cert-manager/step-ca integrate without wire changes; renewals become apply-on-disk + poll/SIGHUP.
+**Positive:** Script + docs for day-one deploy; step-ca integrates without wire changes; renewals become apply-on-disk + poll/SIGHUP.
 
 **Negative:** Manual path still requires rolling restart without hot reload; slightly more runtime complexity (config swap + pool eviction).
 

@@ -80,7 +80,7 @@ async fn pem_hot_reload_reissues_leaf_without_restart() {
         .expect("start node 2");
 
     let reload = cluster1.cert_reload().expect("cert reload handle");
-    // Reissue node 1 cert from the same CA (simulates step-ca / cert-manager renewal).
+    // Reissue node 1 cert from the same CA (simulates step-ca renewal).
     run_generate(
         &script,
         &[

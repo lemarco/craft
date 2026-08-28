@@ -51,7 +51,7 @@ Deep introspection/tracing is costlier than BEAM-native ([observability](observa
 
 Per-node and per-client certs, rotation ([security](security.md), [certificates](certificates.md)).
 
-- **Mitigation:** cert script + docs; hot reload + step-ca / cert-manager ([certificates](certificates.md#automation--hot-reload-landed)).
+- **Mitigation:** cert script + docs; hot reload + step-ca ([certificates](certificates.md#automation--hot-reload-landed)).
 
 ## Related
 

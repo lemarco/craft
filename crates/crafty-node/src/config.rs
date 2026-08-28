@@ -35,7 +35,7 @@ pub struct NodeConfig {
     /// On shutdown, remove this node from the cluster via [`crafty::CraftyCluster::leave`]
     /// before stopping (requires at least one other live member).
     pub graceful_leave: bool,
-    /// On-disk PEM paths when production/cert-manager material is configured.
+    /// On-disk PEM paths when production TLS material is configured.
     pub pem_paths: Option<crafty::CertPaths>,
     /// Loaded mTLS identity + trust roots.
     pub security: Security,
@@ -51,13 +51,13 @@ pub struct NodeConfig {
 
 /// A parsed `CRAFTY_DISCOVERY=dns:<prefix>:<service>:<replicas>:<port>` spec.
 pub struct DnsSpec {
-    /// `StatefulSet` name prefix (e.g. `crafty`).
+    /// Hostname prefix (e.g. `crafty` → `crafty-0`, `crafty-1`, …).
     pub prefix: String,
-    /// Headless service name.
+    /// DNS zone / suffix (e.g. `crafty.internal`).
     pub service: String,
-    /// Expected replica count.
+    /// Expected node count.
     pub replicas: u64,
-    /// QUIC port on each pod.
+    /// QUIC port on each node.
     pub port: u16,
 }
 
@@ -72,39 +72,17 @@ fn env_bool(key: &str) -> bool {
     )
 }
 
-/// Derive a node id: explicit `CRAFTY_NODE_ID` wins, otherwise a Kubernetes
-/// `POD_NAME` ordinal (`crafty-0` → `NodeId(1)`), else `1`.
-pub fn parse_node_id(
-    crafty_node_id: Option<&str>,
-    pod_name: Option<&str>,
-) -> Result<NodeId, Box<dyn Error>> {
+/// Parse `CRAFTY_NODE_ID` (default `1` when unset).
+pub fn parse_node_id(crafty_node_id: Option<&str>) -> Result<NodeId, Box<dyn Error>> {
     if let Some(raw) = crafty_node_id {
         return Ok(NodeId(raw.parse()?));
-    }
-    if let Some(pod) = pod_name {
-        let ordinal = parse_pod_ordinal(pod)?;
-        return Ok(NodeId(ordinal + 1));
     }
     Ok(NodeId(1))
 }
 
 /// Derive a node id from the process environment.
 pub fn node_id_from_env() -> Result<NodeId, Box<dyn Error>> {
-    parse_node_id(env("CRAFTY_NODE_ID").as_deref(), env("POD_NAME").as_deref())
-}
-
-/// `StatefulSet` pod ordinal from a name (`crafty-2` → `2`).
-pub fn parse_pod_ordinal(pod: &str) -> Result<u64, Box<dyn Error>> {
-    pod.rsplit_once('-')
-        .and_then(|(_, ord)| ord.parse().ok())
-        .ok_or_else(|| format!("POD_NAME {pod:?} has no trailing ordinal (want name-N)").into())
-}
-
-/// `StatefulSet` pod ordinal from `POD_NAME` in the environment.
-pub fn pod_ordinal_from_env() -> Result<u64, Box<dyn Error>> {
-    let pod = env("POD_NAME")
-        .ok_or("CRAFTY_CERT_ORDINAL_BASE requires POD_NAME (Kubernetes downward API)")?;
-    parse_pod_ordinal(&pod)
+    parse_node_id(env("CRAFTY_NODE_ID").as_deref())
 }
 
 /// PEM-related environment knobs for [`load_security`].
@@ -115,36 +93,15 @@ pub struct PemEnv<'a> {
     pub node_key: Option<&'a str>,
     /// `CRAFTY_CA_CERT`
     pub ca_cert: Option<&'a str>,
-    /// `CRAFTY_CERT_ORDINAL_BASE`
-    pub ordinal_base: Option<&'a str>,
-    /// `POD_NAME` (required with `ordinal_base`)
-    pub pod_name: Option<&'a str>,
 }
 
-/// Load mTLS material from explicit PEM paths or cert-manager ordinal mounts.
+/// Load mTLS material from explicit PEM paths.
 pub fn load_security(
     node_id: NodeId,
     members: &[NodeId],
     joining: bool,
     pem: &PemEnv<'_>,
 ) -> Result<(Security, Option<crafty::CertPaths>), Box<dyn Error>> {
-    if let Some(base) = pem.ordinal_base {
-        let ca = pem
-            .ca_cert
-            .ok_or("CRAFTY_CERT_ORDINAL_BASE requires CRAFTY_CA_CERT")?;
-        let ordinal = match pem.pod_name {
-            Some(pod) => parse_pod_ordinal(pod)?,
-            None => pod_ordinal_from_env()?,
-        };
-        let paths = cert_paths_from_env(
-            format!("{base}/{ordinal}/tls.crt"),
-            format!("{base}/{ordinal}/tls.key"),
-            ca,
-        );
-        let loaded = PemSecurity::load(node_id, paths.clone())?;
-        return Ok((loaded.security, Some(paths)));
-    }
-
     match (pem.node_cert, pem.node_key, pem.ca_cert) {
         (Some(cert), Some(key), Some(ca)) => {
             let paths = cert_paths_from_env(cert, key, ca);
@@ -155,8 +112,7 @@ pub fn load_security(
             if members.len() > 1 || joining {
                 return Err("multi-node clusters need shared certs: set \
                      CRAFTY_NODE_CERT/CRAFTY_NODE_KEY/CRAFTY_CA_CERT on every node \
-                     (mint them with examples/certs/generate.sh; see docs/certs.md), \
-                     or CRAFTY_CERT_ORDINAL_BASE + CRAFTY_CA_CERT for cert-manager. \
+                     (mint them with examples/certs/generate.sh; see docs/certs.md). \
                      A per-process dev CA only works for a single node."
                     .into());
             }
@@ -165,7 +121,7 @@ pub fn load_security(
         }
         _ => Err(
             "set all of CRAFTY_NODE_CERT, CRAFTY_NODE_KEY, CRAFTY_CA_CERT together, \
-             or CRAFTY_CERT_ORDINAL_BASE + CRAFTY_CA_CERT + POD_NAME, or none for dev mode"
+             or none for dev mode"
                 .into(),
         ),
     }
@@ -185,8 +141,6 @@ pub fn load_security_from_env(
             node_cert: env("CRAFTY_NODE_CERT").as_deref(),
             node_key: env("CRAFTY_NODE_KEY").as_deref(),
             ca_cert: env("CRAFTY_CA_CERT").as_deref(),
-            ordinal_base: env("CRAFTY_CERT_ORDINAL_BASE").as_deref(),
-            pod_name: env("POD_NAME").as_deref(),
         },
     )
 }
@@ -391,7 +345,6 @@ mod tests {
 
     const CRAFTY_ENV_KEYS: &[&str] = &[
         "CRAFTY_NODE_ID",
-        "POD_NAME",
         "CRAFTY_LISTEN",
         "CRAFTY_ADMIN",
         "CRAFTY_ADMIN_TLS_CERT",
@@ -405,7 +358,6 @@ mod tests {
         "CRAFTY_NODE_CERT",
         "CRAFTY_NODE_KEY",
         "CRAFTY_CA_CERT",
-        "CRAFTY_CERT_ORDINAL_BASE",
         "CRAFTY_CERT_WATCH_SECS",
         "CRAFTY_DRAIN_TIMEOUT",
         "CRAFTY_DATA_DIR",
@@ -475,66 +427,10 @@ mod tests {
     }
 
     #[test]
-    fn cert_manager_ordinal_base_resolves_pem_paths() {
-        let Some(script) = generate_script() else {
-            eprintln!("skip: generate.sh not found");
-            return;
-        };
-        let dir = tempfile::tempdir().expect("tempdir");
-        let base = dir.path().join("certs");
-        run_generate(
-            &script,
-            &["--node-id", "3", "--out", base.to_str().unwrap()],
-        );
-        let ordinal_dir = base.join("2");
-        std::fs::create_dir_all(&ordinal_dir).expect("ordinal dir");
-        std::fs::rename(base.join("node-3.pem"), ordinal_dir.join("tls.crt")).expect("crt");
-        std::fs::rename(base.join("node-3.key"), ordinal_dir.join("tls.key")).expect("key");
-
-        with_crafty_env(
-            &[
-                ("POD_NAME", Some("crafty-2")),
-                ("CRAFTY_CERT_ORDINAL_BASE", Some(base.to_str().unwrap())),
-                (
-                    "CRAFTY_CA_CERT",
-                    Some(base.join("ca.pem").to_str().unwrap()),
-                ),
-            ],
-            || {
-                let cfg = config_from_env().expect("config");
-                assert_eq!(cfg.node_id, NodeId(3));
-                let paths = cfg.pem_paths.expect("pem paths");
-                assert!(paths.node_cert.ends_with("2/tls.crt"));
-                assert!(paths.node_key.ends_with("2/tls.key"));
-            },
-        );
-    }
-
-    #[test]
-    fn node_id_prefers_crafty_node_id_over_pod_name() {
-        with_crafty_env(
-            &[
-                ("CRAFTY_NODE_ID", Some("7")),
-                ("POD_NAME", Some("crafty-2")),
-            ],
-            || assert_eq!(node_id_from_env().unwrap(), NodeId(7)),
-        );
-    }
-
-    #[test]
-    fn node_id_derives_from_pod_name_ordinal() {
-        with_crafty_env(&[("POD_NAME", Some("crafty-0"))], || {
-            assert_eq!(node_id_from_env().unwrap(), NodeId(1));
-        });
-        with_crafty_env(&[("POD_NAME", Some("crafty-2"))], || {
-            assert_eq!(node_id_from_env().unwrap(), NodeId(3));
-        });
-    }
-
-    #[test]
-    fn pod_ordinal_parses_trailing_segment() {
-        with_crafty_env(&[("POD_NAME", Some("crafty-2"))], || {
-            assert_eq!(pod_ordinal_from_env().unwrap(), 2);
+    fn node_id_parses_from_env_or_defaults() {
+        without_crafty_env(|| assert_eq!(node_id_from_env().unwrap(), NodeId(1)));
+        with_crafty_env(&[("CRAFTY_NODE_ID", Some("7"))], || {
+            assert_eq!(node_id_from_env().unwrap(), NodeId(7));
         });
     }
 
