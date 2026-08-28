@@ -43,7 +43,17 @@ PUBLISH_DRY_RUN_ORDER=(
     crafty-actor crafty-client crafty-dashboard crafty-http crafty-sim crafty-store-redis
     crafty crafty-node
 )
+WS_VERSION="$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')"
+crate_on_index() {
+    curl -fsS -H "User-Agent: crafty-gate" \
+        "https://crates.io/api/v1/crates/${1}/${WS_VERSION}" >/dev/null 2>&1
+}
 for pkg in "${PUBLISH_DRY_RUN_ORDER[@]}"; do
+    if [[ "$pkg" == "crafty" || "$pkg" == "crafty-node" ]] \
+        && ! crate_on_index crafty-http; then
+        log ">> publish dry-run skip $pkg (crafty-http ${WS_VERSION} not on crates.io yet)"
+        continue
+    fi
     cargo publish -p "$pkg" --dry-run --no-verify --allow-dirty 2>&1 | maybe_tee
 done
 
