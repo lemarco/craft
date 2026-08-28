@@ -2,6 +2,21 @@
 
 use craft_proto::{EntryPayload, LogEntry, LogIndex, Term};
 
+/// Parse a `u64` from the environment, falling back to `default`.
+pub fn env_u64(key: &str, default: u64) -> u64 {
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
+/// Opaque payload bytes for queue enqueue benchmarks/soak.
+pub fn queue_payload(size: usize, seq: u64) -> Vec<u8> {
+    let mut buf = vec![0u8; size.max(8)];
+    buf[..8].copy_from_slice(&seq.to_le_bytes());
+    buf
+}
+
 /// A tiny, fast, non-cryptographic PRNG (xorshift64*) so the benches/soak stay
 /// dependency-light and deterministic given a seed.
 pub struct TinyRng(u64);

@@ -223,7 +223,7 @@ Implementation status: **v2 + production polish landed** — Redis adapter remai
 
 **Negative**
 
-- Leader-hosted queue is a **throughput hotspot** at very large enqueue rates (mitigation: batch append, prefetch, future sharding). Replication adds one RTT to each reachable voter before client ack.
+- Leader-hosted queue is a **throughput hotspot** at very large enqueue rates (mitigation: batch append, prefetch, future sharding). Replication adds one RTT to each reachable voter before client ack. Measure with `benchmarks/benches/queue.rs` (criterion) and `soak_queue` (sustained enqueue + follower drain).
 - At-least-once requires **idempotent** handlers and visibility-timeout tuning. Optional **`dedup_key`** on enqueue makes client retries safe while the job exists.
 - Two durability stories (`ActorStateStore` vs `JobQueue`) — docs must keep boundaries explicit ([R4](future-work-and-risks.md)).
 - Extra wire surface and ops metrics for queue lag.

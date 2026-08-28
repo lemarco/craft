@@ -2,6 +2,7 @@
 # crate *outside* the main workspace (its own [workspace] table + excluded by the
 # root manifest) so criterion never compiles in the fast CI lane. Run with
 # `cargo bench` / `cargo run --release --bin soak` from this directory.
+# Queue hotspot: `cargo bench --bench queue`, `SOAK_QUEUE_SECS=60 cargo run --release --bin soak_queue`.
 [package]
 name = "craft-benchmarks"
 version = "0.0.0"
@@ -19,10 +20,10 @@ craft-sim = { path = "../crates/craft-sim" }
 craft = { path = "../crates/craft" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 serde = { version = "1", features = ["derive"] }
+tempfile = "3"
 
 [dev-dependencies]
-criterion = "0.5"
-tempfile = "3"
+criterion = { version = "0.5", features = ["async_tokio"] }
 
 [lib]
 path = "src/lib.rs"
@@ -35,6 +36,10 @@ path = "src/bin/soak.rs"
 name = "soak_multi_raft"
 path = "src/bin/soak_multi_raft.rs"
 
+[[bin]]
+name = "soak_queue"
+path = "src/bin/soak_queue.rs"
+
 [[bench]]
 name = "append"
 harness = false
@@ -45,4 +50,8 @@ harness = false
 
 [[bench]]
 name = "deliver"
+harness = false
+
+[[bench]]
+name = "queue"
 harness = false

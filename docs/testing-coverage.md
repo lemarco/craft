@@ -196,7 +196,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | `e2e` | Scheduled | `e2e/run.sh` + `e2e/chaos.sh` + `e2e/cert_renew.sh` + docker phase of `e2e/linearizability.sh` |
 | `linearizability-sim` | Scheduled | craft-sim linearizability + read_index seed sweep (`e2e/linearizability.sh`) |
 | `store-redis` | Scheduled | `cargo test -p craft-store-redis -- --ignored` |
-| `bench` | Scheduled | criterion + 120s soak + 60s `soak_multi_raft` |
+| `bench` | Scheduled | criterion (`append`/`apply`/`deliver`/`queue`) + 120s soak + 60s `soak_multi_raft` + 60s `soak_queue` |
 | `fuzz` | Scheduled | `cargo-fuzz` wire_decode in `crates/craft-fuzz` |
 
 Local hooks mirror the fast lane: `lefthook` pre-commit (fmt, clippy, check) and
