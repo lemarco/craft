@@ -36,7 +36,16 @@ log ">> doc"
 cargo doc --workspace --no-deps --all-features 2>&1 | maybe_tee
 
 log ">> publish dry-run"
-cargo publish --workspace --dry-run 2>&1 | maybe_tee
+# Per-crate dry-run in dependency order; --no-verify avoids resolving against
+# crates.io when the workspace has API ahead of the last published release.
+PUBLISH_DRY_RUN_ORDER=(
+    crafty-macros crafty-proto crafty-core crafty-storage crafty-net
+    crafty-actor crafty-client crafty-dashboard crafty-sim crafty-store-redis
+    crafty crafty-node
+)
+for pkg in "${PUBLISH_DRY_RUN_ORDER[@]}"; do
+    cargo publish -p "$pkg" --dry-run --no-verify --allow-dirty 2>&1 | maybe_tee
+done
 
 log ">> msrv"
 bash scripts/check-msrv.sh 2>&1 | maybe_tee
