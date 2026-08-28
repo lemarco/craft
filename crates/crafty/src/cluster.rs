@@ -1313,6 +1313,7 @@ pub enum ScaleClusterError {
     Remote(#[from] RemoteError),
 }
 
+/// Why [`CraftyCluster::add_raft_groups`] failed.
 #[derive(Debug, thiserror::Error)]
 pub enum AddRaftGroupsError {
     #[error("multi-raft catalog expansion is not enabled")]

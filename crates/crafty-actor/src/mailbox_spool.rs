@@ -23,8 +23,10 @@ pub struct MailboxSpoolId(pub u64);
 
 #[derive(Debug, thiserror::Error)]
 pub enum MailboxSpoolError {
+    /// Disk / redb backend failure.
     #[error("backend: {0}")]
     Backend(String),
+    /// Envelope encode/decode failure.
     #[error("codec: {0}")]
     Codec(String),
 }

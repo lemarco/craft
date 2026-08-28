@@ -58,9 +58,11 @@ pub struct TrackedKv {
     pub applied_through: u64,
 }
 
-/// Shorter names used by facade/quic/client tests.
+/// Shorter command alias used by facade/quic/client tests.
 pub type Cmd = KvCommand;
+/// Shorter query alias used by facade/quic/client tests.
 pub type Qry = KvQuery;
+/// Shorter response alias used by facade/quic/client tests.
 pub type Resp = KvResponse;
 
 /// Alias used by multi-Raft / persistence tests.

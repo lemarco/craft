@@ -66,6 +66,7 @@ pub enum SagaError {
         /// Forward responses collected before compensation.
         forward_responses: Vec<Vec<u8>>,
         #[source]
+        /// Client error from the failed compensate RPC.
         source: ClientError,
     },
     /// Journal persistence failed (saga aborted before mutating client state further).
@@ -76,7 +77,12 @@ pub enum SagaError {
     NotFound,
     /// Catalog generation changed mid-saga (dynamic catalog expansion).
     #[error("catalog version changed during saga (pinned {pinned}, current {current})")]
-    CatalogVersionChanged { pinned: u32, current: u32 },
+    CatalogVersionChanged {
+        /// Catalog version pinned when the saga started.
+        pinned: u32,
+        /// Current catalog version observed mid-run.
+        current: u32,
+    },
 }
 
 /// Journal persistence failure.

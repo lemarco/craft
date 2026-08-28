@@ -49,6 +49,7 @@ impl ShardedJobQueue {
         Self { shards }
     }
 
+    /// Number of federated shards.
     #[must_use]
     pub fn shard_count(&self) -> usize {
         self.shards.len()
@@ -69,7 +70,9 @@ impl ShardedJobQueue {
 /// One shard's replication batch plus its index (for wire stream `{name}~{shard}`).
 #[derive(Debug, Clone)]
 pub struct ShardedReplication {
+    /// Index into the shard vector passed to [`ShardedJobQueue::new`].
     pub shard: usize,
+    /// Replication ops produced by that shard's leader mutation.
     pub ops: QueueReplicationOps,
 }
 

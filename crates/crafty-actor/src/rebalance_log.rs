@@ -26,6 +26,7 @@ pub fn plan(node_id: NodeId, live: &[NodeId], hosted: &[RaftGroupId], plan: &Gro
     ));
 }
 
+/// Log that a follower skipped rebalance planning.
 pub fn skipped_follower(node_id: NodeId) {
     line(format!(
         "node={} follower — skip rebalance planning",

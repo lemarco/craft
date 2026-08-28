@@ -9,6 +9,7 @@ use crate::{ClientError, KeyedClient};
 
 /// Extension of [`KeyedClient`] for limited cross-shard 2PC.
 pub trait TwoPhaseClient: KeyedClient {
+    /// Stage a command on the shard for `key` under `tx_id`.
     fn prepare_keyed(
         &self,
         tx_id: Vec<u8>,
@@ -16,12 +17,14 @@ pub trait TwoPhaseClient: KeyedClient {
         command: Vec<u8>,
     ) -> impl Future<Output = Result<Vec<u8>, ClientError>> + Send;
 
+    /// Commit a previously prepared command.
     fn commit_keyed(
         &self,
         tx_id: Vec<u8>,
         key: Vec<u8>,
     ) -> impl Future<Output = Result<Vec<u8>, ClientError>> + Send;
 
+    /// Abort a prepared command and release staging state.
     fn abort_keyed(
         &self,
         tx_id: Vec<u8>,
@@ -38,16 +41,22 @@ pub enum TwoPhaseError {
     Journal(#[from] TwoPhaseJournalError),
     #[error("2PC prepare failed at step {step} after {prepared} prepare(s): {source}")]
     Prepare {
+        /// Zero-based step index that failed.
         step: usize,
+        /// Prepare steps that succeeded before the failure.
         prepared: usize,
         #[source]
+        /// Underlying client / transport error.
         source: ClientError,
     },
     #[error("2PC commit failed at step {step} after {committed} commit(s): {source}")]
     Commit {
+        /// Zero-based step index that failed.
         step: usize,
+        /// Commit steps that succeeded before the failure.
         committed: usize,
         #[source]
+        /// Underlying client / transport error.
         source: ClientError,
     },
 }
@@ -91,6 +100,7 @@ pub struct TwoPhaseJournalRecord {
 
 /// Optional journal hook for [`propose_cross_shard_2pc`] / [`resume_cross_shard_2pc`].
 pub trait TwoPhaseJournal: Send + Sync {
+    /// Persist progress after a successful prepare step.
     fn on_prepared<'a>(
         &'a self,
         tx_id: &'a [u8],
@@ -98,6 +108,7 @@ pub trait TwoPhaseJournal: Send + Sync {
         total: usize,
     ) -> Pin<Box<dyn Future<Output = Result<(), TwoPhaseJournalError>> + Send + 'a>>;
 
+    /// Persist progress after a successful commit step.
     fn on_committed<'a>(
         &'a self,
         tx_id: &'a [u8],
@@ -105,11 +116,13 @@ pub trait TwoPhaseJournal: Send + Sync {
         total: usize,
     ) -> Pin<Box<dyn Future<Output = Result<(), TwoPhaseJournalError>> + Send + 'a>>;
 
+    /// Mark the transaction fully committed (may delete the journal row).
     fn on_completed<'a>(
         &'a self,
         tx_id: &'a [u8],
     ) -> Pin<Box<dyn Future<Output = Result<(), TwoPhaseJournalError>> + Send + 'a>>;
 
+    /// Load coordinator progress for resume.
     fn load<'a>(
         &'a self,
         tx_id: &'a [u8],
@@ -222,6 +235,7 @@ impl TwoPhaseJournal for InMemoryTwoPhaseJournal {
 /// Hooks for [`propose_cross_shard_2pc`].
 #[derive(Clone, Copy, Default)]
 pub struct RunTwoPhaseOpts<'a> {
+    /// Optional client-side journal for resume after coordinator restart.
     pub journal: Option<&'a dyn TwoPhaseJournal>,
     /// Metrics / logging callback.
     pub on_event: Option<&'a (dyn Fn(TwoPhaseEvent) + Send + Sync)>,
@@ -230,6 +244,7 @@ pub struct RunTwoPhaseOpts<'a> {
 /// Hooks for [`resume_cross_shard_2pc`].
 #[derive(Clone, Copy)]
 pub struct ResumeTwoPhaseOpts<'a> {
+    /// Journal that records prepared/committed prefixes.
     pub journal: Option<&'a dyn TwoPhaseJournal>,
     /// When `true`, try `commit_keyed` before `prepare_keyed` for unknown steps.
     pub probe: bool,

@@ -226,6 +226,7 @@ impl PhiAccrualLiveness {
             .is_none_or(|d| d.is_available(now))
     }
 
+    /// Drop all per-peer phi-accrual state.
     pub fn clear(&mut self) {
         self.detectors.clear();
     }

@@ -32,17 +32,23 @@ pub struct TwoPhasePlan {
 /// Why a [`TwoPhasePlan`] fails validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TwoPhasePlanError {
+    /// [`TwoPhasePlan::tx_id`] is empty.
     EmptyTxId,
+    /// No steps in the plan.
     EmptyPlan,
+    /// Step count exceeds [`TWO_PHASE_MAX_STEPS`].
     TooManySteps,
+    /// Command payload exceeds [`TWO_PHASE_MAX_PAYLOAD`].
     PayloadTooLarge {
         /// Zero-based step index.
         step: usize,
     },
+    /// `group_for_key` returned `None` for a step key.
     UnroutableKey {
         /// Zero-based step index.
         step: usize,
     },
+    /// Distinct group count exceeds [`TWO_PHASE_MAX_GROUPS`].
     TooManyGroups {
         /// Distinct group count.
         groups: usize,

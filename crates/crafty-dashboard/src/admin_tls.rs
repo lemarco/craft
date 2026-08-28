@@ -24,8 +24,10 @@ pub struct AdminTlsPaths {
 /// Errors loading admin TLS material.
 #[derive(Debug, Error)]
 pub enum AdminTlsError {
+    /// PEM file read failure.
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+    /// Invalid certificate chain or private key.
     #[error("tls config: {0}")]
     Config(String),
 }

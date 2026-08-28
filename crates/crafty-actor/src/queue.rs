@@ -25,15 +25,20 @@ pub struct LeaseId(pub u64);
 /// Identifies a queue consumer (actor instance on a node).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WorkerId {
+    /// Hosting cluster node.
     pub node: NodeId,
+    /// Worker actor instance id on that node.
     pub instance: u32,
 }
 
 /// A job handed to a worker under lease.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LeasedJob {
+    /// Token required for ack/nack.
     pub lease_id: LeaseId,
+    /// Job id within the stream.
     pub job_id: JobId,
+    /// Opaque payload from enqueue.
     pub payload: Vec<u8>,
 }
 
@@ -87,10 +92,14 @@ impl EnqueueOptions {
     }
 }
 
+/// Depth gauges returned by [`JobQueue::metrics`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct QueueMetrics {
+    /// Jobs eligible to lease now.
     pub pending: u64,
+    /// Jobs currently leased.
     pub leased: u64,
+    /// Age of the oldest ready pending job.
     pub oldest_pending_age: Duration,
 }
 

@@ -18,7 +18,9 @@ pub struct AutoscalePolicy {
     pub worker_group: String,
     /// Target pending jobs per worker instance.
     pub target_pending_per_worker: u64,
+    /// Minimum worker instances for this group.
     pub min_workers: usize,
+    /// Maximum worker instances (also capped by reachable nodes).
     pub max_workers: usize,
     /// Minimum time between scale decisions.
     pub cooldown: Duration,
@@ -27,6 +29,7 @@ pub struct AutoscalePolicy {
 }
 
 impl AutoscalePolicy {
+    /// Encode for Meta-Raft / wire replication.
     #[must_use]
     pub fn to_wire(&self) -> AutoscalePolicyWire {
         AutoscalePolicyWire {
@@ -39,6 +42,7 @@ impl AutoscalePolicy {
         }
     }
 
+    /// Decode from wire / Meta-Raft metadata.
     #[must_use]
     pub fn from_wire(w: &AutoscalePolicyWire) -> Self {
         Self {
@@ -53,6 +57,7 @@ impl AutoscalePolicy {
 }
 
 impl MembershipAutoscalePolicy {
+    /// Encode for Meta-Raft / wire replication.
     #[must_use]
     pub fn to_wire(&self) -> MembershipAutoscalePolicyWire {
         MembershipAutoscalePolicyWire {
@@ -63,6 +68,7 @@ impl MembershipAutoscalePolicy {
         }
     }
 
+    /// Decode from wire / Meta-Raft metadata.
     #[must_use]
     pub fn from_wire(w: &MembershipAutoscalePolicyWire) -> Self {
         Self {
@@ -136,8 +142,11 @@ impl QueueAutoscaleRegistry {
 pub struct MembershipAutoscalePolicy {
     /// Request a new node when `(pending + leased) / live_nodes` exceeds this.
     pub pending_per_node_threshold: u64,
+    /// Maximum cluster size this policy may grow to.
     pub max_nodes: usize,
+    /// Minimum time between join attempts.
     pub cooldown: Duration,
+    /// How often queue depth is sampled.
     pub poll_interval: Duration,
 }
 
