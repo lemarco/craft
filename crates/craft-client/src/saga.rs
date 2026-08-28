@@ -506,7 +506,7 @@ fn run_opts_from_record<'a>(
 
 /// Execute `plan` forward; on failure run compensators in reverse for committed steps.
 ///
-/// **Not** serializable atomicity — see `docs/decisions/cross-shard-transactions.md`.
+/// **Not** serializable atomicity — see `docs/decisions/multi-raft.md#cross-shard-transactions`.
 ///
 /// # Errors
 /// [`SagaError::CompensationFailed`] when a compensate command fails.

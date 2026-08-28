@@ -525,13 +525,7 @@ pub fn plan_node_group_rebalance(
         .iter()
         .copied()
         .filter(|g| {
-            node_should_host_group(
-                *g,
-                node_id,
-                live_nodes,
-                replication_factor,
-                learner_factor,
-            )
+            node_should_host_group(*g, node_id, live_nodes, replication_factor, learner_factor)
         })
         .collect();
     let current: BTreeSet<RaftGroupId> = currently_hosted.iter().copied().collect();
@@ -549,7 +543,7 @@ pub fn plan_node_group_rebalance(
 /// Unlike [`ShardRouter::shard_for`], this id never changes when the active
 /// prefix grows ([tier2-multi-raft-architecture]).
 ///
-/// [tier2-multi-raft-architecture]: ../../../docs/decisions/tier2-multi-raft-architecture.md
+/// [multi-raft]: ../../../docs/decisions/multi-raft.md
 #[must_use]
 pub fn virtual_shard_for(key: &[u8]) -> ShardId {
     ShardId((fnv1a(key) % u64::from(MAX_VIRTUAL_SHARDS)) as u32)
@@ -685,7 +679,7 @@ pub struct ShardRoutingSwitchPlan {
 /// Validate switching from Tier 1 modulus to Tier 2 stable virtual routing.
 ///
 /// Keys **remap** to the stable formula — drain keyed clients before applying
-/// ([tier2-multi-raft-architecture](../../docs/decisions/tier2-multi-raft-architecture.md)).
+/// ([multi-raft](../../docs/decisions/multi-raft.md)).
 ///
 /// # Errors
 /// Returns [`ShardRoutingSwitchError::AlreadyStable`] when already on stable routing.

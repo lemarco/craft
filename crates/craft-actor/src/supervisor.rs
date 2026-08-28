@@ -1,5 +1,5 @@
 //! Leader-only cluster supervisor (backlog E10,
-//! [supervisor-leader](../../../docs/decisions/supervisor-leader.md)).
+//! [cluster-elasticity#supervisor--leader-only-reconciliation](../../../docs/decisions/cluster-elasticity.md#supervisor--leader-only-reconciliation)).
 //!
 //! Only the Raft **leader** runs cluster-wide actor placement. The
 //! [`ClusterSupervisor`] holds a declarative set of *managed groups* — "keep

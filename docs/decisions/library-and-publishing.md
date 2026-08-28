@@ -29,7 +29,7 @@
 
 - **SemVer** across the workspace; all `craft-*` crates share a synchronized version.
 - Pre-1.0 (`0.x`): breaking changes allowed on minor bumps, documented in CHANGELOG.
-- Wire/protocol compatibility tracked separately via `Raft-Protocol-Version` ([protocol.md](../protocol.md)); protocol changes are breaking and gated by [join-version-skew](join-version-skew.md).
+- Wire/protocol compatibility tracked separately via `Raft-Protocol-Version` ([protocol.md](../protocol.md)); protocol changes are breaking and gated by [cluster-membership](cluster-membership.md#version-skew--hard-reject).
 
 ### MSRV
 
@@ -79,4 +79,4 @@
 
 - [deployment-model.md](deployment-model.md)
 - [naming.md](naming.md)
-- [join-version-skew.md](join-version-skew.md)
+- [cluster-membership.md#version-skew--hard-reject](cluster-membership.md#version-skew--hard-reject)

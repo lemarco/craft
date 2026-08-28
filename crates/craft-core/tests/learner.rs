@@ -115,7 +115,11 @@ fn add_learner_does_not_shrink_quorum() {
         .propose_membership(vec![NodeId(1), NodeId(2), NodeId(3)], vec![NodeId(4)])
         .unwrap();
     let _ = leader.take_outputs();
-    assert_eq!(leader.commit_index(), LogIndex(1), "joint not committed yet");
+    assert_eq!(
+        leader.commit_index(),
+        LogIndex(1),
+        "joint not committed yet"
+    );
 
     ack(&mut leader, 2, 1);
     assert_eq!(leader.commit_index(), LogIndex(2));

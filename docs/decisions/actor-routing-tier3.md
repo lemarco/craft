@@ -67,8 +67,8 @@ visibility. Default remains eventual + periodic anti-entropy.
 
 ## Related
 
-- [cluster-routing.md](cluster-routing.md)
+- [client-and-routing.md#cluster-actor-routing](client-and-routing.md#cluster-actor-routing)
 - [drain-timeout.md](drain-timeout.md)
 - [cross-node-actors.md](cross-node-actors.md)
-- [read-consistency.md](read-consistency.md)
+- [client-and-routing.md#read-consistency](client-and-routing.md#read-consistency)
 - [future-work-and-risks.md](future-work-and-risks.md) (R3)

@@ -6,7 +6,7 @@
 
 ## Context
 
-With [HTTP/3 for all wire traffic](wire-transport.md), **TLS is mandatory** on the wire. Peer path already uses **mTLS**. User chose **client mTLS** as the production default for `POST /raft/v1/client/wire` — strongest access control for `RemoteClient` callers.
+With [HTTP/3 for all wire traffic](wire-protocol.md), **TLS is mandatory** on the wire. Peer path already uses **mTLS**. User chose **client mTLS** as the production default for `POST /raft/v1/client/wire` — strongest access control for `RemoteClient` callers.
 
 **Not in scope:** browser HTTPS to the user’s own web app — that uses **separate** TLS on the user’s HTTP server (443). Browsers never call `/client/wire` directly ([deployment-model](deployment-model.md)).
 
@@ -93,7 +93,7 @@ CRAFT_CLIENT_KEY=/etc/craft/client.key
 
 ## Related
 
-- [wire-transport.md](wire-transport.md)
-- [client-api.md](client-api.md)
+- [wire-protocol.md](wire-protocol.md)
+- [client-and-routing.md](client-and-routing.md)
 - [deployment-model.md](deployment-model.md)
-- [discovery.md](discovery.md)
+- [cluster-membership.md#discovery](cluster-membership.md#discovery)

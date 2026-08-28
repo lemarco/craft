@@ -1,6 +1,6 @@
 //! Cross-node actor message delivery (backlog E8,
 //! [cross-node-actors](../../../docs/decisions/cross-node-actors.md),
-//! [cluster-routing](../../../docs/decisions/cluster-routing.md)).
+//! [client-and-routing#cluster-actor-routing](../../../docs/decisions/client-and-routing.md#cluster-actor-routing)).
 //!
 //! [`ClusterMessaging`] turns a logical send to a group name into delivery to a
 //! concrete instance: it resolves a target through the cluster directory (E7)

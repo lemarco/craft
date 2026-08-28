@@ -1,6 +1,6 @@
 //! `ActorRegistry` — local actor spawn / pool / scale / stop (backlog E6,
-//! [elastic-cluster](../../../docs/decisions/elastic-cluster.md),
-//! [one-worker-per-vps](../../../docs/decisions/one-worker-per-vps.md)).
+//! [cluster-elasticity](../../../docs/decisions/cluster-elasticity.md),
+//! [cluster-elasticity#one-worker-per-vps-production](../../../docs/decisions/cluster-elasticity.md#one-worker-per-vps-production)).
 //!
 //! This is the **local** half of the actor fabric: named singletons and pools
 //! of user actors running on the node, with round-robin and keyed message

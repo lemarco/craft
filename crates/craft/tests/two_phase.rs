@@ -18,7 +18,9 @@ use craft_test_support::{
     wait_for_each_group_cluster_leader,
 };
 
-async fn spawn_two_group_cluster_with_2pc(durable: bool) -> (LocalNetwork, Vec<Arc<CraftCluster<KvMachine>>>) {
+async fn spawn_two_group_cluster_with_2pc(
+    durable: bool,
+) -> (LocalNetwork, Vec<Arc<CraftCluster<KvMachine>>>) {
     let ids = [craft::NodeId(1), craft::NodeId(2), craft::NodeId(3)];
     let net = LocalNetwork::new();
     let mut clusters = Vec::new();
@@ -256,14 +258,9 @@ async fn durable_cross_shard_two_phase_prepare_survives_restart() {
             place_shard(shard, &groups).map(|g| g.0)
         };
 
-        resume_cross_shard_2pc(
-            &client,
-            &plan,
-            group_for_key,
-            ResumeTwoPhaseOpts::default(),
-        )
-        .await
-        .expect("resume commit after restart");
+        resume_cross_shard_2pc(&client, &plan, group_for_key, ResumeTwoPhaseOpts::default())
+            .await
+            .expect("resume commit after restart");
 
         let qry_from = craft::proto::encode(&KvQuery::Get { key: "from".into() }).unwrap();
         let got_from = send_client_request(

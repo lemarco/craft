@@ -489,7 +489,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     }
 
     /// Poll on-disk PEM files every `period` and hot-reload TLS when they change
-    /// ([cert-automation](decisions/cert-automation.md)).
+    /// ([certificates](decisions/certificates.md)).
     /// Used with [`start_quic_pem`](Self::start_quic_pem); defaults to **60s** when unset.
     #[must_use]
     pub fn cert_watch(mut self, period: Duration) -> Self {

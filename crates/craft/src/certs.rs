@@ -1,4 +1,4 @@
-//! Hot reload of on-disk mTLS material (cert-automation).
+//! Hot reload of on-disk mTLS material ([certificates](certificates.md)).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -41,7 +41,7 @@ impl PemSecurity {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ReloadOpts {
     /// When `false` (default), reload fails on the Raft leader so operators
-    /// roll followers first ([cert-automation](https://gitlab.com/lemarco/craft/-/blob/main/docs/decisions/cert-automation.md)).
+    /// roll followers first ([certificates](https://gitlab.com/lemarco/craft/-/blob/main/docs/decisions/certificates.md)).
     pub allow_leader: bool,
 }
 
@@ -59,7 +59,7 @@ pub enum CertReloadError {
     ReloadLeaderLast,
 }
 
-/// Handle for reloading mTLS configs on a live QUIC node (cert-automation).
+/// Handle for reloading mTLS configs on a live QUIC node ([certificates](certificates.md)).
 pub struct CertReloadHandle {
     node_id: NodeId,
     paths: CertPaths,

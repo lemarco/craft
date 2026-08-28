@@ -95,7 +95,11 @@ pub trait TwoPhaseJournal: Send + Sync {
         &'a self,
         tx_id: &'a [u8],
     ) -> Pin<
-        Box<dyn Future<Output = Result<Option<TwoPhaseJournalRecord>, TwoPhaseJournalError>> + Send + 'a>,
+        Box<
+            dyn Future<Output = Result<Option<TwoPhaseJournalRecord>, TwoPhaseJournalError>>
+                + Send
+                + 'a,
+        >,
     >;
 }
 
@@ -172,7 +176,11 @@ impl TwoPhaseJournal for InMemoryTwoPhaseJournal {
         &'a self,
         tx_id: &'a [u8],
     ) -> Pin<
-        Box<dyn Future<Output = Result<Option<TwoPhaseJournalRecord>, TwoPhaseJournalError>> + Send + 'a>,
+        Box<
+            dyn Future<Output = Result<Option<TwoPhaseJournalRecord>, TwoPhaseJournalError>>
+                + Send
+                + 'a,
+        >,
     > {
         Box::pin(async move {
             Ok(self
@@ -224,11 +232,7 @@ async fn prepare_step<C: TwoPhaseClient>(
 ) -> Result<(), TwoPhaseError> {
     let item = &plan.steps[step];
     client
-        .prepare_keyed(
-            plan.tx_id.clone(),
-            item.key.clone(),
-            item.command.clone(),
-        )
+        .prepare_keyed(plan.tx_id.clone(), item.key.clone(), item.command.clone())
         .await
         .map_err(|source| TwoPhaseError::Prepare {
             step,
@@ -236,8 +240,7 @@ async fn prepare_step<C: TwoPhaseClient>(
             source,
         })?;
     if let Some(j) = journal {
-        j.on_prepared(&plan.tx_id, step, plan.steps.len())
-            .await?;
+        j.on_prepared(&plan.tx_id, step, plan.steps.len()).await?;
     }
     Ok(())
 }
@@ -258,8 +261,7 @@ async fn commit_step<C: TwoPhaseClient>(
             source,
         })?;
     if let Some(j) = journal {
-        j.on_committed(&plan.tx_id, step, plan.steps.len())
-            .await?;
+        j.on_committed(&plan.tx_id, step, plan.steps.len()).await?;
     }
     Ok(bytes)
 }
@@ -279,10 +281,8 @@ async fn prepare_or_commit_step<C: TwoPhaseClient>(
         {
             Ok(bytes) => {
                 if let Some(j) = journal {
-                    j.on_prepared(&plan.tx_id, step, plan.steps.len())
-                        .await?;
-                    j.on_committed(&plan.tx_id, step, plan.steps.len())
-                        .await?;
+                    j.on_prepared(&plan.tx_id, step, plan.steps.len()).await?;
+                    j.on_committed(&plan.tx_id, step, plan.steps.len()).await?;
                 }
                 return Ok(bytes);
             }
@@ -306,13 +306,7 @@ pub async fn propose_cross_shard_2pc<C: TwoPhaseClient>(
     plan: &TwoPhasePlan,
     group_for_key: impl Fn(&[u8]) -> Option<u32>,
 ) -> Result<Vec<Vec<u8>>, TwoPhaseError> {
-    propose_cross_shard_2pc_with_opts(
-        client,
-        plan,
-        group_for_key,
-        RunTwoPhaseOpts::default(),
-    )
-    .await
+    propose_cross_shard_2pc_with_opts(client, plan, group_for_key, RunTwoPhaseOpts::default()).await
 }
 
 /// Like [`propose_cross_shard_2pc`] with an optional client journal.
@@ -342,8 +336,7 @@ pub async fn propose_cross_shard_2pc_with_opts<C: TwoPhaseClient>(
             });
         }
         if let Some(j) = journal {
-            j.on_prepared(&plan.tx_id, step, plan.steps.len())
-                .await?;
+            j.on_prepared(&plan.tx_id, step, plan.steps.len()).await?;
         }
     }
 
@@ -391,9 +384,7 @@ pub async fn resume_cross_shard_2pc<C: TwoPhaseClient>(
     }
 
     for step in prepared_through..plan.steps.len() {
-        responses.push(
-            prepare_or_commit_step(client, plan, step, journal, opts.probe).await?,
-        );
+        responses.push(prepare_or_commit_step(client, plan, step, journal, opts.probe).await?);
     }
 
     if let Some(j) = journal {
@@ -414,8 +405,10 @@ mod tests {
     use super::*;
     use crate::{RemoteClient, RetryPolicy};
 
+    type PreparedKeys = HashSet<(Vec<u8>, Vec<u8>)>;
+
     struct TwoPhaseScript {
-        prepared: Arc<Mutex<HashSet<(Vec<u8>, Vec<u8>)>>>,
+        prepared: Arc<Mutex<PreparedKeys>>,
     }
 
     impl Transport for TwoPhaseScript {
@@ -497,9 +490,10 @@ mod tests {
             ..Default::default()
         });
         let plan = sample_plan();
-        let out = resume_cross_shard_2pc(&client, &plan, |_| Some(0), ResumeTwoPhaseOpts::default())
-            .await
-            .expect("resume");
+        let out =
+            resume_cross_shard_2pc(&client, &plan, |_| Some(0), ResumeTwoPhaseOpts::default())
+                .await
+                .expect("resume");
         assert_eq!(out.len(), 2);
     }
 

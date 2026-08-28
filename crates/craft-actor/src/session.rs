@@ -4,7 +4,7 @@
 //! after the first keyed pick, then route subsequent casts/asks to the same
 //! [`ActorId`] until the lease expires or the instance disappears.
 //!
-//! [cluster-routing]: ../../../docs/decisions/cluster-routing.md
+//! [client-and-routing#cluster-actor-routing]: ../../../docs/decisions/client-and-routing.md#cluster-actor-routing
 
 use std::time::{Duration, Instant};
 

@@ -710,7 +710,8 @@ async fn auto_compaction_runs_when_entry_threshold_reached() {
     );
     net.attach(
         id,
-        Arc::new(NodeService::new(handle.clone(), Arc::clone(&transport))) as Arc<dyn RequestHandler>,
+        Arc::new(NodeService::new(handle.clone(), Arc::clone(&transport)))
+            as Arc<dyn RequestHandler>,
     );
 
     await_node_leader(&[(id, handle.clone())]).await;

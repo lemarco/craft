@@ -1,6 +1,6 @@
 //! Actor control plane: remote spawn + cluster-wide placement (backlog E9,
 //! [cross-node-actors](../../../docs/decisions/cross-node-actors.md),
-//! [one-worker-per-vps](../../../docs/decisions/one-worker-per-vps.md)).
+//! [cluster-elasticity#one-worker-per-vps-production](../../../docs/decisions/cluster-elasticity.md#one-worker-per-vps-production)).
 //!
 //! [`ClusterControl`] places actors across the cluster:
 //!

@@ -1,6 +1,6 @@
 # Wire protocol
 
-**HTTP/3 over QUIC** for all network traffic ([wire-transport](decisions/wire-transport.md)). Bodies are **`postcard`-encoded** Rust types from `raft-proto` ([serialization](decisions/serialization.md)). No gRPC, no JSON on the hot path.
+**HTTP/3 over QUIC** for all network traffic ([wire-protocol](decisions/wire-protocol.md)). Bodies are **`postcard`-encoded** Rust types from `raft-proto`. No gRPC, no JSON on the hot path.
 
 ## Transport
 
@@ -59,7 +59,7 @@ pub enum ClientRequest {
 
 | Status | When | Body |
 |--------|------|------|
-| `200` | Handled locally (leader) or proxied from leader ([client-routing](decisions/client-routing.md)) | `postcard(ClientResponse)` |
+| `200` | Handled locally (leader) or proxied from leader ([client-and-routing](decisions/client-and-routing.md)) | `postcard(ClientResponse)` |
 | `503` | No leader elected / forward target unknown | `postcard(ClientResponse::Error)` |
 | `504` | Forward to leader timed out | `postcard(ClientResponse::Error)` |
 | `400` / `500` | Bad request / server fault | optional error body |
@@ -83,15 +83,15 @@ POST /raft/v1/cluster/join
 Content-Type: application/x-postcard
 ```
 
-**Requires** target node started with `--allow-join` ([elastic-cluster](decisions/elastic-cluster.md)). Leader applies **joint-consensus membership change** via Raft log ([membership-early](decisions/membership-early.md)).
+**Requires** target node started with `--allow-join` ([cluster-elasticity](decisions/cluster-elasticity.md)). Leader applies **joint-consensus membership change** via Raft log ([cluster-membership](decisions/cluster-membership.md)).
 
 | Status | When |
 |--------|------|
 | `200` | Join accepted; membership change initiated/completed |
 | `403` | Join disabled (`--allow-join` not set) |
-| `409` | Version mismatch ([join-version-skew](decisions/join-version-skew.md)), duplicate `NODE_ID`, or invalid cert |
+| `409` | Version mismatch ([cluster-membership](decisions/cluster-membership.md#version-skew--hard-reject)), duplicate `NODE_ID`, or invalid cert |
 
-Request/response types: `JoinRequest` / `JoinResponse` in `craft-proto` ([join-rpc](decisions/join-rpc.md)).
+Request/response types: `JoinRequest` / `JoinResponse` in `craft-proto` ([cluster-membership](decisions/cluster-membership.md#join-rpc)).
 
 ### Cluster leave (node ↔ node)
 
@@ -100,9 +100,9 @@ POST /raft/v1/cluster/leave
 Content-Type: application/x-postcard
 ```
 
-**Requires** target node started with `--allow-leave`. The leader applies a **joint-consensus membership change** removing `LeaveRequest.node_id` from group 0 ([per-group-raft-membership](decisions/per-group-raft-membership.md)); per-group sync removes the node from shard groups.
+**Requires** target node started with `--allow-leave`. The leader applies a **joint-consensus membership change** removing `LeaveRequest.node_id` from Meta-Raft (or group 0 in single-group mode) ([cluster-membership](decisions/cluster-membership.md)); per-group sync removes the node from shard groups.
 
-Request/response types: `LeaveRequest` / `LeaveResponse` in `craft-proto` ([leave-rpc](decisions/leave-rpc.md)).
+Request/response types: `LeaveRequest` / `LeaveResponse` in `craft-proto` ([cluster-membership](decisions/cluster-membership.md#leave-rpc)).
 
 ### Cluster catalog add (multi-Raft, node ↔ node)
 
@@ -111,7 +111,7 @@ POST /raft/v1/cluster/catalog/add
 Content-Type: application/x-postcard
 ```
 
-**Multi-Raft only.** The group 0 leader appends a [`CatalogCommand::AddGroups`](../../crates/craft-proto/src/catalog.rs) entry to the group 0 Raft log (not the user state machine). All nodes replay the entry, update the in-memory catalog, extend keyed routing, and rebalance to adopt new groups ([tier2-multi-raft-architecture](decisions/tier2-multi-raft-architecture.md)).
+**Multi-Raft only.** The Meta-Raft leader appends a [`CatalogCommand::AddGroups`](../../crates/craft-proto/src/catalog.rs) entry to the Meta-Raft log (not the user state machine). All nodes replay the entry, update the in-memory catalog, extend keyed routing, and rebalance to adopt new groups ([multi-raft](decisions/multi-raft.md)).
 
 Request/response types: `CatalogAddRequest` / `CatalogAddResponse` in `craft-proto`. Facade: `CraftCluster::add_raft_groups(count)`.
 
@@ -121,7 +121,7 @@ Request/response types: `CatalogAddRequest` / `CatalogAddResponse` in `craft-pro
 |-------|---------|
 | `POST /raft/v1/actor/deliver` | Message / ask to actor mailbox |
 | `POST /raft/v1/actor/spawn` | Remote spawn (`spawn_remote`, placement) |
-| `POST /raft/v1/actor/scale` | Forward a cluster-wide scale to the leader ([supervisor-leader](decisions/supervisor-leader.md)) |
+| `POST /raft/v1/actor/scale` | Forward a cluster-wide scale to the leader ([cluster-elasticity](decisions/cluster-elasticity.md)) |
 | `POST /raft/v1/actor/migrate` | Snapshot transfer + respawn on target node |
 | `POST /raft/v1/actor/stop` | Stop a group on a target node for a planned scale-down / removal |
 | `POST /raft/v1/actor/register` | Directory publish / revoke |
@@ -131,7 +131,7 @@ See [cross-node-actors](decisions/cross-node-actors.md).
 ## Connections
 
 - **Peers:** long-lived QUIC connection per remote node; concurrent RPCs on separate HTTP/3 streams.
-- **Clients:** QUIC connection to **any** member; followers transparently forward to leader ([client-routing](decisions/client-routing.md)).
+- **Clients:** QUIC connection to **any** member; followers transparently forward to leader ([client-and-routing](decisions/client-and-routing.md)).
 - **Max body size:** default 16 MiB (configurable; snapshots may use chunked `InstallSnapshot` before single-frame limits).
 
 ## Versioning
@@ -155,6 +155,6 @@ Details in [security](decisions/security.md).
 
 ## Related
 
-- [decisions/wire-transport.md](decisions/wire-transport.md)
-- [decisions/client-api.md](decisions/client-api.md)
+- [decisions/wire-protocol.md](decisions/wire-protocol.md)
+- [decisions/client-and-routing.md](decisions/client-and-routing.md)
 - [architecture.md](architecture.md)

@@ -60,10 +60,10 @@ sequenceDiagram
 ```
 
 1. **First VPS:** no join address — becomes seed (single-node Raft until peers arrive).
-2. **Next VPS:** `JOIN_ADDR` points at any live member (typically first); framework runs **join protocol** ([elastic-cluster](elastic-cluster.md)).
+2. **Next VPS:** `JOIN_ADDR` points at any live member (typically first); framework runs **join protocol** ([cluster-elasticity](cluster-elasticity.md)).
 3. **Further VPSes:** same — connect to seed or any healthy peer.
 
-Client traffic: any node (transparent forward, [client-routing](client-routing.md)). Load balancers can round-robin across VPS addresses.
+Client traffic: any node (transparent forward, [client-and-routing](client-and-routing.md)). Load balancers can round-robin across VPS addresses.
 
 ## Two layers of “scale on demand”
 
@@ -71,8 +71,8 @@ The framework separates:
 
 | Layer | What scales | Mechanism |
 |-------|-------------|-----------|
-| **Cluster** | Raft peers (VPS count) | Incremental join/leave ([elastic-cluster](elastic-cluster.md), [discovery](discovery.md)) |
-| **Application** | User **actors** | 1 worker/VPS (prod); scale via new VPS ([one-worker-per-vps](one-worker-per-vps.md)) |
+| **Cluster** | Raft peers (VPS count) | Incremental join/leave ([cluster-elasticity](cluster-elasticity.md), [cluster-membership](cluster-membership.md#discovery)) |
+| **Application** | User **actors** | 1 worker/VPS (prod); scale via new VPS ([cluster-elasticity](cluster-elasticity.md#one-worker-per-vps-production)) |
 
 Raft gives **consistent replicated state** (via user `StateMachine`). **Actors** handle concurrent work, messages, and domain logic — scaled by spawning more actor instances (local or distributed — see elastic-cluster).
 
@@ -94,12 +94,12 @@ Raft gives **consistent replicated state** (via user `StateMachine`). **Actors**
 
 **Negative**
 
-- Join/membership via joint consensus in v1 ([membership-early](membership-early.md))
+- Join/membership via joint consensus in v1 ([cluster-membership](cluster-membership.md))
 - User must operate certs, firewall (UDP 7443), and seed node availability
-- Actor placement across nodes needs explicit design ([elastic-cluster](elastic-cluster.md))
+- Actor placement across nodes needs explicit design ([cluster-elasticity](cluster-elasticity.md))
 
 ## Related
 
-- [elastic-cluster.md](elastic-cluster.md) — join flow, actor scaling contract
-- [discovery.md](discovery.md) — bootstrap vs join address
+- [cluster-elasticity](cluster-elasticity.md) — join flow, actor scaling contract
+- [cluster-membership](cluster-membership.md#discovery) — bootstrap vs join address
 - [state-machine.md](state-machine.md)

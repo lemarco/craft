@@ -1,5 +1,5 @@
 //! VPS resource profile for the one-worker-per-VPS model (backlog E13,
-//! [one-worker-per-vps](../../../docs/decisions/one-worker-per-vps.md)).
+//! [cluster-elasticity#one-worker-per-vps-production](../../../docs/decisions/cluster-elasticity.md#one-worker-per-vps-production)).
 //!
 //! In production `craft` runs a **single** worker actor per VPS and expects
 //! that worker to use the whole machine — parallelism lives *inside* the actor

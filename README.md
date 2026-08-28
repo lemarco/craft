@@ -31,7 +31,7 @@
 - Multi-Raft write scaling: **Meta-Raft coordinator** (join/catalog/saga isolated from user groups), dynamic catalog, stable shards, group migration, per-group membership
 - Cross-shard saga coordinator + optional 2PC; follower/lease reads
 - K8s manifests, cert hot reload, reachability-driven supervisor, `craft-ops` backup
-- **41 accepted ADRs** — [docs/decisions/](docs/decisions/)
+- Design decision records — [docs/decisions/](docs/decisions/)
 
 ### Not yet (by design or process)
 
@@ -77,13 +77,13 @@ let cluster = CraftCluster::builder(NodeId(1), Counter::default())
     .await;
 ```
 
-Multi-Raft: `.raft_groups(n)`, `.stable_shards()`, `.data_dir(path)`. With `raft_groups > 1`, cluster metadata (join/leave, catalog, saga journal) lives on a dedicated **Meta-Raft** group (`group-meta.redb`); group 0 is user data only — [meta-raft](docs/decisions/meta-raft.md). Keyed client: `propose_keyed` / `query_keyed`. Cross-shard: `run_keyed_saga` / `resume_keyed_saga`.
+Multi-Raft: `.raft_groups(n)`, `.stable_shards()`, `.data_dir(path)`. With `raft_groups > 1`, cluster metadata (join/leave, catalog, saga journal) lives on a dedicated **Meta-Raft** group (`group-meta.redb`); group 0 is user data only — [multi-raft](docs/decisions/multi-raft.md). Keyed client: `propose_keyed` / `query_keyed`. Cross-shard: `run_keyed_saga` / `resume_keyed_saga`.
 
 ## Design principles
 
 - **Library-first** — embed `craft`, no sidecar ([deployment-model](docs/decisions/deployment-model.md))
-- **Linearizable SM** — `propose` / `query` via Raft ([read-consistency](docs/decisions/read-consistency.md))
-- **Transparent routing** — any node forwards to leader ([client-routing](docs/decisions/client-routing.md))
+- **Linearizable SM** — `propose` / `query` via Raft ([client-and-routing](docs/decisions/client-and-routing.md))
+- **Transparent routing** — any node forwards to leader ([client-and-routing](docs/decisions/client-and-routing.md))
 - **Pure core** — `craft-core` is I/O-free; ports & adapters ([architecture-style](docs/decisions/architecture-style.md))
 - **Testable** — sim-first + E2E ([testing-strategy](docs/decisions/testing-strategy.md))
 
@@ -122,7 +122,7 @@ cargo install craft-node
 |-----|----------------|
 | [docs/status.md](docs/status.md) | **Current capabilities and limits** |
 | [docs/architecture.md](docs/architecture.md) | Crate graph, data flows |
-| [docs/decisions/](docs/decisions/) | 41 ADRs — design rationale ([meta-raft](docs/decisions/meta-raft.md), multi-Raft, actors, …) |
+| [docs/decisions/](docs/decisions/) | Design rationale (multi-Raft, membership, actors, …) |
 | [docs/testing-coverage.md](docs/testing-coverage.md) | Test inventory |
 | [docs/protocol.md](docs/protocol.md) | HTTP/3 routes |
 | [docs/releasing.md](docs/releasing.md) | crates.io workflow |

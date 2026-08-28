@@ -56,5 +56,5 @@ not needed. Actor message ergonomics use the `remote_actor` attribute macro in `
 
 ## Related
 
-- [client-api.md](client-api.md) — how clients submit commands to the machine
+- [client-and-routing.md](client-and-routing.md) — how clients submit commands to the machine
 - [architecture.md](../architecture.md) — `RaftCore` apply loop

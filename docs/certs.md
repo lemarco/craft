@@ -243,7 +243,7 @@ let cluster = CraftCluster::builder(node_id, machine)
 // cluster.cert_reload() → manual reload_now(...)
 ```
 
-See [cert-automation](decisions/cert-automation.md).
+See [cert-automation](decisions/certificates.md).
 
 ### CA rotation
 

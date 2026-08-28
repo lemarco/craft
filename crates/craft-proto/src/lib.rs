@@ -240,6 +240,7 @@ mod tests {
                 tx_id: b"tx".to_vec(),
                 route_key: b"key".to_vec(),
                 command: vec![1, 2],
+                prepared_at_ms: 0,
             }),
         };
         let bytes = encode(&entry).expect("encode");

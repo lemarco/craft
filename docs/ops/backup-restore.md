@@ -84,6 +84,6 @@ No vault integration — inject secrets via your orchestrator.
 
 ## Related
 
-- [tier2-production-reliability.md](../decisions/tier2-production-reliability.md)
-- [write-sharding-multi-raft.md](../decisions/write-sharding-multi-raft.md) — `data_dir` layout
-- [cert-provisioning.md](../decisions/cert-provisioning.md) — mTLS material on restore
+- [multi-raft.md#production-reliability](../decisions/multi-raft.md#production-reliability)
+- [multi-raft.md](../decisions/multi-raft.md) — `data_dir` layout
+- [certificates.md](../decisions/certificates.md) — mTLS material on restore

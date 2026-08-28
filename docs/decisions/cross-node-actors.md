@@ -140,7 +140,7 @@ impl ActorRegistry {
 }
 ```
 
-**`scale_cluster` placement:** governed by [one-worker-per-vps](one-worker-per-vps.md).
+**`scale_cluster` placement:** governed by [cluster-elasticity](cluster-elasticity.md#one-worker-per-vps-production).
 
 **Production (default):** at most **1 worker per VPS** per `name`. `scale_cluster(total)` sets cluster-wide count; `total ≤ live_node_count`. Scale out by adding VPSes, not stacking workers locally.
 
@@ -263,8 +263,8 @@ Actor placement is **operational**, not consensus-logged. Only user **commands**
 
 ## Related
 
-- [one-worker-per-vps.md](one-worker-per-vps.md)
-- [cluster-routing.md](cluster-routing.md)
-- [elastic-cluster.md](elastic-cluster.md)
-- [wire-transport.md](wire-transport.md)
+- [cluster-elasticity](cluster-elasticity.md#one-worker-per-vps-production)
+- [client-and-routing](client-and-routing.md#cluster-actor-routing)
+- [cluster-elasticity](cluster-elasticity.md)
+- [wire-protocol](wire-protocol.md)
 - [state-machine.md](state-machine.md)

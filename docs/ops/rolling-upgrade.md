@@ -10,7 +10,7 @@ How to upgrade a craft cluster without downtime. Distinguishes **wire protocol**
 | **Wire protocol** | `protocol_version` / `Raft-Protocol-Version` header | **Band** `[MIN_COMPATIBLE_PROTOCOL_VERSION .. PROTOCOL_VERSION]` — adjacent releases may coexist during staggered restarts |
 | **App state machine** | `app_version` in join RPC | **Exact match** — mixed semver risks incompatible `StateMachine` / actor behaviour |
 
-See [join-version-skew.md](../decisions/join-version-skew.md).
+See [cluster-membership.md#version-skew--hard-reject](../decisions/cluster-membership.md#version-skew--hard-reject).
 
 ## Wire-only rolling restart (same app semver)
 
@@ -49,6 +49,6 @@ shape, not application semantics.
 
 ## Related
 
-- [join-version-skew.md](../decisions/join-version-skew.md)
-- [tier2-production-reliability.md](../decisions/tier2-production-reliability.md)
+- [cluster-membership.md#version-skew--hard-reject](../decisions/cluster-membership.md#version-skew--hard-reject)
+- [multi-raft.md#production-reliability](../decisions/multi-raft.md#production-reliability)
 - [docs/ops/backup-restore.md](backup-restore.md)

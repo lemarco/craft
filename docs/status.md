@@ -107,7 +107,7 @@ Documented in [future-work-and-risks](decisions/future-work-and-risks.md):
 | Doc | Purpose |
 |-----|---------|
 | [architecture.md](architecture.md) | Crate graph, data flows |
-| [decisions/README index](README.md) | All 40 ADRs |
+| [decisions/](decisions/) | Design decision records |
 | [testing-coverage.md](testing-coverage.md) | Test inventory |
 | [CHANGELOG.md](../CHANGELOG.md) | Version history |
 | [releasing.md](releasing.md) | Publish workflow |

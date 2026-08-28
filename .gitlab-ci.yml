@@ -33,6 +33,7 @@ fast:
     - if: $CI_COMMIT_BRANCH
   before_script:
     - rustup component add rustfmt clippy
+    - mkdir -p "$CARGO_HOME/bin"
     - curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C "$CARGO_HOME/bin"
   script:
     - cargo fmt --all -- --check

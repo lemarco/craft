@@ -9,17 +9,17 @@ Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `craft-core`, I/
 | Concern | Choice | Decision |
 |---------|--------|----------|
 | State machine | Generic trait + macros | [state-machine](decisions/state-machine.md) |
-| Wire transport | HTTP/3 + QUIC | [wire-transport](decisions/wire-transport.md) |
-| Serialization | postcard + serde (optional JSON wire for dev) | [serialization](decisions/serialization.md) |
-| Client API | In-process + HTTP/3 remote | [client-api](decisions/client-api.md) |
+| Wire transport | HTTP/3 + QUIC | [wire-protocol](decisions/wire-protocol.md) |
+| Serialization | postcard + serde (optional JSON wire for dev) | [wire-protocol](decisions/wire-protocol.md) |
+| Client API | In-process + HTTP/3 remote | [client-and-routing](decisions/client-and-routing.md) |
 | Deployment | Library-first; one app, N VPS processes | [deployment-model](decisions/deployment-model.md) |
-| Elasticity | Incremental join + supervisor reconcile | [elastic-cluster](decisions/elastic-cluster.md) |
+| Elasticity | Incremental join + supervisor reconcile | [cluster-elasticity](decisions/cluster-elasticity.md) |
 | Cross-node actors | Messaging, spawn, scale, migration | [cross-node-actors](decisions/cross-node-actors.md) |
-| Worker placement | 1 worker / VPS; auto-spawn on join | [one-worker-per-vps](decisions/one-worker-per-vps.md), [auto-spawn-on-join](decisions/auto-spawn-on-join.md) |
-| Discovery | Seed set + DNS + joint-consensus join | [discovery](decisions/discovery.md), [membership-early](decisions/membership-early.md) |
-| Client routing | Transparent forward to leader | [client-routing](decisions/client-routing.md) |
-| Keyed routing | Shard → group → leader (multi-Raft) | [write-sharding-multi-raft](decisions/write-sharding-multi-raft.md) |
-| Read consistency | ReadIndex / lease / follower reads | [read-consistency](decisions/read-consistency.md) |
+| Worker placement | 1 worker / VPS; auto-spawn on join | [cluster-elasticity](decisions/cluster-elasticity.md) |
+| Discovery | Seed set + DNS + joint-consensus join | [cluster-membership](decisions/cluster-membership.md) |
+| Client routing | Transparent forward to leader | [client-and-routing](decisions/client-and-routing.md) |
+| Keyed routing | Shard → group → leader (multi-Raft) | [multi-raft](decisions/multi-raft.md) |
+| Read consistency | ReadIndex / lease / follower reads | [client-and-routing](decisions/client-and-routing.md) |
 | Actor runtime | tokio tasks + supervision | [cross-node-actors](decisions/cross-node-actors.md) |
 | Persistence | redb (per-group files in multi-Raft) | — |
 | TLS | mTLS peers + mTLS client wire | [security](decisions/security.md) |
@@ -102,7 +102,7 @@ Keyed writes in multi-Raft clusters: `ProposeKeyed` / `QueryKeyed` → shard rou
 ### Write (single group)
 
 1. Client sends `ClientRequest::Propose` to any node (L1 or L2).
-2. Follower **forwards** to the leader ([client-routing](decisions/client-routing.md)).
+2. Follower **forwards** to the leader ([client-and-routing](decisions/client-and-routing.md)).
 3. Leader appends, persists, replicates via `AppendEntries` on `/peer/wire`.
 4. Majority match → commit → `StateMachine::apply` → response.
 
@@ -117,13 +117,13 @@ Keyed writes in multi-Raft clusters: `ProposeKeyed` / `QueryKeyed` → shard rou
 2. Journal persisted (`StoreSagaJournal`, `Group0SagaJournal`, or composite).
 3. On failure, compensators run in reverse; `resume_saga` continues after restart.
 
-See [cross-shard-transactions](decisions/cross-shard-transactions.md).
+See [multi-raft](decisions/multi-raft.md#cross-shard-transactions).
 
 ### Read
 
 1. `ClientRequest::Query` → leader ReadIndex or lease fast path (or follower ReadIndex confirm).
 2. Apply barrier → `StateMachine::query`.
-3. Actor `ask` is **not** linearizable — use `query` for SM data ([read-consistency](decisions/read-consistency.md)).
+3. Actor `ask` is **not** linearizable — use `query` for SM data ([client-and-routing](decisions/client-and-routing.md)).
 
 ### Election
 
@@ -139,7 +139,7 @@ Leader (group 0)
   → facts refresher → supervisor reconcile (reachable_nodes)
 ```
 
-Details: [write-sharding-multi-raft](decisions/write-sharding-multi-raft.md), [tier2-multi-raft-architecture](decisions/tier2-multi-raft-architecture.md).
+Details: [multi-raft](decisions/multi-raft.md).
 
 ## Related
 

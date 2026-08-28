@@ -18,14 +18,14 @@ Structural limits and mitigations for craft. Shipped capabilities are listed in 
 
 ### R1 — Write throughput ceiling (per Raft group)
 
-Adding VPSes improves **fault tolerance** and **actor compute**, not linear write throughput through a **single** Raft log ([scale-targets](scale-targets.md)).
+Adding VPSes improves **fault tolerance** and **actor compute**, not linear write throughput through a **single** Raft log ([cluster-elasticity](cluster-elasticity.md#scale-targets)).
 
-- **Mitigation (shipped):** multi-Raft — partition keys across groups; add groups via `add_raft_groups` ([tier2-multi-raft-architecture](tier2-multi-raft-architecture.md)).
+- **Mitigation (shipped):** multi-Raft — partition keys across groups; add groups via `add_raft_groups` ([multi-raft](multi-raft.md)).
 - **Guidance:** keep commands small; use Redis ([actor-state-redis](actor-state-redis.md)) for high-churn workflow state outside consensus.
 
 ### R2 — Consensus starvation on shared QUIC listener
 
-Peer, client, and actor traffic share one port ([wire-transport](wire-transport.md)). Heavy payloads could delay heartbeats.
+Peer, client, and actor traffic share one port ([wire-protocol](wire-protocol.md)). Heavy payloads could delay heartbeats.
 
 - **Mitigation (shipped):** dedicated peer connection + optional `TrafficPolicy` throttling on client/actor classes.
 
@@ -49,15 +49,15 @@ Deep introspection/tracing is costlier than BEAM-native ([observability](observa
 
 ### R6 — mTLS operational burden
 
-Per-node and per-client certs, rotation ([security](security.md), [cert-provisioning](cert-provisioning.md)).
+Per-node and per-client certs, rotation ([security](security.md), [certificates](certificates.md)).
 
-- **Mitigation:** cert script + docs; hot reload + step-ca / cert-manager ([cert-automation](cert-automation.md)).
+- **Mitigation:** cert script + docs; hot reload + step-ca / cert-manager ([certificates](certificates.md#automation--hot-reload-landed)).
 
 ## Related
 
 - [status.md](../status.md) — current capabilities and intentional deferrals
-- [scale-targets.md](scale-targets.md)
-- [wire-transport.md](wire-transport.md)
-- [read-consistency.md](read-consistency.md)
+- [cluster-elasticity](cluster-elasticity.md#scale-targets)
+- [wire-protocol](wire-protocol.md)
+- [client-and-routing](client-and-routing.md#read-consistency)
 - [actor-state-redis.md](actor-state-redis.md)
 - [observability.md](observability.md)

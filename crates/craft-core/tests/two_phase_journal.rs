@@ -83,7 +83,9 @@ fn leader_propose_two_phase_prepare_emits_applied_not_user_sm() {
     let _ = n.take_outputs();
 
     let cmd = sample_prepare();
-    let index = n.propose_two_phase_prepare(cmd.clone()).expect("leader propose");
+    let index = n
+        .propose_two_phase_prepare(cmd.clone())
+        .expect("leader propose");
     let outs = n.take_outputs();
 
     assert_eq!(prepare_applied(&outs), vec![(index, cmd)]);
@@ -99,7 +101,9 @@ fn two_phase_prepare_replicates_and_applies_on_follower() {
     elect_leader_term1(&mut leader);
 
     let cmd = sample_prepare();
-    let index = leader.propose_two_phase_prepare(cmd.clone()).expect("propose");
+    let index = leader
+        .propose_two_phase_prepare(cmd.clone())
+        .expect("propose");
     assert_eq!(index, LogIndex(2), "election noop is index 1");
 
     let mut follower = node(2, &[1, 2, 3]);
@@ -139,7 +143,9 @@ fn leader_propose_two_phase_abort_emits_applied() {
         tx_id: b"tx-1".to_vec(),
         route_key: b"shard-key".to_vec(),
     };
-    let index = n.propose_two_phase_abort(cmd.clone()).expect("leader propose");
+    let index = n
+        .propose_two_phase_abort(cmd.clone())
+        .expect("leader propose");
     let outs = n.take_outputs();
     assert_eq!(abort_applied(&outs), vec![(index, cmd)]);
 }

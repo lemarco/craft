@@ -809,10 +809,7 @@ async fn per_group_learners_replicate_without_voting() {
     let resp = send_client_request(
         &*Arc::new(net.clone()),
         leader.node_id(),
-        &ClientRequest::ProposeKeyed {
-            key,
-            command: cmd,
-        },
+        &ClientRequest::ProposeKeyed { key, command: cmd },
     )
     .await
     .expect("propose");

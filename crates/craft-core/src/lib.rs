@@ -20,13 +20,13 @@ mod shard;
 mod state_machine;
 mod two_phase;
 
-pub use failure_detector::{
-    AckWindowLiveness, FailureDetectorKind, PhiAccrualDetector, PhiAccrualLiveness,
-    ReachabilityConfig,
-};
 pub use compaction::{
     CompactionPolicy, CompactionStats, DEFAULT_COMPACT_BYTES, DEFAULT_COMPACT_ENTRIES,
     compaction_stats, entry_estimated_bytes, should_compact,
+};
+pub use failure_detector::{
+    AckWindowLiveness, FailureDetectorKind, PhiAccrualDetector, PhiAccrualLiveness,
+    ReachabilityConfig,
 };
 pub use node::{
     CatalogProposeError, Committed, Config, MembershipError, NotLeader, Output, Persist, RaftNode,
@@ -43,9 +43,8 @@ pub use shard::{
     groups_joining_node_affects, groups_leaving_node_affects, is_meta_raft_group,
     node_should_host_group, place_shard, plan_catalog_expansion, plan_group_membership_change,
     plan_group_membership_sync, plan_node_group_rebalance, plan_shard_count_expansion,
-    plan_stable_shard_activation,
-    plan_switch_to_stable_routing, shard_is_active, stable_router_preserves_routable_keys,
-    validate_catalog, virtual_shard_for,
+    plan_stable_shard_activation, plan_switch_to_stable_routing, shard_is_active,
+    stable_router_preserves_routable_keys, validate_catalog, virtual_shard_for,
 };
 pub use state_machine::{Command, Query, StateMachine};
 pub use two_phase::{

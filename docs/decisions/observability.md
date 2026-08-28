@@ -21,7 +21,7 @@ Ship a **full observability stack**:
 6. **Live web dashboard** (read-only)
 7. Opt-in **message tracing**
 
-All read surfaces live on the **admin port** ([health-admin-port](health-admin-port.md), default `:8080`), never on the mTLS craft wire.
+All read surfaces live on the **admin port** ([wire-protocol](wire-protocol.md#admin-http-port--8080tcp), default `:8080`), never on the mTLS craft wire.
 
 ---
 
@@ -153,7 +153,7 @@ Emits trace events to telemetry stream / logs; auto-expires. Never on for whole 
 
 ## Related
 
-- [health-admin-port.md](health-admin-port.md)
+- [wire-protocol.md#admin-http-port--8080tcp](wire-protocol.md#admin-http-port--8080tcp)
 - [cross-node-actors.md](cross-node-actors.md)
-- [supervisor-leader.md](supervisor-leader.md)
+- [cluster-elasticity.md#supervisor--leader-only-reconciliation](cluster-elasticity.md#supervisor--leader-only-reconciliation)
 - [actor-state-redis.md](actor-state-redis.md)

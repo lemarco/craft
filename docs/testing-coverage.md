@@ -209,7 +209,7 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-08 | Multi-Raft sim: shard routing + independent group safety | `craft-sim/tests/multi_raft.rs` |
 | 2026-08 | Group rebalance planner + sharded adopt/retire runtime | `craft-actor/tests/group_rebalance.rs`, `sharded.rs` |
 | 2026-08 | Malformed persistence + backend error injection at driver | `craft-actor/tests/driver.rs` |
-| 2026-08 | Cluster leave RPC + `CraftCluster::leave()` facade | `craft-actor/tests/runtime.rs`, `craft/tests/multi_raft.rs`, `docs/decisions/leave-rpc.md` |
+| 2026-08 | Cluster leave RPC + `CraftCluster::leave()` facade | `craft-actor/tests/runtime.rs`, `craft/tests/multi_raft.rs`, `docs/decisions/cluster-membership.md#leave-rpc` |
 | 2026-08 | Injectable Tokio clock in integration tests (`craft-test-support::clock`, `start_paused`) | `craft-test-support`, `craft/tests/*`, `craft-actor/tests/*`, `craft-client/tests/cluster.rs` |
 | 2026-08 | Snapshot survives facade restart (`compact` + `data_dir`) | `craft/tests/persistence.rs` |
 | 2026-08 | 3-node majority survives one member restart | `craft/tests/persistence.rs` |
@@ -218,17 +218,17 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-08 | Linearizability E2E phase 2 (QUIC `craft-e2e-client` + external checker) | `crates/craft-e2e-client`, `e2e/linearizability.sh`, `e2e/docker-compose.yml` |
 | 2026-08 | Hardening: graceful leave integration, admin HTTPS E2E | `craft/tests/graceful_leave.rs`, `craft/tests/facade.rs`, `craft-dashboard/tests/admin.rs` |
 | 2026-08 | Wire decode fuzz (`cargo-fuzz` wire_decode, scheduled CI) | `crates/craft-fuzz/`, `.gitlab-ci.yml` `fuzz` job |
-| 2026-08 | Tier 1 multi-Raft: learners planner, shard expansion, keyed batch, `/introspect/raft-groups` | `craft-core`, `craft-client`, `craft-dashboard`, `craft/tests/multi_raft.rs`, `docs/decisions/tier1-multi-raft-advances.md` |
+| 2026-08 | Tier 1 multi-Raft: learners planner, shard expansion, keyed batch, `/introspect/raft-groups` | `craft-core`, `craft-client`, `craft-dashboard`, `craft/tests/multi_raft.rs`, `docs/decisions/multi-raft.md#tier-1-advances-landed` |
 | 2026-08 | Client retry edge cases (`NoTargets`, timeout, `NotLeader`, unreachable) | `craft-client/tests/retry.rs` |
 | 2026-08 | Keyed client routing (multi-Raft propose/query) | `craft/tests/client_keyed.rs` |
 | 2026-08 | Tier 2 tails: `catalog_version`, `switch_to_stable_shards`, saga hardening | `craft-core/shard.rs`, `craft/src/cluster.rs`, `craft-client/src/saga.rs`, `craft/tests/{multi_raft,saga}.rs` |
-| 2026-08 | Tier 2 Phase 4: cross-shard saga coordinator (`run_saga`, `StoreSagaJournal`) | `craft-client/src/saga.rs`, `craft/src/saga.rs`, `craft/tests/saga.rs`, `docs/decisions/cross-shard-transactions.md` |
+| 2026-08 | Tier 2 Phase 4: cross-shard saga coordinator (`run_saga`, `StoreSagaJournal`) | `craft-client/src/saga.rs`, `craft/src/saga.rs`, `craft/tests/saga.rs`, `docs/decisions/multi-raft.md#cross-shard-transactions` |
 | 2026-08 | Saga hardening v2: group 0 journal fallback + coordinator restart resume | `craft-proto/saga_journal`, `craft-core/node`, `craft-actor/runtime`, `craft/src/saga.rs`, `craft/tests/saga.rs` |
 | 2026-08 | Saga journal layered tests (proto/core/driver/runtime/facade) | `craft-proto`, `craft-core/tests/saga_journal.rs`, `craft-actor/tests/{driver,runtime}.rs`, `craft/tests/saga.rs` |
 | 2026-08 | Durable 2PC prepare timeout GC + `resume_cross_shard_2pc` | `craft-actor/runtime`, `craft-client/two_phase`, `craft/tests/two_phase.rs` |
 | 2026-08 | Durable cross-shard 2PC (`durable_cross_shard_2pc`, `EntryPayload::TwoPhasePrepare/Abort`) | `craft-proto/src/two_phase.rs`, `craft-core/tests/two_phase_journal.rs`, `craft/tests/two_phase.rs` |
-| 2026-08 | Tier 2 Phase 2: dynamic catalog runtime (`add_raft_groups`, `/cluster/catalog/add`) | `craft-proto/catalog`, `craft-actor/runtime`, `craft/tests/multi_raft.rs`, `docs/decisions/tier2-multi-raft-architecture.md` |
-| 2026-08 | Tier 2 multi-Raft architecture ADR + Phase 1 pure planners | `craft-core/src/shard.rs`, `docs/decisions/tier2-multi-raft-architecture.md` |
+| 2026-08 | Tier 2 Phase 2: dynamic catalog runtime (`add_raft_groups`, `/cluster/catalog/add`) | `craft-proto/catalog`, `craft-actor/runtime`, `craft/tests/multi_raft.rs`, `docs/decisions/multi-raft.md` |
+| 2026-08 | Tier 2 multi-Raft architecture ADR + Phase 1 pure planners | `craft-core/src/shard.rs`, `docs/decisions/multi-raft.md` |
 | 2026-08 | Actor routing Tier 3: ring, session, drain override, `ask_linearizable`, directory RYW | `craft-actor` (`ring`, `session`, `directory_policy`), `craft-actor/tests/{messaging,migration}.rs`, `docs/decisions/actor-routing-tier3.md` |
 | 2026-08 | `craft-node` env parsing unit tests | `craft-node/src/config.rs` (`#[cfg(test)]`) |
 | 2026-08 | Actor store resume + idempotency after unreachable node | `craft/tests/actor_store_resume.rs` |

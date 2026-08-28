@@ -51,7 +51,7 @@ git push && git push origin v0.2.0
   changelog.
 - **Wire/protocol** compatibility is tracked separately via
   `Raft-Protocol-Version` (see [protocol.md](protocol.md)); protocol changes are
-  breaking and gated by [join-version-skew](decisions/join-version-skew.md).
+  breaking and gated by [join-version-skew](decisions/cluster-membership.md#version-skew--hard-reject).
 
 ## CI
 

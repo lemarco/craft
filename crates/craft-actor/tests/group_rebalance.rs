@@ -69,7 +69,10 @@ fn learner_only_node_adopts_groups_when_lf_positive() {
             break;
         }
     }
-    assert!(learner_only, "node 4 should be learner-only for some groups");
+    assert!(
+        learner_only,
+        "node 4 should be learner-only for some groups"
+    );
 
     let reconciler = RaftGroupReconciler::new(
         learner,

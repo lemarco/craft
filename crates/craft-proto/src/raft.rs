@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CatalogCommand, LogId, LogIndex, NodeId, Round, SagaJournalCommand, Term,
-    TwoPhaseAbortCommand, TwoPhasePrepareCommand,
+    CatalogCommand, LogId, LogIndex, NodeId, Round, SagaJournalCommand, Term, TwoPhaseAbortCommand,
+    TwoPhasePrepareCommand,
 };
 
 /// A single Raft log entry.

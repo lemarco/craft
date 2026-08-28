@@ -34,7 +34,7 @@
 //! # }
 //! ```
 //!
-//! See the `docs/` directory for architecture and the accepted ADRs.
+//! See the `docs/` directory for architecture and design decision records.
 
 mod builder;
 mod certs;
@@ -64,9 +64,7 @@ pub use cluster::{ClusterFacts, CraftCluster, LeaveError, ScaleClusterError};
 pub use craft_actor::{ActorSession, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy, DirectoryRetry};
 pub use craft_actor::{ResourceProfile, VpsResources};
 pub use craft_core::ReachabilityConfig;
-pub use craft_core::{
-    CompactionPolicy, DEFAULT_COMPACT_BYTES, DEFAULT_COMPACT_ENTRIES,
-};
+pub use craft_core::{CompactionPolicy, DEFAULT_COMPACT_BYTES, DEFAULT_COMPACT_ENTRIES};
 pub use saga::{
     CompositeSagaJournal, Group0SagaJournal, MetaRaftSagaJournal, SagaRegistry, StoreSagaJournal,
     record_saga_metrics, saga_metrics_callback,

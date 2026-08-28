@@ -3,7 +3,7 @@
 //! Replaces naive `hash % N` so adding or removing an instance remaps only keys
 //! near the affected vnode arc on the ring, not the entire keyspace.
 //!
-//! [cluster-routing]: ../../../docs/decisions/cluster-routing.md
+//! [client-and-routing#cluster-actor-routing]: ../../../docs/decisions/client-and-routing.md#cluster-actor-routing
 
 use std::hash::{Hash, Hasher};
 

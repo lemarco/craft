@@ -75,7 +75,7 @@ impl OrderWorker {
 | Event | Behavior |
 |-------|----------|
 | **Graceful leave** | Drain in-flight; state already in Redis — new worker continues |
-| **Crash** | Actor state in Redis **retained**; leader respawns worker on another VPS ([supervisor-leader](supervisor-leader.md)); worker **reloads from Redis** |
+| **Crash** | Actor state in Redis **retained**; leader respawns worker on another VPS ([cluster-elasticity](cluster-elasticity.md#supervisor--leader-only-reconciliation)); worker **reloads from Redis** |
 | **`migration_snapshot`** | Optional optimization for large in-flight buffer flush to Redis before migrate — not required if handlers write through store |
 
 Raft `migration_snapshot` remains for **small hot buffers**; **Redis is source of truth** for durable actor workflow state.
@@ -114,5 +114,5 @@ Core craft **works without Redis** — stateless actors + Raft SM only. Redis is
 
 - [cross-node-actors.md](cross-node-actors.md)
 - [state-machine.md](state-machine.md)
-- [auto-spawn-on-join.md](auto-spawn-on-join.md)
-- [supervisor-leader.md](supervisor-leader.md)
+- [cluster-elasticity.md#auto-spawn-on-join](cluster-elasticity.md#auto-spawn-on-join)
+- [cluster-elasticity.md#supervisor--leader-only-reconciliation](cluster-elasticity.md#supervisor--leader-only-reconciliation)

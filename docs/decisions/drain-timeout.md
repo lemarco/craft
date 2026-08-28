@@ -59,4 +59,4 @@ CraftCluster::builder()
 
 - [cross-node-actors.md](cross-node-actors.md)
 - [actor-state-redis.md](actor-state-redis.md)
-- [auto-spawn-on-join.md](auto-spawn-on-join.md)
+- [cluster-elasticity.md#auto-spawn-on-join](cluster-elasticity.md#auto-spawn-on-join)

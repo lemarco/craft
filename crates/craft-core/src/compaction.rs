@@ -137,7 +137,11 @@ mod tests {
     use craft_proto::NodeId;
 
     fn node(id: u64, members: &[u64]) -> RaftNode {
-        RaftNode::new(NodeId(id), members.iter().copied().map(NodeId), Config::default())
+        RaftNode::new(
+            NodeId(id),
+            members.iter().copied().map(NodeId),
+            Config::default(),
+        )
     }
 
     #[test]
@@ -194,9 +198,6 @@ mod tests {
         let _ = n.take_outputs();
         let stats = compaction_stats(&n);
         assert_eq!(stats.compactable_entries, 1); // no-op applied
-        assert!(!should_compact(
-            &CompactionPolicy::entries(1024),
-            &stats
-        ));
+        assert!(!should_compact(&CompactionPolicy::entries(1024), &stats));
     }
 }

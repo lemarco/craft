@@ -597,6 +597,11 @@ impl<M: StateMachine> NodeHandle<M> {
 }
 
 type ReadConfirmSender = oneshot::Sender<Result<(LogIndex, Term), ClientError>>;
+type PendingTwoPhaseCommit<M> = (
+    Vec<u8>,
+    Vec<u8>,
+    oneshot::Sender<Result<<M as StateMachine>::Response, ClientError>>,
+);
 
 /// Owns the driver and mutable correlation state inside the loop task.
 struct Runtime<M: StateMachine> {
@@ -619,8 +624,7 @@ struct Runtime<M: StateMachine> {
     pending_saga_journals: HashMap<LogIndex, oneshot::Sender<Result<(), ClientError>>>,
     pending_two_phase_prepares: HashMap<LogIndex, oneshot::Sender<Result<(), ClientError>>>,
     pending_two_phase_aborts: HashMap<LogIndex, oneshot::Sender<Result<(), ClientError>>>,
-    pending_two_phase_commits:
-        HashMap<LogIndex, (Vec<u8>, Vec<u8>, oneshot::Sender<Result<M::Response, ClientError>>)>,
+    pending_two_phase_commits: HashMap<LogIndex, PendingTwoPhaseCommit<M>>,
     catalog_snapshot: Option<CatalogSnapshotFn>,
     on_catalog_applied: Option<CatalogAppliedFn>,
     on_saga_journal_applied: Option<SagaJournalAppliedFn>,
@@ -1061,12 +1065,10 @@ impl<M: StateMachine> Runtime<M> {
             }
             return;
         }
-        match self.two_phase_prepares.prepare(
-            tx_id,
-            route_key,
-            command,
-            self.two_phase_tick,
-        ) {
+        match self
+            .two_phase_prepares
+            .prepare(tx_id, route_key, command, self.two_phase_tick)
+        {
             Ok(()) => {
                 let _ = respond.send(Ok(()));
             }
@@ -1094,11 +1096,7 @@ impl<M: StateMachine> Runtime<M> {
             }));
             return Ok(());
         }
-        let Some(bytes) = self
-            .two_phase_prepares
-            .get(&tx_id, &route_key)
-            .cloned()
-        else {
+        let Some(bytes) = self.two_phase_prepares.get(&tx_id, &route_key).cloned() else {
             let _ = respond.send(Err(ClientError::Driver(
                 "no prepared command for transaction key".to_string(),
             )));
@@ -1175,11 +1173,7 @@ impl<M: StateMachine> Runtime<M> {
         if !self.cross_shard_2pc || !self.driver.is_leader() {
             return Ok(());
         }
-        let tick_period_ms = self
-            .tick_period
-            .as_millis()
-            .max(1)
-            .min(u64::MAX as u128) as u64;
+        let tick_period_ms = self.tick_period.as_millis().max(1).min(u64::MAX as u128) as u64;
         let timeout_ms = timeout.as_millis().max(1).min(u64::MAX as u128) as u64;
         let timeout_ticks = timeout_ms.div_ceil(tick_period_ms).max(1);
         let expired = self
