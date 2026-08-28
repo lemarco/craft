@@ -67,7 +67,11 @@ mod tests {
     #[tokio::test]
     async fn corrupt_bytes_surface_as_codec_errors() {
         let store = InMemoryStore::new();
-        store.set("bad", b"not-postcard", None).await.unwrap();
+        // Truncate a valid postcard payload so decode fails (not arbitrary ASCII:
+        // a lone byte like b"n" (110) is a valid varint u32 for OrderState.step).
+        let mut bytes = encode(&OrderState { step: 1 }).unwrap();
+        bytes.pop();
+        store.set("bad", &bytes, None).await.unwrap();
         let err = store_get::<OrderState>(&store, "bad").await.unwrap_err();
         assert!(matches!(err, StoreError::Codec(_)));
     }
