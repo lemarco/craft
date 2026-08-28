@@ -102,6 +102,21 @@ impl Log {
         self.entries.get(start..).unwrap_or(&[])
     }
 
+    /// Sum [`entry_estimated_bytes`](crate::entry_estimated_bytes) for live
+    /// entries through `up_to` (inclusive).
+    pub(crate) fn bytes_up_to(&self, up_to: LogIndex) -> u64 {
+        use crate::entry_estimated_bytes;
+
+        if up_to.0 <= self.snapshot_index.0 {
+            return 0;
+        }
+        let end = up_to.0.min(self.last_index().0);
+        (self.snapshot_index.0 + 1..=end)
+            .filter_map(|i| self.get(LogIndex(i)))
+            .map(entry_estimated_bytes)
+            .sum()
+    }
+
     /// First index whose entry has `term`, used for conflict backtracking.
     pub(crate) fn first_index_of_term(&self, term: Term) -> Option<LogIndex> {
         self.entries

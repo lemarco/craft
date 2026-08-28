@@ -10,6 +10,7 @@
 
 pub use craft_proto as proto;
 
+mod compaction;
 mod config;
 mod failure_detector;
 mod log;
@@ -22,6 +23,10 @@ mod two_phase;
 pub use failure_detector::{
     AckWindowLiveness, FailureDetectorKind, PhiAccrualDetector, PhiAccrualLiveness,
     ReachabilityConfig,
+};
+pub use compaction::{
+    CompactionPolicy, CompactionStats, DEFAULT_COMPACT_BYTES, DEFAULT_COMPACT_ENTRIES,
+    compaction_stats, entry_estimated_bytes, should_compact,
 };
 pub use node::{
     CatalogProposeError, Committed, Config, MembershipError, NotLeader, Output, Persist, RaftNode,
@@ -44,6 +49,6 @@ pub use shard::{
 };
 pub use state_machine::{Command, Query, StateMachine};
 pub use two_phase::{
-    TWO_PHASE_MAX_GROUPS, TWO_PHASE_MAX_PAYLOAD, TWO_PHASE_MAX_STEPS, TwoPhasePlan,
-    TwoPhasePlanError, TwoPhaseStep, validate_two_phase_plan,
+    TWO_PHASE_DEFAULT_PREPARE_TIMEOUT_MS, TWO_PHASE_MAX_GROUPS, TWO_PHASE_MAX_PAYLOAD,
+    TWO_PHASE_MAX_STEPS, TwoPhasePlan, TwoPhasePlanError, TwoPhaseStep, validate_two_phase_plan,
 };

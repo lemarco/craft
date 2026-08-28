@@ -82,8 +82,16 @@ scope for library-first design.
    small payloads, behind [`CraftClusterBuilder::cross_shard_2pc`](../../crates/craft/src/builder.rs)(true):
    - [`TwoPhasePlan`](../../crates/craft-core/src/two_phase.rs) validation in `craft-core`;
    - wire types [`ClientRequest::TwoPhasePrepare/Commit/Abort`](../../crates/craft-proto/src/client.rs);
-   - leader in-memory [`PrepareStore`](../../crates/craft-actor/src/two_phase.rs) per Raft group;
+   - leader in-memory [`PrepareStore`](../../crates/craft-actor/src/two_phase.rs) per Raft group (default);
    - client API [`propose_cross_shard_2pc`](../../crates/craft-client/src/two_phase.rs) over existing transport.
+4. **Durable 2PC (landed):** opt-in via [`CraftClusterBuilder::durable_cross_shard_2pc`](../../crates/craft/src/builder.rs)(true):
+   - per-group Raft log entries [`EntryPayload::TwoPhasePrepare/TwoPhaseAbort`](../../crates/craft-proto/src/raft.rs);
+   - [`PrepareStore`](../../crates/craft-actor/src/two_phase.rs) rebuilt from committed log on replay (survives leader restart);
+   - commit still applies via normal [`EntryPayload::Command`](../../crates/craft-proto/src/raft.rs) after prepare is durable.
+5. **Durable 2PC hardening (landed):** prepare timeout GC (leader-only, logical ticks) via
+   [`two_phase_prepare_timeout`](../../crates/craft/src/builder.rs); client
+   [`resume_cross_shard_2pc`](../../crates/craft-client/src/two_phase.rs) with optional
+   [`TwoPhaseJournal`](../../crates/craft-client/src/two_phase.rs) and commit-first probe.
 
 ## Consistency guarantees (target)
 
@@ -91,7 +99,8 @@ scope for library-first design.
 |-----|-----------|
 | `propose_keyed_batch` | Sequential; partial failure surfaced |
 | `run_saga` | All steps committed OR compensators run; at-least-once step delivery with idempotency |
-| `propose_cross_shard_2pc` | Atomic commit if all groups ack prepare (leader memory; cleared on leadership loss) |
+| `propose_cross_shard_2pc` | Atomic commit if all groups ack prepare (leader memory by default; cleared on leadership loss) |
+| `propose_cross_shard_2pc` + `durable_cross_shard_2pc(true)` | Atomic commit; prepare/abort in each group's Raft log (replay rebuilds `PrepareStore`) |
 
 Neither saga nor 2PC provides **global serializable isolation** across shards
 without a global transaction manager — document as explicit non-goal.

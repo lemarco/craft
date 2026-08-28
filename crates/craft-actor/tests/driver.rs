@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex};
 use craft_actor::craft_core::{Config, RaftNode, ReadId, Role, StateMachine};
 use craft_actor::craft_proto::{
     EntryPayload, LogEntry, LogId, LogIndex, Membership, NodeId, SagaJournalCommand, Term,
+    TwoPhasePrepareCommand,
 };
 use craft_actor::craft_storage::{
     HardState, HardStateStore, LogStore, MemoryStorage, Snapshot, SnapshotMeta, SnapshotStore,
@@ -1015,5 +1016,27 @@ fn propose_saga_journal_commits_without_user_sm_apply() {
     assert!(
         step.applied.is_empty(),
         "saga journal must not apply user SM"
+    );
+}
+
+#[test]
+fn propose_two_phase_prepare_commits_without_user_sm_apply() {
+    let mut d = single_node();
+    d.campaign().unwrap();
+
+    let command = TwoPhasePrepareCommand {
+        tx_id: b"tx-a".to_vec(),
+        route_key: b"key-a".to_vec(),
+        command: vec![7, 8, 9],
+        prepared_at_ms: 0,
+    };
+    let (index, step) = d
+        .propose_two_phase_prepare(command.clone())
+        .unwrap()
+        .expect("leader propose");
+    assert_eq!(step.two_phase_prepare_applied, vec![(index, command)]);
+    assert!(
+        step.applied.is_empty(),
+        "durable 2PC prepare must not apply user SM"
     );
 }

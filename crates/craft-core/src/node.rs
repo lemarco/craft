@@ -20,7 +20,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use craft_proto::{
     AppendEntries, AppendEntriesReply, CatalogCommand, EntryPayload, InstallSnapshot,
     InstallSnapshotReply, LogEntry, LogId, LogIndex, Membership, NodeId, RaftRpc, RaftRpcReply,
-    RequestVote, RequestVoteReply, Round, SagaJournalCommand, Term,
+    RequestVote, RequestVoteReply, Round, SagaJournalCommand, Term, TwoPhaseAbortCommand,
+    TwoPhasePrepareCommand,
 };
 
 use crate::config::Configuration;
@@ -130,6 +131,20 @@ pub enum Output {
         index: LogIndex,
         /// Saga journal command committed at `index`.
         command: SagaJournalCommand,
+    },
+    /// A committed durable 2PC prepare entry (not applied to the user SM).
+    TwoPhasePrepareApplied {
+        /// Log index of the prepare entry.
+        index: LogIndex,
+        /// Prepare command committed at `index`.
+        command: TwoPhasePrepareCommand,
+    },
+    /// A committed durable 2PC abort entry (not applied to the user SM).
+    TwoPhaseAbortApplied {
+        /// Log index of the abort entry.
+        index: LogIndex,
+        /// Abort command committed at `index`.
+        command: TwoPhaseAbortCommand,
     },
 }
 
@@ -504,6 +519,20 @@ impl RaftNode {
         self.log.snapshot_index()
     }
 
+    /// Applied entries not yet compacted into a snapshot.
+    #[must_use]
+    pub fn compactable_entries(&self) -> u64 {
+        self.last_applied
+            .0
+            .saturating_sub(self.log.snapshot_index().0)
+    }
+
+    /// Estimated byte size of applied log entries not yet compacted.
+    #[must_use]
+    pub fn compactable_log_bytes(&self) -> u64 {
+        self.log.bytes_up_to(self.last_applied)
+    }
+
     /// The most recent snapshot this node holds (its boundary, configuration,
     /// and application bytes), or `None` if nothing has been compacted or
     /// installed. A runtime persists this via a `SnapshotStore` after a
@@ -845,6 +874,44 @@ impl RaftNode {
             });
         }
         let idx = self.log_append(self.current_term, EntryPayload::SagaJournal(command));
+        self.broadcast_append();
+        self.maybe_advance_commit();
+        Ok(idx)
+    }
+
+    /// Append a durable 2PC prepare entry to the log (any Raft group leader).
+    ///
+    /// # Errors
+    /// Returns [`CatalogProposeError::NotLeader`] when this node is not leader.
+    pub fn propose_two_phase_prepare(
+        &mut self,
+        command: TwoPhasePrepareCommand,
+    ) -> Result<LogIndex, CatalogProposeError> {
+        if self.role != Role::Leader {
+            return Err(CatalogProposeError::NotLeader {
+                leader: self.leader_id,
+            });
+        }
+        let idx = self.log_append(self.current_term, EntryPayload::TwoPhasePrepare(command));
+        self.broadcast_append();
+        self.maybe_advance_commit();
+        Ok(idx)
+    }
+
+    /// Append a durable 2PC abort entry to the log (any Raft group leader).
+    ///
+    /// # Errors
+    /// Returns [`CatalogProposeError::NotLeader`] when this node is not leader.
+    pub fn propose_two_phase_abort(
+        &mut self,
+        command: TwoPhaseAbortCommand,
+    ) -> Result<LogIndex, CatalogProposeError> {
+        if self.role != Role::Leader {
+            return Err(CatalogProposeError::NotLeader {
+                leader: self.leader_id,
+            });
+        }
+        let idx = self.log_append(self.current_term, EntryPayload::TwoPhaseAbort(command));
         self.broadcast_append();
         self.maybe_advance_commit();
         Ok(idx)
@@ -1285,6 +1352,18 @@ impl RaftNode {
                 }
                 Some(EntryPayload::SagaJournal(command)) => {
                     self.outbox.push(Output::SagaJournalApplied {
+                        index: next,
+                        command: command.clone(),
+                    });
+                }
+                Some(EntryPayload::TwoPhasePrepare(command)) => {
+                    self.outbox.push(Output::TwoPhasePrepareApplied {
+                        index: next,
+                        command: command.clone(),
+                    });
+                }
+                Some(EntryPayload::TwoPhaseAbort(command)) => {
+                    self.outbox.push(Output::TwoPhaseAbortApplied {
                         index: next,
                         command: command.clone(),
                     });

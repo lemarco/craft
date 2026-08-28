@@ -31,5 +31,9 @@ pub use saga::{
     SagaJournalError, SagaJournalPhase, SagaJournalRecord, SagaOutcome, SagaPlan, SagaStep,
     decode_journal_record, encode_journal_record, resume_saga, run_saga,
 };
-pub use two_phase::{TwoPhaseClient, TwoPhaseError, propose_cross_shard_2pc};
+pub use two_phase::{
+    InMemoryTwoPhaseJournal, ResumeTwoPhaseOpts, RunTwoPhaseOpts, TwoPhaseClient, TwoPhaseError,
+    TwoPhaseJournal, TwoPhaseJournalError, TwoPhaseJournalRecord, propose_cross_shard_2pc,
+    propose_cross_shard_2pc_with_opts, resume_cross_shard_2pc,
+};
 pub use typed::TypedClient;

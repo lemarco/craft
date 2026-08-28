@@ -60,6 +60,7 @@ use craft_core::{
 };
 use craft_proto::{
     CatalogCommand, CodecError, LogIndex, NodeId, RaftRpc, RaftRpcReply, SagaJournalCommand,
+    TwoPhaseAbortCommand, TwoPhasePrepareCommand,
 };
 use craft_storage::{HardState, NullStorage, RaftStorage, Snapshot, SnapshotMeta, StorageError};
 
@@ -128,6 +129,10 @@ pub struct Step<M: StateMachine> {
     pub catalog_applied: Vec<(LogIndex, CatalogCommand)>,
     /// Committed saga journal entries (Tier 2 v2; not applied to the user SM).
     pub saga_journal_applied: Vec<(LogIndex, SagaJournalCommand)>,
+    /// Committed durable 2PC prepare entries (not applied to the user SM).
+    pub two_phase_prepare_applied: Vec<(LogIndex, TwoPhasePrepareCommand)>,
+    /// Committed durable 2PC abort entries (not applied to the user SM).
+    pub two_phase_abort_applied: Vec<(LogIndex, TwoPhaseAbortCommand)>,
 }
 
 impl<M: StateMachine> Default for Step<M> {
@@ -139,6 +144,8 @@ impl<M: StateMachine> Default for Step<M> {
             role_changes: Vec::new(),
             catalog_applied: Vec::new(),
             saga_journal_applied: Vec::new(),
+            two_phase_prepare_applied: Vec::new(),
+            two_phase_abort_applied: Vec::new(),
         }
     }
 }
@@ -153,6 +160,8 @@ impl<M: StateMachine> Step<M> {
             && self.role_changes.is_empty()
             && self.catalog_applied.is_empty()
             && self.saga_journal_applied.is_empty()
+            && self.two_phase_prepare_applied.is_empty()
+            && self.two_phase_abort_applied.is_empty()
     }
 }
 
@@ -579,6 +588,36 @@ impl<M: StateMachine> RaftDriver<M> {
         }
     }
 
+    /// Append a durable 2PC prepare entry (leader only).
+    ///
+    /// # Errors
+    /// Returns [`DriverError`] only if draining a resulting committed prepare
+    /// entry fails; leadership rejections are carried in the inner `Result`.
+    pub fn propose_two_phase_prepare(
+        &mut self,
+        command: TwoPhasePrepareCommand,
+    ) -> Result<Result<(LogIndex, Step<M>), CatalogProposeError>, DriverError> {
+        match self.node.propose_two_phase_prepare(command) {
+            Ok(index) => Ok(Ok((index, self.drain()?))),
+            Err(e) => Ok(Err(e)),
+        }
+    }
+
+    /// Append a durable 2PC abort entry (leader only).
+    ///
+    /// # Errors
+    /// Returns [`DriverError`] only if draining a resulting committed abort
+    /// entry fails; leadership rejections are carried in the inner `Result`.
+    pub fn propose_two_phase_abort(
+        &mut self,
+        command: TwoPhaseAbortCommand,
+    ) -> Result<Result<(LogIndex, Step<M>), CatalogProposeError>, DriverError> {
+        match self.node.propose_two_phase_abort(command) {
+            Ok(index) => Ok(Ok((index, self.drain()?))),
+            Err(e) => Ok(Err(e)),
+        }
+    }
+
     /// Snapshot the application state and compact the log up to the highest
     /// applied index, persisting the snapshot durably (backlog A6, Raft §7).
     ///
@@ -692,6 +731,12 @@ impl<M: StateMachine> RaftDriver<M> {
                 }
                 Output::SagaJournalApplied { index, command } => {
                     step.saga_journal_applied.push((index, command));
+                }
+                Output::TwoPhasePrepareApplied { index, command } => {
+                    step.two_phase_prepare_applied.push((index, command));
+                }
+                Output::TwoPhaseAbortApplied { index, command } => {
+                    step.two_phase_abort_applied.push((index, command));
                 }
             }
         }

@@ -211,6 +211,36 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         self
     }
 
+    /// Persist cross-shard 2PC prepare/abort in each group's Raft log so prepares
+    /// survive leader restarts. Implies [`cross_shard_2pc`](Self::cross_shard_2pc).
+    #[must_use]
+    pub fn durable_cross_shard_2pc(mut self, enabled: bool) -> Self {
+        if enabled {
+            self.runtime.cross_shard_2pc = true;
+            self.runtime.durable_cross_shard_2pc = true;
+            if self.runtime.two_phase_prepare_timeout.is_none() {
+                self.runtime.two_phase_prepare_timeout = Some(Duration::from_millis(
+                    craft_core::TWO_PHASE_DEFAULT_PREPARE_TIMEOUT_MS,
+                ));
+            }
+        } else {
+            self.runtime.durable_cross_shard_2pc = false;
+        }
+        self
+    }
+
+    /// Timeout after which a staged 2PC prepare is garbage-collected (leader-only).
+    /// Applies to ephemeral and durable 2PC. Pass [`Duration::ZERO`] to disable.
+    #[must_use]
+    pub fn two_phase_prepare_timeout(mut self, timeout: Duration) -> Self {
+        self.runtime.two_phase_prepare_timeout = if timeout.is_zero() {
+            None
+        } else {
+            Some(timeout)
+        };
+        self
+    }
+
     /// Replication factor for each shard Raft group's voter set (per-group-raft-membership).
     /// Clamped to the live node count at runtime; default 3. Use a value ≥
     /// expected cluster size to replicate on every joined node.
@@ -267,6 +297,22 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     #[must_use]
     pub fn tick_period(mut self, period: Duration) -> Self {
         self.runtime.tick_period = period;
+        self
+    }
+
+    /// Override automatic Raft log compaction thresholds.
+    ///
+    /// Default is [`CompactionPolicy::default_auto`] (1024 entries or 4 MiB).
+    #[must_use]
+    pub fn auto_compaction(mut self, policy: craft_core::CompactionPolicy) -> Self {
+        self.runtime.compaction = policy;
+        self
+    }
+
+    /// Disable automatic log compaction (use [`NodeHandle::compact`] manually).
+    #[must_use]
+    pub fn auto_compaction_disabled(mut self) -> Self {
+        self.runtime.compaction = craft_core::CompactionPolicy::disabled();
         self
     }
 

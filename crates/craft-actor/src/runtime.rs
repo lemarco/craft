@@ -214,6 +214,13 @@ pub struct RuntimeConfig {
     pub on_saga_journal_applied: Option<SagaJournalAppliedFn>,
     /// Enable cross-shard two-phase commit prepare/commit/abort on this group.
     pub cross_shard_2pc: bool,
+    /// Persist 2PC prepare/abort in the Raft log (requires [`cross_shard_2pc`]).
+    pub durable_cross_shard_2pc: bool,
+    /// Drop staged prepares older than this (leader-only). `None` disables GC.
+    pub two_phase_prepare_timeout: Option<Duration>,
+    /// Automatic log compaction policy (Raft §7). Disabled when both thresholds
+    /// are unset; see [`craft_core::CompactionPolicy`].
+    pub compaction: craft_core::CompactionPolicy,
 }
 
 impl Default for RuntimeConfig {
@@ -226,6 +233,9 @@ impl Default for RuntimeConfig {
             on_catalog_applied: None,
             on_saga_journal_applied: None,
             cross_shard_2pc: false,
+            durable_cross_shard_2pc: false,
+            two_phase_prepare_timeout: None,
+            compaction: craft_core::CompactionPolicy::default(),
         }
     }
 }
@@ -249,6 +259,9 @@ impl std::fmt::Debug for RuntimeConfig {
                 &self.on_saga_journal_applied.as_ref().map(|_| "<fn>"),
             )
             .field("cross_shard_2pc", &self.cross_shard_2pc)
+            .field("durable_cross_shard_2pc", &self.durable_cross_shard_2pc)
+            .field("two_phase_prepare_timeout", &self.two_phase_prepare_timeout)
+            .field("compaction", &self.compaction)
             .finish()
     }
 }
@@ -604,12 +617,21 @@ struct Runtime<M: StateMachine> {
     /// Catalog add requests awaiting their catalog entry to commit.
     pending_catalog_adds: HashMap<LogIndex, oneshot::Sender<CatalogAddResponse>>,
     pending_saga_journals: HashMap<LogIndex, oneshot::Sender<Result<(), ClientError>>>,
+    pending_two_phase_prepares: HashMap<LogIndex, oneshot::Sender<Result<(), ClientError>>>,
+    pending_two_phase_aborts: HashMap<LogIndex, oneshot::Sender<Result<(), ClientError>>>,
+    pending_two_phase_commits:
+        HashMap<LogIndex, (Vec<u8>, Vec<u8>, oneshot::Sender<Result<M::Response, ClientError>>)>,
     catalog_snapshot: Option<CatalogSnapshotFn>,
     on_catalog_applied: Option<CatalogAppliedFn>,
     on_saga_journal_applied: Option<SagaJournalAppliedFn>,
     next_read_id: u64,
     cross_shard_2pc: bool,
+    durable_cross_shard_2pc: bool,
+    two_phase_prepare_timeout: Option<Duration>,
+    tick_period: Duration,
+    two_phase_tick: u64,
     two_phase_prepares: crate::two_phase::PrepareStore,
+    compaction: craft_core::CompactionPolicy,
 }
 
 impl<M: StateMachine> Runtime<M> {
@@ -638,7 +660,10 @@ impl<M: StateMachine> Runtime<M> {
             }
         }
         for (index, response) in step.applied {
-            if let Some(tx) = self.pending_proposals.remove(&index) {
+            if let Some((tx_id, route_key, tx)) = self.pending_two_phase_commits.remove(&index) {
+                self.two_phase_prepares.abort(&tx_id, &route_key);
+                let _ = tx.send(Ok(response));
+            } else if let Some(tx) = self.pending_proposals.remove(&index) {
                 let _ = tx.send(Ok(response));
             }
         }
@@ -693,6 +718,30 @@ impl<M: StateMachine> Runtime<M> {
                 let _ = tx.send(Ok(()));
             }
         }
+        for (index, command) in step.two_phase_prepare_applied {
+            if let Err(e) = self.two_phase_prepares.prepare(
+                command.tx_id.clone(),
+                command.route_key.clone(),
+                command.command.clone(),
+                self.two_phase_tick,
+            ) {
+                if let Some(tx) = self.pending_two_phase_prepares.remove(&index) {
+                    let _ = tx.send(Err(ClientError::Driver(e.to_string())));
+                }
+                continue;
+            }
+            if let Some(tx) = self.pending_two_phase_prepares.remove(&index) {
+                let _ = tx.send(Ok(()));
+            }
+        }
+        for (index, command) in step.two_phase_abort_applied {
+            let _ = self
+                .two_phase_prepares
+                .abort(&command.tx_id, &command.route_key);
+            if let Some(tx) = self.pending_two_phase_aborts.remove(&index) {
+                let _ = tx.send(Ok(()));
+            }
+        }
         // If we are no longer the leader, any still-outstanding client request
         // will never resolve here: an uncommitted proposal in our tail may be
         // overwritten by the new leader, and the core only reports read
@@ -706,7 +755,20 @@ impl<M: StateMachine> Runtime<M> {
         if !self.driver.is_leader() {
             self.fail_pending_requests();
         }
+        self.maybe_auto_compact();
         replies
+    }
+
+    /// Snapshot and purge the log when the configured retention policy is met.
+    fn maybe_auto_compact(&mut self) {
+        if self.compaction.is_disabled() {
+            return;
+        }
+        let stats = craft_core::compaction_stats(self.driver.node());
+        if !craft_core::should_compact(&self.compaction, &stats) {
+            return;
+        }
+        let _ = self.driver.compact();
     }
 
     /// Complete any join whose membership-change entry has now committed.
@@ -788,7 +850,18 @@ impl<M: StateMachine> Runtime<M> {
         for (_, tx) in self.pending_saga_journals.drain() {
             let _ = tx.send(Err(ClientError::NotLeader { leader }));
         }
-        self.two_phase_prepares.clear();
+        for (_, tx) in self.pending_two_phase_prepares.drain() {
+            let _ = tx.send(Err(ClientError::NotLeader { leader }));
+        }
+        for (_, tx) in self.pending_two_phase_aborts.drain() {
+            let _ = tx.send(Err(ClientError::NotLeader { leader }));
+        }
+        for (_, (_, _, tx)) in self.pending_two_phase_commits.drain() {
+            let _ = tx.send(Err(ClientError::NotLeader { leader }));
+        }
+        if !self.durable_cross_shard_2pc {
+            self.two_phase_prepares.clear();
+        }
     }
 
     /// Process one mailbox message. Returns `Err` on a fatal driver failure
@@ -966,7 +1039,34 @@ impl<M: StateMachine> Runtime<M> {
             )));
             return;
         }
-        match self.two_phase_prepares.prepare(tx_id, route_key, command) {
+        if self.durable_cross_shard_2pc {
+            let prepared_at_ms = crate::two_phase::unix_now_ms();
+            let journal_cmd = craft_proto::TwoPhasePrepareCommand {
+                tx_id,
+                route_key,
+                command,
+                prepared_at_ms,
+            };
+            match self.driver.propose_two_phase_prepare(journal_cmd) {
+                Ok(Ok((index, step))) => {
+                    self.pending_two_phase_prepares.insert(index, respond);
+                    let _ = self.settle(step);
+                }
+                Ok(Err(craft_core::CatalogProposeError::NotLeader { leader })) => {
+                    let _ = respond.send(Err(ClientError::NotLeader { leader }));
+                }
+                Err(e) => {
+                    let _ = respond.send(Err(ClientError::Driver(e.to_string())));
+                }
+            }
+            return;
+        }
+        match self.two_phase_prepares.prepare(
+            tx_id,
+            route_key,
+            command,
+            self.two_phase_tick,
+        ) {
             Ok(()) => {
                 let _ = respond.send(Ok(()));
             }
@@ -994,7 +1094,11 @@ impl<M: StateMachine> Runtime<M> {
             }));
             return Ok(());
         }
-        let Some(bytes) = self.two_phase_prepares.take(&tx_id, &route_key) else {
+        let Some(bytes) = self
+            .two_phase_prepares
+            .get(&tx_id, &route_key)
+            .cloned()
+        else {
             let _ = respond.send(Err(ClientError::Driver(
                 "no prepared command for transaction key".to_string(),
             )));
@@ -1011,7 +1115,8 @@ impl<M: StateMachine> Runtime<M> {
         };
         match self.driver.propose(&command) {
             Ok((index, step)) => {
-                self.pending_proposals.insert(index, respond);
+                self.pending_two_phase_commits
+                    .insert(index, (tx_id, route_key, respond));
                 let _ = self.settle(step);
             }
             Err(DriverError::NotLeader { leader }) => {
@@ -1042,8 +1147,58 @@ impl<M: StateMachine> Runtime<M> {
             }));
             return;
         }
+        if self.durable_cross_shard_2pc {
+            let journal_cmd = craft_proto::TwoPhaseAbortCommand { tx_id, route_key };
+            match self.driver.propose_two_phase_abort(journal_cmd) {
+                Ok(Ok((index, step))) => {
+                    self.pending_two_phase_aborts.insert(index, respond);
+                    let _ = self.settle(step);
+                }
+                Ok(Err(craft_core::CatalogProposeError::NotLeader { leader })) => {
+                    let _ = respond.send(Err(ClientError::NotLeader { leader }));
+                }
+                Err(e) => {
+                    let _ = respond.send(Err(ClientError::Driver(e.to_string())));
+                }
+            }
+            return;
+        }
         let _ = self.two_phase_prepares.abort(&tx_id, &route_key);
         let _ = respond.send(Ok(()));
+    }
+
+    /// Abort prepares that exceeded [`two_phase_prepare_timeout`] (leader-only).
+    fn maybe_gc_two_phase_prepares(&mut self) -> Result<(), DriverError> {
+        let Some(timeout) = self.two_phase_prepare_timeout else {
+            return Ok(());
+        };
+        if !self.cross_shard_2pc || !self.driver.is_leader() {
+            return Ok(());
+        }
+        let tick_period_ms = self
+            .tick_period
+            .as_millis()
+            .max(1)
+            .min(u64::MAX as u128) as u64;
+        let timeout_ms = timeout.as_millis().max(1).min(u64::MAX as u128) as u64;
+        let timeout_ticks = timeout_ms.div_ceil(tick_period_ms).max(1);
+        let expired = self
+            .two_phase_prepares
+            .expired_ticks(self.two_phase_tick, timeout_ticks);
+        for (tx_id, route_key) in expired {
+            if self.durable_cross_shard_2pc {
+                let journal_cmd = craft_proto::TwoPhaseAbortCommand { tx_id, route_key };
+                match self.driver.propose_two_phase_abort(journal_cmd)? {
+                    Ok((_, step)) => {
+                        let _ = self.settle(step);
+                    }
+                    Err(craft_core::CatalogProposeError::NotLeader { .. }) => break,
+                }
+            } else {
+                let _ = self.two_phase_prepares.abort(&tx_id, &route_key);
+            }
+        }
+        Ok(())
     }
 
     /// Validate and (on the leader) start a cluster join as a membership change
@@ -1313,12 +1468,20 @@ where
         pending_leaves: HashMap::new(),
         pending_catalog_adds: HashMap::new(),
         pending_saga_journals: HashMap::new(),
+        pending_two_phase_prepares: HashMap::new(),
+        pending_two_phase_aborts: HashMap::new(),
+        pending_two_phase_commits: HashMap::new(),
         catalog_snapshot: config.catalog_snapshot.clone(),
         on_catalog_applied: config.on_catalog_applied.clone(),
         on_saga_journal_applied: config.on_saga_journal_applied.clone(),
         next_read_id: 0,
         cross_shard_2pc: config.cross_shard_2pc,
+        durable_cross_shard_2pc: config.durable_cross_shard_2pc,
+        two_phase_prepare_timeout: config.two_phase_prepare_timeout,
+        tick_period: config.tick_period,
+        two_phase_tick: 0,
         two_phase_prepares: crate::two_phase::PrepareStore::default(),
+        compaction: config.compaction.clone(),
     };
 
     tokio::spawn(async move {
@@ -1328,9 +1491,13 @@ where
         loop {
             tokio::select! {
                 _ = interval.tick() => {
+                    runtime.two_phase_tick = runtime.two_phase_tick.saturating_add(1);
                     match runtime.driver.tick() {
                         Ok(step) => { let _ = runtime.settle(step); }
                         Err(_) => break,
+                    }
+                    if runtime.maybe_gc_two_phase_prepares().is_err() {
+                        break;
                     }
                 }
                 maybe = rx.recv() => {

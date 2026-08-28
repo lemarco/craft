@@ -59,7 +59,9 @@
 |-----|-----------|
 | `propose_keyed_batch` | Sequential; partial failure surfaced (`BatchError::Partial`) |
 | `run_saga` / `resume_saga` | All steps commit or compensators run; journal in Redis and/or Meta-Raft log (`CompositeSagaJournal`) |
-| `propose_cross_shard_2pc` (opt-in) | Atomic commit if all groups ack prepare (≤3 groups; in-memory prepare, cleared on leadership loss) |
+| `propose_cross_shard_2pc` (opt-in) | Atomic commit if all groups ack prepare (≤3 groups; in-memory prepare by default) |
+| `durable_cross_shard_2pc(true)` | Same as 2PC; prepare/abort persisted in each group's Raft log (survives leader restart) |
+| `resume_cross_shard_2pc` | Client coordinator: journal resume + commit-first probe for durable server prepares |
 
 Global serializable isolation across shards is **not** a goal — see [cross-shard-transactions](decisions/cross-shard-transactions.md).
 

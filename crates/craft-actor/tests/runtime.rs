@@ -688,3 +688,47 @@ async fn upsert_saga_journal_on_follower_returns_not_leader() {
     );
     cluster.shutdown();
 }
+
+#[tokio::test(start_paused = true)]
+async fn auto_compaction_runs_when_entry_threshold_reached() {
+    use craft_actor::craft_core::CompactionPolicy;
+    use craft_test_support::{await_node_leader, eventually_async_default};
+
+    let id = NodeId(1);
+    let net = LocalNetwork::new();
+    let node = RaftNode::new(id, [id], fast_raft_config_with_seed(9));
+    let driver = RaftDriver::new(node, Kv::default());
+    let transport: Arc<dyn Transport> = Arc::new(net.clone());
+    let handle = spawn_node(
+        driver,
+        Arc::clone(&transport),
+        RuntimeConfig {
+            tick_period: TICK_PERIOD,
+            compaction: CompactionPolicy::entries(3),
+            ..RuntimeConfig::default()
+        },
+    );
+    net.attach(
+        id,
+        Arc::new(NodeService::new(handle.clone(), Arc::clone(&transport))) as Arc<dyn RequestHandler>,
+    );
+
+    await_node_leader(&[(id, handle.clone())]).await;
+
+    for key in ["a", "b", "c"] {
+        handle
+            .propose(KvCommand::Set {
+                key: key.into(),
+                value: "1".into(),
+            })
+            .await
+            .expect("write");
+    }
+
+    eventually_async_default("auto-compaction after threshold", || async {
+        !handle.compact().await.expect("compact check")
+    })
+    .await;
+
+    handle.shutdown();
+}

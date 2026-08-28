@@ -407,6 +407,8 @@ impl Cluster {
                 }
                 Output::CatalogApplied { .. } => {}
                 Output::SagaJournalApplied { .. } => {}
+                Output::TwoPhasePrepareApplied { .. } => {}
+                Output::TwoPhaseAbortApplied { .. } => {}
             }
         }
     }

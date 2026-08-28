@@ -8,6 +8,8 @@ pub const TWO_PHASE_MAX_GROUPS: usize = 3;
 pub const TWO_PHASE_MAX_STEPS: usize = 16;
 /// Maximum encoded command payload per step.
 pub const TWO_PHASE_MAX_PAYLOAD: usize = 64 * 1024;
+/// Default prepare staging timeout (5 minutes) for durable 2PC garbage collection.
+pub const TWO_PHASE_DEFAULT_PREPARE_TIMEOUT_MS: u64 = 300_000;
 
 /// One keyed prepare step in a cross-shard 2PC plan.
 #[derive(Debug, Clone, PartialEq, Eq)]

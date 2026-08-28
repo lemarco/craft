@@ -16,6 +16,7 @@ pub mod join;
 pub mod leave;
 pub mod raft;
 pub mod saga_journal;
+pub mod two_phase;
 
 pub use actor::{
     ActorEnvelope, ActorId, ActorRef, ActorRegistration, ActorTypeId, DeliverAck, DirectoryUpdate,
@@ -36,6 +37,7 @@ pub use raft::{
     LogEntry, Membership, RaftRpc, RaftRpcReply, RequestVote, RequestVoteReply,
 };
 pub use saga_journal::SagaJournalCommand;
+pub use two_phase::{TwoPhaseAbortCommand, TwoPhasePrepareCommand};
 
 /// Wire/protocol version negotiated on join (join-version-skew: hard reject on mismatch).
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -222,6 +224,22 @@ mod tests {
             payload: EntryPayload::SagaJournal(SagaJournalCommand {
                 saga_id: b"saga-1".to_vec(),
                 record: vec![1, 2, 3],
+            }),
+        };
+        let bytes = encode(&entry).expect("encode");
+        let back: LogEntry = decode(&bytes).expect("decode");
+        assert_eq!(entry, back);
+    }
+
+    #[test]
+    fn roundtrip_two_phase_prepare_entry() {
+        let entry = LogEntry {
+            term: Term(2),
+            index: LogIndex(5),
+            payload: EntryPayload::TwoPhasePrepare(TwoPhasePrepareCommand {
+                tx_id: b"tx".to_vec(),
+                route_key: b"key".to_vec(),
+                command: vec![1, 2],
             }),
         };
         let bytes = encode(&entry).expect("encode");
