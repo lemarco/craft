@@ -286,7 +286,7 @@ mod tests {
     fn sample_envelope() -> ActorEnvelope {
         ActorEnvelope {
             to: ActorId {
-                node_id: craft_proto::NodeId(2),
+                node: craft_proto::NodeId(2),
                 name: "w".into(),
                 instance: 0,
                 generation: 1,
