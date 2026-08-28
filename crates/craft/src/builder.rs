@@ -682,7 +682,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     /// Assemble every runtime component over `transport`, spawn the background
     /// loops, and return the cluster handle plus the router to attach.
     async fn assemble(
-        self,
+        mut self,
         transport: Arc<dyn Transport>,
         peers: Arc<dyn PeerSource>,
         peer_sync: Option<Duration>,
@@ -697,6 +697,13 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         let dynamic_join = !self.join_seeds.is_empty();
         let bootstrap_voters = consensus_bootstrap_voters(&self.members, node_id, dynamic_join);
 
+        let metrics = Metrics::new();
+        let on_two_phase_gc_aborted: craft_actor::TwoPhaseGcAbortedFn = Arc::new({
+            let metrics = metrics.clone();
+            move || crate::two_phase::record_two_phase_gc_aborted(&metrics, node_id.0)
+        });
+        self.runtime.on_two_phase_gc_aborted = Some(Arc::clone(&on_two_phase_gc_aborted));
+
         let saga_registry = Arc::new(Mutex::new(BTreeMap::new()));
         let saga_hook_reg = Arc::clone(&saga_registry);
         let on_saga_journal_applied: craft_actor::SagaJournalAppliedFn = Arc::new(move |cmd| {
@@ -707,6 +714,18 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                     .insert(cmd.saga_id, record);
             }
         });
+
+        let two_phase_registry = Arc::new(Mutex::new(BTreeMap::new()));
+        let two_phase_hook_reg = Arc::clone(&two_phase_registry);
+        let on_two_phase_journal_applied: craft_actor::TwoPhaseJournalAppliedFn =
+            Arc::new(move |cmd| {
+                if let Ok(record) = craft_client::decode_two_phase_journal_record(&cmd.record) {
+                    two_phase_hook_reg
+                        .lock()
+                        .expect("lock")
+                        .insert(cmd.tx_id, record);
+                }
+            });
 
         // --- Consensus runtime -------------------------------------------
         let mut multi_raft = None;
@@ -737,6 +756,8 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 let _ = catalog_tx.send(cmd);
             }));
             runtime_meta.on_saga_journal_applied = Some(Arc::clone(&on_saga_journal_applied));
+            runtime_meta.on_two_phase_journal_applied =
+                Some(Arc::clone(&on_two_phase_journal_applied));
             let spawn = spawn_multi_raft_node(
                 node_id,
                 &bootstrap_voters,
@@ -798,6 +819,8 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             };
             let mut runtime = self.runtime.clone();
             runtime.on_saga_journal_applied = Some(Arc::clone(&on_saga_journal_applied));
+            runtime.on_two_phase_journal_applied =
+                Some(Arc::clone(&on_two_phase_journal_applied));
             let handle = spawn_node(driver, Arc::clone(&transport), runtime);
             let service = Arc::new(
                 NodeService::new(handle.clone(), Arc::clone(&transport))
@@ -857,7 +880,6 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
 
         // --- Observability ------------------------------------------------
         let events = EventBus::new(self.event_capacity);
-        let metrics = Metrics::new();
         // Surface actor lifecycle / restarts / escalations and (opt-in)
         // per-message traces as metrics + events (E14 → Track H, observability): the
         // registry stays telemetry-agnostic. Installed *before* any spawn so
@@ -1132,6 +1154,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             metrics,
             catalog_version,
             saga_registry,
+            two_phase_registry,
             telemetry,
             members: self.members,
             resource_profile,

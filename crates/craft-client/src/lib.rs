@@ -33,7 +33,8 @@ pub use saga::{
 };
 pub use two_phase::{
     InMemoryTwoPhaseJournal, ResumeTwoPhaseOpts, RunTwoPhaseOpts, TwoPhaseClient, TwoPhaseError,
-    TwoPhaseJournal, TwoPhaseJournalError, TwoPhaseJournalRecord, propose_cross_shard_2pc,
+    TwoPhaseEvent, TwoPhaseJournal, TwoPhaseJournalError, TwoPhaseJournalRecord,
+    decode_two_phase_journal_record, encode_two_phase_journal_record, propose_cross_shard_2pc,
     propose_cross_shard_2pc_with_opts, resume_cross_shard_2pc,
 };
 pub use typed::TypedClient;

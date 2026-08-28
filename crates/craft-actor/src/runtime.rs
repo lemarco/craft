@@ -52,7 +52,7 @@ use craft_proto::{
     CatalogAddRequest, CatalogAddResponse, CatalogCommand, CatalogRejection, ClientRequest,
     ClientResponse, JoinRejection, JoinRequest, JoinResponse, LeaveRejection, LeaveRequest,
     LeaveResponse, LogIndex, NodeId, PROTOCOL_VERSION, RaftRpc, RaftRpcReply, SagaJournalCommand,
-    Term, protocol_version_compatible,
+    Term, TwoPhaseJournalCommand, protocol_version_compatible,
 };
 use tokio::sync::{mpsc, oneshot};
 
@@ -147,6 +147,10 @@ enum Envelope<M: StateMachine> {
         command: SagaJournalCommand,
         respond: oneshot::Sender<Result<(), ClientError>>,
     },
+    UpsertTwoPhaseJournal {
+        command: TwoPhaseJournalCommand,
+        respond: oneshot::Sender<Result<(), ClientError>>,
+    },
     /// Leader-only: begin a joint-consensus membership change (per-group-raft-membership).
     ProposeMembership {
         voters: Vec<NodeId>,
@@ -191,6 +195,10 @@ pub type CatalogSnapshotFn = Arc<dyn Fn() -> Vec<craft_core::RaftGroupId> + Send
 pub type CatalogAppliedFn = Arc<dyn Fn(CatalogCommand) + Send + Sync>;
 /// Hook invoked when a saga journal entry commits on this node (group 0 replicas).
 pub type SagaJournalAppliedFn = Arc<dyn Fn(SagaJournalCommand) + Send + Sync>;
+/// Hook invoked when a 2PC client journal entry commits on this node (Meta-Raft replicas).
+pub type TwoPhaseJournalAppliedFn = Arc<dyn Fn(TwoPhaseJournalCommand) + Send + Sync>;
+/// Hook invoked when the leader GC-aborts a stale durable 2PC prepare.
+pub type TwoPhaseGcAbortedFn = Arc<dyn Fn() + Send + Sync>;
 
 /// Tunables for the runtime loop.
 #[derive(Clone)]
@@ -212,6 +220,10 @@ pub struct RuntimeConfig {
     pub on_catalog_applied: Option<CatalogAppliedFn>,
     /// Apply hook for committed saga journal entries (group 0 only).
     pub on_saga_journal_applied: Option<SagaJournalAppliedFn>,
+    /// Apply hook for committed 2PC client journal entries (Meta-Raft / group 0).
+    pub on_two_phase_journal_applied: Option<TwoPhaseJournalAppliedFn>,
+    /// Metrics hook when a stale durable prepare is GC-aborted (leader-only).
+    pub on_two_phase_gc_aborted: Option<TwoPhaseGcAbortedFn>,
     /// Enable cross-shard two-phase commit prepare/commit/abort on this group.
     pub cross_shard_2pc: bool,
     /// Persist 2PC prepare/abort in the Raft log (requires `cross_shard_2pc`).
@@ -232,6 +244,8 @@ impl Default for RuntimeConfig {
             catalog_snapshot: None,
             on_catalog_applied: None,
             on_saga_journal_applied: None,
+            on_two_phase_journal_applied: None,
+            on_two_phase_gc_aborted: None,
             cross_shard_2pc: false,
             durable_cross_shard_2pc: false,
             two_phase_prepare_timeout: None,
@@ -475,6 +489,22 @@ impl<M: StateMachine> NodeHandle<M> {
         rx.await.map_err(|_| ClientError::Stopped)?
     }
 
+    /// Replicate a 2PC client journal upsert on Meta-Raft / group 0.
+    ///
+    /// # Errors
+    /// [`ClientError::NotLeader`] when this node is not the metadata leader.
+    /// [`ClientError::Stopped`] if the runtime shut down before responding.
+    pub async fn upsert_two_phase_journal(
+        &self,
+        command: TwoPhaseJournalCommand,
+    ) -> Result<(), ClientError> {
+        let (respond, rx) = oneshot::channel();
+        self.tx
+            .send(Envelope::UpsertTwoPhaseJournal { command, respond })
+            .map_err(|_| ClientError::Stopped)?;
+        rx.await.map_err(|_| ClientError::Stopped)?
+    }
+
     /// Propose a joint-consensus membership change to `voters` when this node
     /// is the Raft leader for the group (per-group-raft-membership).
     ///
@@ -622,12 +652,15 @@ struct Runtime<M: StateMachine> {
     /// Catalog add requests awaiting their catalog entry to commit.
     pending_catalog_adds: HashMap<LogIndex, oneshot::Sender<CatalogAddResponse>>,
     pending_saga_journals: HashMap<LogIndex, oneshot::Sender<Result<(), ClientError>>>,
+    pending_two_phase_journals: HashMap<LogIndex, oneshot::Sender<Result<(), ClientError>>>,
     pending_two_phase_prepares: HashMap<LogIndex, oneshot::Sender<Result<(), ClientError>>>,
     pending_two_phase_aborts: HashMap<LogIndex, oneshot::Sender<Result<(), ClientError>>>,
     pending_two_phase_commits: HashMap<LogIndex, PendingTwoPhaseCommit<M>>,
     catalog_snapshot: Option<CatalogSnapshotFn>,
     on_catalog_applied: Option<CatalogAppliedFn>,
     on_saga_journal_applied: Option<SagaJournalAppliedFn>,
+    on_two_phase_journal_applied: Option<TwoPhaseJournalAppliedFn>,
+    on_two_phase_gc_aborted: Option<TwoPhaseGcAbortedFn>,
     next_read_id: u64,
     cross_shard_2pc: bool,
     durable_cross_shard_2pc: bool,
@@ -719,6 +752,14 @@ impl<M: StateMachine> Runtime<M> {
                 hook(command.clone());
             }
             if let Some(tx) = self.pending_saga_journals.remove(&index) {
+                let _ = tx.send(Ok(()));
+            }
+        }
+        for (index, command) in step.two_phase_journal_applied {
+            if let Some(hook) = &self.on_two_phase_journal_applied {
+                hook(command.clone());
+            }
+            if let Some(tx) = self.pending_two_phase_journals.remove(&index) {
                 let _ = tx.send(Ok(()));
             }
         }
@@ -854,6 +895,9 @@ impl<M: StateMachine> Runtime<M> {
         for (_, tx) in self.pending_saga_journals.drain() {
             let _ = tx.send(Err(ClientError::NotLeader { leader }));
         }
+        for (_, tx) in self.pending_two_phase_journals.drain() {
+            let _ = tx.send(Err(ClientError::NotLeader { leader }));
+        }
         for (_, tx) in self.pending_two_phase_prepares.drain() {
             let _ = tx.send(Err(ClientError::NotLeader { leader }));
         }
@@ -952,6 +996,9 @@ impl<M: StateMachine> Runtime<M> {
             }
             Envelope::UpsertSagaJournal { command, respond } => {
                 self.on_upsert_saga_journal(command, respond)?;
+            }
+            Envelope::UpsertTwoPhaseJournal { command, respond } => {
+                self.on_upsert_two_phase_journal(command, respond)?;
             }
             Envelope::ProposeMembership {
                 voters,
@@ -1185,11 +1232,17 @@ impl<M: StateMachine> Runtime<M> {
                 match self.driver.propose_two_phase_abort(journal_cmd)? {
                     Ok((_, step)) => {
                         let _ = self.settle(step);
+                        if let Some(hook) = &self.on_two_phase_gc_aborted {
+                            hook();
+                        }
                     }
                     Err(craft_core::CatalogProposeError::NotLeader { .. }) => break,
                 }
             } else {
                 let _ = self.two_phase_prepares.abort(&tx_id, &route_key);
+                if let Some(hook) = &self.on_two_phase_gc_aborted {
+                    hook();
+                }
             }
         }
         Ok(())
@@ -1403,6 +1456,30 @@ impl<M: StateMachine> Runtime<M> {
         Ok(())
     }
 
+    /// Replicate a 2PC client journal upsert on the Meta-Raft / group 0 leader.
+    fn on_upsert_two_phase_journal(
+        &mut self,
+        command: TwoPhaseJournalCommand,
+        respond: oneshot::Sender<Result<(), ClientError>>,
+    ) -> Result<(), DriverError> {
+        if !self.driver.is_leader() {
+            let _ = respond.send(Err(ClientError::NotLeader {
+                leader: self.driver.node().leader_id(),
+            }));
+            return Ok(());
+        }
+        match self.driver.propose_two_phase_journal(command)? {
+            Ok((index, step)) => {
+                self.pending_two_phase_journals.insert(index, respond);
+                let _ = self.settle(step);
+            }
+            Err(CatalogProposeError::NotLeader { leader }) => {
+                let _ = respond.send(Err(ClientError::NotLeader { leader }));
+            }
+        }
+        Ok(())
+    }
+
     fn on_propose_membership(
         &mut self,
         voters: Vec<NodeId>,
@@ -1462,12 +1539,15 @@ where
         pending_leaves: HashMap::new(),
         pending_catalog_adds: HashMap::new(),
         pending_saga_journals: HashMap::new(),
+        pending_two_phase_journals: HashMap::new(),
         pending_two_phase_prepares: HashMap::new(),
         pending_two_phase_aborts: HashMap::new(),
         pending_two_phase_commits: HashMap::new(),
         catalog_snapshot: config.catalog_snapshot.clone(),
         on_catalog_applied: config.on_catalog_applied.clone(),
         on_saga_journal_applied: config.on_saga_journal_applied.clone(),
+        on_two_phase_journal_applied: config.on_two_phase_journal_applied.clone(),
+        on_two_phase_gc_aborted: config.on_two_phase_gc_aborted.clone(),
         next_read_id: 0,
         cross_shard_2pc: config.cross_shard_2pc,
         durable_cross_shard_2pc: config.durable_cross_shard_2pc,

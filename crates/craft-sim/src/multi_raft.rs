@@ -1,6 +1,7 @@
 //! Multi-Raft simulation — independent Raft groups with shard-aware routing.
 
 use craft_core::{RaftGroupId, ShardRouter, place_shard};
+use craft_proto::TwoPhasePrepareCommand;
 
 use crate::harness::{Cluster, Fault};
 
@@ -101,5 +102,39 @@ impl MultiRaftCluster {
         let shard = self.router.shard_for(key);
         let group = place_shard(shard, &self.group_ids)?;
         Some(group.0 as usize)
+    }
+
+    /// Propose a durable 2PC prepare on the group that owns `key`.
+    pub fn propose_two_phase_prepare(
+        &mut self,
+        group: u32,
+        tx_id: Vec<u8>,
+        route_key: Vec<u8>,
+        command: Vec<u8>,
+    ) -> bool {
+        let idx = group as usize;
+        if idx >= self.groups.len() {
+            return false;
+        }
+        self.groups[idx].propose_two_phase_prepare(TwoPhasePrepareCommand {
+            tx_id,
+            route_key,
+            command,
+            prepared_at_ms: 0,
+        })
+    }
+
+    /// Whether `group` committed a durable prepare for `(tx_id, route_key)`.
+    #[must_use]
+    pub fn group_has_two_phase_prepare(
+        &self,
+        group: u32,
+        tx_id: &[u8],
+        route_key: &[u8],
+    ) -> bool {
+        self.groups[group as usize]
+            .two_phase_prepares()
+            .iter()
+            .any(|p| p.tx_id == tx_id && p.route_key == route_key)
     }
 }

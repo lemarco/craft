@@ -368,6 +368,7 @@ pub struct CraftCluster<M: StateMachine> {
     pub(crate) metrics: Metrics,
     pub(crate) catalog_version: Arc<AtomicU32>,
     pub(crate) saga_registry: crate::saga::SagaRegistry,
+    pub(crate) two_phase_registry: crate::two_phase::TwoPhaseRegistry,
     pub(crate) telemetry: Arc<ActorTelemetry>,
     pub(crate) members: Vec<NodeId>,
     pub(crate) resource_profile: ResourceProfile,
@@ -446,6 +447,32 @@ impl<M: StateMachine> CraftCluster<M> {
             Arc::new(crate::saga::CompositeSagaJournal::new(
                 raft_journal,
                 Some(crate::saga::StoreSagaJournal::new(Arc::clone(store))),
+            ))
+        } else {
+            Arc::new(raft_journal)
+        }
+    }
+
+    /// Default 2PC client journal: Meta-Raft metadata (multi-Raft) or group 0,
+    /// optionally mirrored to [`Self::actor_state_store`] when configured.
+    #[must_use]
+    pub fn two_phase_journal(&self) -> Arc<dyn craft_client::TwoPhaseJournal> {
+        let raft_journal = if let Some(meta) = &self.meta_handle {
+            crate::two_phase::MetaRaftTwoPhaseJournal::new(
+                meta.clone(),
+                Arc::clone(&self.two_phase_registry),
+            )
+        } else {
+            crate::two_phase::MetaRaftTwoPhaseJournal::new(
+                self.group_handle(0)
+                    .expect("group 0 handle required for 2PC journal"),
+                Arc::clone(&self.two_phase_registry),
+            )
+        };
+        if let Some(store) = &self.actor_state_store {
+            Arc::new(crate::two_phase::CompositeTwoPhaseJournal::new(
+                raft_journal,
+                Some(crate::two_phase::StoreTwoPhaseJournal::new(Arc::clone(store))),
             ))
         } else {
             Arc::new(raft_journal)
@@ -638,6 +665,74 @@ impl<M: StateMachine> CraftCluster<M> {
     #[must_use]
     pub fn saga_metrics_callback(&self) -> Arc<dyn Fn(craft_client::SagaEvent) + Send + Sync> {
         crate::saga::saga_metrics_callback(self.metrics.clone(), self.node_id.0)
+    }
+
+    /// Record one 2PC lifecycle event on this node's metrics registry.
+    pub fn record_two_phase_event(&self, event: craft_client::TwoPhaseEvent) {
+        crate::two_phase::record_two_phase_event(&self.metrics, self.node_id.0, event);
+    }
+
+    /// Metrics hook for [`craft_client::RunTwoPhaseOpts::on_event`].
+    #[must_use]
+    pub fn two_phase_metrics_callback(
+        &self,
+    ) -> Arc<dyn Fn(craft_client::TwoPhaseEvent) + Send + Sync> {
+        crate::two_phase::two_phase_metrics_callback(self.metrics.clone(), self.node_id.0)
+    }
+
+    fn group_for_key(&self, key: &[u8]) -> Option<u32> {
+        use craft_core::{RaftGroupId, StableShardRouter, place_shard};
+        let router = StableShardRouter::new(self.shard_count);
+        let shard = router.shard_for(key)?;
+        let groups: Vec<RaftGroupId> = (0..self.raft_groups).map(RaftGroupId).collect();
+        place_shard(shard, &groups).map(|g| g.0)
+    }
+
+    /// Run a cross-shard 2PC transaction with journal + metrics wired.
+    ///
+    /// # Errors
+    /// Same as [`craft_client::propose_cross_shard_2pc`].
+    pub async fn run_keyed_2pc<C: craft_client::TwoPhaseClient>(
+        &self,
+        client: &C,
+        plan: &craft_core::TwoPhasePlan,
+    ) -> Result<Vec<Vec<u8>>, craft_client::TwoPhaseError> {
+        let journal = self.two_phase_journal();
+        let on_event = self.two_phase_metrics_callback();
+        craft_client::propose_cross_shard_2pc_with_opts(
+            client,
+            plan,
+            |key| self.group_for_key(key),
+            craft_client::RunTwoPhaseOpts {
+                journal: Some(journal.as_ref()),
+                on_event: Some(on_event.as_ref()),
+            },
+        )
+        .await
+    }
+
+    /// Resume a cross-shard 2PC from its durable client journal with metrics wired.
+    ///
+    /// # Errors
+    /// Same as [`craft_client::resume_cross_shard_2pc`].
+    pub async fn resume_cross_shard_2pc<C: craft_client::TwoPhaseClient>(
+        &self,
+        client: &C,
+        plan: &craft_core::TwoPhasePlan,
+    ) -> Result<Vec<Vec<u8>>, craft_client::TwoPhaseError> {
+        let journal = self.two_phase_journal();
+        let on_event = self.two_phase_metrics_callback();
+        craft_client::resume_cross_shard_2pc(
+            client,
+            plan,
+            |key| self.group_for_key(key),
+            craft_client::ResumeTwoPhaseOpts {
+                journal: Some(journal.as_ref()),
+                probe: true,
+                on_event: Some(on_event.as_ref()),
+            },
+        )
+        .await
     }
 
     /// Run a cross-shard saga with catalog version pinned and metrics wired.

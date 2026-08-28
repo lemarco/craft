@@ -127,6 +127,7 @@ pub fn entry_estimated_bytes(entry: &LogEntry) -> u64 {
                 c.tx_id.len() as u64 + c.route_key.len() as u64 + c.command.len() as u64 + 32
             }
             EntryPayload::TwoPhaseAbort(c) => c.tx_id.len() as u64 + c.route_key.len() as u64 + 32,
+            EntryPayload::TwoPhaseJournal(c) => c.record.len() as u64 + 32,
         }
 }
 

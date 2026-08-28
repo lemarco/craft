@@ -45,6 +45,7 @@ mod multi_raft;
 mod observer;
 mod saga;
 mod security;
+mod two_phase;
 
 #[doc(inline)]
 pub use craft_proto::{self as proto, NodeId, PROTOCOL_VERSION, Term};
@@ -68,6 +69,11 @@ pub use craft_core::{CompactionPolicy, DEFAULT_COMPACT_BYTES, DEFAULT_COMPACT_EN
 pub use saga::{
     CompositeSagaJournal, Group0SagaJournal, MetaRaftSagaJournal, SagaRegistry, StoreSagaJournal,
     record_saga_metrics, saga_metrics_callback,
+};
+pub use two_phase::{
+    CompositeTwoPhaseJournal, MetaRaftTwoPhaseJournal, StoreTwoPhaseJournal, TwoPhaseRegistry,
+    record_two_phase_event, record_two_phase_gc_aborted, record_two_phase_metrics,
+    two_phase_metrics_callback,
 };
 pub use security::Security;
 

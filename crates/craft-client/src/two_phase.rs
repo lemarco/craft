@@ -57,6 +57,25 @@ pub enum TwoPhaseError {
 pub enum TwoPhaseJournalError {
     #[error("journal codec error: {0}")]
     Codec(String),
+    #[error("journal backend error: {0}")]
+    Backend(String),
+}
+
+/// Lifecycle events for metrics / logging (see cross-shard-transactions ADR).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TwoPhaseEvent {
+    /// All prepare steps succeeded (ready for commit phase).
+    Prepared {
+        /// Number of prepared steps.
+        steps: usize,
+    },
+    /// Coordinator stuck after partial progress (abort or commit failed).
+    Stuck {
+        /// Steps prepared before failure.
+        prepared: usize,
+        /// Step index where failure occurred.
+        failed_step: usize,
+    },
 }
 
 /// Client-side durable progress for cross-shard 2PC resume.
@@ -198,6 +217,8 @@ impl TwoPhaseJournal for InMemoryTwoPhaseJournal {
 #[derive(Clone, Copy, Default)]
 pub struct RunTwoPhaseOpts<'a> {
     pub journal: Option<&'a dyn TwoPhaseJournal>,
+    /// Metrics / logging callback.
+    pub on_event: Option<&'a (dyn Fn(TwoPhaseEvent) + Send + Sync)>,
 }
 
 /// Hooks for [`resume_cross_shard_2pc`].
@@ -206,6 +227,8 @@ pub struct ResumeTwoPhaseOpts<'a> {
     pub journal: Option<&'a dyn TwoPhaseJournal>,
     /// When `true`, try `commit_keyed` before `prepare_keyed` for unknown steps.
     pub probe: bool,
+    /// Metrics / logging callback.
+    pub on_event: Option<&'a (dyn Fn(TwoPhaseEvent) + Send + Sync)>,
 }
 
 impl<'a> Default for ResumeTwoPhaseOpts<'a> {
@@ -213,8 +236,54 @@ impl<'a> Default for ResumeTwoPhaseOpts<'a> {
         Self {
             journal: None,
             probe: true,
+            on_event: None,
         }
     }
+}
+
+/// Postcard-encode a [`TwoPhaseJournalRecord`] for Meta-Raft / Redis storage.
+pub fn encode_two_phase_journal_record(
+    record: &TwoPhaseJournalRecord,
+) -> Result<Vec<u8>, TwoPhaseJournalError> {
+    craft_proto::encode(record).map_err(|e| TwoPhaseJournalError::Codec(e.to_string()))
+}
+
+/// Postcard-decode a [`TwoPhaseJournalRecord`].
+pub fn decode_two_phase_journal_record(
+    bytes: &[u8],
+) -> Result<TwoPhaseJournalRecord, TwoPhaseJournalError> {
+    craft_proto::decode(bytes).map_err(|e| TwoPhaseJournalError::Codec(e.to_string()))
+}
+
+fn emit_stuck(
+    on_event: Option<&(dyn Fn(TwoPhaseEvent) + Send + Sync)>,
+    prepared: usize,
+    failed_step: usize,
+) {
+    if let Some(on) = on_event {
+        on(TwoPhaseEvent::Stuck {
+            prepared,
+            failed_step,
+        });
+    }
+}
+
+async fn abort_prepared<C: TwoPhaseClient>(
+    client: &C,
+    plan: &TwoPhasePlan,
+    prepared: usize,
+) -> bool {
+    let mut ok = true;
+    for prev in plan.steps.iter().take(prepared).rev() {
+        if client
+            .abort_keyed(plan.tx_id.clone(), prev.key.clone())
+            .await
+            .is_err()
+        {
+            ok = false;
+        }
+    }
+    ok
 }
 
 fn is_no_prepared(err: &ClientError) -> bool {
@@ -324,10 +393,8 @@ pub async fn propose_cross_shard_2pc_with_opts<C: TwoPhaseClient>(
             .prepare_keyed(plan.tx_id.clone(), item.key.clone(), item.command.clone())
             .await
         {
-            for prev in plan.steps.iter().take(step).rev() {
-                let _ = client
-                    .abort_keyed(plan.tx_id.clone(), prev.key.clone())
-                    .await;
+            if !abort_prepared(client, plan, step).await {
+                emit_stuck(opts.on_event, step, step);
             }
             return Err(TwoPhaseError::Prepare {
                 step,
@@ -340,9 +407,21 @@ pub async fn propose_cross_shard_2pc_with_opts<C: TwoPhaseClient>(
         }
     }
 
+    if let Some(on) = opts.on_event {
+        on(TwoPhaseEvent::Prepared {
+            steps: plan.steps.len(),
+        });
+    }
+
     let mut responses = Vec::with_capacity(plan.steps.len());
     for (step, _item) in plan.steps.iter().enumerate() {
-        responses.push(commit_step(client, plan, step, journal).await?);
+        match commit_step(client, plan, step, journal).await {
+            Ok(bytes) => responses.push(bytes),
+            Err(err) => {
+                emit_stuck(opts.on_event, plan.steps.len(), step);
+                return Err(err);
+            }
+        }
     }
     if let Some(j) = journal {
         j.on_completed(&plan.tx_id).await?;
@@ -384,7 +463,13 @@ pub async fn resume_cross_shard_2pc<C: TwoPhaseClient>(
     }
 
     for step in prepared_through..plan.steps.len() {
-        responses.push(prepare_or_commit_step(client, plan, step, journal, opts.probe).await?);
+        match prepare_or_commit_step(client, plan, step, journal, opts.probe).await {
+            Ok(bytes) => responses.push(bytes),
+            Err(err) => {
+                emit_stuck(opts.on_event, step, step);
+                return Err(err);
+            }
+        }
     }
 
     if let Some(j) = journal {
@@ -527,6 +612,7 @@ mod tests {
             ResumeTwoPhaseOpts {
                 journal: Some(&journal),
                 probe: false,
+                on_event: None,
             },
         )
         .await

@@ -76,8 +76,9 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Tier 2 stable virtual shards (pure planner) | ✅ `shard` | — | — | — | ✅ |
 | Dynamic catalog expansion (runtime) | — | ✅ `multi_raft` | — | — | ✅ |
 | Stable shard routing (runtime) | — | ✅ `multi_raft`, `sharded` | — | — | ✅ |
-| Cross-shard atomic transactions | — | ✅ `saga`, `two_phase`, `craft-client` | ✅ `two_phase_journal` | — | ✅ |
-| Durable 2PC log entries (`EntryPayload::TwoPhasePrepare/Abort`) | ✅ `two_phase_journal` | ✅ `driver`, `runtime`, `two_phase` | — | — | ✅ |
+| Cross-shard atomic transactions | — | ✅ `saga`, `two_phase`, `craft-client` | ✅ `two_phase_journal`, `two_phase_client_journal` | ✅ `craft-sim/tests/two_phase` | ✅ |
+| Durable 2PC log entries (`EntryPayload::TwoPhasePrepare/Abort`) | ✅ `two_phase_journal` | ✅ `driver`, `runtime`, `two_phase` | — | ✅ `craft-sim/tests/two_phase` | ✅ |
+| 2PC client journal Meta-Raft (`EntryPayload::TwoPhaseJournal`) | ✅ `two_phase_client_journal` | ✅ `driver`, `runtime`, `two_phase` | — | — | ✅ |
 | Saga journal Meta-Raft metadata (`EntryPayload::SagaJournal`) | ✅ `saga_journal` | ✅ `driver`, `runtime`, `saga` | — | — | ✅ |
 | Meta-Raft coordinator (multi-Raft join/catalog/saga isolation) | ✅ `shard` | ✅ `sharded` | — | — | ✅ |
 | Per-group membership planner (`group_voters`, join/leave affects) | ✅ | ✅ | — | — | ✅ |
@@ -226,6 +227,7 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-08 | Saga hardening v2: group 0 journal fallback + coordinator restart resume | `craft-proto/saga_journal`, `craft-core/node`, `craft-actor/runtime`, `craft/src/saga.rs`, `craft/tests/saga.rs` |
 | 2026-08 | Saga journal layered tests (proto/core/driver/runtime/facade) | `craft-proto`, `craft-core/tests/saga_journal.rs`, `craft-actor/tests/{driver,runtime}.rs`, `craft/tests/saga.rs` |
 | 2026-08 | Durable 2PC prepare timeout GC + `resume_cross_shard_2pc` | `craft-actor/runtime`, `craft-client/two_phase`, `craft/tests/two_phase.rs` |
+| 2026-08 | 2PC facade + client journal + metrics + sim partition test | `craft/src/two_phase.rs`, `craft-proto/two_phase_journal`, `craft-sim/tests/two_phase.rs`, `examples/cross_shard_2pc.rs` |
 | 2026-08 | Durable cross-shard 2PC (`durable_cross_shard_2pc`, `EntryPayload::TwoPhasePrepare/Abort`) | `craft-proto/src/two_phase.rs`, `craft-core/tests/two_phase_journal.rs`, `craft/tests/two_phase.rs` |
 | 2026-08 | Tier 2 Phase 2: dynamic catalog runtime (`add_raft_groups`, `/cluster/catalog/add`) | `craft-proto/catalog`, `craft-actor/runtime`, `craft/tests/multi_raft.rs`, `docs/decisions/multi-raft.md` |
 | 2026-08 | Tier 2 multi-Raft architecture ADR + Phase 1 pure planners | `craft-core/src/shard.rs`, `docs/decisions/multi-raft.md` |

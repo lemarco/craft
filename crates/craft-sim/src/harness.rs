@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use craft_core::{Config, Output, RaftNode, ReadId};
-use craft_proto::{LogIndex, Membership, NodeId, RaftRpc, RaftRpcReply};
+use craft_proto::{LogIndex, Membership, NodeId, RaftRpc, RaftRpcReply, TwoPhasePrepareCommand};
 
 use crate::rng::Rng;
 
@@ -61,6 +61,7 @@ pub struct Cluster {
     reads_ready: BTreeMap<u64, LogIndex>,
     reads_failed: BTreeSet<u64>,
     snapshots_loaded: BTreeMap<NodeId, LogIndex>,
+    two_phase_prepares: Vec<TwoPhasePrepareCommand>,
 }
 
 impl Cluster {
@@ -114,6 +115,7 @@ impl Cluster {
             reads_ready: BTreeMap::new(),
             reads_failed: BTreeSet::new(),
             snapshots_loaded: BTreeMap::new(),
+            two_phase_prepares: Vec::new(),
         }
     }
 
@@ -288,6 +290,28 @@ impl Cluster {
         true
     }
 
+    /// Propose a durable 2PC prepare via the current leader.
+    pub fn propose_two_phase_prepare(&mut self, command: TwoPhasePrepareCommand) -> bool {
+        let Some(id) = self.leader_node() else {
+            return false;
+        };
+        let outs = {
+            let node = self.nodes.get_mut(&id).expect("leader exists");
+            if node.propose_two_phase_prepare(command).is_err() {
+                return false;
+            }
+            node.take_outputs()
+        };
+        self.process_outputs(id, outs);
+        true
+    }
+
+    /// Durable 2PC prepares committed cluster-wide (in order observed).
+    #[must_use]
+    pub fn two_phase_prepares(&self) -> &[TwoPhasePrepareCommand] {
+        &self.two_phase_prepares
+    }
+
     /// Run for `steps` ticks.
     pub fn run(&mut self, steps: u64) {
         for _ in 0..steps {
@@ -407,8 +431,11 @@ impl Cluster {
                 }
                 Output::CatalogApplied { .. } => {}
                 Output::SagaJournalApplied { .. } => {}
-                Output::TwoPhasePrepareApplied { .. } => {}
+                Output::TwoPhasePrepareApplied { command, .. } => {
+                    self.two_phase_prepares.push(command);
+                }
                 Output::TwoPhaseAbortApplied { .. } => {}
+                Output::TwoPhaseJournalApplied { .. } => {}
             }
         }
     }

@@ -21,7 +21,7 @@ use craft_proto::{
     AppendEntries, AppendEntriesReply, CatalogCommand, EntryPayload, InstallSnapshot,
     InstallSnapshotReply, LogEntry, LogId, LogIndex, Membership, NodeId, RaftRpc, RaftRpcReply,
     RequestVote, RequestVoteReply, Round, SagaJournalCommand, Term, TwoPhaseAbortCommand,
-    TwoPhasePrepareCommand,
+    TwoPhaseJournalCommand, TwoPhasePrepareCommand,
 };
 
 use crate::config::Configuration;
@@ -145,6 +145,13 @@ pub enum Output {
         index: LogIndex,
         /// Abort command committed at `index`.
         command: TwoPhaseAbortCommand,
+    },
+    /// A committed 2PC client journal entry (not applied to the user SM).
+    TwoPhaseJournalApplied {
+        /// Log index of the journal entry.
+        index: LogIndex,
+        /// Journal command committed at `index`.
+        command: TwoPhaseJournalCommand,
     },
 }
 
@@ -917,6 +924,25 @@ impl RaftNode {
         Ok(idx)
     }
 
+    /// Append a 2PC client journal metadata entry to the log (group 0 / Meta-Raft).
+    ///
+    /// # Errors
+    /// Returns [`CatalogProposeError::NotLeader`] when this node is not leader.
+    pub fn propose_two_phase_journal(
+        &mut self,
+        command: TwoPhaseJournalCommand,
+    ) -> Result<LogIndex, CatalogProposeError> {
+        if self.role != Role::Leader {
+            return Err(CatalogProposeError::NotLeader {
+                leader: self.leader_id,
+            });
+        }
+        let idx = self.log_append(self.current_term, EntryPayload::TwoPhaseJournal(command));
+        self.broadcast_append();
+        self.maybe_advance_commit();
+        Ok(idx)
+    }
+
     // ---- Role transitions ------------------------------------------------
 
     fn set_role(&mut self, role: Role) {
@@ -1364,6 +1390,12 @@ impl RaftNode {
                 }
                 Some(EntryPayload::TwoPhaseAbort(command)) => {
                     self.outbox.push(Output::TwoPhaseAbortApplied {
+                        index: next,
+                        command: command.clone(),
+                    });
+                }
+                Some(EntryPayload::TwoPhaseJournal(command)) => {
+                    self.outbox.push(Output::TwoPhaseJournalApplied {
                         index: next,
                         command: command.clone(),
                     });

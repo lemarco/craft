@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CatalogCommand, LogId, LogIndex, NodeId, Round, SagaJournalCommand, Term, TwoPhaseAbortCommand,
-    TwoPhasePrepareCommand,
+    CatalogCommand, LogId, LogIndex, NodeId, Round, SagaJournalCommand, Term,
+    TwoPhaseAbortCommand, TwoPhaseJournalCommand, TwoPhasePrepareCommand,
 };
 
 /// A single Raft log entry.
@@ -43,6 +43,8 @@ pub enum EntryPayload {
     TwoPhasePrepare(TwoPhasePrepareCommand),
     /// Cross-shard 2PC abort tombstone (durable 2PC; applied by craft, not the user SM).
     TwoPhaseAbort(TwoPhaseAbortCommand),
+    /// Cross-shard 2PC client journal metadata (Tier 2; applied by craft, not the user SM).
+    TwoPhaseJournal(TwoPhaseJournalCommand),
 }
 
 /// A cluster configuration. During joint consensus both the incoming

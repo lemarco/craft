@@ -60,7 +60,7 @@ use craft_core::{
 };
 use craft_proto::{
     CatalogCommand, CodecError, LogIndex, NodeId, RaftRpc, RaftRpcReply, SagaJournalCommand,
-    TwoPhaseAbortCommand, TwoPhasePrepareCommand,
+    TwoPhaseAbortCommand, TwoPhaseJournalCommand, TwoPhasePrepareCommand,
 };
 use craft_storage::{HardState, NullStorage, RaftStorage, Snapshot, SnapshotMeta, StorageError};
 
@@ -133,6 +133,8 @@ pub struct Step<M: StateMachine> {
     pub two_phase_prepare_applied: Vec<(LogIndex, TwoPhasePrepareCommand)>,
     /// Committed durable 2PC abort entries (not applied to the user SM).
     pub two_phase_abort_applied: Vec<(LogIndex, TwoPhaseAbortCommand)>,
+    /// Committed 2PC client journal entries (not applied to the user SM).
+    pub two_phase_journal_applied: Vec<(LogIndex, TwoPhaseJournalCommand)>,
 }
 
 impl<M: StateMachine> Default for Step<M> {
@@ -146,6 +148,7 @@ impl<M: StateMachine> Default for Step<M> {
             saga_journal_applied: Vec::new(),
             two_phase_prepare_applied: Vec::new(),
             two_phase_abort_applied: Vec::new(),
+            two_phase_journal_applied: Vec::new(),
         }
     }
 }
@@ -162,6 +165,7 @@ impl<M: StateMachine> Step<M> {
             && self.saga_journal_applied.is_empty()
             && self.two_phase_prepare_applied.is_empty()
             && self.two_phase_abort_applied.is_empty()
+            && self.two_phase_journal_applied.is_empty()
     }
 }
 
@@ -588,6 +592,21 @@ impl<M: StateMachine> RaftDriver<M> {
         }
     }
 
+    /// Append a 2PC client journal metadata entry (Meta-Raft / group 0 leader only).
+    ///
+    /// # Errors
+    /// Returns [`DriverError`] only if draining a resulting committed journal
+    /// entry fails; leadership rejections are carried in the inner `Result`.
+    pub fn propose_two_phase_journal(
+        &mut self,
+        command: TwoPhaseJournalCommand,
+    ) -> Result<Result<(LogIndex, Step<M>), CatalogProposeError>, DriverError> {
+        match self.node.propose_two_phase_journal(command) {
+            Ok(index) => Ok(Ok((index, self.drain()?))),
+            Err(e) => Ok(Err(e)),
+        }
+    }
+
     /// Append a durable 2PC prepare entry (leader only).
     ///
     /// # Errors
@@ -737,6 +756,9 @@ impl<M: StateMachine> RaftDriver<M> {
                 }
                 Output::TwoPhaseAbortApplied { index, command } => {
                     step.two_phase_abort_applied.push((index, command));
+                }
+                Output::TwoPhaseJournalApplied { index, command } => {
+                    step.two_phase_journal_applied.push((index, command));
                 }
             }
         }

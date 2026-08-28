@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use craft::CraftCluster;
-use craft::core::{RaftGroupId, StableShardRouter, place_shard};
+use craft::core::{Config, RaftGroupId, StableShardRouter, StateMachine, place_shard};
 use craft::net::{LocalNetwork, Transport, send_client_request};
 use craft::proto::{ClientRequest, ClientResponse, LogIndex, NodeId};
 use craft_benchmarks::TinyRng;

@@ -17,6 +17,7 @@ pub mod leave;
 pub mod raft;
 pub mod saga_journal;
 pub mod two_phase;
+pub mod two_phase_journal;
 
 pub use actor::{
     ActorEnvelope, ActorId, ActorRef, ActorRegistration, ActorTypeId, DeliverAck, DirectoryUpdate,
@@ -38,6 +39,7 @@ pub use raft::{
 };
 pub use saga_journal::SagaJournalCommand;
 pub use two_phase::{TwoPhaseAbortCommand, TwoPhasePrepareCommand};
+pub use two_phase_journal::TwoPhaseJournalCommand;
 
 /// Wire/protocol version negotiated on join (join-version-skew: hard reject on mismatch).
 pub const PROTOCOL_VERSION: u32 = 1;
