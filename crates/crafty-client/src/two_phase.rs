@@ -35,10 +35,13 @@ pub trait TwoPhaseClient: KeyedClient {
 /// Why a cross-shard 2PC attempt failed.
 #[derive(Debug, thiserror::Error)]
 pub enum TwoPhaseError {
+    /// The coordinator plan was invalid (duplicate keys, empty steps, etc.).
     #[error("invalid 2PC plan: {0}")]
     Plan(#[from] TwoPhasePlanError),
+    /// Durable journal read/write failed before or during the transaction.
     #[error("2PC journal error: {0}")]
     Journal(#[from] TwoPhaseJournalError),
+    /// A prepare RPC failed after earlier steps succeeded.
     #[error("2PC prepare failed at step {step} after {prepared} prepare(s): {source}")]
     Prepare {
         /// Zero-based step index that failed.
@@ -49,6 +52,7 @@ pub enum TwoPhaseError {
         /// Underlying client / transport error.
         source: ClientError,
     },
+    /// A commit RPC failed after earlier steps succeeded.
     #[error("2PC commit failed at step {step} after {committed} commit(s): {source}")]
     Commit {
         /// Zero-based step index that failed.
@@ -64,8 +68,10 @@ pub enum TwoPhaseError {
 /// Journal persistence failure.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum TwoPhaseJournalError {
+    /// Journal record encode/decode failed.
     #[error("journal codec error: {0}")]
     Codec(String),
+    /// Underlying journal storage backend failed.
     #[error("journal backend error: {0}")]
     Backend(String),
 }

@@ -10,16 +10,27 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum KvCommand {
     /// Insert or overwrite a key.
-    Set { key: String, value: String },
+    Set {
+        /// Key to insert or overwrite.
+        key: String,
+        /// Value to store.
+        value: String,
+    },
     /// Remove a key.
-    Delete { key: String },
+    Delete {
+        /// Key to remove.
+        key: String,
+    },
 }
 
 /// Read side of the reference KV machine.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum KvQuery {
     /// Look up a key.
-    Get { key: String },
+    Get {
+        /// Key to look up.
+        key: String,
+    },
     /// Number of keys stored.
     Len,
 }
@@ -28,9 +39,15 @@ pub enum KvQuery {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KvResponse {
     /// A successful write, with the prior value if any.
-    Set { previous: Option<String> },
+    Set {
+        /// Prior value for the key, if any.
+        previous: Option<String>,
+    },
     /// Result of a delete.
-    Deleted { existed: bool },
+    Deleted {
+        /// Whether the key existed before removal.
+        existed: bool,
+    },
     /// Result of a get (missing keys are `None`).
     Value(Option<String>),
     /// Key count.

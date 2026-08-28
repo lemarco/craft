@@ -15,6 +15,7 @@ pub fn line(msg: impl AsRef<str>) {
     tracing::debug!(target: "crafty::rebalance", "{}", msg.as_ref());
 }
 
+/// Log a leader rebalance plan (live members, hosted groups, adopt/retire sets).
 pub fn plan(node_id: NodeId, live: &[NodeId], hosted: &[RaftGroupId], plan: &GroupRebalancePlan) {
     line(format!(
         "node={} leader plan live={:?} hosted={:?} adopt={:?} retire={:?}",

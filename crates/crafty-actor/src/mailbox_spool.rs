@@ -21,6 +21,7 @@ const K_NEXT_ID: &str = "next_id";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MailboxSpoolId(pub u64);
 
+/// Why a mailbox spool read or write failed.
 #[derive(Debug, thiserror::Error)]
 pub enum MailboxSpoolError {
     /// Disk / redb backend failure.
@@ -89,6 +90,7 @@ pub struct InMemoryMailboxSpool {
 }
 
 impl InMemoryMailboxSpool {
+    /// Empty in-memory spool with monotonic row ids starting at 1.
     #[must_use]
     pub fn new() -> Self {
         Self {

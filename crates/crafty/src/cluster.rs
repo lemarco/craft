@@ -1316,16 +1316,22 @@ pub enum ScaleClusterError {
 /// Why [`CraftyCluster::add_raft_groups`] failed.
 #[derive(Debug, thiserror::Error)]
 pub enum AddRaftGroupsError {
+    /// Multi-Raft catalog expansion is not enabled on this cluster.
     #[error("multi-raft catalog expansion is not enabled")]
     NotMultiRaft,
+    /// The requested group count must be at least 1.
     #[error("add_groups must be at least 1")]
     InvalidCount,
+    /// The node runtime has stopped, so catalog updates are unavailable.
     #[error("node runtime has stopped")]
     Stopped,
+    /// No leader is currently elected to accept the catalog add.
     #[error("no leader is currently elected")]
     NoLeader,
+    /// The catalog leader rejected the add request.
     #[error("catalog add rejected: {0:?}")]
     Rejected(CatalogRejection),
+    /// A peer was unreachable or the wire framing failed.
     #[error(transparent)]
     Transport(#[from] crafty_net::TransportError),
 }
