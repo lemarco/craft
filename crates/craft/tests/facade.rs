@@ -42,8 +42,11 @@ impl UserActor for Worker {
         Ok(Worker)
     }
 
-    async fn handle(&mut self, _msg: Self::Message) -> Result<(), Self::Error> {
-        Ok(())
+    fn handle(
+        &mut self,
+        _msg: Self::Message,
+    ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
+        std::future::ready(Ok(()))
     }
 
     fn encode_config(config: &Self::Config) -> Result<Vec<u8>, ConfigCodecError> {
@@ -492,7 +495,7 @@ async fn opt_in_tracing_emits_message_handled_events() {
                 Some(craft::CraftEvent::MessageHandled { id, .. }) if id.starts_with("w#") => {
                     break true;
                 }
-                Some(_) => continue,
+                Some(_) => {}
                 None => break false,
             }
         }

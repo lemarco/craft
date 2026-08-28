@@ -9,6 +9,7 @@ use craft::proto::{
     ClientRequest, ClientResponse, GroupMigrateRequest, JoinRequest, JoinResponse, NodeId,
     PROTOCOL_VERSION,
 };
+use craft::storage::LogStore;
 use craft_test_support::{
     KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, advance, await_craft_leader,
     eventually_async_default, fast_raft_config_with_seed, find_keys_for_two_groups,
@@ -251,7 +252,6 @@ async fn builder_persists_each_raft_group_to_separate_redb_files() {
 
     let layout = craft::storage::GroupRedbLayout::new(&data_dir);
     let store = layout.open_group(0).unwrap();
-    use craft::storage::LogStore;
     assert!(store.last_index().unwrap().0 >= 1);
 }
 
@@ -437,7 +437,7 @@ async fn multi_raft_survives_follower_partition() {
     })
     .unwrap();
 
-    net.detach(follower_id);
+    let _ = net.detach(follower_id);
 
     let transport: Arc<dyn craft::net::Transport> = Arc::new(net.clone());
     let resp = send_client_request(

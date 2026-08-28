@@ -8,6 +8,9 @@ use craft::core::{Role, StateMachine};
 use crate::clock::{POLL_STEP, advance};
 
 /// Poll until one cluster in `clusters` reports leader, or panic after ~10s.
+///
+/// # Panics
+/// If no cluster elects a leader within the poll budget.
 pub async fn await_craft_leader<M>(clusters: &[Arc<CraftCluster<M>>]) -> Arc<CraftCluster<M>>
 where
     M: StateMachine + Send + Sync + 'static,
@@ -24,6 +27,9 @@ where
 }
 
 /// Poll until `cluster` reports leader, or panic after ~5s.
+///
+/// # Panics
+/// If `cluster` fails to elect a leader within the poll budget.
 pub async fn wait_for_craft_leader<M>(cluster: &CraftCluster<M>)
 where
     M: StateMachine + Send + Sync + 'static,
@@ -38,6 +44,9 @@ where
 }
 
 /// Poll until every Raft group on `cluster` has a local leader, or panic.
+///
+/// # Panics
+/// If not every hosted group elects a leader within the poll budget.
 pub async fn wait_for_group_leaders<M>(cluster: &CraftCluster<M>)
 where
     M: StateMachine + Send + Sync + 'static,
@@ -60,6 +69,9 @@ where
 }
 
 /// Poll until each group index has a leader on at least one cluster, or panic.
+///
+/// # Panics
+/// If any group lacks a leader across the cluster within the poll budget.
 pub async fn wait_for_each_group_cluster_leader<M>(
     clusters: &[Arc<CraftCluster<M>>],
     group_count: u32,
@@ -92,6 +104,9 @@ pub async fn wait_for_each_group_cluster_leader<M>(
 
 /// Poll until at least one cluster (plus optional non-`Arc` peers) is leader for
 /// `group`, or panic after ~10s.
+///
+/// # Panics
+/// If no cluster elects a leader for `group` within the poll budget.
 pub async fn wait_for_group_leader_on_any<M>(
     clusters: &[Arc<CraftCluster<M>>],
     group: u32,

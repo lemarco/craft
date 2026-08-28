@@ -232,7 +232,7 @@ async fn durable_cross_shard_two_phase_prepare_survives_restart() {
             wait_for_craft_stopped(cluster.as_ref()).await;
         }
         for &id in &ids {
-            net.detach(id);
+            let _ = net.detach(id);
         }
     }
 

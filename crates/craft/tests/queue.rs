@@ -41,8 +41,11 @@ impl UserActor for Worker {
         Ok(Worker)
     }
 
-    async fn handle(&mut self, _msg: Self::Message) -> Result<(), Self::Error> {
-        Ok(())
+    fn handle(
+        &mut self,
+        _msg: Self::Message,
+    ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
+        std::future::ready(Ok(()))
     }
 
     fn encode_config(config: &Self::Config) -> Result<Vec<u8>, ConfigCodecError> {
@@ -140,7 +143,7 @@ fn shutdown_queue_cluster(net: &LocalNetwork, clusters: Vec<Arc<CraftCluster<KvM
     }
     drop(clusters);
     for id in [NodeId(1), NodeId(2), NodeId(3)] {
-        net.detach(id);
+        let _ = net.detach(id);
     }
 }
 
@@ -331,7 +334,7 @@ async fn backlog_survives_live_leader_failover() {
     let old_leader_id = leader.node_id();
     wait_for_craft_stopped(leader.as_ref()).await;
     drop(leader);
-    net.detach(old_leader_id);
+    let _ = net.detach(old_leader_id);
 
     let survivors: Vec<_> = clusters
         .into_iter()
@@ -377,7 +380,7 @@ async fn membership_autoscale_invokes_join_hook() {
     let dir = tempfile::tempdir().expect("tempdir");
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let net = LocalNetwork::new();
-    let joined = Arc::new(AtomicBool::new(false));
+    let join_hook_called = Arc::new(AtomicBool::new(false));
     let joiner: Arc<Mutex<Option<Arc<CraftCluster<KvMachine>>>>> = Arc::new(Mutex::new(None));
 
     let policy = MembershipAutoscalePolicy {
@@ -391,17 +394,17 @@ async fn membership_autoscale_invokes_join_hook() {
     for &id in &ids {
         let net = net.clone();
         let dir = dir.path().to_path_buf();
-        let joined = Arc::clone(&joined);
+        let join_hook_called = Arc::clone(&join_hook_called);
         let joiner_store = Arc::clone(&joiner);
         let net_for_hook = net.clone();
         let dir_for_hook = dir.clone();
         let join_hook = move || {
             let net = net_for_hook.clone();
             let dir = dir_for_hook.clone();
-            let joined = Arc::clone(&joined);
+            let join_hook_called = Arc::clone(&join_hook_called);
             let joiner_store = Arc::clone(&joiner_store);
             Box::pin(async move {
-                if joined.swap(true, Ordering::SeqCst) {
+                if join_hook_called.swap(true, Ordering::SeqCst) {
                     return Ok(());
                 }
                 let joiner_id = NodeId(4);
@@ -472,8 +475,8 @@ async fn membership_autoscale_invokes_join_hook() {
     }
 
     eventually_async_default("membership autoscale join hook", || {
-        let joined = joined.load(Ordering::SeqCst);
-        async move { joined }
+        let join_hook_called = join_hook_called.load(Ordering::SeqCst);
+        async move { join_hook_called }
     })
     .await;
 

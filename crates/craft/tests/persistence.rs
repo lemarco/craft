@@ -65,7 +65,7 @@ async fn single_node_data_dir_survives_restart() {
         wait_for_craft_stopped(&cluster).await;
     }
 
-    net.detach(node_id);
+    let _ = net.detach(node_id);
 
     {
         let cluster = CraftCluster::builder(node_id, KvMachine::default())
@@ -129,7 +129,7 @@ async fn multi_raft_data_dir_survives_restart() {
         wait_for_craft_stopped(&cluster).await;
     }
 
-    net.detach(node_id);
+    let _ = net.detach(node_id);
 
     {
         let cluster = CraftCluster::builder(node_id, KvMachine::default())
@@ -219,7 +219,7 @@ async fn compacted_snapshot_survives_facade_restart() {
         );
     }
 
-    net.detach(node_id);
+    let _ = net.detach(node_id);
 
     {
         let cluster = CraftCluster::builder(node_id, TrackedKv::default())
@@ -293,7 +293,7 @@ async fn three_node_majority_survives_one_member_restart() {
     let follower_id = follower.handle().id();
 
     wait_for_craft_stopped(follower.as_ref()).await;
-    net.detach(follower_id);
+    let _ = net.detach(follower_id);
     clusters.retain(|c| c.handle().id() != follower_id);
 
     let leader = await_craft_leader(&clusters).await;

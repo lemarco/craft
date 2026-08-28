@@ -126,7 +126,7 @@ pub fn load_security(
     node_id: NodeId,
     members: &[NodeId],
     joining: bool,
-    pem: PemEnv<'_>,
+    pem: &PemEnv<'_>,
 ) -> Result<(Security, Option<craft::CertPaths>), Box<dyn Error>> {
     if let Some(base) = pem.ordinal_base {
         let ca = pem
@@ -181,7 +181,7 @@ pub fn load_security_from_env(
         node_id,
         members,
         joining,
-        PemEnv {
+        &PemEnv {
             node_cert: env("CRAFT_NODE_CERT").as_deref(),
             node_key: env("CRAFT_NODE_KEY").as_deref(),
             ca_cert: env("CRAFT_CA_CERT").as_deref(),

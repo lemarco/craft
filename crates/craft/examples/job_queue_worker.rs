@@ -50,6 +50,7 @@ async fn await_leader(clusters: &[Arc<CraftCluster<Empty>>]) -> NodeId {
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)] // end-to-end job queue worker demo
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let base = std::env::temp_dir().join("craft-job-queue-worker-example");
     let _ = std::fs::remove_dir_all(&base);
@@ -142,7 +143,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let old_leader = Arc::clone(leader);
     let old_leader_id = old_leader.node_id();
     old_leader.shutdown();
-    net.detach(old_leader_id);
+    let _ = net.detach(old_leader_id);
     drop(old_leader);
 
     let survivors: Vec<_> = clusters

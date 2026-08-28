@@ -3,6 +3,7 @@
 use craft_proto::{EntryPayload, LogEntry, LogIndex, Term};
 
 /// Parse a `u64` from the environment, falling back to `default`.
+#[must_use]
 pub fn env_u64(key: &str, default: u64) -> u64 {
     std::env::var(key)
         .ok()
@@ -11,6 +12,7 @@ pub fn env_u64(key: &str, default: u64) -> u64 {
 }
 
 /// Opaque payload bytes for queue enqueue benchmarks/soak.
+#[must_use]
 pub fn queue_payload(size: usize, seq: u64) -> Vec<u8> {
     let mut buf = vec![0u8; size.max(8)];
     buf[..8].copy_from_slice(&seq.to_le_bytes());

@@ -78,8 +78,8 @@ impl TwoPhaseJournal for StoreTwoPhaseJournal {
     ) -> Pin<Box<dyn Future<Output = Result<(), TwoPhaseJournalError>> + Send + 'a>> {
         Box::pin(async move {
             self.update(tx_id, |mut rec| {
-                rec.prepared_steps = (u32::try_from(step).expect("step index fits u32") + 1)
-                    .max(rec.prepared_steps);
+                rec.prepared_steps =
+                    (u32::try_from(step).expect("step index fits u32") + 1).max(rec.prepared_steps);
                 rec
             })
             .await
@@ -187,8 +187,8 @@ impl TwoPhaseJournal for MetaRaftTwoPhaseJournal {
     ) -> Pin<Box<dyn Future<Output = Result<(), TwoPhaseJournalError>> + Send + 'a>> {
         Box::pin(async move {
             self.update(tx_id, |mut rec| {
-                rec.prepared_steps = (u32::try_from(step).expect("step index fits u32") + 1)
-                    .max(rec.prepared_steps);
+                rec.prepared_steps =
+                    (u32::try_from(step).expect("step index fits u32") + 1).max(rec.prepared_steps);
                 let _ = total;
                 rec
             })

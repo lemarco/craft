@@ -126,18 +126,18 @@ async fn a_new_node_dynamically_joins_over_quic() {
 
     // The join committed a membership change adding node 4, and it caught up to
     // the pre-join state.
-    let mut joined = false;
+    let mut join_complete = false;
     for _ in 0..1000 {
         if let Some(status) = joiner.status().await
             && status.voters.contains(&joiner_id)
             && status.last_applied >= LogIndex(1)
         {
-            joined = true;
+            join_complete = true;
             break;
         }
         advance(TICK_PERIOD).await;
     }
-    assert!(joined, "node 4 did not become a voter and catch up");
+    assert!(join_complete, "node 4 did not become a voter and catch up");
 
     // A fresh proposal now replicates to the enlarged cluster, node 4 included.
     let leader = await_craft_leader(&clusters).await;

@@ -327,7 +327,8 @@ impl MembershipTelemetry {
                     &[("node", node)],
                     1.0,
                 );
-                let _ = self.events
+                let _ = self
+                    .events
                     .emit(CraftEvent::NodeJoined { node_id: joined.0 });
             }
             for left in prev_v.difference(&new_v) {

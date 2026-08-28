@@ -382,7 +382,7 @@ async fn cross_shard_saga_survives_coordinator_restart_via_group0_journal() {
             wait_for_craft_stopped(cluster.as_ref()).await;
         }
         for &id in &ids {
-            net.detach(id);
+            let _ = net.detach(id);
         }
     }
 

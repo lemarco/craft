@@ -42,10 +42,13 @@ impl UserActor for Worker {
         Ok(Worker)
     }
 
-    async fn handle(&mut self, job: Self::Message) -> Result<(), Self::Error> {
+    fn handle(
+        &mut self,
+        job: Self::Message,
+    ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
         HANDLED.fetch_add(1, Ordering::SeqCst);
         println!("worker handled job {job}");
-        Ok(())
+        std::future::ready(Ok(()))
     }
 }
 

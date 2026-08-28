@@ -64,12 +64,16 @@ impl UserActor for Worker {
         Ok(Worker)
     }
 
-    async fn handle(&mut self, _msg: Self::Message) -> Result<(), Self::Error> {
-        Ok(())
+    fn handle(
+        &mut self,
+        _msg: Self::Message,
+    ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
+        std::future::ready(Ok(()))
     }
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)] // end-to-end sharded job queue cluster demo
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let base = std::env::temp_dir().join("craft-job-queue-cluster-example");
     let _ = std::fs::remove_dir_all(&base);
