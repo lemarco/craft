@@ -7,12 +7,12 @@ Guides for building on crafty **without mandatory Redis or Kubernetes**. Each sc
 
 ## Choose your pattern
 
-| I need… | Guide | Runtime today | Product polish (backlog) |
-|---------|-------|---------------|--------------------------|
-| Async work, retries, many workers | [Background jobs](background-jobs.md) | ✅ `RedbJobQueue`, E2E | `CraftyApp`, HTTP `202` helper |
-| Actor state survives VPS crash | [Stateful workers](stateful-workers.md) | ✅ migration; ⚠️ store = in-memory or SM | `RedbActorStateStore` (B-01) |
-| WebSocket / live session to one worker | [Real-time sessions](realtime-sessions.md) | ✅ `ActorSession` | `websocket_gateway` example (B-04) |
-| Multi-step process with compensation | [Workflows](workflows.md) | ✅ `run_saga`, Meta-Raft journal | Fluent workflow builder (B-05) |
+| I need… | Guide | Runtime today | Product polish |
+|---------|-------|---------------|----------------|
+| Async work, retries, many workers | [Background jobs](background-jobs.md) | ✅ `RedbJobQueue`, E2E, HTTP `202` | Dashboard queue view |
+| Actor state survives VPS crash | [Stateful workers](stateful-workers.md) | ✅ `RedbActorStateStore`, migration | — |
+| WebSocket / live session to one worker | [Real-time sessions](realtime-sessions.md) | ✅ `ActorSession`, gateway example | Auth stub (backlog) |
+| Multi-step process with compensation | [Workflows](workflows.md) | ✅ `WorkflowBuilder`, Meta-Raft journal | Dashboard saga view |
 
 ## Shared persistence model
 
@@ -22,7 +22,7 @@ data_dir/
 ├── group-meta.redb        # Meta-Raft — saga journal, catalog (multi-Raft)
 ├── queue-{stream}.redb    # JobQueue backlog
 ├── mailbox-spool.redb     # durable cross-node deliver (optional)
-└── actor-store.redb       # ActorStateStore (backlog B-01)
+└── actor-store.redb       # ActorStateStore (RedbActorStateStore)
 ```
 
 ## Three tiers (do not mix)
@@ -63,7 +63,9 @@ flowchart LR
 | Background jobs | `cargo run -p crafty --example job_queue_worker` |
 | Jobs + autoscale | `cargo run -p crafty --example job_queue_cluster` |
 | Cluster actors | `cargo run -p crafty --example actors_cluster` |
-| Actor + store split | `cargo run -p crafty --example hexagonal_actor_store` (use `InMemoryStore`; swap to redb when B-01 lands) |
+| Actor + store split | `cargo run -p crafty --example hexagonal_actor_store` (`.data_dir` → redb prod path) |
+| WebSocket gateway | `cargo run -p crafty --example websocket_gateway` |
+| Onboarding workflow | `cargo run -p crafty --example onboarding_workflow` |
 | VPS join | `cargo run -p crafty --example vps_join` |
 
 E2E: `./e2e/queue.sh` (QUIC/mTLS, failover).
@@ -72,4 +74,6 @@ E2E: `./e2e/queue.sh` (QUIC/mTLS, failover).
 
 - [status.md](../status.md) — shipped vs deferred
 - [architecture.md](../architecture.md) — crate graph
+- [getting-started.md](../getting-started.md) — CraftyApp tutorial
+- [ops/production-runbook.md](../ops/production-runbook.md) — VPS deployment checklist
 - [deployment-model](../decisions/deployment-model.md) — one binary, N VPS

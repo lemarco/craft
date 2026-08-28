@@ -13,8 +13,8 @@ Product and implementation backlog for crafty **0.2.x → 1.0**. Shipped capabil
 | Priority | Count | Items |
 |----------|-------|-------|
 | **P0** | 2 | B-01 ✅, B-02 ✅ |
-| **P1** | 4 | B-03 🚧 … B-06 🚧 |
-| **P2** | 3 | B-07 … B-09 |
+| **P1** | 4 | B-03 ✅ … B-06 ✅ |
+| **P2** | 3 | B-07 ✅ … B-09 ✅ |
 | **P3** | 3 | B-10 … B-12 |
 | **Optional** | 4 | O-01 … O-04 |
 | **Subtasks** | 28 | B-01a … B-12c (see epics below) |
@@ -113,72 +113,72 @@ flowchart TB
 
 ## P1 — Scenario polish
 
-### B-03 🚧 Background jobs — HTTP + DX
+### B-03 ✅ Background jobs — HTTP + DX
 
-**Scenario:** [background-jobs](scenarios/background-jobs.md)
+**Shipped:** 2026-08-28 — `crafty-http`, `http-jobs` feature, `crafty/tests/http_jobs.rs`.
 
 | Subtask | Description | Status |
 |---------|-------------|--------|
-| B-03a | Axum route `POST /jobs/{stream}` → `202` + `{ "job_id": … }` JSON | 🚧 `crafty-http` |
-| B-03b | Request body → opaque bytes or JSON envelope (document contract) | 🚧 README |
+| B-03a | Axum route `POST /jobs/{stream}` → `202` + `{ "job_id": … }` JSON | ✅ `crafty-http` |
+| B-03b | Request body → opaque bytes or JSON envelope (document contract) | ✅ README |
 | B-03c | Optional `GET /jobs/{stream}/{id}` if queue metadata extended | 🔲 |
-| B-03d | `crafty/http-jobs` feature or `crafty-http` crate (decide in impl) | 🚧 `crafty-http` + feature |
-| B-03e | Integration test: HTTP enqueue → worker ack | 🚧 `crafty/tests/http_jobs.rs` |
+| B-03d | Optional `crafty/http-jobs` feature or `crafty-http` crate (decide in impl) | ✅ `crafty-http` + feature |
+| B-03e | Integration test: HTTP enqueue → worker ack | ✅ `crafty/tests/http_jobs.rs` |
 
 ---
 
-### B-04 🚧 Real-time — WebSocket gateway
+### B-04 ✅ Real-time — WebSocket gateway
 
-**Scenario:** [realtime-sessions](scenarios/realtime-sessions.md)
+**Shipped:** 2026-08-28 — `examples/websocket_gateway.rs`.
 
 | Subtask | Description | Status |
 |---------|-------------|--------|
-| B-04a | `examples/websocket_gateway.rs` — axum WS + `ChatWorker` | 🚧 |
-| B-04b | Document `GATEWAY=1` vs worker role (same binary, env split) | 🚧 |
+| B-04a | `examples/websocket_gateway.rs` — axum WS + `ChatWorker` | ✅ |
+| B-04b | Document `GATEWAY=1` vs worker role (same binary, env split) | ✅ |
 | B-04c | Auth stub + `ActorSession` open on connect | 🔲 |
 | B-04d | Reconnect: handle `NoTarget`, session TTL expiry | 🔲 |
 | B-04e | Optional: checkpoint last N messages to SM (comment in example) | 🔲 |
 
 ---
 
-### B-05 🚧 Workflows — fluent builder
+### B-05 ✅ Workflows — fluent builder
 
-**Scenario:** [workflows](scenarios/workflows.md)
+**Shipped:** 2026-08-28 — `WorkflowBuilder`, `CraftyApp::run_workflow` / `resume_workflow`.
 
 | Subtask | Description | Status |
 |---------|-------------|--------|
-| B-05a | `WorkflowBuilder` — named `.step(id, fn)`, `.compensate(id, fn)` | 🚧 |
-| B-05b | Builds `SagaPlan`; runs via `run_saga` / `CompositeSagaJournal` | 🚧 |
-| B-05c | `CraftyApp::workflow(name, builder_fn)` registration | 🚧 `run_workflow` |
-| B-05d | Example: `onboarding_workflow` — saga + enqueue + propose steps | 🚧 |
+| B-05a | `WorkflowBuilder` — named `.step(id, fn)`, `.compensate(id, fn)` | ✅ |
+| B-05b | Builds `SagaPlan`; runs via `run_saga` / `CompositeSagaJournal` | ✅ |
+| B-05c | `CraftyApp::workflow(name, builder_fn)` registration | ✅ `run_workflow` |
+| B-05d | Example: `onboarding_workflow` — saga + enqueue + propose steps | ✅ |
 | B-05e | `crafty workflow resume <id>` CLI stub (optional, via `crafty-node` or ops) | 🔲 |
 
 ---
 
-### B-06 🚧 `crafty init` project template
+### B-06 ✅ `crafty init` project template
 
-**Scenario:** all
+**Shipped:** 2026-08-28 — `scripts/crafty-init.sh`, `templates/crafty-app/`.
 
 | Subtask | Description | Status |
 |---------|-------------|--------|
-| B-06a | `scripts/crafty-init.sh` or cargo-template: main + one worker | 🚧 |
-| B-06b | Generated: job stream stub + optional saga stub | 🚧 template |
-| B-06c | `docker-compose.yml` 3-node local (dev-certs) | 🚧 |
-| B-06d | Zero `redis://`; README points to [scenarios/](scenarios/README.md) | 🚧 |
+| B-06a | `scripts/crafty-init.sh` or cargo-template: main + one worker | ✅ |
+| B-06b | Generated: job stream stub + optional saga stub | ✅ template |
+| B-06c | `docker-compose.yml` 3-node local (dev-certs) | ✅ |
+| B-06d | Zero `redis://`; README points to [scenarios/](scenarios/README.md) | ✅ |
 
 ---
 
 ## P2 — Docs & observability
 
-### B-07 🔲 Dashboard — queue + workflows
+### B-07 ✅ Dashboard — queue + workflows
 
-**Scenario:** [background-jobs](scenarios/background-jobs.md), [workflows](scenarios/workflows.md)
+**Shipped:** 2026-08-28 — `/introspect/queues`, `/introspect/sagas`, dashboard panels, Prometheus gauges.
 
 | Subtask | Description | Status |
 |---------|-------------|--------|
-| B-07a | Admin HTML: per-stream queue depth, active leases | 🔲 |
-| B-07b | Admin HTML: saga records (running / done / failed) from journal or metrics | 🔲 |
-| B-07c | Wire existing `crafty_saga_*` / queue metrics to dashboard views | 🔲 |
+| B-07a | Admin HTML: per-stream queue depth, active leases | ✅ |
+| B-07b | Admin HTML: saga records (running / done / failed) from journal or metrics | ✅ |
+| B-07c | Wire existing `crafty_saga_*` / queue metrics to dashboard views | ✅ |
 
 ---
 
@@ -191,20 +191,22 @@ flowchart TB
 | B-08a | Product scenario ADR + four scenario guides | ✅ |
 | B-08b | [actor-state-redis](decisions/actor-state-redis.md) banner → [actor-state-store](decisions/actor-state-store.md) | ✅ |
 | B-08c | [status.md](status.md), [README.md](README.md), [AGENTS.md](../AGENTS.md) links | ✅ |
-| B-08d | Update `hexagonal_actor_store` comments: redb prod path | 🔲 |
-| B-08e | `docs/getting-started.md` — full tutorial, no Redis | 🔲 |
-| B-08f | README root: link scenarios + positioning paragraph | 🔲 |
+| B-08d | Update `hexagonal_actor_store` comments: redb prod path | ✅ |
+| B-08e | `docs/getting-started.md` — full tutorial, no Redis | ✅ |
+| B-08f | README root: link scenarios + positioning paragraph | ✅ |
 
 ---
 
-### B-09 🔲 Production runbook bundle
+### B-09 ✅ Production runbook bundle
+
+**Shipped:** 2026-08-28 — [ops/production-runbook.md](ops/production-runbook.md).
 
 | Subtask | Description | Status |
 |---------|-------------|--------|
-| B-09a | `docs/ops/production-runbook.md` — scale VPS, seeds, firewall UDP 7443 | 🔲 |
-| B-09b | Merge pointers: [backup-restore](ops/backup-restore.md), [rolling-upgrade](ops/rolling-upgrade.md), [certs](certs.md) | 🔲 |
-| B-09c | Multi-Raft rebalance pointer (when to add groups) | 🔲 |
-| B-09d | Link from [scenarios/README](scenarios/README.md) | 🔲 |
+| B-09a | `docs/ops/production-runbook.md` — scale VPS, seeds, firewall UDP 7443 | ✅ |
+| B-09b | Merge pointers: [backup-restore](ops/backup-restore.md), [rolling-upgrade](ops/rolling-upgrade.md), [certs](certs.md) | ✅ |
+| B-09c | Multi-Raft rebalance pointer (when to add groups) | ✅ |
+| B-09d | Link from [scenarios/README](scenarios/README.md) | ✅ |
 
 ---
 
@@ -264,33 +266,34 @@ flowchart TB
 
 ## Per-scenario checklist (what “done” looks like)
 
-### Background jobs ✅ runtime / 🔲 product layer
+### Background jobs ✅ runtime / ✅ product layer
 
 | Done when | Item |
 |-----------|------|
 | ✅ | `RedbJobQueue`, `ClusterJobQueue`, autoscale, E2E |
-| 🔲 | B-03 HTTP `202`, B-02c jobs on `CraftyApp`, B-07a dashboard |
+| ✅ | B-03 HTTP `202`, B-02c jobs on `CraftyApp`, B-07a dashboard |
 
-### Stateful workers ⚠️ store gap
-
-| Done when | Item |
-|-----------|------|
-| ✅ | Migration, supervisor, `InMemoryStore`, SM path |
-| 🔲 | B-01 redb store, B-02d workers API, B-10a soak |
-
-### Real-time / session ✅ routing / 🔲 gateway
+### Stateful workers ✅ store + migration
 
 | Done when | Item |
 |-----------|------|
-| ✅ | `ActorSession`, consistent-hash, cross-node ask |
-| 🔲 | B-04 example, B-02g `app.session`, B-10b soak |
+| ✅ | Migration, supervisor, `RedbActorStateStore`, SM path |
+| 🔲 | B-02d workers API, B-10a soak |
 
-### Workflows ✅ journal / 🔲 builder
+### Real-time / session ✅ routing / ✅ gateway
 
 | Done when | Item |
 |-----------|------|
-| ✅ | `run_saga`, Meta-Raft journal, cross-shard saga |
-| 🔲 | B-05 fluent API, B-05d example, B-07b dashboard, B-10c soak |
+| ✅ | `ActorSession`, consistent-hash, cross-node ask, B-04 example |
+| 🔲 | B-02g `app.session`, B-10b soak |
+
+### Workflows ✅ journal / ✅ builder
+
+| Done when | Item |
+|-----------|------|
+| ✅ | `run_saga`, Meta-Raft journal, cross-shard saga, B-05 fluent API |
+| ✅ | B-05d example, B-07b dashboard |
+| 🔲 | B-10c soak |
 
 ---
 

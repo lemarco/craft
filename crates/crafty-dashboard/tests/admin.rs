@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use crafty_dashboard::{
     ActorView, AdminServer, AdminTlsPaths, BoxFuture, ClusterView, EventBus, Metrics, NodeSummary,
-    NodeView, Observer, RaftGroupsView, Readiness, admin_tls_config,
+    NodeView, Observer, QueuesView, RaftGroupsView, Readiness, SagaRecordView, admin_tls_config,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -103,6 +103,32 @@ impl Observer for Fake {
                 cpus: 8,
                 store_healthy: true,
             })
+        })
+    }
+
+    fn queues(&self) -> BoxFuture<'_, QueuesView> {
+        Box::pin(async move {
+            QueuesView {
+                streams: vec![crafty_dashboard::QueueStreamView {
+                    stream: "jobs".into(),
+                    pending: 5,
+                    leased: 2,
+                    oldest_pending_age_ms: 1200,
+                }],
+            }
+        })
+    }
+
+    fn sagas(&self) -> BoxFuture<'_, Vec<SagaRecordView>> {
+        Box::pin(async move {
+            vec![SagaRecordView {
+                saga_id: "abc123".into(),
+                phase: "running".into(),
+                completed_steps: 1,
+                catalog_version: Some(3),
+                failed_step: None,
+                compensate_failed_at: None,
+            }]
         })
     }
 }
@@ -288,6 +314,14 @@ async fn introspection_routes_return_json() {
 
     let (status, _) = get(addr, "/introspect/node/notanumber").await;
     assert_eq!(status, 400);
+
+    let (status, body) = get(addr, "/introspect/queues").await;
+    assert_eq!(status, 200);
+    assert!(body.contains("\"stream\":\"jobs\"") && body.contains("\"pending\":5"));
+
+    let (status, body) = get(addr, "/introspect/sagas").await;
+    assert_eq!(status, 200);
+    assert!(body.contains("\"phase\":\"running\""));
 }
 
 #[tokio::test]

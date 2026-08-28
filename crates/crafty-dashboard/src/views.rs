@@ -137,6 +137,46 @@ pub struct RaftGroupsView {
     pub groups: Vec<RaftGroupSummary>,
 }
 
+/// One job stream's depth gauges for `GET /introspect/queues`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueueStreamView {
+    /// Stream name (e.g. `jobs`).
+    pub stream: String,
+    /// Jobs eligible to lease now.
+    pub pending: u64,
+    /// Jobs currently leased.
+    pub leased: u64,
+    /// Age of the oldest ready pending job in milliseconds.
+    pub oldest_pending_age_ms: u64,
+}
+
+/// All registered job streams on this node.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueuesView {
+    /// Per-stream queue depth.
+    pub streams: Vec<QueueStreamView>,
+}
+
+/// One saga journal record for `GET /introspect/sagas`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SagaRecordView {
+    /// Saga id (hex-encoded bytes).
+    pub saga_id: String,
+    /// Latest phase (`running`, `completed`, `compensating`, `compensated`, `stuck`).
+    pub phase: String,
+    /// Forward steps committed so far.
+    pub completed_steps: u32,
+    /// Catalog version pinned at start, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub catalog_version: Option<u32>,
+    /// Forward step that failed before compensation (if any).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failed_step: Option<u32>,
+    /// Compensate step index that failed when phase is `stuck`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compensate_failed_at: Option<u32>,
+}
+
 /// Read-only observability port implemented by the runtime/facade.
 ///
 /// Object-safe (boxed futures) so the admin server can hold
@@ -159,4 +199,10 @@ pub trait Observer: Send + Sync + 'static {
 
     /// A single node's detail by id, if known.
     fn node(&self, id: u64) -> BoxFuture<'_, Option<NodeView>>;
+
+    /// Registered job streams and depth gauges (background-jobs observability).
+    fn queues(&self) -> BoxFuture<'_, QueuesView>;
+
+    /// Saga journal records known on this node (workflow observability).
+    fn sagas(&self) -> BoxFuture<'_, Vec<SagaRecordView>>;
 }

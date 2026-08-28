@@ -104,7 +104,74 @@ let app = CraftyApp::builder(NodeId(1))
 
 Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store_set`](../../crates/crafty-actor/src/store_codec.rs) — backed by redb when `data_dir` is set.
 
-## 5. Advanced APIs
+## 5. HTTP job enqueue (optional)
+
+Enable the `http-jobs` feature and mount the Axum router on your gateway VPS:
+
+```toml
+crafty = { version = "0.1", features = ["http-jobs"] }
+```
+
+```rust
+use std::sync::Arc;
+use crafty::CraftyApp;
+
+let app = Arc::new(app);
+let api = CraftyApp::jobs_api(Arc::clone(&app));
+let router = api.router().with_state(Arc::new(api.into_state()));
+// POST /jobs/{stream} → 202 { "job_id": … }
+```
+
+See [crafty-http README](../../crates/crafty-http/README.md) and [background-jobs](scenarios/background-jobs.md).
+
+## 6. Workflows (sagas)
+
+Build a named plan with [`WorkflowBuilder`](../../crates/crafty/src/workflow.rs) and run it on the cluster journal:
+
+```rust
+use crafty::{WorkflowBuilder, CraftyApp};
+
+let plan = WorkflowBuilder::new("onboard-user")
+    .step("create_account", &key, payload)
+    .compensate("create_account", undo_payload)
+    .build()?;
+
+app.run_workflow(&plan).await?;
+// resume after failure: app.resume_workflow(&plan, &saga_id).await?;
+```
+
+Example: `cargo run -p crafty --example onboarding_workflow`.
+
+## 7. Real-time gateway
+
+WebSocket + session routing example (same binary, `GATEWAY=1` env split documented in source):
+
+```bash
+cargo run -p crafty --example websocket_gateway
+```
+
+See [realtime-sessions](scenarios/realtime-sessions.md).
+
+## 8. Scaffold a new project
+
+```bash
+./scripts/crafty-init.sh my-app
+cd my-app
+cargo run
+```
+
+Generates a `CraftyApp` stub, docker-compose for 3-node local dev, and links to scenario guides.
+
+## 9. Observability & ops
+
+| Need | How |
+|------|-----|
+| Live dashboard | `.admin_addr("0.0.0.0:8080")` or `CRAFTY_ADMIN` → `http://host:8080/dashboard` |
+| Queue / workflow panels | Dashboard polls `/introspect/queues` and `/introspect/sagas` |
+| Prometheus | Scrape `GET /metrics` (includes `crafty_queue_*`, `crafty_saga_*`) |
+| Production checklist | [ops/production-runbook.md](ops/production-runbook.md) |
+
+## 10. Advanced APIs
 
 Use `app.cluster()` for full [`CraftyCluster`](../../crates/crafty/src/cluster.rs) access (saga, multi-Raft, supervisor). Product scenarios:
 
@@ -120,3 +187,4 @@ Use `app.cluster()` for full [`CraftyCluster`](../../crates/crafty/src/cluster.r
 - [deployment-model](decisions/deployment-model.md)
 - [product-scenarios](decisions/product-scenarios.md)
 - [actor-state-store](decisions/actor-state-store.md)
+- [ops/production-runbook.md](ops/production-runbook.md)

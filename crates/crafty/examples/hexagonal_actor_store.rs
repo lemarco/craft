@@ -20,7 +20,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crafty::actor::{ActorRef, ActorStateStore, InMemoryStore, UserActor, store_get, store_set};
+use crafty::actor::{ActorRef, ActorStateStore, UserActor, store_get, store_set};
 use crafty::core::StateMachine;
 use crafty::net::LocalNetwork;
 use crafty::proto::LogIndex;
@@ -112,10 +112,10 @@ impl UserActor for JobWorker {
 #[tokio::main]
 async fn main() {
     let net = LocalNetwork::new();
-    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
-
+    // Production path: `.data_dir(...)` auto-opens voter-replicated `actor-store.redb`.
+    // For unit-style local runs without disk, pass `InMemoryStore` via `.actor_state_store(...)`.
     let cluster = CraftyCluster::builder(NodeId(1), Counter::default())
-        .actor_state_store(Arc::clone(&store))
+        .data_dir("/tmp/hexagonal-store")
         .register_actor::<JobWorker>()
         .tick_period(Duration::from_millis(10))
         .start_local(&net)
@@ -123,7 +123,7 @@ async fn main() {
 
     let store = cluster
         .actor_state_store()
-        .expect("builder wired ActorStateStore");
+        .expect("data_dir wires RedbActorStateStore");
 
     let worker: ActorRef<JobWorker> = cluster
         .registry()

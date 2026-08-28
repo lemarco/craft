@@ -30,6 +30,6 @@ pub use metrics::Metrics;
 pub use server::AdminServer;
 pub use telemetry::{CraftyEvent, EventBus, EventSubscription, StopReason, TraceOpts};
 pub use views::{
-    ActorView, BoxFuture, ClusterView, NodeSummary, NodeView, Observer, RaftGroupSummary,
-    RaftGroupsView, Readiness,
+    ActorView, BoxFuture, ClusterView, NodeSummary, NodeView, Observer, QueueStreamView,
+    QueuesView, RaftGroupSummary, RaftGroupsView, Readiness, SagaRecordView,
 };

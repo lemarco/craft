@@ -7,19 +7,22 @@
 //! so those fields report `0` for now (tracked as observability follow-ups);
 //! everything else reflects real runtime state.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use crafty_core::{Role, StateMachine};
 use crafty_dashboard::{
-    ActorView, BoxFuture, ClusterView, NodeSummary, NodeView, Observer, RaftGroupSummary,
-    RaftGroupsView, Readiness,
+    ActorView, BoxFuture, ClusterView, Metrics, NodeSummary, NodeView, Observer, QueueStreamView,
+    QueuesView, RaftGroupSummary, RaftGroupsView, Readiness, SagaRecordView,
 };
 use crafty_proto::NodeId;
 
-use crafty_actor::{ActorDirectory, ActorRegistry, NodeHandle};
+use crafty_actor::{ActorDirectory, ActorRegistry, JobQueue, NodeHandle};
+use crafty_client::SagaJournalPhase;
 
 use crate::multi_raft::MultiRaftState;
+use crate::saga::SagaRegistry;
 
 /// A read-only view onto one running node for the admin/dashboard endpoints.
 pub(crate) struct CraftyObserver<M: StateMachine> {
@@ -34,6 +37,9 @@ pub(crate) struct CraftyObserver<M: StateMachine> {
     learner_factor: u32,
     multi_raft: Option<Arc<MultiRaftState<M>>>,
     catalog_version: Arc<AtomicU32>,
+    job_queues: HashMap<String, Arc<dyn JobQueue>>,
+    saga_registry: SagaRegistry,
+    metrics: Metrics,
 }
 
 impl<M: StateMachine> CraftyObserver<M> {
@@ -50,6 +56,9 @@ impl<M: StateMachine> CraftyObserver<M> {
         learner_factor: u32,
         multi_raft: Option<Arc<MultiRaftState<M>>>,
         catalog_version: Arc<AtomicU32>,
+        job_queues: HashMap<String, Arc<dyn JobQueue>>,
+        saga_registry: SagaRegistry,
+        metrics: Metrics,
     ) -> Self {
         Self {
             node_id,
@@ -63,6 +72,9 @@ impl<M: StateMachine> CraftyObserver<M> {
             learner_factor,
             multi_raft,
             catalog_version,
+            job_queues,
+            saga_registry,
+            metrics,
         }
     }
 }
@@ -79,6 +91,35 @@ fn role_str(role: Role) -> &'static str {
         Role::Candidate => "candidate",
         Role::Leader => "leader",
     }
+}
+
+fn saga_phase_str(phase: SagaJournalPhase) -> &'static str {
+    match phase {
+        SagaJournalPhase::Running => "running",
+        SagaJournalPhase::Completed => "completed",
+        SagaJournalPhase::Compensating => "compensating",
+        SagaJournalPhase::Compensated => "compensated",
+        SagaJournalPhase::Stuck => "stuck",
+    }
+}
+
+fn hex_bytes(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        use std::fmt::Write as _;
+        let _ = write!(out, "{b:02x}");
+    }
+    out
+}
+
+#[allow(clippy::cast_precision_loss)] // Prometheus gauges use f64; queue depths fit in practice.
+fn metric_u64(v: u64) -> f64 {
+    v as f64
+}
+
+#[allow(clippy::cast_precision_loss)] // Prometheus gauges use f64; saga counts fit in practice.
+fn metric_usize(v: usize) -> f64 {
+    v as f64
 }
 
 impl<M: StateMachine> Observer for CraftyObserver<M> {
@@ -278,6 +319,82 @@ impl<M: StateMachine> Observer for CraftyObserver<M> {
                 cpus: 0,
                 store_healthy: true,
             })
+        })
+    }
+
+    fn queues(&self) -> BoxFuture<'_, QueuesView> {
+        let queues = self.job_queues.clone();
+        let metrics = self.metrics.clone();
+        Box::pin(async move {
+            let mut streams = Vec::new();
+            for (stream, queue) in queues {
+                if let Ok(m) = queue.metrics().await {
+                    let oldest_pending_age_ms =
+                        u64::try_from(m.oldest_pending_age.as_millis()).unwrap_or(u64::MAX);
+                    metrics.set(
+                        "crafty_queue_pending",
+                        "Pending jobs eligible to lease.",
+                        &[("stream", &stream)],
+                        metric_u64(m.pending),
+                    );
+                    metrics.set(
+                        "crafty_queue_leased",
+                        "Jobs currently leased.",
+                        &[("stream", &stream)],
+                        metric_u64(m.leased),
+                    );
+                    metrics.set(
+                        "crafty_queue_oldest_pending_age_ms",
+                        "Age of oldest ready pending job.",
+                        &[("stream", &stream)],
+                        metric_u64(oldest_pending_age_ms),
+                    );
+                    streams.push(QueueStreamView {
+                        stream,
+                        pending: m.pending,
+                        leased: m.leased,
+                        oldest_pending_age_ms,
+                    });
+                }
+            }
+            streams.sort_by(|a, b| a.stream.cmp(&b.stream));
+            QueuesView { streams }
+        })
+    }
+
+    fn sagas(&self) -> BoxFuture<'_, Vec<SagaRecordView>> {
+        let registry = Arc::clone(&self.saga_registry);
+        let metrics = self.metrics.clone();
+        Box::pin(async move {
+            let records = registry.lock().expect("lock");
+            let active = records
+                .values()
+                .filter(|r| {
+                    matches!(
+                        r.phase,
+                        SagaJournalPhase::Running | SagaJournalPhase::Compensating
+                    )
+                })
+                .count();
+            metrics.set(
+                "crafty_saga_active",
+                "Sagas in running or compensating phase.",
+                &[],
+                metric_usize(active),
+            );
+            let mut out: Vec<SagaRecordView> = records
+                .values()
+                .map(|r| SagaRecordView {
+                    saga_id: hex_bytes(&r.saga_id),
+                    phase: saga_phase_str(r.phase).to_string(),
+                    completed_steps: r.completed_steps,
+                    catalog_version: r.catalog_version,
+                    failed_step: r.failed_step,
+                    compensate_failed_at: r.compensate_failed_at,
+                })
+                .collect();
+            out.sort_by(|a, b| a.saga_id.cmp(&b.saga_id));
+            out
         })
     }
 }

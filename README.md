@@ -16,7 +16,7 @@
 
 **Idea:** Embed consensus + actors in *your* binary. Same artifact on every node; the cluster bootstraps, elects a leader, replicates a linearizable state machine, and hosts supervised actors that can message and migrate across nodes. No sidecar, no separate control plane.
 
-
+**Product teams:** four scenarios (background jobs, stateful workers, real-time sessions, workflows) on **embedded redb** — no mandatory Redis or Kubernetes. Start with [docs/getting-started.md](docs/getting-started.md) and [docs/scenarios/README.md](docs/scenarios/README.md).
 
 ---
 
@@ -124,6 +124,7 @@ cargo install crafty-node   # reference runner binary
 | Crate | Purpose |
 |-------|---------|
 | [`crafty`](crates/crafty) | Facade + `CraftyCluster` builder |
+| [`crafty-http`](crates/crafty-http) | Product HTTP (`POST /jobs/{stream}` → 202) |
 | [`crafty-core`](crates/crafty-core) | Pure Raft FSM + shard planners |
 | [`crafty-proto`](crates/crafty-proto) | Wire types + codec |
 | [`crafty-storage`](crates/crafty-storage) | Durable log, snapshots |
@@ -141,6 +142,8 @@ cargo install crafty-node   # reference runner binary
 
 | Doc | When to read |
 |-----|----------------|
+| [docs/getting-started.md](docs/getting-started.md) | **Product app tutorial** (CraftyApp, no Redis) |
+| [docs/scenarios/README.md](docs/scenarios/README.md) | **Four product scenarios** |
 | [docs/status.md](docs/status.md) | **Current capabilities and limits** |
 | [docs/architecture.md](docs/architecture.md) | Crate graph, data flows |
 | [docs/decisions/](docs/decisions/) | Design rationale (multi-Raft, membership, actors, …) |

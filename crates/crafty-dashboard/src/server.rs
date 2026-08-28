@@ -106,14 +106,21 @@ impl AdminServer {
         match path.as_str() {
             "/health" => status_json(StatusCode::OK, &Message::new("ok")),
             "/ready" => self.ready().await,
-            "/metrics" => text(
-                StatusCode::OK,
-                "text/plain; version=0.0.4",
-                self.metrics.render(),
-            ),
+            "/metrics" => {
+                // Refresh queue/saga gauges so Prometheus scrapes see current depth.
+                let _ = self.observer.queues().await;
+                let _ = self.observer.sagas().await;
+                text(
+                    StatusCode::OK,
+                    "text/plain; version=0.0.4",
+                    self.metrics.render(),
+                )
+            }
             "/introspect/cluster" => json(StatusCode::OK, &self.observer.cluster().await),
             "/introspect/raft-groups" => json(StatusCode::OK, &self.observer.raft_groups().await),
             "/introspect/actors" => json(StatusCode::OK, &self.observer.actors().await),
+            "/introspect/queues" => json(StatusCode::OK, &self.observer.queues().await),
+            "/introspect/sagas" => json(StatusCode::OK, &self.observer.sagas().await),
             "/dashboard" => text(
                 StatusCode::OK,
                 "text/html; charset=utf-8",

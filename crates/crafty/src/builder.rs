@@ -1555,6 +1555,9 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                 self.group_learner_factor,
                 multi_raft.clone(),
                 Arc::clone(&catalog_version),
+                job_queues.clone(),
+                Arc::clone(&saga_registry),
+                metrics.clone(),
             ));
             let admin = AdminServer::new(observer, metrics.clone(), events.clone());
             match TcpListener::bind(addr).await {

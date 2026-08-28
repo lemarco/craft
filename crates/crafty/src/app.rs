@@ -325,10 +325,9 @@ impl CraftyApp {
     ///
     /// ```no_run
     /// # use std::sync::Arc;
-    /// # async fn demo(app: Arc<crafty::CraftyApp>) {
-    /// let api = CraftyApp::jobs_api(app);
-    /// let router = api.router().with_state(Arc::new(api.into_state()));
-    /// # let _ = router;
+    /// # use crafty::CraftyApp;
+    /// # async fn demo(app: Arc<CraftyApp>) {
+    /// let _api = CraftyApp::jobs_api(app);
     /// # }
     /// ```
     #[cfg(feature = "http-jobs")]

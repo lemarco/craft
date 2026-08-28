@@ -52,6 +52,14 @@ pub(crate) const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
     <h2>Actors</h2>
     <table><thead><tr><th>id</th><th>type</th><th>node</th><th>mailbox</th><th>gen</th></tr></thead><tbody id="actors"></tbody></table>
   </section>
+  <section>
+    <h2>Job queues</h2>
+    <table><thead><tr><th>stream</th><th>pending</th><th>leased</th><th>oldest (ms)</th></tr></thead><tbody id="queues"></tbody></table>
+  </section>
+  <section>
+    <h2>Workflows</h2>
+    <table><thead><tr><th>saga id</th><th>phase</th><th>steps</th><th>failed</th></tr></thead><tbody id="sagas"></tbody></table>
+  </section>
   <section class="events">
     <h2>Event feed</h2>
     <ul id="log"></ul>
@@ -61,9 +69,11 @@ pub(crate) const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
 const $ = (id) => document.getElementById(id);
 async function refresh() {
   try {
-    const [c, a] = await Promise.all([
+    const [c, a, q, s] = await Promise.all([
       fetch('/introspect/cluster').then(r => r.json()),
       fetch('/introspect/actors').then(r => r.json()),
+      fetch('/introspect/queues').then(r => r.json()),
+      fetch('/introspect/sagas').then(r => r.json()),
     ]);
     $('cluster').innerHTML =
       `<div class="kv"><span>leader</span><span class="badge leader">${c.leader ?? '—'}</span></div>` +
@@ -73,6 +83,10 @@ async function refresh() {
       `<tr><td>${n.id}</td><td>${n.role}</td><td>${n.member}</td></tr>`).join('');
     $('actors').innerHTML = (a||[]).map(x =>
       `<tr><td>${x.id}</td><td>${x.actor_type}</td><td>${x.node}</td><td>${x.mailbox_depth}</td><td>${x.generation}</td></tr>`).join('');
+    $('queues').innerHTML = ((q && q.streams) || []).map(x =>
+      `<tr><td>${x.stream}</td><td>${x.pending}</td><td>${x.leased}</td><td>${x.oldest_pending_age_ms}</td></tr>`).join('');
+    $('sagas').innerHTML = (s||[]).map(x =>
+      `<tr><td>${x.saga_id.slice(0,16)}…</td><td>${x.phase}</td><td>${x.completed_steps}</td><td>${x.failed_step ?? '—'}</td></tr>`).join('');
   } catch (e) { /* transient during elections */ }
 }
 function connect() {
