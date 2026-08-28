@@ -49,8 +49,8 @@ pub use placement::{
     ScalePlan, plan_scale,
 };
 pub use queue::{
-    InMemoryJobQueue, JobId, JobQueue, LeaseId, LeasedJob, QueueError, QueueMetrics, WorkerId,
-    run_queue_consumer,
+    InMemoryJobQueue, JobId, JobQueue, LeaseId, LeasedJob, QueueError, QueueMetrics,
+    QueueReplicateOp, QueueReplicationOps, WorkerId, run_queue_consumer,
 };
 pub use queue_autoscale::{AutoscalePolicy, run_queue_autoscaler};
 pub use queue_service::{ClusterJobQueue, QueueService};

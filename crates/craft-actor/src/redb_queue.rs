@@ -7,10 +7,13 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use craft_proto::{decode, encode};
+use craft_proto::{QueueReplicateOp, decode, encode};
 use redb::{Database, ReadableTable, TableDefinition};
 
-use super::{BoxFuture, JobId, JobQueue, LeaseId, LeasedJob, QueueError, QueueMetrics, WorkerId};
+use super::{
+    BoxFuture, JobId, JobQueue, LeaseId, LeasedJob, QueueError, QueueMetrics, QueueReplicationOps,
+    WorkerId,
+};
 
 const JOBS: TableDefinition<u64, &[u8]> = TableDefinition::new("queue_jobs");
 const PENDING: TableDefinition<u64, &[u8]> = TableDefinition::new("queue_pending");
@@ -105,33 +108,117 @@ impl RedbJobQueue {
         }
     }
 
-    fn reclaim_expired(&self) -> Result<(), QueueError> {
+    fn reclaim_expired_ops(&self) -> Result<QueueReplicationOps, QueueError> {
         let now = now_ms();
+        let mut ops = Vec::new();
         let _g = self.write_lock.lock().expect("poisoned");
         let txn = self.db.begin_write().map_err(backend)?;
         {
             let mut leases = txn.open_table(LEASES).map_err(backend)?;
             let mut pending = txn.open_table(PENDING).map_err(backend)?;
-            let expired: Vec<u64> = leases
+            let expired: Vec<(u64, u64)> = leases
                 .iter()
                 .map_err(backend)?
                 .filter_map(|row| {
                     let (lease_id, bytes) = row.ok()?;
                     let stored: StoredLease = decode(bytes.value()).ok()?;
-                    (stored.expires_at_ms <= now).then_some(lease_id.value())
+                    (stored.expires_at_ms <= now).then_some((lease_id.value(), stored.job_id))
                 })
                 .collect();
-            for lease_id in expired {
-                let Some(bytes) = leases.remove(lease_id).map_err(backend)? else {
-                    continue;
-                };
-                let stored: StoredLease = decode(bytes.value()).map_err(codec)?;
-                pending
-                    .insert(stored.job_id, &[] as &[u8])
-                    .map_err(backend)?;
+            for (lease_id, job_id) in expired {
+                if leases.remove(lease_id).map_err(backend)?.is_some() {
+                    pending.insert(job_id, &[] as &[u8]).map_err(backend)?;
+                    ops.push(QueueReplicateOp::Reclaim { lease_id, job_id });
+                }
             }
         }
         txn.commit().map_err(backend)?;
+        Ok(ops)
+    }
+
+    fn bump_meta_u64(
+        meta: &mut redb::Table<'_, &str, &[u8]>,
+        key: &str,
+        at_least: u64,
+    ) -> Result<(), QueueError> {
+        let current = match meta.get(key).map_err(backend)? {
+            Some(v) => decode(v.value()).map_err(codec)?,
+            None => 1,
+        };
+        if at_least > current {
+            meta.insert(key, encode(&at_least).map_err(codec)?.as_slice())
+                .map_err(backend)?;
+        }
+        Ok(())
+    }
+
+    fn apply_replicate_inner(&self, op: &QueueReplicateOp) -> Result<(), QueueError> {
+        let _g = self.write_lock.lock().expect("poisoned");
+        let txn = self.db.begin_write().map_err(backend)?;
+        {
+            let mut jobs = txn.open_table(JOBS).map_err(backend)?;
+            let mut pending = txn.open_table(PENDING).map_err(backend)?;
+            let mut leases = txn.open_table(LEASES).map_err(backend)?;
+            let mut meta = txn.open_table(META).map_err(backend)?;
+            match op {
+                QueueReplicateOp::Enqueue {
+                    job_id,
+                    payload,
+                    enqueued_at_ms,
+                    next_job_id,
+                } => {
+                    if jobs.get(*job_id).map_err(backend)?.is_none() {
+                        let stored = StoredJob {
+                            payload: payload.clone(),
+                            enqueued_at_ms: *enqueued_at_ms,
+                        };
+                        jobs.insert(*job_id, encode(&stored).map_err(codec)?.as_slice())
+                            .map_err(backend)?;
+                        pending.insert(*job_id, &[] as &[u8]).map_err(backend)?;
+                    }
+                    Self::bump_meta_u64(&mut meta, K_NEXT_JOB, *next_job_id)?;
+                }
+                QueueReplicateOp::Lease {
+                    lease_id,
+                    job_id,
+                    worker_node,
+                    worker_instance,
+                    expires_at_ms,
+                    next_lease_id,
+                } => {
+                    if leases.get(*lease_id).map_err(backend)?.is_none() {
+                        pending.remove(*job_id).map_err(backend)?;
+                        let lease = StoredLease {
+                            job_id: *job_id,
+                            worker_node: *worker_node,
+                            worker_instance: *worker_instance,
+                            expires_at_ms: *expires_at_ms,
+                        };
+                        leases
+                            .insert(*lease_id, encode(&lease).map_err(codec)?.as_slice())
+                            .map_err(backend)?;
+                    }
+                    Self::bump_meta_u64(&mut meta, K_NEXT_LEASE, *next_lease_id)?;
+                }
+                QueueReplicateOp::Ack { lease_id, job_id } => {
+                    leases.remove(*lease_id).map_err(backend)?;
+                    jobs.remove(*job_id).map_err(backend)?;
+                }
+                QueueReplicateOp::Nack { lease_id, job_id }
+                | QueueReplicateOp::Reclaim { lease_id, job_id } => {
+                    leases.remove(*lease_id).map_err(backend)?;
+                    if jobs.get(*job_id).map_err(backend)?.is_some() {
+                        pending.insert(*job_id, &[] as &[u8]).map_err(backend)?;
+                    }
+                }
+            }
+        }
+        txn.commit().map_err(backend)?;
+        Ok(())
+    }
+
+    fn reclaim_expired(&self) -> Result<(), QueueError> {
+        let _ = self.reclaim_expired_ops()?;
         Ok(())
     }
 
@@ -171,14 +258,30 @@ impl RedbJobQueue {
 
 impl JobQueue for RedbJobQueue {
     fn enqueue<'a>(&'a self, payload: &'a [u8]) -> BoxFuture<'a, Result<JobId, QueueError>> {
+        Box::pin(async move { self.enqueue_replicated(payload).await.map(|(id, _)| id) })
+    }
+
+    fn apply_replicate<'a>(
+        &'a self,
+        op: &'a QueueReplicateOp,
+    ) -> BoxFuture<'a, Result<(), QueueError>> {
+        Box::pin(async move { self.apply_replicate_inner(op) })
+    }
+
+    fn enqueue_replicated<'a>(
+        &'a self,
+        payload: &'a [u8],
+    ) -> BoxFuture<'a, Result<(JobId, QueueReplicationOps), QueueError>> {
         Box::pin(async move {
-            self.reclaim_expired()?;
+            let mut ops = self.reclaim_expired_ops()?;
             let job_id = self.read_meta_u64(K_NEXT_JOB)?;
+            let enqueued_at_ms = now_ms();
             let stored = StoredJob {
                 payload: payload.to_vec(),
-                enqueued_at_ms: now_ms(),
+                enqueued_at_ms,
             };
             let bytes = encode(&stored).map_err(codec)?;
+            let next_job_id = job_id + 1;
 
             let _g = self.write_lock.lock().expect("poisoned");
             let txn = self.db.begin_write().map_err(backend)?;
@@ -188,11 +291,18 @@ impl JobQueue for RedbJobQueue {
                 let mut meta = txn.open_table(META).map_err(backend)?;
                 jobs.insert(job_id, bytes.as_slice()).map_err(backend)?;
                 pending.insert(job_id, &[] as &[u8]).map_err(backend)?;
-                meta.insert(K_NEXT_JOB, encode(&(job_id + 1)).map_err(codec)?.as_slice())
+                meta.insert(K_NEXT_JOB, encode(&next_job_id).map_err(codec)?.as_slice())
                     .map_err(backend)?;
             }
             txn.commit().map_err(backend)?;
-            Ok(JobId(job_id))
+
+            ops.push(QueueReplicateOp::Enqueue {
+                job_id,
+                payload: payload.to_vec(),
+                enqueued_at_ms,
+                next_job_id,
+            });
+            Ok((JobId(job_id), ops))
         })
     }
 
@@ -202,7 +312,19 @@ impl JobQueue for RedbJobQueue {
         max: usize,
     ) -> BoxFuture<'a, Result<Vec<LeasedJob>, QueueError>> {
         Box::pin(async move {
-            self.reclaim_expired()?;
+            self.lease_replicated(worker, max)
+                .await
+                .map(|(jobs, _)| jobs)
+        })
+    }
+
+    fn lease_replicated<'a>(
+        &'a self,
+        worker: WorkerId,
+        max: usize,
+    ) -> BoxFuture<'a, Result<(Vec<LeasedJob>, QueueReplicationOps), QueueError>> {
+        Box::pin(async move {
+            let mut ops = self.reclaim_expired_ops()?;
             let expires_at_ms = now_ms() + self.lease_timeout.as_millis() as u64;
             let mut lease_id_start = self.read_meta_u64(K_NEXT_LEASE)?;
             let mut out = Vec::new();
@@ -243,6 +365,15 @@ impl JobQueue for RedbJobQueue {
                         .insert(lease_id, encode(&lease).map_err(codec)?.as_slice())
                         .map_err(backend)?;
 
+                    ops.push(QueueReplicateOp::Lease {
+                        lease_id,
+                        job_id,
+                        worker_node: worker.node.0,
+                        worker_instance: worker.instance,
+                        expires_at_ms,
+                        next_lease_id: lease_id_start,
+                    });
+
                     out.push(LeasedJob {
                         lease_id: LeaseId(lease_id),
                         job_id: JobId(job_id),
@@ -257,7 +388,7 @@ impl JobQueue for RedbJobQueue {
                 .map_err(backend)?;
             }
             txn.commit().map_err(backend)?;
-            Ok(out)
+            Ok((out, ops))
         })
     }
 
@@ -266,27 +397,43 @@ impl JobQueue for RedbJobQueue {
         worker: WorkerId,
         lease_id: LeaseId,
     ) -> BoxFuture<'a, Result<(), QueueError>> {
+        Box::pin(async move { self.ack_replicated(worker, lease_id).await.map(|_| ()) })
+    }
+
+    fn ack_replicated<'a>(
+        &'a self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
         Box::pin(async move {
-            let _g = self.write_lock.lock().expect("poisoned");
-            let txn = self.db.begin_write().map_err(backend)?;
-            {
-                let mut jobs = txn.open_table(JOBS).map_err(backend)?;
-                let mut leases = txn.open_table(LEASES).map_err(backend)?;
-                let stored: StoredLease = match leases.remove(lease_id.0).map_err(backend)? {
-                    None => return Err(QueueError::InvalidLease),
-                    Some(bytes) => decode(bytes.value()).map_err(codec)?,
+            let job_id = {
+                let _g = self.write_lock.lock().expect("poisoned");
+                let txn = self.db.begin_write().map_err(backend)?;
+                let job_id = {
+                    let mut jobs = txn.open_table(JOBS).map_err(backend)?;
+                    let mut leases = txn.open_table(LEASES).map_err(backend)?;
+                    let stored: StoredLease = match leases.remove(lease_id.0).map_err(backend)? {
+                        None => return Err(QueueError::InvalidLease),
+                        Some(bytes) => decode(bytes.value()).map_err(codec)?,
+                    };
+                    if stored.worker_node != worker.node.0
+                        || stored.worker_instance != worker.instance
+                    {
+                        leases
+                            .insert(lease_id.0, encode(&stored).map_err(codec)?.as_slice())
+                            .map_err(backend)?;
+                        return Err(QueueError::InvalidLease);
+                    }
+                    jobs.remove(stored.job_id).map_err(backend)?;
+                    stored.job_id
                 };
-                if stored.worker_node != worker.node.0 || stored.worker_instance != worker.instance
-                {
-                    leases
-                        .insert(lease_id.0, encode(&stored).map_err(codec)?.as_slice())
-                        .map_err(backend)?;
-                    return Err(QueueError::InvalidLease);
-                }
-                jobs.remove(stored.job_id).map_err(backend)?;
-            }
-            txn.commit().map_err(backend)?;
-            Ok(())
+                txn.commit().map_err(backend)?;
+                job_id
+            };
+            Ok(vec![QueueReplicateOp::Ack {
+                lease_id: lease_id.0,
+                job_id,
+            }])
         })
     }
 
@@ -295,29 +442,45 @@ impl JobQueue for RedbJobQueue {
         worker: WorkerId,
         lease_id: LeaseId,
     ) -> BoxFuture<'a, Result<(), QueueError>> {
+        Box::pin(async move { self.nack_replicated(worker, lease_id).await.map(|_| ()) })
+    }
+
+    fn nack_replicated<'a>(
+        &'a self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
         Box::pin(async move {
-            let _g = self.write_lock.lock().expect("poisoned");
-            let txn = self.db.begin_write().map_err(backend)?;
-            {
-                let mut pending = txn.open_table(PENDING).map_err(backend)?;
-                let mut leases = txn.open_table(LEASES).map_err(backend)?;
-                let stored: StoredLease = match leases.remove(lease_id.0).map_err(backend)? {
-                    None => return Err(QueueError::InvalidLease),
-                    Some(bytes) => decode(bytes.value()).map_err(codec)?,
-                };
-                if stored.worker_node != worker.node.0 || stored.worker_instance != worker.instance
-                {
-                    leases
-                        .insert(lease_id.0, encode(&stored).map_err(codec)?.as_slice())
+            let job_id = {
+                let _g = self.write_lock.lock().expect("poisoned");
+                let txn = self.db.begin_write().map_err(backend)?;
+                let job_id = {
+                    let mut pending = txn.open_table(PENDING).map_err(backend)?;
+                    let mut leases = txn.open_table(LEASES).map_err(backend)?;
+                    let stored: StoredLease = match leases.remove(lease_id.0).map_err(backend)? {
+                        None => return Err(QueueError::InvalidLease),
+                        Some(bytes) => decode(bytes.value()).map_err(codec)?,
+                    };
+                    if stored.worker_node != worker.node.0
+                        || stored.worker_instance != worker.instance
+                    {
+                        leases
+                            .insert(lease_id.0, encode(&stored).map_err(codec)?.as_slice())
+                            .map_err(backend)?;
+                        return Err(QueueError::InvalidLease);
+                    }
+                    pending
+                        .insert(stored.job_id, &[] as &[u8])
                         .map_err(backend)?;
-                    return Err(QueueError::InvalidLease);
-                }
-                pending
-                    .insert(stored.job_id, &[] as &[u8])
-                    .map_err(backend)?;
-            }
-            txn.commit().map_err(backend)?;
-            Ok(())
+                    stored.job_id
+                };
+                txn.commit().map_err(backend)?;
+                job_id
+            };
+            Ok(vec![QueueReplicateOp::Nack {
+                lease_id: lease_id.0,
+                job_id,
+            }])
         })
     }
 
@@ -366,6 +529,23 @@ mod tests {
         assert_eq!(m.pending, 1);
         let leased = q.lease(worker(1), 1).await.unwrap();
         assert_eq!(leased[0].payload, b"persistent");
+    }
+
+    #[tokio::test]
+    async fn apply_replicate_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let leader =
+            RedbJobQueue::open(dir.path().join("leader.redb"), Duration::from_secs(30)).unwrap();
+        let follower =
+            RedbJobQueue::open(dir.path().join("follower.redb"), Duration::from_secs(30)).unwrap();
+        let (_, ops) = leader.enqueue_replicated(b"x").await.unwrap();
+        assert_eq!(ops.len(), 1);
+        for q in [&leader, &follower] {
+            q.apply_replicate(&ops[0]).await.unwrap();
+            q.apply_replicate(&ops[0]).await.unwrap();
+        }
+        assert_eq!(leader.metrics().await.unwrap().pending, 1);
+        assert_eq!(follower.metrics().await.unwrap().pending, 1);
     }
 
     #[tokio::test]

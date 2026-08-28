@@ -45,6 +45,8 @@ pub const QUEUE_ACK_PATH: &str = "/raft/v1/queue/ack";
 pub const QUEUE_NACK_PATH: &str = "/raft/v1/queue/nack";
 /// Queue depth gauges for autoscale / observability.
 pub const QUEUE_METRICS_PATH: &str = "/raft/v1/queue/metrics";
+/// Leader → follower replication of queue mutations (failover durability).
+pub const QUEUE_REPLICATE_PATH: &str = "/raft/v1/queue/replicate";
 
 /// The connection class a route belongs to. Peer consensus traffic is isolated
 /// onto its own QUIC connection from everything else (future-work-and-risks R2).
@@ -100,11 +102,13 @@ pub enum Route {
     QueueNack,
     /// [`QUEUE_METRICS_PATH`].
     QueueMetrics,
+    /// [`QUEUE_REPLICATE_PATH`].
+    QueueReplicate,
 }
 
 impl Route {
     /// Every route, in a stable order (handy for building a router or tests).
-    pub const ALL: [Route; 18] = [
+    pub const ALL: [Route; 19] = [
         Route::PeerWire,
         Route::ClientWire,
         Route::ClusterJoin,
@@ -123,6 +127,7 @@ impl Route {
         Route::QueueAck,
         Route::QueueNack,
         Route::QueueMetrics,
+        Route::QueueReplicate,
     ];
 
     /// The request path for this route.
@@ -147,6 +152,7 @@ impl Route {
             Route::QueueAck => QUEUE_ACK_PATH,
             Route::QueueNack => QUEUE_NACK_PATH,
             Route::QueueMetrics => QUEUE_METRICS_PATH,
+            Route::QueueReplicate => QUEUE_REPLICATE_PATH,
         }
     }
 
@@ -177,7 +183,8 @@ impl Route {
             | Route::QueueLease
             | Route::QueueAck
             | Route::QueueNack
-            | Route::QueueMetrics => TrafficClass::Actor,
+            | Route::QueueMetrics
+            | Route::QueueReplicate => TrafficClass::Actor,
         }
     }
 

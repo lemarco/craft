@@ -110,6 +110,7 @@ A **shared logical queue** does not require a shared filesystem or Redis:
 - **`QueueService`** runs on the **Raft leader** node (leader-only, like [`ClusterSupervisor`](../../crates/craft-actor/src/supervisor.rs)).
 - Workers on **any** VPS call queue RPCs over mTLS (same transport class as `/actor/deliver`).
 - Followers **forward** queue mutations to the leader ([client-routing](client-routing.md) forward pattern).
+- After each leader mutation, **`QueueReplicateOp`** batches are pushed to every other **reachable voter** (`POST /raft/v1/queue/replicate`); the client only receives success once all peers ack — so a newly elected leader serves the same backlog from its local `redb`.
 
 Wire routes (under `/raft/v1/queue/`):
 
@@ -119,6 +120,7 @@ Wire routes (under `/raft/v1/queue/`):
 | `POST .../lease` | Worker pull |
 | `POST .../ack` / `.../nack` | Complete or requeue |
 | `GET .../metrics` | Depth for autoscale & observability |
+| `POST .../replicate` | Leader → voter idempotent state sync |
 
 **v2 (deferred):** sharded streams or partitioned queues when a single leader queue becomes a hotspot.
 
@@ -173,6 +175,7 @@ Scaling **out beyond node count** in production still means **add VPS + join** (
 | `RedbJobQueue` + crash/reopen tests | **landed** |
 | Worker consumer helper + example | **landed** |
 | Leader `QueueService` + wire routes (`/raft/v1/queue/*`) | **landed** |
+| Synchronous voter replication (`/queue/replicate`) | **landed** |
 | `ClusterJobQueue` client + follower forward | **landed** |
 | `run_queue_autoscaler` → `scale_cluster` | **landed** |
 | Facade builder (`job_queue`, `job_queue_autoscale`) | **landed** |
@@ -200,10 +203,11 @@ Implementation status: **v1 cluster queue landed** — Redis adapter and sharded
 
 **Negative**
 
-- Leader-hosted queue is a **throughput hotspot** at very large enqueue rates (mitigation: batch append, prefetch, future sharding).
-- At-least-once requires **idempotent** handlers and visibility-timeout tuning.
+- Leader-hosted queue is a **throughput hotspot** at very large enqueue rates (mitigation: batch append, prefetch, future sharding). Replication adds one RTT to each reachable voter before client ack.
+- At-least-once requires **idempotent** handlers and visibility-timeout tuning. Client retries after a successful enqueue may duplicate jobs unless the application supplies dedup keys (future).
 - Two durability stories (`ActorStateStore` vs `JobQueue`) — docs must keep boundaries explicit ([R4](future-work-and-risks.md)).
 - Extra wire surface and ops metrics for queue lag.
+- Enqueue is unavailable while any **reachable** voter cannot accept replication (strict sync); unreachable departed nodes are excluded via `reachable_nodes()`.
 
 ## Related
 

@@ -75,3 +75,47 @@ pub struct QueueMetricsReply {
     pub oldest_pending_age_ms: u64,
     pub error: Option<String>,
 }
+
+/// Idempotent state transition replicated from the queue leader to every voter
+/// (`POST /raft/v1/queue/replicate`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum QueueReplicateOp {
+    Enqueue {
+        job_id: u64,
+        payload: Vec<u8>,
+        enqueued_at_ms: u64,
+        next_job_id: u64,
+    },
+    Lease {
+        lease_id: u64,
+        job_id: u64,
+        worker_node: u64,
+        worker_instance: u32,
+        expires_at_ms: u64,
+        next_lease_id: u64,
+    },
+    Ack {
+        lease_id: u64,
+        job_id: u64,
+    },
+    Nack {
+        lease_id: u64,
+        job_id: u64,
+    },
+    /// Visibility timeout expired — job returns to pending.
+    Reclaim {
+        lease_id: u64,
+        job_id: u64,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueReplicateRequest {
+    pub stream: String,
+    pub ops: Vec<QueueReplicateOp>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueReplicateReply {
+    pub error: Option<String>,
+}

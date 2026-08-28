@@ -1005,6 +1005,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             None
         } else {
             Some(Arc::new(QueueService::new(
+                node_id,
                 Arc::clone(&facts) as Arc<dyn ClusterState>,
                 Arc::clone(&transport),
             )))

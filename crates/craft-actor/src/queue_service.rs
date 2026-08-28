@@ -1,27 +1,32 @@
 //! Leader-gated queue wire service ([job-queue](../../../docs/decisions/job-queue.md)).
+//!
+//! Mutations run on the Raft leader and are **synchronously replicated** to every
+//! other reachable voter before the client receives success — so a newly elected
+//! leader serves the same backlog.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use craft_net::transport::{Body, BoxFuture, Transport, TransportError};
 use craft_net::{
     Route, decode_body, encode_body, send_queue_ack, send_queue_enqueue, send_queue_lease,
-    send_queue_metrics, send_queue_nack,
+    send_queue_metrics, send_queue_nack, send_queue_replicate,
 };
 use craft_proto::{
     NodeId, QueueAckReply, QueueAckRequest, QueueEnqueueReply, QueueEnqueueRequest,
     QueueLeaseReply, QueueLeaseRequest, QueueLeasedJobWire, QueueMetricsReply, QueueMetricsRequest,
-    QueueNackReply, QueueNackRequest,
+    QueueNackReply, QueueNackRequest, QueueReplicateOp, QueueReplicateReply, QueueReplicateRequest,
 };
 
 use crate::supervisor::ClusterState;
 use crate::{
-    JobId, JobQueue, LeaseId, LeasedJob, NOT_LEADER_REASON, QueueError, QueueMetrics, WorkerId,
+    JobId, JobQueue, LeaseId, LeasedJob, NOT_LEADER_REASON, QueueError, QueueMetrics,
+    QueueReplicationOps, WorkerId,
 };
 
 /// Serves `/raft/v1/queue/*` on the leader; followers transparently forward.
 pub struct QueueService {
+    node_id: NodeId,
     streams: Mutex<HashMap<String, Arc<dyn JobQueue>>>,
     state: Arc<dyn ClusterState>,
     transport: Arc<dyn Transport>,
@@ -30,16 +35,21 @@ pub struct QueueService {
 impl QueueService {
     /// Empty service; register streams before accepting traffic.
     #[must_use]
-    pub fn new(state: Arc<dyn ClusterState>, transport: Arc<dyn Transport>) -> Self {
+    pub fn new(
+        node_id: NodeId,
+        state: Arc<dyn ClusterState>,
+        transport: Arc<dyn Transport>,
+    ) -> Self {
         Self {
+            node_id,
             streams: Mutex::new(HashMap::new()),
             state,
             transport,
         }
     }
 
-    /// Register a local backing queue for `stream` (opened on every node; only
-    /// the leader serves mutations against its copy).
+    /// Register a local backing queue for `stream` (opened on every node; kept
+    /// in sync via leader replication).
     pub fn register_stream(&self, stream: impl Into<String>, queue: Arc<dyn JobQueue>) {
         self.streams
             .lock()
@@ -69,6 +79,54 @@ impl QueueService {
             .map_err(|e| format!("forward to leader {leader:?} failed: {e}"))
     }
 
+    /// Push `ops` to every other **reachable** voter; all must ack before the
+    /// leader commits success to clients (failover-safe backlog).
+    async fn replicate_ops(&self, stream: &str, ops: &QueueReplicationOps) -> Result<(), String> {
+        if ops.is_empty() {
+            return Ok(());
+        }
+        let peers: Vec<NodeId> = self
+            .state
+            .reachable_nodes()
+            .into_iter()
+            .filter(|id| *id != self.node_id)
+            .collect();
+        if peers.is_empty() {
+            return Ok(());
+        }
+        let request = QueueReplicateRequest {
+            stream: stream.to_string(),
+            ops: ops.to_vec(),
+        };
+        for peer in peers {
+            let transport = Arc::clone(&self.transport);
+            let request = request.clone();
+            let reply = send_queue_replicate(transport.as_ref(), peer, &request)
+                .await
+                .map_err(|e| e.to_string())?;
+            if let Some(err) = reply.error {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    async fn handle_replicate(&self, request: QueueReplicateRequest) -> QueueReplicateReply {
+        match self.local_stream(&request.stream) {
+            Err(e) => QueueReplicateReply { error: Some(e) },
+            Ok(queue) => {
+                for op in &request.ops {
+                    if let Err(e) = queue.apply_replicate(op).await {
+                        return QueueReplicateReply {
+                            error: Some(e.to_string()),
+                        };
+                    }
+                }
+                QueueReplicateReply { error: None }
+            }
+        }
+    }
+
     async fn handle_enqueue(&self, request: QueueEnqueueRequest) -> QueueEnqueueReply {
         if self.state.is_leader() {
             match self.local_stream(&request.stream) {
@@ -76,11 +134,19 @@ impl QueueService {
                     job_id: None,
                     error: Some(e),
                 },
-                Ok(queue) => match queue.enqueue(&request.payload).await {
-                    Ok(id) => QueueEnqueueReply {
-                        job_id: Some(id.0),
-                        error: None,
-                    },
+                Ok(queue) => match queue.enqueue_replicated(&request.payload).await {
+                    Ok((id, ops)) => {
+                        if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
+                            return QueueEnqueueReply {
+                                job_id: None,
+                                error: Some(e),
+                            };
+                        }
+                        QueueEnqueueReply {
+                            job_id: Some(id.0),
+                            error: None,
+                        }
+                    }
                     Err(e) => QueueEnqueueReply {
                         job_id: None,
                         error: Some(e.to_string()),
@@ -118,18 +184,26 @@ impl QueueService {
                     jobs: Vec::new(),
                     error: Some(e),
                 },
-                Ok(queue) => match queue.lease(worker, request.max).await {
-                    Ok(jobs) => QueueLeaseReply {
-                        jobs: jobs
-                            .into_iter()
-                            .map(|j| QueueLeasedJobWire {
-                                lease_id: j.lease_id.0,
-                                job_id: j.job_id.0,
-                                payload: j.payload,
-                            })
-                            .collect(),
-                        error: None,
-                    },
+                Ok(queue) => match queue.lease_replicated(worker, request.max).await {
+                    Ok((jobs, ops)) => {
+                        if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
+                            return QueueLeaseReply {
+                                jobs: Vec::new(),
+                                error: Some(e),
+                            };
+                        }
+                        QueueLeaseReply {
+                            jobs: jobs
+                                .into_iter()
+                                .map(|j| QueueLeasedJobWire {
+                                    lease_id: j.lease_id.0,
+                                    job_id: j.job_id.0,
+                                    payload: j.payload,
+                                })
+                                .collect(),
+                            error: None,
+                        }
+                    }
                     Err(e) => QueueLeaseReply {
                         jobs: Vec::new(),
                         error: Some(e.to_string()),
@@ -164,8 +238,16 @@ impl QueueService {
             };
             match self.local_stream(&request.stream) {
                 Err(e) => QueueAckReply { error: Some(e) },
-                Ok(queue) => match queue.ack(worker, LeaseId(request.lease_id)).await {
-                    Ok(()) => QueueAckReply { error: None },
+                Ok(queue) => match queue
+                    .ack_replicated(worker, LeaseId(request.lease_id))
+                    .await
+                {
+                    Ok(ops) => {
+                        if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
+                            return QueueAckReply { error: Some(e) };
+                        }
+                        QueueAckReply { error: None }
+                    }
                     Err(e) => QueueAckReply {
                         error: Some(e.to_string()),
                     },
@@ -196,12 +278,22 @@ impl QueueService {
             };
             match self.local_stream(&request.stream) {
                 Err(e) => QueueNackReply { error: Some(e) },
-                Ok(queue) => match queue.nack(worker, LeaseId(request.lease_id)).await {
-                    Ok(()) => QueueNackReply { error: None },
-                    Err(e) => QueueNackReply {
-                        error: Some(e.to_string()),
-                    },
-                },
+                Ok(queue) => {
+                    match queue
+                        .nack_replicated(worker, LeaseId(request.lease_id))
+                        .await
+                    {
+                        Ok(ops) => {
+                            if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
+                                return QueueNackReply { error: Some(e) };
+                            }
+                            QueueNackReply { error: None }
+                        }
+                        Err(e) => QueueNackReply {
+                            error: Some(e.to_string()),
+                        },
+                    }
+                }
             }
         } else {
             let transport = Arc::clone(&self.transport);
@@ -296,6 +388,10 @@ impl QueueService {
                 let request: QueueMetricsRequest = decode_body(&body)?;
                 Ok(encode_body(&service.handle_metrics(request).await)?)
             }),
+            Route::QueueReplicate => Box::pin(async move {
+                let request: QueueReplicateRequest = decode_body(&body)?;
+                Ok(encode_body(&service.handle_replicate(request).await)?)
+            }),
             other => Box::pin(async move {
                 Err(TransportError::Io(format!(
                     "queue handler received unexpected route {other:?}"
@@ -303,6 +399,10 @@ impl QueueService {
             }),
         }
     }
+}
+
+fn replication_unsupported() -> QueueError {
+    QueueError::Backend("cluster queue client does not apply replication locally".into())
 }
 
 /// Cluster-facing [`JobQueue`] that routes through the leader wire service.
@@ -341,6 +441,56 @@ impl ClusterJobQueue {
 }
 
 impl JobQueue for ClusterJobQueue {
+    fn apply_replicate<'a>(
+        &'a self,
+        _op: &'a QueueReplicateOp,
+    ) -> BoxFuture<'a, Result<(), QueueError>> {
+        Box::pin(async { Err(replication_unsupported()) })
+    }
+
+    fn enqueue_replicated<'a>(
+        &'a self,
+        payload: &'a [u8],
+    ) -> BoxFuture<'a, Result<(JobId, QueueReplicationOps), QueueError>> {
+        Box::pin(async move {
+            let id = self.enqueue(payload).await?;
+            Ok((id, Vec::new()))
+        })
+    }
+
+    fn lease_replicated<'a>(
+        &'a self,
+        worker: WorkerId,
+        max: usize,
+    ) -> BoxFuture<'a, Result<(Vec<LeasedJob>, QueueReplicationOps), QueueError>> {
+        Box::pin(async move {
+            let jobs = self.lease(worker, max).await?;
+            Ok((jobs, Vec::new()))
+        })
+    }
+
+    fn ack_replicated<'a>(
+        &'a self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+        Box::pin(async move {
+            self.ack(worker, lease_id).await?;
+            Ok(Vec::new())
+        })
+    }
+
+    fn nack_replicated<'a>(
+        &'a self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+        Box::pin(async move {
+            self.nack(worker, lease_id).await?;
+            Ok(Vec::new())
+        })
+    }
+
     fn enqueue<'a>(&'a self, payload: &'a [u8]) -> BoxFuture<'a, Result<JobId, QueueError>> {
         Box::pin(async move {
             let leader = self.leader().await?;
@@ -471,7 +621,7 @@ impl JobQueue for ClusterJobQueue {
             Ok(QueueMetrics {
                 pending: reply.pending,
                 leased: reply.leased,
-                oldest_pending_age: Duration::from_millis(reply.oldest_pending_age_ms),
+                oldest_pending_age: std::time::Duration::from_millis(reply.oldest_pending_age_ms),
             })
         })
     }

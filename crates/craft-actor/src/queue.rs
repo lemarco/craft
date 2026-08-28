@@ -10,6 +10,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use craft_proto::NodeId;
+pub use craft_proto::QueueReplicateOp;
 
 pub use crate::store::BoxFuture;
 
@@ -58,6 +59,9 @@ pub enum QueueError {
     Codec(String),
 }
 
+/// Replication batch produced by a leader mutation.
+pub type QueueReplicationOps = Vec<QueueReplicateOp>;
+
 /// Shared async work buffer — at-least-once with lease + visibility timeout.
 ///
 /// Object-safe (`BoxFuture`) so runtime code can hold `Arc<dyn JobQueue>`.
@@ -88,6 +92,39 @@ pub trait JobQueue: Send + Sync {
 
     /// Depth gauges for observability and autoscale.
     fn metrics<'a>(&'a self) -> BoxFuture<'a, Result<QueueMetrics, QueueError>>;
+
+    /// Apply an idempotent replicated mutation from the queue leader.
+    fn apply_replicate<'a>(
+        &'a self,
+        op: &'a QueueReplicateOp,
+    ) -> BoxFuture<'a, Result<(), QueueError>>;
+
+    /// Like [`enqueue`](Self::enqueue) but returns wire replication ops for followers.
+    fn enqueue_replicated<'a>(
+        &'a self,
+        payload: &'a [u8],
+    ) -> BoxFuture<'a, Result<(JobId, QueueReplicationOps), QueueError>>;
+
+    /// Like [`lease`](Self::lease) but includes reclaim + lease replication ops.
+    fn lease_replicated<'a>(
+        &'a self,
+        worker: WorkerId,
+        max: usize,
+    ) -> BoxFuture<'a, Result<(Vec<LeasedJob>, QueueReplicationOps), QueueError>>;
+
+    /// Like [`ack`](Self::ack) but returns a replication op on success.
+    fn ack_replicated<'a>(
+        &'a self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>>;
+
+    /// Like [`nack`](Self::nack) but returns a replication op on success.
+    fn nack_replicated<'a>(
+        &'a self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>>;
 }
 
 #[derive(Debug)]
@@ -175,19 +212,100 @@ impl Inner {
 
 impl JobQueue for InMemoryJobQueue {
     fn enqueue<'a>(&'a self, payload: &'a [u8]) -> BoxFuture<'a, Result<JobId, QueueError>> {
+        Box::pin(async move { self.enqueue_replicated(payload).await.map(|(id, _)| id) })
+    }
+
+    fn enqueue_replicated<'a>(
+        &'a self,
+        payload: &'a [u8],
+    ) -> BoxFuture<'a, Result<(JobId, QueueReplicationOps), QueueError>> {
         Box::pin(async move {
-            self.with_inner(|inner| {
-                let job_id = JobId(inner.next_job_id);
+            let enqueued_at_ms = 0;
+            let (job_id, op) = self.with_inner(|inner| {
+                let job_id = inner.next_job_id;
                 inner.next_job_id += 1;
                 inner.jobs.insert(
-                    job_id,
+                    JobId(job_id),
                     JobEntry {
                         payload: payload.to_vec(),
                         enqueued_at: Instant::now(),
                     },
                 );
-                inner.pending.push_back(job_id);
-                Ok(job_id)
+                inner.pending.push_back(JobId(job_id));
+                (
+                    JobId(job_id),
+                    QueueReplicateOp::Enqueue {
+                        job_id,
+                        payload: payload.to_vec(),
+                        enqueued_at_ms,
+                        next_job_id: inner.next_job_id,
+                    },
+                )
+            });
+            Ok((job_id, vec![op]))
+        })
+    }
+
+    fn apply_replicate<'a>(
+        &'a self,
+        op: &'a QueueReplicateOp,
+    ) -> BoxFuture<'a, Result<(), QueueError>> {
+        Box::pin(async move {
+            self.with_inner(|inner| match op {
+                QueueReplicateOp::Enqueue {
+                    job_id,
+                    payload,
+                    enqueued_at_ms: _,
+                    next_job_id,
+                } => {
+                    if let std::collections::btree_map::Entry::Vacant(entry) =
+                        inner.jobs.entry(JobId(*job_id))
+                    {
+                        entry.insert(JobEntry {
+                            payload: payload.clone(),
+                            enqueued_at: Instant::now(),
+                        });
+                        inner.pending.push_back(JobId(*job_id));
+                    }
+                    inner.next_job_id = inner.next_job_id.max(*next_job_id);
+                    Ok(())
+                }
+                QueueReplicateOp::Lease {
+                    lease_id,
+                    job_id,
+                    worker_node,
+                    worker_instance,
+                    expires_at_ms: _,
+                    next_lease_id,
+                } => {
+                    inner.pending.retain(|id| id.0 != *job_id);
+                    inner
+                        .leases
+                        .entry(LeaseId(*lease_id))
+                        .or_insert(LeaseEntry {
+                            job_id: JobId(*job_id),
+                            worker: WorkerId {
+                                node: NodeId(*worker_node),
+                                instance: *worker_instance,
+                            },
+                            expires_at: Instant::now() + Duration::from_secs(3600),
+                        });
+                    inner.next_lease_id = inner.next_lease_id.max(*next_lease_id);
+                    Ok(())
+                }
+                QueueReplicateOp::Ack { lease_id, job_id } => {
+                    inner.leases.remove(&LeaseId(*lease_id));
+                    inner.jobs.remove(&JobId(*job_id));
+                    Ok(())
+                }
+                QueueReplicateOp::Nack { lease_id, job_id }
+                | QueueReplicateOp::Reclaim { lease_id, job_id } => {
+                    inner.leases.remove(&LeaseId(*lease_id));
+                    if inner.jobs.contains_key(&JobId(*job_id)) {
+                        inner.pending.push_back(JobId(*job_id));
+                    }
+                    Ok(())
+                }
             })
         })
     }
@@ -198,8 +316,43 @@ impl JobQueue for InMemoryJobQueue {
         max: usize,
     ) -> BoxFuture<'a, Result<Vec<LeasedJob>, QueueError>> {
         Box::pin(async move {
-            self.with_inner(|inner| {
+            self.lease_replicated(worker, max)
+                .await
+                .map(|(jobs, _)| jobs)
+        })
+    }
+
+    fn lease_replicated<'a>(
+        &'a self,
+        worker: WorkerId,
+        max: usize,
+    ) -> BoxFuture<'a, Result<(Vec<LeasedJob>, QueueReplicationOps), QueueError>> {
+        Box::pin(async move {
+            let mut ops = Vec::new();
+            let now = Instant::now();
+            let expired: Vec<(LeaseId, JobId)> = {
+                let inner = self.inner.lock().expect("poisoned");
+                inner
+                    .leases
+                    .iter()
+                    .filter(|(_, lease)| now >= lease.expires_at)
+                    .map(|(id, lease)| (*id, lease.job_id))
+                    .collect()
+            };
+            for (lease_id, job_id) in expired {
+                self.with_inner(|inner| {
+                    inner.leases.remove(&lease_id);
+                    inner.pending.push_back(job_id);
+                });
+                ops.push(QueueReplicateOp::Reclaim {
+                    lease_id: lease_id.0,
+                    job_id: job_id.0,
+                });
+            }
+
+            let (jobs, lease_ops) = self.with_inner(|inner| {
                 let mut out = Vec::new();
+                let mut lease_ops = Vec::new();
                 let deadline = Instant::now() + self.lease_timeout;
                 while out.len() < max {
                     let Some(job_id) = inner.pending.pop_front() else {
@@ -208,24 +361,34 @@ impl JobQueue for InMemoryJobQueue {
                     let Some(entry) = inner.jobs.get(&job_id) else {
                         continue;
                     };
-                    let lease_id = LeaseId(inner.next_lease_id);
+                    let lease_id = inner.next_lease_id;
                     inner.next_lease_id += 1;
                     inner.leases.insert(
-                        lease_id,
+                        LeaseId(lease_id),
                         LeaseEntry {
                             job_id,
                             worker,
                             expires_at: deadline,
                         },
                     );
-                    out.push(LeasedJob {
+                    lease_ops.push(QueueReplicateOp::Lease {
                         lease_id,
+                        job_id: job_id.0,
+                        worker_node: worker.node.0,
+                        worker_instance: worker.instance,
+                        expires_at_ms: 0,
+                        next_lease_id: inner.next_lease_id,
+                    });
+                    out.push(LeasedJob {
+                        lease_id: LeaseId(lease_id),
                         job_id,
                         payload: entry.payload.clone(),
                     });
                 }
-                Ok(out)
-            })
+                (out, lease_ops)
+            });
+            ops.extend(lease_ops);
+            Ok((jobs, ops))
         })
     }
 
@@ -234,8 +397,16 @@ impl JobQueue for InMemoryJobQueue {
         worker: WorkerId,
         lease_id: LeaseId,
     ) -> BoxFuture<'a, Result<(), QueueError>> {
+        Box::pin(async move { self.ack_replicated(worker, lease_id).await.map(|_| ()) })
+    }
+
+    fn ack_replicated<'a>(
+        &'a self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
         Box::pin(async move {
-            self.with_inner(|inner| {
+            let job_id = self.with_inner(|inner| {
                 let lease = inner
                     .leases
                     .remove(&lease_id)
@@ -245,8 +416,12 @@ impl JobQueue for InMemoryJobQueue {
                     return Err(QueueError::InvalidLease);
                 }
                 inner.jobs.remove(&lease.job_id);
-                Ok(())
-            })
+                Ok(lease.job_id.0)
+            })?;
+            Ok(vec![QueueReplicateOp::Ack {
+                lease_id: lease_id.0,
+                job_id,
+            }])
         })
     }
 
@@ -255,8 +430,16 @@ impl JobQueue for InMemoryJobQueue {
         worker: WorkerId,
         lease_id: LeaseId,
     ) -> BoxFuture<'a, Result<(), QueueError>> {
+        Box::pin(async move { self.nack_replicated(worker, lease_id).await.map(|_| ()) })
+    }
+
+    fn nack_replicated<'a>(
+        &'a self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
         Box::pin(async move {
-            self.with_inner(|inner| {
+            let job_id = self.with_inner(|inner| {
                 let lease = inner
                     .leases
                     .remove(&lease_id)
@@ -266,8 +449,12 @@ impl JobQueue for InMemoryJobQueue {
                     return Err(QueueError::InvalidLease);
                 }
                 inner.pending.push_back(lease.job_id);
-                Ok(())
-            })
+                Ok(lease.job_id.0)
+            })?;
+            Ok(vec![QueueReplicateOp::Nack {
+                lease_id: lease_id.0,
+                job_id,
+            }])
         })
     }
 

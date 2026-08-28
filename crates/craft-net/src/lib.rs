@@ -43,7 +43,7 @@ pub use transport::{
     send_actor_deliver, send_actor_migrate, send_actor_scale, send_actor_spawn, send_actor_stop,
     send_catalog_add_request, send_client_request, send_directory_update, send_group_migrate,
     send_join_request, send_leave_request, send_peer_rpc, send_queue_ack, send_queue_enqueue,
-    send_queue_lease, send_queue_metrics, send_queue_nack,
+    send_queue_lease, send_queue_metrics, send_queue_nack, send_queue_replicate,
 };
 pub use wire::{WireError, decode_body, encode_body};
 

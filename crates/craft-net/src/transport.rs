@@ -21,9 +21,9 @@ use craft_proto::{
     DeliverAck, DirectoryUpdate, GroupMigrateReply, GroupMigrateRequest, JoinRequest, JoinResponse,
     LeaveRequest, LeaveResponse, MigrateReply, MigrateRequest, NodeId, PeerBook, QueueAckReply,
     QueueAckRequest, QueueEnqueueReply, QueueEnqueueRequest, QueueLeaseReply, QueueLeaseRequest,
-    QueueMetricsReply, QueueMetricsRequest, QueueNackReply, QueueNackRequest, RaftRpc,
-    RaftRpcReply, RegisterAck, ScaleReply, ScaleRequest, SpawnReply, SpawnRequest, StopReply,
-    StopRequest,
+    QueueMetricsReply, QueueMetricsRequest, QueueNackReply, QueueNackRequest, QueueReplicateReply,
+    QueueReplicateRequest, RaftRpc, RaftRpcReply, RegisterAck, ScaleReply, ScaleRequest,
+    SpawnReply, SpawnRequest, StopReply, StopRequest,
 };
 
 use crate::route::Route;
@@ -392,6 +392,17 @@ pub async fn send_queue_metrics<T: Transport + ?Sized>(
 ) -> Result<QueueMetricsReply, TransportError> {
     let body = encode_body(request)?;
     let response = transport.send(peer, Route::QueueMetrics, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Apply replicated queue mutations from the leader (`/queue/replicate`).
+pub async fn send_queue_replicate<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &QueueReplicateRequest,
+) -> Result<QueueReplicateReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::QueueReplicate, body).await?;
     Ok(decode_body(&response)?)
 }
 

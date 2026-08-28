@@ -1,10 +1,13 @@
-//! Job queue wire integration: follower enqueue, autoscale from depth.
+//! Job queue wire integration: replication, failover, autoscale.
 
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
 use craft::AutoscalePolicy;
 use craft::CraftCluster;
+use craft::JobQueue;
+use craft::RedbJobQueue;
 use craft::actor::{ConfigCodecError, UserActor, WorkerId};
 use craft::net::LocalNetwork;
 use craft::proto::{self, NodeId};
@@ -79,6 +82,92 @@ async fn spawn_queue_cluster(
         clusters.push(Arc::new(builder.start_local(&net).await));
     }
     (net, clusters)
+}
+
+fn queue_path(dir: &tempfile::TempDir, id: NodeId) -> std::path::PathBuf {
+    dir.path()
+        .join(format!("node-{}", id.0))
+        .join("queue-jobs.redb")
+}
+
+async fn local_pending(path: &Path) -> u64 {
+    RedbJobQueue::open(path, Duration::from_secs(60))
+        .expect("open local queue")
+        .metrics()
+        .await
+        .expect("metrics")
+        .pending
+}
+
+fn shutdown_queue_cluster(net: &LocalNetwork, clusters: Vec<Arc<CraftCluster<KvMachine>>>) {
+    for c in &clusters {
+        c.shutdown();
+    }
+    drop(clusters);
+    for id in [NodeId(1), NodeId(2), NodeId(3)] {
+        net.detach(id);
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn enqueue_replicates_to_every_voter_redb() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (net, clusters) = spawn_queue_cluster(&dir, false).await;
+    let leader = await_craft_leader(&clusters).await;
+    advance(Duration::from_millis(200)).await;
+
+    let queue = leader.job_queue("jobs").expect("queue");
+    for i in 0..4u64 {
+        queue
+            .enqueue(format!("job-{i}").as_bytes())
+            .await
+            .expect("enqueue");
+    }
+    drop(leader);
+    drop(queue);
+
+    shutdown_queue_cluster(&net, clusters);
+
+    for id in [NodeId(1), NodeId(2), NodeId(3)] {
+        assert_eq!(local_pending(&queue_path(&dir, id)).await, 4);
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn follower_local_redb_holds_replicated_backlog_for_failover() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (net, clusters) = spawn_queue_cluster(&dir, false).await;
+    let leader = await_craft_leader(&clusters).await;
+    advance(Duration::from_millis(200)).await;
+
+    let queue = leader.job_queue("jobs").expect("queue");
+    for i in 0..5u64 {
+        queue
+            .enqueue(format!("job-{i}").as_bytes())
+            .await
+            .expect("enqueue");
+    }
+
+    let follower_id = clusters
+        .iter()
+        .find(|c| c.node_id() != leader.node_id())
+        .map(|c| c.node_id())
+        .expect("follower");
+    drop(leader);
+    drop(queue);
+
+    shutdown_queue_cluster(&net, clusters);
+
+    let local =
+        RedbJobQueue::open(queue_path(&dir, follower_id), Duration::from_secs(60)).expect("open");
+    assert_eq!(local.metrics().await.expect("metrics").pending, 5);
+
+    let worker = WorkerId {
+        node: follower_id,
+        instance: 1,
+    };
+    let leased = local.lease(worker, 5).await.expect("lease");
+    assert_eq!(leased.len(), 5);
 }
 
 #[tokio::test(start_paused = true)]

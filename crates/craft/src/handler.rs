@@ -157,7 +157,8 @@ impl RequestHandler for NodeRouter {
             | Route::QueueLease
             | Route::QueueAck
             | Route::QueueNack
-            | Route::QueueMetrics => {
+            | Route::QueueMetrics
+            | Route::QueueReplicate => {
                 let Some(queue) = self.queue.as_ref() else {
                     return Box::pin(async move {
                         Err(TransportError::Io("job queue is not enabled".into()))

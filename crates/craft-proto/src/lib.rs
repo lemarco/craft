@@ -37,7 +37,7 @@ pub use leave::{LeaveRejection, LeaveRequest, LeaveResponse};
 pub use queue::{
     QueueAckReply, QueueAckRequest, QueueEnqueueReply, QueueEnqueueRequest, QueueLeaseReply,
     QueueLeaseRequest, QueueLeasedJobWire, QueueMetricsReply, QueueMetricsRequest, QueueNackReply,
-    QueueNackRequest,
+    QueueNackRequest, QueueReplicateOp, QueueReplicateReply, QueueReplicateRequest,
 };
 pub use raft::{
     AppendEntries, AppendEntriesReply, EntryPayload, InstallSnapshot, InstallSnapshotReply,
