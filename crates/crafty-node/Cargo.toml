@@ -9,7 +9,7 @@ repository.workspace = true
 authors.workspace = true
 categories.workspace = true
 keywords.workspace = true
-readme.workspace = true
+readme = "README.md"
 homepage.workspace = true
 
 [lints]

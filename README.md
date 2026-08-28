@@ -23,6 +23,7 @@
 |---|---|
 | **Version** | `0.1.0` (pre-1.0) |
 | **Maturity** | Advanced prototype — E2E, chaos, sim, release CI |
+| **Release** | Ready — [releasing.md](docs/releasing.md) |
 | **Full status** | [docs/status.md](docs/status.md) |
 
 ### Highlights
@@ -36,7 +37,6 @@
 
 ### Not yet (by design or process)
 
-- crates.io / docs.rs publish — manifests and READMEs ready; see [releasing.md](docs/releasing.md)
 - Linearizable actor `ask`, global cross-shard serializable isolation
 - See [docs/status.md](docs/status.md) for the full deferred list and known limits (R1–R6)
 

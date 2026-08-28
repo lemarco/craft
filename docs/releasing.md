@@ -7,11 +7,14 @@ shares one version and is released together ([library-and-publishing](decisions/
 
 ```sh
 # 1. Update CHANGELOG.md: move [Unreleased] items under the new version.
-# 2. Prepare the release (bump + dry-run gate + commit + tag):
-./scripts/release.sh 0.2.0
+# 2. Prepare the release (dry-run gate + commit if bumped + tag):
+./scripts/release.sh 0.1.0          # first release: version already 0.1.0 — bump skipped
+./scripts/release.sh 0.2.0          # later releases: bumps workspace version
 # 3. Push, then publish:
-git push && git push origin v0.2.0
-./scripts/release.sh 0.2.0 --publish   # or: cargo publish --workspace
+git push && git push origin v0.1.0
+./scripts/release.sh 0.1.0 --publish   # or: cargo publish --workspace
+# 4. After publish (automatic with --publish, or manual):
+./scripts/post-publish-docs.sh 0.1.0     # README badges + status.md
 ```
 
 ## How it works
@@ -34,11 +37,17 @@ git push && git push origin v0.2.0
 - **Not published.** Workspace members with `publish = false` are skipped:
   `crafty-test-support`, `crafty-ops`, `crafty-e2e-client`,
   `crafty-e2e-queue-client`. Fuzz/benchmark crates live outside the workspace.
-- **Manifest hygiene.** Every publishable crate inherits `readme`, `homepage`,
-  `license`, and categories from `[workspace.package]`; each has a crate-local
-  `README.md` and symlinks to the root `LICENSE-*` files.
-- **Tagging.** The script commits `chore(release): crafty vX.Y.Z` and creates an
-  annotated `vX.Y.Z` tag. Push the tag to trigger the tagged CI pipeline.
+- **Manifest hygiene.** Every publishable crate inherits `homepage`, `license`, and
+  categories from `[workspace.package]`; each has a crate-local `README.md`
+  (`readme = "README.md"` in its manifest) and symlinks to the root `LICENSE-*`
+  files. The workspace root `README.md` is for the repository landing page.
+- **Tagging.** The script runs the publish dry-run gate, commits manifest/CHANGELOG
+  changes when the version was bumped, and creates an annotated `vX.Y.Z` tag on
+  the release commit (or on current HEAD when the version was already set).
+  Push the tag to trigger the tagged CI pipeline.
+- **Post-publish docs.** `./scripts/post-publish-docs.sh <version>` adds
+  crates.io/docs.rs badges to the root README and updates [status.md](status.md).
+  `release.sh --publish` runs this automatically after a successful upload.
 - **docs.rs** builds automatically on publish, using the
   `[package.metadata.docs.rs] all-features = true` metadata on each crate.
 - **Doc completeness:** workspace lint `missing_docs = "warn"` on published

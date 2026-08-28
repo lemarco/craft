@@ -6,7 +6,7 @@
 |---|---|
 | **Version** | `0.1.0` (pre-1.0 — API may change on minor bumps) |
 | **MSRV** | 1.90 |
-| **Maturity** | Advanced prototype — full test pyramid, E2E/chaos, release tooling; not yet published to crates.io |
+| **Maturity** | Advanced prototype — full test pyramid, E2E/chaos, release-ready ([releasing.md](releasing.md)) |
 
 ---
 
@@ -85,7 +85,7 @@ Global serializable isolation across shards is **not** a goal — see [cross-sha
 
 ## Release & ops (process, not missing code)
 
-- **crates.io / docs.rs publish** — tooling ready ([releasing.md](releasing.md)); no public release yet
+- **crates.io / docs.rs publish** — run [releasing.md](releasing.md) (`./scripts/release.sh 0.1.0`)
 - **Public API docs** — `missing_docs = "warn"` on published crates; CI allows pre-1.0 (`-A missing_docs`). Audit: `./scripts/docs-missing-audit.sh`
 - **Real-world soak** — harness exists (`benchmarks/soak`, `soak_queue` for job queue enqueue/drain); long-running production soak is operator responsibility
 - **Heavy integration tests** — Redis/docker tests gated `#[ignore]` in fast CI; scheduled heavy lane
