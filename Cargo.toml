@@ -40,12 +40,14 @@ exclude = ["benchmarks", "crates/crafty-fuzz"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.98"
+rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 repository = "https://gitlab.com/lemarco/craft"
+homepage = "https://gitlab.com/lemarco/craft"
 authors = ["crafty contributors"]
 categories = ["concurrency", "network-programming", "asynchronous"]
 keywords = ["raft", "actor", "distributed", "consensus", "cluster"]
+readme = "README.md"
 
 # Shared dependency versions (library-and-publishing: synchronized workspace).
 [workspace.dependencies]
@@ -84,6 +86,8 @@ crafty-e2e-queue-client = { path = "crates/crafty-e2e-queue-client", version = "
 # Lints applied across the workspace (library-and-publishing).
 [workspace.lints.rust]
 unsafe_code = "forbid"
+# Pre-1.0: warn (CI allows via RUSTFLAGS -A missing_docs). Deny at 1.0.
+missing_docs = "warn"
 
 # Faster dev/test compile + faster test runtime (deps optimized, own code debuggable).
 [profile.dev]

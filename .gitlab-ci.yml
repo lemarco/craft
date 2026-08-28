@@ -7,7 +7,8 @@ stages:
 
 variables:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-D warnings"
+  RUSTFLAGS: "-D warnings -A missing_docs"
+  RUSTDOCFLAGS: "-D warnings -A missing_docs"
   # Keep cargo's registry/build output inside the project so it can be cached.
   CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
 
@@ -48,7 +49,8 @@ fast:
     - cargo clippy --workspace --all-targets --all-features -- "${CLIPPY_ARGS[@]}"
     - cargo nextest run --workspace --all-features
     - cargo test --workspace --doc --all-features
-    - RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
+    - cargo doc --workspace --no-deps --all-features
+    - cargo publish --workspace --dry-run
 
 # --- Minimum Supported Rust Version check (library-and-publishing) --------------------------
 msrv:
@@ -149,14 +151,13 @@ bench:
 
 # --- Publish (library-and-publishing) ------------------------------------------------------
 # `cargo publish --workspace` resolves intra-workspace path deps locally and
-# uploads every crate in dependency order. The dry-run gate runs on tags and on
-# schedule; the real publish is a manual button on a `vX.Y.Z` tag pipeline with
-# CARGO_REGISTRY_TOKEN configured. See docs/releasing.md.
+# uploads every crate in dependency order. The fast lane runs `--dry-run` on
+# every MR/branch push; tag pipelines skip fast, so this job repeats the gate
+# before manual publish. See docs/releasing.md.
 publish-dry-run:
   stage: release
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
-    - if: $CI_PIPELINE_SOURCE == "schedule"
   script:
     - cargo publish --workspace --dry-run
 

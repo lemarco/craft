@@ -31,10 +31,20 @@ git push && git push origin v0.2.0
   ```
 
   (`--dry-run` does everything except the upload — this is the CI gate.)
+- **Not published.** Workspace members with `publish = false` are skipped:
+  `crafty-test-support`, `crafty-ops`, `crafty-e2e-client`,
+  `crafty-e2e-queue-client`. Fuzz/benchmark crates live outside the workspace.
+- **Manifest hygiene.** Every publishable crate inherits `readme`, `homepage`,
+  `license`, and categories from `[workspace.package]`; each has a crate-local
+  `README.md` and symlinks to the root `LICENSE-*` files.
 - **Tagging.** The script commits `chore(release): crafty vX.Y.Z` and creates an
   annotated `vX.Y.Z` tag. Push the tag to trigger the tagged CI pipeline.
 - **docs.rs** builds automatically on publish, using the
   `[package.metadata.docs.rs] all-features = true` metadata on each crate.
+- **Doc completeness:** workspace lint `missing_docs = "warn"` on published
+  crates ([library-and-publishing](decisions/library-and-publishing.md)); CI
+  allows the lint pre-1.0 (`RUSTFLAGS=-A missing_docs`). Before 1.0, flip to
+  `deny` and run `./scripts/docs-missing-audit.sh --workspace` until clean.
 
 ## Prerequisites
 
@@ -55,8 +65,10 @@ git push && git push origin v0.2.0
 
 ## CI
 
-- `publish-dry-run` (heavy lane / tags) runs `cargo publish --workspace
+- **Fast lane** (every MR/branch push) runs `cargo publish --workspace
   --dry-run` so a broken manifest, missing include, or version-skew is caught
-  before a real release.
+  before merge.
+- **Tag pipelines** repeat the gate in `publish-dry-run` (fast lane does not
+  run on tags) before the manual `publish` job.
 - The actual publish is a **manual** tagged-pipeline job (`publish`) so a human
   presses the button with the registry token configured.

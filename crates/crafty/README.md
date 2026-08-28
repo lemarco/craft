@@ -71,8 +71,7 @@ let cluster = CraftyCluster::builder(NodeId(1), Counter::default())
 - Runnable examples: `cargo run -p crafty --example kv_store`
   (also `three_node_local`, `actors_cluster`).
 - The reference runner binary: [`crafty-node`](https://crates.io/crates/crafty-node).
-- Architecture, ADRs, and the wire protocol live in the
-  [repository](https://gitlab.com/lemarco/craft) `docs/` directory.
+- Architecture, ADRs, and the wire protocol: [repository docs](https://gitlab.com/lemarco/craft/-/tree/master/docs)
 
 ## License
 

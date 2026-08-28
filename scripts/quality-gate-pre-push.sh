@@ -32,7 +32,7 @@ log ">> doctests"
 cargo test --workspace --doc --all-features 2>&1 | maybe_tee
 
 log ">> doc"
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features 2>&1 | maybe_tee
+cargo doc --workspace --no-deps --all-features 2>&1 | maybe_tee
 
 log ">> release build"
 if [[ "${CRAFTY_SKIP_RELEASE:-1}" != "1" ]]; then

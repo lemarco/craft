@@ -9,7 +9,8 @@ repository.workspace = true
 authors.workspace = true
 categories.workspace = true
 keywords.workspace = true
-readme = "README.md"
+readme.workspace = true
+homepage.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true
@@ -39,7 +40,7 @@ dev-certs = ["crafty-net/dev-certs"]
 json-wire = ["crafty-proto/json-wire"]
 
 [dev-dependencies]
-crafty-test-support = { workspace = true, features = ["facade"] }
+crafty-test-support = { path = "../crafty-test-support", features = ["facade"] }
 rcgen = "0.14"
 rustls-pemfile = "2"
 tempfile = "3"

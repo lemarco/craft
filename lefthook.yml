@@ -13,7 +13,8 @@ min_version: '1.6.0'
 
 env:
   PATH: '$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH'
-  RUSTFLAGS: '-D warnings'
+  RUSTFLAGS: '-D warnings -A missing_docs'
+  RUSTDOCFLAGS: '-D warnings -A missing_docs'
 
 pre-commit:
   jobs:
@@ -79,7 +80,7 @@ pre-push:
             run: |
               # {push_files}
               source scripts/hook-prelude.sh
-              RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
+              cargo doc --workspace --no-deps --all-features
 
           - name: cargo-build-release
             run: |

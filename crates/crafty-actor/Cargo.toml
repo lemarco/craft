@@ -9,6 +9,8 @@ repository.workspace = true
 authors.workspace = true
 categories.workspace = true
 keywords.workspace = true
+readme.workspace = true
+homepage.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true
@@ -31,7 +33,7 @@ tracing-subscriber.workspace = true
 tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
 
 [dev-dependencies]
-crafty-test-support.workspace = true
+crafty-test-support = { path = "../crafty-test-support" }
 serde = { workspace = true, features = ["derive"] }
 tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "test-util"] }

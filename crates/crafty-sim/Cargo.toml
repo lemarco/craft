@@ -1,6 +1,6 @@
 [package]
 name = "crafty-sim"
-description = "Deterministic simulation harness for testing crafty (testing-strategy)."
+description = "Deterministic simulation harness for testing crafty clusters."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,6 +9,8 @@ repository.workspace = true
 authors.workspace = true
 categories.workspace = true
 keywords.workspace = true
+readme.workspace = true
+homepage.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true
