@@ -26,35 +26,20 @@ fn durable_prepare_survives_partition_during_cross_shard_2pc() {
     let mut sim = MultiRaftCluster::new(5, 2, 42);
     assert!(sim.run_until_leaders(400));
 
-    assert!(sim.propose_two_phase_prepare(
-        0,
-        tx_id.clone(),
-        key_a.clone(),
-        b"cmd-a".to_vec(),
-    ));
+    assert!(sim.propose_two_phase_prepare(0, tx_id.clone(), key_a.clone(), b"cmd-a".to_vec(),));
     sim.run(40);
     assert!(sim.group_has_two_phase_prepare(0, &tx_id, &key_a));
 
     sim.isolate(3);
     sim.run(60);
-    let _ = sim.propose_two_phase_prepare(
-        1,
-        tx_id.clone(),
-        key_b.clone(),
-        b"cmd-b".to_vec(),
-    );
+    let _ = sim.propose_two_phase_prepare(1, tx_id.clone(), key_b.clone(), b"cmd-b".to_vec());
     sim.run(80);
 
     sim.heal();
     sim.run(120);
     assert!(sim.run_until_leaders(300));
 
-    assert!(sim.propose_two_phase_prepare(
-        1,
-        tx_id.clone(),
-        key_b.clone(),
-        b"cmd-b".to_vec(),
-    ));
+    assert!(sim.propose_two_phase_prepare(1, tx_id.clone(), key_b.clone(), b"cmd-b".to_vec(),));
     sim.run(40);
 
     assert!(sim.group_has_two_phase_prepare(0, &tx_id, &key_a));

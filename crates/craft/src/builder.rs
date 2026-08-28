@@ -819,8 +819,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             };
             let mut runtime = self.runtime.clone();
             runtime.on_saga_journal_applied = Some(Arc::clone(&on_saga_journal_applied));
-            runtime.on_two_phase_journal_applied =
-                Some(Arc::clone(&on_two_phase_journal_applied));
+            runtime.on_two_phase_journal_applied = Some(Arc::clone(&on_two_phase_journal_applied));
             let handle = spawn_node(driver, Arc::clone(&transport), runtime);
             let service = Arc::new(
                 NodeService::new(handle.clone(), Arc::clone(&transport))

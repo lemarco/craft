@@ -38,7 +38,10 @@ impl StoreTwoPhaseJournal {
         Self { store }
     }
 
-    async fn read(&self, tx_id: &[u8]) -> Result<Option<TwoPhaseJournalRecord>, TwoPhaseJournalError> {
+    async fn read(
+        &self,
+        tx_id: &[u8],
+    ) -> Result<Option<TwoPhaseJournalRecord>, TwoPhaseJournalError> {
         let Some(bytes) = self
             .store
             .get(&journal_key(tx_id))
@@ -127,9 +130,10 @@ impl TwoPhaseJournal for StoreTwoPhaseJournal {
 /// In-memory view of 2PC client journal records applied from Meta-Raft (all replicas).
 pub type TwoPhaseRegistry = Arc<Mutex<BTreeMap<Vec<u8>, TwoPhaseJournalRecord>>>;
 
-type TwoPhaseJournalUpsertFn = dyn Fn(TwoPhaseJournalCommand) -> Pin<
-    Box<dyn Future<Output = Result<(), TwoPhaseJournalError>> + Send>,
-> + Send
+type TwoPhaseJournalUpsertFn = dyn Fn(
+        TwoPhaseJournalCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<(), TwoPhaseJournalError>> + Send>>
+    + Send
     + Sync;
 
 /// Persist 2PC client progress in Meta-Raft coordinator metadata (no Redis required).
@@ -153,7 +157,10 @@ impl MetaRaftTwoPhaseJournal {
         Self { upsert, registry }
     }
 
-    async fn read(&self, tx_id: &[u8]) -> Result<Option<TwoPhaseJournalRecord>, TwoPhaseJournalError> {
+    async fn read(
+        &self,
+        tx_id: &[u8],
+    ) -> Result<Option<TwoPhaseJournalRecord>, TwoPhaseJournalError> {
         Ok(self.registry.lock().expect("lock").get(tx_id).cloned())
     }
 

@@ -70,12 +70,12 @@ pub use saga::{
     CompositeSagaJournal, Group0SagaJournal, MetaRaftSagaJournal, SagaRegistry, StoreSagaJournal,
     record_saga_metrics, saga_metrics_callback,
 };
+pub use security::Security;
 pub use two_phase::{
     CompositeTwoPhaseJournal, MetaRaftTwoPhaseJournal, StoreTwoPhaseJournal, TwoPhaseRegistry,
     record_two_phase_event, record_two_phase_gc_aborted, record_two_phase_metrics,
     two_phase_metrics_callback,
 };
-pub use security::Security;
 
 /// The peer address book ([`NodeId`] → socket) used to dial cluster members
 /// over QUIC. Re-exported for building [`CraftClusterBuilder::start_quic`] args.

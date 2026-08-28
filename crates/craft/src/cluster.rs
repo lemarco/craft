@@ -472,7 +472,9 @@ impl<M: StateMachine> CraftCluster<M> {
         if let Some(store) = &self.actor_state_store {
             Arc::new(crate::two_phase::CompositeTwoPhaseJournal::new(
                 raft_journal,
-                Some(crate::two_phase::StoreTwoPhaseJournal::new(Arc::clone(store))),
+                Some(crate::two_phase::StoreTwoPhaseJournal::new(Arc::clone(
+                    store,
+                ))),
             ))
         } else {
             Arc::new(raft_journal)

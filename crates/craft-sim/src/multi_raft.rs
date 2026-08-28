@@ -126,12 +126,7 @@ impl MultiRaftCluster {
 
     /// Whether `group` committed a durable prepare for `(tx_id, route_key)`.
     #[must_use]
-    pub fn group_has_two_phase_prepare(
-        &self,
-        group: u32,
-        tx_id: &[u8],
-        route_key: &[u8],
-    ) -> bool {
+    pub fn group_has_two_phase_prepare(&self, group: u32, tx_id: &[u8], route_key: &[u8]) -> bool {
         self.groups[group as usize]
             .two_phase_prepares()
             .iter()

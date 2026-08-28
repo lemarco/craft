@@ -11,7 +11,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use craft::client::RemoteClient;
-use craft::core::{RaftGroupId, Role, StableShardRouter, StateMachine, TwoPhasePlan, TwoPhaseStep, place_shard};
+use craft::core::{
+    RaftGroupId, Role, StableShardRouter, StateMachine, TwoPhasePlan, TwoPhaseStep, place_shard,
+};
 use craft::net::LocalNetwork;
 use craft::proto::LogIndex;
 use craft::{CraftCluster, NodeId};
@@ -54,9 +56,8 @@ impl StateMachine for Kv {
     type Error = KvError;
 
     fn apply(&mut self, _index: LogIndex, command: &Cmd) -> Result<Resp, KvError> {
-        if let Cmd::Set { key, value } = command {
-            self.map.insert(key.clone(), value.clone());
-        }
+        let Cmd::Set { key, value } = command;
+        self.map.insert(key.clone(), value.clone());
         Ok(Resp::Ok)
     }
 
@@ -102,7 +103,13 @@ fn find_keys_for_two_groups(shard_count: u32, groups: &[RaftGroupId]) -> (Vec<u8
 
 async fn wait_for_leaders(clusters: &[Arc<CraftCluster<Kv>>], groups: u32) {
     for _ in 0..400 {
-        let ready = (0..groups).all(|g| group_has_leader(clusters, g).await);
+        let mut ready = true;
+        for g in 0..groups {
+            if !group_has_leader(clusters, g).await {
+                ready = false;
+                break;
+            }
+        }
         if ready {
             return;
         }
@@ -114,7 +121,9 @@ async fn wait_for_leaders(clusters: &[Arc<CraftCluster<Kv>>], groups: u32) {
 async fn group_has_leader(clusters: &[Arc<CraftCluster<Kv>>], group: u32) -> bool {
     for c in clusters {
         if let Some(h) = c.group_handle(group)
-            && h.status().await.is_some_and(|s| matches!(s.role, Role::Leader))
+            && h.status()
+                .await
+                .is_some_and(|s| matches!(s.role, Role::Leader))
         {
             return true;
         }
@@ -184,7 +193,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let journal = leader.two_phase_journal();
     let loaded = journal.load(&plan.tx_id).await?;
     assert!(loaded.is_some(), "client journal should record progress");
-    println!("journal prepared_steps = {}", loaded.unwrap().prepared_steps);
+    println!(
+        "journal prepared_steps = {}",
+        loaded.unwrap().prepared_steps
+    );
 
     for cluster in &clusters {
         cluster.shutdown();

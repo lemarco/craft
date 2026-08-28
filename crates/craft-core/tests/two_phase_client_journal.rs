@@ -72,7 +72,9 @@ fn leader_propose_two_phase_journal_emits_applied_not_user_sm() {
     let _ = n.take_outputs();
 
     let cmd = sample_command();
-    let index = n.propose_two_phase_journal(cmd.clone()).expect("leader propose");
+    let index = n
+        .propose_two_phase_journal(cmd.clone())
+        .expect("leader propose");
     let outs = n.take_outputs();
 
     assert_eq!(journal_applied(&outs), vec![(index, cmd)]);
