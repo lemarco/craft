@@ -11,157 +11,27 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ### Added
 
-- **`tracing` + `pretty_assertions`** — workspace dependencies; structured logs via
-  `craft::init_tracing()` (`RUST_LOG` / `CRAFT_LOG`, legacy `CRAFT_LOG_REBALANCE=1`);
-  rebalance planner lines and Raft role transitions emit `tracing` events;
-  `craft_test_support::{assert_eq, assert_ne, init_tracing, test_setup}` for tests.
-- **Tier 2 Phase 4 — cross-shard saga coordinator** ([cross-shard-transactions](docs/decisions/cross-shard-transactions.md)) —
-  `craft_client::run_saga`, `SagaPlan`/`SagaStep`, `SagaJournal` trait,
-  `InMemorySagaJournal`; facade `StoreSagaJournal` + `record_saga_metrics`.
-  Integration tests `craft/tests/saga.rs`; unit tests in `craft-client/src/saga.rs`.
-- **Saga hardening v2 — group 0 journal fallback** — `EntryPayload::SagaJournal` on
-  group 0 Raft log; `Group0SagaJournal`, `CompositeSagaJournal`, `CraftCluster::saga_journal()`.
-  E2E resume after coordinator restart without Redis (`cross_shard_saga_survives_coordinator_restart_via_group0_journal`).
-- **Optional cross-shard 2PC** ([cross-shard-transactions](docs/decisions/cross-shard-transactions.md)) —
-  `CraftClusterBuilder::cross_shard_2pc(true)`; wire `TwoPhasePrepare/Commit/Abort`;
-  `craft_client::propose_cross_shard_2pc` + `TwoPhasePlan` validation (≤3 groups).
-  Integration tests `craft/tests/two_phase.rs`.
-- **Stable shard routing (Tier 2 Phase 3)** — multi-Raft clusters default to
-  `StableShardRouter` (`CraftClusterBuilder::stable_shards`, default on).
-  `CraftCluster::activate_shards` grows the active virtual prefix without
-  remapping; Tier 1 `expand_shard_count` remains via `.modulus_shards()`.
-  Introspect exposes `shard_routing`.
+- **`tracing` + `pretty_assertions`** — `craft::init_tracing()`, rebalance/role `tracing` events; `craft_test_support` helpers.
+- **Multi-Raft runtime** ([write-sharding-multi-raft](docs/decisions/write-sharding-multi-raft.md)) — `ShardedNodeService`, keyed `ProposeKeyed`/`QueryKeyed`, per-group redb (`data_dir`), rebalance + cross-node group migration RPC.
+- **Per-group membership** ([per-group-raft-membership](docs/decisions/per-group-raft-membership.md)) — `group_replication_factor`, `sync_group_membership`.
+- **Tier 1 multi-Raft** ([tier1-multi-raft-advances](docs/decisions/tier1-multi-raft-advances.md)) — learners, `expand_shard_count`, `propose_keyed_batch`, `/introspect/raft-groups`.
+- **Tier 2 multi-Raft** ([tier2-multi-raft-architecture](docs/decisions/tier2-multi-raft-architecture.md)) — dynamic catalog (`add_raft_groups`), stable shards (default), `catalog_version`, `switch_to_stable_shards`.
+- **Cross-shard saga** ([cross-shard-transactions](docs/decisions/cross-shard-transactions.md)) — `run_saga`, `resume_saga`, `StoreSagaJournal`, `Group0SagaJournal`/`CompositeSagaJournal`, metrics; optional 2PC (`cross_shard_2pc`).
+- **Actor routing Tier 3** ([actor-routing-tier3](docs/decisions/actor-routing-tier3.md)) — consistent-hash ring, `ActorSession`, per-group drain, `DirectoryPolicy::ReadYourWrites`.
+- **Follower + lease reads** ([read-consistency](docs/decisions/read-consistency.md)) — `ReadIndexConfirm` path, `RaftNode::lease_read` fast path.
+- **Liveness vs membership** ([liveness-vs-membership](docs/decisions/liveness-vs-membership.md)) — `reachable_nodes()`, crash-driven supervisor reconcile.
+- **Discovery & ops** — seed-set + DNS discovery; cluster leave RPC; mTLS hot reload; K8s manifests; `TrafficPolicy`; `craft-ops` backup/restore; admin HTTPS; linearizability E2E.
+- **Dev JSON wire** — `craft/json-wire` feature.
 
 ### Changed
 
-- **MSRV 1.98** — workspace `rust-version`, Clippy MSRV, CI `msrv` job, and
-  `deploy/Dockerfile` builder image aligned with stable 1.98.0 ([library-and-publishing](docs/decisions/library-and-publishing.md)).
-
-### Added
-
-- **Tier 2 tails** — `catalog_version` on `/introspect/raft-groups` and
-  `CraftCluster::catalog_version()`; saga hardening (`catalog_version_live`, journal
-  `load`, `resume_saga`, `run_keyed_saga` / `resume_keyed_saga`).
-- **Tier 2 Phase 4 — cross-shard saga coordinator** ([cross-shard-transactions](docs/decisions/cross-shard-transactions.md)) —
-  `craft_client::run_saga`, `SagaPlan`/`SagaStep`, `SagaJournal` trait,
-  `InMemorySagaJournal`; facade `StoreSagaJournal` + `record_saga_metrics`.
-  Integration tests `craft/tests/saga.rs`; unit tests in `craft-client/src/saga.rs`.
-- **Saga hardening v2 — group 0 journal fallback** — `EntryPayload::SagaJournal` on
-  group 0 Raft log; `Group0SagaJournal`, `CompositeSagaJournal`, `CraftCluster::saga_journal()`.
-  E2E resume after coordinator restart without Redis (`cross_shard_saga_survives_coordinator_restart_via_group0_journal`).
-- **Tier 2 Phase 2 — dynamic catalog runtime** ([tier2-multi-raft-architecture](docs/decisions/tier2-multi-raft-architecture.md)) —
-  `CatalogCommand::AddGroups` replicated on group 0 (`EntryPayload::Catalog`);
-  `POST /raft/v1/cluster/catalog/add`; `CraftCluster::add_raft_groups(count)`;
-  `MultiRaftState::apply_catalog_command` + rebalance adopt + keyed routing
-  extension. Integration test `add_raft_groups_expands_catalog_without_restart`.
-- **Tier 2 multi-Raft architecture** ([tier2-multi-raft-architecture](docs/decisions/tier2-multi-raft-architecture.md)) —
-  ADR for dynamic catalog expansion, stable virtual shard activation, and phased
-  write-scaling path; Phase 1 pure planners in `craft-core::shard`
-  (`StableShardRouter`, `validate_catalog`, `plan_catalog_expansion`).
-  Cross-shard atomicity scoped in [cross-shard-transactions](docs/decisions/cross-shard-transactions.md).
-- **Tier 2 production reliability** ([tier2-production-reliability](docs/decisions/tier2-production-reliability.md)) —
-  reachability tuning + phi-accrual detector; rolling wire N/N−1;
-  admin HTTPS; `craft-ops` snapshot backup/restore; `e2e/linearizability.sh`.
-- **Tier 1 multi-Raft advances** ([tier1-multi-raft-advances](docs/decisions/tier1-multi-raft-advances.md)) —
-  per-group learners (`group_learner_factor`), operator shard expansion
-  (`CraftCluster::expand_shard_count`), non-atomic keyed batch propose
-  (`craft_client::propose_keyed_batch`), and `GET /introspect/raft-groups`.
-- **Hardening** — graceful leave integration test (`craft/tests/graceful_leave.rs`);
-  admin HTTPS E2E (`craft-dashboard/tests/admin.rs`, `craft/tests/facade.rs`).
-- **Linearizability E2E phase 2** — `craft-e2e-client` concurrent QUIC load +
-  external `craft_sim::History` checker in `e2e/linearizability.sh`.
-- **Actor routing Tier 3** ([actor-routing-tier3](docs/decisions/actor-routing-tier3.md)) —
-  consistent-hash ring for keyed actor routing, sticky [`ActorSession`] leases,
-  per-group drain override + `CRAFT_DRAIN_TIMEOUT` / builder wiring,
-  optional `ask_linearizable` and `DirectoryPolicy::ReadYourWrites`.
-  etcd-style linearizable reads on followers: `ReadIndexConfirm` /
-  `ReadIndexConfirmed`, apply-barrier wait, local `StateMachine::query`.
-  Writes still forward to the leader.
-- **Multi-Raft runtime wiring** ([write-sharding-multi-raft](docs/decisions/write-sharding-multi-raft.md))
-  — `ShardedNodeService`, `spawn_multi_raft_node`, `GroupTransport`,
-  `ProposeKeyed`/`QueryKeyed` wire types, `RemoteClient`/`TypedClient` keyed
-  helpers; single-group clusters unchanged.
-- **`CraftClusterBuilder` multi-Raft** — `raft_groups`, `raft_machines`,
-  `shard_count`; `CraftCluster::group_handles()`.
-- **`CraftClusterBuilder::data_dir`** — per-group `group-<id>.redb` persistence via
-  `GroupRedbLayout`.
-- **mTLS cert automation** ([cert-automation](docs/decisions/cert-automation.md)) —
-  `PemSecurity`, `start_quic_pem`, `CertReloadHandle` (poll + `SIGHUP` hot reload);
-  `examples/step-ca/`, `deploy/kubernetes/cert-manager/`; `CRAFT_CERT_WATCH_SECS`.
-- **Multi-Raft rebalancing control plane** ([write-sharding-multi-raft](docs/decisions/write-sharding-multi-raft.md))
-  — rendezvous group→host placement (`place_group`, `plan_node_group_rebalance`),
-  leader-only `RaftGroupReconciler`, local adopt/retire via
-  `MultiRaftState::rebalance` on membership change; `CraftEvent::RaftGroupsRebalanced`.
-  Cross-node group migration RPC remains deferred.
-
-- **Lease reads** ([read-consistency](docs/decisions/read-consistency.md)) — the
-  leader serves `query` locally, with no ReadIndex round-trip, while it holds a
-  quorum-confirmed leadership lease. `RaftNode::lease_read` in `craft-core`, used
-  automatically by the driver's `query` fast path; conservative lease bound
-  (`election_timeout_min/2`, surrendered on step-down).
-- **Gossip / seed-set discovery** ([discovery](docs/decisions/discovery.md)) —
-  `craft::discovery` (`Seed`, `resolve_dns_seeds`) and
-  `CraftClusterBuilder::join_seeds` bootstrap a dynamic join against a resilient
-  ordered seed set instead of a single address; DNS resolution maps Kubernetes
-  StatefulSet pod ordinals to node ids.
-- **Dev-only JSON wire** — `craft-proto/json-wire` (forwarded as `craft/json-wire`)
-  swaps the wire codec from `postcard` to human-readable JSON for debugging;
-  `craft::proto::WIRE_CODEC` reports the active format.
-- **QUIC traffic-priority tuning** ([future-work-and-risks](docs/decisions/future-work-and-risks.md)
-  R2) — `craft_net::TrafficPolicy`/`RateLimiter` add opt-in per-traffic-class
-  token-bucket admission control so bulk client/actor traffic cannot starve
-  consensus; `CraftClusterBuilder::traffic_policy`.
-- **Kubernetes / cloud deployment** — `deploy/Dockerfile` (distroless release
-  image) and `deploy/kubernetes/` (StatefulSet + headless/client Services) wired
-  to the `/health` `/ready` admin probes; `craft-node` gains ordinal-derived node
-  ids and `CRAFT_JOIN_SEEDS` / `CRAFT_DISCOVERY` / `CRAFT_ALLOW_JOIN` env config.
-- **Multi-Raft routing foundation** ([write-sharding-multi-raft](docs/decisions/write-sharding-multi-raft.md))
-  — `craft-core::shard`: `ShardRouter` (stable key→shard hash) and rendezvous
-  shard→group placement (`place_shard`/`shard_assignment`) with minimal churn on
-  group changes. Full multi-group runtime wiring remains future work.
-- **Remote scale-down stop RPC** ([supervisor-leader](docs/decisions/supervisor-leader.md))
-  — `POST /raft/v1/actor/stop`: a planned removal on another node now stops that
-  node's instance over the wire instead of being silently dropped (scale-down
-  previously only took effect on node departure).
-- **Cluster leave RPC** ([leave-rpc](docs/decisions/leave-rpc.md), ADR 033 follow-up) —
-  `POST /raft/v1/cluster/leave` with `LeaveRequest` / `LeaveResponse`; runtime
-  `allow_leave`, leader joint-consensus remove on group 0, follower forward;
-  `CraftCluster::request_leave` + `CraftCluster::leave()`; `CRAFT_ALLOW_LEAVE` /
-  `CRAFT_GRACEFUL_LEAVE` on `craft-node`. Per-group membership sync unchanged
-  (ADR 033 facts tick).
-  — leader-side failure detector from heartbeat acks: `RaftNode::reachable` /
-  `reachable_now` in `craft-core`, surfaced as `NodeStatus.reachable` and
-  `ClusterState::reachable_nodes()` (defaults to `live_nodes()`). **Crash-driven
-  reconcile:** the leader supervisor plans placement against `reachable_nodes()`
-  (auto-worker count tracks reachable nodes; fixed groups cap at the reachable
-  set); the facts-refresher triggers reconcile and directory prune on
-  reachability changes, not only membership commits.
-
-### Changed
-
-- **Leader-gated forwarded scale** ([supervisor-leader](docs/decisions/supervisor-leader.md))
-  — `ClusterControl::handle_scale` re-confirms this node is still the leader and
-  sources `live_nodes` from its own committed voters (never staler than the
-  requester's set), so a node deposed mid-flight cannot double-place against the
-  real leader's reconcile.
-- **Shared `craft_net::RemoteError`** — the near-identical transport/rejection
-  arms across `CastError`, `ClusterAskError`, `RemoteSpawnError`, `MigrateError`,
-  `ClusterScaleError`, and `ScaleClusterError` are unified behind one
-  `Remote(RemoteError)` variant.
+- **MSRV 1.98** — workspace, CI, and `deploy/Dockerfile` aligned.
+- **Leader-gated forwarded scale** — deposed nodes cannot double-place against the real leader.
+- **Shared `craft_net::RemoteError`** — unified remote error variant across actor/cluster APIs.
 
 ### Fixed
 
-- **Bounded `ask`** — same-node and local `ActorRef`/`PoolRef` asks now time out
-  (`ASK_TIMEOUT`, 30s) instead of blocking forever on a wedged handler.
-- **At-most-once side-effecting `ask`** — a receiver deduplicates a resent ask by
-  `(origin, req_id)` and replays the cached reply, so a retried request does not
-  run the handler twice.
-- **Reply-encode failures surface as errors** — a reply value that fails to
-  serialize is reported as a real error rather than looking like a dropped reply
-  port.
-- **Actor-stream backpressure** — concurrent in-flight streams on the
-  `Actor`-class QUIC connection are bounded, so a burst of slow asks queues
-  instead of exhausting `MAX_STREAMS` and stalling casts/spawns to a peer.
+- Bounded `ask` timeout (30s); at-most-once side-effecting `ask` dedup; reply-encode errors surfaced; actor-stream backpressure on QUIC.
 
 ## [0.1.0] — Unreleased
 
@@ -202,8 +72,7 @@ tested; APIs are still evolving toward a 1.0 stabilization.
 - **Testing** — in-process QUIC/mTLS cluster test, a linearizability checker,
   the deterministic simulator, and an `e2e/` docker-compose cluster that asserts
   leader election and failover re-election over real QUIC/mTLS.
-- **Docs** — 30 architecture decision records under `docs/decisions/`, the wire
-  protocol in `docs/protocol.md`, and the roadmap in `docs/backlog.md`.
+- **Docs** — 40 architecture decision records under `docs/decisions/`, [status.md](docs/status.md), wire protocol in `docs/protocol.md`.
 
 [Unreleased]: https://gitlab.com/lemarco/craft/-/compare/v0.1.0...HEAD
 [0.1.0]: https://gitlab.com/lemarco/craft/-/tags/v0.1.0

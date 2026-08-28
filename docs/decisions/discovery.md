@@ -39,7 +39,7 @@ keeping Raft-committed membership authoritative:
   gossip — the seed set only bootstraps *first contact*.
 - `craft::discovery::resolve_dns_seeds` resolves an orchestrated headless
   service (Kubernetes StatefulSet pod DNS) into a seed set, mapping each pod
-  ordinal to a node id. See `deploy/kubernetes/` and [future-work-and-risks](future-work-and-risks.md#deferred-features) item 3.
+  ordinal to a node id. See `deploy/kubernetes/` and [status.md](../status.md).
 
 Full peer-to-peer gossip / cloud-metadata auto-discovery beyond a seed set
 remains out of scope.

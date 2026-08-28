@@ -53,7 +53,7 @@ Leave: `CraftCluster::leave()` → propose remove self (after actor migration, [
 
 ### Join RPC
 
-Dedicated operational handshake (see open-questions #4 — **recommended A**):
+Dedicated operational handshake ([join-rpc](join-rpc.md)):
 
 - `POST /raft/v1/cluster/join` — validate cert, `NODE_ID`, version
 - Leader runs membership change internally

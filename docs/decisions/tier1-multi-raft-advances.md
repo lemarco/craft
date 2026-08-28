@@ -1,55 +1,40 @@
 # Tier 1 multi-Raft advances
 
-**Status:** Accepted  
+**Status:** Accepted (landed)  
 **Date:** 2026-08-27
 
 ## Context
 
-[write-sharding-multi-raft](write-sharding-multi-raft.md) and
-[per-group-raft-membership](per-group-raft-membership.md) landed multi-group runtime,
-rebalance, migration RPC, and per-group ConfChange fan-out. Tier 1 closes the
-next scaling/ops gaps without promising cross-shard atomicity.
+[write-sharding-multi-raft](write-sharding-multi-raft.md) and [per-group-raft-membership](per-group-raft-membership.md) landed multi-group runtime, rebalance, migration RPC, and per-group membership sync. Tier 1 adds operator and client APIs for the next scaling/ops gaps.
 
 ## Decision
 
-### 1. Per-group learners (landed)
+### 1. Per-group learners
 
 - `group_learners` + `GroupReplicationTarget` in `craft-core::shard`
 - `CraftClusterBuilder::group_learner_factor` (default `0`)
-- `NodeHandle::propose_membership(voters, learners)` wired through membership sync
+- `NodeHandle::propose_membership(voters, learners)`
 
 Learners are non-voting catch-up replicas ranked after voters by rendezvous weight.
 
-### 2. Operator shard expansion (landed)
+### 2. Operator shard expansion (modulus)
 
-- `MAX_VIRTUAL_SHARDS = 4096` cap on active shard count
-- `ShardRouter::expand_shard_count` + `CraftCluster::expand_shard_count` (multi-Raft only)
-- **Keys remap** when modulus increases — operators must drain clients first
+- `ShardRouter::expand_shard_count` + `CraftCluster::expand_shard_count`
+- **Keys remap** when modulus increases — drain clients first
+- Prefer **add Raft groups** for primary write scaling; use `.modulus_shards()` for legacy clusters
 
-Primary write scaling remains **add Raft groups** (rendezvous placement); shard
-expansion is an explicit, rare operator action.
-
-### 3. Cross-shard batch propose (landed, non-atomic)
+### 3. Cross-shard batch propose (non-atomic)
 
 - `craft_client::propose_keyed_batch` — sequential keyed proposes
-- On failure returns `BatchError::Partial { step, completed, source }`
-- Callers implement compensation (saga); no 2PC in this increment
+- `BatchError::Partial` on failure — callers compensate or use saga
 
-### 4. Multi-Raft observability (landed)
+### 4. Multi-Raft observability
 
-- `GET /introspect/raft-groups` — shard count, RF/LF, hosted groups, per-group status
-
-### Deferred (Tier 2+)
-
-See [tier2-multi-raft-architecture](tier2-multi-raft-architecture.md):
-
-- **Dynamic catalog expansion** — Phase 2 runtime landed ([tier2-multi-raft-architecture](tier2-multi-raft-architecture.md))
-- **Stable shard activation** — Phase 3 runtime (`StableShardRouter`)
-- **Cross-shard atomic transactions** — [cross-shard-transactions](cross-shard-transactions.md)
-- **Meta-Raft group** for membership — group 0 coordinator remains sufficient
+- `GET /introspect/raft-groups` — shard count, RF/LF, hosted groups, per-group status, `catalog_version`
 
 ## Related
 
+- [tier2-multi-raft-architecture](tier2-multi-raft-architecture.md) — dynamic catalog, stable shards, saga
+- [cross-shard-transactions](cross-shard-transactions.md)
 - [write-sharding-multi-raft](write-sharding-multi-raft.md)
-- [per-group-raft-membership](per-group-raft-membership.md)
-- [future-work-and-risks](future-work-and-risks.md) — R1
+- [status.md](../status.md)

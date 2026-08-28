@@ -48,7 +48,7 @@ Use [craft-testing](../craft-testing/SKILL.md):
 |--------|--------|
 | New behavior | `docs/testing-coverage.md` |
 | Design choice | ADR in `docs/decisions/` or note in existing ADR |
-| Backlog item | `docs/backlog.md` status |
+| Backlog item | `docs/status.md` |
 | Public API | rustdoc on facade types; CHANGELOG for user-visible changes |
 
 ## 5. Verify

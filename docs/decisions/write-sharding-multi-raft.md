@@ -1,134 +1,67 @@
 # Write sharding / multi-Raft
 
-**Status:** Accepted (runtime wiring landed)
+**Status:** Accepted (landed)  
 **Date:** 2026-07-06
 
 ## Context
 
-v1 runs a **single Raft group**: every write funnels through one leader and one
-log. Adding nodes improves fault tolerance and actor compute but **not** linear
-write throughput — the write-throughput ceiling recorded as **risk R1** in
-[future-work-and-risks](future-work-and-risks.md) and the "primary future write-scaling
-path" (deferred item #5).
+A single Raft group funnels all writes through one leader and one log. Adding nodes improves fault tolerance and actor compute but **not** linear write throughput per group (risk **R1** in [future-work-and-risks](future-work-and-risks.md)).
 
-The scaling answer, as in Spanner/CockroachDB/TiKV, is to partition the keyspace
-across **multiple independent Raft groups** ("multi-Raft" / write sharding).
-Each group replicates its own shard of state and elects its own leader, so write
-capacity scales roughly linearly with the number of groups (bounded by hardware
-and cross-shard coordination).
+The scaling answer is to partition the keyspace across **multiple independent Raft groups**. Each group replicates its own shard of state and elects its own leader.
 
 ## Decision
 
-Adopt a **fixed-shard, rendezvous-placed, multi-group** design. Land the pure
-routing foundation now (this ADR + `craft-core::shard`); stage the runtime,
-storage, and client changes behind it.
-
-### Routing model (landed: `craft-core::shard`)
+**Fixed-shard, rendezvous-placed, multi-group** design:
 
 | Step | Mechanism | Property |
 |------|-----------|----------|
-| key → shard | `ShardRouter::shard_for` (stable FNV-1a mod `shard_count`) | Every node agrees; stable across restarts |
-| shard → group | `place_shard` — rendezvous (highest-random-weight) hashing | Adding/removing a group moves only ~`1/N` shards, never churns others |
-| assignment | `shard_assignment` | Deterministic full map for a group set |
+| key → shard | `ShardRouter` / `StableShardRouter` | Stable across restarts |
+| shard → group | `place_shard` (rendezvous hashing) | ~`1/N` shard movement when groups change |
+| group → host | `place_group` / `RaftGroupReconciler` | Leader-owned rebalance on membership change |
 
-- **Shard count is fixed** for a cluster's life (repartitioning/split-merge is
-  out of scope — pick a count comfortably larger than the expected group count,
-  e.g. 256).
-- **Groups are elastic**; rendezvous hashing keeps shard movement minimal when
-  the group set changes.
-
-### Runtime model (landed: `craft-actor::sharded`)
+### Runtime model
 
 ```
-                       ┌── RaftGroup 0 (shards {0,4,8,…})  → driver + log + SM slice
- client write (key) ─▶ ShardRouter ─▶ group ─▶ RaftGroup 1 (shards {1,5,9,…})
-                       └── RaftGroup 2 (shards {2,6,10,…}) …
+                       ┌── RaftGroup 0  → driver + log + SM slice
+ client write (key) ─▶ ShardRouter ─▶ group ─▶ RaftGroup 1
+                       └── RaftGroup 2  …
 ```
 
-- Each node may host a replica of **several** groups (one `RaftDriver` per group).
-  `craft-actor::spawn_multi_raft_node` wires *N* drivers on one physical node;
-  `ShardedNodeService` demuxes client and peer traffic by group.
-- `GroupTransport` wraps peer RPCs in `GroupPeerEnvelope` so a single UDP
-  socket carries multiple Raft groups.
-- `GroupMemoryStorage` provides per-group in-memory isolation for tests;
-  [`GroupRedbLayout`] stores each group in `group-<id>.redb` under a shared
-  data directory (`CraftClusterBuilder::data_dir`).
-- **Client routing:** `ClientRequest::ProposeKeyed` / `QueryKeyed` carry a shard
-  key; [`ShardedNodeService`] resolves `key → shard → group` and forwards to
-  the correct group's [`NodeService`]. Ungrouped `Propose`/`Query` still hit
-  group 0 (single-group default unchanged).
-- **Rebalancing control plane** (leader-owned placement on join/leave) — landed:
-  `place_group` / `group_host_assignment` / `plan_node_group_rebalance` in
-  `craft-core::shard`; `RaftGroupReconciler` in `craft-actor::group_rebalance`;
-  `MultiRaftState::rebalance` on membership change via the facade facts refresher;
-  `CraftEvent::RaftGroupsRebalanced`. On retire, the old host exports durable
-  state and pushes `POST /raft/v1/cluster/group/migrate` to the new host before
-  shutting down the local replica; inbound bundles are adopted via
-  `spawn_raft_group_from_bundle`.
+- Each node may host several groups (`spawn_multi_raft_node`, `ShardedNodeService`).
+- `GroupTransport` multiplexes peer RPCs by group on one UDP socket.
+- Per-group storage: `GroupRedbLayout` / `group-<id>.redb` under `data_dir`.
+- Keyed wire: `ProposeKeyed` / `QueryKeyed`; ungrouped traffic hits group 0.
+- Rebalance: leader plans via `plan_node_group_rebalance`; retire exports state and calls `POST /cluster/group/migrate`; adopt via `spawn_raft_group_from_bundle`.
 
 ### Cross-shard writes
 
-- v1-multi-Raft: **single-shard writes only** (each `propose` touches one
-  group). Multi-key/cross-shard atomicity (2PC over Raft groups) is a **separate
-  future ADR** — deliberately not promised here.
+Single-shard writes are the default per `propose`. Multi-shard coordination: [cross-shard-transactions](cross-shard-transactions.md) (saga + optional 2PC).
 
-### Membership & placement
+### Membership
 
-- Group membership reuses joint consensus ([membership-early](membership-early.md))
-  **per group**. A cluster-level control plane (an extension of the leader-owned
-  supervisor, [supervisor-leader](supervisor-leader.md)) decides which physical nodes
-  host which groups' replicas and rebalances on join/leave — reusing the
-  rendezvous placement so rebalancing is minimal.
+Per-group joint consensus ([per-group-raft-membership](per-group-raft-membership.md)). Group 0 is the cluster coordinator for join/leave and catalog commands ([tier2-multi-raft-architecture](tier2-multi-raft-architecture.md)).
 
-## What landed now
+## Implementation
 
-- `craft-core::shard`: `ShardRouter`, `ShardId`, `RaftGroupId`, `place_shard`,
-  `shard_assignment`, `place_group`, `group_host_assignment`,
-  `plan_node_group_rebalance` — pure, deterministic, unit-tested (including the
-  minimal-churn property of rendezvous hashing). This is the shared vocabulary
-  every later layer (client, runtime, control plane) routes against.
-- `craft-actor::sharded`: `ShardedNodeService`, `spawn_multi_raft_node`,
-  `GroupTransport`, keyed client wire types (`ProposeKeyed`/`QueryKeyed`).
-- `craft-client`: `RemoteClient::propose_keyed` / `query_keyed` and matching
-  `TypedClient` helpers.
-- `CraftClusterBuilder::raft_groups`, `raft_machines`, `shard_count`, and
-  `data_dir`; `CraftCluster::group_handles()`.
-- `craft-actor::group_rebalance`: `RaftGroupReconciler` (leader-only planning).
-- `craft::MultiRaftState::rebalance` — local adopt/retire on membership change,
-  cross-node group migration RPC on retire (`GroupMigrateRequest` /
-  `send_group_migrate`, `NodeRouter` → `MultiRaftState::adopt_group_migrate`);
-  `CraftEvent::RaftGroupsRebalanced`.
-- `craft-storage::migration` — export/import of `GroupMigrationBundle`;
-  `RaftDriver::export_migration` (persists then reads storage, with live-log
-  fallback for `NullStorage`).
-
-## What is deferred (and why it is safe to defer)
-
-- Per-group Raft membership across nodes (each group still uses the cluster-wide
-  voter set today). **Pure planner landed** — see [per-group-raft-membership](per-group-raft-membership.md);
-  runtime fan-out deferred.
+| Component | Location |
+|-----------|----------|
+| Shard planners | `craft-core::shard` |
+| Sharded runtime | `craft-actor::sharded`, `group_rebalance` |
+| Keyed client | `craft-client` |
+| Facade builder | `CraftClusterBuilder::raft_groups`, `stable_shards`, `data_dir` |
+| Migration bundle | `craft-storage::migration`, `RaftDriver::export_migration` |
 
 ## Consequences
 
-**Positive**
+**Positive:** Write capacity scales with group count; rendezvous minimizes churn; pure planners are testable in isolation.
 
-- Names the write-scaling architecture concretely; no silent gap for R1.
-- The routing math is proven and testable in isolation, decoupled from the hard
-  runtime work.
-- Rendezvous placement gives cheap elasticity (minimal shard movement).
-- Local rebalance on membership change keeps group hosting aligned with rendezvous
-  placement without manual operator intervention.
-
-**Negative**
-
-- Fixed shard count trades repartitioning flexibility for routing simplicity.
-- Cross-shard atomicity remains unsolved (explicitly out of scope).
+**Negative:** Fixed virtual shard space trades repartitioning flexibility for routing simplicity; catalog expansion and rebalance still move ~`1/N` shard ownership — clients must tolerate brief dual-host windows during migrate.
 
 ## Related
 
-- [future-work-and-risks](future-work-and-risks.md) — R1 write ceiling, deferral #5
-- [scale-targets](scale-targets.md) — scale targets
-- [client-routing](client-routing.md) — client routing (gains a shard step)
-- [membership-early](membership-early.md) — per-group membership
-- [per-group-raft-membership](per-group-raft-membership.md) — per-group membership planner (Phase 1)
-- [supervisor-leader](supervisor-leader.md) — leader-owned control plane
+- [per-group-raft-membership](per-group-raft-membership.md)
+- [tier1-multi-raft-advances](tier1-multi-raft-advances.md)
+- [tier2-multi-raft-architecture](tier2-multi-raft-architecture.md)
+- [cross-shard-transactions](cross-shard-transactions.md)
+- [supervisor-leader](supervisor-leader.md)
+- [status.md](../status.md)

@@ -34,7 +34,7 @@ Usage:
 ./examples/certs/generate.sh --client --name my-app --out ./certs/client
 ```
 
-Uses `rcgen` (Rust) or `openssl` in script — implementation choice at Phase 0; **document both paths** in `docs/certs.md`.
+Uses `rcgen` (Rust) or `openssl` in script — both paths documented in [certs.md](../certs.md).
 
 ### Environment variables (production)
 

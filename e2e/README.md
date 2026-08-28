@@ -1,7 +1,7 @@
 # E2E cluster (docker-compose)
 
 A 3-node `craft` cluster over **real QUIC + mTLS**, exercised end to end in
-containers. This is backlog **T8** — the highest-fidelity test in the suite: it
+containers. This is the highest-fidelity test in the suite: it
 uses the actual `craft-node` binary, the actual cert-provisioning script, and a
 real network between separate processes.
 

@@ -36,8 +36,7 @@ Land six production-oriented capabilities:
 
 **Negative / follow-ups**
 
-- Partition chaos during concurrent QUIC load (not just before/after) remains
-  future work.
+- Partition chaos during concurrent QUIC load (not just before/after) is not yet covered in CI.
 - `craft-ops` object URIs use standard cloud SDK env vars (AWS/GCP); no vault integration.
 
 ## Related

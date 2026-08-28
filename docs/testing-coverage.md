@@ -4,9 +4,9 @@ Living inventory of what the craft test suite covers, where gaps remain, and
 which CI lane exercises each layer. Update this file when adding tests or
 closing a gap.
 
-**Strategy (why we test this way):** [testing-strategy — Testing strategy](decisions/testing-strategy.md)  
-**Implementation status:** [backlog.md — Track T](backlog.md)  
-**Last audit:** 2026-08-27 · **~337** test functions (`cargo test --workspace --lib --tests --all-features`)
+**Strategy:** [testing-strategy](decisions/testing-strategy.md)  
+**Feature status:** [status.md](status.md)  
+**Last audit:** 2026-08-28
 
 Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** scheduled / `#[ignore]` only
 
@@ -70,8 +70,8 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Lease reads | ✅ | ✅ | — | — | ✅ |
 | Snapshots + log compaction | ✅ | ✅ | ✅ | — | ✅ |
 | `take_persist` / `restore` (core) | ✅ | ✅ | — | — | ✅ |
-| Write sharding / multi-Raft routing | ⚠️ | ✅ `multi_raft` | ✅ | — | ✅ |
-| Tier 2 catalog expansion (pure planner) | ✅ `shard` | — | — | — | ⚠️ |
+| Write sharding / multi-Raft routing | ✅ | ✅ `multi_raft` | ✅ | — | ✅ |
+| Tier 2 catalog expansion (pure planner) | ✅ `shard` | — | — | — | ✅ |
 | Tier 2 stable virtual shards (pure planner) | ✅ `shard` | — | — | — | ✅ |
 | Dynamic catalog expansion (runtime) | — | ✅ `multi_raft` | — | — | ✅ |
 | Stable shard routing (runtime) | — | ✅ `multi_raft`, `sharded` | — | — | ✅ |
@@ -81,14 +81,14 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Per-group membership runtime sync on cluster join | — | ✅ | — | — | ✅ |
 | Per-group learners (`group_learners`, membership sync) | ✅ | — | — | — | ✅ |
 | Operator shard expansion (`expand_shard_count`, Tier 1 modulus) | ✅ | ✅ `multi_raft` | — | — | ✅ |
-| Stable shard activation (`activate_shards`, Tier 2) | ✅ | ✅ `multi_raft`, `sharded` | — | — | — |
+| Stable shard activation (`activate_shards`, Tier 2) | ✅ | ✅ `multi_raft`, `sharded` | — | — | ✅ |
 | Cluster leave RPC (`/cluster/leave`, `CraftCluster::leave`) | — | ✅ `runtime`, `multi_raft` | — | — | ✅ |
 | Leader-side reachability / hysteresis / phi-accrual | ✅ | ✅ | — | — | ✅ |
 | Wire protocol N/N−1 compat band | ✅ | ✅ | — | — | ✅ |
 | Admin HTTPS (server TLS) | ✅ | ✅ `admin`, `facade` | — | 🔒 nightly | ✅ |
 | Snapshot backup CLI (`craft-ops`) | — | ✅ | — | — | ✅ |
 | External linearizability (Jepsen-lite) | — | — | ✅ | ✅ `linearizability.sh` | ✅ |
-| Malformed persistence payloads | — | ✅ driver | — | — | ✅ | (`craft-storage` + B4)
+| Malformed persistence payloads | — | ✅ driver | — | — | ✅ |
 
 | Area | Unit | Integration | Sim | E2E | Status |
 |------|:----:|:-----------:|:---:|:---:|--------|

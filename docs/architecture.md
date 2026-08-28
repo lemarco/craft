@@ -1,80 +1,79 @@
 # Architecture overview
 
-Multi-node **Raft** cluster in Rust: **one `ractor` actor per peer**, **pure `RaftCore` FSM**, I/O at the edges (network, storage, client).
+Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `craft-core`, I/O at the edges (network, storage, client). Consensus and actors run on **tokio** tasks in `craft-actor` (one `RaftDriver` per Raft group on a physical node).
 
-> Decision records in [decisions/](decisions/) override details here as they are accepted.
+> Decision records in [decisions/](decisions/) are authoritative for design detail. Current capability list: [status.md](status.md).
 
-## Stack (current decisions)
+## Stack
 
 | Concern | Choice | Decision |
-|---------|--------|-----|
+|---------|--------|----------|
 | State machine | Generic trait + macros | [state-machine](decisions/state-machine.md) |
-| Wire transport | **HTTP/3 + QUIC** (all network I/O) | [wire-transport](decisions/wire-transport.md) |
-| Serialization | **postcard** + serde | [serialization](decisions/serialization.md) |
-| Client API | L1 `ractor`; L2 HTTP/3 remote | [client-api](decisions/client-api.md) |
-| ~~gRPC/tonic~~ | Rejected | [client-api](decisions/client-api.md) |
-| ~~Framed TCP~~ | Rejected | [wire-transport](decisions/wire-transport.md) |
-| Deployment | Library-first framework; one app, N VPS processes | [deployment-model](decisions/deployment-model.md) |
-| Elasticity | Incremental join + local/runtime actor scale | [elastic-cluster](decisions/elastic-cluster.md) |
-| Cross-node actors | Messaging, spawn_remote, scale_cluster, migration | [cross-node-actors](decisions/cross-node-actors.md) |
-| Worker placement | **1 worker / VPS**; auto-spawn on join | [one-worker-per-vps](decisions/one-worker-per-vps.md), [auto-spawn-on-join](decisions/auto-spawn-on-join.md) |
-| Discovery | `JOIN_ADDR` + **joint-consensus membership** (v1) | [discovery](decisions/discovery.md), [membership-early](decisions/membership-early.md) |
-| Client routing | Transparent forward (any node) | [client-routing](decisions/client-routing.md) |
-| Read consistency | ReadIndex linearizable `query` | [read-consistency](decisions/read-consistency.md) |
-| Actor runtime | `ractor` + `tokio` | — |
-| Persistence | `redb` | — |
-| Naming | **`craft`** facade + `craft-*` crates | [naming](decisions/naming.md) |
-| TLS | mTLS peers + **mTLS client wire**; in-process exempt | [security](decisions/security.md) |
-| Observability | metrics, telemetry, introspection, dashboard | [observability](decisions/observability.md) |
+| Wire transport | HTTP/3 + QUIC | [wire-transport](decisions/wire-transport.md) |
+| Serialization | postcard + serde (optional JSON wire for dev) | [serialization](decisions/serialization.md) |
+| Client API | In-process + HTTP/3 remote | [client-api](decisions/client-api.md) |
+| Deployment | Library-first; one app, N VPS processes | [deployment-model](decisions/deployment-model.md) |
+| Elasticity | Incremental join + supervisor reconcile | [elastic-cluster](decisions/elastic-cluster.md) |
+| Cross-node actors | Messaging, spawn, scale, migration | [cross-node-actors](decisions/cross-node-actors.md) |
+| Worker placement | 1 worker / VPS; auto-spawn on join | [one-worker-per-vps](decisions/one-worker-per-vps.md), [auto-spawn-on-join](decisions/auto-spawn-on-join.md) |
+| Discovery | Seed set + DNS + joint-consensus join | [discovery](decisions/discovery.md), [membership-early](decisions/membership-early.md) |
+| Client routing | Transparent forward to leader | [client-routing](decisions/client-routing.md) |
+| Keyed routing | Shard → group → leader (multi-Raft) | [write-sharding-multi-raft](decisions/write-sharding-multi-raft.md) |
+| Read consistency | ReadIndex / lease / follower reads | [read-consistency](decisions/read-consistency.md) |
+| Actor runtime | tokio tasks + supervision | [cross-node-actors](decisions/cross-node-actors.md) |
+| Persistence | redb (per-group files in multi-Raft) | — |
+| TLS | mTLS peers + mTLS client wire | [security](decisions/security.md) |
+| Observability | metrics, telemetry, dashboard | [observability](decisions/observability.md) |
 
 ## Crate layout
 
 ```
 crates/
-├── craft/           # facade — primary user dependency
-├── craft-proto/     # IDs, log, peer + client wire types
-├── craft-core/      # Pure Raft FSM (input/output effects)
-├── craft-storage/   # LogStore, HardState, Snapshot (+ redb)
-├── craft-net/       # HTTP/3 server, QUIC peer pool, router
-├── craft-actor/     # CraftNodeActor, ActorRegistry, directory, migration
-├── craft-client/    # ClientHandle, RemoteClient, TypedClient
-├── craft-macros/    # State machine + UserActor derives
-├── craft-node/      # Reference binary
-├── craft-sim/       # In-memory Transport for partition tests
-├── craft-store-redis/  # optional: ActorStateStore Redis impl (actor-state-redis)
-└── craft-dashboard/    # optional: live monitoring UI (observability)
+├── craft/              # facade — primary user dependency (CraftCluster builder)
+├── craft-proto/        # IDs, log, wire types, encode/decode
+├── craft-core/         # pure Raft FSM + shard planners
+├── craft-storage/      # LogStore, HardState, Snapshot (+ redb)
+├── craft-net/          # HTTP/3 server, QUIC transport, PeerDirectory
+├── craft-actor/        # NodeService, ShardedNodeService, registry, supervisor
+├── craft-client/       # ClientHandle, RemoteClient, saga, keyed/batch APIs
+├── craft-macros/       # StateMachine + UserActor derives
+├── craft-node/         # reference binary
+├── craft-sim/          # deterministic sim harness + linearizability checker
+├── craft-store-redis/  # optional ActorStateStore (Redis)
+├── craft-dashboard/    # admin HTTP + observability views
+├── craft-ops/          # backup/restore CLI
+└── craft-test-support/ # shared test harness helpers
 ```
 
 See [naming](decisions/naming.md).
 
-## Node internals
+## Node internals (single-Raft; multi-Raft stacks N drivers)
 
 ```mermaid
 flowchart TB
     subgraph Node["One process"]
-        RC[RaftCore]
-        RNA[RaftNodeActor]
+        NR[NodeRouter]
+        NS[NodeService / ShardedNodeService]
+        RD[RaftDriver + RaftNode FSM]
         SM[StateMachine]
         ST[Storage]
-        H3[HTTP/3 server :7443/udp]
+        H3[HTTP/3 :7443/udp]
+        AR[ActorRegistry + User actors]
 
-        H3 -->|/peer/wire| RNA
-        H3 -->|/client/wire| RNA
-        H3 -->|/actor/deliver| AR[User actors]
-        H3 -->|/actor/register| DIR[Actor directory]
-        DIR --> AR
-        RNA --> RC
-        RC --> SM
-        RNA --> ST
-        RNA -->|outbound peer RPC| H3
+        H3 --> NR
+        NR --> NS
+        NR --> AR
+        NS --> RD
+        RD --> SM
+        RD --> ST
+        NS -->|outbound peer RPC| H3
     end
 
-    H3 <-->|QUIC peer/wire| Peers[Other nodes]
-    H3 <-->|QUIC client/wire| Clients[Remote clients]
-    H3 <-->|QUIC actor/deliver| Peers
+    H3 <-->|QUIC| Peers[Other nodes]
+    H3 <-->|QUIC| Clients[Remote clients]
 ```
 
-One **QUIC listener** per node. Raft replication and client requests share the HTTP/3 stack; paths separate peer vs client auth.
+One QUIC listener per node. Paths separate peer consensus, client wire, cluster control, and actor traffic. Multi-Raft adds one `RaftDriver` per hosted group behind `ShardedNodeService`.
 
 ## Client API layers
 
@@ -82,50 +81,68 @@ One **QUIC listener** per node. Raft replication and client requests share the H
 flowchart LR
     subgraph L1["L1 In-process"]
         APP[Your app]
-        CH[ClientHandle]
-        AR[RaftNodeActor]
-        APP --> CH --> AR
+        CH[ClientHandle / TypedClient]
+        NS[NodeService]
+        APP --> CH --> NS
     end
 
     subgraph L2["L2 Remote HTTP/3"]
         APP2[CLI / other binary]
-        RMC[RemoteClient]
-        QUIC[QUIC + POST /client/wire]
-        AR2[RaftNodeActor]
-        APP2 --> RMC --> QUIC --> AR2
+        RC[RemoteClient]
+        QUIC[POST /client/wire]
+        NS2[NodeService]
+        APP2 --> RC --> QUIC --> NS2
     end
 ```
 
+Keyed writes in multi-Raft clusters: `ProposeKeyed` / `QueryKeyed` → shard router → group driver.
+
 ## Data flows
 
-### Write
+### Write (single group)
 
-1. Client sends `ClientRequest::Propose` to **any** node (L1 or L2).
-2. If receiver is a follower, it **forwards** to the leader ([client-routing](decisions/client-routing.md)).
-3. Leader appends to log, persists, replicates via `AppendEntries` over **`POST /peer/wire`**.
-4. Majority match → commit → `StateMachine::apply`.
-5. `ClientResponse::Ok` returned to caller (directly or proxied).
+1. Client sends `ClientRequest::Propose` to any node (L1 or L2).
+2. Follower **forwards** to the leader ([client-routing](decisions/client-routing.md)).
+3. Leader appends, persists, replicates via `AppendEntries` on `/peer/wire`.
+4. Majority match → commit → `StateMachine::apply` → response.
 
-### Election
+### Write (multi-Raft keyed)
 
-Follower election timeout → Candidate → `RequestVote` over HTTP/3 → majority → Leader → heartbeats as `AppendEntries` on `/peer/wire`.
+1. `ProposeKeyed { key, … }` → `ShardedNodeService` resolves key → shard → group.
+2. Same per-group Raft path as above on the target group's leader.
+
+### Cross-shard saga
+
+1. `run_saga` / `run_keyed_saga` executes ordered steps via keyed client.
+2. Journal persisted (`StoreSagaJournal`, `Group0SagaJournal`, or composite).
+3. On failure, compensators run in reverse; `resume_saga` continues after restart.
+
+See [cross-shard-transactions](decisions/cross-shard-transactions.md).
 
 ### Read
 
-1. Client sends `ClientRequest::Query` to any node (forwarded to leader if needed).
-2. Leader runs **ReadIndex** (quorum ack + apply barrier) → `StateMachine::query`.
-3. `ClientResponse::Ok` returned. Actor `ask` is not linearizable — see [read-consistency](decisions/read-consistency.md).
+1. `ClientRequest::Query` → leader ReadIndex or lease fast path (or follower ReadIndex confirm).
+2. Apply barrier → `StateMachine::query`.
+3. Actor `ask` is **not** linearizable — use `query` for SM data ([read-consistency](decisions/read-consistency.md)).
 
-## Decisions complete; implementation topics
+### Election
 
-Strategic decision records through **cluster-routing** are accepted. Optional medium topics in [open-questions.md](open-questions.md).
+Follower timeout → Candidate → `RequestVote` over HTTP/3 → Leader → heartbeats as `AppendEntries`.
 
-## Implementation phases
+## Multi-Raft control plane
 
-1. Workspace scaffold  
-2. `craft-proto` + `craft-core` — election, replication, **joint-consensus membership** ([membership-early](decisions/membership-early.md))  
-3. `craft-storage`  
-4. `craft-net` — HTTP/3, **`/cluster/join`**, peer pool  
-5. `craft-actor` + `craft` facade + auto-spawn supervisor ([auto-spawn-on-join](decisions/auto-spawn-on-join.md))  
-6. `craft-client` + snapshots + `craft-macros`  
-7. `craft-sim` — membership, partition, join/leave tests
+```
+Leader (group 0)
+  → catalog add / join / leave / group migrate RPCs
+  → RaftGroupReconciler plans group hosting (rendezvous)
+  → per-group membership sync (group_voters)
+  → facts refresher → supervisor reconcile (reachable_nodes)
+```
+
+Details: [write-sharding-multi-raft](decisions/write-sharding-multi-raft.md), [tier2-multi-raft-architecture](decisions/tier2-multi-raft-architecture.md).
+
+## Related
+
+- [status.md](status.md) — shipped vs deferred
+- [protocol.md](protocol.md) — route table
+- [testing-coverage.md](testing-coverage.md) — test inventory

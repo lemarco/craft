@@ -26,7 +26,7 @@ Parallelism on a VPS comes from **inside** the single worker (`VpsResources`, in
 | Cluster size | 3–5 VPSes typical; grows with demand |
 | Workers cluster-wide | equals VPS count (1:1 in production) |
 | Command size | small (<1 KiB) |
-| Write throughput | moderate; scale writes by sharding state machines later if needed |
+| Write throughput | moderate per group; scale via multi-Raft (add groups) |
 | HTTP/3 | one QUIC conn per peer; batch append 256 |
 
 ### Implications

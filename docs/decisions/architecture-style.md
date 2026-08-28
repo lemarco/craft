@@ -7,7 +7,7 @@
 
 Is craft built with **hexagonal architecture** (ports & adapters)? The concern: consensus + actor systems are notoriously hard to test if consensus logic is tangled with sockets, disk, and clocks. We already leaned this way implicitly:
 
-- `craft-core` is a **pure FSM** ([backlog](../backlog.md) A1) — no I/O.
+- `craft-core` is a **pure FSM** — no I/O ([architecture-style](architecture-style.md)).
 - Persistence, transport, and external state are **traits** ([wire-transport](wire-transport.md), Track B, [actor-state-redis](actor-state-redis.md)).
 - Deterministic simulation ([testing-strategy](testing-strategy.md)) depends on swapping real adapters for in-memory/virtual ones.
 
@@ -74,4 +74,4 @@ craft-node → craft → craft-actor → { craft-core, craft-net, craft-storage 
 
 - [testing-strategy.md](testing-strategy.md) — why the pure core matters
 - [wire-transport.md](wire-transport.md) · [actor-state-redis.md](actor-state-redis.md)
-- [architecture.md](../architecture.md) · [backlog.md](../backlog.md)
+- [architecture.md](../architecture.md) · [status.md](../status.md)

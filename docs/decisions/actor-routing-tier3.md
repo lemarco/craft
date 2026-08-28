@@ -5,9 +5,7 @@
 
 ## Context
 
-Wave 2 shipped cross-node actors with modulo keyed routing, a 60s drain constant
-(deferred builder wiring), eventual directory convergence (R3), and a clear split
-between linearizable Raft `query` and fast/local actor `ask`.
+Wave 2 shipped cross-node actors with modulo keyed routing, a fixed default drain timeout, eventual directory convergence (R3), and a clear split between linearizable Raft `query` and fast/local actor `ask`.
 
 Tier 3 closes the remaining operator and application UX gaps without changing
 consensus semantics.

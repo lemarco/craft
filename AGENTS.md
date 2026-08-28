@@ -4,10 +4,11 @@ Distributed Raft + actor framework in Rust. Read before making changes.
 
 ## Start here
 
-1. [docs/architecture.md](docs/architecture.md) — crate graph
-2. [docs/decisions/architecture-style.md](docs/decisions/architecture-style.md) — pure core, trait ports
-3. [docs/decisions/testing-strategy.md](docs/decisions/testing-strategy.md) — test pyramid
-4. [docs/testing-coverage.md](docs/testing-coverage.md) — what is covered, known gaps
+1. [docs/status.md](docs/status.md) — current capabilities and limits
+2. [docs/architecture.md](docs/architecture.md) — crate graph
+3. [docs/decisions/architecture-style.md](docs/decisions/architecture-style.md) — pure core, trait ports
+4. [docs/decisions/testing-strategy.md](docs/decisions/testing-strategy.md) — test pyramid
+5. [docs/testing-coverage.md](docs/testing-coverage.md) — test inventory
 
 ## Cursor config
 

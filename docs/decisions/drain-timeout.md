@@ -5,7 +5,7 @@
 
 ## Context
 
-Medium open question **#3**: how long `/actor/migrate` and `cluster.leave()` wait for workers to drain in-flight messages before force-stop ([cross-node-actors](cross-node-actors.md)).
+Medium topic: how long `/actor/migrate` and `cluster.leave()` wait for workers to drain in-flight messages before force-stop ([cross-node-actors](cross-node-actors.md)).
 
 User chose **Option C — configurable** with a sensible default.
 
@@ -41,7 +41,8 @@ CraftCluster::builder()
 ### Scope
 
 - Applies per **actor instance** being migrated/stopped.
-- Cluster-wide default; per-actor override deferred (not v1).
+- Cluster-wide default via builder / `CRAFT_DRAIN_TIMEOUT`.
+- Per-group override via `ActorRegistry::set_group_drain_timeout` ([actor-routing-tier3](actor-routing-tier3.md)).
 
 ## Consequences
 

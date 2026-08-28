@@ -9,7 +9,7 @@ craft is a distributed consensus + actor framework: the hardest bugs are **timin
 
 Two design choices make a rigorous strategy cheap:
 
-1. **`craft-core` is a pure FSM** (`RaftInput → RaftOutput`, no I/O — [backlog](../backlog.md) A1). It can be driven by a deterministic, seeded scheduler.
+1. **`craft-core` is a pure FSM** (`RaftInput → RaftOutput`, no I/O). It can be driven by a deterministic, seeded scheduler.
 2. **`Transport` is a trait** ([wire-transport](wire-transport.md)). An in-memory implementation can inject delay/drop/partition without real sockets.
 
 Together these let **deterministic simulation** be the primary bug-finder, with containers/E2E as a thin confidence layer.
@@ -64,7 +64,7 @@ Adopt a **testing pyramid** with deterministic simulation at its core.
 
 ### Aspirational
 
-- Jepsen / Antithesis-style external validation before a 1.0 stability claim (deferred, noted in [future-work-and-risks](future-work-and-risks.md)).
+- Jepsen / Antithesis-style external validation before a 1.0 stability claim ([status.md](../status.md)).
 
 ## Consequences
 
@@ -83,5 +83,5 @@ Adopt a **testing pyramid** with deterministic simulation at its core.
 ## Related
 
 - [testing-coverage.md](../testing-coverage.md) — living coverage matrix and gap tracker
-- [backlog.md](../backlog.md) — Track I (sim), Track T (testing/CI)
+- [status.md](../status.md) · [testing-coverage.md](../testing-coverage.md)
 - [wire-transport.md](wire-transport.md) · [actor-state-redis.md](actor-state-redis.md) · [library-and-publishing.md](library-and-publishing.md) · [future-work-and-risks.md](future-work-and-risks.md)

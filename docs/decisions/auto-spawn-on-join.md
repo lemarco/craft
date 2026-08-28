@@ -13,7 +13,7 @@ Options were: framework auto-spawn (**A**), user hook (**B**), or manual/`main` 
 
 **The framework auto-spawns configured workers when a node becomes a cluster member.**
 
-Users declare default workers on `CraftCluster::builder()`. **`ClusterSupervisor`** (leader-coordinated, see [open-questions.md](../open-questions.md) #6) ensures each live node runs exactly the configured workers — including **newly joined nodes**.
+Users declare default workers on `CraftCluster::builder()`. **`ClusterSupervisor`** (leader-coordinated — [supervisor-leader](supervisor-leader.md)) ensures each live node runs exactly the configured workers — including **newly joined nodes**.
 
 ### Builder configuration
 

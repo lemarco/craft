@@ -96,18 +96,9 @@ scope for library-first design.
 Neither saga nor 2PC provides **global serializable isolation** across shards
 without a global transaction manager — document as explicit non-goal.
 
-## Open questions
+## Remaining design note
 
-- Whether compensation runs on **same shard** as forward step (key affinity).
-
-**Resolved (Tier 2 tails):**
-
-- Saga journal in group 0 metadata vs Redis-only — **group 0 is the durable fallback** (`Group0SagaJournal`); Redis mirrors when configured. Integration test `cross_shard_saga_survives_coordinator_restart_via_group0_journal` in `craft/tests/saga.rs`.
-- Dynamic catalog mid-saga: [`run_keyed_saga`](../../crates/craft/src/cluster.rs) pins
-  `catalog_version`; [`run_saga`](../../crates/craft-client/src/saga.rs) rejects steps when
-  the live generation changes.
-- Idempotent replay: journal [`load`](../../crates/craft-client/src/saga.rs) + completed
-  phase short-circuit in `run_saga`.
+- Compensation runs on the **same shard as the forward step** (key affinity on `SagaStep.key`) — callers must supply compensators that target the same key.
 
 ## Related
 

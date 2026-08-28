@@ -54,11 +54,10 @@ sequenceDiagram
     F-->>C: Ok
 ```
 
-### Lease reads (added post-v1)
+### Lease reads
 
 The leader may serve `query` **without** a ReadIndex round-trip while it holds a
-valid **leadership lease** — the "lease read" originally deferred here for clock
-sensitivity. Implemented in `craft-core` (`RaftNode::lease_read`) and taken
+valid **leadership lease**. Implemented in `craft-core` (`RaftNode::lease_read`) and taken
 automatically by the driver's `query` fast path:
 
 - A quorum ack of a heartbeat round grants a lease lasting `election_timeout_min
@@ -67,7 +66,7 @@ automatically by the driver's `query` fast path:
 - Halving the *minimum* election timeout guarantees the lease expires on the
   leader before any follower (which reset its election timer on the acked
   heartbeat) could time out and elect a new leader; the margin absorbs
-  cross-node clock drift (the original deferral reason).
+  cross-node clock drift.
 - The lease is surrendered immediately on step-down and reset on election, so a
   deposed or fresh leader never serves a stale lease read.
 - A read is served only when an entry of the current term has committed (leader
@@ -104,9 +103,9 @@ sequenceDiagram
     F-->>C: Ok
 ```
 
-### Still deferred
+### Out of scope
 
-- **Linearizable actor `ask`** — out of scope; use `query` for authoritative reads
+- **Linearizable actor `ask`** — use Raft `query` for authoritative SM reads; `ask` stays fast/local ([status.md](../status.md))
 
 ### API
 

@@ -1,6 +1,6 @@
 # craft-fuzz
 
-LibFuzzer targets for [`craft-proto`](../craft-proto) wire decoders (backlog T4).
+LibFuzzer targets for [`craft-proto`](../craft-proto) wire decoders.
 
 Requires **nightly** Rust and [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz):
 
