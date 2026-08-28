@@ -302,14 +302,14 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
 
     /// Override automatic Raft log compaction thresholds.
     ///
-    /// Default is [`CompactionPolicy::default_auto`] (1024 entries or 4 MiB).
+    /// Default is [`craft_core::CompactionPolicy::default_auto`] (1024 entries or 4 MiB).
     #[must_use]
     pub fn auto_compaction(mut self, policy: craft_core::CompactionPolicy) -> Self {
         self.runtime.compaction = policy;
         self
     }
 
-    /// Disable automatic log compaction (use [`NodeHandle::compact`] manually).
+    /// Disable automatic log compaction (use [`craft_actor::NodeHandle::compact`] manually).
     #[must_use]
     pub fn auto_compaction_disabled(mut self) -> Self {
         self.runtime.compaction = craft_core::CompactionPolicy::disabled();
