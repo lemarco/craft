@@ -526,6 +526,16 @@ pub fn client_endpoint(bind: SocketAddr) -> Result<quinn::Endpoint, TransportErr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::route::Route;
+
+    #[test]
+    fn routes_map_to_expected_traffic_classes() {
+        assert_eq!(Route::PeerWire.traffic_class(), TrafficClass::Peer);
+        assert_eq!(Route::ClientWire.traffic_class(), TrafficClass::Client);
+        assert_eq!(Route::ClusterJoin.traffic_class(), TrafficClass::Cluster);
+        assert_eq!(Route::ActorDeliver.traffic_class(), TrafficClass::Actor);
+        assert_eq!(Route::QueueReplicate.traffic_class(), TrafficClass::Actor);
+    }
 
     #[test]
     fn only_actor_traffic_is_stream_gated() {

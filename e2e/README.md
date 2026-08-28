@@ -15,8 +15,10 @@ real network between separate processes.
   each other by service DNS name, and elect a leader. mTLS still validates each
   peer against its `craft-node-<id>` SAN, independent of the container hostname.
 - `run.sh` — brings the cluster up, asserts a single agreed leader is elected,
-  kills that leader, asserts the survivors re-elect a new one, then tears
-  everything down.
+  probes `/health` and `/introspect/cluster` on every admin port, kills that
+  leader, asserts the survivors re-elect a new one, then tears everything down.
+- `leave.sh` — `CRAFT_GRACEFUL_LEAVE=1` on node3: SIGINT and assert surviving
+  peers drop the departed node from membership before exit.
 - `chaos.sh` — fault injection (T9): partitions the leader off the cluster
   network, asserts the majority re-elects, heals the partition, and asserts the
   whole cluster re-converges on one leader (no split brain). Also an opt-in
@@ -37,7 +39,8 @@ real network between separate processes.
 ## Run it
 
 ```sh
-./e2e/run.sh                    # election + failover
+./e2e/run.sh                    # election + admin smoke + failover
+./e2e/leave.sh                  # graceful leave (CRAFT_GRACEFUL_LEAVE)
 ./e2e/queue.sh                  # job queue enqueue / follower worker / failover
 ./e2e/chaos.sh                  # partition + heal
 ./e2e/cert_renew.sh             # PEM reissue + SIGHUP/poll hot reload

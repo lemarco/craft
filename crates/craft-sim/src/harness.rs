@@ -7,7 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use craft_core::{Config, Output, RaftNode, ReadId};
+use craft_core::{Config, Output, RaftNode, ReadId, Role};
 use craft_proto::{LogIndex, Membership, NodeId, RaftRpc, RaftRpcReply, TwoPhasePrepareCommand};
 
 use crate::rng::Rng;
@@ -222,6 +222,35 @@ impl Cluster {
             .into_iter()
             .map(|n| n.0)
             .collect()
+    }
+
+    /// Learner set as seen by node `id` (sorted).
+    #[must_use]
+    pub fn learners(&self, id: u64) -> Vec<u64> {
+        self.nodes[&NodeId(id)]
+            .committed_membership()
+            .learners
+            .iter()
+            .map(|n| n.0)
+            .collect()
+    }
+
+    /// Role at node `id`.
+    #[must_use]
+    pub fn role(&self, id: u64) -> Role {
+        self.nodes[&NodeId(id)].role()
+    }
+
+    /// Whether node `id` believes itself leader.
+    #[must_use]
+    pub fn is_leader(&self, id: u64) -> bool {
+        self.nodes[&NodeId(id)].is_leader()
+    }
+
+    /// Last applied index at node `id`.
+    #[must_use]
+    pub fn last_applied(&self, id: u64) -> LogIndex {
+        self.nodes[&NodeId(id)].last_applied()
     }
 
     /// Compact the current leader's log up to its last-applied index (Raft §7),

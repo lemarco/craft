@@ -6,9 +6,9 @@
 COMPOSE="docker compose -f docker-compose.yml"
 
 # NodeId -> host admin port (see docker-compose.yml).
-declare -A PORT=([1]=18443 [2]=18082 [3]=18083)
-# node1 serves admin HTTPS; nodes 2/3 plain HTTP.
-declare -A ADMIN_TLS=([1]=1 [2]=0 [3]=0)
+declare -A PORT=([1]=18081 [2]=18082 [3]=18083)
+# node1 serves admin HTTPS when CRAFT_ADMIN_TLS_* is set; e2e compose uses plain HTTP.
+declare -A ADMIN_TLS=([1]=0 [2]=0 [3]=0)
 
 # Host the published admin ports are reachable on. Localhost normally; under
 # GitLab dind the ports live on the `docker` service host, so set

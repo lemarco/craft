@@ -12,9 +12,12 @@ use craft_net::proto::{
 use craft_net::route::Route;
 use craft_net::transport::{Body, BoxFuture};
 use craft_net::wire::{decode_body, encode_body};
+use std::time::{Duration, Instant};
+
 use craft_net::{
-    ClusterCa, PeerDirectory, QuicServer, QuicTransport, RequestHandler, TransportError,
-    client_config, client_endpoint, send_client_request, send_peer_rpc, server_config,
+    BackoffPolicy, ClusterCa, PeerDirectory, QuicServer, QuicTransport, RequestHandler,
+    TransportError, client_config, client_endpoint, send_client_request, send_peer_rpc,
+    server_config,
 };
 
 /// Answers peer RPCs with a success reply and client requests by echoing the
@@ -143,4 +146,35 @@ async fn sending_to_a_peer_absent_from_the_directory_is_unreachable() {
         .await
         .unwrap_err();
     assert!(matches!(err, TransportError::Unreachable(NodeId(7))));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dial_failure_arms_backoff_and_blocks_immediate_redial() {
+    let ca = ClusterCa::generate().unwrap();
+    let client_id = ca.issue_node(NodeId(1)).unwrap();
+    let endpoint = client_endpoint((Ipv4Addr::LOCALHOST, 0).into()).unwrap();
+    let client_cfg = client_config(&client_id, ca.root_store().unwrap()).unwrap();
+    let mut directory = PeerDirectory::new();
+    // Nothing listens on this port — the first dial fails and arms backoff.
+    directory.insert(NodeId(2), (Ipv4Addr::LOCALHOST, 59999).into());
+    let policy = BackoffPolicy {
+        base: Duration::from_secs(30),
+        max: Duration::from_secs(60),
+        factor: 2,
+    };
+    let transport = QuicTransport::with_backoff(endpoint, client_cfg, directory, policy);
+
+    let _ = send_peer_rpc(&transport, NodeId(2), &append_entries(1))
+        .await
+        .expect_err("closed port should refuse the first dial");
+
+    let start = Instant::now();
+    let err = send_peer_rpc(&transport, NodeId(2), &append_entries(1))
+        .await
+        .expect_err("backoff should block an immediate redial");
+    assert!(
+        start.elapsed() < Duration::from_millis(200),
+        "backoff short-circuits without another TCP dial"
+    );
+    assert!(matches!(err, TransportError::Unreachable(NodeId(2))));
 }

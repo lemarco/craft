@@ -11,8 +11,10 @@ pub use {craft_core, craft_proto};
 mod harness;
 mod linearizability;
 mod multi_raft;
+mod rebalance;
 mod rng;
 
 pub use harness::{Cluster, Fault};
 pub use linearizability::{History, Model};
 pub use multi_raft::MultiRaftCluster;
+pub use rebalance::RebalanceSim;

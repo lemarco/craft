@@ -268,3 +268,30 @@ async fn stateful_actor_migrates_across_two_hops_preserving_state() {
         .unwrap();
     assert_eq!(final_count, 3, "state survives both migration hops");
 }
+
+#[tokio::test]
+async fn spawn_remote_places_actor_on_target_node() {
+    let net = LocalNetwork::new();
+    let n1 = node(&net, 1);
+    let n2 = node(&net, 2);
+
+    n1.control
+        .spawn_remote::<Counter>(NodeId(2), "c", 7)
+        .await
+        .expect("remote spawn");
+
+    assert!(
+        !n1.registry.contains("c"),
+        "source node does not host the remote spawn"
+    );
+    assert!(n2.registry.contains("c"), "target node hosts the actor");
+
+    let count = n2
+        .registry
+        .get::<Counter>("c")
+        .expect("counter on node 2")
+        .ask(CounterMsg::Get)
+        .await
+        .expect("ask");
+    assert_eq!(count, 7);
+}

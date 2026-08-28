@@ -23,6 +23,16 @@ if ! LEADER=$(wait_leader "" 1 2 3); then
 fi
 echo "PASS: leader elected = node $LEADER (all three agree)"
 
+echo "checking admin /health and /introspect/cluster on all nodes…"
+for id in 1 2 3; do
+    admin_curl "$id" "/health" >/dev/null
+    body=$(admin_curl "$id" "/introspect/cluster")
+    echo "$body" | grep -q '"leader":' || {
+        echo "FAIL: node$id introspect missing leader field: $body"; exit 1
+    }
+done
+echo "PASS: admin endpoints reachable"
+
 echo "stopping node$LEADER to force re-election…"
 $COMPOSE stop "node$LEADER" >/dev/null
 SURV=(); for id in 1 2 3; do [ "$id" != "$LEADER" ] && SURV+=("$id"); done

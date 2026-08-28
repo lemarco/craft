@@ -93,6 +93,8 @@ services:
       CRAFT_NODE_CERT: /certs/node-3.pem
       CRAFT_NODE_KEY: /certs/node-3.key
       CRAFT_CERT_WATCH_SECS: "${CRAFT_CERT_WATCH_SECS:-60}"
+      CRAFT_ALLOW_LEAVE: "1"
+      CRAFT_GRACEFUL_LEAVE: "1"
     volumes:
       - certs:/certs
       - node3-data:/data

@@ -517,3 +517,33 @@ async fn queue_replicate_rejects_non_leader_caller() {
     let err = reply.error.expect("replicate should fail");
     assert!(err.contains("not raft leader"), "unexpected error: {err}");
 }
+
+/// Matches `craft-actor::redb_queue::COMPACT_EVERY_ACKS`.
+const COMPACT_EVERY_ACKS: u64 = 64;
+
+#[tokio::test(start_paused = true)]
+async fn redb_queue_compacts_after_many_acks_through_wire() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_net, clusters) = spawn_queue_cluster(&dir, false).await;
+    let leader = await_craft_leader(&clusters).await;
+    advance(Duration::from_millis(50)).await;
+
+    let queue = leader.job_queue("jobs").expect("queue client");
+    let worker = WorkerId {
+        node: leader.node_id(),
+        instance: 1,
+    };
+
+    for i in 0..COMPACT_EVERY_ACKS {
+        queue
+            .enqueue(format!("job-{i}").as_bytes())
+            .await
+            .expect("enqueue");
+        let leased = queue.lease(worker, 1).await.expect("lease");
+        queue.ack(worker, leased[0].lease_id).await.expect("ack");
+    }
+
+    let metrics = queue.metrics().await.expect("metrics");
+    assert_eq!(metrics.pending, 0);
+    assert_eq!(metrics.leased, 0);
+}

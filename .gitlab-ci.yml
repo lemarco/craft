@@ -100,6 +100,7 @@ e2e:
     - apk add --no-cache bash curl
   script:
     - bash e2e/run.sh
+    - bash e2e/leave.sh
     - bash e2e/queue.sh
     - bash e2e/chaos.sh
     - bash e2e/cert_renew.sh

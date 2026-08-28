@@ -20,11 +20,11 @@ Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** sch
 | Integration | Crate boundaries, async runtime | `crates/*/tests/` | ~260 | ✅ |
 | Property | Raft safety under fault schedules | `craft-sim/tests/safety.rs` (+ proptest) | 250+ seeds | ✅ |
 | Compile-fail | Macro misuse → good errors | `craft-actor/tests/compile_fail.rs` | 3+ | ✅ |
-| Deterministic sim | Whole cluster, virtual clock | `craft-sim` harness + scenarios | 24 tests | ✅ |
+| Deterministic sim | Whole cluster, virtual clock | `craft-sim` harness + scenarios | 27 tests | ✅ |
 | Linearizability | Client-visible histories | `craft-sim/tests/linearizability.rs` | 2 | ✅ |
 | Doctests | Public API examples | `cargo test --doc` | — | ✅ |
 | Redis integration | Real `ActorStateStore` | `craft-store-redis/tests/{redis,tls}.rs` | 10 | 🔒 nightly |
-| E2E | Real processes, QUIC, mTLS, chaos | `e2e/run.sh`, `e2e/queue.sh`, `e2e/chaos.sh`, `e2e/cert_renew.sh`, `e2e/linearizability.sh` | 5 scenarios | 🔒 nightly |
+| E2E | Real processes, QUIC, mTLS, chaos | `e2e/run.sh`, `e2e/leave.sh`, `e2e/queue.sh`, `e2e/chaos.sh`, `e2e/cert_renew.sh`, `e2e/linearizability.sh` | 6 scenarios | 🔒 nightly |
 | Fuzz | Wire decode never panics | `craft-fuzz` | 1 target | 🔒 nightly |
 | Bench / soak | Throughput, long-run sim | `benchmarks/` | — | 🔒 nightly |
 
@@ -36,10 +36,10 @@ Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** sch
 |-------|:-------------:|:----------------------:|:-----:|---------------|
 | `craft-core` | 30 | 81 | **111** | Pure Raft FSM: election, replication, membership, snapshots, ReadIndex |
 | `craft-actor` | 10 | 99 | **109** | `RaftDriver`, runtime, registry, placement, supervision, migration, trybuild |
-| `craft-net` | 11 | 31 | **42** | Wire framing, `LocalNetwork`, TLS handshake, loopback QUIC, protocol compat |
-| `craft-sim` | 8 | 19 | **27** | Safety/liveness under faults, linearizability, actor scenarios, multi-Raft |
+| `craft-net` | 12 | 32 | **44** | Wire framing, `LocalNetwork`, TLS handshake, loopback QUIC, protocol compat |
+| `craft-sim` | 8 | 22 | **30** | Safety/liveness under faults, linearizability, actor scenarios, multi-Raft |
 | `craft-dashboard` | 8 | **8** | **16** | Admin HTTP, admin TLS, metrics, telemetry |
-| `craft` (facade) | 2 | **21** | **23** | `CraftCluster` builder, multi-Raft, keyed client, live QUIC cluster, reachability reconcile, actor store resume, graceful leave, admin TLS |
+| `craft` (facade) | 2 | **24** | **26** | `CraftCluster` builder, multi-Raft, keyed client, live QUIC cluster, reachability reconcile, actor store resume, graceful leave, admin TLS, DNS discovery |
 | `craft-storage` | 0 | 7 | **7** | Store contract (Memory + Redb), namespaced groups, reopen |
 | `craft-proto` | 7 | 0 | **7** | Encode/decode roundtrips, protocol compat band |
 | `craft-store-redis` | 0 | 10 (7 `redis` + 3 `tls`, `#[ignore]` except 2 fast) | **10** | Redis CAS/TTL, dual conn, idempotent worker, reconnect, `rediss://` |
@@ -83,7 +83,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Meta-Raft coordinator (multi-Raft join/catalog/saga isolation) | ✅ `shard` | ✅ `sharded` | — | — | ✅ |
 | Per-group membership planner (`group_voters`, join/leave affects) | ✅ | ✅ | — | — | ✅ |
 | Per-group membership runtime sync on cluster join | — | ✅ | — | — | ✅ |
-| Per-group learners (`group_learners`, membership sync, rebalance hosting) | ✅ | ✅ `group_rebalance` | — | — | ✅ |
+| Per-group learners (`group_learners`, membership sync, rebalance hosting) | ✅ | ✅ `group_rebalance` | ✅ `learners` | — | ✅ |
 | Operator shard expansion (`expand_shard_count`, Tier 1 modulus) | ✅ | ✅ `multi_raft` | — | — | ✅ |
 | Stable shard activation (`activate_shards`, Tier 2) | ✅ | ✅ `multi_raft`, `sharded` | — | — | ✅ |
 | Cluster leave RPC (`/cluster/leave`, `CraftCluster::leave`) | — | ✅ `runtime`, `multi_raft` | — | — | ✅ |
@@ -111,11 +111,11 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Wire encode/decode + size guard | — | ✅ (16) | — | — | ✅ |
 | `LocalNetwork` (in-process) | — | ✅ | ✅ | — | ✅ |
 | mTLS mutual auth (loopback) | — | ✅ | — | ✅ | ✅ |
-| PEM hot reload (loopback QUIC) | — | ✅ `cert_reload` | — | ✅ | — |
-| PEM hot reload (docker-compose, SIGHUP + poll) | — | — | — | ✅ `cert_renew` | — |
-| Live HTTP/3 QUIC (loopback) | ⚠️ | ✅ `dev-certs` | — | ✅ | ⚠️ |
-| Connection pool + backoff | ✅ | ⚠️ | — | — | ⚠️ |
-| Partition / drop injection (net layer) | — | ⚠️ detach | ✅ sim | ✅ chaos | ✅ |
+| PEM hot reload (loopback QUIC) | — | ✅ `cert_reload` | — | ✅ | ✅ |
+| PEM hot reload (docker-compose, SIGHUP + poll) | — | — | — | ✅ `cert_renew` | ✅ |
+| Live HTTP/3 QUIC (loopback) | ✅ | ✅ `dev-certs` | — | ✅ | ✅ |
+| Connection pool + backoff | ✅ | ✅ `quic` | — | — | ✅ |
+| Partition / drop injection (net layer) | — | ✅ detach | ✅ sim | ✅ chaos | ✅ |
 
 ### Actor runtime (`craft-actor`)
 
@@ -127,9 +127,9 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | `ask_linearizable` (directory retry) | — | ✅ `messaging` | — | — | ✅ |
 | Directory `ReadYourWrites` policy | ✅ `directory_policy` | ✅ `messaging` | — | — | ✅ |
 | Per-group drain timeout override | — | ✅ `migration` | — | — | ✅ |
-| Placement / supervisor | — | ✅ | ⚠️ | — | ✅ |
+| Placement / supervisor | — | ✅ | ✅ `rebalance_churn` | — | ✅ |
 | Crash-driven auto-respawn (reachable ≠ membership) | — | ✅ | ✅ | — | ✅ |
-| Cross-node spawn / migration | — | ✅ | ⚠️ | — | ✅ |
+| Cross-node spawn / migration | — | ✅ | ✅ `actor_scenarios` | — | ✅ |
 | Group rebalance / sharded runtime | — | ✅ | — | — | ✅ |
 | Raft group migration bundle + respawn | ✅ storage | ✅ `group_migrate` | — | — | ✅ |
 | Group migrate RPC (facade wire) | — | ✅ `multi_raft` | — | — | ✅ |
@@ -141,7 +141,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | **Job queue sharded streams + priority/delayed + membership autoscale** | ✅ `sharded_queue`, `queue` | ✅ `queue` | — | — | ✅ |
 | **Job queue replicate auth + parallel replicate** | ✅ `queue_service` | ✅ `queue` (`queue_replicate_rejects_non_leader_caller`) | — | — | ✅ |
 | **Meta-Raft queue autoscale policy** | ✅ `queue_autoscale_policy` (core) | ✅ `queue` (autoscale tests) | — | — | ✅ |
-| **RedbJobQueue ack-driven compaction** | ✅ `redb_queue` | — | — | — | ✅ |
+| **RedbJobQueue ack-driven compaction** | ✅ `redb_queue` | ✅ `queue` | — | — | ✅ |
 | **Job queue E2E (QUIC enqueue → follower lease/ack → leader failover)** | — | — | — | ✅ `e2e/queue.sh` | ✅ |
 | **Durable mailbox outbox/inbox** | ✅ `mailbox_spool` | ✅ `mailbox_spool` (wire) | — | — | ✅ |
 | Actor state store resume + idempotency (facade) | — | ✅ `actor_store_resume` | — | — | ✅ |
@@ -166,14 +166,14 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Area | Unit | Integration | Sim | E2E | Status |
 |------|:----:|:-----------:|:---:|:---:|--------|
 | `CraftCluster` local 3-node | — | ✅ | — | — | ✅ |
-| Admin / observability HTTP | — | ✅ | — | ⚠️ | ✅ |
+| Admin / observability HTTP | — | ✅ | — | ✅ `run.sh` | ✅ |
 | Multi-Raft introspection (`/introspect/raft-groups`) | — | ✅ `admin`, `multi_raft` | — | — | ✅ |
-| Actors + auto-spawn | — | ✅ | ⚠️ | — | ✅ |
+| Actors + auto-spawn | — | ✅ | ✅ `auto_spawn` | — | ✅ |
 | Multi-Raft file layout (`data_dir`) | — | ✅ `persistence` + `multi_raft` | — | — | ✅ |
-| DNS discovery | ⚠️ 2 unit | ❌ | — | ⚠️ K8s | ⚠️ |
+| DNS discovery | ✅ | ✅ `discovery` | — | ✅ K8s | ✅ |
 | **`craft-node` env parsing** | ✅ `config` | — | — | ✅ implicit | ✅ |
 | **`craft-node` drain timeout (`CRAFT_DRAIN_TIMEOUT`)** | ✅ `config` | — | — | ✅ implicit | ✅ |
-| **`craft-node` graceful leave on shutdown** | ✅ `config` | ✅ `graceful_leave` | — | ⚠️ manual | ✅ |
+| **`craft-node` graceful leave on shutdown** | ✅ `config` | ✅ `graceful_leave` | — | ✅ `leave.sh` | ✅ |
 
 ### Macros & wire
 
@@ -193,7 +193,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 |-----|------|-----------|
 | `fast` | Every MR / push | fmt, clippy `-D warnings`, nextest (all non-ignored tests), doctests, doc |
 | `msrv` | Every MR / push | `cargo check` on Rust 1.98 |
-| `e2e` | Scheduled | `e2e/run.sh` + `e2e/chaos.sh` + `e2e/cert_renew.sh` + docker phase of `e2e/linearizability.sh` |
+| `e2e` | Scheduled | `e2e/run.sh` + `e2e/leave.sh` + `e2e/chaos.sh` + `e2e/cert_renew.sh` + docker phase of `e2e/linearizability.sh` |
 | `linearizability-sim` | Scheduled | craft-sim linearizability + read_index seed sweep (`e2e/linearizability.sh`) |
 | `store-redis` | Scheduled | `cargo test -p craft-store-redis -- --ignored` |
 | `bench` | Scheduled | criterion (`append`/`apply`/`deliver`/`queue`) + 120s soak + 60s `soak_multi_raft` + 60s `soak_queue` |
@@ -215,6 +215,7 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 
 | Closed | What | Where |
 |--------|------|-------|
+| 2026-08 | Transport + facade gaps: QUIC backoff, DNS discovery, queue compaction, auto-spawn sim, admin/leave E2E | `craft-net/tests/quic.rs`, `craft/tests/{discovery,queue}.rs`, `craft-sim/tests/{auto_spawn,actor_scenarios}.rs`, `e2e/{run,leave}.sh` |
 | 2026-08 | Runtime fatal-error observable path (`status()` → `None`, `Stopped`) | `craft-actor/tests/runtime.rs` |
 | 2026-08 | Multi-Raft sim: shard routing + independent group safety | `craft-sim/tests/multi_raft.rs` |
 | 2026-08 | Group rebalance planner + sharded adopt/retire runtime | `craft-actor/tests/group_rebalance.rs`, `sharded.rs` |
