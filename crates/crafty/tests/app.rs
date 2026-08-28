@@ -4,8 +4,9 @@ use std::time::Duration;
 
 use crafty::net::LocalNetwork;
 use crafty::{CraftyApp, NodeId};
+use crafty_test_support::{advance, wait_for_crafty_leader};
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn crafty_app_start_local_with_data_dir_and_queue() {
     let base = std::env::temp_dir().join(format!(
         "crafty-app-test-{}",
@@ -26,12 +27,9 @@ async fn crafty_app_start_local_with_data_dir_and_queue() {
         .start_local(&net)
         .await;
 
-    for _ in 0..200 {
-        if app.cluster().is_leader().await {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    wait_for_crafty_leader(app.cluster()).await;
+    // Let the keepalive loop refresh [`ClusterFacts`] before queue RPC routing.
+    advance(Duration::from_millis(200)).await;
 
     assert!(app.actor_state_store().is_some());
     let id = app.enqueue("jobs", b"hello").await.expect("enqueue");
