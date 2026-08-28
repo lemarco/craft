@@ -111,7 +111,7 @@ fn route_key(seed: u64, round: u64) -> Vec<u8> {
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() {
     let budget = Duration::from_secs(env_u64("SOAK_MULTI_SECS", 15));
-    let base_seed = env_u64("SOAK_MULTI_SEED", 0xB007_001);
+    let base_seed = env_u64("SOAK_MULTI_SEED", 0x0B00_7001);
 
     println!(
         "soak_multi_raft: {budget:?} budget (seed base {base_seed:#x})"
@@ -150,7 +150,7 @@ async fn main() {
         .expect("encode");
 
         let target = ids[(rng.next_u64() as usize) % ids.len()];
-        if rng.next_u64() % 8 == 0 {
+        if rng.next_u64().is_multiple_of(8) {
             let victim = ids[(rng.next_u64() as usize) % ids.len()];
             if net.detach(victim) {
                 tokio::time::sleep(Duration::from_millis(50)).await;

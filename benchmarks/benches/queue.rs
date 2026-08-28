@@ -59,7 +59,6 @@ struct ClusterBench {
     submit: Arc<dyn JobQueue>,
     drain: Arc<dyn JobQueue>,
     worker: WorkerId,
-    payload: Vec<u8>,
 }
 
 async fn await_leader(clusters: &[Arc<CraftCluster<Empty>>]) {
@@ -74,7 +73,7 @@ async fn await_leader(clusters: &[Arc<CraftCluster<Empty>>]) {
     panic!("cluster bench: no leader elected");
 }
 
-async fn setup_cluster(payload_size: usize) -> ClusterBench {
+async fn setup_cluster() -> ClusterBench {
     let base = tempfile::tempdir().expect("tempdir");
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let net = LocalNetwork::new();
@@ -114,7 +113,6 @@ async fn setup_cluster(payload_size: usize) -> ClusterBench {
             node: NodeId(2),
             instance: 1,
         },
-        payload: queue_payload(payload_size, 0),
     }
 }
 
@@ -169,7 +167,7 @@ fn bench_queue(c: &mut Criterion) {
         );
     });
 
-    let cluster = rt.block_on(setup_cluster(payload_size));
+    let cluster = rt.block_on(setup_cluster());
     let mut seq = 0u64;
     group.bench_function("cluster_3node/enqueue_replicated", |b| {
         b.to_async(&rt).iter_custom(|iters| {
@@ -184,7 +182,7 @@ fn bench_queue(c: &mut Criterion) {
                         .enqueue(black_box(&payload))
                         .await
                         .expect("cluster enqueue");
-                    if seq % 32 == 0 {
+                    if seq.is_multiple_of(32) {
                         drain_batch(bench, 32).await;
                     }
                 }

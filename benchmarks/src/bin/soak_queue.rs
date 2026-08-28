@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use craft::core::{Config, StateMachine};
 use craft::net::LocalNetwork;
 use craft::proto::LogIndex;
-use craft::{CraftCluster, JobQueue, NodeId};
+use craft::{CraftCluster, NodeId};
 use craft_actor::{WorkerId};
 use craft_benchmarks::{env_u64, queue_payload};
 
