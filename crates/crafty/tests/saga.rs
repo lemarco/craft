@@ -18,6 +18,7 @@ use crafty_test_support::{
     wait_for_crafty_stopped, wait_for_each_group_cluster_leader,
 };
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 async fn spawn_two_group_cluster() -> (LocalNetwork, Vec<Arc<CraftyCluster<KvMachine>>>) {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
@@ -357,6 +358,7 @@ async fn cross_shard_saga_survives_coordinator_restart_via_group0_journal() {
         }
         wait_for_each_group_cluster_leader(&clusters, 2).await;
         let leader = await_crafty_leader(&clusters).await;
+        advance(Duration::from_millis(200)).await;
         let client = RemoteClient::new(Arc::new(net.clone()), [leader.node_id()]);
 
         client
@@ -395,6 +397,7 @@ async fn cross_shard_saga_survives_coordinator_restart_via_group0_journal() {
         }
         wait_for_each_group_cluster_leader(&clusters, 2).await;
         let leader = await_crafty_leader(&clusters).await;
+        advance(Duration::from_millis(200)).await;
         let client = RemoteClient::new(Arc::new(net.clone()), [leader.node_id()]);
         let journal = leader.saga_journal();
 
