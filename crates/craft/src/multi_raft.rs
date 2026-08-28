@@ -105,7 +105,7 @@ impl<M: StateMachine + Default + 'static> MultiRaftState<M> {
         &self,
         facts: Arc<ClusterFacts>,
     ) -> Result<GroupRebalanceReport, StorageError> {
-        let hosted = self.sharded.hosted_group_ids();
+        let hosted = self.sharded.hosted_user_group_ids();
         let reconciler = RaftGroupReconciler::new(
             self.node_id,
             self.catalog.lock().unwrap().clone(),

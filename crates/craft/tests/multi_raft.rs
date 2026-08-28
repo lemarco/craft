@@ -63,7 +63,7 @@ async fn leave_via_cluster_rpc(joiner: &CraftCluster<KvMachine>, joiner_id: Node
     let membership = joiner.leave().await.expect("leave via facade");
     assert!(
         !membership.voters.contains(&joiner_id),
-        "joiner still in group 0 voters: {membership:?}"
+        "joiner still in meta raft voters: {membership:?}"
     );
 }
 

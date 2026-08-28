@@ -1,4 +1,4 @@
-//! Saga journal backed by group 0 Raft metadata and/or [`ActorStateStore`].
+//! Saga journal backed by Meta-Raft metadata and/or [`ActorStateStore`].
 
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -173,28 +173,27 @@ impl SagaJournal for StoreSagaJournal {
     }
 }
 
-/// In-memory view of saga records applied from group 0 Raft (all replicas).
+/// In-memory view of saga records applied from Meta-Raft (all replicas).
 pub type SagaRegistry = Arc<Mutex<BTreeMap<Vec<u8>, SagaJournalRecord>>>;
 
 type SagaJournalUpsertFn = dyn Fn(SagaJournalCommand) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send>>
     + Send
     + Sync;
 
-/// Persist saga progress in group 0 coordinator metadata (no Redis required).
-pub struct Group0SagaJournal {
+/// Persist saga progress in Meta-Raft coordinator metadata (no Redis required).
+pub struct MetaRaftSagaJournal {
     upsert: Arc<SagaJournalUpsertFn>,
     registry: SagaRegistry,
 }
 
-impl Group0SagaJournal {
-    /// Build a journal that proposes upserts on `group0` and reads `registry`.
+impl MetaRaftSagaJournal {
+    /// Build a journal that proposes upserts on the Meta-Raft group and reads `registry`.
     #[must_use]
-    pub fn new<M: StateMachine + 'static>(group0: NodeHandle<M>, registry: SagaRegistry) -> Self {
+    pub fn new<M: StateMachine + 'static>(meta: NodeHandle<M>, registry: SagaRegistry) -> Self {
         let upsert = Arc::new(move |command: SagaJournalCommand| {
-            let group0 = group0.clone();
+            let meta = meta.clone();
             Box::pin(async move {
-                group0
-                    .upsert_saga_journal(command)
+                meta.upsert_saga_journal(command)
                     .await
                     .map_err(|e| SagaJournalError::Backend(e.to_string()))
             }) as Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send>>
@@ -221,7 +220,7 @@ impl Group0SagaJournal {
     }
 }
 
-impl SagaJournal for Group0SagaJournal {
+impl SagaJournal for MetaRaftSagaJournal {
     fn on_started<'a>(
         &'a self,
         saga_id: &'a [u8],
@@ -325,17 +324,17 @@ impl SagaJournal for Group0SagaJournal {
     }
 }
 
-/// Replicate to group 0 and optionally mirror in an external store (Redis).
+/// Replicate to Meta-Raft and optionally mirror in an external store (Redis).
 pub struct CompositeSagaJournal {
-    group0: Group0SagaJournal,
+    meta: MetaRaftSagaJournal,
     store: Option<StoreSagaJournal>,
 }
 
 impl CompositeSagaJournal {
-    /// Group 0 is always the durable fallback; `store` is an optional mirror.
+    /// Meta-Raft is always the durable fallback; `store` is an optional mirror.
     #[must_use]
-    pub fn new(group0: Group0SagaJournal, store: Option<StoreSagaJournal>) -> Self {
-        Self { group0, store }
+    pub fn new(meta: MetaRaftSagaJournal, store: Option<StoreSagaJournal>) -> Self {
+        Self { meta, store }
     }
 }
 
@@ -347,7 +346,7 @@ impl SagaJournal for CompositeSagaJournal {
         catalog_version: Option<u32>,
     ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
         Box::pin(async move {
-            self.group0
+            self.meta
                 .on_started(saga_id, steps, catalog_version)
                 .await?;
             if let Some(store) = &self.store {
@@ -363,7 +362,7 @@ impl SagaJournal for CompositeSagaJournal {
         step: usize,
     ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
         Box::pin(async move {
-            self.group0.on_step_committed(saga_id, step).await?;
+            self.meta.on_step_committed(saga_id, step).await?;
             if let Some(store) = &self.store {
                 store.on_step_committed(saga_id, step).await?;
             }
@@ -376,7 +375,7 @@ impl SagaJournal for CompositeSagaJournal {
         saga_id: &'a [u8],
     ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
         Box::pin(async move {
-            self.group0.on_completed(saga_id).await?;
+            self.meta.on_completed(saga_id).await?;
             if let Some(store) = &self.store {
                 store.on_completed(saga_id).await?;
             }
@@ -390,7 +389,7 @@ impl SagaJournal for CompositeSagaJournal {
         failed_step: usize,
     ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
         Box::pin(async move {
-            self.group0
+            self.meta
                 .on_compensation_started(saga_id, failed_step)
                 .await?;
             if let Some(store) = &self.store {
@@ -406,9 +405,7 @@ impl SagaJournal for CompositeSagaJournal {
         compensated_steps: usize,
     ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
         Box::pin(async move {
-            self.group0
-                .on_compensated(saga_id, compensated_steps)
-                .await?;
+            self.meta.on_compensated(saga_id, compensated_steps).await?;
             if let Some(store) = &self.store {
                 store.on_compensated(saga_id, compensated_steps).await?;
             }
@@ -423,7 +420,7 @@ impl SagaJournal for CompositeSagaJournal {
         compensate_failed_at: usize,
     ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
         Box::pin(async move {
-            self.group0
+            self.meta
                 .on_stuck(saga_id, failed_step, compensate_failed_at)
                 .await?;
             if let Some(store) = &self.store {
@@ -447,10 +444,13 @@ impl SagaJournal for CompositeSagaJournal {
             {
                 return Ok(Some(rec));
             }
-            self.group0.load(saga_id).await
+            self.meta.load(saga_id).await
         })
     }
 }
+
+/// Back-compat alias — saga journal now replicates via Meta-Raft in multi-Raft mode.
+pub type Group0SagaJournal = MetaRaftSagaJournal;
 
 /// Increment Prometheus counters for [`SagaEvent`] (ADR Phase 4).
 pub fn record_saga_metrics(metrics: &Metrics, node_id: u64, event: SagaEvent) {

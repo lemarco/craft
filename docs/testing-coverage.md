@@ -76,7 +76,8 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Dynamic catalog expansion (runtime) | — | ✅ `multi_raft` | — | — | ✅ |
 | Stable shard routing (runtime) | — | ✅ `multi_raft`, `sharded` | — | — | ✅ |
 | Cross-shard atomic transactions | — | ✅ `saga`, `two_phase`, `craft-client` | — | — | ✅ |
-| Saga journal group 0 metadata (`EntryPayload::SagaJournal`) | ✅ `saga_journal` | ✅ `driver`, `runtime`, `saga` | — | — | ✅ |
+| Saga journal Meta-Raft metadata (`EntryPayload::SagaJournal`) | ✅ `saga_journal` | ✅ `driver`, `runtime`, `saga` | — | — | ✅ |
+| Meta-Raft coordinator (multi-Raft join/catalog/saga isolation) | ✅ `shard` | ✅ `sharded` | — | — | ✅ |
 | Per-group membership planner (`group_voters`, join/leave affects) | ✅ | ✅ | — | — | ✅ |
 | Per-group membership runtime sync on cluster join | — | ✅ | — | — | ✅ |
 | Per-group learners (`group_learners`, membership sync) | ✅ | — | — | — | ✅ |

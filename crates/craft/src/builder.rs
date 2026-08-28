@@ -665,6 +665,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         // --- Consensus runtime -------------------------------------------
         let mut multi_raft = None;
         let mut catalog_event_rx = None;
+        let mut meta_handle = None;
         let (handle, group_handles, consensus_service) = if self.raft_groups > 1 {
             let machines = self.raft_machines.unwrap_or_else(|| {
                 panic!(
@@ -683,20 +684,20 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             let (catalog_tx, catalog_rx) = tokio::sync::mpsc::unbounded_channel::<CatalogCommand>();
             catalog_event_rx = Some(catalog_rx);
             let catalog_snap = Arc::clone(&catalog);
-            let mut runtime_group0 = self.runtime.clone();
-            runtime_group0.catalog_snapshot =
+            let mut runtime_meta = self.runtime.clone();
+            runtime_meta.catalog_snapshot =
                 Some(Arc::new(move || catalog_snap.lock().unwrap().clone()));
-            runtime_group0.on_catalog_applied = Some(Arc::new(move |cmd| {
+            runtime_meta.on_catalog_applied = Some(Arc::new(move |cmd| {
                 let _ = catalog_tx.send(cmd);
             }));
-            runtime_group0.on_saga_journal_applied = Some(Arc::clone(&on_saga_journal_applied));
-            let (sharded, handles_vec) = spawn_multi_raft_node(
+            runtime_meta.on_saga_journal_applied = Some(Arc::clone(&on_saga_journal_applied));
+            let spawn = spawn_multi_raft_node(
                 node_id,
                 &bootstrap_voters,
                 self.group_replication_factor,
                 self.raft.clone(),
                 self.runtime.clone(),
-                runtime_group0,
+                runtime_meta,
                 self.shard_count,
                 self.shard_routing,
                 self.raft_groups,
@@ -706,8 +707,10 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 self.data_dir.as_deref(),
             )
             .expect("open multi-group raft storage");
+            let sharded = spawn.sharded;
+            meta_handle = Some(spawn.meta_handle);
             let mut handle_map = BTreeMap::new();
-            for (i, h) in handles_vec.into_iter().enumerate() {
+            for (i, h) in spawn.user_handles.into_iter().enumerate() {
                 handle_map.insert(i as u32, h);
             }
             let primary = handle_map.get(&0).cloned().expect("group 0 handle");
@@ -850,6 +853,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             let period = self.refresh_period;
             // Explicit keepalive: rebalance state must outlive this task.
             let _multi_raft = multi_raft.clone();
+            let meta_for_facts = meta_handle.clone();
             let mut catalog_events = catalog_event_rx;
             let mut telemetry =
                 crate::cluster::MembershipTelemetry::new(node_id, events.clone(), metrics.clone());
@@ -867,9 +871,16 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                             }
                         }
                     }
-                    let status = match handle.status().await {
-                        Some(status) => status,
-                        None => break,
+                    let status = if let Some(meta) = meta_for_facts.as_ref() {
+                        match meta.status().await {
+                            Some(status) => status,
+                            None => break,
+                        }
+                    } else {
+                        match handle.status().await {
+                            Some(status) => status,
+                            None => break,
+                        }
                     };
                     facts.update(&status);
                     let delta = telemetry.record(&status);
@@ -1061,6 +1072,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             node_id,
             handle,
             group_handles,
+            meta_handle,
             raft_groups: self.raft_groups,
             shard_count: self.shard_count,
             shard_routing: self.shard_routing,

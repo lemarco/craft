@@ -33,6 +33,18 @@ pub struct ShardId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RaftGroupId(pub u32);
 
+/// Reserved Raft group id for the cluster coordinator (Meta-Raft).
+///
+/// Hosts cluster registry (join/leave), dynamic catalog, and saga journal metadata.
+/// Not part of the user catalog or keyed shard routing.
+pub const META_RAFT_GROUP_ID: u32 = u32::MAX;
+
+/// Whether `group` is the Meta-Raft coordinator group.
+#[must_use]
+pub const fn is_meta_raft_group(group: u32) -> bool {
+    group == META_RAFT_GROUP_ID
+}
+
 /// Default replication factor for per-group voter sets (per-group-raft-membership).
 pub const DEFAULT_GROUP_REPLICATION_FACTOR: u32 = 3;
 
@@ -431,8 +443,8 @@ pub fn groups_leaving_node_affects(
 }
 
 /// Groups whose desired voter/learner sets differ from `current`
-/// (per-group-raft-membership). Skips coordinator group 0 — its membership is
-/// managed by `/cluster/join`.
+/// (per-group-raft-membership). Skips the Meta-Raft coordinator — its
+/// membership is managed by `/cluster/join` and `/cluster/leave`.
 #[must_use]
 pub fn plan_group_membership_sync(
     catalog: &[RaftGroupId],
@@ -444,7 +456,7 @@ pub fn plan_group_membership_sync(
 ) -> BTreeMap<RaftGroupId, GroupReplicationTarget> {
     let mut out = BTreeMap::new();
     for &group in catalog {
-        if group.0 == 0 {
+        if is_meta_raft_group(group.0) {
             continue;
         }
         let desired_voters = group_voters(group, live_nodes, replication_factor);
@@ -719,8 +731,6 @@ impl StableShardRouter {
 pub enum CatalogError {
     /// Catalog must not be empty.
     Empty,
-    /// Group 0 (coordinator) must be present at index 0.
-    MissingCoordinator,
     /// Group ids must be contiguous `0..=max` without gaps.
     NonContiguous {
         /// Last valid id before the gap.
@@ -744,7 +754,6 @@ impl std::fmt::Display for CatalogError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Empty => f.write_str("catalog must not be empty"),
-            Self::MissingCoordinator => f.write_str("catalog must start with group 0"),
             Self::NonContiguous {
                 expected_next,
                 found,
@@ -773,16 +782,15 @@ pub struct CatalogExpansionPlan {
     pub new_groups: Vec<RaftGroupId>,
 }
 
-/// Validate a multi-Raft group catalog (coordinator + contiguous ids).
+/// Validate a multi-Raft user group catalog (contiguous ids `0..=max`).
+///
+/// The Meta-Raft coordinator group is not part of the catalog.
 ///
 /// # Errors
 /// Returns [`CatalogError`] when `catalog` violates catalog invariants.
 pub fn validate_catalog(catalog: &[RaftGroupId]) -> Result<(), CatalogError> {
     if catalog.is_empty() {
         return Err(CatalogError::Empty);
-    }
-    if catalog[0].0 != 0 {
-        return Err(CatalogError::MissingCoordinator);
     }
     let mut seen = std::collections::BTreeSet::new();
     for (i, &group) in catalog.iter().enumerate() {
@@ -1092,7 +1100,7 @@ mod tests {
     }
 
     #[test]
-    fn plan_group_membership_sync_skips_coordinator_and_diffs_shards() {
+    fn plan_group_membership_sync_skips_meta_and_diffs_shards() {
         use craft_proto::NodeId;
 
         let catalog: Vec<_> = (0..4).map(RaftGroupId).collect();
@@ -1101,10 +1109,14 @@ mod tests {
         current_voters.insert(RaftGroupId(0), vec![NodeId(1), NodeId(2), NodeId(3)]);
         current_voters.insert(RaftGroupId(1), vec![NodeId(1), NodeId(2), NodeId(3)]);
         current_voters.insert(RaftGroupId(2), vec![NodeId(1), NodeId(2), NodeId(3)]);
+        current_voters.insert(
+            RaftGroupId(META_RAFT_GROUP_ID),
+            vec![NodeId(1), NodeId(2), NodeId(3)],
+        );
 
         let sync =
             plan_group_membership_sync(&catalog, &live, &current_voters, &BTreeMap::new(), 3, 0);
-        assert!(!sync.contains_key(&RaftGroupId(0)));
+        assert!(!sync.contains_key(&RaftGroupId(META_RAFT_GROUP_ID)));
         assert!(sync.values().all(|t| t.voters.contains(&NodeId(4))));
     }
 
@@ -1166,7 +1178,7 @@ mod tests {
     }
 
     #[test]
-    fn catalog_validation_requires_coordinator_and_contiguous_ids() {
+    fn catalog_validation_requires_contiguous_ids() {
         assert!(validate_catalog(&[]).is_err());
         assert!(validate_catalog(&[RaftGroupId(1)]).is_err());
         assert!(validate_catalog(&[RaftGroupId(0), RaftGroupId(2)]).is_err());

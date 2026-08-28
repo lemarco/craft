@@ -16,7 +16,8 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 - **Per-group membership** ([per-group-raft-membership](docs/decisions/per-group-raft-membership.md)) — `group_replication_factor`, `sync_group_membership`.
 - **Tier 1 multi-Raft** ([tier1-multi-raft-advances](docs/decisions/tier1-multi-raft-advances.md)) — learners, `expand_shard_count`, `propose_keyed_batch`, `/introspect/raft-groups`.
 - **Tier 2 multi-Raft** ([tier2-multi-raft-architecture](docs/decisions/tier2-multi-raft-architecture.md)) — dynamic catalog (`add_raft_groups`), stable shards (default), `catalog_version`, `switch_to_stable_shards`.
-- **Cross-shard saga** ([cross-shard-transactions](docs/decisions/cross-shard-transactions.md)) — `run_saga`, `resume_saga`, `StoreSagaJournal`, `Group0SagaJournal`/`CompositeSagaJournal`, metrics; optional 2PC (`cross_shard_2pc`).
+- **Meta-Raft coordinator** ([meta-raft](docs/decisions/meta-raft.md)) — dedicated `group-meta.redb` for join/leave, catalog, and saga journal in multi-Raft mode; group 0 is user data only.
+- **Cross-shard saga** ([cross-shard-transactions](docs/decisions/cross-shard-transactions.md)) — `run_saga`, `resume_saga`, `StoreSagaJournal`, `MetaRaftSagaJournal`/`CompositeSagaJournal` (alias `Group0SagaJournal`), metrics; optional 2PC (`cross_shard_2pc`).
 - **Actor routing Tier 3** ([actor-routing-tier3](docs/decisions/actor-routing-tier3.md)) — consistent-hash ring, `ActorSession`, per-group drain, `DirectoryPolicy::ReadYourWrites`.
 - **Follower + lease reads** ([read-consistency](docs/decisions/read-consistency.md)) — `ReadIndexConfirm` path, `RaftNode::lease_read` fast path.
 - **Liveness vs membership** ([liveness-vs-membership](docs/decisions/liveness-vs-membership.md)) — `reachable_nodes()`, crash-driven supervisor reconcile.

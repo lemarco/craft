@@ -13,7 +13,7 @@
 
 **Idea:** Embed consensus + actors in *your* binary. Same artifact on every node; the cluster bootstraps, elects a leader, replicates a linearizable state machine, and hosts supervised actors that can message and migrate across nodes. No sidecar, no separate control plane.
 
-**Not the same as [lmrc-cloud](https://gitlab.com/lemarco/lmrc-cloud):** `lmrc-cloud` is a Kubernetes-native platform (controller, operators, GitLab CI deploy). `craft` is a **library** for apps that *become* the cluster node.
+
 
 ---
 
@@ -28,15 +28,15 @@
 ### Highlights
 
 - Pure Raft FSM, HTTP/3/mTLS, redb persistence, cross-node actors
-- Multi-Raft write scaling: dynamic catalog, stable shards, group migration, per-group membership
+- Multi-Raft write scaling: **Meta-Raft coordinator** (join/catalog/saga isolated from user groups), dynamic catalog, stable shards, group migration, per-group membership
 - Cross-shard saga coordinator + optional 2PC; follower/lease reads
 - K8s manifests, cert hot reload, reachability-driven supervisor, `craft-ops` backup
-- **40 accepted ADRs** — [docs/decisions/](docs/decisions/)
+- **41 accepted ADRs** — [docs/decisions/](docs/decisions/)
 
 ### Not yet (by design or process)
 
 - crates.io / docs.rs publish ([releasing.md](docs/releasing.md))
-- Meta-Raft group, linearizable actor `ask`, global cross-shard serializable isolation
+- Linearizable actor `ask`, global cross-shard serializable isolation
 - See [docs/status.md](docs/status.md) for the full deferred list and known limits (R1–R6)
 
 ---
@@ -77,7 +77,7 @@ let cluster = CraftCluster::builder(NodeId(1), Counter::default())
     .await;
 ```
 
-Multi-Raft: `.raft_groups(n)`, `.stable_shards()`, `.data_dir(path)`. Keyed client: `propose_keyed` / `query_keyed`. Cross-shard: `run_keyed_saga` / `resume_keyed_saga`.
+Multi-Raft: `.raft_groups(n)`, `.stable_shards()`, `.data_dir(path)`. With `raft_groups > 1`, cluster metadata (join/leave, catalog, saga journal) lives on a dedicated **Meta-Raft** group (`group-meta.redb`); group 0 is user data only — [meta-raft](docs/decisions/meta-raft.md). Keyed client: `propose_keyed` / `query_keyed`. Cross-shard: `run_keyed_saga` / `resume_keyed_saga`.
 
 ## Design principles
 
@@ -122,7 +122,7 @@ cargo install craft-node
 |-----|----------------|
 | [docs/status.md](docs/status.md) | **Current capabilities and limits** |
 | [docs/architecture.md](docs/architecture.md) | Crate graph, data flows |
-| [docs/decisions/](docs/decisions/) | 40 ADRs — design rationale |
+| [docs/decisions/](docs/decisions/) | 41 ADRs — design rationale ([meta-raft](docs/decisions/meta-raft.md), multi-Raft, actors, …) |
 | [docs/testing-coverage.md](docs/testing-coverage.md) | Test inventory |
 | [docs/protocol.md](docs/protocol.md) | HTTP/3 routes |
 | [docs/releasing.md](docs/releasing.md) | crates.io workflow |

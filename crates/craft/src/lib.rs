@@ -65,8 +65,8 @@ pub use craft_actor::{ActorSession, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy, Dire
 pub use craft_actor::{ResourceProfile, VpsResources};
 pub use craft_core::ReachabilityConfig;
 pub use saga::{
-    CompositeSagaJournal, Group0SagaJournal, SagaRegistry, StoreSagaJournal, record_saga_metrics,
-    saga_metrics_callback,
+    CompositeSagaJournal, Group0SagaJournal, MetaRaftSagaJournal, SagaRegistry, StoreSagaJournal,
+    record_saga_metrics, saga_metrics_callback,
 };
 pub use security::Security;
 

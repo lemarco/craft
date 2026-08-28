@@ -10,6 +10,10 @@ fn group_redb_files_are_distinct() {
 
     assert_eq!(group_redb_path(base, 0), base.join("group-0.redb"));
     assert_eq!(group_redb_path(base, 3), base.join("group-3.redb"));
+    assert_eq!(
+        group_redb_path(base, u32::MAX),
+        base.join("group-meta.redb")
+    );
 }
 
 #[test]

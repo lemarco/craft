@@ -46,9 +46,10 @@
 | Layer | API / component |
 |-------|-----------------|
 | Routing | `ShardRouter`, `StableShardRouter` (default), rendezvous `place_shard` / `place_group` |
-| Runtime | `ShardedNodeService`, `spawn_multi_raft_node`, keyed `ProposeKeyed` / `QueryKeyed` |
+| Runtime | `ShardedNodeService`, `spawn_multi_raft_node`, Meta-Raft coordinator, keyed `ProposeKeyed` / `QueryKeyed` |
 | Tier 1 | Per-group learners, `expand_shard_count`, `propose_keyed_batch`, `/introspect/raft-groups` |
 | Tier 2 | Dynamic catalog (`add_raft_groups`), stable shard activation (`activate_shards`, `switch_to_stable_shards`), `catalog_version` |
+| Meta-Raft | Dedicated coordinator group for join/leave, catalog, saga journal (multi-Raft only) |
 | Rebalance | `RaftGroupReconciler`, cross-node group migration RPC (`/cluster/group/migrate`) |
 | Membership | Per-group voter sets (`group_replication_factor`, `sync_group_membership`) |
 
@@ -57,7 +58,7 @@
 | API | Guarantee |
 |-----|-----------|
 | `propose_keyed_batch` | Sequential; partial failure surfaced (`BatchError::Partial`) |
-| `run_saga` / `resume_saga` | All steps commit or compensators run; journal in Redis and/or group 0 Raft log (`CompositeSagaJournal`) |
+| `run_saga` / `resume_saga` | All steps commit or compensators run; journal in Redis and/or Meta-Raft log (`CompositeSagaJournal`) |
 | `propose_cross_shard_2pc` (opt-in) | Atomic commit if all groups ack prepare (≤3 groups; in-memory prepare, cleared on leadership loss) |
 
 Global serializable isolation across shards is **not** a goal — see [cross-shard-transactions](decisions/cross-shard-transactions.md).
@@ -68,7 +69,6 @@ Global serializable isolation across shards is **not** a goal — see [cross-sha
 
 | Item | Notes | ADR |
 |------|-------|-----|
-| **Meta-Raft group** | Group 0 remains cluster coordinator | [tier2-multi-raft-architecture](decisions/tier2-multi-raft-architecture.md) |
 | **Linearizable actor `ask`** | Use Raft `query` for SM data; `ask` stays fast/local | [read-consistency](decisions/read-consistency.md) |
 | **PostgreSQL `ActorStateStore`** | Redis is the v1 external store | [actor-state-redis](decisions/actor-state-redis.md) |
 | **Redis Cluster auto-discovery** | Single Redis URL per node | [actor-state-redis](decisions/actor-state-redis.md) |

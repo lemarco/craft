@@ -7,10 +7,10 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use craft_core::{
-    RaftGroupId, ShardCountExpansionPlan, ShardExpansionError, ShardId, ShardRouter,
-    ShardRoutingKind, ShardRoutingSwitchError, ShardRoutingSwitchPlan, StableShardActivationError,
-    StableShardActivationPlan, StableShardRouter, StateMachine, place_shard,
-    plan_switch_to_stable_routing,
+    META_RAFT_GROUP_ID, RaftGroupId, ShardCountExpansionPlan, ShardExpansionError, ShardId,
+    ShardRouter, ShardRoutingKind, ShardRoutingSwitchError, ShardRoutingSwitchPlan,
+    StableShardActivationError, StableShardActivationPlan, StableShardRouter, StateMachine,
+    is_meta_raft_group, place_shard, plan_switch_to_stable_routing,
 };
 use craft_net::transport::{Body, BoxFuture, RequestHandler};
 use craft_net::{Route, Transport, TransportError, decode_body, encode_body};
@@ -176,7 +176,7 @@ impl ShardedNodeService {
             .collect()
     }
 
-    /// Register a newly spawned group handler.
+    /// Register a newly spawned user group handler and extend the routing catalog.
     pub fn insert_group(&self, group: u32, handler: Arc<dyn RequestHandler>) {
         self.groups
             .write()
@@ -187,6 +187,23 @@ impl ShardedNodeService {
             ids.push(RaftGroupId(group));
             ids.sort_by_key(|g| g.0);
         }
+    }
+
+    /// Register the Meta-Raft coordinator handler without adding it to keyed routing.
+    pub fn insert_service_group(&self, group: u32, handler: Arc<dyn RequestHandler>) {
+        self.groups
+            .write()
+            .expect("sharded groups lock")
+            .insert(group, handler);
+    }
+
+    /// User catalog groups hosted on this physical node (excludes Meta-Raft).
+    #[must_use]
+    pub fn hosted_user_group_ids(&self) -> Vec<RaftGroupId> {
+        self.hosted_group_ids()
+            .into_iter()
+            .filter(|g| !is_meta_raft_group(g.0))
+            .collect()
     }
 
     /// Remove a group handler during rebalance.
@@ -362,13 +379,10 @@ impl RequestHandler for ShardedNodeService {
                 Box::pin(async move {
                     let handler = {
                         let groups = groups.read().expect("sharded groups lock");
-                        groups
-                            .get(&0)
-                            .cloned()
-                            .or_else(|| groups.values().next().cloned())
+                        groups.get(&META_RAFT_GROUP_ID).cloned()
                     };
                     let Some(handler) = handler else {
-                        return Err(TransportError::Io("no raft groups".into()));
+                        return Err(TransportError::Io("meta raft group not hosted".into()));
                     };
                     handler.handle(route, body).await
                 })
@@ -471,9 +485,21 @@ where
     Ok((service, handle))
 }
 
-/// Spawn `group_count` independent Raft groups on one physical node, wired
-/// through a [`ShardedNodeService`]. Each group's bootstrap voters are chosen
-/// by [`group_voters`](craft_core::group_voters) over `live_nodes` (per-group-raft-membership).
+/// Result of spawning a multi-Raft node with a dedicated Meta-Raft coordinator.
+pub struct MultiRaftSpawnResult<M: StateMachine> {
+    /// Sharded handler for user groups and cluster routing.
+    pub sharded: Arc<ShardedNodeService>,
+    /// Handles for user catalog groups `0..group_count`.
+    pub user_handles: Vec<crate::NodeHandle<M>>,
+    /// Handle for the Meta-Raft coordinator group.
+    pub meta_handle: crate::NodeHandle<crate::MetaStateMachine>,
+}
+
+/// Spawn `group_count` independent user Raft groups plus the Meta-Raft coordinator
+/// on one physical node, wired through a [`ShardedNodeService`]. User group
+/// bootstrap voters are chosen by [`group_voters`](craft_core::group_voters) over
+/// `live_nodes` (per-group-raft-membership). The Meta-Raft group uses the full
+/// cluster voter set from `live_nodes` and is hosted on every node.
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_multi_raft_node<M>(
     node_id: NodeId,
@@ -481,7 +507,7 @@ pub fn spawn_multi_raft_node<M>(
     replication_factor: u32,
     raft: craft_core::Config,
     runtime: RuntimeConfig,
-    runtime_group0: RuntimeConfig,
+    runtime_meta: RuntimeConfig,
     shard_count: u32,
     shard_routing: ShardRoutingKind,
     group_count: u32,
@@ -489,38 +515,47 @@ pub fn spawn_multi_raft_node<M>(
     network: Arc<dyn Transport>,
     forward_timeout: Duration,
     storage_dir: Option<&Path>,
-) -> Result<(Arc<ShardedNodeService>, Vec<crate::NodeHandle<M>>), StorageError>
+) -> Result<MultiRaftSpawnResult<M>, StorageError>
 where
     M: StateMachine + 'static,
 {
     use craft_core::group_voters;
 
+    use crate::MetaStateMachine;
+
     let group_ids: Vec<RaftGroupId> = (0..group_count).map(RaftGroupId).collect();
-    let mut handles = Vec::new();
+    let mut user_handles = Vec::new();
     let mut services = BTreeMap::new();
 
     for (g, machine) in machines.into_iter().enumerate().take(group_count as usize) {
         let g = g as u32;
         let voters = group_voters(RaftGroupId(g), live_nodes, replication_factor);
-        let rt = if g == 0 {
-            runtime_group0.clone()
-        } else {
-            runtime.clone()
-        };
         let (service, handle) = spawn_raft_group(
             node_id,
             &voters,
             g,
             raft.clone(),
-            rt,
+            runtime.clone(),
             machine,
             Arc::clone(&network),
             forward_timeout,
             storage_dir,
         )?;
         services.insert(g, service);
-        handles.push(handle);
+        user_handles.push(handle);
     }
+
+    let (meta_service, meta_handle) = spawn_raft_group(
+        node_id,
+        live_nodes,
+        META_RAFT_GROUP_ID,
+        raft,
+        runtime_meta,
+        MetaStateMachine,
+        network,
+        forward_timeout,
+        storage_dir,
+    )?;
 
     let sharded = Arc::new(ShardedNodeService::new(
         shard_count,
@@ -528,5 +563,10 @@ where
         group_ids,
         services,
     ));
-    Ok((sharded, handles))
+    sharded.insert_service_group(META_RAFT_GROUP_ID, meta_service);
+    Ok(MultiRaftSpawnResult {
+        sharded,
+        user_handles,
+        meta_handle,
+    })
 }

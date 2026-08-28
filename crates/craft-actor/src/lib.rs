@@ -19,6 +19,7 @@ mod driver;
 mod group_membership;
 mod group_rebalance;
 mod messaging;
+mod meta;
 mod placement;
 mod registry;
 mod resources;
@@ -38,6 +39,7 @@ pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
 pub use group_membership::{GroupMembershipSyncReport, sync_hosted_group_membership};
 pub use group_rebalance::{GroupRebalanceReport, RaftGroupReconciler};
 pub use messaging::{AskError as ClusterAskError, CastError, ClusterMessaging};
+pub use meta::{MetaCommand, MetaError, MetaQuery, MetaResponse, MetaStateMachine};
 pub use placement::{
     ClusterControl, ClusterScaleError, MigrateError, NOT_LEADER_REASON, RemoteSpawnError,
     ScalePlan, plan_scale,
@@ -58,7 +60,8 @@ pub use session::ActorSession;
 pub use tracing_init::init_tracing;
 pub mod rebalance_log;
 pub use sharded::{
-    ShardedNodeService, spawn_multi_raft_node, spawn_raft_group, spawn_raft_group_from_bundle,
+    MultiRaftSpawnResult, ShardedNodeService, spawn_multi_raft_node, spawn_raft_group,
+    spawn_raft_group_from_bundle,
 };
 pub use store::{ActorStateStore, BoxFuture, InMemoryStore, StoreError};
 pub use store_codec::{store_get, store_set};

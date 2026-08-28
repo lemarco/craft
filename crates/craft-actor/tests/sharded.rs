@@ -32,13 +32,19 @@ async fn keyed_writes_route_to_independent_raft_groups() {
         allow_leave: false,
         ..RuntimeConfig::default()
     };
-    let (sharded, handles) = spawn_multi_raft_node(
+    let runtime_meta = RuntimeConfig {
+        tick_period: TICK_PERIOD,
+        allow_join: true,
+        allow_leave: true,
+        ..RuntimeConfig::default()
+    };
+    let spawn = spawn_multi_raft_node(
         node_id,
         &members,
         craft_actor::craft_core::DEFAULT_GROUP_REPLICATION_FACTOR,
         craft_actor::craft_core::Config::default(),
         runtime.clone(),
-        runtime,
+        runtime_meta,
         shard_count,
         ShardRoutingKind::StableVirtual,
         2,
@@ -48,6 +54,8 @@ async fn keyed_writes_route_to_independent_raft_groups() {
         None,
     )
     .expect("spawn multi-raft node");
+    let sharded = spawn.sharded;
+    let handles = spawn.user_handles;
     net.attach(node_id, sharded);
 
     wait_for_all_node_leaders(&handles).await;
@@ -270,13 +278,19 @@ async fn stable_shard_activation_rejects_inactive_keys() {
         allow_leave: false,
         ..RuntimeConfig::default()
     };
-    let (sharded, handles) = spawn_multi_raft_node(
+    let runtime_meta = RuntimeConfig {
+        tick_period: TICK_PERIOD,
+        allow_join: false,
+        allow_leave: false,
+        ..RuntimeConfig::default()
+    };
+    let spawn = spawn_multi_raft_node(
         node_id,
         &members,
         craft_actor::craft_core::DEFAULT_GROUP_REPLICATION_FACTOR,
         craft_actor::craft_core::Config::default(),
         runtime.clone(),
-        runtime,
+        runtime_meta,
         active,
         ShardRoutingKind::StableVirtual,
         1,
@@ -286,6 +300,8 @@ async fn stable_shard_activation_rejects_inactive_keys() {
         None,
     )
     .expect("spawn stable node");
+    let sharded = spawn.sharded;
+    let handles = spawn.user_handles;
     net.attach(node_id, Arc::clone(&sharded) as Arc<dyn RequestHandler>);
 
     let inactive_key = {

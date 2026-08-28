@@ -353,6 +353,8 @@ pub struct CraftCluster<M: StateMachine> {
     pub(crate) node_id: NodeId,
     pub(crate) handle: NodeHandle<M>,
     pub(crate) group_handles: Vec<NodeHandle<M>>,
+    /// Meta-Raft coordinator handle when `raft_groups > 1`.
+    pub(crate) meta_handle: Option<craft_actor::NodeHandle<craft_actor::MetaStateMachine>>,
     pub(crate) raft_groups: u32,
     pub(crate) shard_count: u32,
     pub(crate) shard_routing: craft_core::ShardRoutingKind,
@@ -427,22 +429,26 @@ impl<M: StateMachine> CraftCluster<M> {
         self.actor_state_store.clone()
     }
 
-    /// Default saga journal: group 0 Raft metadata, optionally mirrored to
-    /// [`Self::actor_state_store`] when configured.
+    /// Default saga journal: Meta-Raft metadata (multi-Raft) or group 0 (single-group),
+    /// optionally mirrored to [`Self::actor_state_store`] when configured.
     #[must_use]
     pub fn saga_journal(&self) -> Arc<dyn craft_client::SagaJournal> {
-        let group0 = self
-            .group_handle(0)
-            .expect("group 0 handle required for saga journal");
-        let group0_journal =
-            crate::saga::Group0SagaJournal::new(group0, Arc::clone(&self.saga_registry));
+        let raft_journal = if let Some(meta) = &self.meta_handle {
+            crate::saga::MetaRaftSagaJournal::new(meta.clone(), Arc::clone(&self.saga_registry))
+        } else {
+            crate::saga::MetaRaftSagaJournal::new(
+                self.group_handle(0)
+                    .expect("group 0 handle required for saga journal"),
+                Arc::clone(&self.saga_registry),
+            )
+        };
         if let Some(store) = &self.actor_state_store {
             Arc::new(crate::saga::CompositeSagaJournal::new(
-                group0_journal,
+                raft_journal,
                 Some(crate::saga::StoreSagaJournal::new(Arc::clone(store))),
             ))
         } else {
-            Arc::new(group0_journal)
+            Arc::new(raft_journal)
         }
     }
 
@@ -705,6 +711,12 @@ impl<M: StateMachine> CraftCluster<M> {
 
     /// Whether this node currently believes it is the Raft leader.
     pub async fn is_leader(&self) -> bool {
+        if let Some(meta) = &self.meta_handle {
+            return meta
+                .status()
+                .await
+                .is_some_and(|s| matches!(s.role, craft_core::Role::Leader));
+        }
         let Some(handle) = self.group_handle(0) else {
             return false;
         };
@@ -882,16 +894,18 @@ impl<M: StateMachine> CraftCluster<M> {
     }
 
     async fn catalog_add_local(&self, count: u32) -> Result<Vec<u32>, CatalogAddLocalError> {
-        let handle = self
-            .group_handle(0)
-            .ok_or(CatalogAddLocalError::NoGroup0Handle)?;
-        let response = handle
-            .catalog_add(CatalogAddRequest {
-                protocol_version: PROTOCOL_VERSION,
-                add_groups: count,
-            })
-            .await
-            .map_err(|_| CatalogAddLocalError::Stopped)?;
+        let request = CatalogAddRequest {
+            protocol_version: PROTOCOL_VERSION,
+            add_groups: count,
+        };
+        let response = if let Some(meta) = &self.meta_handle {
+            meta.catalog_add(request).await
+        } else if let Some(handle) = self.group_handle(0) {
+            handle.catalog_add(request).await
+        } else {
+            return Err(CatalogAddLocalError::NoMetaRaftHandle);
+        }
+        .map_err(|_| CatalogAddLocalError::Stopped)?;
         match response {
             CatalogAddResponse::Accepted { new_groups, .. } => {
                 self.catalog_version.fetch_add(1, Ordering::SeqCst);
@@ -1030,6 +1044,9 @@ impl<M: StateMachine> CraftCluster<M> {
 
     /// Stop the node: shut the runtime down and abort all background tasks.
     pub fn shutdown(&self) {
+        if let Some(meta) = &self.meta_handle {
+            meta.shutdown();
+        }
         if let Some(mr) = &self.multi_raft {
             for handle in mr.handles.lock().unwrap().values() {
                 handle.shutdown();
@@ -1049,6 +1066,9 @@ impl<M: StateMachine> CraftCluster<M> {
     pub async fn shutdown_and_wait(&self) {
         for task in self.tasks.lock().unwrap().drain(..) {
             task.abort();
+        }
+        if let Some(meta) = &self.meta_handle {
+            meta.shutdown_and_wait().await;
         }
         if let Some(mr) = &self.multi_raft {
             let handles: Vec<_> = mr.handles.lock().unwrap().values().cloned().collect();
@@ -1140,7 +1160,7 @@ pub enum AddRaftGroupsError {
 impl From<CatalogAddLocalError> for AddRaftGroupsError {
     fn from(err: CatalogAddLocalError) -> Self {
         match err {
-            CatalogAddLocalError::Stopped | CatalogAddLocalError::NoGroup0Handle => Self::Stopped,
+            CatalogAddLocalError::Stopped | CatalogAddLocalError::NoMetaRaftHandle => Self::Stopped,
             CatalogAddLocalError::NotLeader { .. } => Self::NoLeader,
             CatalogAddLocalError::Rejected(reason) => Self::Rejected(reason),
         }
@@ -1151,8 +1171,8 @@ impl From<CatalogAddLocalError> for AddRaftGroupsError {
 enum CatalogAddLocalError {
     #[error("node runtime has stopped")]
     Stopped,
-    #[error("group 0 is not hosted on this node")]
-    NoGroup0Handle,
+    #[error("meta raft group is not hosted on this node")]
+    NoMetaRaftHandle,
     #[error("not leader")]
     NotLeader { leader: Option<NodeId> },
     #[error("catalog add rejected: {0:?}")]

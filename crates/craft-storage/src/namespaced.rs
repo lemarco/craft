@@ -8,9 +8,15 @@ use std::path::{Path, PathBuf};
 
 use crate::{RedbStorage, StorageError};
 
+/// Meta-Raft coordinator group id (must match `craft_core::META_RAFT_GROUP_ID`).
+const META_RAFT_GROUP_ID: u32 = u32::MAX;
+
 /// Path to the `redb` file for Raft group `group` under directory `base`.
 #[must_use]
 pub fn group_redb_path(base: impl AsRef<Path>, group: u32) -> PathBuf {
+    if group == META_RAFT_GROUP_ID {
+        return base.as_ref().join("group-meta.redb");
+    }
     base.as_ref().join(format!("group-{group}.redb"))
 }
 

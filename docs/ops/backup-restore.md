@@ -20,7 +20,8 @@ Multi-group clusters store one Redb file per Raft group:
 
 ```text
 /data/craft/
-  group-0.redb    # coordinator (cluster join, catalog)
+  group-meta.redb # Meta-Raft coordinator (multi-Raft only)
+  group-0.redb    # user raft group 0
   group-1.redb
   ...
 ```

@@ -17,7 +17,7 @@
 | **2** | Dynamic catalog (`add_raft_groups`, `CatalogCommand::AddGroups` on group 0) | **landed** |
 | **3** | Stable shard activation (`activate_shards`, `switch_to_stable_shards`; default router) | **landed** |
 | **4** | Cross-shard transactions (saga + optional 2PC) | **landed** — [cross-shard-transactions](cross-shard-transactions.md) |
-| **—** | Meta-Raft group | **deferred** — group 0 coordinator suffices |
+| **—** | Meta-Raft group | **landed** — [meta-raft](meta-raft.md) |
 
 ### Dynamic catalog expansion
 
@@ -34,9 +34,9 @@
 
 Saga coordinator (`run_saga`, `resume_saga`, `CompositeSagaJournal`) and optional 2PC behind `cross_shard_2pc(true)`. See [cross-shard-transactions](cross-shard-transactions.md).
 
-### Meta-Raft (deferred)
+### Meta-Raft (landed)
 
-Revisit only if group 0 user state becomes a bottleneck or needs isolation from cluster metadata.
+Dedicated coordinator Raft group (`META_RAFT_GROUP_ID`) for cluster registry, catalog, and saga journal when `raft_groups > 1`. See [meta-raft](meta-raft.md).
 
 ## Consequences
 
