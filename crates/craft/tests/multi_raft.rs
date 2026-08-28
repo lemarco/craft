@@ -11,8 +11,8 @@ use craft::proto::{
 };
 use craft_test_support::{
     KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, advance, await_craft_leader,
-    fast_raft_config_with_seed, find_keys_for_two_groups, wait_for_each_group_cluster_leader,
-    wait_for_group_leaders,
+    eventually_async_default, fast_raft_config_with_seed, find_keys_for_two_groups,
+    wait_for_each_group_cluster_leader, wait_for_group_leaders,
 };
 
 async fn spawn_three_node_multi_raft_cluster()
@@ -734,4 +734,99 @@ async fn switch_to_stable_shards_from_modulus() {
     let _client = RemoteClient::new(Arc::new(net.clone()), [node_id]);
 
     cluster.shutdown();
+}
+
+#[tokio::test(start_paused = true)]
+async fn per_group_learners_replicate_without_voting() {
+    let ids = [NodeId(1), NodeId(2), NodeId(3), NodeId(4)];
+    let net = LocalNetwork::new();
+    let mut clusters = Vec::new();
+    for &id in &ids {
+        let cluster = CraftCluster::builder(id, KvMachine::default())
+            .members(ids)
+            .raft_config(fast_raft_config_with_seed(11))
+            .tick_period(TICK_PERIOD)
+            .shard_count(64)
+            .group_replication_factor(3)
+            .group_learner_factor(1)
+            .raft_machines([KvMachine::default(), KvMachine::default()])
+            .start_local(&net)
+            .await;
+        clusters.push(Arc::new(cluster));
+    }
+
+    wait_for_each_group_cluster_leader(&clusters, 2).await;
+
+    eventually_async_default("learners committed on group 0", || async {
+        for c in &clusters {
+            let Some(handle) = c.group_handle(0) else {
+                continue;
+            };
+            if let Some(status) = handle.status().await
+                && !status.learners.is_empty()
+            {
+                return true;
+            }
+        }
+        false
+    })
+    .await;
+
+    let live: Vec<_> = ids.to_vec();
+    let learner_id = ids
+        .into_iter()
+        .find(|&id| {
+            let voters = craft::core::group_voters(RaftGroupId(0), &live, 3);
+            let learners = craft::core::group_learners(RaftGroupId(0), &live, 3, 1);
+            learners.contains(&id) && !voters.contains(&id)
+        })
+        .expect("planner assigns a learner-only node for group 0");
+    let learner = clusters
+        .iter()
+        .find(|c| c.node_id() == learner_id)
+        .expect("learner cluster");
+
+    assert!(
+        learner.hosted_groups().contains(&0),
+        "learner node must host group 0, hosted={:?}",
+        learner.hosted_groups()
+    );
+
+    let handle = learner.group_handle(0).expect("group 0 handle");
+    let status = handle.status().await.expect("status");
+    assert!(status.learners.contains(&learner_id));
+    assert!(!status.voters.contains(&learner_id));
+    assert_ne!(status.role, craft::core::Role::Leader);
+
+    let groups = [RaftGroupId(0), RaftGroupId(1)];
+    let (key, _) = find_keys_for_two_groups(64, &groups);
+    let cmd = craft::proto::encode(&KvCommand::Set {
+        key: "learner-catchup".into(),
+        value: "ok".into(),
+    })
+    .unwrap();
+    let leader = await_craft_leader(&clusters).await;
+    let resp = send_client_request(
+        &*Arc::new(net.clone()),
+        leader.node_id(),
+        &ClientRequest::ProposeKeyed {
+            key,
+            command: cmd,
+        },
+    )
+    .await
+    .expect("propose");
+    assert!(matches!(resp, ClientResponse::Ok(_)));
+
+    eventually_async_default("learner group 0 catches up", || async {
+        let Some(status) = handle.status().await else {
+            return false;
+        };
+        status.last_applied.0 >= 1
+    })
+    .await;
+
+    for c in &clusters {
+        c.shutdown();
+    }
 }

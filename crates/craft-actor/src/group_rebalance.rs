@@ -26,6 +26,7 @@ pub struct RaftGroupReconciler<S: ClusterState> {
     node_id: NodeId,
     catalog: Vec<RaftGroupId>,
     replication_factor: u32,
+    learner_factor: u32,
     state: S,
 }
 
@@ -36,17 +37,20 @@ impl<S: ClusterState> RaftGroupReconciler<S> {
         node_id: NodeId,
         catalog: Vec<RaftGroupId>,
         replication_factor: u32,
+        learner_factor: u32,
         state: S,
     ) -> Self {
         Self {
             node_id,
             catalog,
             replication_factor,
+            learner_factor,
             state,
         }
     }
 
-    /// Diff locally hosted groups against the desired voter placement (per-group-raft-membership).
+    /// Diff locally hosted groups against the desired voter/learner placement
+    /// (per-group-raft-membership).
     #[must_use]
     pub fn reconcile_local(&self, currently_hosted: &[RaftGroupId]) -> GroupRebalanceReport {
         let live = self.state.live_nodes();
@@ -57,6 +61,7 @@ impl<S: ClusterState> RaftGroupReconciler<S> {
             &live,
             currently_hosted,
             self.replication_factor,
+            self.learner_factor,
         );
         rebalance_log::plan(self.node_id, &live, currently_hosted, &plan);
         GroupRebalanceReport {

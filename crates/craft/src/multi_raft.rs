@@ -110,6 +110,7 @@ impl<M: StateMachine + Default + 'static> MultiRaftState<M> {
             self.node_id,
             self.catalog.lock().unwrap().clone(),
             self.replication_factor,
+            self.learner_factor,
             Arc::clone(&facts),
         );
         let report = reconciler.reconcile_local(&hosted);

@@ -977,6 +977,11 @@ impl RaftNode {
     // ---- RequestVote -----------------------------------------------------
 
     fn handle_request_vote(&mut self, from: NodeId, rv: RequestVote) {
+        if !self.is_voter(self.id) {
+            self.reply_vote(from, false, rv.pre_vote);
+            return;
+        }
+
         let up_to_date = rv.last_log >= self.log.last_id();
 
         if rv.pre_vote {

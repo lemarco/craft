@@ -495,8 +495,21 @@ pub struct GroupRebalancePlan {
     pub retire: Vec<RaftGroupId>,
 }
 
-/// Diff the groups `node_id` currently hosts against groups where it is in
-/// the desired voter set ([`group_voters`](group_voters), per-group-raft-membership).
+/// Whether `node_id` should run a local replica for `group` (voter or learner).
+#[must_use]
+pub fn node_should_host_group(
+    group: RaftGroupId,
+    node_id: craft_proto::NodeId,
+    live_nodes: &[craft_proto::NodeId],
+    replication_factor: u32,
+    learner_factor: u32,
+) -> bool {
+    group_voters(group, live_nodes, replication_factor).contains(&node_id)
+        || group_learners(group, live_nodes, replication_factor, learner_factor).contains(&node_id)
+}
+
+/// Diff the groups `node_id` currently hosts against groups where it belongs
+/// in the desired voter or learner set (per-group-raft-membership).
 #[must_use]
 pub fn plan_node_group_rebalance(
     node_id: craft_proto::NodeId,
@@ -504,13 +517,22 @@ pub fn plan_node_group_rebalance(
     live_nodes: &[craft_proto::NodeId],
     currently_hosted: &[RaftGroupId],
     replication_factor: u32,
+    learner_factor: u32,
 ) -> GroupRebalancePlan {
     use std::collections::BTreeSet;
 
     let should: BTreeSet<RaftGroupId> = all_groups
         .iter()
         .copied()
-        .filter(|g| group_voters(*g, live_nodes, replication_factor).contains(&node_id))
+        .filter(|g| {
+            node_should_host_group(
+                *g,
+                node_id,
+                live_nodes,
+                replication_factor,
+                learner_factor,
+            )
+        })
         .collect();
     let current: BTreeSet<RaftGroupId> = currently_hosted.iter().copied().collect();
 
@@ -1012,7 +1034,7 @@ mod tests {
             .copied()
             .find(|n| assignment.values().any(|host| *host == *n))
             .expect("at least one node should host a group");
-        let plan = plan_node_group_rebalance(node_id, &groups, &live, &[], 1);
+        let plan = plan_node_group_rebalance(node_id, &groups, &live, &[], 1, 0);
         assert!(!plan.adopt.is_empty());
         assert!(plan.retire.is_empty());
     }
@@ -1131,6 +1153,58 @@ mod tests {
         for l in &learners {
             assert!(!voters.contains(l));
         }
+    }
+
+    #[test]
+    fn plan_rebalance_keeps_learner_hosted_groups() {
+        use craft_proto::NodeId;
+
+        let groups: Vec<_> = (0..4).map(RaftGroupId).collect();
+        let live = [NodeId(1), NodeId(2), NodeId(3), NodeId(4)];
+        let learner = NodeId(4);
+        let mut found_learner_only = false;
+        for group in &groups {
+            let voters = group_voters(*group, &live, 3);
+            let learners = group_learners(*group, &live, 3, 1);
+            if learners.contains(&learner) && !voters.contains(&learner) {
+                found_learner_only = true;
+                let without = plan_node_group_rebalance(learner, &groups, &live, &[], 3, 0);
+                assert!(
+                    !without.adopt.contains(group),
+                    "voter-only planner must not adopt learner-only group {group:?}"
+                );
+                let with = plan_node_group_rebalance(learner, &groups, &live, &[], 3, 1);
+                assert!(
+                    with.adopt.contains(group),
+                    "learner-aware planner should adopt group {group:?}"
+                );
+                let retire = plan_node_group_rebalance(learner, &groups, &live, &[*group], 3, 0);
+                assert!(
+                    retire.retire.contains(group),
+                    "voter-only planner incorrectly retires hosted learner group"
+                );
+            }
+        }
+        assert!(
+            found_learner_only,
+            "fixture must include at least one learner-only assignment"
+        );
+    }
+
+    #[test]
+    fn node_should_host_group_covers_voters_and_learners() {
+        use craft_proto::NodeId;
+
+        let live = [NodeId(1), NodeId(2), NodeId(3), NodeId(4)];
+        let group = RaftGroupId(7);
+        let voter = group_voters(group, &live, 3)[0];
+        let learner = group_learners(group, &live, 3, 1)
+            .into_iter()
+            .find(|n| !group_voters(group, &live, 3).contains(n))
+            .expect("learner exists");
+        assert!(node_should_host_group(group, voter, &live, 3, 1));
+        assert!(node_should_host_group(group, learner, &live, 3, 1));
+        assert!(!node_should_host_group(group, NodeId(99), &live, 3, 1));
     }
 
     #[test]

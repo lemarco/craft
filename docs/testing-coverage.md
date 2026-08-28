@@ -80,7 +80,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Meta-Raft coordinator (multi-Raft join/catalog/saga isolation) | ✅ `shard` | ✅ `sharded` | — | — | ✅ |
 | Per-group membership planner (`group_voters`, join/leave affects) | ✅ | ✅ | — | — | ✅ |
 | Per-group membership runtime sync on cluster join | — | ✅ | — | — | ✅ |
-| Per-group learners (`group_learners`, membership sync) | ✅ | — | — | — | ✅ |
+| Per-group learners (`group_learners`, membership sync, rebalance hosting) | ✅ | ✅ `group_rebalance` | — | — | ✅ |
 | Operator shard expansion (`expand_shard_count`, Tier 1 modulus) | ✅ | ✅ `multi_raft` | — | — | ✅ |
 | Stable shard activation (`activate_shards`, Tier 2) | ✅ | ✅ `multi_raft`, `sharded` | — | — | ✅ |
 | Cluster leave RPC (`/cluster/leave`, `CraftCluster::leave`) | — | ✅ `runtime`, `multi_raft` | — | — | ✅ |

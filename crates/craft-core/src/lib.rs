@@ -35,9 +35,10 @@ pub use shard::{
     ShardRoutingSwitchError, ShardRoutingSwitchPlan, StableShardActivationError,
     StableShardActivationPlan, StableShardRouter, effective_replication_factor,
     group_host_assignment, group_learners, group_membership_assignment, group_voters,
-    groups_joining_node_affects, groups_leaving_node_affects, is_meta_raft_group, place_shard,
-    plan_catalog_expansion, plan_group_membership_change, plan_group_membership_sync,
-    plan_node_group_rebalance, plan_shard_count_expansion, plan_stable_shard_activation,
+    groups_joining_node_affects, groups_leaving_node_affects, is_meta_raft_group,
+    node_should_host_group, place_shard, plan_catalog_expansion, plan_group_membership_change,
+    plan_group_membership_sync, plan_node_group_rebalance, plan_shard_count_expansion,
+    plan_stable_shard_activation,
     plan_switch_to_stable_routing, shard_is_active, stable_router_preserves_routable_keys,
     validate_catalog, virtual_shard_for,
 };
