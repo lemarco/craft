@@ -13,7 +13,7 @@ Product and implementation backlog for crafty **0.2.x → 1.0**. Shipped capabil
 | Priority | Count | Items |
 |----------|-------|-------|
 | **P0** | 2 | B-01 ✅, B-02 ✅ |
-| **P1** | 4 | B-03 … B-06 |
+| **P1** | 4 | B-03 🚧 … B-06 🚧 |
 | **P2** | 3 | B-07 … B-09 |
 | **P3** | 3 | B-10 … B-12 |
 | **Optional** | 4 | O-01 … O-04 |
@@ -113,58 +113,58 @@ flowchart TB
 
 ## P1 — Scenario polish
 
-### B-03 🔲 Background jobs — HTTP + DX
+### B-03 🚧 Background jobs — HTTP + DX
 
 **Scenario:** [background-jobs](scenarios/background-jobs.md)
 
 | Subtask | Description | Status |
 |---------|-------------|--------|
-| B-03a | Axum route `POST /jobs/{stream}` → `202` + `{ "job_id": … }` JSON | 🔲 |
-| B-03b | Request body → opaque bytes or JSON envelope (document contract) | 🔲 |
+| B-03a | Axum route `POST /jobs/{stream}` → `202` + `{ "job_id": … }` JSON | 🚧 `crafty-http` |
+| B-03b | Request body → opaque bytes or JSON envelope (document contract) | 🚧 README |
 | B-03c | Optional `GET /jobs/{stream}/{id}` if queue metadata extended | 🔲 |
-| B-03d | `crafty/http-jobs` feature or `crafty-http` crate (decide in impl) | 🔲 |
-| B-03e | Integration test: HTTP enqueue → worker ack | 🔲 |
+| B-03d | `crafty/http-jobs` feature or `crafty-http` crate (decide in impl) | 🚧 `crafty-http` + feature |
+| B-03e | Integration test: HTTP enqueue → worker ack | 🚧 `crafty/tests/http_jobs.rs` |
 
 ---
 
-### B-04 🔲 Real-time — WebSocket gateway
+### B-04 🚧 Real-time — WebSocket gateway
 
 **Scenario:** [realtime-sessions](scenarios/realtime-sessions.md)
 
 | Subtask | Description | Status |
 |---------|-------------|--------|
-| B-04a | `examples/websocket_gateway.rs` — axum WS + `ChatWorker` | 🔲 |
-| B-04b | Document `GATEWAY=1` vs worker role (same binary, env split) | 🔲 |
+| B-04a | `examples/websocket_gateway.rs` — axum WS + `ChatWorker` | 🚧 |
+| B-04b | Document `GATEWAY=1` vs worker role (same binary, env split) | 🚧 |
 | B-04c | Auth stub + `ActorSession` open on connect | 🔲 |
 | B-04d | Reconnect: handle `NoTarget`, session TTL expiry | 🔲 |
 | B-04e | Optional: checkpoint last N messages to SM (comment in example) | 🔲 |
 
 ---
 
-### B-05 🔲 Workflows — fluent builder
+### B-05 🚧 Workflows — fluent builder
 
 **Scenario:** [workflows](scenarios/workflows.md)
 
 | Subtask | Description | Status |
 |---------|-------------|--------|
-| B-05a | `WorkflowBuilder` — named `.step(id, fn)`, `.compensate(id, fn)` | 🔲 |
-| B-05b | Builds `SagaPlan`; runs via `run_saga` / `CompositeSagaJournal` | 🔲 |
-| B-05c | `CraftyApp::workflow(name, builder_fn)` registration | 🔲 |
-| B-05d | Example: `onboarding_workflow` — saga + enqueue + propose steps | 🔲 |
+| B-05a | `WorkflowBuilder` — named `.step(id, fn)`, `.compensate(id, fn)` | 🚧 |
+| B-05b | Builds `SagaPlan`; runs via `run_saga` / `CompositeSagaJournal` | 🚧 |
+| B-05c | `CraftyApp::workflow(name, builder_fn)` registration | 🚧 `run_workflow` |
+| B-05d | Example: `onboarding_workflow` — saga + enqueue + propose steps | 🚧 |
 | B-05e | `crafty workflow resume <id>` CLI stub (optional, via `crafty-node` or ops) | 🔲 |
 
 ---
 
-### B-06 🔲 `crafty init` project template
+### B-06 🚧 `crafty init` project template
 
 **Scenario:** all
 
 | Subtask | Description | Status |
 |---------|-------------|--------|
-| B-06a | `scripts/crafty-init.sh` or cargo-template: main + one worker | 🔲 |
-| B-06b | Generated: job stream stub + optional saga stub | 🔲 |
-| B-06c | `docker-compose.yml` 3-node local (dev-certs) | 🔲 |
-| B-06d | Zero `redis://`; README points to [scenarios/](scenarios/README.md) | 🔲 |
+| B-06a | `scripts/crafty-init.sh` or cargo-template: main + one worker | 🚧 |
+| B-06b | Generated: job stream stub + optional saga stub | 🚧 template |
+| B-06c | `docker-compose.yml` 3-node local (dev-certs) | 🚧 |
+| B-06d | Zero `redis://`; README points to [scenarios/](scenarios/README.md) | 🚧 |
 
 ---
 

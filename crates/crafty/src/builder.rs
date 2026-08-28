@@ -86,6 +86,10 @@ pub enum StartError {
     /// completed (seed unreachable, no leader, or the cluster refused it).
     #[error("cluster join failed: {0}")]
     Join(String),
+
+    /// Environment or app configuration could not be parsed.
+    #[error("configuration: {0}")]
+    Config(String),
 }
 
 /// Type-erased "register this actor type on the control plane" step.

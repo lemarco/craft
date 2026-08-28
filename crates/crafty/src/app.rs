@@ -58,20 +58,20 @@ impl CraftyAppBuilder {
     /// Returns an error when required environment variables are invalid.
     pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
         let cfg = app_config_from_env()?;
-        Ok(Self::from_config(cfg))
+        Ok(Self::from_config(&cfg))
     }
 
     /// Apply a parsed [`AppConfig`].
     #[must_use]
-    pub fn from_config(cfg: AppConfig) -> Self {
+    pub fn from_config(cfg: &AppConfig) -> Self {
         let mut inner = CraftyClusterBuilder::new(cfg.node_id, EmptyStateMachine);
         if !cfg.members.is_empty() {
-            inner = inner.members(cfg.members);
+            inner = inner.members(cfg.members.clone());
         }
-        if let Some(dir) = cfg.data_dir {
+        if let Some(dir) = cfg.data_dir.clone() {
             inner = inner.data_dir(dir);
         }
-        if let Some(stream) = cfg.job_queue_stream {
+        if let Some(stream) = cfg.job_queue_stream.clone() {
             inner = inner.job_queue(&stream, cfg.job_queue_lease);
         }
         inner = inner
@@ -79,7 +79,7 @@ impl CraftyAppBuilder {
             .allow_leave(cfg.allow_leave)
             .drain_timeout(cfg.drain_timeout);
         if !cfg.join_seeds.is_empty() {
-            inner = inner.join_seeds(cfg.join_seeds);
+            inner = inner.join_seeds(cfg.join_seeds.clone());
         }
         Self { inner }
     }
@@ -152,6 +152,20 @@ impl CraftyAppBuilder {
         self
     }
 
+    /// Leader supervisor reconcile interval.
+    #[must_use]
+    pub fn reconcile_period(mut self, period: Duration) -> Self {
+        self.inner = self.inner.reconcile_period(period);
+        self
+    }
+
+    /// Actor directory publish interval.
+    #[must_use]
+    pub fn directory_publish_period(mut self, period: Duration) -> Self {
+        self.inner = self.inner.directory_publish_period(period);
+        self
+    }
+
     /// Start over the in-memory [`LocalNetwork`] (tests / local dev).
     pub async fn start_local(self, net: &LocalNetwork) -> CraftyApp {
         let cluster = self.inner.start_local(net).await;
@@ -185,6 +199,27 @@ impl CraftyApp {
         CraftyAppBuilder {
             inner: CraftyClusterBuilder::new(node_id, EmptyStateMachine),
         }
+    }
+
+    /// Start over QUIC using a parsed [`AppConfig`].
+    ///
+    /// # Errors
+    /// Returns [`StartError`] when bind or join fails.
+    pub async fn start_from_config(cfg: AppConfig) -> Result<Self, StartError> {
+        let builder = CraftyAppBuilder::from_config(&cfg);
+        let listen = cfg.listen;
+        let peers = cfg.peers;
+        let security = cfg.security;
+        builder.start_quic(security, listen, peers).await
+    }
+
+    /// Parse `CRAFTY_*` environment variables and start over QUIC.
+    ///
+    /// # Errors
+    /// Returns an error when env parsing or cluster start fails.
+    pub async fn start_from_env() -> Result<Self, StartError> {
+        let cfg = app_config_from_env().map_err(|e| StartError::Config(e.to_string()))?;
+        Self::start_from_config(cfg).await
     }
 
     /// Parse `CRAFTY_*` environment variables and return a pre-wired builder.
@@ -282,5 +317,61 @@ impl CraftyApp {
         tokio::signal::ctrl_c().await?;
         self.cluster.shutdown();
         Ok(())
+    }
+
+    /// HTTP job enqueue API (`POST /jobs/{stream}` → `202`). Requires `http-jobs` feature.
+    ///
+    /// Pass an [`Arc`] handle so the Axum service can enqueue from any task:
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # async fn demo(app: Arc<crafty::CraftyApp>) {
+    /// let api = CraftyApp::jobs_api(app);
+    /// let router = api.router().with_state(Arc::new(api.into_state()));
+    /// # let _ = router;
+    /// # }
+    /// ```
+    #[cfg(feature = "http-jobs")]
+    pub fn jobs_api(app: Arc<Self>) -> crafty_http::JobsApi {
+        crafty_http::JobsApi::new(Arc::new(move |stream, payload, opts| {
+            let app = Arc::clone(&app);
+            Box::pin(async move {
+                if opts == EnqueueOptions::default() {
+                    app.enqueue(&stream, &payload).await
+                } else {
+                    app.enqueue_opts(&stream, &payload, opts).await
+                }
+            })
+        }))
+    }
+
+    /// Run a cross-shard workflow using the node's default saga journal.
+    ///
+    /// # Errors
+    /// Same as [`CraftyCluster::run_keyed_saga`](crate::CraftyCluster::run_keyed_saga).
+    pub async fn run_workflow<C: crafty_client::KeyedClient>(
+        &self,
+        client: &C,
+        plan: &crafty_client::SagaPlan,
+    ) -> Result<crafty_client::SagaOutcome, crafty_client::SagaError> {
+        let journal = self.cluster.saga_journal();
+        self.cluster
+            .run_keyed_saga(client, plan, journal.as_ref())
+            .await
+    }
+
+    /// Resume a workflow from the durable journal after crash or partial progress.
+    ///
+    /// # Errors
+    /// Same as [`CraftyCluster::resume_keyed_saga`](crate::CraftyCluster::resume_keyed_saga).
+    pub async fn resume_workflow<C: crafty_client::KeyedClient>(
+        &self,
+        client: &C,
+        plan: &crafty_client::SagaPlan,
+    ) -> Result<crafty_client::SagaOutcome, crafty_client::SagaError> {
+        let journal = self.cluster.saga_journal();
+        self.cluster
+            .resume_keyed_saga(client, plan, journal.as_ref())
+            .await
     }
 }

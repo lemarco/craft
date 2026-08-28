@@ -48,6 +48,7 @@ mod observer;
 mod saga;
 mod security;
 mod two_phase;
+mod workflow;
 
 #[doc(inline)]
 pub use crafty_proto::{self as proto, NodeId, PROTOCOL_VERSION, Term};
@@ -87,6 +88,7 @@ pub use two_phase::{
     record_two_phase_event, record_two_phase_gc_aborted, record_two_phase_metrics,
     two_phase_metrics_callback,
 };
+pub use workflow::{WorkflowBuildError, WorkflowBuilder};
 
 /// The peer address book ([`NodeId`] → socket) used to dial cluster members
 /// over QUIC. Re-exported for building [`CraftyClusterBuilder::start_quic`] args.

@@ -40,7 +40,7 @@ log ">> publish dry-run"
 # crates.io when the workspace has API ahead of the last published release.
 PUBLISH_DRY_RUN_ORDER=(
     crafty-macros crafty-proto crafty-core crafty-storage crafty-net
-    crafty-actor crafty-client crafty-dashboard crafty-sim crafty-store-redis
+    crafty-actor crafty-client crafty-dashboard crafty-http crafty-sim crafty-store-redis
     crafty crafty-node
 )
 for pkg in "${PUBLISH_DRY_RUN_ORDER[@]}"; do

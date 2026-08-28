@@ -49,6 +49,7 @@ PUBLISH_ORDER=(
     crafty-actor
     crafty-client
     crafty-dashboard
+    crafty-http
     crafty-sim
     crafty-store-redis
     crafty
