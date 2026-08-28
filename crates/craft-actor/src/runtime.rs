@@ -214,7 +214,7 @@ pub struct RuntimeConfig {
     pub on_saga_journal_applied: Option<SagaJournalAppliedFn>,
     /// Enable cross-shard two-phase commit prepare/commit/abort on this group.
     pub cross_shard_2pc: bool,
-    /// Persist 2PC prepare/abort in the Raft log (requires [`cross_shard_2pc`]).
+    /// Persist 2PC prepare/abort in the Raft log (requires `cross_shard_2pc`).
     pub durable_cross_shard_2pc: bool,
     /// Drop staged prepares older than this (leader-only). `None` disables GC.
     pub two_phase_prepare_timeout: Option<Duration>,
