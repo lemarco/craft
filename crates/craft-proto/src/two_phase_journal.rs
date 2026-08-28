@@ -7,6 +7,6 @@ use serde::{Deserialize, Serialize};
 pub struct TwoPhaseJournalCommand {
     /// Transaction identifier (journal key).
     pub tx_id: Vec<u8>,
-    /// Postcard-encoded [`craft_client::TwoPhaseJournalRecord`] bytes.
+    /// Postcard-encoded 2PC journal record bytes (see `craft_client::TwoPhaseJournalRecord`).
     pub record: Vec<u8>,
 }
