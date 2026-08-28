@@ -116,7 +116,7 @@ crafty = "0.1"
 ```
 
 ```sh
-cargo run -p crafty-node   # reference runner (repo only; not on crates.io)
+cargo install crafty-node   # reference runner binary
 ```
 
 ## Workspace crates

@@ -52,6 +52,7 @@ PUBLISH_ORDER=(
     crafty-sim
     crafty-store-redis
     crafty
+    crafty-node
 )
 
 VERSION="${1:-$(current_version)}"
