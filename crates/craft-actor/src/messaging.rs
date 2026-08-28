@@ -660,10 +660,10 @@ impl RequestHandler for ClusterMessaging {
                     let envelope: ActorEnvelope = decode_body(&body)?;
                     let inbox_id = spool.as_ref().and_then(|s| s.push_inbox(&envelope).ok());
                     let ack = serve_envelope(&registry, &dedup, &envelope).await;
-                    if ack.delivered {
-                        if let (Some(s), Some(id)) = (spool.as_ref(), inbox_id) {
-                            let _ = s.remove_inbox(id);
-                        }
+                    if ack.delivered
+                        && let (Some(s), Some(id)) = (spool.as_ref(), inbox_id)
+                    {
+                        let _ = s.remove_inbox(id);
                     }
                     Ok(encode_body(&ack)?)
                 })
