@@ -163,6 +163,7 @@ impl RequestHandler for NodeRouter {
             | Route::QueueAck
             | Route::QueueNack
             | Route::QueueMetrics
+            | Route::QueueJobStatus
             | Route::QueueReplicate => {
                 let Some(queue) = self.queue.as_ref() else {
                     return Box::pin(async move {
@@ -201,6 +202,7 @@ impl RequestHandler for NodeRouter {
             | Route::QueueAck
             | Route::QueueNack
             | Route::QueueMetrics
+            | Route::QueueJobStatus
             | Route::QueueReplicate
             | Route::ActorStoreSet
             | Route::ActorStoreDelete

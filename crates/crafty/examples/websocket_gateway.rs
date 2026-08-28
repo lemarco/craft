@@ -80,7 +80,8 @@ fn gateway_token_ok(token: Option<&str>) -> bool {
 }
 
 fn open_chat_session(app: &CraftyApp, user: &str) -> Option<crafty_actor::ActorSession> {
-    app.session("chat", user, Some(SESSION_TTL))
+    let key = user.to_string();
+    app.session("chat", &key, Some(SESSION_TTL))
 }
 
 fn session_recoverable(err: &CastError) -> bool {

@@ -179,10 +179,7 @@ pub trait JobQueue: Send + Sync {
     fn metrics(&self) -> BoxFuture<'_, Result<QueueMetrics, QueueError>>;
 
     /// Lookup job metadata by id (`None` when acked or unknown).
-    fn job_status(
-        &self,
-        job_id: JobId,
-    ) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>>;
+    fn job_status(&self, job_id: JobId) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>>;
 
     /// Apply an idempotent replicated mutation from the queue leader.
     fn apply_replicate<'a>(
@@ -319,9 +316,7 @@ impl Inner {
     }
 
     fn job_status(&self, job_id: JobId) -> Option<JobStatus> {
-        let Some(entry) = self.jobs.get(&job_id) else {
-            return None;
-        };
+        let entry = self.jobs.get(&job_id)?;
         let now_ms = u64::try_from(
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -692,10 +687,7 @@ impl JobQueue for InMemoryJobQueue {
         Box::pin(async move { Ok(self.with_inner(|inner| inner.metrics())) })
     }
 
-    fn job_status(
-        &self,
-        job_id: JobId,
-    ) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>> {
+    fn job_status(&self, job_id: JobId) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>> {
         Box::pin(async move { Ok(self.with_inner(|inner| inner.job_status(job_id))) })
     }
 }

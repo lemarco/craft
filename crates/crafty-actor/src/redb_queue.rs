@@ -711,10 +711,7 @@ impl JobQueue for RedbJobQueue {
         Box::pin(async move { self.metrics_inner() })
     }
 
-    fn job_status(
-        &self,
-        job_id: JobId,
-    ) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>> {
+    fn job_status(&self, job_id: JobId) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>> {
         Box::pin(async move { self.job_status_inner(job_id) })
     }
 }

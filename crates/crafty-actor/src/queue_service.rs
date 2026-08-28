@@ -23,8 +23,9 @@ use crafty_proto::{
 
 use crate::supervisor::ClusterState;
 use crate::{
-    EnqueueOptions, JobId, JobLifecycle, JobQueue, JobStatus, LeaseId, LeasedJob, NOT_LEADER_REASON,
-    QueueError, QueueMetrics, QueueReplicationOps, ShardedJobQueue, ShardedReplication, WorkerId,
+    EnqueueOptions, JobId, JobLifecycle, JobQueue, JobStatus, LeaseId, LeasedJob,
+    NOT_LEADER_REASON, QueueError, QueueMetrics, QueueReplicationOps, ShardedJobQueue,
+    ShardedReplication, WorkerId,
 };
 
 fn job_status_to_reply(job_id: u64, status: Option<JobStatus>) -> QueueJobStatusReply {
@@ -613,6 +614,7 @@ impl QueueService {
             }
         } else {
             let transport = Arc::clone(&self.transport);
+            let job_id = request.job_id;
             let request = request.clone();
             match self
                 .forward_leader(move |leader| {
@@ -625,7 +627,7 @@ impl QueueService {
                 Ok(reply) => reply,
                 Err(e) => QueueJobStatusReply {
                     found: false,
-                    job_id: request.job_id,
+                    job_id,
                     lifecycle: None,
                     payload_len: 0,
                     priority: 0,
@@ -934,10 +936,7 @@ impl JobQueue for ClusterJobQueue {
         })
     }
 
-    fn job_status(
-        &self,
-        job_id: JobId,
-    ) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>> {
+    fn job_status(&self, job_id: JobId) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>> {
         Box::pin(async move {
             let leader = self.leader()?;
             let reply = send_queue_job_status(
@@ -956,9 +955,9 @@ impl JobQueue for ClusterJobQueue {
             if !reply.found {
                 return Ok(None);
             }
-            let lifecycle = reply.lifecycle.ok_or_else(|| {
-                QueueError::Backend("job status reply missing lifecycle".into())
-            })?;
+            let lifecycle = reply
+                .lifecycle
+                .ok_or_else(|| QueueError::Backend("job status reply missing lifecycle".into()))?;
             Ok(Some(JobStatus {
                 job_id,
                 lifecycle: match lifecycle {

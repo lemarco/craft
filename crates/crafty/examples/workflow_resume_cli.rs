@@ -31,8 +31,11 @@ async fn main() {
     }
 
     let net = LocalNetwork::new();
-    let mut builder =
-        CraftyCluster::builder(NodeId(1), KvMachine::default()).members([NodeId(1), NodeId(2), NodeId(3)]);
+    let mut builder = CraftyCluster::builder(NodeId(1), KvMachine::default()).members([
+        NodeId(1),
+        NodeId(2),
+        NodeId(3),
+    ]);
     builder = builder.tick_period(TICK_PERIOD);
     if let Some(dir) = data_dir {
         builder = builder.data_dir(dir);
@@ -43,7 +46,7 @@ async fn main() {
     advance(Duration::from_millis(200)).await;
 
     let key = b"user:42".to_vec();
-    let plan = WorkflowBuilder::new(&saga_id)
+    let plan = WorkflowBuilder::new(saga_id.as_str())
         .step(
             "create_account",
             &key,

@@ -125,10 +125,7 @@ mod tests {
     use std::future;
     use tower::ServiceExt;
 
-    fn test_state(
-        enqueue: crate::EnqueueFn,
-        job_status: crate::JobStatusFn,
-    ) -> Arc<JobsApiState> {
+    fn test_state(enqueue: crate::EnqueueFn, job_status: crate::JobStatusFn) -> Arc<JobsApiState> {
         Arc::new(JobsApiState {
             enqueue,
             job_status,

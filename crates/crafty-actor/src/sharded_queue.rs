@@ -284,10 +284,7 @@ impl JobQueue for ShardedJobQueue {
         })
     }
 
-    fn job_status(
-        &self,
-        job_id: JobId,
-    ) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>> {
+    fn job_status(&self, job_id: JobId) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>> {
         Box::pin(async move {
             let (shard, local) = decode_id(job_id.0);
             let status = self.shard(shard)?.job_status(JobId(local)).await?;

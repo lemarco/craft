@@ -356,7 +356,10 @@ impl CraftyApp {
         session: &ActorSession,
         payload: Vec<u8>,
     ) -> Result<(), CastError> {
-        self.cluster.messaging().cast_session(session, payload).await
+        self.cluster
+            .messaging()
+            .cast_session(session, payload)
+            .await
     }
 
     /// Open a sticky session to a keyed worker pool (product helper).
