@@ -61,7 +61,7 @@ pub use craft_storage as storage;
 
 pub use builder::{CraftClusterBuilder, StartError};
 pub use certs::{CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_from_env};
-pub use cluster::{ClusterFacts, CraftCluster, LeaveError, ScaleClusterError};
+pub use cluster::{AddRaftGroupsError, ClusterFacts, CraftCluster, LeaveError, ScaleClusterError};
 pub use craft_actor::{ActorSession, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy, DirectoryRetry};
 pub use craft_actor::{
     AutoscalePolicy, ClusterJobQueue, EnqueueOptions, InMemoryJobQueue, InMemoryMailboxSpool,
