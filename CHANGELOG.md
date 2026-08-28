@@ -9,6 +9,32 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ## [Unreleased]
 
+### Added
+
+- **P3 stabilization** — scenario soak harness (`soak_actor_store`, `soak_saga`,
+  `soak_session`) in scheduled CI; public API audit ADR; 1.0 `missing_docs`
+  policy; Jepsen go/no-go evaluation.
+
+### Changed
+
+- **1.0 breaking-change policy** — after `1.0.0`, semver applies to the `crafty`
+  facade API documented in [public-api-1.0.md](docs/decisions/public-api-1.0.md).
+  Breaking changes require a major bump and a CHANGELOG migration section.
+  Pre-1.0 (`0.x`) may still ship breaking facade changes on minor releases with
+  notes here.
+
+### Deprecated
+
+- (none)
+
+### Removed
+
+- (none)
+
+### Security
+
+- (none)
+
 ## [0.1.0] — 2026-08-28
 
 Initial development release. The full workspace is in place and internally

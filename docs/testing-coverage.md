@@ -196,7 +196,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | `e2e` | Scheduled | `e2e/run.sh` + `e2e/leave.sh` + `e2e/chaos.sh` + `e2e/cert_renew.sh` + docker phase of `e2e/linearizability.sh` |
 | `linearizability-sim` | Scheduled | crafty-sim linearizability + read_index seed sweep (`e2e/linearizability.sh`) |
 | `store-redis` | Scheduled | `cargo test -p crafty-store-redis -- --ignored` |
-| `bench` | Scheduled | criterion (`append`/`apply`/`deliver`/`queue`) + 120s soak + 60s `soak_multi_raft` + 60s `soak_queue` |
+| `bench` | Scheduled | criterion (`append`/`apply`/`deliver`/`queue`) + 120s `soak` + 60s `soak_multi_raft` + 60s `soak_queue` + 60s `soak_actor_store` + 60s `soak_saga` + 60s `soak_session` |
 | `fuzz` | Scheduled | `cargo-fuzz` wire_decode in `crates/crafty-fuzz` |
 
 Local hooks mirror the fast lane: `lefthook` pre-commit (fmt, shellcheck, clippy —
@@ -217,6 +217,7 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 
 | Closed | What | Where |
 |--------|------|-------|
+| 2026-08 | Scenario soak per product path (actor store, saga resume, session restart) | `benchmarks/soak_{actor_store,saga,session}.rs`, `.gitlab-ci.yml` `bench` |
 | 2026-08 | Transport + facade gaps: QUIC backoff, DNS discovery, queue compaction, auto-spawn sim, admin/leave E2E | `crafty-net/tests/quic.rs`, `crafty/tests/{discovery,queue}.rs`, `crafty-sim/tests/{auto_spawn,actor_scenarios}.rs`, `e2e/{run,leave}.sh` |
 | 2026-08 | Runtime fatal-error observable path (`status()` → `None`, `Stopped`) | `crafty-actor/tests/runtime.rs` |
 | 2026-08 | Multi-Raft sim: shard routing + independent group safety | `crafty-sim/tests/multi_raft.rs` |

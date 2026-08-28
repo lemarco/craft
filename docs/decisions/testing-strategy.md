@@ -64,7 +64,23 @@ Adopt a **testing pyramid** with deterministic simulation at its core.
 
 ### Aspirational
 
-- Jepsen / Antithesis-style external validation before a 1.0 stability claim ([status.md](../status.md)).
+- Jepsen / Antithesis-style external validation before a **marketing** "formally
+  verified" claim — see [jepsen-1.0.md](jepsen-1.0.md) for scope and go/no-go.
+
+### Scenario soak (B-10, scheduled CI)
+
+Long-run in-process harnesses under `benchmarks/src/bin/` (real wall clock, not
+`start_paused`):
+
+| Binary | Scenario | Env budget |
+|--------|----------|------------|
+| `soak_queue` | Job enqueue + follower drain | `SOAK_QUEUE_SECS` (default 15) |
+| `soak_actor_store` | `RedbActorStateStore` + full cluster restart | `SOAK_ACTOR_STORE_SECS` |
+| `soak_saga` | Partial saga + restart + `resume_saga` | `SOAK_SAGA_SECS` |
+| `soak_session` | `ActorSession` + worker node restart | `SOAK_SESSION_SECS` |
+
+Also: `soak` (sim), `soak_multi_raft`. Nightly `bench` job runs 60–120s budgets.
+See [testing-coverage.md](../testing-coverage.md#ci-lane-mapping).
 
 ## Consequences
 

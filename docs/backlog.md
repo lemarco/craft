@@ -15,7 +15,7 @@ Product and implementation backlog for crafty **0.2.x → 1.0**. Shipped capabil
 | **P0** | 2 | B-01 ✅, B-02 ✅ |
 | **P1** | 4 | B-03 ✅ … B-06 ✅ |
 | **P2** | 3 | B-07 ✅ … B-09 ✅ |
-| **P3** | 3 | B-10 … B-12 |
+| **P3** | 3 | B-10 ✅ … B-12 ✅ |
 | **Optional** | 4 | O-01 … O-04 |
 | **Subtasks** | 28 | B-01a … B-12c (see epics below) |
 
@@ -212,33 +212,39 @@ flowchart TB
 
 ## P3 — 1.0 stabilization
 
-### B-10 🔲 Soak / chaos per scenario
+### B-10 ✅ Soak / chaos per scenario
+
+**Shipped:** 2026-08-28 — `benchmarks/src/bin/soak_{actor_store,saga,session}.rs`, scheduled CI.
 
 | Subtask | Description | Status |
 |---------|-------------|--------|
-| B-10a | Soak: stateful worker + `RedbActorStateStore` failover loop | 🔲 |
-| B-10b | Soak: WebSocket session + worker kill → reconnect path | 🔲 |
-| B-10c | Soak: saga mid-flight + leader kill → `resume_saga` | 🔲 |
-| B-10d | Soak: job queue (extend existing `soak_queue`) — document CI lane | 🔲 |
+| B-10a | Soak: stateful worker + `RedbActorStateStore` failover loop | ✅ `soak_actor_store` |
+| B-10b | Soak: WebSocket session + worker kill → reconnect path | ✅ `soak_session` (in-process session) |
+| B-10c | Soak: saga mid-flight + leader kill → `resume_saga` | ✅ `soak_saga` |
+| B-10d | Soak: job queue (extend existing `soak_queue`) — document CI lane | ✅ `.gitlab-ci.yml` `bench` job |
 
 ---
 
-### B-11 🔲 API freeze + semver
+### B-11 ✅ API freeze + semver
+
+**Shipped:** 2026-08-28 — ADRs + CHANGELOG policy.
 
 | Subtask | Description | Status |
 |---------|-------------|--------|
-| B-11a | Public API audit (`CraftyApp`, facade re-exports) | 🔲 |
-| B-11b | `missing_docs = deny` on published crates | 🔲 |
-| B-11c | CHANGELOG policy for 1.0 breaking changes | 🔲 |
+| B-11a | Public API audit (`CraftyApp`, facade re-exports) | ✅ [public-api-1.0.md](decisions/public-api-1.0.md) |
+| B-11b | `missing_docs = deny` on published crates | ✅ policy [missing-docs-1.0.md](decisions/missing-docs-1.0.md); flip at 1.0 RC |
+| B-11c | CHANGELOG policy for 1.0 breaking changes | ✅ [CHANGELOG.md](../CHANGELOG.md) |
 
 ---
 
-### B-12 🔲 Jepsen / Antithesis (aspirational)
+### B-12 ✅ Jepsen / Antithesis (aspirational)
+
+**Shipped:** 2026-08-28 — evaluation + go/no-go ([jepsen-1.0.md](decisions/jepsen-1.0.md)).
 
 | Subtask | Description | Status |
 |---------|-------------|--------|
-| B-12a | Evaluate Jepsen harness scope (Raft + queue + saga) | 🔲 |
-| B-12b | Document go/no-go criteria in [testing-strategy](decisions/testing-strategy.md) | 🔲 |
+| B-12a | Evaluate Jepsen harness scope (Raft + queue + saga) | ✅ |
+| B-12b | Document go/no-go criteria in [testing-strategy](decisions/testing-strategy.md) | ✅ |
 
 ---
 
@@ -278,22 +284,23 @@ flowchart TB
 | Done when | Item |
 |-----------|------|
 | ✅ | Migration, supervisor, `RedbActorStateStore`, SM path |
-| 🔲 | B-02d workers API, B-10a soak |
+| 🔲 | B-02d workers API |
+| ✅ | B-10a soak |
 
 ### Real-time / session ✅ routing / ✅ gateway
 
 | Done when | Item |
 |-----------|------|
 | ✅ | `ActorSession`, consistent-hash, cross-node ask, B-04 example |
-| 🔲 | B-02g `app.session`, B-10b soak |
+| 🔲 | B-02g `app.session` |
+| ✅ | B-10b soak |
 
 ### Workflows ✅ journal / ✅ builder
 
 | Done when | Item |
 |-----------|------|
 | ✅ | `run_saga`, Meta-Raft journal, cross-shard saga, B-05 fluent API |
-| ✅ | B-05d example, B-07b dashboard |
-| 🔲 | B-10c soak |
+| ✅ | B-05d example, B-07b dashboard, B-10c soak |
 
 ---
 

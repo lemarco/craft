@@ -3,6 +3,7 @@
 # root manifest) so criterion never compiles in the fast CI lane. Run with
 # `cargo bench` / `cargo run --release --bin soak` from this directory.
 # Queue hotspot: `cargo bench --bench queue`, `SOAK_QUEUE_SECS=60 cargo run --release --bin soak_queue`.
+# Scenario soaks (B-10): `soak_actor_store`, `soak_saga`, `soak_session` — see docs/testing-coverage.md.
 [package]
 name = "crafty-benchmarks"
 version = "0.0.0"
@@ -18,6 +19,7 @@ crafty-actor = { path = "../crates/crafty-actor" }
 crafty-proto = { path = "../crates/crafty-proto" }
 crafty-sim = { path = "../crates/crafty-sim" }
 crafty = { path = "../crates/crafty" }
+crafty-test-support = { path = "../crates/crafty-test-support", features = ["facade"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 serde = { version = "1", features = ["derive"] }
 tempfile = "3"
@@ -39,6 +41,18 @@ path = "src/bin/soak_multi_raft.rs"
 [[bin]]
 name = "soak_queue"
 path = "src/bin/soak_queue.rs"
+
+[[bin]]
+name = "soak_actor_store"
+path = "src/bin/soak_actor_store.rs"
+
+[[bin]]
+name = "soak_saga"
+path = "src/bin/soak_saga.rs"
+
+[[bin]]
+name = "soak_session"
+path = "src/bin/soak_session.rs"
 
 [[bench]]
 name = "append"

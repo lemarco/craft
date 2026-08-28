@@ -159,6 +159,9 @@ bench:
     - SOAK_SECS=120 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak
     - SOAK_MULTI_SECS=60 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak_multi_raft
     - SOAK_QUEUE_SECS=60 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak_queue
+    - SOAK_ACTOR_STORE_SECS=60 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak_actor_store
+    - SOAK_SAGA_SECS=60 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak_saga
+    - SOAK_SESSION_SECS=60 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak_session
 
 # --- Publish (library-and-publishing) ------------------------------------------------------
 # `cargo publish --workspace` resolves intra-workspace path deps locally and

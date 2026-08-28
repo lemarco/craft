@@ -1,5 +1,5 @@
 //! Job queue soak: sustained enqueue + follower lease/ack over a 3-node cluster
-//! (testing-strategy, job-queue ADR enqueue hotspot).
+//! (testing-strategy, job-queue ADR enqueue hotspot, B-10d scheduled CI).
 //!
 //! Configure via env:
 //!   SOAK_QUEUE_SECS       wall-clock budget (default 15)
