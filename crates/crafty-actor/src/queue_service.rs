@@ -11,20 +11,50 @@ use tokio::task::JoinSet;
 
 use crafty_net::transport::{Body, BoxFuture, Transport, TransportError};
 use crafty_net::{
-    Route, decode_body, encode_body, send_queue_ack, send_queue_enqueue, send_queue_lease,
-    send_queue_metrics, send_queue_nack, send_queue_replicate,
+    Route, decode_body, encode_body, send_queue_ack, send_queue_enqueue, send_queue_job_status,
+    send_queue_lease, send_queue_metrics, send_queue_nack, send_queue_replicate,
 };
 use crafty_proto::{
     NodeId, QueueAckReply, QueueAckRequest, QueueEnqueueReply, QueueEnqueueRequest,
-    QueueLeaseReply, QueueLeaseRequest, QueueLeasedJobWire, QueueMetricsReply, QueueMetricsRequest,
-    QueueNackReply, QueueNackRequest, QueueReplicateOp, QueueReplicateReply, QueueReplicateRequest,
+    QueueJobLifecycleWire, QueueJobStatusReply, QueueJobStatusRequest, QueueLeaseReply,
+    QueueLeaseRequest, QueueLeasedJobWire, QueueMetricsReply, QueueMetricsRequest, QueueNackReply,
+    QueueNackRequest, QueueReplicateOp, QueueReplicateReply, QueueReplicateRequest,
 };
 
 use crate::supervisor::ClusterState;
 use crate::{
-    EnqueueOptions, JobId, JobQueue, LeaseId, LeasedJob, NOT_LEADER_REASON, QueueError,
-    QueueMetrics, QueueReplicationOps, ShardedJobQueue, ShardedReplication, WorkerId,
+    EnqueueOptions, JobId, JobLifecycle, JobQueue, JobStatus, LeaseId, LeasedJob, NOT_LEADER_REASON,
+    QueueError, QueueMetrics, QueueReplicationOps, ShardedJobQueue, ShardedReplication, WorkerId,
 };
+
+fn job_status_to_reply(job_id: u64, status: Option<JobStatus>) -> QueueJobStatusReply {
+    match status {
+        None => QueueJobStatusReply {
+            found: false,
+            job_id,
+            lifecycle: None,
+            payload_len: 0,
+            priority: 0,
+            leased_worker_node: None,
+            leased_worker_instance: None,
+            error: None,
+        },
+        Some(s) => QueueJobStatusReply {
+            found: true,
+            job_id,
+            lifecycle: Some(match s.lifecycle {
+                JobLifecycle::Pending => QueueJobLifecycleWire::Pending,
+                JobLifecycle::Leased => QueueJobLifecycleWire::Leased,
+                JobLifecycle::Delayed => QueueJobLifecycleWire::Delayed,
+            }),
+            payload_len: s.payload_len,
+            priority: s.priority,
+            leased_worker_node: s.leased_by.map(|w| w.node.0),
+            leased_worker_instance: s.leased_by.map(|w| w.instance),
+            error: None,
+        },
+    }
+}
 
 fn enqueue_options_from_request(request: &QueueEnqueueRequest) -> EnqueueOptions {
     EnqueueOptions {
@@ -546,6 +576,66 @@ impl QueueService {
             }
         }
     }
+
+    async fn handle_job_status(&self, request: QueueJobStatusRequest) -> QueueJobStatusReply {
+        if self.state.is_leader() {
+            let status = if let Some(sharded) = self.sharded_stream(&request.stream) {
+                sharded.job_status(JobId(request.job_id)).await
+            } else {
+                match self.local_stream(&request.stream) {
+                    Err(e) => {
+                        return QueueJobStatusReply {
+                            found: false,
+                            job_id: request.job_id,
+                            lifecycle: None,
+                            payload_len: 0,
+                            priority: 0,
+                            leased_worker_node: None,
+                            leased_worker_instance: None,
+                            error: Some(e),
+                        };
+                    }
+                    Ok(queue) => queue.job_status(JobId(request.job_id)).await,
+                }
+            };
+            match status {
+                Ok(s) => job_status_to_reply(request.job_id, s),
+                Err(e) => QueueJobStatusReply {
+                    found: false,
+                    job_id: request.job_id,
+                    lifecycle: None,
+                    payload_len: 0,
+                    priority: 0,
+                    leased_worker_node: None,
+                    leased_worker_instance: None,
+                    error: Some(e.to_string()),
+                },
+            }
+        } else {
+            let transport = Arc::clone(&self.transport);
+            let request = request.clone();
+            match self
+                .forward_leader(move |leader| {
+                    Box::pin(async move {
+                        send_queue_job_status(transport.as_ref(), leader, &request).await
+                    })
+                })
+                .await
+            {
+                Ok(reply) => reply,
+                Err(e) => QueueJobStatusReply {
+                    found: false,
+                    job_id: request.job_id,
+                    lifecycle: None,
+                    payload_len: 0,
+                    priority: 0,
+                    leased_worker_node: None,
+                    leased_worker_instance: None,
+                    error: Some(e),
+                },
+            }
+        }
+    }
 }
 
 impl QueueService {
@@ -586,6 +676,10 @@ impl QueueService {
             Route::QueueMetrics => Box::pin(async move {
                 let request: QueueMetricsRequest = decode_body(&body)?;
                 Ok(encode_body(&service.handle_metrics(request).await)?)
+            }),
+            Route::QueueJobStatus => Box::pin(async move {
+                let request: QueueJobStatusRequest = decode_body(&body)?;
+                Ok(encode_body(&service.handle_job_status(request).await)?)
             }),
             Route::QueueReplicate => Box::pin(async move {
                 let request: QueueReplicateRequest = decode_body(&body)?;
@@ -837,6 +931,51 @@ impl JobQueue for ClusterJobQueue {
                 leased: reply.leased,
                 oldest_pending_age: std::time::Duration::from_millis(reply.oldest_pending_age_ms),
             })
+        })
+    }
+
+    fn job_status(
+        &self,
+        job_id: JobId,
+    ) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>> {
+        Box::pin(async move {
+            let leader = self.leader()?;
+            let reply = send_queue_job_status(
+                self.transport.as_ref(),
+                leader,
+                &QueueJobStatusRequest {
+                    stream: self.stream.clone(),
+                    job_id: job_id.0,
+                },
+            )
+            .await
+            .map_err(|e| QueueError::Backend(e.to_string()))?;
+            if let Some(err) = reply.error {
+                return Err(QueueError::Backend(err));
+            }
+            if !reply.found {
+                return Ok(None);
+            }
+            let lifecycle = reply.lifecycle.ok_or_else(|| {
+                QueueError::Backend("job status reply missing lifecycle".into())
+            })?;
+            Ok(Some(JobStatus {
+                job_id,
+                lifecycle: match lifecycle {
+                    QueueJobLifecycleWire::Pending => JobLifecycle::Pending,
+                    QueueJobLifecycleWire::Leased => JobLifecycle::Leased,
+                    QueueJobLifecycleWire::Delayed => JobLifecycle::Delayed,
+                },
+                payload_len: reply.payload_len,
+                priority: reply.priority,
+                leased_by: match (reply.leased_worker_node, reply.leased_worker_instance) {
+                    (Some(node), Some(instance)) => Some(WorkerId {
+                        node: NodeId(node),
+                        instance,
+                    }),
+                    _ => None,
+                },
+            }))
         })
     }
 }

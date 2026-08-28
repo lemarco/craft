@@ -92,6 +92,32 @@ impl EnqueueOptions {
     }
 }
 
+/// Lifecycle phase of a job in the queue (observability / HTTP lookup).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobLifecycle {
+    /// Waiting in the pending set (eligible to lease now).
+    Pending,
+    /// Leased to a worker (not yet acked).
+    Leased,
+    /// Enqueued but `not_before` is still in the future.
+    Delayed,
+}
+
+/// Metadata for a single job returned by [`JobQueue::job_status`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobStatus {
+    /// Job id within the stream (global id when using [`ShardedJobQueue`](super::sharded_queue::ShardedJobQueue)).
+    pub job_id: JobId,
+    /// Current lifecycle phase.
+    pub lifecycle: JobLifecycle,
+    /// Byte length of the stored payload (payload itself is not returned).
+    pub payload_len: u64,
+    /// Enqueue priority.
+    pub priority: u8,
+    /// Set when [`JobLifecycle::Leased`].
+    pub leased_by: Option<WorkerId>,
+}
+
 /// Depth gauges returned by [`JobQueue::metrics`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct QueueMetrics {
@@ -151,6 +177,12 @@ pub trait JobQueue: Send + Sync {
 
     /// Depth gauges for observability and autoscale.
     fn metrics(&self) -> BoxFuture<'_, Result<QueueMetrics, QueueError>>;
+
+    /// Lookup job metadata by id (`None` when acked or unknown).
+    fn job_status(
+        &self,
+        job_id: JobId,
+    ) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>>;
 
     /// Apply an idempotent replicated mutation from the queue leader.
     fn apply_replicate<'a>(
@@ -284,6 +316,40 @@ impl Inner {
                 self.pending.push_back(lease.job_id);
             }
         }
+    }
+
+    fn job_status(&self, job_id: JobId) -> Option<JobStatus> {
+        let Some(entry) = self.jobs.get(&job_id) else {
+            return None;
+        };
+        let now_ms = u64::try_from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis(),
+        )
+        .unwrap_or(u64::MAX);
+        let leased_by = self
+            .leases
+            .values()
+            .find(|lease| lease.job_id == job_id)
+            .map(|lease| lease.worker);
+        let lifecycle = if leased_by.is_some() {
+            JobLifecycle::Leased
+        } else if entry.not_before_ms > now_ms {
+            JobLifecycle::Delayed
+        } else if self.pending.contains(&job_id) {
+            JobLifecycle::Pending
+        } else {
+            return None;
+        };
+        Some(JobStatus {
+            job_id,
+            lifecycle,
+            payload_len: u64::try_from(entry.payload.len()).unwrap_or(u64::MAX),
+            priority: entry.priority,
+            leased_by,
+        })
     }
 
     fn metrics(&self) -> QueueMetrics {
@@ -625,6 +691,13 @@ impl JobQueue for InMemoryJobQueue {
     fn metrics(&self) -> BoxFuture<'_, Result<QueueMetrics, QueueError>> {
         Box::pin(async move { Ok(self.with_inner(|inner| inner.metrics())) })
     }
+
+    fn job_status(
+        &self,
+        job_id: JobId,
+    ) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>> {
+        Box::pin(async move { Ok(self.with_inner(|inner| inner.job_status(job_id))) })
+    }
 }
 
 /// Poll a [`JobQueue`], invoke `handle` on each payload, then ack or nack.
@@ -808,5 +881,19 @@ mod tests {
             q.ack(worker(1), leased[0].lease_id).await,
             Err(QueueError::InvalidLease)
         ));
+    }
+
+    #[tokio::test]
+    async fn job_status_reports_lifecycle() {
+        let q = InMemoryJobQueue::new(Duration::from_secs(30));
+        let id = q.enqueue(b"job").await.unwrap();
+        let pending = q.job_status(id).await.unwrap().expect("pending");
+        assert_eq!(pending.lifecycle, JobLifecycle::Pending);
+
+        let leased = q.lease(worker(0), 1).await.unwrap();
+        let status = q.job_status(id).await.unwrap().expect("leased");
+        assert_eq!(status.lifecycle, JobLifecycle::Leased);
+        q.ack(worker(0), leased[0].lease_id).await.unwrap();
+        assert!(q.job_status(id).await.unwrap().is_none());
     }
 }

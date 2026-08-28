@@ -6,8 +6,8 @@
 use std::sync::Arc;
 
 use super::{
-    BoxFuture, EnqueueOptions, JobId, JobQueue, LeaseId, LeasedJob, QueueError, QueueMetrics,
-    QueueReplicationOps, WorkerId,
+    BoxFuture, EnqueueOptions, JobId, JobQueue, JobStatus, LeaseId, LeasedJob, QueueError,
+    QueueMetrics, QueueReplicationOps, WorkerId,
 };
 
 const SHARD_SHIFT: u32 = 56;
@@ -281,6 +281,20 @@ impl JobQueue for ShardedJobQueue {
                 }
             }
             Ok(total)
+        })
+    }
+
+    fn job_status(
+        &self,
+        job_id: JobId,
+    ) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>> {
+        Box::pin(async move {
+            let (shard, local) = decode_id(job_id.0);
+            let status = self.shard(shard)?.job_status(JobId(local)).await?;
+            Ok(status.map(|mut s| {
+                s.job_id = job_id;
+                s
+            }))
         })
     }
 }

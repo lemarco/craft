@@ -62,7 +62,7 @@ pub use {crafty_dashboard as dashboard, crafty_macros as macros, crafty_net as n
 #[doc(inline)]
 pub use crafty_storage as storage;
 
-pub use app::{CraftyApp, CraftyAppBuilder, EmptyStateMachine};
+pub use app::{CraftyApp, CraftyAppBuilder, EmptyStateMachine, WorkerInfo};
 pub use builder::{CraftyClusterBuilder, StartError};
 pub use certs::{CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_from_env};
 pub use cluster::{AddRaftGroupsError, ClusterFacts, CraftyCluster, LeaveError, ScaleClusterError};

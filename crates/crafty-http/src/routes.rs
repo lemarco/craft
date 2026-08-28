@@ -1,4 +1,4 @@
-//! Axum routes for job enqueue.
+//! Axum routes for job enqueue and lookup.
 
 use std::sync::Arc;
 
@@ -6,12 +6,14 @@ use axum::Router;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::IntoResponse;
-use axum::routing::post;
+use axum::routing::{get, post};
 use bytes::Bytes;
-use crafty_actor::EnqueueOptions;
+use crafty_actor::{EnqueueOptions, JobLifecycle};
 
 use crate::JobsApiState;
-use crate::types::{EnqueueAccepted, EnqueueJsonBody, JobsApiError};
+use crate::types::{
+    EnqueueAccepted, EnqueueJsonBody, JobStatusResponse, JobsApiError, LeasedByResponse,
+};
 
 /// Query parameters for optional enqueue behaviour.
 #[derive(Debug, Default, serde::Deserialize)]
@@ -22,9 +24,11 @@ pub struct EnqueueQuery {
     pub dedup: Option<String>,
 }
 
-/// Axum sub-router for `POST /jobs/{stream}`.
+/// Axum sub-router for `POST /jobs/{stream}` and `GET /jobs/{stream}/{id}`.
 pub fn jobs_router() -> Router<Arc<JobsApiState>> {
-    Router::new().route("/jobs/{stream}", post(post_job))
+    Router::new()
+        .route("/jobs/{stream}", post(post_job))
+        .route("/jobs/{stream}/{job_id}", get(get_job))
 }
 
 async fn post_job(
@@ -49,6 +53,36 @@ async fn post_job(
         StatusCode::ACCEPTED,
         axum::Json(EnqueueAccepted { job_id: job_id.0 }),
     ))
+}
+
+async fn get_job(
+    State(state): State<Arc<JobsApiState>>,
+    Path((stream, job_id)): Path<(String, u64)>,
+) -> Result<impl IntoResponse, JobsApiError> {
+    let status = (state.job_status)(stream, job_id)
+        .await
+        .map_err(|e| JobsApiError::Queue(e.to_string()))?;
+    let Some(status) = status else {
+        return Err(JobsApiError::NotFound);
+    };
+    Ok(axum::Json(JobStatusResponse {
+        job_id: status.job_id.0,
+        state: lifecycle_name(status.lifecycle),
+        payload_len: status.payload_len,
+        priority: status.priority,
+        leased_by: status.leased_by.map(|w| LeasedByResponse {
+            node: w.node.0,
+            instance: w.instance,
+        }),
+    }))
+}
+
+const fn lifecycle_name(lifecycle: JobLifecycle) -> &'static str {
+    match lifecycle {
+        JobLifecycle::Pending => "pending",
+        JobLifecycle::Leased => "leased",
+        JobLifecycle::Delayed => "delayed",
+    }
 }
 
 /// Parse request body as raw bytes or JSON envelope.
@@ -87,19 +121,30 @@ mod tests {
     use super::*;
     use axum::body::Body;
     use axum::http::Request;
-    use crafty_actor::JobId;
+    use crafty_actor::{JobId, JobLifecycle, JobStatus};
     use std::future;
     use tower::ServiceExt;
 
+    fn test_state(
+        enqueue: crate::EnqueueFn,
+        job_status: crate::JobStatusFn,
+    ) -> Arc<JobsApiState> {
+        Arc::new(JobsApiState {
+            enqueue,
+            job_status,
+        })
+    }
+
     #[tokio::test]
     async fn post_job_returns_202_with_id() {
-        let state = Arc::new(JobsApiState {
-            enqueue: Arc::new(|stream, payload, _opts| {
+        let state = test_state(
+            Arc::new(|stream, payload, _opts| {
                 assert_eq!(stream, "emails");
                 assert_eq!(payload, b"hello");
                 Box::pin(future::ready(Ok(JobId(42))))
             }),
-        });
+            Arc::new(|_, _| Box::pin(future::ready(Ok(None)))),
+        );
         let app = jobs_router().with_state(state);
         let req = Request::builder()
             .method("POST")
@@ -109,6 +154,48 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::ACCEPTED);
+    }
+
+    #[tokio::test]
+    async fn get_job_returns_metadata() {
+        let state = test_state(
+            Arc::new(|_, _, _| Box::pin(future::ready(Ok(JobId(1))))),
+            Arc::new(|stream, job_id| {
+                assert_eq!(stream, "emails");
+                assert_eq!(job_id, 7);
+                Box::pin(future::ready(Ok(Some(JobStatus {
+                    job_id: JobId(7),
+                    lifecycle: JobLifecycle::Pending,
+                    payload_len: 5,
+                    priority: 2,
+                    leased_by: None,
+                }))))
+            }),
+        );
+        let app = jobs_router().with_state(state);
+        let req = Request::builder()
+            .method("GET")
+            .uri("/jobs/emails/7")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn get_job_missing_returns_404() {
+        let state = test_state(
+            Arc::new(|_, _, _| Box::pin(future::ready(Ok(JobId(1))))),
+            Arc::new(|_, _| Box::pin(future::ready(Ok(None)))),
+        );
+        let app = jobs_router().with_state(state);
+        let req = Request::builder()
+            .method("GET")
+            .uri("/jobs/emails/99")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
     #[test]

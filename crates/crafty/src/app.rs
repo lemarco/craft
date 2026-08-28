@@ -8,7 +8,9 @@ use std::time::Duration;
 
 use crafty_actor::ClientError;
 use crafty_actor::NodeHandle;
-use crafty_actor::{ActorSession, ClusterRef, EnqueueOptions, JobId, UserActor};
+use crafty_actor::{
+    ActorSession, CastError, ClusterRef, EnqueueOptions, JobId, JobStatus, UserActor,
+};
 use crafty_core::StateMachine;
 use crafty_net::LocalNetwork;
 use crafty_proto::LogIndex;
@@ -18,6 +20,15 @@ use crate::builder::{CraftyClusterBuilder, StartError};
 use crate::cluster::CraftyCluster;
 use crate::env_config::{AppConfig, app_config_from_env};
 use crate::security::Security;
+
+/// A worker instance registered in the cluster directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkerInfo {
+    /// Hosting cluster node.
+    pub node: u64,
+    /// Worker actor instance id on that node.
+    pub instance: u32,
+}
 
 /// Minimal state machine for actor-only / queue-only applications.
 #[derive(Debug, Default, Clone, Copy)]
@@ -293,6 +304,71 @@ impl CraftyApp {
         queue.enqueue_opts(payload, options).await
     }
 
+    /// Lookup job metadata by id (`None` when acked or unknown).
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or lookup fails.
+    pub async fn job_status(
+        &self,
+        stream: &str,
+        job_id: JobId,
+    ) -> Result<Option<JobStatus>, crafty_actor::QueueError> {
+        let queue = self.cluster.job_queue(stream).ok_or_else(|| {
+            crafty_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
+        })?;
+        queue.job_status(job_id).await
+    }
+
+    /// Worker group names known cluster-wide (from the actor directory).
+    #[must_use]
+    pub fn worker_groups(&self) -> Vec<String> {
+        self.cluster.directory().groups()
+    }
+
+    /// Instances registered for a worker group.
+    #[must_use]
+    pub fn workers(&self, group: &str) -> Vec<WorkerInfo> {
+        self.cluster
+            .directory()
+            .lookup(group)
+            .into_iter()
+            .map(|reg| WorkerInfo {
+                node: reg.id.node.0,
+                instance: reg.id.instance,
+            })
+            .collect()
+    }
+
+    /// Round-robin cast to any instance in `group`.
+    ///
+    /// # Errors
+    /// Returns [`CastError::NoTarget`] when the group has no live workers.
+    pub async fn cast(&self, group: &str, payload: Vec<u8>) -> Result<(), CastError> {
+        self.cluster.messaging().cast(group, payload).await
+    }
+
+    /// Cast to a sticky session opened via [`Self::session`].
+    ///
+    /// # Errors
+    /// Returns [`CastError`] when the session target is gone or delivery fails.
+    pub async fn cast_session(
+        &self,
+        session: &ActorSession,
+        payload: Vec<u8>,
+    ) -> Result<(), CastError> {
+        self.cluster.messaging().cast_session(session, payload).await
+    }
+
+    /// Open a sticky session to a keyed worker pool (product helper).
+    pub fn session<K: Hash>(
+        &self,
+        group: &str,
+        key: &K,
+        ttl: Option<Duration>,
+    ) -> Option<ActorSession> {
+        self.session_keyed(group, key, ttl)
+    }
+
     /// Open a sticky session to a keyed worker pool.
     pub fn session_keyed<K: Hash>(
         &self,
@@ -332,16 +408,24 @@ impl CraftyApp {
     /// ```
     #[cfg(feature = "http-jobs")]
     pub fn jobs_api(app: Arc<Self>) -> crafty_http::JobsApi {
-        crafty_http::JobsApi::new(Arc::new(move |stream, payload, opts| {
-            let app = Arc::clone(&app);
-            Box::pin(async move {
-                if opts == EnqueueOptions::default() {
-                    app.enqueue(&stream, &payload).await
-                } else {
-                    app.enqueue_opts(&stream, &payload, opts).await
-                }
-            })
-        }))
+        let enqueue_app = Arc::clone(&app);
+        let status_app = app;
+        crafty_http::JobsApi::new(
+            Arc::new(move |stream, payload, opts| {
+                let app = Arc::clone(&enqueue_app);
+                Box::pin(async move {
+                    if opts == EnqueueOptions::default() {
+                        app.enqueue(&stream, &payload).await
+                    } else {
+                        app.enqueue_opts(&stream, &payload, opts).await
+                    }
+                })
+            }),
+            Arc::new(move |stream, job_id| {
+                let app = Arc::clone(&status_app);
+                Box::pin(async move { app.job_status(&stream, JobId(job_id)).await })
+            }),
+        )
     }
 
     /// Run a cross-shard workflow using the node's default saga journal.

@@ -45,6 +45,8 @@ pub const QUEUE_ACK_PATH: &str = "/raft/v1/queue/ack";
 pub const QUEUE_NACK_PATH: &str = "/raft/v1/queue/nack";
 /// Queue depth gauges for autoscale / observability.
 pub const QUEUE_METRICS_PATH: &str = "/raft/v1/queue/metrics";
+/// Lookup job metadata by id.
+pub const QUEUE_JOB_STATUS_PATH: &str = "/raft/v1/queue/job-status";
 /// Leader → follower replication of queue mutations (failover durability).
 pub const QUEUE_REPLICATE_PATH: &str = "/raft/v1/queue/replicate";
 /// Set an actor workflow key on the store leader ([actor-state-store](../../../docs/decisions/actor-state-store.md)).
@@ -110,6 +112,8 @@ pub enum Route {
     QueueNack,
     /// [`QUEUE_METRICS_PATH`].
     QueueMetrics,
+    /// [`QUEUE_JOB_STATUS_PATH`].
+    QueueJobStatus,
     /// [`QUEUE_REPLICATE_PATH`].
     QueueReplicate,
     /// [`ACTOR_STORE_SET_PATH`].
@@ -124,7 +128,7 @@ pub enum Route {
 
 impl Route {
     /// Every route, in a stable order (handy for building a router or tests).
-    pub const ALL: [Route; 23] = [
+    pub const ALL: [Route; 24] = [
         Route::PeerWire,
         Route::ClientWire,
         Route::ClusterJoin,
@@ -143,6 +147,7 @@ impl Route {
         Route::QueueAck,
         Route::QueueNack,
         Route::QueueMetrics,
+        Route::QueueJobStatus,
         Route::QueueReplicate,
         Route::ActorStoreSet,
         Route::ActorStoreDelete,
@@ -172,6 +177,7 @@ impl Route {
             Route::QueueAck => QUEUE_ACK_PATH,
             Route::QueueNack => QUEUE_NACK_PATH,
             Route::QueueMetrics => QUEUE_METRICS_PATH,
+            Route::QueueJobStatus => QUEUE_JOB_STATUS_PATH,
             Route::QueueReplicate => QUEUE_REPLICATE_PATH,
             Route::ActorStoreSet => ACTOR_STORE_SET_PATH,
             Route::ActorStoreDelete => ACTOR_STORE_DELETE_PATH,
@@ -208,6 +214,7 @@ impl Route {
             | Route::QueueAck
             | Route::QueueNack
             | Route::QueueMetrics
+            | Route::QueueJobStatus
             | Route::QueueReplicate
             | Route::ActorStoreSet
             | Route::ActorStoreDelete

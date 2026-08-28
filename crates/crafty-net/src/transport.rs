@@ -20,8 +20,9 @@ use crafty_proto::{
     ActorEnvelope, CatalogAddRequest, CatalogAddResponse, ClientRequest, ClientResponse,
     DeliverAck, DirectoryUpdate, GroupMigrateReply, GroupMigrateRequest, JoinRequest, JoinResponse,
     LeaveRequest, LeaveResponse, MigrateReply, MigrateRequest, NodeId, PeerBook, QueueAckReply,
-    QueueAckRequest, QueueEnqueueReply, QueueEnqueueRequest, QueueLeaseReply, QueueLeaseRequest,
-    QueueMetricsReply, QueueMetricsRequest, QueueNackReply, QueueNackRequest, QueueReplicateReply,
+    QueueAckRequest, QueueEnqueueReply, QueueEnqueueRequest, QueueJobStatusReply,
+    QueueJobStatusRequest, QueueLeaseReply, QueueLeaseRequest, QueueMetricsReply,
+    QueueMetricsRequest, QueueNackReply, QueueNackRequest, QueueReplicateReply,
     QueueReplicateRequest, RaftRpc, RaftRpcReply, RegisterAck, ScaleReply, ScaleRequest,
     SpawnReply, SpawnRequest, StopReply, StopRequest, StoreCompareAndSetReply,
     StoreCompareAndSetRequest, StoreDeleteReply, StoreDeleteRequest, StoreReplicateReply,
@@ -420,6 +421,20 @@ pub async fn send_queue_metrics<T: Transport + ?Sized>(
 ) -> Result<QueueMetricsReply, TransportError> {
     let body = encode_body(request)?;
     let response = transport.send(peer, Route::QueueMetrics, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Lookup job metadata by id (`/queue/job-status`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_queue_job_status<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &QueueJobStatusRequest,
+) -> Result<QueueJobStatusReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::QueueJobStatus, body).await?;
     Ok(decode_body(&response)?)
 }
 

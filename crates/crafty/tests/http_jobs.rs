@@ -49,11 +49,14 @@ async fn http_post_job_returns_202_and_enqueues() {
     let resp = router.clone().oneshot(req).await.expect("route");
     assert_eq!(resp.status(), StatusCode::ACCEPTED);
 
-    let job_id = app
-        .enqueue("jobs", b"send-email")
-        .await
-        .expect("dedup enqueue returns same job");
-    assert!(job_id.0 >= 1);
+    let job_id = app.enqueue("jobs", b"send-email").await.expect("enqueue");
+    let get_req = Request::builder()
+        .method("GET")
+        .uri(format!("/jobs/jobs/{}", job_id.0))
+        .body(Body::empty())
+        .unwrap();
+    let get_resp = router.oneshot(get_req).await.expect("get");
+    assert_eq!(get_resp.status(), StatusCode::OK);
 
     app.cluster().shutdown();
     let _ = std::fs::remove_dir_all(base);

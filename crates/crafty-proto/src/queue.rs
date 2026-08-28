@@ -125,6 +125,48 @@ pub struct QueueMetricsReply {
     pub error: Option<String>,
 }
 
+/// Job lifecycle returned by [`QueueJobStatusReply`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum QueueJobLifecycleWire {
+    /// Waiting in pending (ready to lease).
+    Pending = 0,
+    /// Currently leased to a worker.
+    Leased = 1,
+    /// Delayed until `not_before`.
+    Delayed = 2,
+}
+
+/// Lookup job metadata by id (`POST /raft/v1/queue/job-status`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueJobStatusRequest {
+    /// Stream to inspect.
+    pub stream: String,
+    /// Job id within the stream (global id when sharded).
+    pub job_id: u64,
+}
+
+/// Metadata for a single job (`POST /raft/v1/queue/job-status`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueJobStatusReply {
+    /// `true` when the job exists (pending, leased, or delayed).
+    pub found: bool,
+    /// Echo of the requested id.
+    pub job_id: u64,
+    /// Set when [`Self::found`] is true.
+    pub lifecycle: Option<QueueJobLifecycleWire>,
+    /// Byte length of stored payload.
+    pub payload_len: u64,
+    /// Enqueue priority.
+    pub priority: u8,
+    /// Worker node when leased.
+    pub leased_worker_node: Option<u64>,
+    /// Worker instance when leased.
+    pub leased_worker_instance: Option<u32>,
+    /// Set when lookup failed.
+    pub error: Option<String>,
+}
+
 /// Idempotent state transition replicated from the queue leader to every voter
 /// (`POST /raft/v1/queue/replicate`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

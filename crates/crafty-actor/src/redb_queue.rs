@@ -12,8 +12,8 @@ use crafty_proto::{QueueReplicateOp, decode, encode};
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 
 use super::{
-    BoxFuture, EnqueueOptions, JobId, JobQueue, LeaseId, LeasedJob, QueueError, QueueMetrics,
-    QueueReplicationOps, WorkerId,
+    BoxFuture, EnqueueOptions, JobId, JobLifecycle, JobQueue, JobStatus, LeaseId, LeasedJob,
+    QueueError, QueueMetrics, QueueReplicationOps, WorkerId,
 };
 
 const JOBS: TableDefinition<u64, &[u8]> = TableDefinition::new("queue_jobs");
@@ -351,6 +351,52 @@ impl RedbJobQueue {
         Ok(())
     }
 
+    fn job_status_inner(&self, job_id: JobId) -> Result<Option<JobStatus>, QueueError> {
+        self.reclaim_expired()?;
+        let now = now_ms();
+        let txn = self
+            .db
+            .lock()
+            .expect("poisoned")
+            .begin_read()
+            .map_err(backend)?;
+        let jobs = txn.open_table(JOBS).map_err(backend)?;
+        let pending = txn.open_table(PENDING).map_err(backend)?;
+        let leases = txn.open_table(LEASES).map_err(backend)?;
+        let Some(job_bytes) = jobs.get(job_id.0).map_err(backend)? else {
+            return Ok(None);
+        };
+        let stored: StoredJob = decode(job_bytes.value()).map_err(codec)?;
+        let mut leased_by = None;
+        for row in leases.iter().map_err(backend)? {
+            let (_, bytes) = row.map_err(backend)?;
+            let lease: StoredLease = decode(bytes.value()).map_err(codec)?;
+            if lease.job_id == job_id.0 {
+                leased_by = Some(WorkerId {
+                    node: crafty_proto::NodeId(lease.worker_node),
+                    instance: lease.worker_instance,
+                });
+                break;
+            }
+        }
+        let lifecycle = if leased_by.is_some() {
+            JobLifecycle::Leased
+        } else if stored.not_before_ms > now {
+            JobLifecycle::Delayed
+        } else if pending.get(job_id.0).map_err(backend)?.is_some() {
+            JobLifecycle::Pending
+        } else {
+            return Ok(None);
+        };
+        Ok(Some(JobStatus {
+            job_id,
+            lifecycle,
+            payload_len: u64::try_from(stored.payload.len()).unwrap_or(u64::MAX),
+            priority: stored.priority,
+            leased_by,
+        }))
+    }
+
     fn metrics_inner(&self) -> Result<QueueMetrics, QueueError> {
         self.reclaim_expired()?;
         let txn = self
@@ -663,6 +709,13 @@ impl JobQueue for RedbJobQueue {
 
     fn metrics(&self) -> BoxFuture<'_, Result<QueueMetrics, QueueError>> {
         Box::pin(async move { self.metrics_inner() })
+    }
+
+    fn job_status(
+        &self,
+        job_id: JobId,
+    ) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>> {
+        Box::pin(async move { self.job_status_inner(job_id) })
     }
 }
 
