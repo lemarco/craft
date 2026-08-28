@@ -31,6 +31,7 @@ mod ring;
 mod runtime;
 mod session;
 mod sharded;
+mod sharded_queue;
 mod store;
 mod store_codec;
 mod supervisor;
@@ -49,10 +50,13 @@ pub use placement::{
     ScalePlan, plan_scale,
 };
 pub use queue::{
-    InMemoryJobQueue, JobId, JobQueue, LeaseId, LeasedJob, QueueError, QueueMetrics,
-    QueueReplicateOp, QueueReplicationOps, WorkerId, run_queue_consumer,
+    EnqueueOptions, InMemoryJobQueue, JobId, JobQueue, LeaseId, LeasedJob, QueueError,
+    QueueMetrics, QueueReplicateOp, QueueReplicationOps, WorkerId, run_queue_consumer,
 };
-pub use queue_autoscale::{AutoscalePolicy, run_queue_autoscaler};
+pub use queue_autoscale::{
+    AutoscalePolicy, MembershipAutoscalePolicy, run_queue_autoscaler,
+    run_queue_membership_autoscaler,
+};
 pub use queue_service::{ClusterJobQueue, QueueService};
 pub use redb_queue::RedbJobQueue;
 pub use registry::{
@@ -68,6 +72,7 @@ pub use runtime::{
     TwoPhaseGcAbortedFn, TwoPhaseJournalAppliedFn, spawn as spawn_node,
 };
 pub use session::ActorSession;
+pub use sharded_queue::{ShardedJobQueue, ShardedReplication};
 pub use tracing_init::init_tracing;
 pub mod rebalance_log;
 pub use sharded::{

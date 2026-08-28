@@ -11,13 +11,14 @@ use craft_proto::{QueueReplicateOp, decode, encode};
 use redb::{Database, ReadableTable, TableDefinition};
 
 use super::{
-    BoxFuture, JobId, JobQueue, LeaseId, LeasedJob, QueueError, QueueMetrics, QueueReplicationOps,
-    WorkerId,
+    BoxFuture, EnqueueOptions, JobId, JobQueue, LeaseId, LeasedJob, QueueError, QueueMetrics,
+    QueueReplicationOps, WorkerId,
 };
 
 const JOBS: TableDefinition<u64, &[u8]> = TableDefinition::new("queue_jobs");
 const PENDING: TableDefinition<u64, &[u8]> = TableDefinition::new("queue_pending");
 const LEASES: TableDefinition<u64, &[u8]> = TableDefinition::new("queue_leases");
+const DEDUP: TableDefinition<&[u8], u64> = TableDefinition::new("queue_dedup");
 const META: TableDefinition<&str, &[u8]> = TableDefinition::new("queue_meta");
 
 const K_NEXT_JOB: &str = "next_job_id";
@@ -27,6 +28,12 @@ const K_NEXT_LEASE: &str = "next_lease_id";
 struct StoredJob {
     payload: Vec<u8>,
     enqueued_at_ms: u64,
+    #[serde(default)]
+    priority: u8,
+    #[serde(default)]
+    not_before_ms: u64,
+    #[serde(default)]
+    dedup_key: Option<Vec<u8>>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -61,6 +68,47 @@ pub struct RedbJobQueue {
     write_lock: Mutex<()>,
 }
 
+fn ready_pending_count(
+    jobs: &redb::ReadOnlyTable<u64, &[u8]>,
+    pending: &redb::ReadOnlyTable<u64, &[u8]>,
+    now_ms: u64,
+) -> Result<u64, QueueError> {
+    let mut count = 0u64;
+    for row in pending.iter().map_err(backend)? {
+        let (job_id, _) = row.map_err(backend)?;
+        if let Some(job_bytes) = jobs.get(job_id.value()).map_err(backend)? {
+            let stored: StoredJob = decode(job_bytes.value()).map_err(codec)?;
+            if stored.not_before_ms <= now_ms {
+                count += 1;
+            }
+        }
+    }
+    Ok(count)
+}
+
+fn select_pending_ids(
+    jobs: &redb::ReadOnlyTable<u64, &[u8]>,
+    pending: &redb::ReadOnlyTable<u64, &[u8]>,
+    max: usize,
+    now_ms: u64,
+) -> Result<Vec<u64>, QueueError> {
+    let mut ready = Vec::new();
+    for row in pending.iter().map_err(backend)? {
+        let (job_id, _) = row.map_err(backend)?;
+        let id = job_id.value();
+        let Some(job_bytes) = jobs.get(id).map_err(backend)? else {
+            continue;
+        };
+        let stored: StoredJob = decode(job_bytes.value()).map_err(codec)?;
+        if stored.not_before_ms <= now_ms {
+            ready.push((stored.priority, id));
+        }
+    }
+    ready.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    ready.truncate(max);
+    Ok(ready.into_iter().map(|(_, id)| id).collect())
+}
+
 impl RedbJobQueue {
     /// Open or create the queue database at `path`.
     ///
@@ -85,6 +133,7 @@ impl RedbJobQueue {
             txn.open_table(JOBS).map_err(backend)?;
             txn.open_table(PENDING).map_err(backend)?;
             txn.open_table(LEASES).map_err(backend)?;
+            txn.open_table(DEDUP).map_err(backend)?;
             let mut meta = txn.open_table(META).map_err(backend)?;
             if meta.get(K_NEXT_JOB).map_err(backend)?.is_none() {
                 meta.insert(K_NEXT_JOB, encode(&1u64).map_err(codec)?.as_slice())
@@ -152,6 +201,36 @@ impl RedbJobQueue {
         Ok(())
     }
 
+    fn dedup_lookup_read(
+        dedup: &redb::ReadOnlyTable<&[u8], u64>,
+        jobs: &redb::ReadOnlyTable<u64, &[u8]>,
+        key: &[u8],
+    ) -> Result<Option<u64>, QueueError> {
+        let Some(existing) = dedup.get(key).map_err(backend)? else {
+            return Ok(None);
+        };
+        let job_id = existing.value();
+        if jobs.get(job_id).map_err(backend)?.is_some() {
+            Ok(Some(job_id))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn remove_job_and_dedup(
+        jobs: &mut redb::Table<'_, u64, &[u8]>,
+        dedup: &mut redb::Table<'_, &[u8], u64>,
+        job_id: u64,
+    ) -> Result<(), QueueError> {
+        if let Some(bytes) = jobs.remove(job_id).map_err(backend)? {
+            let stored: StoredJob = decode(bytes.value()).map_err(codec)?;
+            if let Some(key) = stored.dedup_key {
+                dedup.remove(key.as_slice()).map_err(backend)?;
+            }
+        }
+        Ok(())
+    }
+
     fn apply_replicate_inner(&self, op: &QueueReplicateOp) -> Result<(), QueueError> {
         let _g = self.write_lock.lock().expect("poisoned");
         let txn = self.db.begin_write().map_err(backend)?;
@@ -159,6 +238,7 @@ impl RedbJobQueue {
             let mut jobs = txn.open_table(JOBS).map_err(backend)?;
             let mut pending = txn.open_table(PENDING).map_err(backend)?;
             let mut leases = txn.open_table(LEASES).map_err(backend)?;
+            let mut dedup = txn.open_table(DEDUP).map_err(backend)?;
             let mut meta = txn.open_table(META).map_err(backend)?;
             match op {
                 QueueReplicateOp::Enqueue {
@@ -166,15 +246,43 @@ impl RedbJobQueue {
                     payload,
                     enqueued_at_ms,
                     next_job_id,
+                    priority,
+                    not_before_ms,
+                    dedup_key,
                 } => {
+                    let mut duplicate = false;
+                    if let Some(key) = &dedup_key
+                        && let Some(existing) = dedup.get(key.as_slice()).map_err(backend)?
+                    {
+                        duplicate = jobs.get(existing.value()).map_err(backend)?.is_some();
+                    }
+                    if duplicate {
+                        drop(jobs);
+                        drop(pending);
+                        drop(leases);
+                        drop(dedup);
+                        drop(meta);
+                        {
+                            let mut meta = txn.open_table(META).map_err(backend)?;
+                            Self::bump_meta_u64(&mut meta, K_NEXT_JOB, *next_job_id)?;
+                        }
+                        txn.commit().map_err(backend)?;
+                        return Ok(());
+                    }
                     if jobs.get(*job_id).map_err(backend)?.is_none() {
                         let stored = StoredJob {
                             payload: payload.clone(),
                             enqueued_at_ms: *enqueued_at_ms,
+                            priority: *priority,
+                            not_before_ms: *not_before_ms,
+                            dedup_key: dedup_key.clone(),
                         };
                         jobs.insert(*job_id, encode(&stored).map_err(codec)?.as_slice())
                             .map_err(backend)?;
                         pending.insert(*job_id, &[] as &[u8]).map_err(backend)?;
+                        if let Some(key) = dedup_key {
+                            dedup.insert(key.as_slice(), *job_id).map_err(backend)?;
+                        }
                     }
                     Self::bump_meta_u64(&mut meta, K_NEXT_JOB, *next_job_id)?;
                 }
@@ -202,7 +310,7 @@ impl RedbJobQueue {
                 }
                 QueueReplicateOp::Ack { lease_id, job_id } => {
                     leases.remove(*lease_id).map_err(backend)?;
-                    jobs.remove(*job_id).map_err(backend)?;
+                    Self::remove_job_and_dedup(&mut jobs, &mut dedup, *job_id)?;
                 }
                 QueueReplicateOp::Nack { lease_id, job_id }
                 | QueueReplicateOp::Reclaim { lease_id, job_id } => {
@@ -229,7 +337,8 @@ impl RedbJobQueue {
         let leases = txn.open_table(LEASES).map_err(backend)?;
         let jobs = txn.open_table(JOBS).map_err(backend)?;
 
-        let pending_count = pending.iter().map_err(backend)?.count() as u64;
+        let now = now_ms();
+        let pending_count = ready_pending_count(&jobs, &pending, now)?;
         let leased_count = leases.iter().map_err(backend)?.count() as u64;
 
         let oldest_ms = pending
@@ -240,7 +349,7 @@ impl RedbJobQueue {
                 let job_id = job_id.value();
                 let bytes = jobs.get(job_id).ok().flatten()?;
                 let stored: StoredJob = decode(bytes.value()).ok()?;
-                Some(stored.enqueued_at_ms)
+                (stored.not_before_ms <= now).then_some(stored.enqueued_at_ms)
             })
             .min();
 
@@ -257,8 +366,16 @@ impl RedbJobQueue {
 }
 
 impl JobQueue for RedbJobQueue {
-    fn enqueue<'a>(&'a self, payload: &'a [u8]) -> BoxFuture<'a, Result<JobId, QueueError>> {
-        Box::pin(async move { self.enqueue_replicated(payload).await.map(|(id, _)| id) })
+    fn enqueue_opts<'a>(
+        &'a self,
+        payload: &'a [u8],
+        options: EnqueueOptions,
+    ) -> BoxFuture<'a, Result<JobId, QueueError>> {
+        Box::pin(async move {
+            self.enqueue_opts_replicated(payload, options)
+                .await
+                .map(|(id, _)| id)
+        })
     }
 
     fn apply_replicate<'a>(
@@ -268,17 +385,30 @@ impl JobQueue for RedbJobQueue {
         Box::pin(async move { self.apply_replicate_inner(op) })
     }
 
-    fn enqueue_replicated<'a>(
+    fn enqueue_opts_replicated<'a>(
         &'a self,
         payload: &'a [u8],
+        options: EnqueueOptions,
     ) -> BoxFuture<'a, Result<(JobId, QueueReplicationOps), QueueError>> {
         Box::pin(async move {
             let mut ops = self.reclaim_expired_ops()?;
+            if let Some(key) = &options.dedup_key {
+                let read = self.db.begin_read().map_err(backend)?;
+                let dedup = read.open_table(DEDUP).map_err(backend)?;
+                let jobs = read.open_table(JOBS).map_err(backend)?;
+                if let Some(existing) = Self::dedup_lookup_read(&dedup, &jobs, key)? {
+                    return Ok((JobId(existing), ops));
+                }
+            }
             let job_id = self.read_meta_u64(K_NEXT_JOB)?;
             let enqueued_at_ms = now_ms();
+            let not_before_ms = options.not_before_ms.unwrap_or(enqueued_at_ms);
             let stored = StoredJob {
                 payload: payload.to_vec(),
                 enqueued_at_ms,
+                priority: options.priority,
+                not_before_ms,
+                dedup_key: options.dedup_key.clone(),
             };
             let bytes = encode(&stored).map_err(codec)?;
             let next_job_id = job_id + 1;
@@ -288,9 +418,13 @@ impl JobQueue for RedbJobQueue {
             {
                 let mut jobs = txn.open_table(JOBS).map_err(backend)?;
                 let mut pending = txn.open_table(PENDING).map_err(backend)?;
+                let mut dedup = txn.open_table(DEDUP).map_err(backend)?;
                 let mut meta = txn.open_table(META).map_err(backend)?;
                 jobs.insert(job_id, bytes.as_slice()).map_err(backend)?;
                 pending.insert(job_id, &[] as &[u8]).map_err(backend)?;
+                if let Some(key) = &options.dedup_key {
+                    dedup.insert(key.as_slice(), job_id).map_err(backend)?;
+                }
                 meta.insert(K_NEXT_JOB, encode(&next_job_id).map_err(codec)?.as_slice())
                     .map_err(backend)?;
             }
@@ -301,8 +435,21 @@ impl JobQueue for RedbJobQueue {
                 payload: payload.to_vec(),
                 enqueued_at_ms,
                 next_job_id,
+                priority: options.priority,
+                not_before_ms,
+                dedup_key: options.dedup_key.clone(),
             });
             Ok((JobId(job_id), ops))
+        })
+    }
+
+    fn enqueue_replicated<'a>(
+        &'a self,
+        payload: &'a [u8],
+    ) -> BoxFuture<'a, Result<(JobId, QueueReplicationOps), QueueError>> {
+        Box::pin(async move {
+            self.enqueue_opts_replicated(payload, EnqueueOptions::default())
+                .await
         })
     }
 
@@ -327,6 +474,13 @@ impl JobQueue for RedbJobQueue {
             let mut ops = self.reclaim_expired_ops()?;
             let expires_at_ms = now_ms() + self.lease_timeout.as_millis() as u64;
             let mut lease_id_start = self.read_meta_u64(K_NEXT_LEASE)?;
+            let now = now_ms();
+            let pending_ids = {
+                let read = self.db.begin_read().map_err(backend)?;
+                let jobs = read.open_table(JOBS).map_err(backend)?;
+                let pending = read.open_table(PENDING).map_err(backend)?;
+                select_pending_ids(&jobs, &pending, max, now)?
+            };
             let mut out = Vec::new();
 
             let _g = self.write_lock.lock().expect("poisoned");
@@ -336,14 +490,6 @@ impl JobQueue for RedbJobQueue {
                 let mut pending = txn.open_table(PENDING).map_err(backend)?;
                 let mut leases = txn.open_table(LEASES).map_err(backend)?;
                 let mut meta = txn.open_table(META).map_err(backend)?;
-
-                let mut pending_ids: Vec<u64> = pending
-                    .iter()
-                    .map_err(backend)?
-                    .filter_map(|row| row.ok().map(|(k, _)| k.value()))
-                    .collect();
-                pending_ids.sort_unstable();
-                pending_ids.truncate(max);
 
                 for job_id in pending_ids {
                     let Some(job_bytes) = jobs.get(job_id).map_err(backend)? else {
@@ -412,6 +558,7 @@ impl JobQueue for RedbJobQueue {
                 let job_id = {
                     let mut jobs = txn.open_table(JOBS).map_err(backend)?;
                     let mut leases = txn.open_table(LEASES).map_err(backend)?;
+                    let mut dedup = txn.open_table(DEDUP).map_err(backend)?;
                     let stored: StoredLease = match leases.remove(lease_id.0).map_err(backend)? {
                         None => return Err(QueueError::InvalidLease),
                         Some(bytes) => decode(bytes.value()).map_err(codec)?,
@@ -424,7 +571,7 @@ impl JobQueue for RedbJobQueue {
                             .map_err(backend)?;
                         return Err(QueueError::InvalidLease);
                     }
-                    jobs.remove(stored.job_id).map_err(backend)?;
+                    Self::remove_job_and_dedup(&mut jobs, &mut dedup, stored.job_id)?;
                     stored.job_id
                 };
                 txn.commit().map_err(backend)?;

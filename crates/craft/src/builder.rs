@@ -33,9 +33,10 @@ use tokio::net::TcpListener;
 use craft_actor::{
     ActorDirectory, ActorRegistry, AutoscalePolicy, ClusterControl, ClusterJobQueue,
     ClusterMessaging, ClusterState, ClusterSupervisor, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy,
-    DirectoryRetry, DirectorySync, JobQueue, NodeService, QueueService, RaftDriver, RedbJobQueue,
-    ResourceProfile, RuntimeConfig, UserActor, VpsResources, run_queue_autoscaler,
-    spawn_multi_raft_node, spawn_node,
+    DirectoryRetry, DirectorySync, JobQueue, MembershipAutoscalePolicy, NodeService, QueueService,
+    RaftDriver, RedbJobQueue, ResourceProfile, RuntimeConfig, ShardedJobQueue, UserActor,
+    VpsResources, run_queue_autoscaler, run_queue_membership_autoscaler, spawn_multi_raft_node,
+    spawn_node,
 };
 
 use crate::certs::{CertReloadHandle, PemSecurity};
@@ -91,6 +92,16 @@ struct JobStreamSpec {
     lease_timeout: Duration,
 }
 
+#[derive(Debug, Clone)]
+struct ShardedJobSpec {
+    name: String,
+    shard_count: usize,
+}
+
+/// Type-erased membership autoscale background task spawned at node start.
+type MembershipAutoscaleTask =
+    Box<dyn FnOnce(Arc<dyn ClusterState>, HashMap<String, Arc<dyn JobQueue>>) + Send>;
+
 /// A fluent builder for a single craft node (deployment-model). Create it with
 /// [`CraftCluster::builder`](crate::CraftCluster::builder).
 pub struct CraftClusterBuilder<M: StateMachine> {
@@ -126,7 +137,9 @@ pub struct CraftClusterBuilder<M: StateMachine> {
     registrations: Vec<RegisterFn>,
     managed: Vec<ManageFn>,
     job_streams: Vec<JobStreamSpec>,
+    job_sharded: Vec<ShardedJobSpec>,
     job_autoscale: Vec<AutoscaleTask>,
+    job_membership_autoscale: Vec<MembershipAutoscaleTask>,
 }
 
 impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
@@ -167,7 +180,9 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             registrations: Vec::new(),
             managed: Vec::new(),
             job_streams: Vec::new(),
+            job_sharded: Vec::new(),
             job_autoscale: Vec::new(),
+            job_membership_autoscale: Vec::new(),
         }
     }
 
@@ -636,6 +651,72 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         self
     }
 
+    /// Federated queue over `shard_count` independent redb streams (`{name}~0` …)
+    /// to spread leader replication load ([job-queue](../../docs/decisions/job-queue.md)).
+    #[must_use]
+    pub fn job_queue_sharded(
+        mut self,
+        name: &str,
+        shard_count: usize,
+        lease_timeout: Duration,
+    ) -> Self {
+        assert!(
+            shard_count >= 1,
+            "job_queue_sharded requires shard_count >= 1"
+        );
+        for i in 0..shard_count {
+            self.job_streams.push(JobStreamSpec {
+                name: format!("{name}~{i}"),
+                path: None,
+                lease_timeout,
+            });
+        }
+        self.job_sharded.push(ShardedJobSpec {
+            name: name.to_string(),
+            shard_count,
+        });
+        self
+    }
+
+    /// Leader-only loop: when queue depth per live node exceeds a threshold, call
+    /// `join` to add a VPS (production scale-out beyond worker autoscale).
+    #[must_use]
+    pub fn job_queue_membership_autoscale(
+        mut self,
+        stream: &str,
+        policy: MembershipAutoscalePolicy,
+        join: impl Fn() -> craft_actor::BoxFuture<'static, Result<(), craft_actor::ClusterScaleError>>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        let stream = stream.to_string();
+        let policy = policy.clone();
+        let join = Arc::new(join);
+        self.job_membership_autoscale.push(Box::new(move |state, queues| {
+            let Some(queue) = queues.get(&stream).cloned() else {
+                panic!(
+                    "job_queue_membership_autoscale stream {stream:?} was not registered via job_queue or job_queue_sharded"
+                );
+            };
+            let policy = policy.clone();
+            let join = Arc::clone(&join);
+            tokio::spawn(async move {
+                run_queue_membership_autoscaler(
+                    queue,
+                    state,
+                    policy,
+                    move || {
+                        let join = Arc::clone(&join);
+                        async move { join().await }
+                    },
+                )
+                .await;
+            });
+        }));
+        self
+    }
+
     /// Declare an auto-worker group: one instance of `A` on every live node,
     /// tracking membership so new nodes get a worker automatically (auto-spawn-on-join).
     #[must_use]
@@ -1011,6 +1092,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             )))
         };
         let mut job_queues: HashMap<String, Arc<dyn JobQueue>> = HashMap::new();
+        let mut local_backends: HashMap<String, Arc<dyn JobQueue>> = HashMap::new();
         for spec in &self.job_streams {
             let path = match &spec.path {
                 Some(path) => path.clone(),
@@ -1029,6 +1111,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 RedbJobQueue::open(&path, spec.lease_timeout)
                     .unwrap_or_else(|e| panic!("open job queue at {}: {e}", path.display())),
             );
+            local_backends.insert(spec.name.clone(), Arc::clone(&local));
             if let Some(service) = queue_service.as_ref() {
                 service.register_stream(&spec.name, Arc::clone(&local));
             }
@@ -1039,6 +1122,37 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 Arc::clone(&transport),
             ));
             job_queues.insert(spec.name.clone(), client);
+        }
+
+        for spec in &self.job_sharded {
+            let shards: Vec<Arc<dyn JobQueue>> = (0..spec.shard_count)
+                .map(|i| {
+                    local_backends
+                        .get(&format!("{}~{i}", spec.name))
+                        .cloned()
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "missing shard stream {:?} for sharded queue {:?}",
+                                format!("{}~{i}", spec.name),
+                                spec.name
+                            )
+                        })
+                })
+                .collect();
+            let local_sharded = Arc::new(ShardedJobQueue::new(shards));
+            if let Some(service) = queue_service.as_ref() {
+                service.register_sharded_stream(&spec.name, Arc::clone(&local_sharded));
+            }
+            let client: Arc<dyn JobQueue> = Arc::new(ClusterJobQueue::new(
+                &spec.name,
+                node_id,
+                Arc::clone(&facts) as Arc<dyn ClusterState>,
+                Arc::clone(&transport),
+            ));
+            job_queues.insert(spec.name.clone(), client);
+            for i in 0..spec.shard_count {
+                job_queues.remove(&format!("{}~{i}", spec.name));
+            }
         }
 
         // --- Router -------------------------------------------------------
@@ -1250,6 +1364,13 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 Arc::clone(&directory),
                 job_queues.clone(),
             ));
+        }
+
+        for spawn in self.job_membership_autoscale {
+            spawn(
+                Arc::clone(&facts) as Arc<dyn ClusterState>,
+                job_queues.clone(),
+            );
         }
 
         // Admin/observability HTTP server.

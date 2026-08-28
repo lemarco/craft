@@ -40,7 +40,7 @@
 - Consistent-hash ring keyed routing, sticky `ActorSession`, per-group drain override (`CRAFT_DRAIN_TIMEOUT`)
 - Optional `DirectoryPolicy::ReadYourWrites` and `ask_linearizable` (directory visibility, not Raft-linearizable actor state)
 - Redis-backed `ActorStateStore` (`craft-store-redis`); actor migration RPC
-- **`JobQueue`** — `InMemoryJobQueue`, `RedbJobQueue`, leader `QueueService` with sync voter replication, `ClusterJobQueue`, autoscale ([job-queue](decisions/job-queue.md))
+- **`JobQueue`** — `InMemoryJobQueue`, `RedbJobQueue`, sharded streams, priority/delayed enqueue, leader `QueueService` with sync voter replication, `ClusterJobQueue`, worker + membership autoscale ([job-queue](decisions/job-queue.md))
 
 ### Multi-Raft write scaling
 

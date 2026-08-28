@@ -122,7 +122,23 @@ Wire routes (under `/raft/v1/queue/`):
 | `GET .../metrics` | Depth for autoscale & observability |
 | `POST .../replicate` | Leader → voter idempotent state sync |
 
-**v2 (deferred):** sharded streams or partitioned queues when a single leader queue becomes a hotspot.
+**v2 (deferred):** Redis adapter and cross-node durable mailbox remain open.
+
+### Sharded streams (v2)
+
+- **`job_queue_sharded(name, shard_count, lease_timeout)`** — `{name}~0` … `{name}~{N-1}` independent redb files; logical [`ShardedJobQueue`](../../crates/craft-actor/src/sharded_queue.rs) federates enqueue/lease/ack.
+- Enqueue routes by hash of `shard_key` (or payload); replication runs per shard stream.
+- Spreads leader write + replicate load without putting jobs in the Raft log.
+
+### Priority and delayed jobs (v2)
+
+- [`EnqueueOptions`](../../crates/craft-actor/src/queue.rs): `priority` (higher first), `not_before_ms` / `EnqueueOptions::delayed`.
+- Wire: optional fields on `QueueEnqueueRequest`; replicated in `QueueReplicateOp::Enqueue`.
+
+### Membership autoscale (v2)
+
+- [`MembershipAutoscalePolicy`](../../crates/craft-actor/src/queue_autoscale.rs) + [`job_queue_membership_autoscale`](../../crates/craft/src/builder.rs): when `(pending + leased) / live_nodes` exceeds threshold and `live_nodes < max_nodes`, invoke user `join` hook (deploy VPS + dynamic join).
+- Complements worker [`AutoscalePolicy`](../../crates/craft-actor/src/queue_autoscale.rs) capped at `reachable_nodes`.
 
 ### Worker consumption model
 
@@ -179,18 +195,18 @@ Scaling **out beyond node count** in production still means **add VPS + join** (
 | `ClusterJobQueue` client + follower forward | **landed** |
 | `run_queue_autoscaler` → `scale_cluster` | **landed** |
 | Facade builder (`job_queue`, `job_queue_autoscale`) | **landed** |
+| Sharded streams (`job_queue_sharded`) | **landed** |
+| Priority + delayed enqueue (`EnqueueOptions`) | **landed** |
+| Membership autoscale (`job_queue_membership_autoscale`) | **landed** |
 
-Implementation status: **v1 cluster queue landed** — Redis adapter and sharded streams remain deferred; see [status.md](../status.md).
+Implementation status: **v2 queue features landed** — Redis adapter remains deferred; see [status.md](../status.md).
 
-### Deferred (post-v1)
+### Deferred (post-v2)
 
 | Item | Notes |
 |------|-------|
-| Sharded / multi-stream federation | Hotspot mitigation |
 | `RedisJobQueue` adapter | Optional remote backend |
 | Cross-node durable mailbox outbox/inbox | Tier B spool |
-| Auto membership scale from queue depth | Join VPS when workers = nodes |
-| Priority queues, delayed jobs | — |
 
 ## Consequences
 
@@ -204,7 +220,7 @@ Implementation status: **v1 cluster queue landed** — Redis adapter and sharded
 **Negative**
 
 - Leader-hosted queue is a **throughput hotspot** at very large enqueue rates (mitigation: batch append, prefetch, future sharding). Replication adds one RTT to each reachable voter before client ack.
-- At-least-once requires **idempotent** handlers and visibility-timeout tuning. Client retries after a successful enqueue may duplicate jobs unless the application supplies dedup keys (future).
+- At-least-once requires **idempotent** handlers and visibility-timeout tuning. Optional **`dedup_key`** on enqueue makes client retries safe while the job exists.
 - Two durability stories (`ActorStateStore` vs `JobQueue`) — docs must keep boundaries explicit ([R4](future-work-and-risks.md)).
 - Extra wire surface and ops metrics for queue lag.
 - Enqueue is unavailable while any **reachable** voter cannot accept replication (strict sync); unreachable departed nodes are excluded via `reachable_nodes()`.

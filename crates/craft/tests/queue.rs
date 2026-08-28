@@ -1,20 +1,25 @@
 //! Job queue wire integration: replication, failover, autoscale.
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use craft::AutoscalePolicy;
 use craft::CraftCluster;
+use craft::EnqueueOptions;
 use craft::JobQueue;
+use craft::MembershipAutoscalePolicy;
 use craft::RedbJobQueue;
 use craft::actor::{ConfigCodecError, UserActor, WorkerId};
 use craft::net::LocalNetwork;
+use craft::net::send_join_request;
 use craft::proto::{self, NodeId};
+use craft::proto::{JoinRequest, JoinResponse, PROTOCOL_VERSION};
 use craft_test_support::{
-    KvMachine, TICK_PERIOD, advance, assert_eq, await_craft_leader, eventually_default,
-    fast_raft_config_with_seed,
+    KvMachine, TICK_PERIOD, advance, assert_eq, await_craft_leader, eventually_async_default,
+    eventually_default, fast_raft_config_with_seed, wait_for_craft_stopped,
 };
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Debug)]
 struct WorkerErr;
@@ -49,26 +54,26 @@ impl UserActor for Worker {
     }
 }
 
-async fn spawn_queue_cluster(
+async fn spawn_queue_cluster_n(
     dir: &tempfile::TempDir,
+    node_ids: &[NodeId],
     autoscale: bool,
 ) -> (LocalNetwork, Vec<Arc<CraftCluster<KvMachine>>>) {
-    let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let net = LocalNetwork::new();
     let policy = AutoscalePolicy {
         worker_group: "w".into(),
         target_pending_per_worker: 1,
         min_workers: 1,
-        max_workers: 3,
+        max_workers: node_ids.len(),
         cooldown: Duration::from_millis(30),
         poll_interval: Duration::from_millis(10),
     };
     let mut clusters = Vec::new();
-    for &id in &ids {
+    for &id in node_ids {
         let data_dir = dir.path().join(format!("node-{}", id.0));
         let queue_path = data_dir.join("queue-jobs.redb");
         let mut builder = CraftCluster::builder(id, KvMachine::default())
-            .members(ids)
+            .members(node_ids.to_vec())
             .raft_config(fast_raft_config_with_seed(11))
             .tick_period(TICK_PERIOD)
             .reconcile_period(Duration::from_millis(10))
@@ -79,6 +84,36 @@ async fn spawn_queue_cluster(
         if autoscale {
             builder = builder.job_queue_autoscale::<Worker>("jobs", policy.clone(), 0);
         }
+        clusters.push(Arc::new(builder.start_local(&net).await));
+    }
+    (net, clusters)
+}
+
+async fn spawn_queue_cluster(
+    dir: &tempfile::TempDir,
+    autoscale: bool,
+) -> (LocalNetwork, Vec<Arc<CraftCluster<KvMachine>>>) {
+    spawn_queue_cluster_n(dir, &[NodeId(1), NodeId(2), NodeId(3)], autoscale).await
+}
+
+async fn spawn_sharded_queue_cluster(
+    dir: &tempfile::TempDir,
+    shards: usize,
+) -> (LocalNetwork, Vec<Arc<CraftCluster<KvMachine>>>) {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let net = LocalNetwork::new();
+    let mut clusters = Vec::new();
+    for &id in &ids {
+        let data_dir = dir.path().join(format!("node-{}", id.0));
+        let builder = CraftCluster::builder(id, KvMachine::default())
+            .members(ids)
+            .raft_config(fast_raft_config_with_seed(11))
+            .tick_period(TICK_PERIOD)
+            .reconcile_period(Duration::from_millis(10))
+            .directory_publish_period(Duration::from_millis(10))
+            .data_dir(&data_dir)
+            .job_queue_sharded("jobs", shards, Duration::from_secs(60))
+            .manage::<Worker>("w", 1, 0);
         clusters.push(Arc::new(builder.start_local(&net).await));
     }
     (net, clusters)
@@ -229,4 +264,219 @@ async fn queue_depth_autoscale_scales_worker_group() {
     for c in &clusters {
         c.shutdown();
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn sharded_queue_enqueues_and_leases_across_shards() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (_net, clusters) = spawn_sharded_queue_cluster(&dir, 4).await;
+    let leader = await_craft_leader(&clusters).await;
+    advance(Duration::from_millis(200)).await;
+
+    let queue = leader.job_queue("jobs").expect("queue");
+    for i in 0..8u64 {
+        queue
+            .enqueue(format!("job-{i}").as_bytes())
+            .await
+            .expect("enqueue");
+    }
+
+    let worker = WorkerId {
+        node: leader.node_id(),
+        instance: 1,
+    };
+    let leased = queue.lease(worker, 8).await.expect("lease");
+    assert_eq!(leased.len(), 8);
+    assert_eq!(queue.metrics().await.expect("metrics").pending, 0);
+}
+
+#[tokio::test(start_paused = true)]
+async fn priority_enqueue_through_wire() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (_net, clusters) = spawn_queue_cluster(&dir, false).await;
+    let leader = await_craft_leader(&clusters).await;
+    advance(Duration::from_millis(200)).await;
+
+    let queue = leader.job_queue("jobs").expect("queue");
+    queue.enqueue(b"low").await.expect("enqueue");
+    queue
+        .enqueue_opts(b"high", EnqueueOptions::priority(9))
+        .await
+        .expect("enqueue");
+
+    let worker = WorkerId {
+        node: leader.node_id(),
+        instance: 1,
+    };
+    let first = queue.lease(worker, 1).await.expect("lease");
+    assert_eq!(first[0].payload, b"high");
+}
+
+#[tokio::test(start_paused = true)]
+async fn backlog_survives_live_leader_failover() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let ids = [NodeId(1), NodeId(2), NodeId(3), NodeId(4), NodeId(5)];
+    let (net, clusters) = spawn_queue_cluster_n(&dir, &ids, false).await;
+    let leader = await_craft_leader(&clusters).await;
+    advance(Duration::from_millis(300)).await;
+
+    let queue = leader.job_queue("jobs").expect("queue");
+    for i in 0..5u64 {
+        queue
+            .enqueue(format!("job-{i}").as_bytes())
+            .await
+            .expect("enqueue");
+    }
+
+    let old_leader_id = leader.node_id();
+    wait_for_craft_stopped(leader.as_ref()).await;
+    drop(leader);
+    net.detach(old_leader_id);
+
+    let survivors: Vec<_> = clusters
+        .into_iter()
+        .filter(|c| c.node_id() != old_leader_id)
+        .collect();
+
+    let new_leader = await_craft_leader(&survivors).await;
+    advance(Duration::from_millis(300)).await;
+
+    let queue = new_leader.job_queue("jobs").expect("queue");
+    assert_eq!(queue.metrics().await.expect("metrics").pending, 5);
+
+    let worker = WorkerId {
+        node: new_leader.node_id(),
+        instance: 1,
+    };
+    let leased = queue.lease(worker, 5).await.expect("lease");
+    assert_eq!(leased.len(), 5);
+}
+
+#[tokio::test(start_paused = true)]
+async fn enqueue_dedup_key_is_idempotent_over_wire() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (_net, clusters) = spawn_queue_cluster(&dir, false).await;
+    let leader = await_craft_leader(&clusters).await;
+    advance(Duration::from_millis(200)).await;
+
+    let queue = leader.job_queue("jobs").expect("queue");
+    let id1 = queue
+        .enqueue_opts(b"v1", EnqueueOptions::dedup_key("payment-42"))
+        .await
+        .expect("enqueue");
+    let id2 = queue
+        .enqueue_opts(b"v2", EnqueueOptions::dedup_key("payment-42"))
+        .await
+        .expect("retry");
+    assert_eq!(id1, id2);
+    assert_eq!(queue.metrics().await.expect("metrics").pending, 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn membership_autoscale_invokes_join_hook() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let net = LocalNetwork::new();
+    let joined = Arc::new(AtomicBool::new(false));
+    let joiner: Arc<Mutex<Option<Arc<CraftCluster<KvMachine>>>>> = Arc::new(Mutex::new(None));
+
+    let policy = MembershipAutoscalePolicy {
+        pending_per_node_threshold: 2,
+        max_nodes: 4,
+        cooldown: Duration::from_millis(20),
+        poll_interval: Duration::from_millis(10),
+    };
+
+    let mut clusters = Vec::new();
+    for &id in &ids {
+        let net = net.clone();
+        let dir = dir.path().to_path_buf();
+        let joined = Arc::clone(&joined);
+        let joiner_store = Arc::clone(&joiner);
+        let net_for_hook = net.clone();
+        let dir_for_hook = dir.clone();
+        let join_hook = move || {
+            let net = net_for_hook.clone();
+            let dir = dir_for_hook.clone();
+            let joined = Arc::clone(&joined);
+            let joiner_store = Arc::clone(&joiner_store);
+            Box::pin(async move {
+                if joined.swap(true, Ordering::SeqCst) {
+                    return Ok(());
+                }
+                let joiner_id = NodeId(4);
+                let data_dir = dir.join(format!("node-{}", joiner_id.0));
+                std::fs::create_dir_all(&data_dir).expect("datadir");
+                let cluster = Arc::new(
+                    CraftCluster::builder(joiner_id, KvMachine::default())
+                        .members(ids)
+                        .raft_config(fast_raft_config_with_seed(11))
+                        .tick_period(TICK_PERIOD)
+                        .reconcile_period(Duration::from_millis(10))
+                        .directory_publish_period(Duration::from_millis(10))
+                        .allow_join(true)
+                        .data_dir(&data_dir)
+                        .job_queue_at(
+                            "jobs",
+                            data_dir.join("queue-jobs.redb"),
+                            Duration::from_secs(60),
+                        )
+                        .start_local(&net)
+                        .await,
+                );
+                *joiner_store.lock().expect("poisoned") = Some(Arc::clone(&cluster));
+                let response = send_join_request(
+                    &net,
+                    NodeId(1),
+                    &JoinRequest {
+                        protocol_version: PROTOCOL_VERSION,
+                        node_id: joiner_id,
+                        advertise_addr: "node4.local:7443".to_string(),
+                    },
+                )
+                .await
+                .expect("join rpc");
+                assert!(
+                    matches!(response, JoinResponse::Accepted { .. }),
+                    "join rejected: {response:?}"
+                );
+                Ok(())
+            })
+                as craft::actor::BoxFuture<'static, Result<(), craft::actor::ClusterScaleError>>
+        };
+        let data_dir = dir.join(format!("node-{}", id.0));
+        let queue_path = data_dir.join("queue-jobs.redb");
+        let builder = CraftCluster::builder(id, KvMachine::default())
+            .members(ids)
+            .raft_config(fast_raft_config_with_seed(11))
+            .tick_period(TICK_PERIOD)
+            .reconcile_period(Duration::from_millis(10))
+            .directory_publish_period(Duration::from_millis(10))
+            .allow_join(true)
+            .data_dir(&data_dir)
+            .job_queue_at("jobs", queue_path, Duration::from_secs(60))
+            .manage::<Worker>("w", 1, 0)
+            .job_queue_membership_autoscale("jobs", policy.clone(), join_hook);
+        clusters.push(Arc::new(builder.start_local(&net).await));
+    }
+
+    let leader = await_craft_leader(&clusters).await;
+    advance(Duration::from_millis(200)).await;
+
+    let queue = leader.job_queue("jobs").expect("queue");
+    for i in 0..12u64 {
+        queue
+            .enqueue(format!("job-{i}").as_bytes())
+            .await
+            .expect("enqueue");
+    }
+
+    eventually_async_default("membership autoscale join hook", || {
+        let joined = joined.load(Ordering::SeqCst);
+        async move { joined }
+    })
+    .await;
+
+    assert!(joiner.lock().expect("poisoned").is_some());
+    assert!(net.is_reachable(NodeId(4)));
 }

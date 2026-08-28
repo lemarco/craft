@@ -23,6 +23,8 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 - **Liveness vs membership** ([liveness-vs-membership](docs/decisions/cluster-membership.md#liveness-vs-membership)) — `reachable_nodes()`, crash-driven supervisor reconcile.
 - **Discovery & ops** — seed-set + DNS discovery; cluster leave RPC; mTLS hot reload; K8s manifests; `TrafficPolicy`; `craft-ops` backup/restore; admin HTTPS; linearizability E2E.
 - **Dev JSON wire** — `craft/json-wire` feature.
+- **Durable job queue (tier C)** ([job-queue](docs/decisions/job-queue.md)) — `JobQueue` port, `RedbJobQueue`, leader `QueueService`, sync voter replication, `ClusterJobQueue`, worker autoscale.
+- **Job queue v2** — sharded streams (`job_queue_sharded`), priority/delayed enqueue (`EnqueueOptions`), enqueue dedup keys, membership autoscale hook (`job_queue_membership_autoscale`); examples in `job_queue_cluster`.
 
 ### Changed
 

@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use craft_proto::NodeId;
 pub use craft_proto::QueueReplicateOp;
@@ -37,7 +37,53 @@ pub struct LeasedJob {
     pub payload: Vec<u8>,
 }
 
-/// Instantaneous queue depth signals for autoscale ([job-queue](../../../docs/decisions/job-queue.md)).
+/// Options for [`JobQueue::enqueue_opts`].
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct EnqueueOptions {
+    /// Higher priority jobs are leased first (default `0`).
+    pub priority: u8,
+    /// Do not lease before this unix timestamp in milliseconds (`None` = now).
+    pub not_before_ms: Option<u64>,
+    /// Routes to a shard when using [`ShardedJobQueue`](super::sharded_queue::ShardedJobQueue).
+    pub shard_key: Option<Vec<u8>>,
+    /// Client-supplied idempotency token; duplicate enqueues return the same [`JobId`].
+    pub dedup_key: Option<Vec<u8>>,
+}
+
+impl EnqueueOptions {
+    /// Job with elevated priority.
+    #[must_use]
+    pub fn priority(priority: u8) -> Self {
+        Self {
+            priority,
+            ..Self::default()
+        }
+    }
+
+    /// Job that becomes visible after `delay` from enqueue time.
+    #[must_use]
+    pub fn delayed(delay: Duration) -> Self {
+        let not_before_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+            + delay.as_millis() as u64;
+        Self {
+            not_before_ms: Some(not_before_ms),
+            ..Self::default()
+        }
+    }
+
+    /// Job with a client idempotency key (safe enqueue retries).
+    #[must_use]
+    pub fn dedup_key(key: impl Into<Vec<u8>>) -> Self {
+        Self {
+            dedup_key: Some(key.into()),
+            ..Self::default()
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct QueueMetrics {
     pub pending: u64,
@@ -67,7 +113,16 @@ pub type QueueReplicationOps = Vec<QueueReplicateOp>;
 /// Object-safe (`BoxFuture`) so runtime code can hold `Arc<dyn JobQueue>`.
 pub trait JobQueue: Send + Sync {
     /// Append a job; returns the assigned [`JobId`].
-    fn enqueue<'a>(&'a self, payload: &'a [u8]) -> BoxFuture<'a, Result<JobId, QueueError>>;
+    fn enqueue<'a>(&'a self, payload: &'a [u8]) -> BoxFuture<'a, Result<JobId, QueueError>> {
+        Box::pin(async move { self.enqueue_opts(payload, EnqueueOptions::default()).await })
+    }
+
+    /// Append with priority, delay, and optional shard routing key.
+    fn enqueue_opts<'a>(
+        &'a self,
+        payload: &'a [u8],
+        options: EnqueueOptions,
+    ) -> BoxFuture<'a, Result<JobId, QueueError>>;
 
     /// Pull up to `max` pending jobs exclusively for `worker`.
     fn lease<'a>(
@@ -99,11 +154,23 @@ pub trait JobQueue: Send + Sync {
         op: &'a QueueReplicateOp,
     ) -> BoxFuture<'a, Result<(), QueueError>>;
 
+    /// Like [`enqueue_opts`](Self::enqueue_opts) but returns wire replication ops for followers.
+    fn enqueue_opts_replicated<'a>(
+        &'a self,
+        payload: &'a [u8],
+        options: EnqueueOptions,
+    ) -> BoxFuture<'a, Result<(JobId, QueueReplicationOps), QueueError>>;
+
     /// Like [`enqueue`](Self::enqueue) but returns wire replication ops for followers.
     fn enqueue_replicated<'a>(
         &'a self,
         payload: &'a [u8],
-    ) -> BoxFuture<'a, Result<(JobId, QueueReplicationOps), QueueError>>;
+    ) -> BoxFuture<'a, Result<(JobId, QueueReplicationOps), QueueError>> {
+        Box::pin(async move {
+            self.enqueue_opts_replicated(payload, EnqueueOptions::default())
+                .await
+        })
+    }
 
     /// Like [`lease`](Self::lease) but includes reclaim + lease replication ops.
     fn lease_replicated<'a>(
@@ -131,6 +198,9 @@ pub trait JobQueue: Send + Sync {
 struct JobEntry {
     payload: Vec<u8>,
     enqueued_at: Instant,
+    priority: u8,
+    not_before_ms: u64,
+    dedup_key: Option<Vec<u8>>,
 }
 
 #[derive(Debug)]
@@ -154,6 +224,7 @@ struct Inner {
     pending: VecDeque<JobId>,
     jobs: BTreeMap<JobId, JobEntry>,
     leases: BTreeMap<LeaseId, LeaseEntry>,
+    dedup: BTreeMap<Vec<u8>, JobId>,
 }
 
 impl InMemoryJobQueue {
@@ -168,6 +239,7 @@ impl InMemoryJobQueue {
                 pending: VecDeque::new(),
                 jobs: BTreeMap::new(),
                 leases: BTreeMap::new(),
+                dedup: BTreeMap::new(),
             }),
         }
     }
@@ -180,6 +252,21 @@ impl InMemoryJobQueue {
 }
 
 impl Inner {
+    fn dedup_lookup(&self, key: &[u8]) -> Option<JobId> {
+        self.dedup
+            .get(key)
+            .copied()
+            .filter(|id| self.jobs.contains_key(id))
+    }
+
+    fn remove_job(&mut self, job_id: JobId) {
+        if let Some(entry) = self.jobs.remove(&job_id)
+            && let Some(key) = entry.dedup_key
+        {
+            self.dedup.remove(&key);
+        }
+    }
+
     fn reclaim_expired(&mut self) {
         let now = Instant::now();
         let expired: Vec<LeaseId> = self
@@ -196,53 +283,108 @@ impl Inner {
     }
 
     fn metrics(&self) -> QueueMetrics {
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
         let oldest = self
             .pending
-            .front()
-            .and_then(|id| self.jobs.get(id))
+            .iter()
+            .filter_map(|id| self.jobs.get(id))
+            .filter(|entry| entry.not_before_ms <= now_ms)
             .map(|entry| entry.enqueued_at.elapsed())
+            .max()
             .unwrap_or_default();
+        let ready_pending = self
+            .pending
+            .iter()
+            .filter(|id| self.jobs.get(id).is_some_and(|e| e.not_before_ms <= now_ms))
+            .count();
         QueueMetrics {
-            pending: self.pending.len() as u64,
+            pending: ready_pending as u64,
             leased: self.leases.len() as u64,
             oldest_pending_age: oldest,
         }
     }
+
+    fn select_pending(&self, max: usize, now_ms: u64) -> Vec<JobId> {
+        let mut ready: Vec<JobId> = self
+            .pending
+            .iter()
+            .filter(|id| self.jobs.get(id).is_some_and(|e| e.not_before_ms <= now_ms))
+            .copied()
+            .collect();
+        ready.sort_by(|a, b| {
+            let ea = self.jobs.get(a).expect("pending job");
+            let eb = self.jobs.get(b).expect("pending job");
+            eb.priority.cmp(&ea.priority).then_with(|| a.cmp(b))
+        });
+        ready.truncate(max);
+        ready
+    }
 }
 
 impl JobQueue for InMemoryJobQueue {
-    fn enqueue<'a>(&'a self, payload: &'a [u8]) -> BoxFuture<'a, Result<JobId, QueueError>> {
-        Box::pin(async move { self.enqueue_replicated(payload).await.map(|(id, _)| id) })
-    }
-
-    fn enqueue_replicated<'a>(
+    fn enqueue_opts<'a>(
         &'a self,
         payload: &'a [u8],
+        options: EnqueueOptions,
+    ) -> BoxFuture<'a, Result<JobId, QueueError>> {
+        Box::pin(async move {
+            self.enqueue_opts_replicated(payload, options)
+                .await
+                .map(|(id, _)| id)
+        })
+    }
+
+    fn enqueue_opts_replicated<'a>(
+        &'a self,
+        payload: &'a [u8],
+        options: EnqueueOptions,
     ) -> BoxFuture<'a, Result<(JobId, QueueReplicationOps), QueueError>> {
         Box::pin(async move {
-            let enqueued_at_ms = 0;
-            let (job_id, op) = self.with_inner(|inner| {
+            let enqueued_at_ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            let not_before_ms = options.not_before_ms.unwrap_or(enqueued_at_ms);
+            let (job_id, ops) = self.with_inner(|inner| {
+                if let Some(key) = &options.dedup_key
+                    && let Some(existing) = inner.dedup_lookup(key)
+                {
+                    return (existing, Vec::new());
+                }
                 let job_id = inner.next_job_id;
                 inner.next_job_id += 1;
+                let dedup_key = options.dedup_key.clone();
                 inner.jobs.insert(
                     JobId(job_id),
                     JobEntry {
                         payload: payload.to_vec(),
                         enqueued_at: Instant::now(),
+                        priority: options.priority,
+                        not_before_ms,
+                        dedup_key: dedup_key.clone(),
                     },
                 );
                 inner.pending.push_back(JobId(job_id));
+                if let Some(key) = dedup_key {
+                    inner.dedup.insert(key, JobId(job_id));
+                }
                 (
                     JobId(job_id),
-                    QueueReplicateOp::Enqueue {
+                    vec![QueueReplicateOp::Enqueue {
                         job_id,
                         payload: payload.to_vec(),
                         enqueued_at_ms,
                         next_job_id: inner.next_job_id,
-                    },
+                        priority: options.priority,
+                        not_before_ms,
+                        dedup_key: options.dedup_key.clone(),
+                    }],
                 )
             });
-            Ok((job_id, vec![op]))
+            Ok((job_id, ops))
         })
     }
 
@@ -257,15 +399,30 @@ impl JobQueue for InMemoryJobQueue {
                     payload,
                     enqueued_at_ms: _,
                     next_job_id,
+                    priority,
+                    not_before_ms,
+                    dedup_key,
                 } => {
+                    if let Some(key) = dedup_key
+                        && inner.dedup_lookup(key).is_some()
+                    {
+                        inner.next_job_id = inner.next_job_id.max(*next_job_id);
+                        return Ok(());
+                    }
                     if let std::collections::btree_map::Entry::Vacant(entry) =
                         inner.jobs.entry(JobId(*job_id))
                     {
                         entry.insert(JobEntry {
                             payload: payload.clone(),
                             enqueued_at: Instant::now(),
+                            priority: *priority,
+                            not_before_ms: *not_before_ms,
+                            dedup_key: dedup_key.clone(),
                         });
                         inner.pending.push_back(JobId(*job_id));
+                        if let Some(key) = dedup_key {
+                            inner.dedup.insert(key.clone(), JobId(*job_id));
+                        }
                     }
                     inner.next_job_id = inner.next_job_id.max(*next_job_id);
                     Ok(())
@@ -295,7 +452,7 @@ impl JobQueue for InMemoryJobQueue {
                 }
                 QueueReplicateOp::Ack { lease_id, job_id } => {
                     inner.leases.remove(&LeaseId(*lease_id));
-                    inner.jobs.remove(&JobId(*job_id));
+                    inner.remove_job(JobId(*job_id));
                     Ok(())
                 }
                 QueueReplicateOp::Nack { lease_id, job_id }
@@ -354,10 +511,12 @@ impl JobQueue for InMemoryJobQueue {
                 let mut out = Vec::new();
                 let mut lease_ops = Vec::new();
                 let deadline = Instant::now() + self.lease_timeout;
-                while out.len() < max {
-                    let Some(job_id) = inner.pending.pop_front() else {
-                        break;
-                    };
+                let now_ms = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                for job_id in inner.select_pending(max, now_ms) {
+                    inner.pending.retain(|id| *id != job_id);
                     let Some(entry) = inner.jobs.get(&job_id) else {
                         continue;
                     };
@@ -415,7 +574,7 @@ impl JobQueue for InMemoryJobQueue {
                     inner.leases.insert(lease_id, lease);
                     return Err(QueueError::InvalidLease);
                 }
-                inner.jobs.remove(&lease.job_id);
+                inner.remove_job(lease.job_id);
                 Ok(lease.job_id.0)
             })?;
             Ok(vec![QueueReplicateOp::Ack {
@@ -581,6 +740,58 @@ mod tests {
 
         let again = q.lease(worker(1), 1).await.unwrap();
         assert_eq!(again[0].payload, b"z");
+    }
+
+    #[tokio::test]
+    async fn dedup_key_returns_existing_job_id() {
+        let q = InMemoryJobQueue::new(Duration::from_secs(30));
+        let id1 = q
+            .enqueue_opts(b"first", EnqueueOptions::dedup_key("order-1"))
+            .await
+            .unwrap();
+        let id2 = q
+            .enqueue_opts(b"retry", EnqueueOptions::dedup_key("order-1"))
+            .await
+            .unwrap();
+        assert_eq!(id1, id2);
+        assert_eq!(q.metrics().await.unwrap().pending, 1);
+    }
+
+    #[tokio::test]
+    async fn priority_jobs_leased_first() {
+        let q = InMemoryJobQueue::new(Duration::from_secs(30));
+        q.enqueue_opts(b"low", EnqueueOptions::default())
+            .await
+            .unwrap();
+        q.enqueue_opts(b"high", EnqueueOptions::priority(10))
+            .await
+            .unwrap();
+
+        let leased = q.lease(worker(0), 1).await.unwrap();
+        assert_eq!(leased[0].payload, b"high");
+    }
+
+    #[tokio::test]
+    async fn delayed_job_not_leased_before_not_before() {
+        let q = InMemoryJobQueue::new(Duration::from_secs(30));
+        let far_future = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            + 3_600_000;
+        q.enqueue_opts(
+            b"later",
+            EnqueueOptions {
+                not_before_ms: Some(far_future),
+                ..EnqueueOptions::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let empty = q.lease(worker(0), 1).await.unwrap();
+        assert!(empty.is_empty());
+        assert_eq!(q.metrics().await.unwrap().pending, 0);
     }
 
     #[tokio::test]

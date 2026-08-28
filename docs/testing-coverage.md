@@ -138,6 +138,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | **Job queue (`JobQueue`, in-memory + redb)** | ✅ `queue`, `redb_queue` | ✅ `queue` | — | — | ✅ |
 | **Job queue wire + cluster client** | ✅ `queue_service` | ✅ `queue` (facade, autoscale) | — | — | ✅ |
 | **Job queue voter replication (sync `/queue/replicate`)** | ✅ `redb_queue` (`apply_replicate`) | ✅ `queue` (all voters redb, follower lease after shutdown) | — | — | ✅ |
+| **Job queue sharded streams + priority/delayed + membership autoscale** | ✅ `sharded_queue`, `queue` | ✅ `queue` | — | — | ✅ |
 | Actor state store resume + idempotency (facade) | — | ✅ `actor_store_resume` | — | — | ✅ |
 | Actor state store (Redis) | — | 🔒 ignore | — | — | 🔒 |
 | Actor state store (`rediss://` + private CA) | — | 🔒 ignore | — | — | 🔒 |

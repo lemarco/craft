@@ -7,6 +7,18 @@ use serde::{Deserialize, Serialize};
 pub struct QueueEnqueueRequest {
     pub stream: String,
     pub payload: Vec<u8>,
+    /// Higher values are leased before lower (default `0`).
+    #[serde(default)]
+    pub priority: u8,
+    /// Earliest wall time (unix ms) the job may be leased; `0` = immediately.
+    #[serde(default)]
+    pub not_before_ms: u64,
+    /// Optional routing key for sharded streams (defaults to hashing `payload`).
+    #[serde(default)]
+    pub shard_key: Option<Vec<u8>>,
+    /// Idempotency key — retries return the same `job_id` while the job exists.
+    #[serde(default)]
+    pub dedup_key: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,6 +97,12 @@ pub enum QueueReplicateOp {
         payload: Vec<u8>,
         enqueued_at_ms: u64,
         next_job_id: u64,
+        #[serde(default)]
+        priority: u8,
+        #[serde(default)]
+        not_before_ms: u64,
+        #[serde(default)]
+        dedup_key: Option<Vec<u8>>,
     },
     Lease {
         lease_id: u64,

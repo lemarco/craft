@@ -1,6 +1,9 @@
 //! Three-node cluster with a durable job queue: enqueue via any node, consume
 //! through the leader wire service ([job-queue](../../docs/decisions/job-queue.md)).
 //!
+//! Demonstrates v2 features: sharded streams, priority/delayed enqueue, dedup keys,
+//! worker autoscale, and an optional membership-join hook.
+//!
 //! Run: `cargo run -p craft --example job_queue_cluster`
 
 use std::sync::Arc;
@@ -10,7 +13,10 @@ use craft::actor::{UserActor, remote_actor};
 use craft::core::{Config, StateMachine};
 use craft::net::LocalNetwork;
 use craft::proto::LogIndex;
-use craft::{AutoscalePolicy, CraftCluster, NodeId, WorkerId, run_queue_consumer};
+use craft::{
+    AutoscalePolicy, CraftCluster, EnqueueOptions, MembershipAutoscalePolicy, NodeId, WorkerId,
+    run_queue_consumer,
+};
 
 #[derive(Default)]
 struct Empty;
@@ -86,7 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .tick_period(Duration::from_millis(10))
             .reconcile_period(Duration::from_millis(20))
             .data_dir(&data_dir)
-            .job_queue("jobs", Duration::from_secs(60))
+            .job_queue_sharded("jobs", 2, Duration::from_secs(60))
             .manage::<Worker>("workers", 1, 0)
             .job_queue_autoscale::<Worker>(
                 "jobs",
@@ -99,6 +105,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     poll_interval: Duration::from_millis(100),
                 },
                 0,
+            )
+            .job_queue_membership_autoscale(
+                "jobs",
+                MembershipAutoscalePolicy {
+                    pending_per_node_threshold: 100,
+                    max_nodes: 3,
+                    cooldown: Duration::from_secs(30),
+                    poll_interval: Duration::from_secs(5),
+                },
+                || {
+                    Box::pin(async {
+                        println!("membership autoscale: deploy another VPS and JOIN_ADDR here");
+                        Ok(())
+                    })
+                },
             )
             .start_local(&net)
             .await;
@@ -123,7 +144,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .find_map(|c| c.job_queue("jobs"))
         .expect("queue wired");
-    for i in 0..8u64 {
+
+    let urgent = submitter
+        .enqueue_opts(b"urgent", EnqueueOptions::priority(10))
+        .await?;
+    println!("enqueued priority job {urgent:?}");
+
+    let idempotent = submitter
+        .enqueue_opts(b"pay", EnqueueOptions::dedup_key("invoice-7"))
+        .await?;
+    let retry = submitter
+        .enqueue_opts(b"pay-retry", EnqueueOptions::dedup_key("invoice-7"))
+        .await?;
+    println!("dedup enqueue: first={idempotent:?} retry={retry:?} (same id expected)");
+
+    let delayed = submitter
+        .enqueue_opts(b"later", EnqueueOptions::delayed(Duration::from_secs(2)))
+        .await?;
+    println!("delayed job {delayed:?} (visible after 2s)");
+
+    for i in 0..6u64 {
         let payload = format!("job-{i}");
         let id = submitter.enqueue(payload.as_bytes()).await?;
         println!("enqueued {id:?}");
@@ -154,13 +194,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await;
     });
 
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
     stop_tx.send(true)?;
     consumer.await?;
 
     let metrics = submitter.metrics().await?;
     println!(
-        "done: pending={} leased={} (workers may autoscale up to node count)",
+        "done: pending={} leased={} (workers autoscale up to node count; shards=2)",
         metrics.pending, metrics.leased
     );
 
