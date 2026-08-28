@@ -18,6 +18,7 @@ mod directory_policy;
 mod driver;
 mod group_membership;
 mod group_rebalance;
+mod mailbox_spool;
 mod messaging;
 mod meta;
 mod placement;
@@ -43,7 +44,12 @@ pub use directory_policy::{DirectoryPolicy, DirectoryRetry};
 pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
 pub use group_membership::{GroupMembershipSyncReport, sync_hosted_group_membership};
 pub use group_rebalance::{GroupRebalanceReport, RaftGroupReconciler};
-pub use messaging::{AskError as ClusterAskError, CastError, ClusterMessaging};
+pub use mailbox_spool::{
+    InMemoryMailboxSpool, MailboxSpool, MailboxSpoolError, MailboxSpoolId, RedbMailboxSpool,
+};
+pub use messaging::{
+    AskError as ClusterAskError, CastError, ClusterMessaging, run_mailbox_spool_drainer,
+};
 pub use meta::{MetaCommand, MetaError, MetaQuery, MetaResponse, MetaStateMachine};
 pub use placement::{
     ClusterControl, ClusterScaleError, MigrateError, NOT_LEADER_REASON, RemoteSpawnError,

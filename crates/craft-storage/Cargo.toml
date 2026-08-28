@@ -21,7 +21,7 @@ craft-proto.workspace = true
 serde.workspace = true
 postcard.workspace = true
 thiserror.workspace = true
-redb = "2"
+redb = "4.2.0"
 
 [dev-dependencies]
 tempfile = "3"

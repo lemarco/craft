@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use craft_proto::{QueueReplicateOp, decode, encode};
-use redb::{Database, ReadableTable, TableDefinition};
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 
 use super::{
     BoxFuture, EnqueueOptions, JobId, JobQueue, LeaseId, LeasedJob, QueueError, QueueMetrics,

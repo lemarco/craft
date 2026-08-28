@@ -9,7 +9,7 @@
 use std::path::Path;
 
 use craft_proto::{LogEntry, LogIndex, decode, encode};
-use redb::{Database, ReadableTable, TableDefinition};
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 
 use crate::{HardState, HardStateStore, LogStore, Snapshot, SnapshotStore, StorageError};
 

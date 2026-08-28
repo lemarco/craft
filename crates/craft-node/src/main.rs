@@ -22,6 +22,9 @@
 //! | `CRAFT_ALLOW_JOIN` | Accept dynamic joins on this node (`1`/`true`) | `false` |
 //! | `CRAFT_ALLOW_LEAVE` | Accept cluster leave RPC on this node (`1`/`true`) | `false` |
 //! | `CRAFT_GRACEFUL_LEAVE` | On shutdown, call [`CraftCluster::leave`] before exit | `false` |
+//! | `CRAFT_DATA_DIR` | Persistent redb directory (Raft + queue files) | *unset* |
+//! | `CRAFT_JOB_QUEUE` | Durable job queue stream name (requires `CRAFT_DATA_DIR`) | *unset* |
+//! | `CRAFT_JOB_QUEUE_LEASE_SECS` | Queue lease visibility timeout (seconds) | `60` |
 //! | `CRAFT_NODE_CERT` / `CRAFT_NODE_KEY` / `CRAFT_CA_CERT` | PEM cert chain / key / CA | *dev CA* |
 //! | `CRAFT_CERT_ORDINAL_BASE` | Dir with per-ordinal subdirs (`0/tls.crt`, …) for K8s cert-manager | *unset* |
 //! | `CRAFT_CERT_WATCH_SECS` | Poll interval for on-disk cert reload (cert-automation) | `60` |
@@ -113,6 +116,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     if cfg.allow_leave {
         builder = builder.allow_leave(true);
+    }
+    if let Some(data_dir) = &cfg.data_dir {
+        builder = builder.data_dir(data_dir);
+    }
+    if let Some(stream) = &cfg.job_queue_stream {
+        builder = builder.job_queue(stream, cfg.job_queue_lease);
     }
     if !seeds.is_empty() {
         builder = builder.join_seeds(seeds);

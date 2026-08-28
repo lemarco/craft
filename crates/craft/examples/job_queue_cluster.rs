@@ -1,8 +1,10 @@
 //! Three-node cluster with a durable job queue: enqueue via any node, consume
-//! through the leader wire service ([job-queue](../../docs/decisions/job-queue.md)).
+//! on a **follower** through [`ClusterJobQueue`]
+//! ([job-queue](../../docs/decisions/job-queue.md)).
 //!
 //! Demonstrates v2 features: sharded streams, priority/delayed enqueue, dedup keys,
-//! worker autoscale, and an optional membership-join hook.
+//! worker autoscale, and an optional membership-join hook. For a minimal follower
+//! worker loop + leader failover, see `job_queue_worker`.
 //!
 //! Run: `cargo run -p craft --example job_queue_cluster`
 
@@ -138,12 +140,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    println!("leader elected: {:?}", leader.expect("a leader"));
+    let leader_id = leader.expect("a leader");
+    println!("leader elected: {:?}", leader_id);
 
     let submitter = clusters
         .iter()
         .find_map(|c| c.job_queue("jobs"))
         .expect("queue wired");
+
+    let follower = clusters
+        .iter()
+        .find(|c| c.node_id() != leader_id)
+        .expect("follower");
+    let consumer_queue = follower.job_queue("jobs").expect("follower queue");
+    let worker_node = follower.node_id();
+    println!("consumer on follower node {worker_node:?}");
 
     let urgent = submitter
         .enqueue_opts(b"urgent", EnqueueOptions::priority(10))
@@ -169,9 +180,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("enqueued {id:?}");
     }
 
-    let consumer_queue = Arc::clone(&submitter);
+    let consumer_queue = Arc::clone(&consumer_queue);
     let worker_id = WorkerId {
-        node: NodeId(1),
+        node: worker_node,
         instance: 99,
     };
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);

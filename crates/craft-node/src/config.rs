@@ -41,6 +41,12 @@ pub struct NodeConfig {
     pub security: Security,
     /// Graceful actor drain timeout ([drain-timeout]).
     pub drain_timeout: Duration,
+    /// Persistent data directory (`CRAFT_DATA_DIR`); required when a job queue is enabled.
+    pub data_dir: Option<PathBuf>,
+    /// Job queue stream name (`CRAFT_JOB_QUEUE`); enables leader queue service + redb backend.
+    pub job_queue_stream: Option<String>,
+    /// Lease visibility timeout for the job queue (`CRAFT_JOB_QUEUE_LEASE_SECS`, default 60).
+    pub job_queue_lease: Duration,
 }
 
 /// A parsed `CRAFT_DISCOVERY=dns:<prefix>:<service>:<replicas>:<port>` spec.
@@ -311,6 +317,16 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
 
     let (security, pem_paths) = load_security_from_env(node_id, &members, joining)?;
 
+    let data_dir = env("CRAFT_DATA_DIR").map(PathBuf::from);
+    let job_queue_stream = env("CRAFT_JOB_QUEUE");
+    if job_queue_stream.is_some() && data_dir.is_none() {
+        return Err("CRAFT_JOB_QUEUE requires CRAFT_DATA_DIR for redb queue files".into());
+    }
+    let job_queue_lease = env("CRAFT_JOB_QUEUE_LEASE_SECS")
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .unwrap_or(Duration::from_secs(60));
+
     Ok(NodeConfig {
         node_id,
         listen,
@@ -326,6 +342,9 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
         pem_paths,
         security,
         drain_timeout: drain_timeout_from_env(),
+        data_dir,
+        job_queue_stream,
+        job_queue_lease,
     })
 }
 
@@ -390,6 +409,9 @@ mod tests {
         "CRAFT_CERT_ORDINAL_BASE",
         "CRAFT_CERT_WATCH_SECS",
         "CRAFT_DRAIN_TIMEOUT",
+        "CRAFT_DATA_DIR",
+        "CRAFT_JOB_QUEUE",
+        "CRAFT_JOB_QUEUE_LEASE_SECS",
     ];
 
     fn without_craft_env(f: impl Fn() + std::panic::UnwindSafe + std::panic::RefUnwindSafe) {
@@ -579,6 +601,13 @@ mod tests {
     #[test]
     fn admin_tls_env_requires_both_cert_and_key() {
         with_craft_env(&[("CRAFT_ADMIN_TLS_CERT", Some("/tmp/cert.pem"))], || {
+            assert!(config_from_env().is_err());
+        });
+    }
+
+    #[test]
+    fn job_queue_requires_data_dir() {
+        with_craft_env(&[("CRAFT_JOB_QUEUE", Some("jobs"))], || {
             assert!(config_from_env().is_err());
         });
     }

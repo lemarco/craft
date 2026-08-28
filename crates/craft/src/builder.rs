@@ -35,10 +35,11 @@ use tokio::net::TcpListener;
 use craft_actor::{
     ActorDirectory, ActorRegistry, AutoscalePolicy, ClusterControl, ClusterJobQueue,
     ClusterMessaging, ClusterState, ClusterSupervisor, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy,
-    DirectoryRetry, DirectorySync, JobQueue, MembershipAutoscalePolicy, NodeService,
-    QueueAutoscaleRegistry, QueueService, RaftDriver, RedbJobQueue, ResourceProfile, RuntimeConfig,
-    ShardedJobQueue, UserActor, VpsResources, run_queue_autoscaler,
-    run_queue_membership_autoscaler, spawn_multi_raft_node, spawn_node,
+    DirectoryRetry, DirectorySync, JobQueue, MailboxSpool, MembershipAutoscalePolicy, NodeService,
+    QueueAutoscaleRegistry, QueueService, RaftDriver, RedbJobQueue, RedbMailboxSpool,
+    ResourceProfile, RuntimeConfig, ShardedJobQueue, UserActor, VpsResources,
+    run_mailbox_spool_drainer, run_queue_autoscaler, run_queue_membership_autoscaler,
+    spawn_multi_raft_node, spawn_node,
 };
 
 use crate::certs::{CertReloadHandle, PemSecurity};
@@ -149,6 +150,8 @@ pub struct CraftClusterBuilder<M: StateMachine> {
     job_autoscale: Vec<AutoscaleTask>,
     job_membership_autoscale: Vec<MembershipAutoscaleTask>,
     queue_autoscale_meta: BTreeMap<String, QueueAutoscalePolicyCommand>,
+    /// Persist cross-node `/actor/deliver` envelopes to redb outbox/inbox.
+    durable_mailbox: bool,
 }
 
 impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
@@ -193,6 +196,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             job_autoscale: Vec::new(),
             job_membership_autoscale: Vec::new(),
             queue_autoscale_meta: BTreeMap::new(),
+            durable_mailbox: false,
         }
     }
 
@@ -327,6 +331,14 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     #[must_use]
     pub fn data_dir(mut self, path: impl Into<PathBuf>) -> Self {
         self.data_dir = Some(path.into());
+        self
+    }
+
+    /// Write-ahead outbox/inbox for cross-node actor delivery (tier B spool).
+    /// Requires [`data_dir`](Self::data_dir); stores `{data_dir}/mailbox-spool.redb`.
+    #[must_use]
+    pub fn durable_mailbox(mut self, enabled: bool) -> Self {
+        self.durable_mailbox = enabled;
         self
     }
 
@@ -1081,14 +1093,30 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             )
             .with_cluster_state(facts_state),
         );
-        let messaging = Arc::new(ClusterMessaging::with_policy(
-            node_id,
-            Arc::clone(&directory),
-            registry.clone(),
-            Arc::clone(&transport),
-            self.directory_policy,
-            self.directory_retry,
-        ));
+        let messaging = Arc::new({
+            let mut messaging = ClusterMessaging::with_policy(
+                node_id,
+                Arc::clone(&directory),
+                registry.clone(),
+                Arc::clone(&transport),
+                self.directory_policy,
+                self.directory_retry,
+            );
+            if self.durable_mailbox {
+                let data_dir = self.data_dir.as_ref().unwrap_or_else(|| {
+                    panic!("durable_mailbox requires data_dir on the cluster builder")
+                });
+                let spool = Arc::new(
+                    RedbMailboxSpool::open(data_dir.join("mailbox-spool.redb"))
+                        .expect("open mailbox spool redb"),
+                ) as Arc<dyn MailboxSpool>;
+                messaging = messaging.with_mailbox_spool(spool);
+            }
+            messaging
+        });
+        if messaging.has_mailbox_spool() {
+            messaging.drain_mailbox_spool_once().await;
+        }
         let directory_sync = Arc::new(DirectorySync::new(
             node_id,
             Arc::clone(&directory),
@@ -1414,6 +1442,14 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 job_queues.clone(),
                 Arc::clone(&queue_autoscale_registry),
             );
+        }
+
+        if messaging.has_mailbox_spool() {
+            let messaging = Arc::clone(&messaging);
+            let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            tasks.push(tokio::spawn(async move {
+                run_mailbox_spool_drainer(messaging, Duration::from_millis(500), stop_rx).await;
+            }));
         }
 
         let queue_autoscale_proposals: Vec<_> = self.queue_autoscale_meta.into_values().collect();

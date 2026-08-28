@@ -32,6 +32,7 @@ use craft_proto::{ActorEnvelope, ActorRegistration, DeliverAck, NodeId};
 use crate::ActorRegistry;
 use crate::directory::ActorDirectory;
 use crate::directory_policy::{DirectoryPolicy, DirectoryRetry};
+use crate::mailbox_spool::{MailboxSpool, MailboxSpoolId};
 use crate::registry::DeliverError;
 use crate::session::ActorSession;
 
@@ -135,6 +136,8 @@ pub struct ClusterMessaging {
     dedup: Arc<Mutex<DedupCache>>,
     directory_policy: DirectoryPolicy,
     directory_retry: DirectoryRetry,
+    /// Optional durable outbox/inbox ([`MailboxSpool`]).
+    spool: Option<Arc<dyn MailboxSpool>>,
 }
 
 impl ClusterMessaging {
@@ -176,6 +179,49 @@ impl ClusterMessaging {
             dedup: Arc::new(Mutex::new(DedupCache::default())),
             directory_policy,
             directory_retry,
+            spool: None,
+        }
+    }
+
+    /// Enable write-ahead outbox/inbox persistence for cross-node delivery.
+    #[must_use]
+    pub fn with_mailbox_spool(mut self, spool: Arc<dyn MailboxSpool>) -> Self {
+        self.spool = Some(spool);
+        self
+    }
+
+    /// Whether a [`MailboxSpool`] is attached.
+    #[must_use]
+    pub fn has_mailbox_spool(&self) -> bool {
+        self.spool.is_some()
+    }
+
+    /// Replay pending inbox/outbox rows once (startup recovery or drainer tick).
+    pub async fn drain_mailbox_spool_once(&self) {
+        let Some(spool) = &self.spool else {
+            return;
+        };
+        if let Ok(rows) = spool.list_inbox(64) {
+            for (id, envelope) in rows {
+                let ack = serve_envelope(&self.registry, &self.dedup, &envelope).await;
+                if ack.delivered {
+                    let _ = spool.remove_inbox(id);
+                }
+            }
+        }
+        if let Ok(rows) = spool.list_outbox(64) {
+            for (id, envelope) in rows {
+                if envelope.to.node == self.node_id {
+                    let _ = spool.remove_outbox(id);
+                    continue;
+                }
+                if let Ok(ack) =
+                    send_actor_deliver(self.transport.as_ref(), envelope.to.node, &envelope).await
+                    && ack.delivered
+                {
+                    let _ = spool.remove_outbox(id);
+                }
+            }
         }
     }
 
@@ -293,7 +339,12 @@ impl ClusterMessaging {
     /// answering a cross-node `ask` (`reply_expected`) with the actor's encoded
     /// reply. Called by the `/actor/deliver` handler.
     pub async fn serve_deliver(&self, envelope: &ActorEnvelope) -> DeliverAck {
-        serve_envelope(&self.registry, &self.dedup, envelope).await
+        let inbox_id = self.spool_inbound(envelope);
+        let ack = serve_envelope(&self.registry, &self.dedup, envelope).await;
+        if ack.delivered {
+            self.spool_clear_inbound(inbox_id);
+        }
+        ack
     }
 
     /// Deliver a fire-and-forget (`cast`) envelope to a local instance.
@@ -374,6 +425,30 @@ impl ClusterMessaging {
         }
     }
 
+    fn spool_outbound(&self, envelope: &ActorEnvelope) -> Option<MailboxSpoolId> {
+        self.spool
+            .as_ref()
+            .and_then(|spool| spool.push_outbox(envelope).ok())
+    }
+
+    fn spool_clear_outbound(&self, id: Option<MailboxSpoolId>) {
+        if let (Some(spool), Some(id)) = (&self.spool, id) {
+            let _ = spool.remove_outbox(id);
+        }
+    }
+
+    fn spool_inbound(&self, envelope: &ActorEnvelope) -> Option<MailboxSpoolId> {
+        self.spool
+            .as_ref()
+            .and_then(|spool| spool.push_inbox(envelope).ok())
+    }
+
+    fn spool_clear_inbound(&self, id: Option<MailboxSpoolId>) {
+        if let (Some(spool), Some(id)) = (&self.spool, id) {
+            let _ = spool.remove_inbox(id);
+        }
+    }
+
     async fn deliver_ask(
         &self,
         target: ActorRegistration,
@@ -399,9 +474,13 @@ impl ClusterMessaging {
             payload,
             reply_expected: true,
         };
+        let outbox_id = self.spool_outbound(&envelope);
         let ack = send_actor_deliver(self.transport.as_ref(), node, &envelope)
             .await
             .map_err(|e| RemoteError::transport(node, e))?;
+        if ack.delivered {
+            self.spool_clear_outbound(outbox_id);
+        }
         if !ack.delivered {
             return Err(RemoteError::rejected(
                 node,
@@ -436,10 +515,12 @@ impl ClusterMessaging {
             payload,
             reply_expected: false,
         };
+        let outbox_id = self.spool_outbound(&envelope);
         let ack = send_actor_deliver(self.transport.as_ref(), node, &envelope)
             .await
             .map_err(|e| RemoteError::transport(node, e))?;
         if ack.delivered {
+            self.spool_clear_outbound(outbox_id);
             Ok(())
         } else {
             Err(
@@ -546,18 +627,44 @@ async fn serve_ask(registry: &ActorRegistry, envelope: &ActorEnvelope) -> Delive
     }
 }
 
+/// Periodically replay pending mailbox spool rows until `stop` is set.
+pub async fn run_mailbox_spool_drainer(
+    messaging: Arc<ClusterMessaging>,
+    poll: Duration,
+    mut stop: tokio::sync::watch::Receiver<bool>,
+) {
+    loop {
+        messaging.drain_mailbox_spool_once().await;
+        if *stop.borrow() {
+            break;
+        }
+        tokio::select! {
+            changed = stop.changed() => {
+                if changed.is_ok() && *stop.borrow() {
+                    break;
+                }
+            }
+            _ = tokio::time::sleep(poll) => {}
+        }
+    }
+}
+
 impl RequestHandler for ClusterMessaging {
     fn handle(&self, route: Route, body: Body) -> BoxFuture<'static, Result<Body, TransportError>> {
         match route {
             Route::ActorDeliver => {
-                // An `ask` handler may await the actor's reply, so serving is
-                // async; the serve path needs the registry plus the dedup table
-                // to replay an at-least-once resend (cross-node-actors).
                 let registry = self.registry.clone();
                 let dedup = Arc::clone(&self.dedup);
+                let spool = self.spool.clone();
                 Box::pin(async move {
                     let envelope: ActorEnvelope = decode_body(&body)?;
+                    let inbox_id = spool.as_ref().and_then(|s| s.push_inbox(&envelope).ok());
                     let ack = serve_envelope(&registry, &dedup, &envelope).await;
+                    if ack.delivered {
+                        if let (Some(s), Some(id)) = (spool.as_ref(), inbox_id) {
+                            let _ = s.remove_inbox(id);
+                        }
+                    }
                     Ok(encode_body(&ack)?)
                 })
             }

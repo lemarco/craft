@@ -128,6 +128,50 @@ Request/response types: `CatalogAddRequest` / `CatalogAddResponse` in `craft-pro
 
 See [cross-node-actors](decisions/cross-node-actors.md).
 
+### Job queue (cross-node, tier C)
+
+Leader-gated durable backlog ([job-queue](decisions/job-queue.md)). Mutations run on the **Raft leader**; followers **forward** client routes to the leader. After each leader mutation, `QueueReplicateOp` batches replicate to every other **reachable voter** in parallel; the client receives success only once all peers ack.
+
+**Authorization**
+
+| Route | Caller identity |
+|-------|-----------------|
+| `enqueue`, `lease`, `ack`, `nack`, `metrics` | Any cluster member (mTLS peer); followers forward to leader |
+| `replicate` | **Leader only** — transport must tag the caller (`LocalTransport`, QUIC mTLS peer id); followers reject if `from != current Raft leader` |
+
+```
+POST /raft/v1/queue/enqueue
+POST /raft/v1/queue/lease
+POST /raft/v1/queue/ack
+POST /raft/v1/queue/nack
+POST /raft/v1/queue/metrics
+POST /raft/v1/queue/replicate   # leader → voter sync only
+Content-Type: application/x-postcard
+```
+
+| Route | Request | Response | Notes |
+|-------|---------|----------|-------|
+| `.../enqueue` | `QueueEnqueueRequest` | `QueueEnqueueReply { job_id, error }` | Optional `priority`, `not_before_ms`, `dedup_key`, `shard_key` |
+| `.../lease` | `QueueLeaseRequest` | `QueueLeaseReply { jobs, error }` | Worker identified by `worker_node` + `worker_instance` |
+| `.../ack` | `QueueAckRequest` | `QueueAckReply { error }` | Completes a lease |
+| `.../nack` | `QueueNackRequest` | `QueueNackReply { error }` | Requeues immediately |
+| `.../metrics` | `QueueMetricsRequest` | `QueueMetricsReply` | `pending`, `leased`, `oldest_pending_age_ms` for autoscale |
+| `.../replicate` | `QueueReplicateRequest` | `QueueReplicateReply { error }` | Idempotent `QueueReplicateOp` batch; leader-authenticated |
+
+Types live in `craft-proto` (`queue.rs`). Facade client: [`ClusterJobQueue`](../../crates/craft-actor/src/queue_service.rs) via [`CraftCluster::job_queue`](../../crates/craft/src/cluster.rs).
+
+### Actor mailbox spool (tier B durability)
+
+Optional write-ahead **`MailboxSpool`** (`RedbMailboxSpool` at `{data_dir}/mailbox-spool.redb`) for cross-node [`/actor/deliver`](decisions/cross-node-actors.md):
+
+| Direction | Behavior |
+|-----------|----------|
+| **Outbox** | Envelope persisted before send; removed after peer acks delivery |
+| **Inbox** | Envelope persisted before local mailbox enqueue; removed after accept |
+| **Recovery** | Background drainer + startup replay of pending rows |
+
+Enable via [`CraftClusterBuilder::durable_mailbox`](../../crates/craft/src/builder.rs)(`true`) with [`data_dir`](../../crates/craft/src/builder.rs).
+
 ## Connections
 
 - **Peers:** long-lived QUIC connection per remote node; concurrent RPCs on separate HTTP/3 streams.

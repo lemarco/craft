@@ -31,6 +31,7 @@
 - Multi-Raft write scaling: **Meta-Raft coordinator** (join/catalog/saga isolated from user groups), dynamic catalog, stable shards, group migration, per-group membership
 - Cross-shard saga coordinator + optional 2PC; follower/lease reads
 - K8s manifests, cert hot reload, reachability-driven supervisor, `craft-ops` backup
+- **Durable job queue** (tier C): `job_queue`, worker autoscale, sync voter replication — [job-queue](docs/decisions/job-queue.md)
 - Design decision records — [docs/decisions/](docs/decisions/)
 
 ### Not yet (by design or process)
@@ -51,14 +52,27 @@ lefthook install
 cargo run -p craft --example kv_store
 cargo run -p craft --example three_node_local
 cargo run -p craft --example actors_cluster
+cargo run -p craft --example job_queue_worker   # cluster queue: follower worker + failover
+cargo run -p craft --example job_queue_cluster  # sharded queue, dedup, autoscale
 
-./e2e/run.sh      # 3-node QUIC/mTLS
+./e2e/run.sh      # 3-node QUIC/mTLS election + failover
+./e2e/queue.sh    # job queue over QUIC (enqueue, follower lease/ack, leader failover)
 ./e2e/chaos.sh    # partition + heal
 ```
 
 **Read next:** [docs/status.md](docs/status.md) → [docs/architecture.md](docs/architecture.md) → [crates/craft/src/builder.rs](crates/craft/src/builder.rs)
 
 **`craft-node` env:** `CRAFT_NODE_ID`, `CRAFT_LISTEN` (`:7443`), `CRAFT_ADMIN` (`:8080`), `CRAFT_PEERS`, `CRAFT_JOIN_SEEDS`, `CRAFT_DISCOVERY` — [docs/certs.md](docs/certs.md)
+
+**Job queue on `craft-node`** (optional, requires `CRAFT_DATA_DIR`):
+
+| Var | Meaning |
+|-----|---------|
+| `CRAFT_DATA_DIR` | Persistent redb directory (Raft log + queue file) |
+| `CRAFT_JOB_QUEUE` | Enable durable queue stream name (e.g. `jobs`) |
+| `CRAFT_JOB_QUEUE_LEASE_SECS` | Lease visibility timeout (default `60`) |
+
+See [job-queue](docs/decisions/job-queue.md) and [protocol.md](docs/protocol.md#job-queue-cross-node-tier-c).
 
 ---
 
@@ -78,6 +92,10 @@ let cluster = CraftCluster::builder(NodeId(1), Counter::default())
 ```
 
 Multi-Raft: `.raft_groups(n)`, `.stable_shards()`, `.data_dir(path)`. With `raft_groups > 1`, cluster metadata (join/leave, catalog, saga journal) lives on a dedicated **Meta-Raft** group (`group-meta.redb`); group 0 is user data only — [multi-raft](docs/decisions/multi-raft.md). Keyed client: `propose_keyed` / `query_keyed`. Cross-shard: `run_keyed_saga` / `resume_keyed_saga`.
+
+Job queue (tier C): `.data_dir(path).job_queue("jobs", lease_timeout)` → `cluster.job_queue("jobs")` for enqueue/lease/ack; workers use `run_queue_consumer`. Wire routes under `/raft/v1/queue/*` — [job-queue](docs/decisions/job-queue.md).
+
+Durable mailbox (tier B spool): `.data_dir(path).durable_mailbox(true)` — write-ahead outbox/inbox for cross-node casts/asks; `{data_dir}/mailbox-spool.redb`.
 
 ## Design principles
 

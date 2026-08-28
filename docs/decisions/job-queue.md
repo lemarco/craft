@@ -202,6 +202,7 @@ Scaling **out beyond node count** in production still means **add VPS + join** (
 | Parallel voter replicate + replicate auth | **landed** |
 | Meta-Raft autoscale policy persistence | **landed** |
 | `RedbJobQueue` periodic compaction | **landed** |
+| Cross-node durable mailbox outbox/inbox (`durable_mailbox`) | **landed** |
 
 Implementation status: **v2 + production polish landed** — Redis adapter remains deferred; see [status.md](../status.md).
 
@@ -210,7 +211,6 @@ Implementation status: **v2 + production polish landed** — Redis adapter remai
 | Item | Notes |
 |------|-------|
 | `RedisJobQueue` adapter | Optional remote backend |
-| Cross-node durable mailbox outbox/inbox | Tier B spool |
 
 ## Consequences
 

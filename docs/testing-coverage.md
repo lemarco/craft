@@ -24,7 +24,7 @@ Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** sch
 | Linearizability | Client-visible histories | `craft-sim/tests/linearizability.rs` | 2 | ✅ |
 | Doctests | Public API examples | `cargo test --doc` | — | ✅ |
 | Redis integration | Real `ActorStateStore` | `craft-store-redis/tests/{redis,tls}.rs` | 10 | 🔒 nightly |
-| E2E | Real processes, QUIC, mTLS, chaos | `e2e/run.sh`, `e2e/chaos.sh`, `e2e/cert_renew.sh`, `e2e/linearizability.sh` | 4 scenarios | 🔒 nightly |
+| E2E | Real processes, QUIC, mTLS, chaos | `e2e/run.sh`, `e2e/queue.sh`, `e2e/chaos.sh`, `e2e/cert_renew.sh`, `e2e/linearizability.sh` | 5 scenarios | 🔒 nightly |
 | Fuzz | Wire decode never panics | `craft-fuzz` | 1 target | 🔒 nightly |
 | Bench / soak | Throughput, long-run sim | `benchmarks/` | — | 🔒 nightly |
 
@@ -142,6 +142,8 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | **Job queue replicate auth + parallel replicate** | ✅ `queue_service` | ✅ `queue` (`queue_replicate_rejects_non_leader_caller`) | — | — | ✅ |
 | **Meta-Raft queue autoscale policy** | ✅ `queue_autoscale_policy` (core) | ✅ `queue` (autoscale tests) | — | — | ✅ |
 | **RedbJobQueue ack-driven compaction** | ✅ `redb_queue` | — | — | — | ✅ |
+| **Job queue E2E (QUIC enqueue → follower lease/ack → leader failover)** | — | — | — | ✅ `e2e/queue.sh` | ✅ |
+| **Durable mailbox outbox/inbox** | ✅ `mailbox_spool` | ✅ `mailbox_spool` (wire) | — | — | ✅ |
 | Actor state store resume + idempotency (facade) | — | ✅ `actor_store_resume` | — | — | ✅ |
 | Actor state store (Redis) | — | 🔒 ignore | — | — | 🔒 |
 | Actor state store (`rediss://` + private CA) | — | 🔒 ignore | — | — | 🔒 |

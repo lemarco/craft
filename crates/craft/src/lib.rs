@@ -64,10 +64,10 @@ pub use certs::{CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert
 pub use cluster::{ClusterFacts, CraftCluster, LeaveError, ScaleClusterError};
 pub use craft_actor::{ActorSession, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy, DirectoryRetry};
 pub use craft_actor::{
-    AutoscalePolicy, ClusterJobQueue, EnqueueOptions, InMemoryJobQueue, JobId, JobQueue, LeaseId,
-    LeasedJob, MembershipAutoscalePolicy, QueueError, QueueMetrics, QueueService, RedbJobQueue,
-    ShardedJobQueue, WorkerId, run_queue_autoscaler, run_queue_consumer,
-    run_queue_membership_autoscaler,
+    AutoscalePolicy, ClusterJobQueue, EnqueueOptions, InMemoryJobQueue, InMemoryMailboxSpool,
+    JobId, JobQueue, LeaseId, LeasedJob, MailboxSpool, MembershipAutoscalePolicy, QueueError,
+    QueueMetrics, QueueService, RedbJobQueue, RedbMailboxSpool, ShardedJobQueue, WorkerId,
+    run_queue_autoscaler, run_queue_consumer, run_queue_membership_autoscaler,
 };
 pub use craft_actor::{ResourceProfile, VpsResources};
 pub use craft_core::ReachabilityConfig;

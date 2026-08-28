@@ -39,8 +39,11 @@
 - Cross-node actors, auto-spawn on join, one worker per VPS (production)
 - Consistent-hash ring keyed routing, sticky `ActorSession`, per-group drain override (`CRAFT_DRAIN_TIMEOUT`)
 - Optional `DirectoryPolicy::ReadYourWrites` and `ask_linearizable` (directory visibility, not Raft-linearizable actor state)
+- **Durable mailbox spool** — redb outbox/inbox for cross-node `/actor/deliver` (`.durable_mailbox(true)` + `data_dir`)
 - Redis-backed `ActorStateStore` (`craft-store-redis`); actor migration RPC
-- **`JobQueue`** — `InMemoryJobQueue`, `RedbJobQueue`, sharded streams, priority/delayed enqueue, leader `QueueService` with sync voter replication, `ClusterJobQueue`, worker + membership autoscale ([job-queue](decisions/job-queue.md))
+- **`JobQueue`** — `InMemoryJobQueue`, `RedbJobQueue`, sharded streams, priority/delayed enqueue, leader `QueueService` with parallel sync voter replication + replicate auth, `ClusterJobQueue`, worker + membership autoscale, Meta-Raft autoscale policy ([job-queue](decisions/job-queue.md))
+- **Job queue E2E** — `./e2e/queue.sh` (QUIC/mTLS, enqueue → follower worker → leader failover); `craft-node` env `CRAFT_DATA_DIR` + `CRAFT_JOB_QUEUE`
+- **Examples** — `job_queue_worker` (follower `ClusterJobQueue` + failover), `job_queue_cluster` (sharding, dedup, autoscale)
 
 ### Multi-Raft write scaling
 

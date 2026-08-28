@@ -111,6 +111,12 @@ run_linclient() {
     $COMPOSE --profile linclient run --rm linclient
 }
 
+# Run the QUIC job-queue client (`CRAFT_E2E_QUEUE_PHASE` = before/after_failover).
+run_queue_client() {
+    local phase="$1"
+    CRAFT_E2E_QUEUE_PHASE="$phase" $COMPOSE --profile queueclient run --rm queueclient
+}
+
 # Reissue node $1's PEM in the shared /certs volume (via node $2's container).
 reissue_node_cert() {
     local id="$1" via="${2:-1}"

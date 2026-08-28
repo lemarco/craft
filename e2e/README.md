@@ -28,12 +28,17 @@ real network between separate processes.
 - `linearizability.sh` — Jepsen-lite gate: craft-sim checker sweep, then docker
   E2E with concurrent QUIC clients (`craft-e2e-client` + `craft_sim::History`)
   and partition chaos under admin poll.
-- `lib.sh` — shared helpers (compose wrapper, leader polling, `run_linclient`) sourced by E2E scripts.
+- `queue.sh` — job queue over QUIC: enqueue on the leader, lease/ack on a
+  follower (`craft-e2e-queue-client`), kill the leader, drain the replicated
+  backlog on the new leader.
+- `lib.sh` — shared helpers (compose wrapper, leader polling, `run_linclient`,
+  `run_queue_client`) sourced by E2E scripts.
 
 ## Run it
 
 ```sh
 ./e2e/run.sh                    # election + failover
+./e2e/queue.sh                  # job queue enqueue / follower worker / failover
 ./e2e/chaos.sh                  # partition + heal
 ./e2e/cert_renew.sh             # PEM reissue + SIGHUP/poll hot reload
 ./e2e/linearizability.sh        # sim checker + docker QUIC linearizability
