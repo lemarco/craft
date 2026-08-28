@@ -11,8 +11,15 @@ variables:
   # Keep cargo's registry/build output inside the project so it can be cached.
   CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
 
+# .cargo/config.toml uses clang + mold on Linux; rust:* images omit both.
+.rust_linux_linker:
+  before_script:
+    - bash scripts/ci-linux-linker-deps.sh
+
 default:
   image: rust:latest
+  before_script:
+    - !reference [.rust_linux_linker, before_script]
   cache:
     key:
       files:
@@ -32,6 +39,7 @@ fast:
       when: never
     - if: $CI_COMMIT_BRANCH
   before_script:
+    - !reference [.rust_linux_linker, before_script]
     - rustup component add rustfmt clippy
     - mkdir -p "$CARGO_HOME/bin" && curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C "$CARGO_HOME/bin"
   script:
@@ -50,6 +58,8 @@ msrv:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
     - if: $CI_COMMIT_BRANCH
+  before_script:
+    - !reference [.rust_linux_linker, before_script]
   script:
     - cargo check --workspace --all-features
 
@@ -61,6 +71,8 @@ fuzz:
   image: rustlang/rust:nightly
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
+  before_script:
+    - !reference [.rust_linux_linker, before_script]
   script:
     - cargo install cargo-fuzz
     - cd crates/craft-fuzz && cargo fuzz run wire_decode -- -max_total_time=300
