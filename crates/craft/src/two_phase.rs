@@ -78,7 +78,8 @@ impl TwoPhaseJournal for StoreTwoPhaseJournal {
     ) -> Pin<Box<dyn Future<Output = Result<(), TwoPhaseJournalError>> + Send + 'a>> {
         Box::pin(async move {
             self.update(tx_id, |mut rec| {
-                rec.prepared_steps = (step as u32 + 1).max(rec.prepared_steps);
+                rec.prepared_steps = (u32::try_from(step).expect("step index fits u32") + 1)
+                    .max(rec.prepared_steps);
                 rec
             })
             .await
@@ -93,7 +94,8 @@ impl TwoPhaseJournal for StoreTwoPhaseJournal {
     ) -> Pin<Box<dyn Future<Output = Result<(), TwoPhaseJournalError>> + Send + 'a>> {
         Box::pin(async move {
             self.update(tx_id, |mut rec| {
-                rec.committed_steps = (step as u32 + 1).max(rec.committed_steps);
+                rec.committed_steps = (u32::try_from(step).expect("step index fits u32") + 1)
+                    .max(rec.committed_steps);
                 rec
             })
             .await
@@ -157,7 +159,7 @@ impl MetaRaftTwoPhaseJournal {
         Self { upsert, registry }
     }
 
-    async fn read(
+    fn read(
         &self,
         tx_id: &[u8],
     ) -> Result<Option<TwoPhaseJournalRecord>, TwoPhaseJournalError> {
@@ -169,7 +171,7 @@ impl MetaRaftTwoPhaseJournal {
         tx_id: &[u8],
         f: impl FnOnce(TwoPhaseJournalRecord) -> TwoPhaseJournalRecord,
     ) -> Result<(), TwoPhaseJournalError> {
-        let prev = self.read(tx_id).await?;
+        let prev = self.read(tx_id)?;
         let updated = f(prev.unwrap_or_else(|| fresh_record(tx_id)));
         let command = TwoPhaseJournalCommand {
             tx_id: tx_id.to_vec(),
@@ -188,7 +190,8 @@ impl TwoPhaseJournal for MetaRaftTwoPhaseJournal {
     ) -> Pin<Box<dyn Future<Output = Result<(), TwoPhaseJournalError>> + Send + 'a>> {
         Box::pin(async move {
             self.update(tx_id, |mut rec| {
-                rec.prepared_steps = (step as u32 + 1).max(rec.prepared_steps);
+                rec.prepared_steps = (u32::try_from(step).expect("step index fits u32") + 1)
+                    .max(rec.prepared_steps);
                 let _ = total;
                 rec
             })
@@ -204,7 +207,8 @@ impl TwoPhaseJournal for MetaRaftTwoPhaseJournal {
     ) -> Pin<Box<dyn Future<Output = Result<(), TwoPhaseJournalError>> + Send + 'a>> {
         Box::pin(async move {
             self.update(tx_id, |mut rec| {
-                rec.committed_steps = (step as u32 + 1).max(rec.committed_steps);
+                rec.committed_steps = (u32::try_from(step).expect("step index fits u32") + 1)
+                    .max(rec.committed_steps);
                 let _ = total;
                 rec
             })

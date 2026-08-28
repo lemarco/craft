@@ -149,9 +149,8 @@ impl CertReloadHandle {
         {
             use tokio::signal::unix::{SignalKind, signal};
             Some(tokio::spawn(async move {
-                let mut stream = match signal(SignalKind::hangup()) {
-                    Ok(s) => s,
-                    Err(_) => return,
+                let Ok(mut stream) = signal(SignalKind::hangup()) else {
+                    return;
                 };
                 while stream.recv().await.is_some() {
                     if let Err(e) = self.reload_now(ReloadOpts::default()).await {

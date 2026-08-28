@@ -257,7 +257,7 @@ impl<M: StateMachine + Default + 'static> MultiRaftState<M> {
         if report.plan.adopt.is_empty() && report.plan.retire.is_empty() {
             return;
         }
-        events.emit(CraftEvent::RaftGroupsRebalanced {
+        let _ = events.emit(CraftEvent::RaftGroupsRebalanced {
             adopt: report.plan.adopt.iter().map(|g| g.0).collect(),
             retire: report.plan.retire.iter().map(|g| g.0).collect(),
         });

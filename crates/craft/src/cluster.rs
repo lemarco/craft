@@ -34,6 +34,21 @@ use crate::multi_raft::MultiRaftState;
 use crate::CraftClusterBuilder;
 use crate::certs::CertReloadHandle;
 
+#[allow(clippy::cast_precision_loss)] // Prometheus gauges use f64; Raft indices fit in practice.
+fn metric_u64(v: u64) -> f64 {
+    v as f64
+}
+
+#[allow(clippy::cast_precision_loss)] // Prometheus gauges use f64; actor counts fit in practice.
+fn metric_usize(v: usize) -> f64 {
+    v as f64
+}
+
+#[allow(clippy::cast_precision_loss)] // Prometheus gauges use f64; mailbox depths fit in practice.
+fn metric_i64(v: i64) -> f64 {
+    v as f64
+}
+
 /// The live leadership/membership facts the supervisor reconciles against
 /// (implements [`ClusterState`]), refreshed from the node's consensus status by
 /// a background task. Exposed only so [`CraftCluster::supervisor`] has a nameable
@@ -53,11 +68,14 @@ impl ClusterFacts {
             Ordering::SeqCst,
         );
         *self.leader_id.lock().unwrap() = status.leader;
-        *self.voters.lock().unwrap() = status.voters.clone();
-        *self.reachable.lock().unwrap() = status.reachable.clone();
+        self.voters.lock().unwrap().clone_from(&status.voters);
+        self.reachable.lock().unwrap().clone_from(&status.reachable);
     }
 
     /// Current Raft leader hint (refreshed with consensus status).
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     #[must_use]
     pub fn leader_id(&self) -> Option<NodeId> {
         *self.leader_id.lock().unwrap()
@@ -156,7 +174,7 @@ impl ActorObserver for ActorTelemetry {
             &[("actor", name)],
             1.0,
         );
-        self.events.emit(CraftEvent::ActorSpawned {
+        let _ = self.events.emit(CraftEvent::ActorSpawned {
             id: self.id(name, instance),
         });
     }
@@ -168,7 +186,7 @@ impl ActorObserver for ActorTelemetry {
             &[("actor", name)],
             1.0,
         );
-        self.events.emit(CraftEvent::ActorStopped {
+        let _ = self.events.emit(CraftEvent::ActorStopped {
             id: self.id(name, instance),
             reason: StopReason::Normal,
         });
@@ -178,9 +196,9 @@ impl ActorObserver for ActorTelemetry {
         if !self.tracing.load(Ordering::Relaxed) || !self.is_traced(name) {
             return;
         }
-        self.events.emit(CraftEvent::MessageHandled {
+        let _ = self.events.emit(CraftEvent::MessageHandled {
             id: self.id(name, instance),
-            latency_ms: elapsed.as_millis() as u64,
+            latency_ms: u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
         });
     }
 
@@ -191,7 +209,7 @@ impl ActorObserver for ActorTelemetry {
             &[("actor", name)],
             1.0,
         );
-        self.events.emit(CraftEvent::ActorRestarted {
+        let _ = self.events.emit(CraftEvent::ActorRestarted {
             id: self.id(name, instance),
             count,
         });
@@ -204,7 +222,7 @@ impl ActorObserver for ActorTelemetry {
             &[("actor", name)],
             1.0,
         );
-        self.events.emit(CraftEvent::ActorStopped {
+        let _ = self.events.emit(CraftEvent::ActorStopped {
             id: self.id(name, instance),
             reason: StopReason::RestartLimit,
         });
@@ -254,25 +272,25 @@ impl MembershipTelemetry {
             "craft_raft_term",
             "Current Raft term.",
             &[("node", node)],
-            status.term.0 as f64,
+            metric_u64(status.term.0),
         );
         self.metrics.set(
             "craft_raft_commit_index",
             "Highest committed log index.",
             &[("node", node)],
-            status.commit_index.0 as f64,
+            metric_u64(status.commit_index.0),
         );
         self.metrics.set(
             "craft_raft_last_applied",
             "Highest applied log index.",
             &[("node", node)],
-            status.last_applied.0 as f64,
+            metric_u64(status.last_applied.0),
         );
         self.metrics.set(
             "craft_raft_live_nodes",
             "Committed voter count.",
             &[("node", node)],
-            status.voters.len() as f64,
+            metric_usize(status.voters.len()),
         );
         self.metrics.set(
             "craft_raft_is_leader",
@@ -292,7 +310,7 @@ impl MembershipTelemetry {
                 &[("node", node)],
                 1.0,
             );
-            self.events.emit(CraftEvent::LeaderChanged {
+            let _ = self.events.emit(CraftEvent::LeaderChanged {
                 term: status.term.0,
                 leader: leader.0,
             });
@@ -314,7 +332,7 @@ impl MembershipTelemetry {
                     &[("node", node)],
                     1.0,
                 );
-                self.events
+                let _ = self.events
                     .emit(CraftEvent::NodeJoined { node_id: joined.0 });
             }
             for left in prev_v.difference(&new_v) {
@@ -326,7 +344,7 @@ impl MembershipTelemetry {
                     &[("node", node)],
                     1.0,
                 );
-                self.events.emit(CraftEvent::NodeLeft {
+                let _ = self.events.emit(CraftEvent::NodeLeft {
                     node_id: left.0,
                     // Observed via membership diff, not a coordinated drain, so
                     // report non-graceful (crash-safe default, E12).
@@ -460,6 +478,9 @@ impl<M: StateMachine> CraftCluster<M> {
 
     /// Default saga journal: Meta-Raft metadata (multi-Raft) or group 0 (single-group),
     /// optionally mirrored to [`Self::actor_state_store`] when configured.
+    ///
+    /// # Panics
+    /// In single-group mode when group 0 is not hosted on this node.
     #[must_use]
     pub fn saga_journal(&self) -> Arc<dyn craft_client::SagaJournal> {
         let raft_journal = if let Some(meta) = &self.meta_handle {
@@ -483,6 +504,9 @@ impl<M: StateMachine> CraftCluster<M> {
 
     /// Default 2PC client journal: Meta-Raft metadata (multi-Raft) or group 0,
     /// optionally mirrored to [`Self::actor_state_store`] when configured.
+    ///
+    /// # Panics
+    /// In single-group mode when group 0 is not hosted on this node.
     #[must_use]
     pub fn two_phase_journal(&self) -> Arc<dyn craft_client::TwoPhaseJournal> {
         let raft_journal = if let Some(meta) = &self.meta_handle {
@@ -518,6 +542,9 @@ impl<M: StateMachine> CraftCluster<M> {
     }
 
     /// Active handle for Raft group `group`, if this node currently hosts it.
+    ///
+    /// # Panics
+    /// If the multi-Raft handle map mutex is poisoned.
     #[must_use]
     pub fn group_handle(&self, group: u32) -> Option<NodeHandle<M>> {
         if let Some(mr) = &self.multi_raft {
@@ -531,6 +558,9 @@ impl<M: StateMachine> CraftCluster<M> {
     }
 
     /// Group ids with a live Raft runtime on this node (updates after rebalance).
+    ///
+    /// # Panics
+    /// If the multi-Raft handle map mutex is poisoned.
     #[must_use]
     pub fn hosted_groups(&self) -> Vec<u32> {
         if let Some(mr) = &self.multi_raft {
@@ -549,10 +579,13 @@ impl<M: StateMachine> CraftCluster<M> {
     }
 
     /// Number of Raft groups in the live catalog (1 = default single-group).
+    ///
+    /// # Panics
+    /// If the multi-Raft catalog mutex is poisoned.
     #[must_use]
     pub fn raft_groups(&self) -> u32 {
         if let Some(mr) = &self.multi_raft {
-            mr.catalog.lock().unwrap().len() as u32
+            u32::try_from(mr.catalog.lock().unwrap().len()).unwrap_or(u32::MAX)
         } else {
             self.raft_groups
         }
@@ -818,8 +851,8 @@ impl<M: StateMachine> CraftCluster<M> {
     /// [`events`](Self::events). Tracing auto-expires after `opts.duration`, so
     /// it never runs unbounded. Off by default — steady-state message flow does
     /// not emit per-message events, only the sampled rate/latency metrics.
-    pub fn trace(&self, name: &str, opts: TraceOpts) {
-        self.telemetry.enable_trace(name, &opts);
+    pub fn trace(&self, name: &str, opts: &TraceOpts) {
+        self.telemetry.enable_trace(name, opts);
     }
 
     /// A point-in-time consensus status snapshot, or `None` if the runtime has
@@ -897,7 +930,7 @@ impl<M: StateMachine> CraftCluster<M> {
             for &contact in &contacts {
                 match self.leave_via_contact(contact).await {
                     Ok(membership) => {
-                        self.events.emit(CraftEvent::NodeLeft {
+                        let _ = self.events.emit(CraftEvent::NodeLeft {
                             node_id: self.node_id.0,
                             graceful: true,
                         });
@@ -961,15 +994,20 @@ impl<M: StateMachine> CraftCluster<M> {
                 match second {
                     LeaveResponse::Accepted { membership, .. } => Ok(membership),
                     LeaveResponse::Rejected { reason } => Err(LeaveError::Rejected(reason)),
-                    _ => Err(LeaveError::Timeout),
+                    LeaveResponse::Redirect { .. } => Err(LeaveError::Timeout),
                 }
             }
             LeaveResponse::Rejected { reason } => Err(LeaveError::Rejected(reason)),
-            _ => Err(LeaveError::Timeout),
+            LeaveResponse::Redirect { .. } => Err(LeaveError::Timeout),
         }
     }
 
     /// Grow the multi-Raft group catalog without restarting nodes (Tier 2).
+    ///
+    /// # Errors
+    /// Returns [`AddRaftGroupsError`] when multi-Raft is disabled, `count` is
+    /// zero, the runtime has stopped, no leader is elected, the catalog add is
+    /// rejected, or the wire request fails.
     pub async fn add_raft_groups(&self, count: u32) -> Result<Vec<u32>, AddRaftGroupsError> {
         if self.multi_raft.is_none() {
             return Err(AddRaftGroupsError::NotMultiRaft);
@@ -1151,6 +1189,9 @@ impl<M: StateMachine> CraftCluster<M> {
     }
 
     /// Per-group drain override on the local registry.
+    ///
+    /// # Errors
+    /// Propagates [`craft_actor::StopError`] when the group is unknown.
     pub fn set_group_drain_timeout(
         &self,
         name: &str,
@@ -1160,6 +1201,9 @@ impl<M: StateMachine> CraftCluster<M> {
     }
 
     /// Gracefully stop a local actor group using the cluster drain default.
+    ///
+    /// # Errors
+    /// Propagates [`craft_actor::StopError`] when the group is unknown or drain fails.
     pub async fn stop_group_graceful(
         &self,
         name: &str,
@@ -1168,6 +1212,9 @@ impl<M: StateMachine> CraftCluster<M> {
     }
 
     /// Stop the node: shut the runtime down and abort all background tasks.
+    ///
+    /// # Panics
+    /// If a multi-Raft handle map or task-list mutex is poisoned.
     pub fn shutdown(&self) {
         if let Some(meta) = &self.meta_handle {
             meta.shutdown();

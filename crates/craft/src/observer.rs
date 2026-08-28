@@ -205,7 +205,7 @@ impl<M: StateMachine> Observer for CraftObserver<M> {
                 shard_count: active_shard_count,
                 shard_routing: shard_routing.as_str().into(),
                 catalog_size: self.multi_raft.as_ref().map_or(self.raft_groups, |mr| {
-                    mr.catalog.lock().unwrap().len() as u32
+                    u32::try_from(mr.catalog.lock().unwrap().len()).unwrap_or(u32::MAX)
                 }),
                 catalog_version: self.catalog_version.load(Ordering::SeqCst),
                 replication_factor: self.replication_factor,
@@ -227,7 +227,7 @@ impl<M: StateMachine> Observer for CraftObserver<M> {
                         actor_type: reg.actor_type.0.clone(),
                         mailbox_depth: 0,
                         uptime_secs: 0,
-                        generation: reg.id.generation as u32,
+                        generation: u32::try_from(reg.id.generation).unwrap_or(u32::MAX),
                     });
                 }
             }

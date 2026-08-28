@@ -76,7 +76,7 @@ pub async fn resolve_dns_seeds(
                 }
             }
             // A not-yet-scheduled pod fails to resolve; skip it and keep going.
-            Err(_) => continue,
+            Err(_) => {}
         }
     }
     if seeds.is_empty() {

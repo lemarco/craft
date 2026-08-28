@@ -113,9 +113,10 @@ impl RequestHandler for NodeRouter {
                 }
                 self.service.handle(route, body)
             }
-            Route::ClusterLeave => self.service.handle(route, body),
-            Route::ClusterCatalogAdd => self.service.handle(route, body),
-            Route::PeerWire | Route::ClientWire => self.service.handle(route, body),
+            Route::ClusterLeave
+            | Route::ClusterCatalogAdd
+            | Route::PeerWire
+            | Route::ClientWire => self.service.handle(route, body),
             Route::ClusterGroupMigrate => {
                 let Some(handler) = self.group_migrate.as_ref() else {
                     return Box::pin(async move {

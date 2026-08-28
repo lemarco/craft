@@ -96,7 +96,7 @@ impl SagaJournal for StoreSagaJournal {
     ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
         Box::pin(async move {
             self.update(saga_id, |mut rec| {
-                rec.completed_steps = step as u32 + 1;
+                rec.completed_steps = u32::try_from(step).expect("step index fits u32") + 1;
                 rec
             })
             .await
@@ -124,7 +124,7 @@ impl SagaJournal for StoreSagaJournal {
         Box::pin(async move {
             self.update(saga_id, |mut rec| {
                 rec.phase = SagaJournalPhase::Compensating;
-                rec.failed_step = Some(failed_step as u32);
+                rec.failed_step = Some(u32::try_from(failed_step).expect("step index fits u32"));
                 rec
             })
             .await
@@ -155,8 +155,9 @@ impl SagaJournal for StoreSagaJournal {
         Box::pin(async move {
             self.update(saga_id, |mut rec| {
                 rec.phase = SagaJournalPhase::Stuck;
-                rec.failed_step = Some(failed_step as u32);
-                rec.compensate_failed_at = Some(compensate_failed_at as u32);
+                rec.failed_step = Some(u32::try_from(failed_step).expect("step index fits u32"));
+                rec.compensate_failed_at =
+                    Some(u32::try_from(compensate_failed_at).expect("step index fits u32"));
                 rec
             })
             .await
@@ -201,7 +202,7 @@ impl MetaRaftSagaJournal {
         Self { upsert, registry }
     }
 
-    async fn read(&self, saga_id: &[u8]) -> Result<Option<SagaJournalRecord>, SagaJournalError> {
+    fn read(&self, saga_id: &[u8]) -> Result<Option<SagaJournalRecord>, SagaJournalError> {
         Ok(self.registry.lock().expect("lock").get(saga_id).cloned())
     }
 
@@ -210,7 +211,7 @@ impl MetaRaftSagaJournal {
         saga_id: &[u8],
         f: impl FnOnce(SagaJournalRecord) -> SagaJournalRecord,
     ) -> Result<(), SagaJournalError> {
-        let prev = self.read(saga_id).await?;
+        let prev = self.read(saga_id)?;
         let updated = f(prev.unwrap_or_else(|| fresh_record(saga_id)));
         let command = SagaJournalCommand {
             saga_id: saga_id.to_vec(),
@@ -247,7 +248,7 @@ impl SagaJournal for MetaRaftSagaJournal {
     ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
         Box::pin(async move {
             self.update(saga_id, |mut rec| {
-                rec.completed_steps = step as u32 + 1;
+                rec.completed_steps = u32::try_from(step).expect("step index fits u32") + 1;
                 rec
             })
             .await
@@ -275,7 +276,7 @@ impl SagaJournal for MetaRaftSagaJournal {
         Box::pin(async move {
             self.update(saga_id, |mut rec| {
                 rec.phase = SagaJournalPhase::Compensating;
-                rec.failed_step = Some(failed_step as u32);
+                rec.failed_step = Some(u32::try_from(failed_step).expect("step index fits u32"));
                 rec
             })
             .await
@@ -306,8 +307,9 @@ impl SagaJournal for MetaRaftSagaJournal {
         Box::pin(async move {
             self.update(saga_id, |mut rec| {
                 rec.phase = SagaJournalPhase::Stuck;
-                rec.failed_step = Some(failed_step as u32);
-                rec.compensate_failed_at = Some(compensate_failed_at as u32);
+                rec.failed_step = Some(u32::try_from(failed_step).expect("step index fits u32"));
+                rec.compensate_failed_at =
+                    Some(u32::try_from(compensate_failed_at).expect("step index fits u32"));
                 rec
             })
             .await
