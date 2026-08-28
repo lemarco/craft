@@ -114,6 +114,7 @@ impl CertReloadHandle {
     }
 
     /// Poll `paths` every `period` and reload when the on-disk fingerprint changes.
+    #[must_use]
     pub fn spawn_watcher(self: Arc<Self>, period: Duration) -> JoinHandle<()> {
         tokio::spawn(async move {
             let Ok(mut last) = CertFingerprint::read(&self.paths) else {
@@ -142,6 +143,7 @@ impl CertReloadHandle {
 
     /// Listen for `SIGHUP` and trigger [`reload_now`](Self::reload_now) with
     /// [`ReloadOpts::default`]. No-op on platforms without `SIGHUP`.
+    #[must_use]
     pub fn spawn_sighup(self: Arc<Self>) -> Option<JoinHandle<()>> {
         #[cfg(unix)]
         {

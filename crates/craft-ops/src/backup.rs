@@ -29,6 +29,11 @@ impl From<opendal::Error> for OpsError {
 }
 
 /// Pack every file under `data_dir` into `archive` (gzip tar).
+///
+/// # Errors
+///
+/// Returns [`OpsError::Other`] when `data_dir` is missing or not a directory, or when a
+/// walked path cannot be stripped relative to `data_dir`. Propagates I/O and tar errors.
 pub fn export_local(data_dir: &Path, archive: &Path) -> Result<(), OpsError> {
     if !data_dir.is_dir() {
         return Err(OpsError::Other(format!(
@@ -58,6 +63,10 @@ pub fn export_local(data_dir: &Path, archive: &Path) -> Result<(), OpsError> {
 }
 
 /// Extract `archive` into `data_dir` (creates the directory if needed).
+///
+/// # Errors
+///
+/// Propagates I/O, tar read/unpack, and path errors while extracting entries.
 pub fn import_local(data_dir: &Path, archive: &Path) -> Result<(), OpsError> {
     std::fs::create_dir_all(data_dir)?;
     let file = std::fs::File::open(archive)?;
@@ -76,6 +85,10 @@ pub fn import_local(data_dir: &Path, archive: &Path) -> Result<(), OpsError> {
 }
 
 /// Upload a local file to object storage (`s3://bucket/key`, `gs://bucket/key`, `file:///dir/key`).
+///
+/// # Errors
+///
+/// Returns [`OpsError::Other`] for unsupported URIs. Propagates read/write and object-store errors.
 pub async fn push_object(local: &Path, dest_uri: &str) -> Result<(), OpsError> {
     let ObjectTarget { op, key } = operator_for_uri(dest_uri)?;
     let bytes = tokio::fs::read(local).await?;
@@ -84,6 +97,10 @@ pub async fn push_object(local: &Path, dest_uri: &str) -> Result<(), OpsError> {
 }
 
 /// Download from object storage into `local`.
+///
+/// # Errors
+///
+/// Returns [`OpsError::Other`] for unsupported URIs. Propagates object-store read and local write errors.
 pub async fn pull_object(src_uri: &str, local: &Path) -> Result<(), OpsError> {
     let ObjectTarget { op, key } = operator_for_uri(src_uri)?;
     let bytes = op.read(&key).await?.to_vec();
@@ -113,7 +130,7 @@ fn operator_for_uri(uri: &str) -> Result<ObjectTarget, OpsError> {
         let op = Operator::new(Fs::default().root(&root_str))?.finish();
         return Ok(ObjectTarget {
             op,
-            key: key.to_string(),
+            key: key.clone(),
         });
     }
     Err(OpsError::Other(format!(

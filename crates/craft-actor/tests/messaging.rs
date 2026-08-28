@@ -2,6 +2,8 @@
 //! routing that resolves through the directory and delivers either to a local
 //! mailbox or over `/actor/deliver` to the owning node.
 
+#![allow(clippy::unused_async_trait_impl)] // test mock actors have sync handle bodies
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;

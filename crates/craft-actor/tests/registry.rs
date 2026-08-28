@@ -2,6 +2,8 @@
 //! spawn + cast/ask, pool round-robin and keyed routing, `scale_local`, `stop`,
 //! and the production one-worker-per-name guard (one-worker-per-vps).
 
+#![allow(clippy::unused_async_trait_impl)] // test mock actors have sync handle bodies
+
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};

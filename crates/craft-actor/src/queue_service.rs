@@ -69,6 +69,9 @@ impl QueueService {
     }
 
     /// Register a federated sharded stream (logical name → local [`ShardedJobQueue`]).
+    ///
+    /// # Panics
+    /// If an internal mutex is poisoned.
     pub fn register_sharded_stream(&self, name: impl Into<String>, queue: Arc<ShardedJobQueue>) {
         self.sharded
             .lock()
@@ -78,6 +81,9 @@ impl QueueService {
 
     /// Register a local backing queue for `stream` (opened on every node; kept
     /// in sync via leader replication).
+    ///
+    /// # Panics
+    /// If an internal mutex is poisoned.
     pub fn register_stream(&self, stream: impl Into<String>, queue: Arc<dyn JobQueue>) {
         self.streams
             .lock()
@@ -124,7 +130,7 @@ impl QueueService {
         }
         let request = QueueReplicateRequest {
             stream: stream.to_string(),
-            ops: ops.to_vec(),
+            ops: ops.clone(),
         };
         let mut set = JoinSet::new();
         for peer in peers {
@@ -508,7 +514,8 @@ impl QueueService {
                 Ok(m) => QueueMetricsReply {
                     pending: m.pending,
                     leased: m.leased,
-                    oldest_pending_age_ms: m.oldest_pending_age.as_millis() as u64,
+                    oldest_pending_age_ms: u64::try_from(m.oldest_pending_age.as_millis())
+                        .unwrap_or(u64::MAX),
                     error: None,
                 },
                 Err(e) => QueueMetricsReply {
@@ -622,7 +629,7 @@ impl ClusterJobQueue {
         }
     }
 
-    async fn leader(&self) -> Result<NodeId, QueueError> {
+    fn leader(&self) -> Result<NodeId, QueueError> {
         if self.state.is_leader() {
             return Ok(self.node_id);
         }
@@ -640,33 +647,33 @@ impl JobQueue for ClusterJobQueue {
         Box::pin(async { Err(replication_unsupported()) })
     }
 
-    fn lease_replicated<'a>(
-        &'a self,
+    fn lease_replicated(
+        &self,
         worker: WorkerId,
         max: usize,
-    ) -> BoxFuture<'a, Result<(Vec<LeasedJob>, QueueReplicationOps), QueueError>> {
+    ) -> BoxFuture<'_, Result<(Vec<LeasedJob>, QueueReplicationOps), QueueError>> {
         Box::pin(async move {
             let jobs = self.lease(worker, max).await?;
             Ok((jobs, Vec::new()))
         })
     }
 
-    fn ack_replicated<'a>(
-        &'a self,
+    fn ack_replicated(
+        &self,
         worker: WorkerId,
         lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>> {
         Box::pin(async move {
             self.ack(worker, lease_id).await?;
             Ok(Vec::new())
         })
     }
 
-    fn nack_replicated<'a>(
-        &'a self,
+    fn nack_replicated(
+        &self,
         worker: WorkerId,
         lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>> {
         Box::pin(async move {
             self.nack(worker, lease_id).await?;
             Ok(Vec::new())
@@ -679,7 +686,7 @@ impl JobQueue for ClusterJobQueue {
         options: EnqueueOptions,
     ) -> BoxFuture<'a, Result<JobId, QueueError>> {
         Box::pin(async move {
-            let leader = self.leader().await?;
+            let leader = self.leader()?;
             let reply = send_queue_enqueue(
                 self.transport.as_ref(),
                 leader,
@@ -732,13 +739,13 @@ impl JobQueue for ClusterJobQueue {
         })
     }
 
-    fn lease<'a>(
-        &'a self,
+    fn lease(
+        &self,
         worker: WorkerId,
         max: usize,
-    ) -> BoxFuture<'a, Result<Vec<LeasedJob>, QueueError>> {
+    ) -> BoxFuture<'_, Result<Vec<LeasedJob>, QueueError>> {
         Box::pin(async move {
-            let leader = self.leader().await?;
+            let leader = self.leader()?;
             let reply = send_queue_lease(
                 self.transport.as_ref(),
                 leader,
@@ -766,13 +773,9 @@ impl JobQueue for ClusterJobQueue {
         })
     }
 
-    fn ack<'a>(
-        &'a self,
-        worker: WorkerId,
-        lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<(), QueueError>> {
+    fn ack(&self, worker: WorkerId, lease_id: LeaseId) -> BoxFuture<'_, Result<(), QueueError>> {
         Box::pin(async move {
-            let leader = self.leader().await?;
+            let leader = self.leader()?;
             let reply = send_queue_ack(
                 self.transport.as_ref(),
                 leader,
@@ -792,13 +795,9 @@ impl JobQueue for ClusterJobQueue {
         })
     }
 
-    fn nack<'a>(
-        &'a self,
-        worker: WorkerId,
-        lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<(), QueueError>> {
+    fn nack(&self, worker: WorkerId, lease_id: LeaseId) -> BoxFuture<'_, Result<(), QueueError>> {
         Box::pin(async move {
-            let leader = self.leader().await?;
+            let leader = self.leader()?;
             let reply = send_queue_nack(
                 self.transport.as_ref(),
                 leader,
@@ -818,9 +817,9 @@ impl JobQueue for ClusterJobQueue {
         })
     }
 
-    fn metrics<'a>(&'a self) -> BoxFuture<'a, Result<QueueMetrics, QueueError>> {
+    fn metrics(&self) -> BoxFuture<'_, Result<QueueMetrics, QueueError>> {
         Box::pin(async move {
-            let leader = self.leader().await?;
+            let leader = self.leader()?;
             let reply = send_queue_metrics(
                 self.transport.as_ref(),
                 leader,

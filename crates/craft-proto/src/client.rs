@@ -9,7 +9,7 @@ use crate::{LogIndex, NodeId, Term};
 pub enum ClientRequest {
     /// A write: application-encoded command replicated through the Raft log.
     Propose(Vec<u8>),
-    /// A linearizable read: application-encoded query answered via ReadIndex.
+    /// A linearizable read: application-encoded query answered via `ReadIndex`.
     Query(Vec<u8>),
     /// A write routed to the Raft group owning `key` (multi-Raft, write-sharding-multi-raft).
     ProposeKeyed {
@@ -61,7 +61,7 @@ pub enum ClientRequest {
 pub enum ClientResponse {
     /// Success with an application-encoded result body.
     Ok(Vec<u8>),
-    /// ReadIndex confirmed at `index` in `term` (response to
+    /// `ReadIndex` confirmed at `index` in `term` (response to
     /// [`ClientRequest::ReadIndexConfirm`]).
     ReadIndexConfirmed {
         /// The linearizable read barrier index.

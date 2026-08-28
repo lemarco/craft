@@ -219,6 +219,9 @@ impl<S: ClusterState> ClusterSupervisor<S> {
     }
 
     /// Names of the groups this supervisor manages.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     #[must_use]
     pub fn managed_names(&self) -> Vec<String> {
         self.managed
@@ -232,6 +235,9 @@ impl<S: ClusterState> ClusterSupervisor<S> {
     /// Reconcile every managed group toward its desired placement — but only if
     /// this node is the leader (supervisor-leader). On a follower/candidate the pass is
     /// skipped and reports `ran_as_leader = false`.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     pub async fn reconcile(&self) -> ReconcileReport {
         if !self.state.is_leader() {
             return ReconcileReport {

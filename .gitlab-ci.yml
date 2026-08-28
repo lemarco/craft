@@ -44,7 +44,8 @@ fast:
     - mkdir -p "$CARGO_HOME/bin" && curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C "$CARGO_HOME/bin"
   script:
     - cargo fmt --all -- --check
-    - cargo clippy --workspace --all-targets --all-features -- -D warnings
+    - source scripts/clippy-args.sh
+    - cargo clippy --workspace --all-targets --all-features -- "${CLIPPY_ARGS[@]}"
     - cargo nextest run --workspace --all-features
     - cargo test --workspace --doc --all-features
     - RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features

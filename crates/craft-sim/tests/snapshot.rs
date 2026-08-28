@@ -1,5 +1,5 @@
 //! Cluster-level snapshot / log-compaction scenario (Raft §7): a follower that
-//! falls behind the leader's compaction point must catch up via InstallSnapshot.
+//! falls behind the leader's compaction point must catch up via `InstallSnapshot`.
 
 use craft_sim::Cluster;
 

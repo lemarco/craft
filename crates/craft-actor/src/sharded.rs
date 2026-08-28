@@ -34,21 +34,21 @@ impl KeyedRouter {
         }
     }
 
-    fn kind(&self) -> ShardRoutingKind {
+    fn kind(self) -> ShardRoutingKind {
         match self {
             Self::Modulus(_) => ShardRoutingKind::Modulus,
             Self::Stable(_) => ShardRoutingKind::StableVirtual,
         }
     }
 
-    fn active_count(&self) -> u32 {
+    fn active_count(self) -> u32 {
         match self {
             Self::Modulus(r) => r.shard_count(),
             Self::Stable(r) => r.active_count(),
         }
     }
 
-    fn shard_for(&self, key: &[u8]) -> Option<ShardId> {
+    fn shard_for(self, key: &[u8]) -> Option<ShardId> {
         match self {
             Self::Modulus(r) => Some(r.shard_for(key)),
             Self::Stable(r) => r.shard_for(key),
@@ -107,12 +107,18 @@ impl ShardedNodeService {
     }
 
     /// Keyed routing mode on this node.
+    ///
+    /// # Panics
+    /// If the router lock is poisoned.
     #[must_use]
     pub fn routing_kind(&self) -> ShardRoutingKind {
         self.router.read().expect("sharded router lock").kind()
     }
 
     /// Active shard count for keyed routing.
+    ///
+    /// # Panics
+    /// If the router lock is poisoned.
     #[must_use]
     pub fn shard_count(&self) -> u32 {
         self.router
@@ -125,6 +131,9 @@ impl ShardedNodeService {
     ///
     /// # Errors
     /// Returns [`ShardExpansionError`] when `new_count` is invalid or stable routing is active.
+    ///
+    /// # Panics
+    /// If the router lock is poisoned.
     pub fn expand_shard_count(
         &self,
         new_count: u32,
@@ -139,6 +148,9 @@ impl ShardedNodeService {
     ///
     /// # Errors
     /// Returns [`StableShardActivationError`] when `new_active` is invalid or modulus routing is active.
+    ///
+    /// # Panics
+    /// If the router lock is poisoned.
     pub fn activate_shards(
         &self,
         new_active: u32,
@@ -155,6 +167,9 @@ impl ShardedNodeService {
     ///
     /// # Errors
     /// Returns [`ShardRoutingSwitchError`] when stable routing is already active.
+    ///
+    /// # Panics
+    /// If the router lock is poisoned.
     pub fn switch_to_stable_routing(
         &self,
     ) -> Result<ShardRoutingSwitchPlan, ShardRoutingSwitchError> {
@@ -165,6 +180,9 @@ impl ShardedNodeService {
     }
 
     /// Raft groups currently hosted on this physical node.
+    ///
+    /// # Panics
+    /// If the groups lock is poisoned.
     #[must_use]
     pub fn hosted_group_ids(&self) -> Vec<RaftGroupId> {
         self.groups
@@ -177,6 +195,9 @@ impl ShardedNodeService {
     }
 
     /// Register a newly spawned user group handler and extend the routing catalog.
+    ///
+    /// # Panics
+    /// If an internal lock is poisoned.
     pub fn insert_group(&self, group: u32, handler: Arc<dyn RequestHandler>) {
         self.groups
             .write()
@@ -190,6 +211,9 @@ impl ShardedNodeService {
     }
 
     /// Register the Meta-Raft coordinator handler without adding it to keyed routing.
+    ///
+    /// # Panics
+    /// If the groups lock is poisoned.
     pub fn insert_service_group(&self, group: u32, handler: Arc<dyn RequestHandler>) {
         self.groups
             .write()
@@ -207,6 +231,9 @@ impl ShardedNodeService {
     }
 
     /// Remove a group handler during rebalance.
+    ///
+    /// # Panics
+    /// If the groups lock is poisoned.
     pub fn remove_group(&self, group: u32) -> Option<Arc<dyn RequestHandler>> {
         self.groups
             .write()
@@ -215,6 +242,9 @@ impl ShardedNodeService {
     }
 
     /// Extend the routing catalog without requiring hosted handlers (Tier 2).
+    ///
+    /// # Panics
+    /// If the `group_ids` lock is poisoned.
     pub fn extend_routing_catalog(&self, new_groups: &[RaftGroupId]) {
         let mut ids = self.group_ids.write().expect("sharded group_ids lock");
         for group in new_groups {
@@ -239,13 +269,12 @@ impl ShardedNodeService {
         let ids = self.group_ids.read().expect("sharded group_ids lock");
         match request {
             ClientRequest::Propose(bytes) => Ok((
-                ids.first().map(|g| g.0).unwrap_or(0),
+                ids.first().map_or(0, |g| g.0),
                 ClientRequest::Propose(bytes),
             )),
-            ClientRequest::Query(bytes) => Ok((
-                ids.first().map(|g| g.0).unwrap_or(0),
-                ClientRequest::Query(bytes),
-            )),
+            ClientRequest::Query(bytes) => {
+                Ok((ids.first().map_or(0, |g| g.0), ClientRequest::Query(bytes)))
+            }
             ClientRequest::ProposeKeyed { key, command } => {
                 let Some(group) = self.group_for_key(&key) else {
                     return Err(ClientResponse::Error(
@@ -298,7 +327,7 @@ impl ShardedNodeService {
                 Ok((group.0, ClientRequest::TwoPhaseAbort { tx_id, key }))
             }
             ClientRequest::ReadIndexConfirm { route_key: None } => Ok((
-                ids.first().map(|g| g.0).unwrap_or(0),
+                ids.first().map_or(0, |g| g.0),
                 ClientRequest::ReadIndexConfirm { route_key: None },
             )),
             ClientRequest::ReadIndexConfirm {
@@ -405,13 +434,16 @@ impl RequestHandler for ShardedNodeService {
 }
 
 /// Spawn one Raft group on a physical node, restoring from a migration bundle.
+///
+/// # Errors
+/// Returns [`StorageError`] if storage open, import, or driver recovery fails.
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_raft_group_from_bundle<M>(
     node_id: NodeId,
     members: &[NodeId],
     group: u32,
     raft: craft_core::Config,
-    runtime: RuntimeConfig,
+    runtime: &RuntimeConfig,
     network: Arc<dyn Transport>,
     forward_timeout: Duration,
     storage_dir: Option<&Path>,
@@ -443,13 +475,16 @@ where
 }
 
 /// Spawn one Raft group on a physical node.
+///
+/// # Errors
+/// Returns [`StorageError`] if storage open or driver recovery fails.
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_raft_group<M>(
     node_id: NodeId,
     members: &[NodeId],
     group: u32,
     raft: craft_core::Config,
-    runtime: RuntimeConfig,
+    runtime: &RuntimeConfig,
     machine: M,
     network: Arc<dyn Transport>,
     forward_timeout: Duration,
@@ -500,14 +535,17 @@ pub struct MultiRaftSpawnResult<M: StateMachine> {
 /// bootstrap voters are chosen by [`group_voters`](craft_core::group_voters) over
 /// `live_nodes` (per-group-raft-membership). The Meta-Raft group uses the full
 /// cluster voter set from `live_nodes` and is hosted on every node.
+///
+/// # Errors
+/// Returns [`StorageError`] if any group storage open or driver recovery fails.
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_multi_raft_node<M>(
     node_id: NodeId,
     live_nodes: &[NodeId],
     replication_factor: u32,
     raft: craft_core::Config,
-    runtime: RuntimeConfig,
-    runtime_meta: RuntimeConfig,
+    runtime: &RuntimeConfig,
+    runtime_meta: &RuntimeConfig,
     shard_count: u32,
     shard_routing: ShardRoutingKind,
     group_count: u32,
@@ -528,14 +566,14 @@ where
     let mut services = BTreeMap::new();
 
     for (g, machine) in machines.into_iter().enumerate().take(group_count as usize) {
-        let g = g as u32;
+        let g = u32::try_from(g).unwrap_or(u32::MAX);
         let voters = group_voters(RaftGroupId(g), live_nodes, replication_factor);
         let (service, handle) = spawn_raft_group(
             node_id,
             &voters,
             g,
             raft.clone(),
-            runtime.clone(),
+            runtime,
             machine,
             Arc::clone(&network),
             forward_timeout,

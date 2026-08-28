@@ -1,6 +1,8 @@
 //! Tests for OTP-style actor restart/supervision policies (backlog E14,
 //! observability §5).
 
+#![allow(clippy::unused_async_trait_impl)] // test mock actors have sync handle bodies
+
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};

@@ -19,7 +19,7 @@ use craft_proto::NodeId;
 /// A candidate cluster member to bootstrap a dynamic join against: a node id
 /// plus a currently-believed address. Node ids are required because the wire
 /// transport keys connections by id (wire-transport); orchestrated discovery derives
-/// them deterministically (e.g. a StatefulSet ordinal `craft-2` → `NodeId(3)`).
+/// them deterministically (e.g. a `StatefulSet` ordinal `craft-2` → `NodeId(3)`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Seed {
     /// The seed member's node id.
@@ -59,7 +59,7 @@ pub enum DiscoveryError {
 ///
 /// # Errors
 /// Returns [`DiscoveryError::Unresolved`] only if *no* ordinal resolves (so the
-/// caller can retry while the StatefulSet is still coming up).
+/// caller can retry while the `StatefulSet` is still coming up).
 pub async fn resolve_dns_seeds(
     prefix: &str,
     service: &str,
@@ -88,7 +88,7 @@ pub async fn resolve_dns_seeds(
 }
 
 /// The per-ordinal DNS name a Kubernetes headless service exposes for a
-/// StatefulSet pod: `{prefix}-{ordinal}.{service}` (a trailing-empty `service`
+/// `StatefulSet` pod: `{prefix}-{ordinal}.{service}` (a trailing-empty `service`
 /// yields the bare pod name, used in tests).
 #[must_use]
 pub(crate) fn seed_host(prefix: &str, ordinal: u64, service: &str) -> String {

@@ -1,4 +1,4 @@
-//! Linearizable ReadIndex tests (read-consistency).
+//! Linearizable `ReadIndex` tests (read-consistency).
 //!
 //! A read must not be served until the leader confirms it still leads (a
 //! quorum acks a heartbeat round issued after the request) and the state

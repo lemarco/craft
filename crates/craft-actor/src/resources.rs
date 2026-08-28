@@ -43,9 +43,7 @@ impl VpsResources {
     /// Falls back to a parallelism of `1` if detection is unavailable.
     #[must_use]
     pub fn detect(profile: ResourceProfile) -> Self {
-        let available = std::thread::available_parallelism()
-            .map(NonZeroUsize::get)
-            .unwrap_or(1);
+        let available = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
         Self::from_parallelism(available, profile)
     }
 

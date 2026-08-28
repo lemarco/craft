@@ -15,13 +15,16 @@ pub struct MultiRaftCluster {
 
 impl MultiRaftCluster {
     /// Build `group_count` independent Raft clusters over `nodes` processes each.
+    ///
+    /// # Panics
+    /// Panics if `group_count` is zero.
     #[must_use]
     pub fn new(nodes: u64, group_count: u32, seed: u64) -> Self {
         assert!(group_count >= 1, "multi-raft sim needs at least one group");
         let group_ids: Vec<RaftGroupId> = (0..group_count).map(RaftGroupId).collect();
         let groups = group_ids
             .iter()
-            .map(|g| Cluster::new(nodes, seed ^ (g.0 as u64).wrapping_mul(0x9E37_79B9)))
+            .map(|g| Cluster::new(nodes, seed ^ u64::from(g.0).wrapping_mul(0x9E37_79B9)))
             .collect();
         Self {
             group_ids,
@@ -33,7 +36,7 @@ impl MultiRaftCluster {
     /// Override the network fault profile for every hosted group.
     pub fn set_fault(&mut self, fault: Fault) {
         for group in &mut self.groups {
-            group.set_fault(fault.clone());
+            group.set_fault(fault);
         }
     }
 

@@ -91,8 +91,7 @@ impl AckWindowLiveness {
             }
             let silence = last_ack
                 .get(&peer)
-                .map(|&t| now.saturating_sub(t))
-                .unwrap_or(u64::MAX);
+                .map_or(u64::MAX, |&t| now.saturating_sub(t));
             let entry = self.latched.entry(peer).or_insert(true);
             if *entry {
                 if silence > high {
@@ -153,6 +152,7 @@ impl PhiAccrualDetector {
 
     /// φ value: higher ⇒ more likely the peer is down.
     #[must_use]
+    #[allow(clippy::cast_precision_loss)] // heartbeat intervals are small; f64 stats are intentional
     pub fn phi(&self, now: u64) -> f64 {
         let Some(last) = self.last_heartbeat else {
             return 0.0;
@@ -236,10 +236,11 @@ fn normal_cdf(x: f64) -> f64 {
     if x.is_nan() {
         return 0.5;
     }
-    let t = 1.0 / (1.0 + 0.2316419 * x.abs());
+    let t = 1.0 / (1.0 + 0.231_641_9 * x.abs());
     let poly = t
-        * (0.319381530
-            + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+        * (0.319_381_530
+            + t * (-0.356_563_782
+                + t * (1.781_477_937 + t * (-1.821_255_978 + t * 1.330_274_429))));
     let pdf = (-0.5 * x * x).exp() / (2.0 * std::f64::consts::PI).sqrt();
     let p = 1.0 - pdf * poly;
     if x < 0.0 { 1.0 - p } else { p }

@@ -22,7 +22,7 @@
 //! Per-group Raft membership planning (desired voter sets, join/leave diffs)
 //! lives here too — per-group-raft-membership.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// A partition of the keyspace. Fixed count per cluster; each shard is owned by
 /// exactly one Raft group at a time.
@@ -121,6 +121,7 @@ impl ShardRouter {
     /// The shard owning `key`, by stable hash modulo the shard count.
     #[must_use]
     pub fn shard_for(&self, key: &[u8]) -> ShardId {
+        #[allow(clippy::cast_possible_truncation)] // hash modulo shard_count always fits u32
         ShardId((fnv1a(key) % u64::from(self.shard_count)) as u32)
     }
 
@@ -282,7 +283,9 @@ pub fn effective_replication_factor(replication_factor: u32, live_count: usize) 
     if live_count == 0 {
         return 0;
     }
-    replication_factor.max(1).min(live_count as u32)
+    replication_factor
+        .max(1)
+        .min(u32::try_from(live_count).unwrap_or(u32::MAX))
 }
 
 /// Desired voter set for one Raft group: the top [`effective_replication_factor`]
@@ -320,7 +323,6 @@ pub fn group_learners(
     if learner_factor == 0 || live_nodes.is_empty() {
         return Vec::new();
     }
-    use std::collections::BTreeSet;
 
     let voters: BTreeSet<_> = group_voters(group, live_nodes, replication_factor)
         .into_iter()
@@ -462,11 +464,8 @@ pub fn plan_group_membership_sync(
         let desired_voters = group_voters(group, live_nodes, replication_factor);
         let desired_learners =
             group_learners(group, live_nodes, replication_factor, learner_factor);
-        let cur_v = current_voters.get(&group).map(Vec::as_slice).unwrap_or(&[]);
-        let cur_l = current_learners
-            .get(&group)
-            .map(Vec::as_slice)
-            .unwrap_or(&[]);
+        let cur_v = current_voters.get(&group).map_or(&[][..], Vec::as_slice);
+        let cur_l = current_learners.get(&group).map_or(&[][..], Vec::as_slice);
         let voter_change = plan_group_membership_change(cur_v, &desired_voters);
         let learner_change = plan_group_membership_change(cur_l, &desired_learners);
         if !voter_change.add.is_empty()
@@ -539,13 +538,14 @@ pub fn plan_node_group_rebalance(
 // Tier 2 — stable virtual shards + dynamic catalog (pure planners)
 // ---------------------------------------------------------------------------
 
-/// Map `key` to a **fixed** virtual shard in `[0, [`MAX_VIRTUAL_SHARDS`])`.
+/// Map `key` to a **fixed** virtual shard in `[0, [``MAX_VIRTUAL_SHARDS``])`.
 /// Unlike [`ShardRouter::shard_for`], this id never changes when the active
 /// prefix grows ([tier2-multi-raft-architecture]).
 ///
 /// [multi-raft]: ../../../docs/decisions/multi-raft.md
 #[must_use]
 pub fn virtual_shard_for(key: &[u8]) -> ShardId {
+    #[allow(clippy::cast_possible_truncation)] // hash modulo MAX_VIRTUAL_SHARDS always fits u32
     ShardId((fnv1a(key) % u64::from(MAX_VIRTUAL_SHARDS)) as u32)
 }
 
@@ -813,6 +813,7 @@ pub fn validate_catalog(catalog: &[RaftGroupId]) -> Result<(), CatalogError> {
         if !seen.insert(group.0) {
             return Err(CatalogError::Duplicate { group: group.0 });
         }
+        #[allow(clippy::cast_possible_truncation)] // catalog indices are contiguous from zero
         let expected = i as u32;
         if group.0 != expected {
             return Err(CatalogError::NonContiguous {
@@ -829,6 +830,9 @@ pub fn validate_catalog(catalog: &[RaftGroupId]) -> Result<(), CatalogError> {
 /// # Errors
 /// Returns [`CatalogError`] when the current catalog is invalid or `add_groups`
 /// is zero (use `add_groups >= 1`).
+///
+/// # Panics
+/// Panics if the validated catalog is empty (invariant after [`validate_catalog`]).
 pub fn plan_catalog_expansion(
     catalog: &[RaftGroupId],
     add_groups: u32,
@@ -837,7 +841,7 @@ pub fn plan_catalog_expansion(
     if add_groups == 0 {
         return Err(CatalogError::InvalidExpansionCount { add_groups });
     }
-    let from_len = catalog.len() as u32;
+    let from_len = u32::try_from(catalog.len()).expect("catalog length fits u32");
     let next_id = catalog.last().expect("non-empty").0 + 1;
     let new_groups: Vec<_> = (0..add_groups)
         .map(|offset| RaftGroupId(next_id + offset))
@@ -1083,8 +1087,7 @@ mod tests {
             assert_eq!(
                 group_voters(*g, &before, 1),
                 group_voters(*g, &after, 1),
-                "group {:?} should be unchanged by join",
-                g
+                "group {g:?} should be unchanged by join"
             );
         }
     }
@@ -1221,7 +1224,7 @@ mod tests {
     #[test]
     fn stable_activation_does_not_remap_routable_keys() {
         let samples: Vec<Vec<u8>> = (0..200u16).map(|n| n.to_le_bytes().to_vec()).collect();
-        let sample_refs: Vec<&[u8]> = samples.iter().map(|v| v.as_slice()).collect();
+        let sample_refs: Vec<&[u8]> = samples.iter().map(std::vec::Vec::as_slice).collect();
 
         // Tier 1 modulus router remaps most keys when count doubles.
         let mut tier1 = ShardRouter::new(256);

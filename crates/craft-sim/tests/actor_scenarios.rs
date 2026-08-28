@@ -6,6 +6,7 @@
 //! dead node, and migrating a stateful actor across *two* hops with its state
 //! intact.
 
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -42,8 +43,8 @@ impl UserActor for Worker {
         Ok(Worker)
     }
 
-    async fn handle(&mut self, _msg: Self::Message) -> Result<(), Self::Error> {
-        Ok(())
+    fn handle(&mut self, _msg: Self::Message) -> impl Future<Output = Result<(), Self::Error>> {
+        std::future::ready(Ok(()))
     }
 
     fn encode_config(config: &Self::Config) -> Result<Vec<u8>, ConfigCodecError> {
@@ -77,14 +78,14 @@ impl UserActor for Counter {
         Ok(Self { count: initial })
     }
 
-    async fn handle(&mut self, msg: Self::Message) -> Result<(), Self::Error> {
+    fn handle(&mut self, msg: Self::Message) -> impl Future<Output = Result<(), Self::Error>> {
         match msg {
             CounterMsg::Inc => self.count += 1,
             CounterMsg::Get(port) => {
                 let _ = port.reply(self.count);
             }
         }
-        Ok(())
+        std::future::ready(Ok(()))
     }
 
     fn encode_config(config: &Self::Config) -> Result<Vec<u8>, ConfigCodecError> {

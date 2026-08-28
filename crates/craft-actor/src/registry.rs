@@ -594,6 +594,7 @@ pub struct ActorGroupStats {
 }
 
 /// A single running actor instance within a named group.
+#[allow(clippy::struct_field_names)] // `instance` is the actor id within the group.
 struct Instance<A: UserActor> {
     instance: u32,
     tx: mpsc::UnboundedSender<Mailbox<A>>,
@@ -707,7 +708,7 @@ impl<A: UserActor> PoolInner<A> {
                             let elapsed = started.elapsed();
                             messages.fetch_add(1, Ordering::Relaxed);
                             handle_nanos
-                                .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
+                                .fetch_add(u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX), Ordering::Relaxed);
                             if let Some(o) = &observer {
                                 o.on_message_handled(&name, instance, elapsed);
                             }
@@ -717,40 +718,34 @@ impl<A: UserActor> PoolInner<A> {
                                 match policy {
                                     RestartPolicy::Never => {}
                                     RestartPolicy::Always => {
-                                        match rebuild.as_ref().and_then(|rb| rb()) {
-                                            Some(fresh) => {
-                                                state = fresh;
-                                                let count =
-                                                    restarts.fetch_add(1, Ordering::Relaxed) + 1;
-                                                if let Some(o) = &observer {
-                                                    o.on_restart(&name, instance, count);
-                                                }
+                                        if let Some(fresh) = rebuild.as_ref().and_then(|rb| rb()) {
+                                            state = fresh;
+                                            let count =
+                                                restarts.fetch_add(1, Ordering::Relaxed) + 1;
+                                            if let Some(o) = &observer {
+                                                o.on_restart(&name, instance, count);
                                             }
-                                            None => {
-                                                escalated = true;
-                                                break 'run; // cannot restart
-                                            }
+                                        } else {
+                                            escalated = true;
+                                            break 'run; // cannot restart
                                         }
                                     }
                                     RestartPolicy::OnFailure { max_restarts, window } => {
                                         let now = Instant::now();
                                         history.retain(|t| now.duration_since(*t) < window);
-                                        if (history.len() as u32) < max_restarts {
-                                            match rebuild.as_ref().and_then(|rb| rb()) {
-                                                Some(fresh) => {
-                                                    state = fresh;
-                                                    history.push(now);
-                                                    let count = restarts
-                                                        .fetch_add(1, Ordering::Relaxed)
-                                                        + 1;
-                                                    if let Some(o) = &observer {
-                                                        o.on_restart(&name, instance, count);
-                                                    }
+                                        if u32::try_from(history.len()).unwrap_or(u32::MAX) < max_restarts {
+                                            if let Some(fresh) = rebuild.as_ref().and_then(|rb| rb()) {
+                                                state = fresh;
+                                                history.push(now);
+                                                let count = restarts
+                                                    .fetch_add(1, Ordering::Relaxed)
+                                                    + 1;
+                                                if let Some(o) = &observer {
+                                                    o.on_restart(&name, instance, count);
                                                 }
-                                                None => {
-                                                    escalated = true;
-                                                    break 'run;
-                                                }
+                                            } else {
+                                                escalated = true;
+                                                break 'run;
                                             }
                                         } else {
                                             escalated = true;
@@ -927,12 +922,10 @@ impl<A: UserActor> PoolInner<A> {
             let Instance { tx, mut join, .. } = inst;
             // Close the mailbox so the task drains its queue then exits.
             drop(tx);
-            match tokio::time::timeout(timeout, &mut join).await {
-                Ok(_) => {}
-                Err(_) => {
-                    join.abort();
-                    outcome = DrainOutcome::TimedOut;
-                }
+            if tokio::time::timeout(timeout, &mut join).await.is_ok() {
+            } else {
+                join.abort();
+                outcome = DrainOutcome::TimedOut;
             }
         }
         outcome
@@ -1319,12 +1312,18 @@ impl ActorRegistry {
     /// (Track H). Install *before spawning actors* (the facade does this at build
     /// time): each instance task binds the observer once at launch, so an
     /// observer set after a spawn does not retroactively attach to it.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     pub fn set_observer(&self, observer: Arc<dyn ActorObserver>) {
         *self.observer.lock().unwrap() = Some(observer);
     }
 
     /// Snapshot per-group runtime counters for metrics sampling (Track H). One
     /// entry per registered group; cumulative fields are monotonic.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     #[must_use]
     pub fn stats(&self) -> Vec<ActorGroupStats> {
         let groups = self.groups.lock().unwrap();
@@ -1362,12 +1361,18 @@ impl ActorRegistry {
     }
 
     /// Names of all registered actor groups.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     #[must_use]
     pub fn names(&self) -> Vec<String> {
         self.groups.lock().unwrap().keys().cloned().collect()
     }
 
     /// Whether a group with `name` exists.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     #[must_use]
     pub fn contains(&self, name: &str) -> bool {
         self.groups.lock().unwrap().contains_key(name)
@@ -1522,6 +1527,9 @@ impl ActorRegistry {
     ///
     /// # Errors
     /// Returns [`StopError::NotFound`] if no such group exists.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     pub fn stop(&self, name: &str) -> Result<(), StopError> {
         let entry = self
             .groups
@@ -1540,6 +1548,9 @@ impl ActorRegistry {
     ///
     /// # Errors
     /// Returns [`StopError::NotFound`] if no such group exists.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     pub async fn stop_graceful(
         &self,
         name: &str,
@@ -1559,6 +1570,9 @@ impl ActorRegistry {
     ///
     /// # Errors
     /// Returns [`StopError::NotFound`] if no such group exists.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     pub fn set_group_drain_timeout(
         &self,
         name: &str,
@@ -1573,6 +1587,9 @@ impl ActorRegistry {
     }
 
     /// Effective drain timeout for `name`, if a per-group override is set.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     #[must_use]
     pub fn group_drain_timeout(&self, name: &str) -> Option<Duration> {
         let groups = self.groups.lock().unwrap();
@@ -1598,6 +1615,9 @@ impl ActorRegistry {
     /// # Errors
     /// Returns [`SnapshotError`] if the group / instance is gone or the actor
     /// fails to produce a snapshot.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     pub async fn snapshot_local(
         &self,
         name: &str,
@@ -1615,6 +1635,9 @@ impl ActorRegistry {
     }
 
     /// Number of live instances in group `name` (0 if absent).
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     #[must_use]
     pub fn instance_count(&self, name: &str) -> usize {
         self.groups
@@ -1627,6 +1650,9 @@ impl ActorRegistry {
     /// Snapshot every locally-hosted actor instance as an [`ActorRegistration`]
     /// owned by `node_id`, for publication into the cluster directory (E7,
     /// cross-node-actors). Generation is `0` (bumped on respawn/migration in E12).
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     #[must_use]
     pub fn local_registrations(&self, node_id: NodeId) -> Vec<ActorRegistration> {
         let groups = self.groups.lock().unwrap();
@@ -1660,6 +1686,9 @@ impl ActorRegistry {
     /// Returns [`DeliverError`] if the group is unknown, the actor is not
     /// remotely addressable, the payload cannot be decoded, or the instance is
     /// gone / closed.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     pub fn deliver_local(
         &self,
         name: &str,
@@ -1687,6 +1716,9 @@ impl ActorRegistry {
     /// Returns [`DeliverError`] if the group is unknown, the actor does not
     /// support remote asks, the payload cannot be decoded, or the instance is
     /// gone / closed.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     pub fn deliver_local_ask(
         &self,
         name: &str,

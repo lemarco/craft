@@ -70,7 +70,7 @@ fn append_entries(term: u64) -> RaftRpc {
 
 /// Stand up an echo server for NodeId(2) and a client transport for NodeId(1),
 /// returning the transport with NodeId(2) in its directory.
-async fn setup() -> QuicTransport {
+fn setup() -> QuicTransport {
     let ca = ClusterCa::generate().unwrap();
     let server_id = ca.issue_node(NodeId(2)).unwrap();
     let client_id = ca.issue_node(NodeId(1)).unwrap();
@@ -93,7 +93,7 @@ async fn setup() -> QuicTransport {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn peer_rpc_round_trips_over_mtls_http3() {
-    let transport = setup().await;
+    let transport = setup();
 
     let reply = send_peer_rpc(&transport, NodeId(2), &append_entries(4))
         .await
@@ -110,7 +110,7 @@ async fn peer_rpc_round_trips_over_mtls_http3() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn client_request_round_trips_over_mtls_http3() {
-    let transport = setup().await;
+    let transport = setup();
 
     let resp = send_client_request(
         &transport,
@@ -124,7 +124,7 @@ async fn client_request_round_trips_over_mtls_http3() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cached_connection_is_reused_across_calls() {
-    let transport = setup().await;
+    let transport = setup();
 
     // Two sequential RPCs; the second reuses the cached QUIC connection.
     for term in [1u64, 2] {
@@ -137,7 +137,7 @@ async fn cached_connection_is_reused_across_calls() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn sending_to_a_peer_absent_from_the_directory_is_unreachable() {
-    let transport = setup().await;
+    let transport = setup();
 
     let err = send_peer_rpc(&transport, NodeId(7), &append_entries(1))
         .await

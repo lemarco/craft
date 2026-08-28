@@ -15,6 +15,9 @@ use serde::de::DeserializeOwned;
 use crate::store::{ActorStateStore, StoreError};
 
 /// Load and decode a value from `key`, or `None` if absent/expired.
+///
+/// # Errors
+/// Returns [`StoreError`] if the backend read fails or bytes cannot be decoded.
 pub async fn store_get<T: DeserializeOwned>(
     store: &dyn ActorStateStore,
     key: &str,
@@ -28,6 +31,9 @@ pub async fn store_get<T: DeserializeOwned>(
 }
 
 /// Encode and persist `value` at `key`.
+///
+/// # Errors
+/// Returns [`StoreError`] if encoding or the backend write fails.
 pub async fn store_set<T: Serialize>(
     store: &dyn ActorStateStore,
     key: &str,

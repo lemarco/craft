@@ -43,7 +43,7 @@ impl StateMachine for Counter {
         Ok(self.0)
     }
 
-    fn query(&self, _: &()) -> Result<u64, Self::Error> {
+    fn query(&self, (): &()) -> Result<u64, Self::Error> {
         Ok(self.0)
     }
 

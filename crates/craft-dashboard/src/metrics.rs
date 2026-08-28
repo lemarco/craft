@@ -43,7 +43,7 @@ enum Sample {
 struct Family {
     kind: MetricKind,
     help: String,
-    /// Keyed by the rendered label set (`` or `{k="v",…}`), value per series.
+    /// Keyed by the rendered label set (empty or `{k="v",…}`), value per series.
     series: BTreeMap<String, Sample>,
 }
 
@@ -105,6 +105,9 @@ impl Metrics {
     }
 
     /// Add `by` to a counter series (created on first use).
+    ///
+    /// # Panics
+    /// Panics if the registry lock is poisoned.
     pub fn incr(&self, name: &str, help: &str, labels: &[(&str, &str)], by: f64) {
         let mut reg = self.inner.lock().expect("poisoned");
         let key = format_labels(labels);
@@ -116,6 +119,9 @@ impl Metrics {
     }
 
     /// Set a gauge series to `value` (created on first use).
+    ///
+    /// # Panics
+    /// Panics if the registry lock is poisoned.
     pub fn set(&self, name: &str, help: &str, labels: &[(&str, &str)], value: f64) {
         let mut reg = self.inner.lock().expect("poisoned");
         let key = format_labels(labels);
@@ -124,6 +130,9 @@ impl Metrics {
     }
 
     /// Record an observation into a summary series (count += 1, sum += value).
+    ///
+    /// # Panics
+    /// Panics if the registry lock is poisoned.
     pub fn observe(&self, name: &str, help: &str, labels: &[(&str, &str)], value: f64) {
         let mut reg = self.inner.lock().expect("poisoned");
         let key = format_labels(labels);
@@ -142,6 +151,9 @@ impl Metrics {
     }
 
     /// Render the whole registry as Prometheus text exposition format.
+    ///
+    /// # Panics
+    /// Panics if the registry lock is poisoned.
     #[must_use]
     pub fn render(&self) -> String {
         let reg = self.inner.lock().expect("poisoned");

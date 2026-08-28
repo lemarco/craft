@@ -51,7 +51,7 @@ async fn spawn_multi_node_cluster(
 }
 
 async fn wait_for_all_group_leaders(clusters: &[Arc<CraftCluster<KvMachine>>]) {
-    let group_count = clusters.first().map(|c| c.raft_groups()).unwrap_or(0);
+    let group_count = clusters.first().map_or(0, |c| c.raft_groups());
     wait_for_each_group_cluster_leader(clusters, group_count).await;
 }
 

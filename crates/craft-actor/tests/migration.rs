@@ -1,6 +1,8 @@
 //! Tests for graceful drain-with-timeout (backlog E12, drain-timeout) and stateful
 //! actor migration across nodes (E12, cross-node-actors), driven over a `LocalNetwork`.
 
+#![allow(clippy::unused_async_trait_impl)] // test mock actors have sync handle bodies
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;

@@ -14,10 +14,10 @@ const SHARD_SHIFT: u32 = 56;
 const LOCAL_MASK: u64 = (1u64 << SHARD_SHIFT) - 1;
 
 fn stable_hash(key: &[u8]) -> u64 {
-    let mut h = 0xcbf29ce484222325u64;
+    let mut h = 0xcbf2_9ce4_8422_2325_u64;
     for b in key {
         h ^= u64::from(*b);
-        h = h.wrapping_mul(0x100000001b3);
+        h = h.wrapping_mul(0x0100_0000_01b3);
     }
     h
 }
@@ -37,6 +37,9 @@ pub struct ShardedJobQueue {
 
 impl ShardedJobQueue {
     /// Federate existing queue clients/shards (length ≥ 1).
+    ///
+    /// # Panics
+    /// If `shards` is empty.
     #[must_use]
     pub fn new(shards: Vec<Arc<dyn JobQueue>>) -> Self {
         assert!(
@@ -53,7 +56,7 @@ impl ShardedJobQueue {
 
     fn pick_shard(&self, payload: &[u8], shard_key: Option<&[u8]>) -> usize {
         let key = shard_key.unwrap_or(payload);
-        (stable_hash(key) as usize) % self.shards.len()
+        usize::try_from(stable_hash(key)).unwrap_or(usize::MAX) % self.shards.len()
     }
 
     fn shard(&self, index: usize) -> Result<&Arc<dyn JobQueue>, QueueError> {
@@ -72,6 +75,9 @@ pub struct ShardedReplication {
 
 impl ShardedJobQueue {
     /// Enqueue on the routed shard; returns global job id and replication ops for that shard only.
+    ///
+    /// # Errors
+    /// Returns [`QueueError`] if routing or the shard enqueue fails.
     pub async fn enqueue_opts_replicated_sharded(
         &self,
         payload: &[u8],
@@ -89,6 +95,9 @@ impl ShardedJobQueue {
     }
 
     /// Lease across shards; replication ops are grouped per shard.
+    ///
+    /// # Errors
+    /// Returns [`QueueError`] if any shard lease fails.
     pub async fn lease_replicated_sharded(
         &self,
         worker: WorkerId,
@@ -115,6 +124,10 @@ impl ShardedJobQueue {
         Ok((out, replications))
     }
 
+    /// Ack a leased job, routing to the shard encoded in `lease_id`.
+    ///
+    /// # Errors
+    /// Returns [`QueueError`] if the shard index is invalid or ack fails.
     pub async fn ack_replicated_sharded(
         &self,
         worker: WorkerId,
@@ -128,6 +141,10 @@ impl ShardedJobQueue {
         Ok(ShardedReplication { shard, ops })
     }
 
+    /// Nack a leased job, routing to the shard encoded in `lease_id`.
+    ///
+    /// # Errors
+    /// Returns [`QueueError`] if the shard index is invalid or nack fails.
     pub async fn nack_replicated_sharded(
         &self,
         worker: WorkerId,
@@ -181,19 +198,19 @@ impl JobQueue for ShardedJobQueue {
         })
     }
 
-    fn lease<'a>(
-        &'a self,
+    fn lease(
+        &self,
         worker: WorkerId,
         max: usize,
-    ) -> BoxFuture<'a, Result<Vec<LeasedJob>, QueueError>> {
+    ) -> BoxFuture<'_, Result<Vec<LeasedJob>, QueueError>> {
         Box::pin(async move { self.lease_replicated(worker, max).await.map(|(j, _)| j) })
     }
 
-    fn lease_replicated<'a>(
-        &'a self,
+    fn lease_replicated(
+        &self,
         worker: WorkerId,
         max: usize,
-    ) -> BoxFuture<'a, Result<(Vec<LeasedJob>, QueueReplicationOps), QueueError>> {
+    ) -> BoxFuture<'_, Result<(Vec<LeasedJob>, QueueReplicationOps), QueueError>> {
         Box::pin(async move {
             let mut out = Vec::new();
             let mut ops = Vec::new();
@@ -215,19 +232,15 @@ impl JobQueue for ShardedJobQueue {
         })
     }
 
-    fn ack<'a>(
-        &'a self,
-        worker: WorkerId,
-        lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<(), QueueError>> {
+    fn ack(&self, worker: WorkerId, lease_id: LeaseId) -> BoxFuture<'_, Result<(), QueueError>> {
         Box::pin(async move { self.ack_replicated(worker, lease_id).await.map(|_| ()) })
     }
 
-    fn ack_replicated<'a>(
-        &'a self,
+    fn ack_replicated(
+        &self,
         worker: WorkerId,
         lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>> {
         Box::pin(async move {
             let (shard, local) = decode_id(lease_id.0);
             self.shard(shard)?
@@ -236,19 +249,15 @@ impl JobQueue for ShardedJobQueue {
         })
     }
 
-    fn nack<'a>(
-        &'a self,
-        worker: WorkerId,
-        lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<(), QueueError>> {
+    fn nack(&self, worker: WorkerId, lease_id: LeaseId) -> BoxFuture<'_, Result<(), QueueError>> {
         Box::pin(async move { self.nack_replicated(worker, lease_id).await.map(|_| ()) })
     }
 
-    fn nack_replicated<'a>(
-        &'a self,
+    fn nack_replicated(
+        &self,
         worker: WorkerId,
         lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>> {
         Box::pin(async move {
             let (shard, local) = decode_id(lease_id.0);
             self.shard(shard)?
@@ -257,7 +266,7 @@ impl JobQueue for ShardedJobQueue {
         })
     }
 
-    fn metrics<'a>(&'a self) -> BoxFuture<'a, Result<QueueMetrics, QueueError>> {
+    fn metrics(&self) -> BoxFuture<'_, Result<QueueMetrics, QueueError>> {
         Box::pin(async move {
             let mut total = QueueMetrics::default();
             for shard in &self.shards {

@@ -129,6 +129,10 @@ pub struct InMemoryTwoPhaseJournal {
 }
 
 impl InMemoryTwoPhaseJournal {
+    /// Snapshot persisted journal records.
+    ///
+    /// # Panics
+    /// Panics if the journal lock is poisoned.
     #[must_use]
     pub fn records(&self) -> Vec<TwoPhaseJournalRecord> {
         self.records.lock().expect("lock").clone()
@@ -159,7 +163,8 @@ impl TwoPhaseJournal for InMemoryTwoPhaseJournal {
     ) -> Pin<Box<dyn Future<Output = Result<(), TwoPhaseJournalError>> + Send + 'a>> {
         Box::pin(async move {
             self.upsert(tx_id, |rec| {
-                rec.prepared_steps = (step as u32 + 1).max(rec.prepared_steps);
+                rec.prepared_steps =
+                    (u32::try_from(step).expect("step index fits u32") + 1).max(rec.prepared_steps);
             });
             Ok(())
         })
@@ -173,7 +178,8 @@ impl TwoPhaseJournal for InMemoryTwoPhaseJournal {
     ) -> Pin<Box<dyn Future<Output = Result<(), TwoPhaseJournalError>> + Send + 'a>> {
         Box::pin(async move {
             self.upsert(tx_id, |rec| {
-                rec.committed_steps = (step as u32 + 1).max(rec.committed_steps);
+                rec.committed_steps = (u32::try_from(step).expect("step index fits u32") + 1)
+                    .max(rec.committed_steps);
             });
             Ok(())
         })
@@ -231,7 +237,7 @@ pub struct ResumeTwoPhaseOpts<'a> {
     pub on_event: Option<&'a (dyn Fn(TwoPhaseEvent) + Send + Sync)>,
 }
 
-impl<'a> Default for ResumeTwoPhaseOpts<'a> {
+impl Default for ResumeTwoPhaseOpts<'_> {
     fn default() -> Self {
         Self {
             journal: None,
@@ -242,6 +248,9 @@ impl<'a> Default for ResumeTwoPhaseOpts<'a> {
 }
 
 /// Postcard-encode a [`TwoPhaseJournalRecord`] for Meta-Raft / Redis storage.
+///
+/// # Errors
+/// Returns [`TwoPhaseJournalError::Codec`] when postcard encoding fails.
 pub fn encode_two_phase_journal_record(
     record: &TwoPhaseJournalRecord,
 ) -> Result<Vec<u8>, TwoPhaseJournalError> {
@@ -249,6 +258,9 @@ pub fn encode_two_phase_journal_record(
 }
 
 /// Postcard-decode a [`TwoPhaseJournalRecord`].
+///
+/// # Errors
+/// Returns [`TwoPhaseJournalError::Codec`] when postcard decoding fails.
 pub fn decode_two_phase_journal_record(
     bytes: &[u8],
 ) -> Result<TwoPhaseJournalRecord, TwoPhaseJournalError> {
@@ -370,6 +382,11 @@ async fn prepare_or_commit_step<C: TwoPhaseClient>(
 }
 
 /// Execute prepare-all then commit-all, aborting prepared steps on prepare failure.
+///
+/// # Errors
+/// Returns [`TwoPhaseError::Plan`] when the plan is invalid,
+/// [`TwoPhaseError::Prepare`] or [`TwoPhaseError::Commit`] when a shard RPC fails,
+/// or [`TwoPhaseError::Journal`] when journal persistence fails.
 pub async fn propose_cross_shard_2pc<C: TwoPhaseClient>(
     client: &C,
     plan: &TwoPhasePlan,
@@ -379,6 +396,9 @@ pub async fn propose_cross_shard_2pc<C: TwoPhaseClient>(
 }
 
 /// Like [`propose_cross_shard_2pc`] with an optional client journal.
+///
+/// # Errors
+/// Same as [`propose_cross_shard_2pc`].
 pub async fn propose_cross_shard_2pc_with_opts<C: TwoPhaseClient>(
     client: &C,
     plan: &TwoPhasePlan,
@@ -434,6 +454,11 @@ pub async fn propose_cross_shard_2pc_with_opts<C: TwoPhaseClient>(
 /// With a [`TwoPhaseJournal`], skips consecutive prepared/committed prefixes recorded
 /// client-side. With `probe = true` (default), steps without journal state attempt
 /// `commit_keyed` first so a durable server-side prepare can be picked up after restart.
+///
+/// # Errors
+/// Returns [`TwoPhaseError::Plan`] when the plan is invalid,
+/// [`TwoPhaseError::Prepare`] or [`TwoPhaseError::Commit`] when a shard RPC fails,
+/// or [`TwoPhaseError::Journal`] when journal persistence fails.
 pub async fn resume_cross_shard_2pc<C: TwoPhaseClient>(
     client: &C,
     plan: &TwoPhasePlan,

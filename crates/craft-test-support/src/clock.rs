@@ -21,6 +21,9 @@ pub async fn advance(duration: Duration) {
 }
 
 /// Poll a sync predicate, advancing `step` between attempts.
+///
+/// # Panics
+/// If `cond` never returns true within `max_steps` attempts.
 pub async fn eventually<F>(what: &str, max_steps: usize, step: Duration, mut cond: F)
 where
     F: FnMut() -> bool,
@@ -35,6 +38,9 @@ where
 }
 
 /// Poll an async predicate, advancing `step` between attempts.
+///
+/// # Panics
+/// If `cond` never returns true within `max_steps` attempts.
 pub async fn eventually_async<F, Fut>(what: &str, max_steps: usize, step: Duration, mut cond: F)
 where
     F: FnMut() -> Fut,

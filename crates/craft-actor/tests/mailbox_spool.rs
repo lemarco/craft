@@ -1,5 +1,7 @@
 //! Durable mailbox outbox/inbox integration over [`LocalNetwork`].
 
+#![allow(clippy::unused_async_trait_impl)] // test mock actors have sync handle bodies
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -129,7 +131,7 @@ async fn outbox_replays_after_unreachable_peer_returns() {
     );
     net.attach(NodeId(1), sender.clone());
 
-    net.detach(NodeId(2));
+    let _ = net.detach(NodeId(2));
     assert!(sender.cast("worker", add(7)).await.is_err());
     assert_eq!(spool.list_outbox(10).expect("list").len(), 1);
 

@@ -2,6 +2,8 @@
 //! runs only on the leader, places one worker per node, surfaces placement
 //! errors, and is idempotent once the directory reflects the placement.
 
+#![allow(clippy::unused_async_trait_impl)] // test mock actors have sync handle bodies
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -67,7 +69,7 @@ impl MockState {
 
     fn set_nodes(&self, nodes: &[u64]) {
         let ids: Vec<NodeId> = nodes.iter().copied().map(NodeId).collect();
-        *self.nodes.lock().unwrap() = ids.clone();
+        (*self.nodes.lock().unwrap()).clone_from(&ids);
         *self.reachable.lock().unwrap() = ids;
     }
 

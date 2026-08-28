@@ -1,6 +1,8 @@
 //! Tests for the actor control plane (backlog E9): the pure one-per-node
 //! placement planner, and remote spawn / cluster scale over a `LocalNetwork`.
 
+#![allow(clippy::unused_async_trait_impl)] // test mock actors have sync handle bodies
+
 use std::sync::Arc;
 
 use craft_actor::craft_net::{LocalNetwork, RemoteError, Transport};

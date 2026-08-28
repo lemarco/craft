@@ -12,7 +12,7 @@
 //!   sets; once it commits, the leader appends the final `C_new`.
 //! * Elections use **Pre-Vote** (Raft thesis §9.6) so isolated nodes cannot
 //!   disrupt a live leader by inflating terms.
-//! * Linearizable reads use **ReadIndex** (read-consistency): the leader confirms it is
+//! * Linearizable reads use **`ReadIndex`** (read-consistency): the leader confirms it is
 //!   still leader via a heartbeat round to a quorum before serving the read.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -96,7 +96,7 @@ pub enum Output {
     Apply(Committed),
     /// The node changed role (useful for observability and tests).
     RoleChanged(Role),
-    /// A ReadIndex read is safe to serve: the state machine at `index` (or
+    /// A `ReadIndex` read is safe to serve: the state machine at `index` (or
     /// later) reflects everything committed before the request (read-consistency).
     ReadReady {
         /// The client's read token.
@@ -231,7 +231,7 @@ pub struct SnapshotState {
     pub data: Vec<u8>,
 }
 
-/// A ReadIndex request awaiting leadership confirmation and apply catch-up.
+/// A `ReadIndex` request awaiting leadership confirmation and apply catch-up.
 #[derive(Debug, Clone)]
 struct PendingRead {
     id: ReadId,
@@ -652,8 +652,7 @@ impl RaftNode {
     fn config_index(&self) -> LogIndex {
         self.log
             .last_membership()
-            .map(|(idx, _)| idx)
-            .unwrap_or(LogIndex::ZERO)
+            .map_or(LogIndex::ZERO, |(idx, _)| idx)
     }
 
     fn is_voter(&self, id: NodeId) -> bool {
@@ -703,8 +702,8 @@ impl RaftNode {
     /// Handle an inbound request RPC from `from`.
     pub fn receive(&mut self, from: NodeId, rpc: RaftRpc) {
         match rpc {
-            RaftRpc::RequestVote(rv) => self.handle_request_vote(from, rv),
-            RaftRpc::AppendEntries(ae) => self.handle_append_entries(from, ae),
+            RaftRpc::RequestVote(rv) => self.handle_request_vote(from, &rv),
+            RaftRpc::AppendEntries(ae) => self.handle_append_entries(from, &ae),
             RaftRpc::InstallSnapshot(is) => self.handle_install_snapshot(from, is),
         }
     }
@@ -721,9 +720,9 @@ impl RaftNode {
             return;
         }
         match reply {
-            RaftRpcReply::RequestVote(r) => self.handle_vote_reply(from, r),
-            RaftRpcReply::AppendEntries(r) => self.handle_append_reply(from, r),
-            RaftRpcReply::InstallSnapshot(r) => self.handle_snapshot_reply(from, r),
+            RaftRpcReply::RequestVote(r) => self.handle_vote_reply(from, &r),
+            RaftRpcReply::AppendEntries(r) => self.handle_append_reply(from, &r),
+            RaftRpcReply::InstallSnapshot(r) => self.handle_snapshot_reply(from, &r),
         }
     }
 
@@ -744,7 +743,7 @@ impl RaftNode {
         Ok(idx)
     }
 
-    /// Request a linearizable read (ReadIndex, read-consistency). The leader captures
+    /// Request a linearizable read (`ReadIndex`, read-consistency). The leader captures
     /// its commit index and confirms it still leads by a heartbeat round to a
     /// quorum; once confirmed and applied, an [`Output::ReadReady`] is emitted.
     /// If leadership is lost first, an [`Output::ReadFailed`] is emitted.
@@ -808,8 +807,7 @@ impl RaftNode {
         }
         self.snapshot
             .as_ref()
-            .map(|s| s.membership.clone())
-            .unwrap_or_else(|| self.initial.clone())
+            .map_or_else(|| self.initial.clone(), |s| s.membership.clone())
     }
 
     /// Begin a joint-consensus membership change to `new_voters` (+ optional
@@ -1098,7 +1096,7 @@ impl RaftNode {
 
     // ---- RequestVote -----------------------------------------------------
 
-    fn handle_request_vote(&mut self, from: NodeId, rv: RequestVote) {
+    fn handle_request_vote(&mut self, from: NodeId, rv: &RequestVote) {
         if !self.is_voter(self.id) {
             self.reply_vote(from, false, rv.pre_vote);
             return;
@@ -1143,7 +1141,7 @@ impl RaftNode {
             .push(Output::Reply(to, RaftRpcReply::RequestVote(reply)));
     }
 
-    fn handle_vote_reply(&mut self, from: NodeId, reply: RequestVoteReply) {
+    fn handle_vote_reply(&mut self, from: NodeId, reply: &RequestVoteReply) {
         if reply.pre_vote {
             if self.role == Role::PreCandidate && reply.vote_granted {
                 self.votes.insert(from);
@@ -1166,7 +1164,7 @@ impl RaftNode {
 
     // ---- AppendEntries ---------------------------------------------------
 
-    fn handle_append_entries(&mut self, from: NodeId, ae: AppendEntries) {
+    fn handle_append_entries(&mut self, from: NodeId, ae: &AppendEntries) {
         if ae.term < self.current_term {
             self.reply_append(from, false, None, None, ae.round);
             return;
@@ -1247,7 +1245,7 @@ impl RaftNode {
             .push(Output::Reply(to, RaftRpcReply::AppendEntries(reply)));
     }
 
-    fn handle_append_reply(&mut self, from: NodeId, reply: AppendEntriesReply) {
+    fn handle_append_reply(&mut self, from: NodeId, reply: &AppendEntriesReply) {
         if self.role != Role::Leader || reply.term != self.current_term {
             return;
         }
@@ -1279,12 +1277,11 @@ impl RaftNode {
             self.maybe_advance_commit();
             self.try_complete_reads();
         } else {
-            let ni = match reply.conflict_index {
-                Some(ci) => LogIndex(ci.0.max(1)),
-                None => {
-                    let cur = self.next_index.get(&from).copied().unwrap_or(LogIndex(1)).0;
-                    LogIndex(cur.saturating_sub(1).max(1))
-                }
+            let ni = if let Some(ci) = reply.conflict_index {
+                LogIndex(ci.0.max(1))
+            } else {
+                let cur = self.next_index.get(&from).copied().unwrap_or(LogIndex(1)).0;
+                LogIndex(cur.saturating_sub(1).max(1))
             };
             self.next_index.insert(from, ni);
             self.send_append(from);
@@ -1521,7 +1518,7 @@ impl RaftNode {
     /// Attempt a **lease read** (read-consistency): if this leader holds a valid lease and
     /// has committed an entry in its current term, return `Ok(Some(index))` — the
     /// read may be served by running `query` once the state machine has applied
-    /// through `index`, with **no** ReadIndex round-trip. Returns `Ok(None)` when
+    /// through `index`, with **no** `ReadIndex` round-trip. Returns `Ok(None)` when
     /// no valid lease is held (the caller should fall back to
     /// [`read_index`](Self::read_index)).
     ///
@@ -1547,7 +1544,7 @@ impl RaftNode {
     /// signal distinct from committed membership (liveness-vs-membership).
     ///
     /// On the leader this is itself plus every voter that acked an
-    /// AppendEntries within the last `window` logical ticks; a voter silent for
+    /// `AppendEntries` within the last `window` logical ticks; a voter silent for
     /// longer is treated as crashed/partitioned even though it is still a
     /// committed voter. A non-leader has no first-hand ack data, so it
     /// conservatively reports the full voter set and leaves crash detection to
@@ -1711,7 +1708,7 @@ impl RaftNode {
             .push(Output::Reply(to, RaftRpcReply::InstallSnapshot(reply)));
     }
 
-    fn handle_snapshot_reply(&mut self, from: NodeId, reply: InstallSnapshotReply) {
+    fn handle_snapshot_reply(&mut self, from: NodeId, reply: &InstallSnapshotReply) {
         if self.role != Role::Leader || reply.term != self.current_term {
             return;
         }

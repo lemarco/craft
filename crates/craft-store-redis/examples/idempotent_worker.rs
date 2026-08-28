@@ -53,13 +53,10 @@ async fn process_order(
 }
 
 async fn load(store: &Arc<dyn ActorStateStore>, key: &str) -> String {
-    store
-        .get(key)
-        .await
-        .ok()
-        .flatten()
-        .map(|b| String::from_utf8_lossy(&b).into_owned())
-        .unwrap_or_else(|| "<absent>".into())
+    store.get(key).await.ok().flatten().map_or_else(
+        || "<absent>".into(),
+        |b| String::from_utf8_lossy(&b).into_owned(),
+    )
 }
 
 #[tokio::main]

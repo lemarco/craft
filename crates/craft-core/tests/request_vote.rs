@@ -1,4 +1,4 @@
-//! RequestVote receiver-rule tests (Raft §5.2, §5.4.1) with edge cases.
+//! `RequestVote` receiver-rule tests (Raft §5.2, §5.4.1) with edge cases.
 
 use craft_core::{Config, RaftNode};
 use craft_proto::{
@@ -24,7 +24,7 @@ fn entry(term: u64, index: u64) -> LogEntry {
     LogEntry {
         term: Term(term),
         index: LogIndex(index),
-        payload: EntryPayload::Command(vec![index as u8]),
+        payload: EntryPayload::Command(vec![u8::try_from(index).expect("test index fits u8")]),
     }
 }
 

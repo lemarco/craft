@@ -9,11 +9,13 @@ use craft_core::Config;
 pub const TICK_PERIOD: Duration = Duration::from_millis(10);
 
 /// Fast election/heartbeat timings for integration tests (seed `7`).
+#[must_use]
 pub fn fast_raft_config() -> Config {
     fast_raft_config_with_seed(7)
 }
 
 /// Fast election/heartbeat timings with an explicit RNG seed.
+#[must_use]
 pub fn fast_raft_config_with_seed(seed: u64) -> Config {
     Config {
         election_timeout_min: 5,
@@ -25,6 +27,10 @@ pub fn fast_raft_config_with_seed(seed: u64) -> Config {
 }
 
 /// Bind an ephemeral localhost UDP port (for QUIC listeners in tests).
+///
+/// # Panics
+/// If binding to `127.0.0.1:0` fails.
+#[must_use]
 pub fn free_udp() -> SocketAddr {
     let sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind udp");
     sock.local_addr().expect("local addr")

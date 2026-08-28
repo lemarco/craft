@@ -34,8 +34,8 @@ impl AutoscalePolicy {
             target_pending_per_worker: self.target_pending_per_worker,
             min_workers: self.min_workers,
             max_workers: self.max_workers,
-            cooldown_ms: self.cooldown.as_millis() as u64,
-            poll_interval_ms: self.poll_interval.as_millis() as u64,
+            cooldown_ms: u64::try_from(self.cooldown.as_millis()).unwrap_or(u64::MAX),
+            poll_interval_ms: u64::try_from(self.poll_interval.as_millis()).unwrap_or(u64::MAX),
         }
     }
 
@@ -58,8 +58,8 @@ impl MembershipAutoscalePolicy {
         MembershipAutoscalePolicyWire {
             pending_per_node_threshold: self.pending_per_node_threshold,
             max_nodes: self.max_nodes,
-            cooldown_ms: self.cooldown.as_millis() as u64,
-            poll_interval_ms: self.poll_interval.as_millis() as u64,
+            cooldown_ms: u64::try_from(self.cooldown.as_millis()).unwrap_or(u64::MAX),
+            poll_interval_ms: u64::try_from(self.poll_interval.as_millis()).unwrap_or(u64::MAX),
         }
     }
 
@@ -89,6 +89,9 @@ impl QueueAutoscaleRegistry {
     }
 
     /// Apply a committed Meta-Raft policy upsert.
+    ///
+    /// # Panics
+    /// If an internal mutex is poisoned.
     pub fn apply(&self, command: &QueueAutoscalePolicyCommand) {
         if let Some(w) = &command.worker {
             self.worker
@@ -105,12 +108,18 @@ impl QueueAutoscaleRegistry {
     }
 
     /// Latest worker policy for `stream`, if any.
+    ///
+    /// # Panics
+    /// If an internal mutex is poisoned.
     #[must_use]
     pub fn worker_policy(&self, stream: &str) -> Option<AutoscalePolicy> {
         self.worker.lock().expect("poisoned").get(stream).cloned()
     }
 
     /// Latest membership policy for `stream`, if any.
+    ///
+    /// # Panics
+    /// If an internal mutex is poisoned.
     #[must_use]
     pub fn membership_policy(&self, stream: &str) -> Option<MembershipAutoscalePolicy> {
         self.membership
@@ -171,7 +180,10 @@ pub async fn run_queue_autoscaler<F, Fut>(
         let desired_raw = if policy.target_pending_per_worker == 0 {
             policy.min_workers
         } else {
-            (metrics.pending + metrics.leased).div_ceil(policy.target_pending_per_worker) as usize
+            usize::try_from(
+                (metrics.pending + metrics.leased).div_ceil(policy.target_pending_per_worker),
+            )
+            .unwrap_or(usize::MAX)
         };
         let desired = desired_raw
             .clamp(policy.min_workers, policy.max_workers)

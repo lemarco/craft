@@ -32,10 +32,7 @@ impl Log {
 
     /// Term of the last entry (snapshot term when there are no live entries).
     pub(crate) fn last_term(&self) -> Term {
-        self.entries
-            .last()
-            .map(|e| e.term)
-            .unwrap_or(self.snapshot_term)
+        self.entries.last().map_or(self.snapshot_term, |e| e.term)
     }
 
     /// Position `(term, index)` of the last entry.
@@ -90,7 +87,8 @@ impl Log {
         if idx.0 <= self.snapshot_index.0 {
             self.entries.clear();
         } else {
-            let keep = (idx.0 - self.snapshot_index.0 - 1) as usize;
+            let keep = usize::try_from(idx.0 - self.snapshot_index.0 - 1)
+                .expect("log index offset fits usize");
             self.entries.truncate(keep);
         }
     }
@@ -137,7 +135,8 @@ impl Log {
     /// `up_to` must be a live index (`snapshot_index < up_to <= last_index`).
     pub(crate) fn compact(&mut self, up_to: LogIndex, up_to_term: Term) {
         debug_assert!(up_to.0 > self.snapshot_index.0 && up_to.0 <= self.last_index().0);
-        let drop = (up_to.0 - self.snapshot_index.0) as usize;
+        let drop = usize::try_from(up_to.0 - self.snapshot_index.0)
+            .expect("log compact offset fits usize");
         self.entries.drain(0..drop.min(self.entries.len()));
         self.snapshot_index = up_to;
         self.snapshot_term = up_to_term;
@@ -165,7 +164,7 @@ mod tests {
     use super::*;
 
     fn cmd(term: u64) -> EntryPayload {
-        EntryPayload::Command(vec![term as u8])
+        EntryPayload::Command(vec![u8::try_from(term).expect("test term fits u8")])
     }
 
     #[test]

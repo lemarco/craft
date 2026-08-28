@@ -26,7 +26,7 @@ struct Envelope {
 }
 
 /// Network fault profile. Defaults to a perfectly reliable network.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Fault {
     /// Percent chance `[0, 100]` a message is dropped when sent.
     pub drop_percent: u64,
@@ -75,6 +75,9 @@ impl Cluster {
     /// Build a cluster of `objects` node processes (ids `1..=objects`) whose
     /// initial voting set is `voters`; the remaining nodes exist as
     /// followers and can be added later via [`Cluster::change_membership`].
+    ///
+    /// # Panics
+    /// Panics if `objects` is zero.
     #[must_use]
     pub fn with_membership(objects: u64, voters: &[u64], seed: u64) -> Self {
         assert!(objects >= 1, "cluster needs at least one node");
@@ -193,6 +196,9 @@ impl Cluster {
 
     /// Propose a command via the current leader. Returns `false` if there is
     /// no leader to accept it.
+    ///
+    /// # Panics
+    /// Panics if the leader id is missing from the node map (internal invariant).
     pub fn propose(&mut self, command: Vec<u8>) -> bool {
         let Some(id) = self.leader_node() else {
             return false;
@@ -221,6 +227,9 @@ impl Cluster {
     /// Compact the current leader's log up to its last-applied index (Raft §7),
     /// installing a snapshot with opaque bytes. Returns `false` if there is no
     /// leader or nothing new to compact.
+    ///
+    /// # Panics
+    /// Panics if the leader id is missing from the node map (internal invariant).
     pub fn compact_leader(&mut self) -> bool {
         let Some(id) = self.leader_node() else {
             return false;
@@ -242,8 +251,11 @@ impl Cluster {
         self.snapshots_loaded.get(&NodeId(id)).copied()
     }
 
-    /// Issue a linearizable ReadIndex read (read-consistency) via the current leader.
+    /// Issue a linearizable `ReadIndex` read (read-consistency) via the current leader.
     /// Returns `false` if there is no leader to accept it.
+    ///
+    /// # Panics
+    /// Panics if the leader id is missing from the node map (internal invariant).
     pub fn read_index(&mut self, id: u64) -> bool {
         let Some(node_id) = self.leader_node() else {
             return false;
@@ -273,6 +285,9 @@ impl Cluster {
 
     /// Start a joint-consensus membership change via the current leader.
     /// Returns `false` if there is no leader or a change is already in flight.
+    ///
+    /// # Panics
+    /// Panics if the leader id is missing from the node map (internal invariant).
     pub fn change_membership(&mut self, new_voters: &[u64], learners: &[u64]) -> bool {
         let Some(id) = self.leader_node() else {
             return false;
@@ -291,6 +306,9 @@ impl Cluster {
     }
 
     /// Propose a durable 2PC prepare via the current leader.
+    ///
+    /// # Panics
+    /// Panics if the leader id is missing from the node map (internal invariant).
     pub fn propose_two_phase_prepare(&mut self, command: TwoPhasePrepareCommand) -> bool {
         let Some(id) = self.leader_node() else {
             return false;
@@ -408,7 +426,12 @@ impl Cluster {
                     }
                     log.push((c.index, c.command));
                 }
-                Output::RoleChanged(_) => {}
+                Output::RoleChanged(_)
+                | Output::CatalogApplied { .. }
+                | Output::SagaJournalApplied { .. }
+                | Output::TwoPhaseAbortApplied { .. }
+                | Output::TwoPhaseJournalApplied { .. }
+                | Output::QueueAutoscalePolicyApplied { .. } => {}
                 Output::ReadReady { id: read_id, index } => {
                     // Linearizability: the read index is never beyond what the
                     // confirming leader has actually committed.
@@ -429,14 +452,9 @@ impl Cluster {
                 Output::LoadSnapshot { index, .. } => {
                     self.snapshots_loaded.insert(id, index);
                 }
-                Output::CatalogApplied { .. } => {}
-                Output::SagaJournalApplied { .. } => {}
                 Output::TwoPhasePrepareApplied { command, .. } => {
                     self.two_phase_prepares.push(command);
                 }
-                Output::TwoPhaseAbortApplied { .. } => {}
-                Output::TwoPhaseJournalApplied { .. } => {}
-                Output::QueueAutoscalePolicyApplied { .. } => {}
             }
         }
     }
@@ -476,9 +494,7 @@ impl Cluster {
                 set.insert(*id);
                 assert!(
                     set.len() <= 1,
-                    "election safety violated: {:?} both led term {}",
-                    set,
-                    term
+                    "election safety violated: {set:?} both led term {term}"
                 );
             }
         }
@@ -487,7 +503,8 @@ impl Cluster {
     fn shuffle<T>(&mut self, v: &mut [T]) {
         let n = v.len();
         for i in (1..n).rev() {
-            let j = (self.rng.next_u64() % (i as u64 + 1)) as usize;
+            let j = usize::try_from(self.rng.next_u64() % (i as u64 + 1))
+                .expect("shuffle index fits usize");
             v.swap(i, j);
         }
     }

@@ -16,6 +16,7 @@ use craft_test_support::{
 };
 
 #[tokio::test(start_paused = true)]
+#[allow(clippy::too_many_lines)] // end-to-end multi-Raft routing scenario
 async fn keyed_writes_route_to_independent_raft_groups() {
     let net = LocalNetwork::new();
     let transport: Arc<dyn Transport> = Arc::new(net.clone());
@@ -43,8 +44,8 @@ async fn keyed_writes_route_to_independent_raft_groups() {
         &members,
         craft_actor::craft_core::DEFAULT_GROUP_REPLICATION_FACTOR,
         craft_actor::craft_core::Config::default(),
-        runtime.clone(),
-        runtime_meta,
+        &runtime,
+        &runtime_meta,
         shard_count,
         ShardRoutingKind::StableVirtual,
         2,
@@ -141,6 +142,7 @@ async fn keyed_writes_route_to_independent_raft_groups() {
 }
 
 #[tokio::test(start_paused = true)]
+#[allow(clippy::too_many_lines)] // end-to-end runtime group adoption scenario
 async fn sharded_runtime_adopts_a_second_group_at_runtime() {
     let net = LocalNetwork::new();
     let transport: Arc<dyn Transport> = Arc::new(net.clone());
@@ -162,7 +164,7 @@ async fn sharded_runtime_adopts_a_second_group_at_runtime() {
         &members,
         0,
         raft.clone(),
-        runtime.clone(),
+        &runtime,
         KvMachine::default(),
         Arc::clone(&transport),
         Duration::from_secs(5),
@@ -170,13 +172,13 @@ async fn sharded_runtime_adopts_a_second_group_at_runtime() {
     )
     .expect("spawn group 0");
 
-    let mut services = BTreeMap::new();
-    services.insert(0, service0);
+    let mut group_handlers = BTreeMap::new();
+    group_handlers.insert(0, service0);
     let sharded = Arc::new(ShardedNodeService::new(
         shard_count,
         ShardRoutingKind::StableVirtual,
         vec![RaftGroupId(0)],
-        services,
+        group_handlers,
     ));
     net.attach(node_id, Arc::clone(&sharded) as Arc<dyn RequestHandler>);
 
@@ -187,7 +189,7 @@ async fn sharded_runtime_adopts_a_second_group_at_runtime() {
         &members,
         1,
         raft,
-        runtime,
+        &runtime,
         KvMachine::default(),
         Arc::clone(&transport),
         Duration::from_secs(5),
@@ -289,8 +291,8 @@ async fn stable_shard_activation_rejects_inactive_keys() {
         &members,
         craft_actor::craft_core::DEFAULT_GROUP_REPLICATION_FACTOR,
         craft_actor::craft_core::Config::default(),
-        runtime.clone(),
-        runtime_meta,
+        &runtime,
+        &runtime_meta,
         active,
         ShardRoutingKind::StableVirtual,
         1,

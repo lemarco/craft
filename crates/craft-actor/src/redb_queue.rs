@@ -55,10 +55,13 @@ fn codec(e: impl std::fmt::Display) -> QueueError {
 }
 
 fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
+    u64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis(),
+    )
+    .unwrap_or(u64::MAX)
 }
 
 /// Crash-safe [`JobQueue`] in a dedicated `redb` file.
@@ -367,7 +370,7 @@ impl RedbJobQueue {
         let oldest_ms = pending
             .iter()
             .map_err(backend)?
-            .filter_map(|row| row.ok())
+            .filter_map(std::result::Result::ok)
             .filter_map(|(job_id, _)| {
                 let job_id = job_id.value();
                 let bytes = jobs.get(job_id).ok().flatten()?;
@@ -481,11 +484,11 @@ impl JobQueue for RedbJobQueue {
         })
     }
 
-    fn lease<'a>(
-        &'a self,
+    fn lease(
+        &self,
         worker: WorkerId,
         max: usize,
-    ) -> BoxFuture<'a, Result<Vec<LeasedJob>, QueueError>> {
+    ) -> BoxFuture<'_, Result<Vec<LeasedJob>, QueueError>> {
         Box::pin(async move {
             self.lease_replicated(worker, max)
                 .await
@@ -493,14 +496,15 @@ impl JobQueue for RedbJobQueue {
         })
     }
 
-    fn lease_replicated<'a>(
-        &'a self,
+    fn lease_replicated(
+        &self,
         worker: WorkerId,
         max: usize,
-    ) -> BoxFuture<'a, Result<(Vec<LeasedJob>, QueueReplicationOps), QueueError>> {
+    ) -> BoxFuture<'_, Result<(Vec<LeasedJob>, QueueReplicationOps), QueueError>> {
         Box::pin(async move {
             let mut ops = self.reclaim_expired_ops()?;
-            let expires_at_ms = now_ms() + self.lease_timeout.as_millis() as u64;
+            let expires_at_ms =
+                now_ms() + u64::try_from(self.lease_timeout.as_millis()).unwrap_or(u64::MAX);
             let mut lease_id_start = self.read_meta_u64(K_NEXT_LEASE)?;
             let now = now_ms();
             let pending_ids = {
@@ -571,19 +575,15 @@ impl JobQueue for RedbJobQueue {
         })
     }
 
-    fn ack<'a>(
-        &'a self,
-        worker: WorkerId,
-        lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<(), QueueError>> {
+    fn ack(&self, worker: WorkerId, lease_id: LeaseId) -> BoxFuture<'_, Result<(), QueueError>> {
         Box::pin(async move { self.ack_replicated(worker, lease_id).await.map(|_| ()) })
     }
 
-    fn ack_replicated<'a>(
-        &'a self,
+    fn ack_replicated(
+        &self,
         worker: WorkerId,
         lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>> {
         Box::pin(async move {
             let job_id = {
                 let db = self.db.lock().expect("poisoned");
@@ -618,19 +618,15 @@ impl JobQueue for RedbJobQueue {
         })
     }
 
-    fn nack<'a>(
-        &'a self,
-        worker: WorkerId,
-        lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<(), QueueError>> {
+    fn nack(&self, worker: WorkerId, lease_id: LeaseId) -> BoxFuture<'_, Result<(), QueueError>> {
         Box::pin(async move { self.nack_replicated(worker, lease_id).await.map(|_| ()) })
     }
 
-    fn nack_replicated<'a>(
-        &'a self,
+    fn nack_replicated(
+        &self,
         worker: WorkerId,
         lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>> {
         Box::pin(async move {
             let job_id = {
                 let db = self.db.lock().expect("poisoned");
@@ -665,7 +661,7 @@ impl JobQueue for RedbJobQueue {
         })
     }
 
-    fn metrics<'a>(&'a self) -> BoxFuture<'a, Result<QueueMetrics, QueueError>> {
+    fn metrics(&self) -> BoxFuture<'_, Result<QueueMetrics, QueueError>> {
         Box::pin(async move { self.metrics_inner() })
     }
 }

@@ -80,7 +80,7 @@ pub struct Term(pub u64);
 pub struct LogIndex(pub u64);
 
 /// A leader replication/heartbeat round, used to confirm leadership for
-/// linearizable ReadIndex reads (read-consistency). Monotonic per leader term.
+/// linearizable `ReadIndex` reads (read-consistency). Monotonic per leader term.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
 )]

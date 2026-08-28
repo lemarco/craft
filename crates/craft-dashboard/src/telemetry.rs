@@ -153,6 +153,7 @@ impl EventBus {
 
     /// Emit an event to all current subscribers. Never blocks; returns the
     /// number of subscribers that received it (0 if none are listening).
+    #[must_use]
     pub fn emit(&self, event: CraftEvent) -> usize {
         self.tx.send(event).unwrap_or(0)
     }
@@ -224,7 +225,7 @@ mod tests {
         let mut sub = bus.subscribe();
         // Overflow the 2-slot ring without draining.
         for id in 0..5 {
-            bus.emit(CraftEvent::NodeJoined { node_id: id });
+            let _ = bus.emit(CraftEvent::NodeJoined { node_id: id });
         }
         // The next recv skips the lagged gap and yields the most recent events.
         let ev = sub.recv().await.expect("event after lag");

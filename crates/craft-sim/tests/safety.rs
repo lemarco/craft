@@ -35,7 +35,9 @@ fn run_schedule(nodes: u64, seed: u64, drop_percent: u64, max_latency: u64, even
         }
         c.run(1);
         if step % 7 == 0 {
-            let _ = c.propose(vec![(step & 0xff) as u8]);
+            let _ = c.propose(vec![
+                u8::try_from(step & 0xff).expect("step low byte fits u8"),
+            ]);
         }
     }
 }

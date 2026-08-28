@@ -157,7 +157,7 @@ impl ActorStateStore for RedisStore {
             let full = self.full_key(key);
             match ttl {
                 Some(ttl) => {
-                    let ms = ttl.as_millis().max(1) as u64;
+                    let ms = u64::try_from(ttl.as_millis().max(1)).expect("ttl fits redis px ms");
                     let _: () = conn.pset_ex(full, value, ms).await.map_err(backend)?;
                 }
                 None => {
@@ -185,8 +185,11 @@ impl ActorStateStore for RedisStore {
     ) -> BoxFuture<'a, Result<bool, StoreError>> {
         Box::pin(async move {
             let mut conn = self.conn.clone();
-            let ttl_arg =
-                ttl.map_or_else(String::new, |d| (d.as_millis().max(1) as u64).to_string());
+            let ttl_arg = ttl.map_or_else(String::new, |d| {
+                u64::try_from(d.as_millis().max(1))
+                    .expect("ttl fits redis px ms")
+                    .to_string()
+            });
             let script = redis::Script::new(CAS_LUA);
             let mut invocation = script.key(self.full_key(key));
             invocation

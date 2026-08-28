@@ -55,8 +55,9 @@ fn partitioned_groups_stay_safe_independently() {
     for step in 0..200u64 {
         sim.run(1);
         if step % 11 == 0 {
-            let _ = sim.propose_keyed(b"alpha", vec![step as u8]);
-            let _ = sim.propose_keyed(b"omega", vec![0x80 | (step as u8)]);
+            let step_byte = u8::try_from(step).expect("test step fits u8");
+            let _ = sim.propose_keyed(b"alpha", vec![step_byte]);
+            let _ = sim.propose_keyed(b"omega", vec![0x80 | step_byte]);
         }
         if step == 100 {
             sim.heal();

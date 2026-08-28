@@ -352,6 +352,9 @@ pub async fn send_actor_stop<T: Transport + ?Sized>(
 }
 
 /// Enqueue a job on the leader queue service (`/queue/enqueue`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
 pub async fn send_queue_enqueue<T: Transport + ?Sized>(
     transport: &T,
     peer: NodeId,
@@ -363,6 +366,9 @@ pub async fn send_queue_enqueue<T: Transport + ?Sized>(
 }
 
 /// Lease jobs from a queue stream (`/queue/lease`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
 pub async fn send_queue_lease<T: Transport + ?Sized>(
     transport: &T,
     peer: NodeId,
@@ -374,6 +380,9 @@ pub async fn send_queue_lease<T: Transport + ?Sized>(
 }
 
 /// Ack a leased job (`/queue/ack`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
 pub async fn send_queue_ack<T: Transport + ?Sized>(
     transport: &T,
     peer: NodeId,
@@ -385,6 +394,9 @@ pub async fn send_queue_ack<T: Transport + ?Sized>(
 }
 
 /// Nack a leased job (`/queue/nack`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
 pub async fn send_queue_nack<T: Transport + ?Sized>(
     transport: &T,
     peer: NodeId,
@@ -396,6 +408,9 @@ pub async fn send_queue_nack<T: Transport + ?Sized>(
 }
 
 /// Fetch queue depth metrics (`/queue/metrics`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
 pub async fn send_queue_metrics<T: Transport + ?Sized>(
     transport: &T,
     peer: NodeId,
@@ -407,6 +422,9 @@ pub async fn send_queue_metrics<T: Transport + ?Sized>(
 }
 
 /// Apply replicated queue mutations from the leader (`/queue/replicate`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
 pub async fn send_queue_replicate<T: Transport + ?Sized>(
     transport: &T,
     peer: NodeId,
@@ -436,23 +454,37 @@ impl LocalNetwork {
     }
 
     /// Register (or replace) the handler serving requests addressed to `id`.
+    ///
+    /// # Panics
+    /// Panics if the network lock is poisoned.
     pub fn attach(&self, id: NodeId, handler: Arc<dyn RequestHandler>) {
         self.nodes.lock().expect("poisoned").insert(id, handler);
     }
 
     /// Remove a node from the switch (crash/partition). Returns whether it was
     /// present.
+    ///
+    /// # Panics
+    /// Panics if the network lock is poisoned.
+    #[must_use]
     pub fn detach(&self, id: NodeId) -> bool {
         self.nodes.lock().expect("poisoned").remove(&id).is_some()
     }
 
     /// Whether `id` is currently reachable on the switch.
+    ///
+    /// # Panics
+    /// Panics if the network lock is poisoned.
     #[must_use]
     pub fn is_reachable(&self, id: NodeId) -> bool {
         self.nodes.lock().expect("poisoned").contains_key(&id)
     }
 
     /// Deliver a request from `from` to `peer` (in-memory tests / simulation).
+    ///
+    /// # Panics
+    /// Panics if the network lock is poisoned.
+    #[must_use]
     pub fn deliver(
         &self,
         from: NodeId,
@@ -472,7 +504,7 @@ impl LocalNetwork {
 
 impl fmt::Debug for LocalNetwork {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let count = self.nodes.lock().map(|n| n.len()).unwrap_or(0);
+        let count = self.nodes.lock().map_or(0, |n| n.len());
         f.debug_struct("LocalNetwork")
             .field("attached_nodes", &count)
             .finish()
@@ -515,6 +547,7 @@ impl LocalTransport {
 impl fmt::Debug for LocalTransport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("LocalTransport")
+            .field("network", &self.network)
             .field("local", &self.local)
             .finish()
     }

@@ -3,6 +3,8 @@
 //! convergence of three nodes' directories via [`DirectorySync`] over a
 //! `LocalNetwork`.
 
+#![allow(clippy::unused_async_trait_impl)] // test mock actors have sync handle bodies
+
 use std::sync::Arc;
 
 use craft_actor::craft_net::{LocalNetwork, Transport};

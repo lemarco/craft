@@ -73,6 +73,11 @@ impl std::fmt::Display for TwoPhasePlanError {
 impl std::error::Error for TwoPhasePlanError {}
 
 /// Validate a cross-shard 2PC plan before issuing prepare calls.
+///
+/// # Errors
+///
+/// Returns [`TwoPhasePlanError`] when the transaction id, steps, payload sizes,
+/// routable keys, or participating group count violate 2PC limits.
 pub fn validate_two_phase_plan(
     plan: &TwoPhasePlan,
     group_for_key: impl Fn(&[u8]) -> Option<u32>,
@@ -124,7 +129,7 @@ mod tests {
                 },
             ],
         };
-        validate_two_phase_plan(&plan, |key| Some(if key == b"a" { 0 } else { 1 })).expect("valid");
+        validate_two_phase_plan(&plan, |key| Some(u32::from(key != b"a"))).expect("valid");
     }
 
     #[test]
@@ -133,13 +138,13 @@ mod tests {
             tx_id: b"tx".to_vec(),
             steps: (0..4)
                 .map(|i| TwoPhaseStep {
-                    key: vec![i as u8],
+                    key: vec![u8::try_from(i).expect("test key fits u8")],
                     command: vec![1],
                 })
                 .collect(),
         };
         assert!(matches!(
-            validate_two_phase_plan(&plan, |key| Some(key[0] as u32)),
+            validate_two_phase_plan(&plan, |key| Some(u32::from(key[0]))),
             Err(TwoPhasePlanError::TooManyGroups { groups: 4 })
         ));
     }

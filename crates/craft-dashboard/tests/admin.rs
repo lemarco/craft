@@ -315,7 +315,7 @@ async fn sse_feed_streams_emitted_events() {
 
     // Give the handler a moment to subscribe, then emit an event.
     tokio::time::sleep(Duration::from_millis(100)).await;
-    events.emit(craft_dashboard::CraftEvent::LeaderChanged { term: 5, leader: 3 });
+    let _ = events.emit(craft_dashboard::CraftEvent::LeaderChanged { term: 5, leader: 3 });
 
     // Read a chunk and look for the SSE data line for our event.
     let mut buf = vec![0u8; 4096];

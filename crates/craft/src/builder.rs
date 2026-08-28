@@ -1005,8 +1005,8 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 &bootstrap_voters,
                 self.group_replication_factor,
                 self.raft.clone(),
-                self.runtime.clone(),
-                runtime_meta,
+                &self.runtime,
+                &runtime_meta,
                 self.shard_count,
                 self.shard_routing,
                 self.raft_groups,
@@ -1064,7 +1064,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             runtime.on_two_phase_journal_applied = Some(Arc::clone(&on_two_phase_journal_applied));
             runtime.on_queue_autoscale_policy_applied =
                 Some(Arc::clone(&on_queue_autoscale_policy_applied));
-            let handle = spawn_node(driver, Arc::clone(&transport), runtime);
+            let handle = spawn_node(driver, Arc::clone(&transport), &runtime);
             let service = Arc::new(
                 NodeService::new(handle.clone(), Arc::clone(&transport))
                     .with_forward_timeout(self.forward_timeout),

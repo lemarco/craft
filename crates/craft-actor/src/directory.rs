@@ -63,6 +63,9 @@ impl ActorDirectory {
 
     /// Apply a directory update. Returns `true` if it was newer than what we
     /// held for `update.node` (and therefore applied), `false` if stale.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     pub fn apply(&self, update: &DirectoryUpdate) -> bool {
         let mut inner = self.inner.lock().unwrap();
         if let Some(existing) = inner.by_node.get(&update.node)
@@ -82,11 +85,17 @@ impl ActorDirectory {
 
     /// Drop all entries owned by `node` (e.g. after it leaves the cluster).
     /// Returns whether the node had any entry.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     pub fn remove_node(&self, node: NodeId) -> bool {
         self.inner.lock().unwrap().by_node.remove(&node).is_some()
     }
 
     /// Resolve a specific instance by its full id.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     #[must_use]
     pub fn resolve(&self, id: &ActorId) -> Option<ActorRegistration> {
         let inner = self.inner.lock().unwrap();
@@ -100,6 +109,9 @@ impl ActorDirectory {
     }
 
     /// Every registration for group `name`, cluster-wide, in a stable order.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     #[must_use]
     pub fn lookup(&self, name: &str) -> Vec<ActorRegistration> {
         let inner = self.inner.lock().unwrap();
@@ -107,6 +119,9 @@ impl ActorDirectory {
     }
 
     /// Distinct group names currently known.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     #[must_use]
     pub fn groups(&self) -> Vec<String> {
         let inner = self.inner.lock().unwrap();
@@ -122,6 +137,9 @@ impl ActorDirectory {
     }
 
     /// Total number of known registrations across all nodes.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     #[must_use]
     pub fn len(&self) -> usize {
         self.inner
@@ -140,6 +158,9 @@ impl ActorDirectory {
     }
 
     /// Pick the next instance of `name` round-robin across the whole cluster.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     #[must_use]
     pub fn pick_rr(&self, name: &str) -> Option<ActorRegistration> {
         let mut inner = self.inner.lock().unwrap();
@@ -155,6 +176,9 @@ impl ActorDirectory {
 
     /// Pick the instance of `name` that `key` hashes to, so a given key always
     /// resolves to the same instance while membership is stable.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     #[must_use]
     pub fn pick_keyed<K: Hash>(&self, name: &str, key: &K) -> Option<ActorRegistration> {
         let inner = self.inner.lock().unwrap();

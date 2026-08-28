@@ -51,7 +51,7 @@ pub struct NodeConfig {
 
 /// A parsed `CRAFT_DISCOVERY=dns:<prefix>:<service>:<replicas>:<port>` spec.
 pub struct DnsSpec {
-    /// StatefulSet name prefix (e.g. `craft`).
+    /// `StatefulSet` name prefix (e.g. `craft`).
     pub prefix: String,
     /// Headless service name.
     pub service: String,
@@ -93,14 +93,14 @@ pub fn node_id_from_env() -> Result<NodeId, Box<dyn Error>> {
     parse_node_id(env("CRAFT_NODE_ID").as_deref(), env("POD_NAME").as_deref())
 }
 
-/// StatefulSet pod ordinal from a name (`craft-2` → `2`).
+/// `StatefulSet` pod ordinal from a name (`craft-2` → `2`).
 pub fn parse_pod_ordinal(pod: &str) -> Result<u64, Box<dyn Error>> {
     pod.rsplit_once('-')
         .and_then(|(_, ord)| ord.parse().ok())
         .ok_or_else(|| format!("POD_NAME {pod:?} has no trailing ordinal (want name-N)").into())
 }
 
-/// StatefulSet pod ordinal from `POD_NAME` in the environment.
+/// `StatefulSet` pod ordinal from `POD_NAME` in the environment.
 pub fn pod_ordinal_from_env() -> Result<u64, Box<dyn Error>> {
     let pod = env("POD_NAME")
         .ok_or("CRAFT_CERT_ORDINAL_BASE requires POD_NAME (Kubernetes downward API)")?;
@@ -324,8 +324,7 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
     }
     let job_queue_lease = env("CRAFT_JOB_QUEUE_LEASE_SECS")
         .and_then(|v| v.parse::<u64>().ok())
-        .map(Duration::from_secs)
-        .unwrap_or(Duration::from_secs(60));
+        .map_or(Duration::from_secs(60), Duration::from_secs);
 
     Ok(NodeConfig {
         node_id,

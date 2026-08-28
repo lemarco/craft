@@ -60,7 +60,7 @@ where
 
 /// A read-only query served by the [`StateMachine`].
 ///
-/// Queries never enter the log; they are answered locally after the ReadIndex
+/// Queries never enter the log; they are answered locally after the `ReadIndex`
 /// protocol confirms the leader is current (read-consistency). They still cross task
 /// boundaries and may be sent to a remote leader, hence `Send + 'static` +
 /// `serde`. Unlike a [`Command`], a query need not be `Clone`.
@@ -134,7 +134,7 @@ pub trait StateMachine: Send + 'static {
     /// Answer a read-only query against the current applied state.
     ///
     /// Must not mutate state. Linearizability is guaranteed by the caller via
-    /// ReadIndex (read-consistency), not by this method.
+    /// `ReadIndex` (read-consistency), not by this method.
     ///
     /// # Errors
     /// Returns [`Self::Error`](StateMachine::Error) if the query is invalid.

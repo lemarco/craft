@@ -22,6 +22,9 @@ pub fn find_keys_for_two_groups_modulus(
 }
 
 /// Find two distinct routing keys for the given routing mode.
+///
+/// # Panics
+/// If no keys routing to the first two `groups` entries are found within the search limit.
 #[must_use]
 pub fn find_keys_for_two_groups_with_routing(
     active_count: u32,

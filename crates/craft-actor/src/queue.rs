@@ -63,11 +63,14 @@ impl EnqueueOptions {
     /// Job that becomes visible after `delay` from enqueue time.
     #[must_use]
     pub fn delayed(delay: Duration) -> Self {
-        let not_before_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64
-            + delay.as_millis() as u64;
+        let not_before_ms = u64::try_from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis(),
+        )
+        .unwrap_or(u64::MAX)
+            + u64::try_from(delay.as_millis()).unwrap_or(u64::MAX);
         Self {
             not_before_ms: Some(not_before_ms),
             ..Self::default()
@@ -125,28 +128,20 @@ pub trait JobQueue: Send + Sync {
     ) -> BoxFuture<'a, Result<JobId, QueueError>>;
 
     /// Pull up to `max` pending jobs exclusively for `worker`.
-    fn lease<'a>(
-        &'a self,
+    fn lease(
+        &self,
         worker: WorkerId,
         max: usize,
-    ) -> BoxFuture<'a, Result<Vec<LeasedJob>, QueueError>>;
+    ) -> BoxFuture<'_, Result<Vec<LeasedJob>, QueueError>>;
 
     /// Mark a leased job complete (idempotent if already acked).
-    fn ack<'a>(
-        &'a self,
-        worker: WorkerId,
-        lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<(), QueueError>>;
+    fn ack(&self, worker: WorkerId, lease_id: LeaseId) -> BoxFuture<'_, Result<(), QueueError>>;
 
     /// Return a leased job to the pending set immediately.
-    fn nack<'a>(
-        &'a self,
-        worker: WorkerId,
-        lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<(), QueueError>>;
+    fn nack(&self, worker: WorkerId, lease_id: LeaseId) -> BoxFuture<'_, Result<(), QueueError>>;
 
     /// Depth gauges for observability and autoscale.
-    fn metrics<'a>(&'a self) -> BoxFuture<'a, Result<QueueMetrics, QueueError>>;
+    fn metrics(&self) -> BoxFuture<'_, Result<QueueMetrics, QueueError>>;
 
     /// Apply an idempotent replicated mutation from the queue leader.
     fn apply_replicate<'a>(
@@ -173,25 +168,25 @@ pub trait JobQueue: Send + Sync {
     }
 
     /// Like [`lease`](Self::lease) but includes reclaim + lease replication ops.
-    fn lease_replicated<'a>(
-        &'a self,
+    fn lease_replicated(
+        &self,
         worker: WorkerId,
         max: usize,
-    ) -> BoxFuture<'a, Result<(Vec<LeasedJob>, QueueReplicationOps), QueueError>>;
+    ) -> BoxFuture<'_, Result<(Vec<LeasedJob>, QueueReplicationOps), QueueError>>;
 
     /// Like [`ack`](Self::ack) but returns a replication op on success.
-    fn ack_replicated<'a>(
-        &'a self,
+    fn ack_replicated(
+        &self,
         worker: WorkerId,
         lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>>;
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>>;
 
     /// Like [`nack`](Self::nack) but returns a replication op on success.
-    fn nack_replicated<'a>(
-        &'a self,
+    fn nack_replicated(
+        &self,
         worker: WorkerId,
         lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>>;
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>>;
 }
 
 #[derive(Debug)]
@@ -283,10 +278,13 @@ impl Inner {
     }
 
     fn metrics(&self) -> QueueMetrics {
-        let now_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+        let now_ms = u64::try_from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis(),
+        )
+        .unwrap_or(u64::MAX);
         let oldest = self
             .pending
             .iter()
@@ -343,10 +341,13 @@ impl JobQueue for InMemoryJobQueue {
         options: EnqueueOptions,
     ) -> BoxFuture<'a, Result<(JobId, QueueReplicationOps), QueueError>> {
         Box::pin(async move {
-            let enqueued_at_ms = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64;
+            let enqueued_at_ms = u64::try_from(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis(),
+            )
+            .unwrap_or(u64::MAX);
             let not_before_ms = options.not_before_ms.unwrap_or(enqueued_at_ms);
             let (job_id, ops) = self.with_inner(|inner| {
                 if let Some(key) = &options.dedup_key
@@ -467,11 +468,11 @@ impl JobQueue for InMemoryJobQueue {
         })
     }
 
-    fn lease<'a>(
-        &'a self,
+    fn lease(
+        &self,
         worker: WorkerId,
         max: usize,
-    ) -> BoxFuture<'a, Result<Vec<LeasedJob>, QueueError>> {
+    ) -> BoxFuture<'_, Result<Vec<LeasedJob>, QueueError>> {
         Box::pin(async move {
             self.lease_replicated(worker, max)
                 .await
@@ -479,11 +480,11 @@ impl JobQueue for InMemoryJobQueue {
         })
     }
 
-    fn lease_replicated<'a>(
-        &'a self,
+    fn lease_replicated(
+        &self,
         worker: WorkerId,
         max: usize,
-    ) -> BoxFuture<'a, Result<(Vec<LeasedJob>, QueueReplicationOps), QueueError>> {
+    ) -> BoxFuture<'_, Result<(Vec<LeasedJob>, QueueReplicationOps), QueueError>> {
         Box::pin(async move {
             let mut ops = Vec::new();
             let now = Instant::now();
@@ -511,10 +512,13 @@ impl JobQueue for InMemoryJobQueue {
                 let mut out = Vec::new();
                 let mut lease_ops = Vec::new();
                 let deadline = Instant::now() + self.lease_timeout;
-                let now_ms = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
+                let now_ms = u64::try_from(
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis(),
+                )
+                .unwrap_or(u64::MAX);
                 for job_id in inner.select_pending(max, now_ms) {
                     inner.pending.retain(|id| *id != job_id);
                     let Some(entry) = inner.jobs.get(&job_id) else {
@@ -551,19 +555,15 @@ impl JobQueue for InMemoryJobQueue {
         })
     }
 
-    fn ack<'a>(
-        &'a self,
-        worker: WorkerId,
-        lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<(), QueueError>> {
+    fn ack(&self, worker: WorkerId, lease_id: LeaseId) -> BoxFuture<'_, Result<(), QueueError>> {
         Box::pin(async move { self.ack_replicated(worker, lease_id).await.map(|_| ()) })
     }
 
-    fn ack_replicated<'a>(
-        &'a self,
+    fn ack_replicated(
+        &self,
         worker: WorkerId,
         lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>> {
         Box::pin(async move {
             let job_id = self.with_inner(|inner| {
                 let lease = inner
@@ -584,19 +584,15 @@ impl JobQueue for InMemoryJobQueue {
         })
     }
 
-    fn nack<'a>(
-        &'a self,
-        worker: WorkerId,
-        lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<(), QueueError>> {
+    fn nack(&self, worker: WorkerId, lease_id: LeaseId) -> BoxFuture<'_, Result<(), QueueError>> {
         Box::pin(async move { self.nack_replicated(worker, lease_id).await.map(|_| ()) })
     }
 
-    fn nack_replicated<'a>(
-        &'a self,
+    fn nack_replicated(
+        &self,
         worker: WorkerId,
         lease_id: LeaseId,
-    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>> {
         Box::pin(async move {
             let job_id = self.with_inner(|inner| {
                 let lease = inner
@@ -617,7 +613,7 @@ impl JobQueue for InMemoryJobQueue {
         })
     }
 
-    fn metrics<'a>(&'a self) -> BoxFuture<'a, Result<QueueMetrics, QueueError>> {
+    fn metrics(&self) -> BoxFuture<'_, Result<QueueMetrics, QueueError>> {
         Box::pin(async move { Ok(self.with_inner(|inner| inner.metrics())) })
     }
 }
@@ -641,12 +637,9 @@ pub async fn run_queue_consumer<Q, F, Fut, E>(
         if *stop.borrow() {
             break;
         }
-        let jobs = match queue.lease(worker, batch).await {
-            Ok(j) => j,
-            Err(_) => {
-                tokio::time::sleep(idle_sleep).await;
-                continue;
-            }
+        let Ok(jobs) = queue.lease(worker, batch).await else {
+            tokio::time::sleep(idle_sleep).await;
+            continue;
         };
         if jobs.is_empty() {
             tokio::select! {
@@ -774,10 +767,13 @@ mod tests {
     #[tokio::test]
     async fn delayed_job_not_leased_before_not_before() {
         let q = InMemoryJobQueue::new(Duration::from_secs(30));
-        let far_future = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64
+        let far_future = u64::try_from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+        )
+        .unwrap_or(u64::MAX)
             + 3_600_000;
         q.enqueue_opts(
             b"later",

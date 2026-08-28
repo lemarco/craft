@@ -83,9 +83,9 @@ impl QuicServer {
         while let Some(incoming) = endpoint.accept().await {
             let handler = handler.clone();
             tokio::spawn(async move {
-                match incoming.await {
-                    Ok(conn) => serve_connection(conn, handler).await,
-                    Err(_) => { /* handshake failed (e.g. bad client cert) */ }
+                if let Ok(conn) = incoming.await {
+                    serve_connection(conn, handler).await;
+                } else { /* handshake failed (e.g. bad client cert) */
                 }
             });
         }
@@ -94,9 +94,8 @@ impl QuicServer {
 
 async fn serve_connection(conn: quinn::Connection, handler: Arc<dyn RequestHandler>) {
     let peer = peer_node_id(&conn);
-    let mut h3 = match h3::server::Connection::new(h3_quinn::Connection::new(conn)).await {
-        Ok(h3) => h3,
-        Err(_) => return,
+    let Ok(mut h3) = h3::server::Connection::new(h3_quinn::Connection::new(conn)).await else {
+        return;
     };
     while let Ok(Some(resolver)) = h3.accept().await {
         let handler = handler.clone();
@@ -305,6 +304,9 @@ impl QuicTransport {
     /// Learn (or update) a peer's address at runtime — e.g. when a node joins
     /// via `/cluster/join` or its address is gossiped over `/cluster/peers`
     /// (discovery). Subsequent dials to `id` use `addr`.
+    ///
+    /// # Panics
+    /// Panics if the peer directory lock is poisoned.
     pub fn learn_peer(&self, id: NodeId, addr: SocketAddr) {
         self.inner
             .directory
@@ -314,6 +316,9 @@ impl QuicTransport {
     }
 
     /// Forget a peer that has left the cluster; future dials to it fail fast.
+    ///
+    /// # Panics
+    /// Panics if the peer directory lock is poisoned.
     pub fn forget_peer(&self, id: NodeId) {
         self.inner
             .directory
@@ -323,6 +328,9 @@ impl QuicTransport {
     }
 
     /// A snapshot of the currently known peer addresses.
+    ///
+    /// # Panics
+    /// Panics if the peer directory lock is poisoned.
     #[must_use]
     pub fn peers(&self) -> PeerDirectory {
         self.inner
@@ -334,6 +342,9 @@ impl QuicTransport {
 
     /// Swap the outbound client TLS config and drop cached connections so the
     /// next dial uses the new identity (cert-automation).
+    ///
+    /// # Panics
+    /// Panics if the client config lock is poisoned.
     pub async fn reload(&self, client_config: quinn::ClientConfig) {
         *self
             .inner

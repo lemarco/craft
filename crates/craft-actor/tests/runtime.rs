@@ -61,7 +61,7 @@ impl Cluster {
         let handle = spawn_node(
             driver,
             Arc::clone(&transport),
-            RuntimeConfig {
+            &RuntimeConfig {
                 tick_period: TICK_PERIOD,
                 allow_join: true,
                 allow_leave: true,
@@ -252,7 +252,7 @@ async fn pending_proposal_fails_when_leadership_is_lost() {
     // Cut the leader off from both followers so the write cannot commit.
     for &id in &ids {
         if id != leader {
-            cluster.net.detach(id);
+            let _ = cluster.net.detach(id);
         }
     }
 
@@ -569,7 +569,7 @@ async fn fatal_storage_error_stops_the_runtime() {
     let handle = spawn_node(
         driver,
         Arc::clone(&transport),
-        RuntimeConfig {
+        &RuntimeConfig {
             tick_period: TICK_PERIOD,
             allow_join: false,
             allow_leave: false,
@@ -621,7 +621,7 @@ async fn upsert_saga_journal_invokes_hook_on_commit() {
     let handle = spawn_node(
         driver,
         Arc::clone(&transport),
-        RuntimeConfig {
+        &RuntimeConfig {
             tick_period: TICK_PERIOD,
             on_saga_journal_applied: Some(on_saga_journal_applied),
             ..RuntimeConfig::default()
@@ -702,7 +702,7 @@ async fn auto_compaction_runs_when_entry_threshold_reached() {
     let handle = spawn_node(
         driver,
         Arc::clone(&transport),
-        RuntimeConfig {
+        &RuntimeConfig {
             tick_period: TICK_PERIOD,
             compaction: CompactionPolicy::entries(3),
             ..RuntimeConfig::default()

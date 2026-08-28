@@ -71,11 +71,11 @@ fn parse_peers(raw: &str) -> Result<PeerDirectory, String> {
     Ok(map)
 }
 
-fn decode_u64(bytes: &[u8]) -> Result<u64, String> {
+fn decode_u64(bytes: &[u8]) -> u64 {
     let mut buf = [0u8; 8];
     let n = bytes.len().min(8);
     buf[..n].copy_from_slice(&bytes[..n]);
-    Ok(u64::from_le_bytes(buf))
+    u64::from_le_bytes(buf)
 }
 
 async fn wait_cluster_ready(client: &RemoteClient) -> Result<(), String> {
@@ -142,8 +142,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             async move { client_read.query(vec![]).await }
         );
 
-        let inc_val = decode_u64(&inc.map_err(|e| format!("propose round {round}: {e}"))?)?;
-        let read_val = decode_u64(&read.map_err(|e| format!("query round {round}: {e}"))?)?;
+        let inc_val = decode_u64(&inc.map_err(|e| format!("propose round {round}: {e}"))?);
+        let read_val = decode_u64(&read.map_err(|e| format!("query round {round}: {e}"))?);
 
         let mut h = history.lock().await;
         h.response(0, inc_val);

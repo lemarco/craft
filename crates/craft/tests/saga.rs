@@ -87,8 +87,7 @@ impl Transport for FailAfterForward {
         Box::pin(async move {
             if let Ok(ClientRequest::ProposeKeyed { command, .. }) = decode_body(&body) {
                 let is_compensate = craft::proto::decode::<KvCommand>(&command)
-                    .ok()
-                    .is_some_and(|cmd| matches!(cmd, KvCommand::Delete { .. }));
+                    .is_ok_and(|cmd| matches!(cmd, KvCommand::Delete { .. }));
                 if !is_compensate {
                     let n = forward_calls.fetch_add(1, Ordering::Relaxed);
                     if n >= forward_ok {

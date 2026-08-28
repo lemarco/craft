@@ -12,7 +12,7 @@
 //! * Client **proposals** and **queries** are correlated to their results:
 //!   a proposal's `oneshot` responder is keyed by the log index it lands at and
 //!   fired when that index applies; a query's responder is keyed by its
-//!   [`ReadId`] and fired when the ReadIndex round confirms.
+//!   [`ReadId`] and fired when the `ReadIndex` round confirms.
 //! * A [`NodeService`] adapter implements [`craft_net`]'s [`RequestHandler`] so
 //!   a `QuicServer` (or the in-memory `LocalNetwork`) can route inbound
 //!   `/peer/wire` and `/client/wire` requests into the running node.
@@ -122,7 +122,7 @@ enum Envelope<M: StateMachine> {
         query: M::Query,
         respond: oneshot::Sender<Result<M::Response, ClientError>>,
     },
-    /// Leader-only: confirm a ReadIndex without executing a query.
+    /// Leader-only: confirm a `ReadIndex` without executing a query.
     ConfirmReadIndex {
         respond: oneshot::Sender<Result<(LogIndex, Term), ClientError>>,
     },
@@ -207,6 +207,7 @@ pub type QueueAutoscalePolicyAppliedFn = Arc<dyn Fn(QueueAutoscalePolicyCommand)
 pub type TwoPhaseGcAbortedFn = Arc<dyn Fn() + Send + Sync>;
 
 /// Tunables for the runtime loop.
+#[allow(clippy::struct_excessive_bools)] // feature flags + hook toggles in one config struct.
 #[derive(Clone)]
 pub struct RuntimeConfig {
     /// Wall-clock duration of one logical Raft tick. The core's timeouts are in
@@ -281,6 +282,21 @@ impl std::fmt::Debug for RuntimeConfig {
                 "on_saga_journal_applied",
                 &self.on_saga_journal_applied.as_ref().map(|_| "<fn>"),
             )
+            .field(
+                "on_two_phase_journal_applied",
+                &self.on_two_phase_journal_applied.as_ref().map(|_| "<fn>"),
+            )
+            .field(
+                "on_queue_autoscale_policy_applied",
+                &self
+                    .on_queue_autoscale_policy_applied
+                    .as_ref()
+                    .map(|_| "<fn>"),
+            )
+            .field(
+                "on_two_phase_gc_aborted",
+                &self.on_two_phase_gc_aborted.as_ref().map(|_| "<fn>"),
+            )
             .field("cross_shard_2pc", &self.cross_shard_2pc)
             .field("durable_cross_shard_2pc", &self.durable_cross_shard_2pc)
             .field("two_phase_prepare_timeout", &self.two_phase_prepare_timeout)
@@ -332,7 +348,7 @@ impl<M: StateMachine> NodeHandle<M> {
         rx.await.unwrap_or(Err(ClientError::Stopped))
     }
 
-    /// Run a linearizable query (ReadIndex, read-consistency) and await its result.
+    /// Run a linearizable query (`ReadIndex`, read-consistency) and await its result.
     ///
     /// # Errors
     /// [`ClientError::NotLeader`] if this node is not the leader, or
@@ -346,6 +362,10 @@ impl<M: StateMachine> NodeHandle<M> {
     }
 
     /// Confirm a linearizable read index on the leader (follower-read setup).
+    ///
+    /// # Errors
+    /// Returns [`ClientError::Stopped`] if the node is shutting down or the
+    /// runtime task dropped the response channel.
     pub async fn confirm_read_index(&self) -> Result<(LogIndex, Term), ClientError> {
         let (respond, rx) = oneshot::channel();
         self.tx
@@ -356,6 +376,10 @@ impl<M: StateMachine> NodeHandle<M> {
 
     /// Run a query against local applied state (after a confirmed read index
     /// and apply barrier on a follower).
+    ///
+    /// # Errors
+    /// Returns [`ClientError::Stopped`] if the node is shutting down, or a
+    /// driver/query error from the runtime task.
     pub async fn local_query(&self, query: M::Query) -> Result<M::Response, ClientError> {
         let (respond, rx) = oneshot::channel();
         self.tx
@@ -365,6 +389,10 @@ impl<M: StateMachine> NodeHandle<M> {
     }
 
     /// Export durable Raft state for cross-node group migration (write-sharding-multi-raft).
+    ///
+    /// # Errors
+    /// Returns [`ClientError::Stopped`] if the node is shutting down, or a
+    /// driver/storage error from the runtime task.
     pub async fn export_migration(&self) -> Result<craft_proto::GroupMigrationBundle, ClientError> {
         let (respond, rx) = oneshot::channel();
         self.tx
@@ -375,6 +403,10 @@ impl<M: StateMachine> NodeHandle<M> {
 
     /// Etcd-style follower read: confirm with the leader, wait for the apply
     /// barrier, then serve from local state.
+    ///
+    /// # Errors
+    /// Returns [`ClientError`] on decode failure, transport timeout, lost
+    /// leadership, or if the node stops before the query completes.
     pub async fn follower_query_bytes(
         &self,
         query_bytes: Vec<u8>,
@@ -573,6 +605,10 @@ impl<M: StateMachine> NodeHandle<M> {
     }
 
     /// Stage a command for cross-shard 2PC on this group's leader.
+    ///
+    /// # Errors
+    /// Returns [`ClientError::Stopped`] if the node is shutting down, or a
+    /// driver error from the runtime task.
     pub async fn two_phase_prepare(
         &self,
         tx_id: Vec<u8>,
@@ -592,6 +628,10 @@ impl<M: StateMachine> NodeHandle<M> {
     }
 
     /// Commit a previously prepared command through the normal Raft log.
+    ///
+    /// # Errors
+    /// Returns [`ClientError::Stopped`] if the node is shutting down, or a
+    /// driver/query error from the runtime task.
     pub async fn two_phase_commit(
         &self,
         tx_id: Vec<u8>,
@@ -609,6 +649,10 @@ impl<M: StateMachine> NodeHandle<M> {
     }
 
     /// Drop a previously prepared command without committing.
+    ///
+    /// # Errors
+    /// Returns [`ClientError::Stopped`] if the node is shutting down, or a
+    /// driver error from the runtime task.
     pub async fn two_phase_abort(
         &self,
         tx_id: Vec<u8>,
@@ -659,6 +703,7 @@ type PendingTwoPhaseCommit<M> = (
 );
 
 /// Owns the driver and mutable correlation state inside the loop task.
+#[allow(clippy::struct_excessive_bools)] // runtime flags + correlation maps share one loop state.
 struct Runtime<M: StateMachine> {
     driver: RaftDriver<M>,
     transport: Arc<dyn Transport>,
@@ -667,7 +712,7 @@ struct Runtime<M: StateMachine> {
     allow_leave: bool,
     pending_proposals: HashMap<LogIndex, oneshot::Sender<Result<M::Response, ClientError>>>,
     pending_queries: HashMap<ReadId, oneshot::Sender<Result<M::Response, ClientError>>>,
-    /// Leader ReadIndex confirmations awaiting quorum ack (follower-read setup).
+    /// Leader `ReadIndex` confirmations awaiting quorum ack (follower-read setup).
     pending_read_confirms: HashMap<ReadId, ReadConfirmSender>,
     /// Join requests awaiting their membership-change entry to commit, keyed by
     /// that entry's log index.
@@ -715,6 +760,7 @@ impl<M: StateMachine> Runtime<M> {
     /// Execute a step's effects and route applied/read results to waiting
     /// clients. Returns any reply effects (destined for a peer that made an
     /// inbound request) for the caller to hand back on that request.
+    #[allow(clippy::too_many_lines)] // effect dispatch + client correlation in one pass.
     fn settle(&mut self, step: Step<M>) -> Vec<(NodeId, RaftRpcReply)> {
         let mut replies = Vec::new();
         for effect in step.effects {
@@ -769,7 +815,7 @@ impl<M: StateMachine> Runtime<M> {
                 } = command;
                 let _ = tx.send(CatalogAddResponse::Accepted {
                     leader,
-                    catalog_len: from_len + new_groups.len() as u32,
+                    catalog_len: from_len + u32::try_from(new_groups.len()).unwrap_or(u32::MAX),
                     new_groups,
                 });
             }
@@ -952,6 +998,7 @@ impl<M: StateMachine> Runtime<M> {
 
     /// Process one mailbox message. Returns `Err` on a fatal driver failure
     /// (corrupt log / broken state machine), which stops the node.
+    #[allow(clippy::too_many_lines)] // single envelope demux for the runtime loop.
     fn on_envelope(&mut self, env: Envelope<M>) -> Result<bool, DriverError> {
         match env {
             Envelope::Shutdown { .. } => return Ok(false),
@@ -1024,13 +1071,13 @@ impl<M: StateMachine> Runtime<M> {
                 }
             },
             Envelope::Join { request, respond } => {
-                self.on_join(request, respond)?;
+                self.on_join(&request, respond)?;
             }
             Envelope::Leave { request, respond } => {
-                self.on_leave(request, respond)?;
+                self.on_leave(&request, respond)?;
             }
             Envelope::CatalogAdd { request, respond } => {
-                self.on_catalog_add(request, respond)?;
+                self.on_catalog_add(&request, respond)?;
             }
             Envelope::UpsertSagaJournal { command, respond } => {
                 self.on_upsert_saga_journal(command, respond)?;
@@ -1093,7 +1140,7 @@ impl<M: StateMachine> Runtime<M> {
                 route_key,
                 respond,
             } => {
-                self.on_two_phase_commit(tx_id, route_key, respond)?;
+                self.on_two_phase_commit(tx_id, route_key, respond);
             }
             Envelope::TwoPhaseAbort {
                 tx_id,
@@ -1171,24 +1218,24 @@ impl<M: StateMachine> Runtime<M> {
         tx_id: Vec<u8>,
         route_key: Vec<u8>,
         respond: oneshot::Sender<Result<M::Response, ClientError>>,
-    ) -> Result<(), DriverError> {
+    ) {
         if !self.cross_shard_2pc {
             let _ = respond.send(Err(ClientError::Driver(
                 "cross-shard 2PC is disabled on this group".to_string(),
             )));
-            return Ok(());
+            return;
         }
         if !self.driver.is_leader() {
             let _ = respond.send(Err(ClientError::NotLeader {
                 leader: self.driver.node().leader_id(),
             }));
-            return Ok(());
+            return;
         }
         let Some(bytes) = self.two_phase_prepares.get(&tx_id, &route_key).cloned() else {
             let _ = respond.send(Err(ClientError::Driver(
                 "no prepared command for transaction key".to_string(),
             )));
-            return Ok(());
+            return;
         };
         let command = match M::Command::from_bytes(&bytes) {
             Ok(c) => c,
@@ -1196,7 +1243,7 @@ impl<M: StateMachine> Runtime<M> {
                 let _ = respond.send(Err(ClientError::Driver(format!(
                     "decode prepared command: {e}"
                 ))));
-                return Ok(());
+                return;
             }
         };
         match self.driver.propose(&command) {
@@ -1212,7 +1259,6 @@ impl<M: StateMachine> Runtime<M> {
                 let _ = respond.send(Err(ClientError::Driver(e.to_string())));
             }
         }
-        Ok(())
     }
 
     fn on_two_phase_abort(
@@ -1261,8 +1307,15 @@ impl<M: StateMachine> Runtime<M> {
         if !self.cross_shard_2pc || !self.driver.is_leader() {
             return Ok(());
         }
-        let tick_period_ms = self.tick_period.as_millis().max(1).min(u64::MAX as u128) as u64;
-        let timeout_ms = timeout.as_millis().max(1).min(u64::MAX as u128) as u64;
+        let tick_period_ms = u64::try_from(
+            self.tick_period
+                .as_millis()
+                .max(1)
+                .min(u128::from(u64::MAX)),
+        )
+        .unwrap_or(u64::MAX);
+        let timeout_ms =
+            u64::try_from(timeout.as_millis().max(1).min(u128::from(u64::MAX))).unwrap_or(u64::MAX);
         let timeout_ticks = timeout_ms.div_ceil(tick_period_ms).max(1);
         let expired = self
             .two_phase_prepares
@@ -1294,7 +1347,7 @@ impl<M: StateMachine> Runtime<M> {
     /// membership entry commits (see [`resolve_committed_joins`]).
     fn on_join(
         &mut self,
-        request: JoinRequest,
+        request: &JoinRequest,
         respond: oneshot::Sender<JoinResponse>,
     ) -> Result<(), DriverError> {
         // Hard-reject a protocol-version mismatch before anything else (join-version-skew).
@@ -1357,7 +1410,7 @@ impl<M: StateMachine> Runtime<M> {
     /// entry commits (see [`resolve_committed_leaves`]).
     fn on_leave(
         &mut self,
-        request: LeaveRequest,
+        request: &LeaveRequest,
         respond: oneshot::Sender<LeaveResponse>,
     ) -> Result<(), DriverError> {
         if !protocol_version_compatible(request.protocol_version) {
@@ -1423,7 +1476,7 @@ impl<M: StateMachine> Runtime<M> {
     /// Validate and (on the group 0 leader) replicate a catalog expansion.
     fn on_catalog_add(
         &mut self,
-        request: CatalogAddRequest,
+        request: &CatalogAddRequest,
         respond: oneshot::Sender<CatalogAddResponse>,
     ) -> Result<(), DriverError> {
         if !protocol_version_compatible(request.protocol_version) {
@@ -1584,7 +1637,7 @@ impl<M: StateMachine> Runtime<M> {
 pub fn spawn<M>(
     driver: RaftDriver<M>,
     transport: Arc<dyn Transport>,
-    config: RuntimeConfig,
+    config: &RuntimeConfig,
 ) -> NodeHandle<M>
 where
     M: StateMachine,
@@ -1626,7 +1679,7 @@ where
     };
 
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(config.tick_period);
+        let mut interval = tokio::time::interval(runtime.tick_period);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let mut shutdown_done = None;
         loop {

@@ -62,6 +62,7 @@ struct DedupCache {
 }
 
 impl DedupCache {
+    #[allow(clippy::option_option)] // None = miss; Some(None) = cached empty reply.
     fn get(&self, key: &(NodeId, u64)) -> Option<Option<Vec<u8>>> {
         self.replies.get(key).cloned()
     }
@@ -267,6 +268,9 @@ impl ClusterMessaging {
     }
 
     /// Cast through a sticky [`ActorSession`] (same instance until TTL/expiry).
+    ///
+    /// # Errors
+    /// Returns [`CastError`] if the session target is gone or delivery fails.
     pub async fn cast_session(
         &self,
         session: &ActorSession,
@@ -312,6 +316,10 @@ impl ClusterMessaging {
     /// Ask with read-your-writes directory visibility (retries until the target
     /// appears locally). Use for rare cases that need a fresh directory view;
     /// default [`ask`](Self::ask) stays fast/local.
+    ///
+    /// # Errors
+    /// Returns [`AskError`] if the group has no instances, delivery fails, or
+    /// the actor never replies.
     pub async fn ask_linearizable(
         &self,
         group: &str,
@@ -324,6 +332,10 @@ impl ClusterMessaging {
     }
 
     /// Ask through a sticky [`ActorSession`].
+    ///
+    /// # Errors
+    /// Returns [`AskError`] if the session target is gone, delivery fails, or
+    /// the actor never replies.
     pub async fn ask_session(
         &self,
         session: &ActorSession,
@@ -644,7 +656,7 @@ pub async fn run_mailbox_spool_drainer(
                     break;
                 }
             }
-            _ = tokio::time::sleep(poll) => {}
+            () = tokio::time::sleep(poll) => {}
         }
     }
 }

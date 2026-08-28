@@ -40,20 +40,38 @@ fn codec(e: impl std::fmt::Display) -> MailboxSpoolError {
 /// Write-ahead log for cross-node actor envelopes.
 pub trait MailboxSpool: Send + Sync {
     /// Persist an outbound envelope before transport send.
+    ///
+    /// # Errors
+    /// Returns [`MailboxSpoolError`] if the backend write fails.
     fn push_outbox(&self, envelope: &ActorEnvelope) -> Result<MailboxSpoolId, MailboxSpoolError>;
     /// Drop a delivered outbound row.
+    ///
+    /// # Errors
+    /// Returns [`MailboxSpoolError`] if the backend delete fails.
     fn remove_outbox(&self, id: MailboxSpoolId) -> Result<(), MailboxSpoolError>;
     /// Oldest pending outbound rows (FIFO by id).
+    ///
+    /// # Errors
+    /// Returns [`MailboxSpoolError`] if the backend read fails.
     fn list_outbox(
         &self,
         max: usize,
     ) -> Result<Vec<(MailboxSpoolId, ActorEnvelope)>, MailboxSpoolError>;
 
     /// Persist an inbound envelope before handing it to a local mailbox.
+    ///
+    /// # Errors
+    /// Returns [`MailboxSpoolError`] if the backend write fails.
     fn push_inbox(&self, envelope: &ActorEnvelope) -> Result<MailboxSpoolId, MailboxSpoolError>;
     /// Drop an inbound row after the mailbox accepted the message.
+    ///
+    /// # Errors
+    /// Returns [`MailboxSpoolError`] if the backend delete fails.
     fn remove_inbox(&self, id: MailboxSpoolId) -> Result<(), MailboxSpoolError>;
     /// Oldest pending inbound rows (FIFO by id).
+    ///
+    /// # Errors
+    /// Returns [`MailboxSpoolError`] if the backend read fails.
     fn list_inbox(
         &self,
         max: usize,

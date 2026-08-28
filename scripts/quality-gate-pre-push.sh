@@ -17,6 +17,10 @@ maybe_tee() {
 
 export NEXTEST_PROFILE=ci
 
+log ">> clippy (pedantic)"
+source scripts/clippy-args.sh
+cargo clippy --workspace --all-targets --all-features -- "${CLIPPY_ARGS[@]}" 2>&1 | maybe_tee
+
 log ">> tests"
 if command -v cargo-nextest >/dev/null 2>&1; then
   cargo nextest run --profile ci --workspace --all-features 2>&1 | maybe_tee

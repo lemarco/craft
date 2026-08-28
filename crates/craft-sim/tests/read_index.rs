@@ -1,4 +1,4 @@
-//! Cluster-level ReadIndex (linearizable read) scenarios (read-consistency), driven
+//! Cluster-level `ReadIndex` (linearizable read) scenarios (read-consistency), driven
 //! through the deterministic simulator.
 
 use craft_sim::Cluster;

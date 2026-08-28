@@ -294,12 +294,12 @@ impl Cluster {
 
     /// Propose a command on `leader` and pump the cluster to quiescence,
     /// returning all applications recorded across the cluster.
-    fn propose_on(&mut self, leader: NodeId, command: KvCommand) -> Vec<AppliedRecord> {
+    fn propose_on(&mut self, leader: NodeId, command: &KvCommand) -> Vec<AppliedRecord> {
         let (_, step) = self
             .drivers
             .get_mut(&leader)
             .unwrap()
-            .propose(&command)
+            .propose(command)
             .unwrap();
         let mut applied: Vec<AppliedRecord> = step
             .applied
@@ -350,7 +350,7 @@ fn three_nodes_replicate_and_apply_a_command_everywhere() {
 
     let applied = cluster.propose_on(
         leader,
-        KvCommand::Set {
+        &KvCommand::Set {
             key: "shared".into(),
             value: "value".into(),
         },
@@ -384,7 +384,7 @@ fn three_node_leader_serves_linearizable_read_after_replication() {
 
     cluster.propose_on(
         leader,
-        KvCommand::Set {
+        &KvCommand::Set {
             key: "k".into(),
             value: "v".into(),
         },
@@ -424,8 +424,7 @@ fn three_node_leader_serves_linearizable_read_after_replication() {
         ReadOutcome::Ready { response, .. } => {
             assert_eq!(*response, KvResponse::Value(Some("v".into())));
         }
-        ReadOutcome::Failed { .. } => unreachable!(),
-        ReadOutcome::Confirmed { .. } => unreachable!(),
+        ReadOutcome::Failed { .. } | ReadOutcome::Confirmed { .. } => unreachable!(),
     }
 }
 
@@ -567,8 +566,7 @@ fn state_survives_a_restart_and_replays_committed_log() {
         .iter()
         .find_map(|r| match r {
             ReadOutcome::Ready { response, .. } => Some(response.clone()),
-            ReadOutcome::Failed { .. } => None,
-            ReadOutcome::Confirmed { .. } => None,
+            ReadOutcome::Failed { .. } | ReadOutcome::Confirmed { .. } => None,
         })
         .expect("read should resolve on the recovered single-node leader");
     assert_eq!(
@@ -883,15 +881,14 @@ impl SnapshotStore for FailAppendAfter {
 
 #[test]
 fn recover_surfaces_storage_error_when_hard_state_unreadable() {
-    let err = match RaftDriver::recover(
+    let Err(err) = RaftDriver::recover(
         NodeId(1),
         [NodeId(1)],
         config(),
         TrackedKv::default(),
         Box::new(FailHardStateLoad::default()),
-    ) {
-        Err(err) => err,
-        Ok(_) => panic!("expected recover to fail on hard-state load"),
+    ) else {
+        panic!("expected recover to fail on hard-state load")
     };
     assert!(
         matches!(err, DriverError::Storage(StorageError::Backend(_))),
@@ -922,15 +919,14 @@ fn recover_rejects_corrupt_snapshot_bytes() {
         })
         .unwrap();
 
-    let err = match RaftDriver::recover(
+    let Err(err) = RaftDriver::recover(
         NodeId(1),
         [NodeId(1)],
         config(),
         TrackedKv::default(),
         Box::new(storage),
-    ) {
-        Err(err) => err,
-        Ok(_) => panic!("expected recover to fail on corrupt snapshot"),
+    ) else {
+        panic!("expected recover to fail on corrupt snapshot")
     };
     assert!(
         matches!(err, DriverError::Restore(_)),
@@ -970,9 +966,8 @@ fn replaying_corrupt_command_returns_apply_error() {
         Box::new(storage),
     )
     .unwrap();
-    let err = match d.campaign() {
-        Err(err) => err,
-        Ok(_) => panic!("expected apply failure for corrupt command"),
+    let Err(err) = d.campaign() else {
+        panic!("expected apply failure for corrupt command")
     };
     assert!(
         matches!(err, DriverError::Apply { .. } | DriverError::Codec(_)),

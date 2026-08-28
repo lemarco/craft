@@ -149,13 +149,11 @@ impl<M: StateMachine> Observer for CraftObserver<M> {
             let active_shard_count = self
                 .multi_raft
                 .as_ref()
-                .map(|mr| mr.sharded.shard_count())
-                .unwrap_or(self.shard_count);
+                .map_or(self.shard_count, |mr| mr.sharded.shard_count());
             let shard_routing = self
                 .multi_raft
                 .as_ref()
-                .map(|mr| mr.sharded.routing_kind())
-                .unwrap_or(self.shard_routing);
+                .map_or(self.shard_routing, |mr| mr.sharded.routing_kind());
             let hosted: Vec<u32> = self
                 .multi_raft
                 .as_ref()
@@ -206,11 +204,9 @@ impl<M: StateMachine> Observer for CraftObserver<M> {
             RaftGroupsView {
                 shard_count: active_shard_count,
                 shard_routing: shard_routing.as_str().into(),
-                catalog_size: self
-                    .multi_raft
-                    .as_ref()
-                    .map(|mr| mr.catalog.lock().unwrap().len() as u32)
-                    .unwrap_or(self.raft_groups),
+                catalog_size: self.multi_raft.as_ref().map_or(self.raft_groups, |mr| {
+                    mr.catalog.lock().unwrap().len() as u32
+                }),
                 catalog_version: self.catalog_version.load(Ordering::SeqCst),
                 replication_factor: self.replication_factor,
                 learner_factor: self.learner_factor,

@@ -84,7 +84,9 @@ async fn a_client_signed_by_a_foreign_ca_is_rejected() {
     let result = tokio::time::timeout(Duration::from_secs(5), attempt).await;
     match result {
         // Rejected outright during the handshake — expected.
-        Ok(Err(_)) => {}
+        Ok(Err(connect_err)) => {
+            drop(connect_err);
+        }
         // QUIC's 1-RTT client may optimistically finish its side before the
         // server's rejection arrives; the connection must then close promptly
         // (the server aborts with a TLS alert) rather than stay usable.
@@ -95,7 +97,7 @@ async fn a_client_signed_by_a_foreign_ca_is_rejected() {
                 "foreign-CA connection stayed open instead of being rejected"
             );
         }
-        Err(_) => panic!("handshake neither completed nor failed within timeout"),
+        Err(elapsed) => panic!("handshake neither completed nor failed within timeout: {elapsed}"),
     }
 
     // The server side must have failed rather than accepting the peer.
@@ -124,7 +126,7 @@ async fn wrong_server_name_is_rejected() {
 
     let result = tokio::time::timeout(Duration::from_secs(5), attempt).await;
     assert!(
-        matches!(result, Ok(Err(_))),
+        result.as_ref().is_ok_and(Result::is_err),
         "server-name mismatch must fail the handshake, got {result:?}"
     );
 }

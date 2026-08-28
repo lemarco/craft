@@ -5,7 +5,7 @@
 //! execute (architecture-style). Because it performs no I/O and derives all randomness
 //! from a seed, an entire cluster can be simulated reproducibly (testing-strategy).
 //!
-//! Joint-consensus membership (membership-early), ReadIndex (read-consistency), and snapshots
+//! Joint-consensus membership (membership-early), `ReadIndex` (read-consistency), and snapshots
 //! build on this foundation in later increments.
 
 pub use craft_proto as proto;

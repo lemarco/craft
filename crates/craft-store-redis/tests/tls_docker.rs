@@ -15,6 +15,7 @@ use testcontainers_modules::testcontainers::{
 
 const REDIS_TLS_PORT: u16 = 6379;
 
+#[allow(clippy::struct_field_names)] // PEM file triple is conventional naming
 struct TlsPemBundle {
     ca_pem: Vec<u8>,
     cert_pem: Vec<u8>,

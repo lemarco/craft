@@ -141,7 +141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     let leader_id = leader.expect("a leader");
-    println!("leader elected: {:?}", leader_id);
+    println!("leader elected: {leader_id:?}");
 
     let submitter = clusters
         .iter()

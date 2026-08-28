@@ -37,7 +37,7 @@
 //! every node (mint them with `examples/certs/generate.sh`; see `docs/certs.md`)
 //! and either list every member in `CRAFT_PEERS` (static) or point new nodes at
 //! `CRAFT_JOIN_SEEDS` / `CRAFT_DISCOVERY` to grow the cluster dynamically. See
-//! `deploy/kubernetes/` for a StatefulSet using ordinal-derived ids + DNS.
+//! `deploy/kubernetes/` for a `StatefulSet` using ordinal-derived ids + DNS.
 
 mod config;
 

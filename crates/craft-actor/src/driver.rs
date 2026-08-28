@@ -8,7 +8,7 @@
 //!
 //! * [`Output::Apply`] → decode the command and feed it to
 //!   [`StateMachine::apply`], in strict index order, exactly once.
-//! * [`Output::ReadReady`] → the ReadIndex protocol confirmed the leader is
+//! * [`Output::ReadReady`] → the `ReadIndex` protocol confirmed the leader is
 //!   current (read-consistency), so a previously registered linearizable query is run
 //!   against the applied state via [`StateMachine::query`].
 //! * [`Output::ReadFailed`] → leadership was lost before the read could be
@@ -51,7 +51,7 @@
 //! the machine from it, and rebuilds the core with
 //! [`RaftNode::restore_with_snapshot`] over the retained log suffix.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use craft_core::Command as _;
 use craft_core::{
@@ -86,7 +86,7 @@ pub enum NetEffect {
     },
 }
 
-/// The outcome of a linearizable read once the ReadIndex round resolves.
+/// The outcome of a linearizable read once the `ReadIndex` round resolves.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReadOutcome<R> {
     /// The read was confirmed and answered against applied state.
@@ -96,7 +96,7 @@ pub enum ReadOutcome<R> {
         /// The query response.
         response: R,
     },
-    /// ReadIndex confirmed at `index` without executing a query (follower-read
+    /// `ReadIndex` confirmed at `index` without executing a query (follower-read
     /// setup on the leader).
     Confirmed {
         /// The client's read token.
@@ -229,10 +229,10 @@ pub struct RaftDriver<M: StateMachine> {
     /// Durable backend for the hard state and log (backlog B4). Defaults to a
     /// [`NullStorage`] for nodes that opt out of persistence.
     storage: Box<dyn RaftStorage>,
-    /// Queries awaiting their ReadIndex confirmation, keyed by read token.
+    /// Queries awaiting their `ReadIndex` confirmation, keyed by read token.
     pending_queries: HashMap<ReadId, M::Query>,
     /// ReadIndex-only confirmations (no query execution on the leader).
-    pending_read_confirms: HashMap<ReadId, ()>,
+    pending_read_confirms: HashSet<ReadId>,
 }
 
 impl<M: StateMachine> RaftDriver<M> {
@@ -259,7 +259,7 @@ impl<M: StateMachine> RaftDriver<M> {
             machine,
             storage,
             pending_queries: HashMap::new(),
-            pending_read_confirms: HashMap::new(),
+            pending_read_confirms: HashSet::new(),
         }
     }
 
@@ -291,38 +291,35 @@ impl<M: StateMachine> RaftDriver<M> {
         storage: Box<dyn RaftStorage>,
     ) -> Result<Self, DriverError> {
         let hard = storage.load_hard_state()?;
-        let node = match storage.load_snapshot()? {
-            Some(snapshot) => {
-                machine
-                    .restore(&snapshot.data)
-                    .map_err(|e| DriverError::Restore(Box::new(e)))?;
-                let last = snapshot.meta.last_included;
-                let entries = storage.read_from(last.index.next())?;
-                RaftNode::restore_with_snapshot(
-                    id,
-                    members,
-                    config,
-                    hard.current_term,
-                    hard.voted_for,
-                    SnapshotState {
-                        last_included: last,
-                        membership: snapshot.meta.membership,
-                        data: snapshot.data,
-                    },
-                    entries,
-                )
-            }
-            None => {
-                let entries = storage.read_from(LogIndex(1))?;
-                RaftNode::restore(
-                    id,
-                    members,
-                    config,
-                    hard.current_term,
-                    hard.voted_for,
-                    entries,
-                )
-            }
+        let node = if let Some(snapshot) = storage.load_snapshot()? {
+            machine
+                .restore(&snapshot.data)
+                .map_err(|e| DriverError::Restore(Box::new(e)))?;
+            let last = snapshot.meta.last_included;
+            let entries = storage.read_from(last.index.next())?;
+            RaftNode::restore_with_snapshot(
+                id,
+                members,
+                config,
+                hard.current_term,
+                hard.voted_for,
+                SnapshotState {
+                    last_included: last,
+                    membership: snapshot.meta.membership,
+                    data: snapshot.data,
+                },
+                entries,
+            )
+        } else {
+            let entries = storage.read_from(LogIndex(1))?;
+            RaftNode::restore(
+                id,
+                members,
+                config,
+                hard.current_term,
+                hard.voted_for,
+                entries,
+            )
         };
         Ok(Self::with_storage(node, machine, storage))
     }
@@ -404,7 +401,7 @@ impl<M: StateMachine> RaftDriver<M> {
         Ok((index, step))
     }
 
-    /// Register a linearizable read (ReadIndex, read-consistency). Succeeds only on the
+    /// Register a linearizable read (`ReadIndex`, read-consistency). Succeeds only on the
     /// leader. The query is held until the core confirms the read is safe, at
     /// which point it is answered and surfaced as [`ReadOutcome::Ready`] in a
     /// later [`Step`] (possibly this one for a single-node cluster).
@@ -458,7 +455,7 @@ impl<M: StateMachine> RaftDriver<M> {
             Ok(_) => {}
             Err(e) => return Err(e.into()),
         }
-        self.pending_read_confirms.insert(id, ());
+        self.pending_read_confirms.insert(id);
         match self.node.read_index(id) {
             Ok(()) => self.drain(),
             Err(e) => {
@@ -495,12 +492,12 @@ impl<M: StateMachine> RaftDriver<M> {
             && bundle.snapshot.is_none()
             && (self.node.last_log_index().0 > 0 || self.node.current_term().0 > 0)
         {
-            return self.export_migration_from_live();
+            return Ok(self.export_migration_from_live());
         }
         Ok(bundle)
     }
 
-    fn export_migration_from_live(&self) -> Result<craft_proto::GroupMigrationBundle, DriverError> {
+    fn export_migration_from_live(&self) -> craft_proto::GroupMigrationBundle {
         use craft_proto::{
             GroupMigrationBundle, GroupMigrationHardState, GroupMigrationSnapshot,
             GroupMigrationSnapshotMeta, LogIndex,
@@ -536,12 +533,12 @@ impl<M: StateMachine> RaftDriver<M> {
             LogIndex(1)
         };
         let log = self.node.log_entries_from(first);
-        Ok(GroupMigrationBundle {
+        GroupMigrationBundle {
             hard_state,
             purged_through,
             snapshot,
             log,
-        })
+        }
     }
 
     /// Begin a joint-consensus membership change to `new_voters` (+ optional
@@ -739,18 +736,18 @@ impl<M: StateMachine> RaftDriver<M> {
                 Output::Send(peer, rpc) => step.effects.push(NetEffect::Send { peer, rpc }),
                 Output::Reply(peer, reply) => step.effects.push(NetEffect::Reply { peer, reply }),
                 Output::Apply(committed) => {
-                    let (index, response) = self.apply_committed(committed)?;
+                    let (index, response) = self.apply_committed(&committed)?;
                     step.applied.push((index, response));
                 }
                 Output::ReadReady { id, index } => {
-                    if self.pending_read_confirms.remove(&id).is_some() {
+                    if self.pending_read_confirms.remove(&id) {
                         step.reads.push(ReadOutcome::Confirmed { id, index });
                     } else if let Some(outcome) = self.serve_read(id, index)? {
                         step.reads.push(outcome);
                     }
                 }
                 Output::ReadFailed { id } => {
-                    if self.pending_read_confirms.remove(&id).is_some()
+                    if self.pending_read_confirms.remove(&id)
                         || self.pending_queries.remove(&id).is_some()
                     {
                         step.reads.push(ReadOutcome::Failed { id });
@@ -791,7 +788,7 @@ impl<M: StateMachine> RaftDriver<M> {
     /// Decode and apply a single committed command to the state machine.
     fn apply_committed(
         &mut self,
-        committed: Committed,
+        committed: &Committed,
     ) -> Result<(LogIndex, M::Response), DriverError> {
         let index = committed.index;
         let command = M::Command::from_bytes(&committed.command)?;
@@ -805,7 +802,7 @@ impl<M: StateMachine> RaftDriver<M> {
         Ok((index, response))
     }
 
-    /// Serve a query whose ReadIndex round was just confirmed.
+    /// Serve a query whose `ReadIndex` round was just confirmed.
     fn serve_read(
         &mut self,
         id: ReadId,

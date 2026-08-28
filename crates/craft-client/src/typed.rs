@@ -66,6 +66,10 @@ impl<C: Client, M: StateMachine> TypedClient<C, M> {
 
 impl<C: KeyedClient, M: StateMachine> TypedClient<C, M> {
     /// Propose a typed command to the Raft group that owns `key`.
+    ///
+    /// # Errors
+    /// [`ClientError::Codec`] if the command cannot be encoded or the response
+    /// cannot be decoded, otherwise any error from the underlying [`KeyedClient`].
     pub async fn propose_keyed(
         &self,
         key: &[u8],
@@ -77,6 +81,10 @@ impl<C: KeyedClient, M: StateMachine> TypedClient<C, M> {
     }
 
     /// Run a typed linearizable query against the Raft group that owns `key`.
+    ///
+    /// # Errors
+    /// [`ClientError::Codec`] if the query cannot be encoded or the response
+    /// cannot be decoded, otherwise any error from the underlying [`KeyedClient`].
     pub async fn query_keyed(
         &self,
         key: &[u8],

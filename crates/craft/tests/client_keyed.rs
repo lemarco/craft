@@ -36,7 +36,7 @@ async fn spawn_multi_raft_cluster() -> (LocalNetwork, Vec<Arc<CraftCluster<KvMac
 #[tokio::test(start_paused = true)]
 async fn remote_client_routes_keyed_writes_and_reads_by_shard() {
     let (net, clusters) = spawn_multi_raft_cluster().await;
-    let group_count = clusters.first().map(|c| c.raft_groups()).unwrap_or(0);
+    let group_count = clusters.first().map_or(0, |c| c.raft_groups());
     wait_for_each_group_cluster_leader(&clusters, group_count).await;
 
     let shard_count = 64;
@@ -94,7 +94,7 @@ async fn remote_client_routes_keyed_writes_and_reads_by_shard() {
 #[tokio::test(start_paused = true)]
 async fn remote_client_keyed_read_on_follower_is_linearizable() {
     let (net, clusters) = spawn_multi_raft_cluster().await;
-    let group_count = clusters.first().map(|c| c.raft_groups()).unwrap_or(0);
+    let group_count = clusters.first().map_or(0, |c| c.raft_groups());
     wait_for_each_group_cluster_leader(&clusters, group_count).await;
 
     let leader = await_craft_leader(&clusters).await;

@@ -7,7 +7,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/hook-prelude.sh
+source scripts/clippy-args.sh
 cargo fmt --all -- --check
 bash scripts/check-shell-scripts.sh
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo clippy --workspace --all-targets --all-features -- "${CLIPPY_ARGS[@]}"
 echo ">> pre-commit gate ok"

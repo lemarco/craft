@@ -1,4 +1,4 @@
-//! AppendEntries receiver-rule tests (Raft §5.3) with conflict/commit edges.
+//! `AppendEntries` receiver-rule tests (Raft §5.3) with conflict/commit edges.
 
 use craft_core::{Config, Output, RaftNode, Role};
 use craft_proto::{

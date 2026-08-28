@@ -233,6 +233,9 @@ pub struct InMemorySagaJournal {
 
 impl InMemorySagaJournal {
     /// Snapshot persisted records.
+    ///
+    /// # Panics
+    /// Panics if the journal lock is poisoned.
     #[must_use]
     pub fn records(&self) -> Vec<SagaJournalRecord> {
         self.records.lock().expect("lock").clone()
@@ -283,7 +286,7 @@ impl SagaJournal for InMemorySagaJournal {
     ) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send + 'a>> {
         Box::pin(async move {
             self.upsert(saga_id, |rec| {
-                rec.completed_steps = step as u32 + 1;
+                rec.completed_steps = u32::try_from(step).expect("step index fits u32") + 1;
             });
             Ok(())
         })
@@ -307,7 +310,7 @@ impl SagaJournal for InMemorySagaJournal {
         Box::pin(async move {
             self.upsert(saga_id, |rec| {
                 rec.phase = SagaJournalPhase::Compensating;
-                rec.failed_step = Some(failed_step as u32);
+                rec.failed_step = Some(u32::try_from(failed_step).expect("step index fits u32"));
             });
             Ok(())
         })
@@ -336,8 +339,9 @@ impl SagaJournal for InMemorySagaJournal {
         Box::pin(async move {
             self.upsert(saga_id, |rec| {
                 rec.phase = SagaJournalPhase::Stuck;
-                rec.failed_step = Some(failed_step as u32);
-                rec.compensate_failed_at = Some(compensate_failed_at as u32);
+                rec.failed_step = Some(u32::try_from(failed_step).expect("step index fits u32"));
+                rec.compensate_failed_at =
+                    Some(u32::try_from(compensate_failed_at).expect("step index fits u32"));
             });
             Ok(())
         })

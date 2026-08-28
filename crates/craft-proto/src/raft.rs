@@ -53,9 +53,9 @@ pub enum EntryPayload {
 /// (`voters`) and outgoing (`voters_outgoing`) configurations are active.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Membership {
-    /// Incoming/current voting members (C_new).
+    /// Incoming/current voting members (`C_new`).
     pub voters: Vec<NodeId>,
-    /// Outgoing voting members during a joint config (C_old); empty when stable.
+    /// Outgoing voting members during a joint config (`C_old`); empty when stable.
     pub voters_outgoing: Vec<NodeId>,
     /// Non-voting members that only receive the log (catch-up / observers).
     pub learners: Vec<NodeId>,
@@ -129,7 +129,7 @@ pub struct AppendEntries {
     pub entries: Vec<LogEntry>,
     /// Leader's commit index.
     pub leader_commit: LogIndex,
-    /// Leader's heartbeat round, echoed back to confirm ReadIndex leadership.
+    /// Leader's heartbeat round, echoed back to confirm `ReadIndex` leadership.
     pub round: Round,
 }
 
@@ -144,7 +144,7 @@ pub struct AppendEntriesReply {
     pub conflict_index: Option<LogIndex>,
     /// Term of the conflicting entry, if any.
     pub conflict_term: Option<Term>,
-    /// Echoes the request's [`AppendEntries::round`] for ReadIndex confirmation.
+    /// Echoes the request's [`AppendEntries::round`] for `ReadIndex` confirmation.
     pub round: Round,
 }
 

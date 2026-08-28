@@ -269,6 +269,9 @@ impl ClusterControl {
 
     /// Register a factory so this node can spawn `A` on request (locally or via
     /// `/actor/spawn`). Idempotent — a repeat registration replaces the prior.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     pub fn register_type<A: UserActor>(&self) {
         self.factories
             .lock()
@@ -473,7 +476,7 @@ impl ClusterControl {
             .scale_cluster_encoded(
                 &request.name,
                 request.actor_type.clone(),
-                request.total as usize,
+                usize::try_from(request.total).unwrap_or(usize::MAX),
                 &request.config,
                 &live_nodes,
             )
@@ -556,6 +559,9 @@ impl ClusterControl {
     /// spawn a replacement of the requested type and restore the snapshot into
     /// it before it handles any message (E12). Idempotent — a replacement that
     /// already exists is reported as success.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     #[must_use]
     pub fn handle_migrate(&self, request: &MigrateRequest) -> MigrateReply {
         let factory = self
@@ -602,6 +608,9 @@ impl ClusterControl {
     }
 
     /// Handle an inbound [`SpawnRequest`] and produce its [`SpawnReply`].
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
     #[must_use]
     pub fn handle_spawn(&self, request: &SpawnRequest) -> SpawnReply {
         let factory = self

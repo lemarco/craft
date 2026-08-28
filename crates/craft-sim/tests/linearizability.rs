@@ -62,7 +62,8 @@ fn run_register_history(corrupt_read: Option<u64>) -> History<Op, u64> {
 
         // Advance until both the read confirms and the write has applied.
         for _ in 0..300 {
-            let applied = cluster.applied(leader).len() as u64;
+            let applied =
+                u64::try_from(cluster.applied(leader).len()).expect("applied count fits u64");
             if cluster.read_ready(read_id).is_some() && applied >= v {
                 break;
             }
@@ -74,11 +75,7 @@ fn run_register_history(corrupt_read: Option<u64>) -> History<Op, u64> {
         );
 
         // The read linearizes to the register's current committed value.
-        let observed = cluster
-            .applied(leader)
-            .last()
-            .map(|c| decode(c))
-            .unwrap_or(0);
+        let observed = cluster.applied(leader).last().map_or(0, |c| decode(c));
         let observed = match corrupt_read {
             Some(round) if round == v => observed.wrapping_add(777), // never-written value
             _ => observed,

@@ -2,11 +2,13 @@
 //! should fill in the `postcard` wire codecs on a `UserActor` impl, honour the
 //! `migratable` flag, and leave any hand-written codec method untouched.
 
+#![allow(clippy::unused_async_trait_impl)] // test mock actors have sync handle bodies
+
 use craft_actor::{MessageDecodeError, UserActor, remote_actor};
 use serde::{Deserialize, Serialize};
 
 /// Read `MIGRATABLE` behind a function boundary so the assertions on it are not
-/// flagged as constant (clippy::assertions_on_constants).
+/// flagged as constant (`clippy::assertions_on_constants`).
 fn migratable<A: UserActor>() -> bool {
     A::MIGRATABLE
 }

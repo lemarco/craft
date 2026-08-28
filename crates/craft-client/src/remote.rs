@@ -25,7 +25,7 @@ pub trait Client {
         payload: Vec<u8>,
     ) -> impl Future<Output = Result<Vec<u8>, ClientError>> + Send;
 
-    /// Submit a linearizable read (ReadIndex, read-consistency). `payload` is the
+    /// Submit a linearizable read (`ReadIndex`, read-consistency). `payload` is the
     /// application-encoded query; the returned bytes are the encoded response.
     fn query(&self, payload: Vec<u8>) -> impl Future<Output = Result<Vec<u8>, ClientError>> + Send;
 }
