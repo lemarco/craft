@@ -51,8 +51,8 @@ use craft_net::{
 use craft_proto::{
     CatalogAddRequest, CatalogAddResponse, CatalogCommand, CatalogRejection, ClientRequest,
     ClientResponse, JoinRejection, JoinRequest, JoinResponse, LeaveRejection, LeaveRequest,
-    LeaveResponse, LogIndex, NodeId, PROTOCOL_VERSION, RaftRpc, RaftRpcReply, SagaJournalCommand,
-    Term, TwoPhaseJournalCommand, protocol_version_compatible,
+    LeaveResponse, LogIndex, NodeId, PROTOCOL_VERSION, QueueAutoscalePolicyCommand, RaftRpc,
+    RaftRpcReply, SagaJournalCommand, Term, TwoPhaseJournalCommand, protocol_version_compatible,
 };
 use tokio::sync::{mpsc, oneshot};
 
@@ -151,6 +151,10 @@ enum Envelope<M: StateMachine> {
         command: TwoPhaseJournalCommand,
         respond: oneshot::Sender<Result<(), ClientError>>,
     },
+    UpsertQueueAutoscalePolicy {
+        command: QueueAutoscalePolicyCommand,
+        respond: oneshot::Sender<Result<(), ClientError>>,
+    },
     /// Leader-only: begin a joint-consensus membership change (per-group-raft-membership).
     ProposeMembership {
         voters: Vec<NodeId>,
@@ -197,6 +201,8 @@ pub type CatalogAppliedFn = Arc<dyn Fn(CatalogCommand) + Send + Sync>;
 pub type SagaJournalAppliedFn = Arc<dyn Fn(SagaJournalCommand) + Send + Sync>;
 /// Hook invoked when a 2PC client journal entry commits on this node (Meta-Raft replicas).
 pub type TwoPhaseJournalAppliedFn = Arc<dyn Fn(TwoPhaseJournalCommand) + Send + Sync>;
+/// Hook invoked when a queue autoscale policy entry commits (Meta-Raft / group 0 replicas).
+pub type QueueAutoscalePolicyAppliedFn = Arc<dyn Fn(QueueAutoscalePolicyCommand) + Send + Sync>;
 /// Hook invoked when the leader GC-aborts a stale durable 2PC prepare.
 pub type TwoPhaseGcAbortedFn = Arc<dyn Fn() + Send + Sync>;
 
@@ -222,6 +228,8 @@ pub struct RuntimeConfig {
     pub on_saga_journal_applied: Option<SagaJournalAppliedFn>,
     /// Apply hook for committed 2PC client journal entries (Meta-Raft / group 0).
     pub on_two_phase_journal_applied: Option<TwoPhaseJournalAppliedFn>,
+    /// Apply hook for committed queue autoscale policy entries (Meta-Raft / group 0).
+    pub on_queue_autoscale_policy_applied: Option<QueueAutoscalePolicyAppliedFn>,
     /// Metrics hook when a stale durable prepare is GC-aborted (leader-only).
     pub on_two_phase_gc_aborted: Option<TwoPhaseGcAbortedFn>,
     /// Enable cross-shard two-phase commit prepare/commit/abort on this group.
@@ -245,6 +253,7 @@ impl Default for RuntimeConfig {
             on_catalog_applied: None,
             on_saga_journal_applied: None,
             on_two_phase_journal_applied: None,
+            on_queue_autoscale_policy_applied: None,
             on_two_phase_gc_aborted: None,
             cross_shard_2pc: false,
             durable_cross_shard_2pc: false,
@@ -505,6 +514,22 @@ impl<M: StateMachine> NodeHandle<M> {
         rx.await.map_err(|_| ClientError::Stopped)?
     }
 
+    /// Replicate a queue autoscale policy upsert on Meta-Raft / group 0.
+    ///
+    /// # Errors
+    /// [`ClientError::NotLeader`] when this node is not the metadata leader.
+    /// [`ClientError::Stopped`] if the runtime shut down before responding.
+    pub async fn upsert_queue_autoscale_policy(
+        &self,
+        command: QueueAutoscalePolicyCommand,
+    ) -> Result<(), ClientError> {
+        let (respond, rx) = oneshot::channel();
+        self.tx
+            .send(Envelope::UpsertQueueAutoscalePolicy { command, respond })
+            .map_err(|_| ClientError::Stopped)?;
+        rx.await.map_err(|_| ClientError::Stopped)?
+    }
+
     /// Propose a joint-consensus membership change to `voters` when this node
     /// is the Raft leader for the group (per-group-raft-membership).
     ///
@@ -653,6 +678,7 @@ struct Runtime<M: StateMachine> {
     pending_catalog_adds: HashMap<LogIndex, oneshot::Sender<CatalogAddResponse>>,
     pending_saga_journals: HashMap<LogIndex, oneshot::Sender<Result<(), ClientError>>>,
     pending_two_phase_journals: HashMap<LogIndex, oneshot::Sender<Result<(), ClientError>>>,
+    pending_queue_autoscale_policies: HashMap<LogIndex, oneshot::Sender<Result<(), ClientError>>>,
     pending_two_phase_prepares: HashMap<LogIndex, oneshot::Sender<Result<(), ClientError>>>,
     pending_two_phase_aborts: HashMap<LogIndex, oneshot::Sender<Result<(), ClientError>>>,
     pending_two_phase_commits: HashMap<LogIndex, PendingTwoPhaseCommit<M>>,
@@ -660,6 +686,7 @@ struct Runtime<M: StateMachine> {
     on_catalog_applied: Option<CatalogAppliedFn>,
     on_saga_journal_applied: Option<SagaJournalAppliedFn>,
     on_two_phase_journal_applied: Option<TwoPhaseJournalAppliedFn>,
+    on_queue_autoscale_policy_applied: Option<QueueAutoscalePolicyAppliedFn>,
     on_two_phase_gc_aborted: Option<TwoPhaseGcAbortedFn>,
     next_read_id: u64,
     cross_shard_2pc: bool,
@@ -760,6 +787,14 @@ impl<M: StateMachine> Runtime<M> {
                 hook(command.clone());
             }
             if let Some(tx) = self.pending_two_phase_journals.remove(&index) {
+                let _ = tx.send(Ok(()));
+            }
+        }
+        for (index, command) in step.queue_autoscale_policy_applied {
+            if let Some(hook) = &self.on_queue_autoscale_policy_applied {
+                hook(command.clone());
+            }
+            if let Some(tx) = self.pending_queue_autoscale_policies.remove(&index) {
                 let _ = tx.send(Ok(()));
             }
         }
@@ -898,6 +933,9 @@ impl<M: StateMachine> Runtime<M> {
         for (_, tx) in self.pending_two_phase_journals.drain() {
             let _ = tx.send(Err(ClientError::NotLeader { leader }));
         }
+        for (_, tx) in self.pending_queue_autoscale_policies.drain() {
+            let _ = tx.send(Err(ClientError::NotLeader { leader }));
+        }
         for (_, tx) in self.pending_two_phase_prepares.drain() {
             let _ = tx.send(Err(ClientError::NotLeader { leader }));
         }
@@ -999,6 +1037,9 @@ impl<M: StateMachine> Runtime<M> {
             }
             Envelope::UpsertTwoPhaseJournal { command, respond } => {
                 self.on_upsert_two_phase_journal(command, respond)?;
+            }
+            Envelope::UpsertQueueAutoscalePolicy { command, respond } => {
+                self.on_upsert_queue_autoscale_policy(command, respond)?;
             }
             Envelope::ProposeMembership {
                 voters,
@@ -1480,6 +1521,30 @@ impl<M: StateMachine> Runtime<M> {
         Ok(())
     }
 
+    /// Replicate a queue autoscale policy upsert on the Meta-Raft / group 0 leader.
+    fn on_upsert_queue_autoscale_policy(
+        &mut self,
+        command: QueueAutoscalePolicyCommand,
+        respond: oneshot::Sender<Result<(), ClientError>>,
+    ) -> Result<(), DriverError> {
+        if !self.driver.is_leader() {
+            let _ = respond.send(Err(ClientError::NotLeader {
+                leader: self.driver.node().leader_id(),
+            }));
+            return Ok(());
+        }
+        match self.driver.propose_queue_autoscale_policy(command)? {
+            Ok((index, step)) => {
+                self.pending_queue_autoscale_policies.insert(index, respond);
+                let _ = self.settle(step);
+            }
+            Err(CatalogProposeError::NotLeader { leader }) => {
+                let _ = respond.send(Err(ClientError::NotLeader { leader }));
+            }
+        }
+        Ok(())
+    }
+
     fn on_propose_membership(
         &mut self,
         voters: Vec<NodeId>,
@@ -1540,6 +1605,7 @@ where
         pending_catalog_adds: HashMap::new(),
         pending_saga_journals: HashMap::new(),
         pending_two_phase_journals: HashMap::new(),
+        pending_queue_autoscale_policies: HashMap::new(),
         pending_two_phase_prepares: HashMap::new(),
         pending_two_phase_aborts: HashMap::new(),
         pending_two_phase_commits: HashMap::new(),
@@ -1547,6 +1613,7 @@ where
         on_catalog_applied: config.on_catalog_applied.clone(),
         on_saga_journal_applied: config.on_saga_journal_applied.clone(),
         on_two_phase_journal_applied: config.on_two_phase_journal_applied.clone(),
+        on_queue_autoscale_policy_applied: config.on_queue_autoscale_policy_applied.clone(),
         on_two_phase_gc_aborted: config.on_two_phase_gc_aborted.clone(),
         next_read_id: 0,
         cross_shard_2pc: config.cross_shard_2pc,

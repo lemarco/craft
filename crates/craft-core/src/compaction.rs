@@ -128,6 +128,14 @@ pub fn entry_estimated_bytes(entry: &LogEntry) -> u64 {
             }
             EntryPayload::TwoPhaseAbort(c) => c.tx_id.len() as u64 + c.route_key.len() as u64 + 32,
             EntryPayload::TwoPhaseJournal(c) => c.record.len() as u64 + 32,
+            EntryPayload::QueueAutoscalePolicy(c) => {
+                c.stream.len() as u64
+                    + c.worker
+                        .as_ref()
+                        .map_or(0, |w| w.worker_group.len() as u64 + 32)
+                    + c.membership.as_ref().map_or(0, |_| 32)
+                    + 16
+            }
         }
 }
 

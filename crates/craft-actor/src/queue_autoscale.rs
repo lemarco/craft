@@ -1,7 +1,12 @@
 //! Queue-depth-driven worker scaling ([job-queue](../../../docs/decisions/job-queue.md)).
 
-use std::sync::Arc;
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+use craft_proto::{
+    AutoscalePolicyWire, MembershipAutoscalePolicyWire, QueueAutoscalePolicyCommand,
+};
 
 use crate::supervisor::ClusterState;
 use crate::{ActorDirectory, ClusterScaleError, JobQueue};
@@ -19,6 +24,101 @@ pub struct AutoscalePolicy {
     pub cooldown: Duration,
     /// How often depth is sampled.
     pub poll_interval: Duration,
+}
+
+impl AutoscalePolicy {
+    #[must_use]
+    pub fn to_wire(&self) -> AutoscalePolicyWire {
+        AutoscalePolicyWire {
+            worker_group: self.worker_group.clone(),
+            target_pending_per_worker: self.target_pending_per_worker,
+            min_workers: self.min_workers,
+            max_workers: self.max_workers,
+            cooldown_ms: self.cooldown.as_millis() as u64,
+            poll_interval_ms: self.poll_interval.as_millis() as u64,
+        }
+    }
+
+    #[must_use]
+    pub fn from_wire(w: &AutoscalePolicyWire) -> Self {
+        Self {
+            worker_group: w.worker_group.clone(),
+            target_pending_per_worker: w.target_pending_per_worker,
+            min_workers: w.min_workers,
+            max_workers: w.max_workers,
+            cooldown: Duration::from_millis(w.cooldown_ms),
+            poll_interval: Duration::from_millis(w.poll_interval_ms),
+        }
+    }
+}
+
+impl MembershipAutoscalePolicy {
+    #[must_use]
+    pub fn to_wire(&self) -> MembershipAutoscalePolicyWire {
+        MembershipAutoscalePolicyWire {
+            pending_per_node_threshold: self.pending_per_node_threshold,
+            max_nodes: self.max_nodes,
+            cooldown_ms: self.cooldown.as_millis() as u64,
+            poll_interval_ms: self.poll_interval.as_millis() as u64,
+        }
+    }
+
+    #[must_use]
+    pub fn from_wire(w: &MembershipAutoscalePolicyWire) -> Self {
+        Self {
+            pending_per_node_threshold: w.pending_per_node_threshold,
+            max_nodes: w.max_nodes,
+            cooldown: Duration::from_millis(w.cooldown_ms),
+            poll_interval: Duration::from_millis(w.poll_interval_ms),
+        }
+    }
+}
+
+/// Live + Meta-Raft-backed autoscale policies keyed by queue stream name.
+#[derive(Debug, Default)]
+pub struct QueueAutoscaleRegistry {
+    worker: Mutex<BTreeMap<String, AutoscalePolicy>>,
+    membership: Mutex<BTreeMap<String, MembershipAutoscalePolicy>>,
+}
+
+impl QueueAutoscaleRegistry {
+    /// Empty registry.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Apply a committed Meta-Raft policy upsert.
+    pub fn apply(&self, command: &QueueAutoscalePolicyCommand) {
+        if let Some(w) = &command.worker {
+            self.worker
+                .lock()
+                .expect("poisoned")
+                .insert(command.stream.clone(), AutoscalePolicy::from_wire(w));
+        }
+        if let Some(m) = &command.membership {
+            self.membership.lock().expect("poisoned").insert(
+                command.stream.clone(),
+                MembershipAutoscalePolicy::from_wire(m),
+            );
+        }
+    }
+
+    /// Latest worker policy for `stream`, if any.
+    #[must_use]
+    pub fn worker_policy(&self, stream: &str) -> Option<AutoscalePolicy> {
+        self.worker.lock().expect("poisoned").get(stream).cloned()
+    }
+
+    /// Latest membership policy for `stream`, if any.
+    #[must_use]
+    pub fn membership_policy(&self, stream: &str) -> Option<MembershipAutoscalePolicy> {
+        self.membership
+            .lock()
+            .expect("poisoned")
+            .get(stream)
+            .cloned()
+    }
 }
 
 /// Tunables for [`run_queue_membership_autoscaler`] — add cluster nodes when worker
@@ -39,21 +139,27 @@ pub async fn run_queue_autoscaler<F, Fut>(
     queue: Arc<dyn JobQueue>,
     directory: Arc<ActorDirectory>,
     state: Arc<dyn ClusterState>,
-    policy: AutoscalePolicy,
+    registry: Arc<QueueAutoscaleRegistry>,
+    stream: String,
+    fallback: AutoscalePolicy,
     mut scale: F,
 ) where
     F: FnMut(usize) -> Fut + Send,
     Fut: std::future::Future<Output = Result<(), ClusterScaleError>> + Send,
 {
+    let fallback0 = fallback.clone();
     let mut last_scale = Instant::now()
-        .checked_sub(policy.cooldown)
+        .checked_sub(fallback0.cooldown)
         .unwrap_or_else(Instant::now);
-    let mut interval = tokio::time::interval(policy.poll_interval);
+    let mut interval = tokio::time::interval(fallback0.poll_interval);
     loop {
         interval.tick().await;
         if !state.is_leader() {
             continue;
         }
+        let policy = registry
+            .worker_policy(&stream)
+            .unwrap_or_else(|| fallback.clone());
         let Ok(metrics) = queue.metrics().await else {
             continue;
         };
@@ -87,21 +193,27 @@ pub async fn run_queue_autoscaler<F, Fut>(
 pub async fn run_queue_membership_autoscaler<F, Fut>(
     queue: Arc<dyn JobQueue>,
     state: Arc<dyn ClusterState>,
-    policy: MembershipAutoscalePolicy,
+    registry: Arc<QueueAutoscaleRegistry>,
+    stream: String,
+    fallback: MembershipAutoscalePolicy,
     mut join: F,
 ) where
     F: FnMut() -> Fut + Send,
     Fut: std::future::Future<Output = Result<(), ClusterScaleError>> + Send,
 {
+    let fallback0 = fallback.clone();
     let mut last_join = Instant::now()
-        .checked_sub(policy.cooldown)
+        .checked_sub(fallback0.cooldown)
         .unwrap_or_else(Instant::now);
-    let mut interval = tokio::time::interval(policy.poll_interval);
+    let mut interval = tokio::time::interval(fallback0.poll_interval);
     loop {
         interval.tick().await;
         if !state.is_leader() {
             continue;
         }
+        let policy = registry
+            .membership_policy(&stream)
+            .unwrap_or_else(|| fallback.clone());
         let reachable = state.reachable_nodes().len();
         if reachable == 0 || reachable >= policy.max_nodes {
             continue;
@@ -166,6 +278,7 @@ mod tests {
         });
         let joins = Arc::new(AtomicUsize::new(0));
         let joins_task = Arc::clone(&joins);
+        let registry = Arc::new(QueueAutoscaleRegistry::new());
         let policy = MembershipAutoscalePolicy {
             pending_per_node_threshold: 5,
             max_nodes: 4,
@@ -173,13 +286,20 @@ mod tests {
             poll_interval: Duration::from_millis(5),
         };
         let task = tokio::spawn(async move {
-            run_queue_membership_autoscaler(queue, state, policy, move || {
-                let joins_task = Arc::clone(&joins_task);
-                async move {
-                    joins_task.fetch_add(1, Ordering::SeqCst);
-                    Ok(())
-                }
-            })
+            run_queue_membership_autoscaler(
+                queue,
+                state,
+                registry,
+                "jobs".to_string(),
+                policy,
+                move || {
+                    let joins_task = Arc::clone(&joins_task);
+                    async move {
+                        joins_task.fetch_add(1, Ordering::SeqCst);
+                        Ok(())
+                    }
+                },
+            )
             .await;
         });
         for _ in 0..10 {

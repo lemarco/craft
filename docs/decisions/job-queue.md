@@ -101,7 +101,7 @@ Semantics:
 - Mutations commit in **one `redb` write transaction** each (same durability model as [`RedbStorage`](../../crates/craft-storage/src/redb_store.rs)).
 - Optional **in-memory prefetch** batch in the queue service — hot `lease` reads from RAM, flushes acks to disk.
 
-Compaction trims acknowledged jobs (analogous to log purge), preventing unbounded file growth.
+Compaction trims acknowledged jobs (analogous to log purge), preventing unbounded file growth. **`RedbJobQueue`** runs `Database::compact()` every 64 acks on the dedicated queue file.
 
 ### Shared queue without Redis
 
@@ -110,7 +110,8 @@ A **shared logical queue** does not require a shared filesystem or Redis:
 - **`QueueService`** runs on the **Raft leader** node (leader-only, like [`ClusterSupervisor`](../../crates/craft-actor/src/supervisor.rs)).
 - Workers on **any** VPS call queue RPCs over mTLS (same transport class as `/actor/deliver`).
 - Followers **forward** queue mutations to the leader ([client-routing](client-routing.md) forward pattern).
-- After each leader mutation, **`QueueReplicateOp`** batches are pushed to every other **reachable voter** (`POST /raft/v1/queue/replicate`); the client only receives success once all peers ack — so a newly elected leader serves the same backlog from its local `redb`.
+- After each leader mutation, **`QueueReplicateOp`** batches are pushed **in parallel** to every other **reachable voter** (`POST /raft/v1/queue/replicate`); the client only receives success once all peers ack — so a newly elected leader serves the same backlog from its local `redb`.
+- **`/queue/replicate` is leader-authenticated**: the transport must tag the caller (`LocalTransport`, QUIC mTLS peer id); followers reject replicate unless `from == current Raft leader`.
 
 Wire routes (under `/raft/v1/queue/`):
 
@@ -173,7 +174,7 @@ Extend leader reconciliation ([supervisor-leader](supervisor-leader.md)) with **
 3. Clamp to `[min, min(max, live_node_count)]` — production still obeys [one worker per VPS](one-worker-per-vps.md).
 4. Call existing **`scale_cluster(name, desired)`** when `desired ≠ directory_count`.
 
-**Autoscale policy** (thresholds, min/max, cooldown) may be stored in **Meta-Raft** SM for failover; **queue depth** is read live from the queue service, not replicated per job.
+**Autoscale policy** (thresholds, min/max, cooldown) is stored in **Meta-Raft** (`QueueAutoscalePolicyCommand`) and applied via `QueueAutoscaleRegistry` on every node — failover-safe without re-reading builder config. **Queue depth** is read live from the queue service, not replicated per job.
 
 Scaling **out beyond node count** in production still means **add VPS + join** ([cluster-elasticity](cluster-elasticity.md)); autoscale only raises worker count up to available nodes unless `--dev-multi-workers`.
 
@@ -198,8 +199,11 @@ Scaling **out beyond node count** in production still means **add VPS + join** (
 | Sharded streams (`job_queue_sharded`) | **landed** |
 | Priority + delayed enqueue (`EnqueueOptions`) | **landed** |
 | Membership autoscale (`job_queue_membership_autoscale`) | **landed** |
+| Parallel voter replicate + replicate auth | **landed** |
+| Meta-Raft autoscale policy persistence | **landed** |
+| `RedbJobQueue` periodic compaction | **landed** |
 
-Implementation status: **v2 queue features landed** — Redis adapter remains deferred; see [status.md](../status.md).
+Implementation status: **v2 + production polish landed** — Redis adapter remains deferred; see [status.md](../status.md).
 
 ### Deferred (post-v2)
 

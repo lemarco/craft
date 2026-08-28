@@ -93,22 +93,48 @@ impl QuicServer {
 }
 
 async fn serve_connection(conn: quinn::Connection, handler: Arc<dyn RequestHandler>) {
+    let peer = peer_node_id(&conn);
     let mut h3 = match h3::server::Connection::new(h3_quinn::Connection::new(conn)).await {
         Ok(h3) => h3,
         Err(_) => return,
     };
-    // Ends when `accept` yields `None` (graceful) or `Err` (connection closed).
     while let Ok(Some(resolver)) = h3.accept().await {
         let handler = handler.clone();
         tokio::spawn(async move {
-            let _ = handle_request(resolver, handler).await;
+            let _ = handle_request(resolver, handler, peer).await;
         });
     }
+}
+
+fn peer_node_id(conn: &quinn::Connection) -> Option<NodeId> {
+    let certs = conn
+        .peer_identity()?
+        .downcast::<Vec<rustls::pki_types::CertificateDer<'static>>>()
+        .ok()?;
+    let leaf = certs.first()?;
+    parse_node_id_from_cert_der(leaf.as_ref())
+}
+
+/// Extract `craft-node-<id>` from a leaf certificate DER (fixed dev/prod CN layout).
+fn parse_node_id_from_cert_der(der: &[u8]) -> Option<NodeId> {
+    let needle = crate::tls::NODE_CN_PREFIX.as_bytes();
+    let pos = der.windows(needle.len()).position(|w| w == needle)?;
+    let rest = &der[pos + needle.len()..];
+    let mut digits = String::new();
+    for &b in rest {
+        if b.is_ascii_digit() {
+            digits.push(b as char);
+        } else {
+            break;
+        }
+    }
+    digits.parse::<u64>().ok().map(NodeId)
 }
 
 async fn handle_request(
     resolver: h3::server::RequestResolver<h3_quinn::Connection, Bytes>,
     handler: Arc<dyn RequestHandler>,
+    peer: Option<NodeId>,
 ) -> Result<(), TransportError> {
     let (req, mut stream) = resolver.resolve_request().await.map_err(io)?;
     let route = Route::from_path(req.uri().path());
@@ -130,7 +156,7 @@ async fn handle_request(
     }
 
     let (status, response_body) = match route {
-        Some(route) => match handler.handle(route, body).await {
+        Some(route) => match handler.handle_from(peer, route, body).await {
             Ok(body) => (StatusCode::OK, body),
             Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Vec::new()),
         },

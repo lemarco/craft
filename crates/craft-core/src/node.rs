@@ -19,9 +19,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use craft_proto::{
     AppendEntries, AppendEntriesReply, CatalogCommand, EntryPayload, InstallSnapshot,
-    InstallSnapshotReply, LogEntry, LogId, LogIndex, Membership, NodeId, RaftRpc, RaftRpcReply,
-    RequestVote, RequestVoteReply, Round, SagaJournalCommand, Term, TwoPhaseAbortCommand,
-    TwoPhaseJournalCommand, TwoPhasePrepareCommand,
+    InstallSnapshotReply, LogEntry, LogId, LogIndex, Membership, NodeId,
+    QueueAutoscalePolicyCommand, RaftRpc, RaftRpcReply, RequestVote, RequestVoteReply, Round,
+    SagaJournalCommand, Term, TwoPhaseAbortCommand, TwoPhaseJournalCommand, TwoPhasePrepareCommand,
 };
 
 use crate::config::Configuration;
@@ -152,6 +152,13 @@ pub enum Output {
         index: LogIndex,
         /// Journal command committed at `index`.
         command: TwoPhaseJournalCommand,
+    },
+    /// A committed queue autoscale policy entry (Meta-Raft; not applied to the user SM).
+    QueueAutoscalePolicyApplied {
+        /// Log index of the policy entry.
+        index: LogIndex,
+        /// Policy command committed at `index`.
+        command: QueueAutoscalePolicyCommand,
     },
 }
 
@@ -943,6 +950,28 @@ impl RaftNode {
         Ok(idx)
     }
 
+    /// Append a queue autoscale policy metadata entry to the log (Meta-Raft / group 0).
+    ///
+    /// # Errors
+    /// Returns [`CatalogProposeError::NotLeader`] when this node is not leader.
+    pub fn propose_queue_autoscale_policy(
+        &mut self,
+        command: QueueAutoscalePolicyCommand,
+    ) -> Result<LogIndex, CatalogProposeError> {
+        if self.role != Role::Leader {
+            return Err(CatalogProposeError::NotLeader {
+                leader: self.leader_id,
+            });
+        }
+        let idx = self.log_append(
+            self.current_term,
+            EntryPayload::QueueAutoscalePolicy(command),
+        );
+        self.broadcast_append();
+        self.maybe_advance_commit();
+        Ok(idx)
+    }
+
     // ---- Role transitions ------------------------------------------------
 
     fn set_role(&mut self, role: Role) {
@@ -1396,6 +1425,12 @@ impl RaftNode {
                 }
                 Some(EntryPayload::TwoPhaseJournal(command)) => {
                     self.outbox.push(Output::TwoPhaseJournalApplied {
+                        index: next,
+                        command: command.clone(),
+                    });
+                }
+                Some(EntryPayload::QueueAutoscalePolicy(command)) => {
+                    self.outbox.push(Output::QueueAutoscalePolicyApplied {
                         index: next,
                         command: command.clone(),
                     });

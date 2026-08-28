@@ -21,11 +21,13 @@ use craft_dashboard::{
 };
 use craft_net::transport::RequestHandler;
 use craft_net::{
-    BackoffPolicy, LocalNetwork, PeerDirectory, QuicServer, QuicTransport, TrafficPolicy,
-    Transport, TransportError, client_config, fetch_peers, send_join_request, server_config,
+    BackoffPolicy, LocalNetwork, LocalTransport, PeerDirectory, QuicServer, QuicTransport,
+    TrafficPolicy, Transport, TransportError, client_config, fetch_peers, send_join_request,
+    server_config,
 };
 use craft_proto::{
     CatalogCommand, JoinRejection, JoinRequest, JoinResponse, NodeId, PROTOCOL_VERSION,
+    QueueAutoscalePolicyCommand,
 };
 use craft_storage::GroupRedbLayout;
 use tokio::net::TcpListener;
@@ -33,10 +35,10 @@ use tokio::net::TcpListener;
 use craft_actor::{
     ActorDirectory, ActorRegistry, AutoscalePolicy, ClusterControl, ClusterJobQueue,
     ClusterMessaging, ClusterState, ClusterSupervisor, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy,
-    DirectoryRetry, DirectorySync, JobQueue, MembershipAutoscalePolicy, NodeService, QueueService,
-    RaftDriver, RedbJobQueue, ResourceProfile, RuntimeConfig, ShardedJobQueue, UserActor,
-    VpsResources, run_queue_autoscaler, run_queue_membership_autoscaler, spawn_multi_raft_node,
-    spawn_node,
+    DirectoryRetry, DirectorySync, JobQueue, MembershipAutoscalePolicy, NodeService,
+    QueueAutoscaleRegistry, QueueService, RaftDriver, RedbJobQueue, ResourceProfile, RuntimeConfig,
+    ShardedJobQueue, UserActor, VpsResources, run_queue_autoscaler,
+    run_queue_membership_autoscaler, spawn_multi_raft_node, spawn_node,
 };
 
 use crate::certs::{CertReloadHandle, PemSecurity};
@@ -81,6 +83,7 @@ type AutoscaleTask = Box<
             Arc<dyn ClusterState>,
             Arc<ActorDirectory>,
             HashMap<String, Arc<dyn JobQueue>>,
+            Arc<QueueAutoscaleRegistry>,
         ) -> tokio::task::JoinHandle<()>
         + Send,
 >;
@@ -99,8 +102,13 @@ struct ShardedJobSpec {
 }
 
 /// Type-erased membership autoscale background task spawned at node start.
-type MembershipAutoscaleTask =
-    Box<dyn FnOnce(Arc<dyn ClusterState>, HashMap<String, Arc<dyn JobQueue>>) + Send>;
+type MembershipAutoscaleTask = Box<
+    dyn FnOnce(
+            Arc<dyn ClusterState>,
+            HashMap<String, Arc<dyn JobQueue>>,
+            Arc<QueueAutoscaleRegistry>,
+        ) + Send,
+>;
 
 /// A fluent builder for a single craft node (deployment-model). Create it with
 /// [`CraftCluster::builder`](crate::CraftCluster::builder).
@@ -140,6 +148,7 @@ pub struct CraftClusterBuilder<M: StateMachine> {
     job_sharded: Vec<ShardedJobSpec>,
     job_autoscale: Vec<AutoscaleTask>,
     job_membership_autoscale: Vec<MembershipAutoscaleTask>,
+    queue_autoscale_meta: BTreeMap<String, QueueAutoscalePolicyCommand>,
 }
 
 impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
@@ -183,6 +192,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             job_sharded: Vec::new(),
             job_autoscale: Vec::new(),
             job_membership_autoscale: Vec::new(),
+            queue_autoscale_meta: BTreeMap::new(),
         }
     }
 
@@ -607,12 +617,18 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         let stream = stream.to_string();
         let worker_group = policy.worker_group.clone();
         let policy = policy.clone();
+        upsert_queue_autoscale_meta(
+            &mut self.queue_autoscale_meta,
+            &stream,
+            Some(policy.to_wire()),
+            None,
+        );
         self.registrations
             .push(Box::new(|control: &ClusterControl| {
                 control.register_type::<A>();
             }));
-        self.job_autoscale
-            .push(Box::new(move |control, state, directory, queues| {
+        self.job_autoscale.push(Box::new(
+            move |control, state, directory, queues, registry| {
                 let Some(queue) = queues.get(&stream).cloned() else {
                     panic!(
                         "job_queue_autoscale stream {stream:?} was not registered via job_queue"
@@ -621,11 +637,14 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 let policy = policy.clone();
                 let config = config.clone();
                 let worker_group = worker_group.clone();
+                let stream = stream.clone();
                 tokio::spawn(async move {
                     run_queue_autoscaler(
                         queue,
                         directory,
                         Arc::clone(&state),
+                        registry,
+                        stream,
                         policy,
                         move |desired| {
                             let control = Arc::clone(&control);
@@ -647,7 +666,8 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                     )
                     .await;
                 })
-            }));
+            },
+        ));
         self
     }
 
@@ -693,7 +713,14 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
         let stream = stream.to_string();
         let policy = policy.clone();
         let join = Arc::new(join);
-        self.job_membership_autoscale.push(Box::new(move |state, queues| {
+        upsert_queue_autoscale_meta(
+            &mut self.queue_autoscale_meta,
+            &stream,
+            None,
+            Some(policy.to_wire()),
+        );
+        self.job_membership_autoscale
+            .push(Box::new(move |state, queues, registry| {
             let Some(queue) = queues.get(&stream).cloned() else {
                 panic!(
                     "job_queue_membership_autoscale stream {stream:?} was not registered via job_queue or job_queue_sharded"
@@ -701,10 +728,13 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             };
             let policy = policy.clone();
             let join = Arc::clone(&join);
+            let stream = stream.clone();
             tokio::spawn(async move {
                 run_queue_membership_autoscaler(
                     queue,
                     state,
+                    registry,
+                    stream,
                     policy,
                     move || {
                         let join = Arc::clone(&join);
@@ -741,7 +771,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
     /// Must run inside a Tokio runtime.
     pub async fn start_local(self, net: &LocalNetwork) -> CraftCluster<M> {
         let node_id = self.node_id;
-        let transport: Arc<dyn Transport> = Arc::new(net.clone());
+        let transport: Arc<dyn Transport> = Arc::new(LocalTransport::new(net.clone(), node_id));
         let peers: Arc<dyn PeerSource> = Arc::new(NoPeers);
         let (cluster, router) = self.assemble(transport, peers, None).await;
         net.attach(node_id, router);
@@ -906,6 +936,13 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             }
         });
 
+        let queue_autoscale_registry = Arc::new(QueueAutoscaleRegistry::new());
+        let queue_autoscale_hook_reg = Arc::clone(&queue_autoscale_registry);
+        let on_queue_autoscale_policy_applied: craft_actor::QueueAutoscalePolicyAppliedFn =
+            Arc::new(move |cmd| {
+                queue_autoscale_hook_reg.apply(&cmd);
+            });
+
         let two_phase_registry = Arc::new(Mutex::new(BTreeMap::new()));
         let two_phase_hook_reg = Arc::clone(&two_phase_registry);
         let on_two_phase_journal_applied: craft_actor::TwoPhaseJournalAppliedFn =
@@ -949,6 +986,8 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             runtime_meta.on_saga_journal_applied = Some(Arc::clone(&on_saga_journal_applied));
             runtime_meta.on_two_phase_journal_applied =
                 Some(Arc::clone(&on_two_phase_journal_applied));
+            runtime_meta.on_queue_autoscale_policy_applied =
+                Some(Arc::clone(&on_queue_autoscale_policy_applied));
             let spawn = spawn_multi_raft_node(
                 node_id,
                 &bootstrap_voters,
@@ -1011,6 +1050,8 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             let mut runtime = self.runtime.clone();
             runtime.on_saga_journal_applied = Some(Arc::clone(&on_saga_journal_applied));
             runtime.on_two_phase_journal_applied = Some(Arc::clone(&on_two_phase_journal_applied));
+            runtime.on_queue_autoscale_policy_applied =
+                Some(Arc::clone(&on_queue_autoscale_policy_applied));
             let handle = spawn_node(driver, Arc::clone(&transport), runtime);
             let service = Arc::new(
                 NodeService::new(handle.clone(), Arc::clone(&transport))
@@ -1363,6 +1404,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
                 Arc::clone(&facts) as Arc<dyn ClusterState>,
                 Arc::clone(&directory),
                 job_queues.clone(),
+                Arc::clone(&queue_autoscale_registry),
             ));
         }
 
@@ -1370,7 +1412,25 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             spawn(
                 Arc::clone(&facts) as Arc<dyn ClusterState>,
                 job_queues.clone(),
+                Arc::clone(&queue_autoscale_registry),
             );
+        }
+
+        let queue_autoscale_proposals: Vec<_> = self.queue_autoscale_meta.into_values().collect();
+        if !queue_autoscale_proposals.is_empty() {
+            let state = Arc::clone(&facts) as Arc<dyn ClusterState>;
+            if let Some(meta) = meta_handle.clone() {
+                let proposals = queue_autoscale_proposals.clone();
+                tasks.push(tokio::spawn(async move {
+                    propose_queue_autoscale_policies(meta, state, proposals).await;
+                }));
+            } else {
+                let h = handle.clone();
+                let proposals = queue_autoscale_proposals;
+                tasks.push(tokio::spawn(async move {
+                    propose_queue_autoscale_policies(h, state, proposals).await;
+                }));
+            }
         }
 
         // Admin/observability HTTP server.
@@ -1436,6 +1496,7 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             catalog_version,
             saga_registry,
             two_phase_registry,
+            queue_autoscale_registry,
             telemetry,
             members: self.members,
             resource_profile,
@@ -1451,6 +1512,45 @@ impl<M: StateMachine + Default + 'static> CraftClusterBuilder<M> {
             tasks: Mutex::new(tasks),
         };
         (cluster, router)
+    }
+}
+
+async fn propose_queue_autoscale_policies<M: StateMachine>(
+    meta: craft_actor::NodeHandle<M>,
+    state: Arc<dyn ClusterState>,
+    proposals: Vec<QueueAutoscalePolicyCommand>,
+) {
+    let mut interval = tokio::time::interval(Duration::from_millis(100));
+    for _ in 0..200 {
+        interval.tick().await;
+        if !state.is_leader() {
+            continue;
+        }
+        for command in &proposals {
+            let _ = meta.upsert_queue_autoscale_policy(command.clone()).await;
+        }
+        break;
+    }
+}
+
+fn upsert_queue_autoscale_meta(
+    map: &mut BTreeMap<String, QueueAutoscalePolicyCommand>,
+    stream: &str,
+    worker: Option<craft_proto::AutoscalePolicyWire>,
+    membership: Option<craft_proto::MembershipAutoscalePolicyWire>,
+) {
+    let entry = map
+        .entry(stream.to_string())
+        .or_insert_with(|| QueueAutoscalePolicyCommand {
+            stream: stream.to_string(),
+            worker: None,
+            membership: None,
+        });
+    if worker.is_some() {
+        entry.worker = worker;
+    }
+    if membership.is_some() {
+        entry.membership = membership;
     }
 }
 

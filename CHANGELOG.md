@@ -25,6 +25,7 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 - **Dev JSON wire** — `craft/json-wire` feature.
 - **Durable job queue (tier C)** ([job-queue](docs/decisions/job-queue.md)) — `JobQueue` port, `RedbJobQueue`, leader `QueueService`, sync voter replication, `ClusterJobQueue`, worker autoscale.
 - **Job queue v2** — sharded streams (`job_queue_sharded`), priority/delayed enqueue (`EnqueueOptions`), enqueue dedup keys, membership autoscale hook (`job_queue_membership_autoscale`); examples in `job_queue_cluster`.
+- **Job queue production polish** — parallel voter replicate (`JoinSet`), replicate auth (caller must be Raft leader via `LocalTransport` / QUIC peer id), Meta-Raft persisted autoscale policy (`QueueAutoscalePolicyCommand`, `job_queue_autoscale` / `job_queue_membership_autoscale`), periodic `redb` compaction after acks.
 
 ### Changed
 

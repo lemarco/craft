@@ -59,8 +59,9 @@ use craft_core::{
     Role, SnapshotState, StateMachine,
 };
 use craft_proto::{
-    CatalogCommand, CodecError, LogIndex, NodeId, RaftRpc, RaftRpcReply, SagaJournalCommand,
-    TwoPhaseAbortCommand, TwoPhaseJournalCommand, TwoPhasePrepareCommand,
+    CatalogCommand, CodecError, LogIndex, NodeId, QueueAutoscalePolicyCommand, RaftRpc,
+    RaftRpcReply, SagaJournalCommand, TwoPhaseAbortCommand, TwoPhaseJournalCommand,
+    TwoPhasePrepareCommand,
 };
 use craft_storage::{HardState, NullStorage, RaftStorage, Snapshot, SnapshotMeta, StorageError};
 
@@ -135,6 +136,8 @@ pub struct Step<M: StateMachine> {
     pub two_phase_abort_applied: Vec<(LogIndex, TwoPhaseAbortCommand)>,
     /// Committed 2PC client journal entries (not applied to the user SM).
     pub two_phase_journal_applied: Vec<(LogIndex, TwoPhaseJournalCommand)>,
+    /// Committed queue autoscale policy entries (not applied to the user SM).
+    pub queue_autoscale_policy_applied: Vec<(LogIndex, QueueAutoscalePolicyCommand)>,
 }
 
 impl<M: StateMachine> Default for Step<M> {
@@ -149,6 +152,7 @@ impl<M: StateMachine> Default for Step<M> {
             two_phase_prepare_applied: Vec::new(),
             two_phase_abort_applied: Vec::new(),
             two_phase_journal_applied: Vec::new(),
+            queue_autoscale_policy_applied: Vec::new(),
         }
     }
 }
@@ -166,6 +170,7 @@ impl<M: StateMachine> Step<M> {
             && self.two_phase_prepare_applied.is_empty()
             && self.two_phase_abort_applied.is_empty()
             && self.two_phase_journal_applied.is_empty()
+            && self.queue_autoscale_policy_applied.is_empty()
     }
 }
 
@@ -637,6 +642,21 @@ impl<M: StateMachine> RaftDriver<M> {
         }
     }
 
+    /// Append a queue autoscale policy metadata entry (Meta-Raft / group 0 leader only).
+    ///
+    /// # Errors
+    /// Returns [`DriverError`] only if draining a resulting committed policy
+    /// entry fails; leadership rejections are carried in the inner `Result`.
+    pub fn propose_queue_autoscale_policy(
+        &mut self,
+        command: QueueAutoscalePolicyCommand,
+    ) -> Result<Result<(LogIndex, Step<M>), CatalogProposeError>, DriverError> {
+        match self.node.propose_queue_autoscale_policy(command) {
+            Ok(index) => Ok(Ok((index, self.drain()?))),
+            Err(e) => Ok(Err(e)),
+        }
+    }
+
     /// Snapshot the application state and compact the log up to the highest
     /// applied index, persisting the snapshot durably (backlog A6, Raft §7).
     ///
@@ -759,6 +779,9 @@ impl<M: StateMachine> RaftDriver<M> {
                 }
                 Output::TwoPhaseJournalApplied { index, command } => {
                     step.two_phase_journal_applied.push((index, command));
+                }
+                Output::QueueAutoscalePolicyApplied { index, command } => {
+                    step.queue_autoscale_policy_applied.push((index, command));
                 }
             }
         }

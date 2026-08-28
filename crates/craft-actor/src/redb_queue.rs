@@ -5,6 +5,7 @@
 
 use std::path::Path;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use craft_proto::{QueueReplicateOp, decode, encode};
@@ -23,6 +24,7 @@ const META: TableDefinition<&str, &[u8]> = TableDefinition::new("queue_meta");
 
 const K_NEXT_JOB: &str = "next_job_id";
 const K_NEXT_LEASE: &str = "next_lease_id";
+const COMPACT_EVERY_ACKS: u64 = 64;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct StoredJob {
@@ -63,9 +65,8 @@ fn now_ms() -> u64 {
 #[derive(Debug)]
 pub struct RedbJobQueue {
     lease_timeout: Duration,
-    db: Database,
-    /// Serializes write transactions (redb allows one writer).
-    write_lock: Mutex<()>,
+    db: Mutex<Database>,
+    acks_since_compact: AtomicU64,
 }
 
 fn ready_pending_count(
@@ -115,20 +116,19 @@ impl RedbJobQueue {
     /// # Errors
     /// Returns [`QueueError::Backend`] if the file cannot be opened.
     pub fn open(path: impl AsRef<Path>, lease_timeout: Duration) -> Result<Self, QueueError> {
-        let db = Database::create(path).map_err(backend)?;
-        let write_lock = Mutex::new(());
+        let db = Mutex::new(Database::create(path).map_err(backend)?);
         let queue = Self {
             lease_timeout,
             db,
-            write_lock,
+            acks_since_compact: AtomicU64::new(0),
         };
         queue.bootstrap()?;
         Ok(queue)
     }
 
     fn bootstrap(&self) -> Result<(), QueueError> {
-        let _g = self.write_lock.lock().expect("poisoned");
-        let txn = self.db.begin_write().map_err(backend)?;
+        let db = self.db.lock().expect("poisoned");
+        let txn = db.begin_write().map_err(backend)?;
         {
             txn.open_table(JOBS).map_err(backend)?;
             txn.open_table(PENDING).map_err(backend)?;
@@ -149,7 +149,12 @@ impl RedbJobQueue {
     }
 
     fn read_meta_u64(&self, key: &str) -> Result<u64, QueueError> {
-        let txn = self.db.begin_read().map_err(backend)?;
+        let txn = self
+            .db
+            .lock()
+            .expect("poisoned")
+            .begin_read()
+            .map_err(backend)?;
         let table = txn.open_table(META).map_err(backend)?;
         match table.get(key).map_err(backend)? {
             Some(v) => decode(v.value()).map_err(codec),
@@ -160,8 +165,8 @@ impl RedbJobQueue {
     fn reclaim_expired_ops(&self) -> Result<QueueReplicationOps, QueueError> {
         let now = now_ms();
         let mut ops = Vec::new();
-        let _g = self.write_lock.lock().expect("poisoned");
-        let txn = self.db.begin_write().map_err(backend)?;
+        let db = self.db.lock().expect("poisoned");
+        let txn = db.begin_write().map_err(backend)?;
         {
             let mut leases = txn.open_table(LEASES).map_err(backend)?;
             let mut pending = txn.open_table(PENDING).map_err(backend)?;
@@ -231,9 +236,22 @@ impl RedbJobQueue {
         Ok(())
     }
 
+    fn maybe_compact_after_ack(&self) -> Result<(), QueueError> {
+        if self.acks_since_compact.fetch_add(1, Ordering::Relaxed) + 1 < COMPACT_EVERY_ACKS {
+            return Ok(());
+        }
+        self.acks_since_compact.store(0, Ordering::Relaxed);
+        self.db
+            .lock()
+            .expect("poisoned")
+            .compact()
+            .map_err(backend)?;
+        Ok(())
+    }
+
     fn apply_replicate_inner(&self, op: &QueueReplicateOp) -> Result<(), QueueError> {
-        let _g = self.write_lock.lock().expect("poisoned");
-        let txn = self.db.begin_write().map_err(backend)?;
+        let db = self.db.lock().expect("poisoned");
+        let txn = db.begin_write().map_err(backend)?;
         {
             let mut jobs = txn.open_table(JOBS).map_err(backend)?;
             let mut pending = txn.open_table(PENDING).map_err(backend)?;
@@ -332,7 +350,12 @@ impl RedbJobQueue {
 
     fn metrics_inner(&self) -> Result<QueueMetrics, QueueError> {
         self.reclaim_expired()?;
-        let txn = self.db.begin_read().map_err(backend)?;
+        let txn = self
+            .db
+            .lock()
+            .expect("poisoned")
+            .begin_read()
+            .map_err(backend)?;
         let pending = txn.open_table(PENDING).map_err(backend)?;
         let leases = txn.open_table(LEASES).map_err(backend)?;
         let jobs = txn.open_table(JOBS).map_err(backend)?;
@@ -393,7 +416,12 @@ impl JobQueue for RedbJobQueue {
         Box::pin(async move {
             let mut ops = self.reclaim_expired_ops()?;
             if let Some(key) = &options.dedup_key {
-                let read = self.db.begin_read().map_err(backend)?;
+                let read = self
+                    .db
+                    .lock()
+                    .expect("poisoned")
+                    .begin_read()
+                    .map_err(backend)?;
                 let dedup = read.open_table(DEDUP).map_err(backend)?;
                 let jobs = read.open_table(JOBS).map_err(backend)?;
                 if let Some(existing) = Self::dedup_lookup_read(&dedup, &jobs, key)? {
@@ -413,8 +441,8 @@ impl JobQueue for RedbJobQueue {
             let bytes = encode(&stored).map_err(codec)?;
             let next_job_id = job_id + 1;
 
-            let _g = self.write_lock.lock().expect("poisoned");
-            let txn = self.db.begin_write().map_err(backend)?;
+            let db = self.db.lock().expect("poisoned");
+            let txn = db.begin_write().map_err(backend)?;
             {
                 let mut jobs = txn.open_table(JOBS).map_err(backend)?;
                 let mut pending = txn.open_table(PENDING).map_err(backend)?;
@@ -476,15 +504,20 @@ impl JobQueue for RedbJobQueue {
             let mut lease_id_start = self.read_meta_u64(K_NEXT_LEASE)?;
             let now = now_ms();
             let pending_ids = {
-                let read = self.db.begin_read().map_err(backend)?;
+                let read = self
+                    .db
+                    .lock()
+                    .expect("poisoned")
+                    .begin_read()
+                    .map_err(backend)?;
                 let jobs = read.open_table(JOBS).map_err(backend)?;
                 let pending = read.open_table(PENDING).map_err(backend)?;
                 select_pending_ids(&jobs, &pending, max, now)?
             };
             let mut out = Vec::new();
 
-            let _g = self.write_lock.lock().expect("poisoned");
-            let txn = self.db.begin_write().map_err(backend)?;
+            let db = self.db.lock().expect("poisoned");
+            let txn = db.begin_write().map_err(backend)?;
             {
                 let jobs = txn.open_table(JOBS).map_err(backend)?;
                 let mut pending = txn.open_table(PENDING).map_err(backend)?;
@@ -553,8 +586,8 @@ impl JobQueue for RedbJobQueue {
     ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
         Box::pin(async move {
             let job_id = {
-                let _g = self.write_lock.lock().expect("poisoned");
-                let txn = self.db.begin_write().map_err(backend)?;
+                let db = self.db.lock().expect("poisoned");
+                let txn = db.begin_write().map_err(backend)?;
                 let job_id = {
                     let mut jobs = txn.open_table(JOBS).map_err(backend)?;
                     let mut leases = txn.open_table(LEASES).map_err(backend)?;
@@ -577,6 +610,7 @@ impl JobQueue for RedbJobQueue {
                 txn.commit().map_err(backend)?;
                 job_id
             };
+            self.maybe_compact_after_ack()?;
             Ok(vec![QueueReplicateOp::Ack {
                 lease_id: lease_id.0,
                 job_id,
@@ -599,8 +633,8 @@ impl JobQueue for RedbJobQueue {
     ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
         Box::pin(async move {
             let job_id = {
-                let _g = self.write_lock.lock().expect("poisoned");
-                let txn = self.db.begin_write().map_err(backend)?;
+                let db = self.db.lock().expect("poisoned");
+                let txn = db.begin_write().map_err(backend)?;
                 let job_id = {
                     let mut pending = txn.open_table(PENDING).map_err(backend)?;
                     let mut leases = txn.open_table(LEASES).map_err(backend)?;
@@ -706,5 +740,18 @@ mod tests {
         let w0 = q.lease(worker(0), 1).await.unwrap();
         let w1 = q.lease(worker(1), 1).await.unwrap();
         assert_ne!(w0[0].job_id, w1[0].job_id);
+    }
+
+    #[tokio::test]
+    async fn redb_compact_runs_after_many_acks() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("q.redb");
+        let q = RedbJobQueue::open(&path, Duration::from_secs(30)).unwrap();
+        for i in 0..COMPACT_EVERY_ACKS {
+            q.enqueue(format!("job-{i}").as_bytes()).await.unwrap();
+            let leased = q.lease(worker(0), 1).await.unwrap();
+            q.ack(worker(0), leased[0].lease_id).await.unwrap();
+        }
+        assert_eq!(q.metrics().await.unwrap().pending, 0);
     }
 }

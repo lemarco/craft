@@ -54,7 +54,7 @@ pub use queue::{
     QueueMetrics, QueueReplicateOp, QueueReplicationOps, WorkerId, run_queue_consumer,
 };
 pub use queue_autoscale::{
-    AutoscalePolicy, MembershipAutoscalePolicy, run_queue_autoscaler,
+    AutoscalePolicy, MembershipAutoscalePolicy, QueueAutoscaleRegistry, run_queue_autoscaler,
     run_queue_membership_autoscaler,
 };
 pub use queue_service::{ClusterJobQueue, QueueService};
@@ -68,8 +68,8 @@ pub use registry::{
 pub use resources::{ResourceProfile, VpsResources};
 pub use ring::{VIRTUAL_NODES, group_salt, hash_bytes, hash_key as ring_hash_key, pick_index};
 pub use runtime::{
-    ClientError, NodeHandle, NodeService, NodeStatus, RuntimeConfig, SagaJournalAppliedFn,
-    TwoPhaseGcAbortedFn, TwoPhaseJournalAppliedFn, spawn as spawn_node,
+    ClientError, NodeHandle, NodeService, NodeStatus, QueueAutoscalePolicyAppliedFn, RuntimeConfig,
+    SagaJournalAppliedFn, TwoPhaseGcAbortedFn, TwoPhaseJournalAppliedFn, spawn as spawn_node,
 };
 pub use session::ActorSession;
 pub use sharded_queue::{ShardedJobQueue, ShardedReplication};

@@ -7,6 +7,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use tokio::task::JoinSet;
+
 use craft_net::transport::{Body, BoxFuture, Transport, TransportError};
 use craft_net::{
     Route, decode_body, encode_body, send_queue_ack, send_queue_enqueue, send_queue_lease,
@@ -24,10 +26,6 @@ use crate::{
     QueueMetrics, QueueReplicationOps, ShardedJobQueue, ShardedReplication, WorkerId,
 };
 
-fn shard_stream_name(base: &str, shard: usize) -> String {
-    format!("{base}~{shard}")
-}
-
 fn enqueue_options_from_request(request: &QueueEnqueueRequest) -> EnqueueOptions {
     EnqueueOptions {
         priority: request.priority,
@@ -36,6 +34,13 @@ fn enqueue_options_from_request(request: &QueueEnqueueRequest) -> EnqueueOptions
         dedup_key: request.dedup_key.clone(),
     }
 }
+
+fn shard_stream_name(base: &str, shard: usize) -> String {
+    format!("{base}~{shard}")
+}
+
+const REPLICATE_NOT_LEADER: &str = "queue replicate rejected: caller is not raft leader";
+const REPLICATE_UNAUTHENTICATED: &str = "queue replicate rejected: unknown caller";
 
 /// Serves `/raft/v1/queue/*` on the leader; followers transparently forward.
 pub struct QueueService {
@@ -102,8 +107,8 @@ impl QueueService {
             .map_err(|e| format!("forward to leader {leader:?} failed: {e}"))
     }
 
-    /// Push `ops` to every other **reachable** voter; all must ack before the
-    /// leader commits success to clients (failover-safe backlog).
+    /// Push `ops` to every other **reachable** voter in parallel; all must ack
+    /// before the leader commits success to clients (failover-safe backlog).
     async fn replicate_ops(&self, stream: &str, ops: &QueueReplicationOps) -> Result<(), String> {
         if ops.is_empty() {
             return Ok(());
@@ -121,14 +126,25 @@ impl QueueService {
             stream: stream.to_string(),
             ops: ops.to_vec(),
         };
+        let mut set = JoinSet::new();
         for peer in peers {
             let transport = Arc::clone(&self.transport);
             let request = request.clone();
-            let reply = send_queue_replicate(transport.as_ref(), peer, &request)
-                .await
-                .map_err(|e| e.to_string())?;
-            if let Some(err) = reply.error {
-                return Err(err);
+            set.spawn(async move {
+                let reply = send_queue_replicate(transport.as_ref(), peer, &request)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                if let Some(err) = reply.error {
+                    return Err(err);
+                }
+                Ok(())
+            });
+        }
+        while let Some(result) = set.join_next().await {
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => return Err(e),
+                Err(e) => return Err(e.to_string()),
             }
         }
         Ok(())
@@ -149,11 +165,27 @@ impl QueueService {
         Ok(())
     }
 
-    fn sharded_stream(&self, stream: &str) -> Option<Arc<ShardedJobQueue>> {
-        self.sharded.lock().expect("poisoned").get(stream).cloned()
+    fn authorize_replicate(&self, from: Option<NodeId>) -> Result<(), String> {
+        let Some(from) = from else {
+            return Err(REPLICATE_UNAUTHENTICATED.to_string());
+        };
+        let Some(leader) = self.state.leader_id() else {
+            return Err("no raft leader elected".to_string());
+        };
+        if from != leader {
+            return Err(REPLICATE_NOT_LEADER.to_string());
+        }
+        Ok(())
     }
 
-    async fn handle_replicate(&self, request: QueueReplicateRequest) -> QueueReplicateReply {
+    async fn handle_replicate(
+        &self,
+        from: Option<NodeId>,
+        request: QueueReplicateRequest,
+    ) -> QueueReplicateReply {
+        if let Err(e) = self.authorize_replicate(from) {
+            return QueueReplicateReply { error: Some(e) };
+        }
         match self.local_stream(&request.stream) {
             Err(e) => QueueReplicateReply { error: Some(e) },
             Ok(queue) => {
@@ -167,6 +199,10 @@ impl QueueService {
                 QueueReplicateReply { error: None }
             }
         }
+    }
+
+    fn sharded_stream(&self, stream: &str) -> Option<Arc<ShardedJobQueue>> {
+        self.sharded.lock().expect("poisoned").get(stream).cloned()
     }
 
     async fn handle_enqueue(&self, request: QueueEnqueueRequest) -> QueueEnqueueReply {
@@ -512,6 +548,16 @@ impl QueueService {
         route: Route,
         body: Body,
     ) -> BoxFuture<'static, Result<Body, TransportError>> {
+        self.handle_request_from(None, route, body)
+    }
+
+    /// Like [`handle_request`](Self::handle_request) with authenticated caller identity.
+    pub fn handle_request_from(
+        self: &Arc<Self>,
+        from: Option<NodeId>,
+        route: Route,
+        body: Body,
+    ) -> BoxFuture<'static, Result<Body, TransportError>> {
         let service = Arc::clone(self);
         match route {
             Route::QueueEnqueue => Box::pin(async move {
@@ -536,7 +582,7 @@ impl QueueService {
             }),
             Route::QueueReplicate => Box::pin(async move {
                 let request: QueueReplicateRequest = decode_body(&body)?;
-                Ok(encode_body(&service.handle_replicate(request).await)?)
+                Ok(encode_body(&service.handle_replicate(from, request).await)?)
             }),
             other => Box::pin(async move {
                 Err(TransportError::Io(format!(

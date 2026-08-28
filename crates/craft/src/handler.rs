@@ -165,10 +165,35 @@ impl RequestHandler for NodeRouter {
                     });
                 };
                 let queue = Arc::clone(queue);
-                queue.handle_request(route, body)
+                Box::pin(async move { queue.handle_request(route, body).await })
             }
             // Directory publish / anti-entropy.
             Route::ActorRegister => self.directory_sync.handle(route, body),
+        }
+    }
+
+    fn handle_from(
+        &self,
+        from: Option<NodeId>,
+        route: Route,
+        body: Body,
+    ) -> BoxFuture<'static, Result<Body, TransportError>> {
+        match route {
+            Route::QueueEnqueue
+            | Route::QueueLease
+            | Route::QueueAck
+            | Route::QueueNack
+            | Route::QueueMetrics
+            | Route::QueueReplicate => {
+                let Some(queue) = self.queue.as_ref() else {
+                    return Box::pin(async move {
+                        Err(TransportError::Io("job queue is not enabled".into()))
+                    });
+                };
+                let queue = Arc::clone(queue);
+                Box::pin(async move { queue.handle_request_from(from, route, body).await })
+            }
+            _ => self.handle(route, body),
         }
     }
 }

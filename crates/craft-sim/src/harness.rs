@@ -436,6 +436,7 @@ impl Cluster {
                 }
                 Output::TwoPhaseAbortApplied { .. } => {}
                 Output::TwoPhaseJournalApplied { .. } => {}
+                Output::QueueAutoscalePolicyApplied { .. } => {}
             }
         }
     }

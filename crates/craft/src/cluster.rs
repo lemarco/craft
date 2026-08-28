@@ -381,6 +381,7 @@ pub struct CraftCluster<M: StateMachine> {
     pub(crate) catalog_version: Arc<AtomicU32>,
     pub(crate) saga_registry: crate::saga::SagaRegistry,
     pub(crate) two_phase_registry: crate::two_phase::TwoPhaseRegistry,
+    pub(crate) queue_autoscale_registry: Arc<craft_actor::QueueAutoscaleRegistry>,
     pub(crate) telemetry: Arc<ActorTelemetry>,
     pub(crate) members: Vec<NodeId>,
     pub(crate) resource_profile: ResourceProfile,
@@ -449,6 +450,12 @@ impl<M: StateMachine> CraftCluster<M> {
     #[must_use]
     pub fn job_queue(&self, stream: &str) -> Option<Arc<dyn craft_actor::JobQueue>> {
         self.job_queues.get(stream).cloned()
+    }
+
+    /// Registry of queue autoscale policies replicated via Meta-Raft / group 0.
+    #[must_use]
+    pub fn queue_autoscale_registry(&self) -> Arc<craft_actor::QueueAutoscaleRegistry> {
+        Arc::clone(&self.queue_autoscale_registry)
     }
 
     /// Default saga journal: Meta-Raft metadata (multi-Raft) or group 0 (single-group),

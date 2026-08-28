@@ -480,3 +480,37 @@ async fn membership_autoscale_invokes_join_hook() {
     assert!(joiner.lock().expect("poisoned").is_some());
     assert!(net.is_reachable(NodeId(4)));
 }
+
+#[tokio::test(start_paused = true)]
+async fn queue_replicate_rejects_non_leader_caller() {
+    use craft::net::{LocalTransport, send_queue_replicate};
+    use craft_proto::{QueueReplicateOp, QueueReplicateRequest};
+    use std::sync::Arc;
+
+    let dir = tempfile::tempdir().unwrap();
+    let (net, clusters) = spawn_queue_cluster(&dir, false).await;
+    let _leader = await_craft_leader(&clusters).await;
+    advance(Duration::from_millis(100)).await;
+
+    let follower = Arc::new(LocalTransport::new(net.clone(), NodeId(2)));
+    let reply = send_queue_replicate(
+        follower.as_ref(),
+        NodeId(3),
+        &QueueReplicateRequest {
+            stream: "jobs".into(),
+            ops: vec![QueueReplicateOp::Enqueue {
+                job_id: 99,
+                payload: b"x".to_vec(),
+                enqueued_at_ms: 1,
+                next_job_id: 100,
+                priority: 0,
+                not_before_ms: 1,
+                dedup_key: None,
+            }],
+        },
+    )
+    .await
+    .expect("wire round trip");
+    let err = reply.error.expect("replicate should fail");
+    assert!(err.contains("not raft leader"), "unexpected error: {err}");
+}

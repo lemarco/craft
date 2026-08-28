@@ -105,6 +105,17 @@ impl RemoteError {
 pub trait RequestHandler: Send + Sync + 'static {
     /// Handle one request, returning the response body to send back.
     fn handle(&self, route: Route, body: Body) -> BoxFuture<'static, Result<Body, TransportError>>;
+
+    /// Like [`handle`](Self::handle) but includes the authenticated caller when known.
+    fn handle_from(
+        &self,
+        from: Option<NodeId>,
+        route: Route,
+        body: Body,
+    ) -> BoxFuture<'static, Result<Body, TransportError>> {
+        let _ = from;
+        self.handle(route, body)
+    }
 }
 
 /// Client side: send a request body to `peer` on `route` and await the response
@@ -440,6 +451,23 @@ impl LocalNetwork {
     pub fn is_reachable(&self, id: NodeId) -> bool {
         self.nodes.lock().expect("poisoned").contains_key(&id)
     }
+
+    /// Deliver a request from `from` to `peer` (in-memory tests / simulation).
+    pub fn deliver(
+        &self,
+        from: NodeId,
+        peer: NodeId,
+        route: Route,
+        body: Body,
+    ) -> BoxFuture<'static, Result<Body, TransportError>> {
+        let handler = self.nodes.lock().expect("poisoned").get(&peer).cloned();
+        Box::pin(async move {
+            match handler {
+                Some(handler) => handler.handle_from(Some(from), route, body).await,
+                None => Err(TransportError::Unreachable(peer)),
+            }
+        })
+    }
 }
 
 impl fmt::Debug for LocalNetwork {
@@ -458,14 +486,47 @@ impl Transport for LocalNetwork {
         route: Route,
         body: Body,
     ) -> BoxFuture<'static, Result<Body, TransportError>> {
-        // Clone the target handler out under the lock, then release it before
-        // awaiting so a handler can itself call back into the network.
         let handler = self.nodes.lock().expect("poisoned").get(&peer).cloned();
         Box::pin(async move {
             match handler {
-                Some(handler) => handler.handle(route, body).await,
+                Some(handler) => handler.handle_from(None, route, body).await,
                 None => Err(TransportError::Unreachable(peer)),
             }
         })
+    }
+}
+
+/// A [`Transport`] that tags outbound requests with this node's [`NodeId`]
+/// so handlers can authenticate callers (queue replicate auth, tests).
+#[derive(Clone)]
+pub struct LocalTransport {
+    network: LocalNetwork,
+    local: NodeId,
+}
+
+impl LocalTransport {
+    /// Send requests from `local` over `network`.
+    #[must_use]
+    pub fn new(network: LocalNetwork, local: NodeId) -> Self {
+        Self { network, local }
+    }
+}
+
+impl fmt::Debug for LocalTransport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LocalTransport")
+            .field("local", &self.local)
+            .finish()
+    }
+}
+
+impl Transport for LocalTransport {
+    fn send(
+        &self,
+        peer: NodeId,
+        route: Route,
+        body: Body,
+    ) -> BoxFuture<'static, Result<Body, TransportError>> {
+        self.network.deliver(self.local, peer, route, body)
     }
 }

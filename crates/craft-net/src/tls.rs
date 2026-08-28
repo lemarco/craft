@@ -235,3 +235,11 @@ impl ClusterCa {
 pub fn node_server_name(node: NodeId) -> String {
     format!("{NODE_CN_PREFIX}{}", node.0)
 }
+
+/// Parse a cluster node id from a certificate CN / DNS SAN (`craft-node-<id>`).
+#[must_use]
+pub fn node_id_from_server_name(name: &str) -> Option<NodeId> {
+    name.strip_prefix(NODE_CN_PREFIX)
+        .and_then(|suffix| suffix.parse::<u64>().ok())
+        .map(NodeId)
+}

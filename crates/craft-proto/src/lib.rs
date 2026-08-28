@@ -15,6 +15,7 @@ pub mod group_migrate;
 pub mod join;
 pub mod leave;
 pub mod queue;
+pub mod queue_autoscale;
 pub mod raft;
 pub mod saga_journal;
 pub mod two_phase;
@@ -38,6 +39,9 @@ pub use queue::{
     QueueAckReply, QueueAckRequest, QueueEnqueueReply, QueueEnqueueRequest, QueueLeaseReply,
     QueueLeaseRequest, QueueLeasedJobWire, QueueMetricsReply, QueueMetricsRequest, QueueNackReply,
     QueueNackRequest, QueueReplicateOp, QueueReplicateReply, QueueReplicateRequest,
+};
+pub use queue_autoscale::{
+    AutoscalePolicyWire, MembershipAutoscalePolicyWire, QueueAutoscalePolicyCommand,
 };
 pub use raft::{
     AppendEntries, AppendEntriesReply, EntryPayload, InstallSnapshot, InstallSnapshotReply,
