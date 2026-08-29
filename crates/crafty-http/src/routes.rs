@@ -94,7 +94,9 @@ async fn post_ack_batch(
     let req: AckBatchBody = serde_json::from_slice(&body)
         .map_err(|e| JobsApiError::BadRequest(format!("invalid json body: {e}")))?;
     if req.lease_ids.is_empty() {
-        return Err(JobsApiError::BadRequest("lease_ids must not be empty".into()));
+        return Err(JobsApiError::BadRequest(
+            "lease_ids must not be empty".into(),
+        ));
     }
     if req.lease_ids.len() > DEFAULT_QUEUE_BATCH_MAX {
         return Err(JobsApiError::BadRequest(format!(
@@ -111,10 +113,7 @@ async fn post_ack_batch(
     (state.ack_batch)(stream, worker, lease_ids)
         .await
         .map_err(|e| JobsApiError::Queue(e.to_string()))?;
-    Ok((
-        StatusCode::OK,
-        axum::Json(AckBatchAccepted { acked }),
-    ))
+    Ok((StatusCode::OK, axum::Json(AckBatchAccepted { acked })))
 }
 
 async fn get_job(
@@ -146,10 +145,7 @@ async fn post_requeue(
     (state.requeue_dead_letter)(stream, job_id)
         .await
         .map_err(|e| JobsApiError::Queue(e.to_string()))?;
-    Ok((
-        StatusCode::OK,
-        axum::Json(RequeueAccepted { job_id }),
-    ))
+    Ok((StatusCode::OK, axum::Json(RequeueAccepted { job_id })))
 }
 
 const fn lifecycle_name(lifecycle: JobLifecycle) -> &'static str {
@@ -306,9 +302,7 @@ mod tests {
             .method("POST")
             .uri("/jobs/emails/batch")
             .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(
-                r#"{"jobs":[{"payload":"a"},{"payload":"b"}]}"#,
-            ))
+            .body(Body::from(r#"{"jobs":[{"payload":"a"},{"payload":"b"}]}"#))
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::ACCEPTED);

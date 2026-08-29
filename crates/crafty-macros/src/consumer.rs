@@ -19,7 +19,9 @@ fn to_pascal_case(s: &str) -> String {
 
 fn is_byte_slice(ty: &Type) -> bool {
     match ty {
-        Type::Reference(r) => matches!(&*r.elem, Type::Slice(s) if matches!(&*s.elem, Type::Path(p) if p.path.is_ident("u8"))),
+        Type::Reference(r) => {
+            matches!(&*r.elem, Type::Slice(s) if matches!(&*s.elem, Type::Path(p) if p.path.is_ident("u8")))
+        }
         _ => false,
     }
 }

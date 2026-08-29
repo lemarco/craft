@@ -10,8 +10,8 @@ use std::time::Duration;
 use crafty_actor::ClientError;
 use crafty_actor::NodeHandle;
 use crafty_actor::{
-    ActorSession, CastError, ClusterAskError, ClusterRef, EnqueueOptions, JobId, JobStatus, LeaseId,
-    RecurringJob, UserActor, WorkerId,
+    ActorSession, CastError, ClusterAskError, ClusterRef, EnqueueOptions, JobId, JobStatus,
+    LeaseId, RecurringJob, UserActor, WorkerId,
 };
 use crafty_core::StateMachine;
 use crafty_net::LocalNetwork;
@@ -21,11 +21,11 @@ use crate::NodeId;
 use crate::builder::{CraftyClusterBuilder, StartError};
 use crate::cluster::CraftyCluster;
 use crate::env_config::{AppConfig, app_config_from_env};
-use crate::security::Security;
 #[cfg(feature = "http-jobs")]
 use crate::gateway::GatewayConfig;
 #[cfg(feature = "http-jobs")]
 use crate::gateway::spawn_gateway as spawn_gateway_task;
+use crate::security::Security;
 
 /// A worker instance registered in the cluster directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -294,11 +294,7 @@ impl CraftyAppBuilder {
             .as_ref()
             .map_or((true, true), |g| (g.jobs_api, g.actors_api));
         let addr = self.gateway.map_or_else(
-            || {
-                "127.0.0.1:3000"
-                    .parse()
-                    .expect("default gateway addr")
-            },
+            || "127.0.0.1:3000".parse().expect("default gateway addr"),
             |g| g.addr,
         );
         self.gateway = Some(GatewayConfig {

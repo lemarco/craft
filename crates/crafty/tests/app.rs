@@ -76,17 +76,22 @@ async fn crafty_app_requeue_dead_letter() {
         instance: 0,
     };
     let leased = queue.lease(worker, 1).await.expect("lease");
-    queue
-        .nack(worker, leased[0].lease_id)
-        .await
-        .expect("nack");
+    queue.nack(worker, leased[0].lease_id).await.expect("nack");
     advance(Duration::from_secs(2)).await;
 
-    let status = app.job_status("jobs", id).await.expect("status").expect("row");
+    let status = app
+        .job_status("jobs", id)
+        .await
+        .expect("status")
+        .expect("row");
     assert_eq!(status.lifecycle, JobLifecycle::DeadLetter);
 
     app.requeue_dead_letter("jobs", id).await.expect("requeue");
-    let pending = app.job_status("jobs", id).await.expect("status").expect("row");
+    let pending = app
+        .job_status("jobs", id)
+        .await
+        .expect("status")
+        .expect("row");
     assert_eq!(pending.lifecycle, JobLifecycle::Pending);
 
     app.cluster().shutdown();

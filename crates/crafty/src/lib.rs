@@ -66,13 +66,10 @@ pub use {crafty_dashboard as dashboard, crafty_macros as macros, crafty_net as n
 pub use crafty_storage as storage;
 
 pub use app::{CraftyApp, CraftyAppBuilder, EmptyStateMachine, WorkerInfo};
-pub use consumer::{ConsumerOpts, JobConsumer};
-pub use crafty_macros::consumer;
-#[cfg(feature = "http-jobs")]
-pub use gateway::{CraftyGatewayState, GatewayConfig, build_gateway_router, spawn_gateway};
 pub use builder::{CraftyClusterBuilder, StartError};
 pub use certs::{CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_from_env};
 pub use cluster::{AddRaftGroupsError, ClusterFacts, CraftyCluster, LeaveError, ScaleClusterError};
+pub use consumer::{ConsumerOpts, JobConsumer};
 pub use crafty_actor::{
     ActorSession, AutoscalePolicy, ClusterActorStateStore, ClusterJobQueue, DEFAULT_DRAIN_TIMEOUT,
     DEFAULT_QUEUE_BATCH_MAX, DEFAULT_QUEUE_PREFETCH, DirectoryPolicy, DirectoryRetry,
@@ -85,7 +82,10 @@ pub use crafty_actor::{
 pub use crafty_actor::{ResourceProfile, VpsResources};
 pub use crafty_core::ReachabilityConfig;
 pub use crafty_core::{CompactionPolicy, DEFAULT_COMPACT_BYTES, DEFAULT_COMPACT_ENTRIES};
+pub use crafty_macros::consumer;
 pub use env_config::{AppConfig, app_config_from_env};
+#[cfg(feature = "http-jobs")]
+pub use gateway::{CraftyGatewayState, GatewayConfig, build_gateway_router, spawn_gateway};
 pub use saga::{
     CompositeSagaJournal, Group0SagaJournal, MetaRaftSagaJournal, SagaRegistry, StoreSagaJournal,
     record_saga_metrics, saga_metrics_callback,

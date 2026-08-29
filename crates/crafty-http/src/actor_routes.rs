@@ -30,9 +30,7 @@ async fn post_ask(
     body: Bytes,
 ) -> Result<axum::response::Response, ActorsApiError> {
     let payload = parse_enqueue_body(&headers, &body).map_err(map_body_error)?;
-    let reply = (state.ask)(group, payload)
-        .await
-        .map_err(map_ask_error)?;
+    let reply = (state.ask)(group, payload).await.map_err(map_ask_error)?;
     let ct = headers
         .get(header::ACCEPT)
         .and_then(|v| v.to_str().ok())
@@ -56,9 +54,7 @@ async fn post_cast(
     body: Bytes,
 ) -> Result<impl IntoResponse, ActorsApiError> {
     let payload = parse_enqueue_body(&headers, &body).map_err(map_body_error)?;
-    (state.cast)(group, payload)
-        .await
-        .map_err(map_cast_error)?;
+    (state.cast)(group, payload).await.map_err(map_cast_error)?;
     Ok(StatusCode::ACCEPTED)
 }
 
@@ -81,7 +77,9 @@ fn map_ask_error(err: ClusterAskError) -> ActorsApiError {
 
 fn map_cast_error(err: CastError) -> ActorsApiError {
     match err {
-        CastError::NoTarget(g) => ActorsApiError::NoTarget(format!("no live instance of group `{g}`")),
+        CastError::NoTarget(g) => {
+            ActorsApiError::NoTarget(format!("no live instance of group `{g}`"))
+        }
         other => ActorsApiError::Actor(other.to_string()),
     }
 }

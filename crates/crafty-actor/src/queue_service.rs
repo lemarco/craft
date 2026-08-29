@@ -484,9 +484,7 @@ impl QueueService {
             }
 
             if need > 0 {
-                let (jobs, rep) = sharded
-                    .lease_shard_replicated(shard, worker, need)
-                    .await?;
+                let (jobs, rep) = sharded.lease_shard_replicated(shard, worker, need).await?;
                 need = need.saturating_sub(jobs.len());
                 out.extend(jobs);
                 if !rep.ops.is_empty() {

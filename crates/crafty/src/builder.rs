@@ -34,14 +34,14 @@ use tokio::net::TcpListener;
 
 use crafty_actor::{
     ActorDirectory, ActorRegistry, AutoscalePolicy, ClusterActorStateStore, ClusterControl,
-    ClusterJobQueue, ClusterMessaging, ClusterState, ClusterSupervisor, DEFAULT_DRAIN_TIMEOUT,
+    ClusterJobQueue, ClusterMessaging, ClusterState, ClusterSupervisor,
+    DEFAULT_ACTOR_STORE_GC_MAX_KEYS, DEFAULT_ACTOR_STORE_GC_PERIOD, DEFAULT_DRAIN_TIMEOUT,
     DEFAULT_QUEUE_PREFETCH, DirectoryPolicy, DirectoryRetry, DirectorySync, JobQueue, MailboxSpool,
     MembershipAutoscalePolicy, NodeService, QueueAutoscaleRegistry, QueueService, RaftDriver,
     RecurringJob, RedbActorStateStore, RedbJobQueue, RedbMailboxSpool, ResourceProfile,
     RuntimeConfig, ShardedJobQueue, StoreService, UserActor, VpsResources,
-    run_mailbox_spool_drainer, run_queue_autoscaler, run_queue_membership_autoscaler,
-    run_queue_schedule_ticker, spawn_multi_raft_node, spawn_node,
-    DEFAULT_ACTOR_STORE_GC_MAX_KEYS, DEFAULT_ACTOR_STORE_GC_PERIOD, run_actor_store_gc_ticker,
+    run_actor_store_gc_ticker, run_mailbox_spool_drainer, run_queue_autoscaler,
+    run_queue_membership_autoscaler, run_queue_schedule_ticker, spawn_multi_raft_node, spawn_node,
 };
 
 use crate::certs::{CertReloadHandle, PemSecurity};

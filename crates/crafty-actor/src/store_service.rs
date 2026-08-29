@@ -257,10 +257,7 @@ impl StoreService {
         if !self.state.is_leader() {
             return Ok(0);
         }
-        let (removed, ops) = self
-            .local
-            .gc_expired(max_keys)
-            .map_err(|e| e.to_string())?;
+        let (removed, ops) = self.local.gc_expired(max_keys).map_err(|e| e.to_string())?;
         if removed > 0 {
             self.replicate_ops(&ops).await?;
         }

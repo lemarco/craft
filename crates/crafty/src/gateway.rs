@@ -18,8 +18,7 @@ pub struct CraftyGatewayState {
 }
 
 /// User-supplied gateway router builder (captures [`Arc<CraftyApp>`] in handlers).
-pub type GatewayRoutesFn =
-    Box<dyn FnOnce(Arc<CraftyApp>) -> Router + Send>;
+pub type GatewayRoutesFn = Box<dyn FnOnce(Arc<CraftyApp>) -> Router + Send>;
 
 /// Gateway listen address and route wiring collected on [`super::app::CraftyAppBuilder`].
 pub struct GatewayConfig {

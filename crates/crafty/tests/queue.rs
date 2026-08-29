@@ -203,7 +203,10 @@ async fn prefetch_does_not_resurrect_jobs_after_batch_ack() {
     assert_eq!(leased.len(), 2);
 
     let lease_ids: Vec<_> = leased.iter().map(|j| j.lease_id).collect();
-    queue.ack_batch(worker, &lease_ids).await.expect("ack batch");
+    queue
+        .ack_batch(worker, &lease_ids)
+        .await
+        .expect("ack batch");
 
     let again = queue.lease(worker, 4).await.expect("lease again");
     assert!(again.is_empty());

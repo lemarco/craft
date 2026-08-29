@@ -3,15 +3,14 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crafty_actor::{ClusterState, JobQueue, QueueService, RedbJobQueue, DEFAULT_QUEUE_PREFETCH};
+use crafty_actor::{ClusterState, DEFAULT_QUEUE_PREFETCH, JobQueue, QueueService, RedbJobQueue};
+use crafty_net::transport::{Body, BoxFuture};
 use crafty_net::{
     LocalNetwork, LocalTransport, RequestHandler, Route, Transport, TransportError,
     send_queue_ack_batch, send_queue_enqueue_batch, send_queue_lease,
 };
-use crafty_net::transport::{Body, BoxFuture};
 use crafty_proto::{
-    NodeId, QueueAckBatchRequest, QueueBatchEnqueueJob, QueueEnqueueBatchRequest,
-    QueueLeaseRequest,
+    NodeId, QueueAckBatchRequest, QueueBatchEnqueueJob, QueueEnqueueBatchRequest, QueueLeaseRequest,
 };
 
 struct MockState {
@@ -40,11 +39,7 @@ impl ClusterState for MockState {
 struct QueueHandler(Arc<QueueService>);
 
 impl RequestHandler for QueueHandler {
-    fn handle(
-        &self,
-        route: Route,
-        body: Body,
-    ) -> BoxFuture<'static, Result<Body, TransportError>> {
+    fn handle(&self, route: Route, body: Body) -> BoxFuture<'static, Result<Body, TransportError>> {
         self.0.handle_request(route, body)
     }
 }

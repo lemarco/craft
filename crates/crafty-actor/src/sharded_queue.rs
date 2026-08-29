@@ -227,13 +227,7 @@ impl ShardedJobQueue {
                 payload: job.payload,
             })
             .collect();
-        Ok((
-            out,
-            ShardedReplication {
-                shard,
-                ops,
-            },
-        ))
+        Ok((out, ShardedReplication { shard, ops }))
     }
 
     /// Ack a leased job, routing to the shard encoded in `lease_id`.

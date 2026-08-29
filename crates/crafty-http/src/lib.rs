@@ -32,7 +32,9 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use axum::Router;
-use crafty_actor::{CastError, ClusterAskError, EnqueueOptions, JobId, JobStatus, LeaseId, QueueError, WorkerId};
+use crafty_actor::{
+    CastError, ClusterAskError, EnqueueOptions, JobId, JobStatus, LeaseId, QueueError, WorkerId,
+};
 
 pub use actor_types::{ActorsApiError, AskAccepted};
 pub use routes::parse_enqueue_body;
@@ -149,7 +151,10 @@ impl JobsApi {
 
 /// Async ask hook used by [`ActorsApi`].
 pub type AskFn = Arc<
-    dyn Fn(String, Vec<u8>) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ClusterAskError>> + Send>>
+    dyn Fn(
+            String,
+            Vec<u8>,
+        ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ClusterAskError>> + Send>>
         + Send
         + Sync,
 >;
