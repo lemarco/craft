@@ -169,7 +169,7 @@ async fn main() {
     let gateway_mode = std::env::var("GATEWAY").ok().as_deref() == Some("1");
 
     let net = LocalNetwork::new();
-    let mut builder = CraftyApp::builder(NodeId(1))
+    let builder = CraftyApp::builder(NodeId(1))
         .members([NodeId(1)])
         .tick_period(Duration::from_millis(10))
         .reconcile_period(Duration::from_millis(20))

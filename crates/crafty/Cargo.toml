@@ -66,3 +66,7 @@ required-features = ["http-jobs"]
 name = "http_jobs"
 path = "tests/http_jobs.rs"
 required-features = ["http-jobs"]
+
+[[example]]
+name = "websocket_gateway"
+required-features = ["http-jobs"]
