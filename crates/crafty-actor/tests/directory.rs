@@ -182,10 +182,10 @@ async fn three_nodes_converge_on_a_merged_directory() {
     reg2.spawn_pool::<Worker>("workers", 2, ()).unwrap();
 
     let acks1 = sync1
-        .publish(&peers, reg1.local_registrations(NodeId(1)))
+        .publish(&peers, reg1.local_registrations(NodeId(1), None))
         .await;
     let acks2 = sync2
-        .publish(&peers, reg2.local_registrations(NodeId(2)))
+        .publish(&peers, reg2.local_registrations(NodeId(2), None))
         .await;
     assert_eq!(acks1, 2, "peers 2 and 3 acknowledge node 1's publish");
     assert_eq!(acks2, 2, "peers 1 and 3 acknowledge node 2's publish");
@@ -213,14 +213,14 @@ async fn republishing_a_smaller_set_revokes_missing_instances() {
     let reg = ActorRegistry::new_dev();
     reg.spawn_pool::<Worker>("workers", 3, ()).unwrap();
     sync1
-        .publish(&peers, reg.local_registrations(NodeId(1)))
+        .publish(&peers, reg.local_registrations(NodeId(1), None))
         .await;
     assert_eq!(dir2.cluster("workers").len(), 3);
 
     // Scale in to one instance and republish: the directory converges down.
     reg.scale_local::<Worker>("workers", 1, ()).await.unwrap();
     sync1
-        .publish(&peers, reg.local_registrations(NodeId(1)))
+        .publish(&peers, reg.local_registrations(NodeId(1), None))
         .await;
     assert_eq!(
         dir2.cluster("workers").len(),
@@ -275,7 +275,7 @@ async fn directory_replicates_runtime_stats_to_peers() {
     tokio::task::yield_now().await;
 
     sync1
-        .publish(&peers, reg.local_registrations(NodeId(1)))
+        .publish(&peers, reg.local_registrations(NodeId(1), None))
         .await;
 
     let remote = dir2.lookup("workers");

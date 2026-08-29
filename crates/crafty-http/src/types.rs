@@ -11,6 +11,53 @@ pub struct EnqueueAccepted {
     pub job_id: u64,
 }
 
+/// Successful batch enqueue response (`202 Accepted`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EnqueueBatchAccepted {
+    /// Assigned job ids in request order.
+    pub job_ids: Vec<u64>,
+}
+
+/// One job in a batch enqueue body.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct EnqueueBatchJobBody {
+    /// UTF-8 string stored as opaque job bytes.
+    pub payload: Option<String>,
+    /// Base64-encoded opaque job bytes.
+    pub payload_b64: Option<String>,
+    /// Job priority (0–255).
+    #[serde(default)]
+    pub priority: u8,
+    /// Client dedup / idempotency key.
+    #[serde(default)]
+    pub dedup: Option<String>,
+}
+
+/// JSON body for `POST /jobs/{stream}/batch`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct EnqueueBatchBody {
+    /// Jobs to enqueue (capped at [`crafty_actor::DEFAULT_QUEUE_BATCH_MAX`]).
+    pub jobs: Vec<EnqueueBatchJobBody>,
+}
+
+/// JSON body for `POST /jobs/{stream}/ack-batch`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct AckBatchBody {
+    /// Cluster node id of the leasing worker.
+    pub worker_node: u64,
+    /// Worker instance id on that node.
+    pub worker_instance: u32,
+    /// Lease tokens from a prior lease.
+    pub lease_ids: Vec<u64>,
+}
+
+/// Successful batch ack response (`200 OK`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AckBatchAccepted {
+    /// Number of leases acknowledged.
+    pub acked: usize,
+}
+
 /// Job lookup response (`200 OK`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct JobStatusResponse {

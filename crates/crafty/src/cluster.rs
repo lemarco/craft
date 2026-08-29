@@ -498,6 +498,22 @@ impl<M: StateMachine> CraftyCluster<M> {
         queue.enqueue_batch_opts(jobs).await
     }
 
+    /// Acknowledge many leased jobs in one leader transaction (tier C batch path).
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or ack fails.
+    pub async fn ack_batch(
+        &self,
+        stream: &str,
+        worker: crafty_actor::WorkerId,
+        lease_ids: &[crafty_actor::LeaseId],
+    ) -> Result<(), crafty_actor::QueueError> {
+        let queue = self.job_queue(stream).ok_or_else(|| {
+            crafty_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
+        })?;
+        queue.ack_batch(worker, lease_ids).await
+    }
+
     /// Registry of queue autoscale policies replicated via Meta-Raft / group 0.
     #[must_use]
     pub fn queue_autoscale_registry(&self) -> Arc<crafty_actor::QueueAutoscaleRegistry> {
@@ -1190,7 +1206,10 @@ impl<M: StateMachine> CraftyCluster<M> {
     /// once, immediately (the runtime also does this periodically). Returns the
     /// number of peers that acknowledged.
     pub async fn publish_directory(&self) -> usize {
-        let regs = self.registry.local_registrations(self.node_id);
+        let rates = self.registry.group_message_rates();
+        let regs = self
+            .registry
+            .local_registrations(self.node_id, Some(&rates));
         self.directory_sync.publish(&self.members, regs).await
     }
 

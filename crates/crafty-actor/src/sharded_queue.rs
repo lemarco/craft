@@ -36,6 +36,11 @@ pub(crate) fn decode_global_id(id: u64) -> (usize, u64) {
     decode_id(id)
 }
 
+/// Combine shard index and local id into the global wire id.
+pub(crate) fn encode_global_id(shard: usize, local: u64) -> u64 {
+    encode_id(shard, local)
+}
+
 /// Routes jobs across `shards` by hashing the shard key (or payload).
 pub struct ShardedJobQueue {
     shards: Vec<Arc<dyn JobQueue>>,
@@ -201,6 +206,34 @@ impl ShardedJobQueue {
             }));
         }
         Ok((out, replications))
+    }
+
+    /// Lease up to `max` jobs from a single shard; ids are encoded globally.
+    ///
+    /// # Errors
+    /// Returns [`QueueError`] if the shard index is invalid or lease fails.
+    pub async fn lease_shard_replicated(
+        &self,
+        shard: usize,
+        worker: WorkerId,
+        max: usize,
+    ) -> Result<(Vec<LeasedJob>, ShardedReplication), QueueError> {
+        let (jobs, ops) = self.shard(shard)?.lease_replicated(worker, max).await?;
+        let out = jobs
+            .into_iter()
+            .map(|job| LeasedJob {
+                lease_id: LeaseId(encode_id(shard, job.lease_id.0)),
+                job_id: JobId(encode_id(shard, job.job_id.0)),
+                payload: job.payload,
+            })
+            .collect();
+        Ok((
+            out,
+            ShardedReplication {
+                shard,
+                ops,
+            },
+        ))
     }
 
     /// Ack a leased job, routing to the shard encoded in `lease_id`.

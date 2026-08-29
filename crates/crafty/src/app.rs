@@ -9,7 +9,8 @@ use std::time::Duration;
 use crafty_actor::ClientError;
 use crafty_actor::NodeHandle;
 use crafty_actor::{
-    ActorSession, CastError, ClusterRef, EnqueueOptions, JobId, JobStatus, UserActor,
+    ActorSession, CastError, ClusterRef, EnqueueOptions, JobId, JobStatus, LeaseId, UserActor,
+    WorkerId,
 };
 use crafty_core::StateMachine;
 use crafty_net::LocalNetwork;
@@ -341,6 +342,19 @@ impl CraftyApp {
         self.cluster.enqueue_batch_opts(stream, jobs).await
     }
 
+    /// Acknowledge many leased jobs in one leader transaction (tier C batch path).
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or ack fails.
+    pub async fn ack_batch(
+        &self,
+        stream: &str,
+        worker: WorkerId,
+        lease_ids: &[LeaseId],
+    ) -> Result<(), crafty_actor::QueueError> {
+        self.cluster.ack_batch(stream, worker, lease_ids).await
+    }
+
     /// Lookup job metadata by id (`None` when acked or unknown).
     ///
     /// # Errors
@@ -449,6 +463,8 @@ impl CraftyApp {
     #[cfg(feature = "http-jobs")]
     pub fn jobs_api(app: Arc<Self>) -> crafty_http::JobsApi {
         let enqueue_app = Arc::clone(&app);
+        let batch_app = Arc::clone(&app);
+        let ack_app = Arc::clone(&app);
         let status_app = app;
         crafty_http::JobsApi::new(
             Arc::new(move |stream, payload, opts| {
@@ -460,6 +476,14 @@ impl CraftyApp {
                         app.enqueue_opts(&stream, &payload, opts).await
                     }
                 })
+            }),
+            Arc::new(move |stream, jobs| {
+                let app = Arc::clone(&batch_app);
+                Box::pin(async move { app.enqueue_batch_opts(&stream, &jobs).await })
+            }),
+            Arc::new(move |stream, worker, lease_ids| {
+                let app = Arc::clone(&ack_app);
+                Box::pin(async move { app.ack_batch(&stream, worker, &lease_ids).await })
             }),
             Arc::new(move |stream, job_id| {
                 let app = Arc::clone(&status_app);

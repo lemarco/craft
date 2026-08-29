@@ -24,7 +24,7 @@ use crafty_proto::{
 };
 
 use crate::queue_prefetch::{CachedPendingJob, DEFAULT_QUEUE_BATCH_MAX, QueuePrefetchCache};
-use crate::sharded_queue::decode_global_id;
+use crate::sharded_queue::{decode_global_id, encode_global_id};
 use crate::supervisor::ClusterState;
 use crate::{
     EnqueueOptions, JobId, JobLifecycle, JobQueue, JobStatus, LeaseId, LeasedJob,
@@ -436,6 +436,67 @@ impl QueueService {
         Ok((jobs, ops))
     }
 
+    async fn lease_sharded_with_prefetch(
+        &self,
+        base: &str,
+        sharded: &ShardedJobQueue,
+        worker: WorkerId,
+        max: usize,
+    ) -> Result<(Vec<LeasedJob>, Vec<ShardedReplication>), QueueError> {
+        let now = now_ms();
+        let mut out = Vec::new();
+        let mut replications = Vec::new();
+        let mut need = max;
+
+        for shard in 0..sharded.shard_count() {
+            if need == 0 {
+                break;
+            }
+            let stream = shard_stream_name(base, shard);
+            let redb = self
+                .redb_streams
+                .lock()
+                .expect("poisoned")
+                .get(&stream)
+                .cloned();
+
+            if let Some(redb) = redb {
+                let prefetched = self
+                    .prefetch
+                    .lock()
+                    .expect("poisoned")
+                    .get_mut(&stream)
+                    .map(|cache| cache.select_for_lease(need, now))
+                    .unwrap_or_default();
+
+                if !prefetched.is_empty() {
+                    let (leased, step) = redb.lease_prefetched(worker, &prefetched)?;
+                    need = need.saturating_sub(leased.len());
+                    if !step.is_empty() {
+                        replications.push(ShardedReplication { shard, ops: step });
+                    }
+                    out.extend(leased.into_iter().map(|job| LeasedJob {
+                        lease_id: LeaseId(encode_global_id(shard, job.lease_id.0)),
+                        job_id: JobId(encode_global_id(shard, job.job_id.0)),
+                        payload: job.payload,
+                    }));
+                }
+            }
+
+            if need > 0 {
+                let (jobs, rep) = sharded
+                    .lease_shard_replicated(shard, worker, need)
+                    .await?;
+                need = need.saturating_sub(jobs.len());
+                out.extend(jobs);
+                if !rep.ops.is_empty() {
+                    replications.push(rep);
+                }
+            }
+        }
+        Ok((out, replications))
+    }
+
     fn leased_to_wire(jobs: Vec<LeasedJob>) -> Vec<QueueLeasedJobWire> {
         jobs.into_iter()
             .map(|j| QueueLeasedJobWire {
@@ -725,7 +786,10 @@ impl QueueService {
                 instance: request.worker_instance,
             };
             if let Some(sharded) = self.sharded_stream(&request.stream) {
-                match sharded.lease_replicated_sharded(worker, request.max).await {
+                match self
+                    .lease_sharded_with_prefetch(&request.stream, &sharded, worker, request.max)
+                    .await
+                {
                     Ok((jobs, reps)) => {
                         if let Err(e) = self.replicate_sharded(&request.stream, &reps).await {
                             return QueueLeaseReply {

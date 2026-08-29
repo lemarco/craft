@@ -457,3 +457,35 @@ async fn local_actor_introspection_tracks_per_instance_mailbox_depth() {
     depths.sort_unstable();
     assert_eq!(depths, vec![1, 2], "per-instance depths: {views:?}");
 }
+
+#[tokio::test]
+async fn group_message_rates_derives_per_second() {
+    use crafty_proto::NodeId;
+    use std::thread;
+    use std::time::Duration;
+
+    let registry = ActorRegistry::new_dev();
+    let actor = registry.spawn::<StallWorker>("workers", ()).unwrap();
+    assert_eq!(registry.group_message_rates().get("workers"), Some(&0.0));
+
+    for _ in 0..10 {
+        actor.send(StallMsg::Queued).unwrap();
+    }
+    tokio::task::yield_now().await;
+    let _ = registry.group_message_rates();
+
+    thread::sleep(Duration::from_millis(100));
+
+    for _ in 0..5 {
+        actor.send(StallMsg::Queued).unwrap();
+    }
+    tokio::task::yield_now().await;
+
+    let rates = registry.group_message_rates();
+    let rate = rates["workers"];
+    assert!(rate > 40.0 && rate < 60.0, "expected ~50 msg/s, got {rate}");
+
+    let regs = registry.local_registrations(NodeId(1), Some(&rates));
+    assert_eq!(regs.len(), 1);
+    assert!(regs[0].messages_per_sec > 0.0);
+}

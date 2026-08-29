@@ -49,6 +49,17 @@ async fn http_post_job_returns_202_and_enqueues() {
     let resp = router.clone().oneshot(req).await.expect("route");
     assert_eq!(resp.status(), StatusCode::ACCEPTED);
 
+    let batch_req = Request::builder()
+        .method("POST")
+        .uri("/jobs/jobs/batch")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            r#"{"jobs":[{"payload":"batch-a"},{"payload":"batch-b"}]}"#,
+        ))
+        .unwrap();
+    let batch_resp = router.clone().oneshot(batch_req).await.expect("batch");
+    assert_eq!(batch_resp.status(), StatusCode::ACCEPTED);
+
     let job_id = app.enqueue("jobs", b"send-email").await.expect("enqueue");
     let get_req = Request::builder()
         .method("GET")

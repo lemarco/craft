@@ -183,6 +183,34 @@ async fn batch_enqueue_and_ack_through_cluster_client() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn prefetch_does_not_resurrect_jobs_after_batch_ack() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (_net, clusters) = spawn_queue_cluster(&dir, false).await;
+    let leader = await_crafty_leader(&clusters).await;
+    advance(Duration::from_millis(200)).await;
+
+    leader
+        .enqueue_batch("jobs", &[b"a", b"b"])
+        .await
+        .expect("batch enqueue");
+
+    let worker = WorkerId {
+        node: leader.node_id(),
+        instance: 1,
+    };
+    let queue = leader.job_queue("jobs").expect("queue");
+    let leased = queue.lease(worker, 4).await.expect("lease");
+    assert_eq!(leased.len(), 2);
+
+    let lease_ids: Vec<_> = leased.iter().map(|j| j.lease_id).collect();
+    queue.ack_batch(worker, &lease_ids).await.expect("ack batch");
+
+    let again = queue.lease(worker, 4).await.expect("lease again");
+    assert!(again.is_empty());
+    assert_eq!(queue.metrics().await.expect("metrics").pending, 0);
+}
+
+#[tokio::test(start_paused = true)]
 async fn enqueue_replicates_to_every_voter_redb() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (net, clusters) = spawn_queue_cluster(&dir, false).await;

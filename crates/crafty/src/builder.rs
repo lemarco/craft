@@ -1497,7 +1497,8 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                 let mut interval = tokio::time::interval(period);
                 loop {
                     interval.tick().await;
-                    let regs = registry.local_registrations(node_id);
+                    let rates = registry.group_message_rates();
+                    let regs = registry.local_registrations(node_id, Some(&rates));
                     let _ = directory_sync.publish(&members, regs).await;
                 }
             }));

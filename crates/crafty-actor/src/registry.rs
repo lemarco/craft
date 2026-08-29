@@ -1336,6 +1336,8 @@ pub struct ActorRegistry {
     dev_multi_workers: bool,
     /// Shared with every spawned pool so a later-installed observer still fires.
     observer: ObserverHook,
+    /// Previous cumulative message counts for per-group rate derivation.
+    message_rate_sampler: Arc<Mutex<HashMap<String, (u64, Instant)>>>,
 }
 
 impl Default for ActorRegistry {
@@ -1352,6 +1354,7 @@ impl ActorRegistry {
             groups: Arc::new(Mutex::new(HashMap::new())),
             dev_multi_workers: false,
             observer: Arc::new(Mutex::new(None)),
+            message_rate_sampler: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -1363,6 +1366,7 @@ impl ActorRegistry {
             groups: Arc::new(Mutex::new(HashMap::new())),
             dev_multi_workers: true,
             observer: Arc::new(Mutex::new(None)),
+            message_rate_sampler: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -1397,6 +1401,37 @@ impl ActorRegistry {
                     handle_nanos,
                     mailbox_depth,
                 }
+            })
+            .collect()
+    }
+
+    /// Derive per-group message rates (messages/s) from cumulative counters.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
+    #[must_use]
+    pub fn group_message_rates(&self) -> HashMap<String, f64> {
+        let stats = self.stats();
+        let now = Instant::now();
+        let mut sampler = self.message_rate_sampler.lock().unwrap();
+        stats
+            .iter()
+            .map(|stat| {
+                let rate = sampler
+                    .get(&stat.name)
+                    .map_or(0.0, |(prev_messages, prev_at)| {
+                        let elapsed = now.duration_since(*prev_at).as_secs_f64();
+                        if elapsed > 0.0 {
+                            #[allow(clippy::cast_precision_loss)]
+                            {
+                                stat.messages.saturating_sub(*prev_messages) as f64 / elapsed
+                            }
+                        } else {
+                            0.0
+                        }
+                    });
+                sampler.insert(stat.name.clone(), (stat.messages, now));
+                (stat.name.clone(), rate)
             })
             .collect()
     }
@@ -1731,10 +1766,21 @@ impl ActorRegistry {
     /// owned by `node_id`, for publication into the cluster directory (E7,
     /// cross-node-actors). Generation is `0` (bumped on respawn/migration in E12).
     ///
+    /// When `group_rates` is `Some`, those per-group msg/s values are stamped on
+    /// every instance (avoids a second sampler tick when the caller already sampled).
+    ///
     /// # Panics
     /// If the internal mutex is poisoned.
     #[must_use]
-    pub fn local_registrations(&self, node_id: NodeId) -> Vec<ActorRegistration> {
+    pub fn local_registrations(
+        &self,
+        node_id: NodeId,
+        group_rates: Option<&HashMap<String, f64>>,
+    ) -> Vec<ActorRegistration> {
+        let group_rates = match group_rates {
+            Some(rates) => rates.clone(),
+            None => self.group_message_rates(),
+        };
         let stats: HashMap<(String, u32), (u64, u64)> = self
             .local_actor_introspection()
             .into_iter()
@@ -1750,6 +1796,7 @@ impl ActorRegistry {
         for (name, entry) in groups.iter() {
             let actor_type = ActorTypeId(entry.lifecycle.type_name().to_string());
             let migratable = entry.lifecycle.migratable();
+            let messages_per_sec = *group_rates.get(name).unwrap_or(&0.0);
             for instance in entry.lifecycle.instance_ids() {
                 let (mailbox_depth, uptime_secs) = stats
                     .get(&(name.clone(), instance))
@@ -1766,6 +1813,7 @@ impl ActorRegistry {
                     migratable,
                     mailbox_depth,
                     uptime_secs,
+                    messages_per_sec,
                 });
             }
         }

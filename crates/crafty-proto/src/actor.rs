@@ -27,7 +27,7 @@ pub struct ActorId {
 
 /// A directory entry describing one live actor instance, replicated across the
 /// cluster via `/actor/register` (cross-node-actors).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ActorRegistration {
     /// The instance's address.
     pub id: ActorId,
@@ -41,6 +41,9 @@ pub struct ActorRegistration {
     /// Seconds since the instance was spawned on the hosting node.
     #[serde(default)]
     pub uptime_secs: u64,
+    /// Recent message rate (messages/s) on the hosting node (Observer / dashboard).
+    #[serde(default)]
+    pub messages_per_sec: f64,
 }
 
 impl ActorRegistration {
@@ -53,6 +56,7 @@ impl ActorRegistration {
             migratable,
             mailbox_depth: 0,
             uptime_secs: 0,
+            messages_per_sec: 0.0,
         }
     }
 }
@@ -62,7 +66,7 @@ impl ActorRegistration {
 /// replace everything they hold for `node`, applying an update only if its
 /// `epoch` is newer — so updates are idempotent and reorder-safe. Publishing an
 /// empty `registrations` revokes all of `node`'s entries (e.g. on leave).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DirectoryUpdate {
     /// The node whose local registrations this snapshot describes.
     pub node: NodeId,
