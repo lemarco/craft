@@ -188,11 +188,11 @@ fn parse_batch_job(job: EnqueueBatchJobBody) -> Result<(Vec<u8>, EnqueueOptions)
             "each job requires payload or payload_b64".into(),
         ));
     };
-    let mut opts = EnqueueOptions::default();
-    opts.priority = job.priority;
-    if let Some(key) = job.dedup {
-        opts.dedup_key = Some(key.into_bytes());
-    }
+    let opts = EnqueueOptions {
+        priority: job.priority,
+        dedup_key: job.dedup.map(|key| key.into_bytes()),
+        ..Default::default()
+    };
     Ok((payload, opts))
 }
 

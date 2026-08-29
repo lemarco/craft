@@ -64,9 +64,8 @@ async fn post_cast(
 
 fn map_body_error(err: JobsApiError) -> ActorsApiError {
     match err {
-        JobsApiError::BadRequest(m) => ActorsApiError::BadRequest(m),
         JobsApiError::NotFound => ActorsApiError::BadRequest("not found".into()),
-        JobsApiError::Queue(m) => ActorsApiError::BadRequest(m),
+        JobsApiError::BadRequest(m) | JobsApiError::Queue(m) => ActorsApiError::BadRequest(m),
     }
 }
 
