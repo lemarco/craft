@@ -230,7 +230,7 @@ flowchart TB
 
 
 
-### B-08 🚧 De-emphasize Redis in docs & examples
+### B-08 ✅ De-emphasize Redis in docs & examples
 
 **Scenario:** all
 

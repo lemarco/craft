@@ -11,29 +11,61 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ### Added
 
-- **P3 stabilization** — scenario soak harness (`soak_actor_store`, `soak_saga`,
-  `soak_session`) in scheduled CI; public API audit ADR; 1.0 `missing_docs`
-  policy; Jepsen go/no-go evaluation.
+- (none)
 
 ### Changed
 
-- **1.0 breaking-change policy** — after `1.0.0`, semver applies to the `crafty`
-  facade API documented in [public-api-1.0.md](docs/decisions/public-api-1.0.md).
-  Breaking changes require a major bump and a CHANGELOG migration section.
-  Pre-1.0 (`0.x`) may still ship breaking facade changes on minor releases with
-  notes here.
-
-### Deprecated
-
 - (none)
 
-### Removed
+## [0.2.0] — 2026-08-29
 
-- (none)
+Product layer release: **`CraftyApp`** facade, four scenario guides, HTTP jobs API,
+WebSocket gateway example, workflow builder, and observability polish — still
+pre-1.0 (`0.x`); facade API may change on minor bumps until 1.0 RC.
 
-### Security
+### Added
 
-- (none)
+- **`CraftyApp` + `CraftyAppBuilder`** ([getting-started.md](docs/getting-started.md)) —
+  product entry over `EmptyStateMachine`: `data_dir`, `job_stream`, `manage` /
+  `manage_auto`, `enqueue` / `enqueue_opts`, `run_workflow` / `resume_workflow`,
+  `app_config_from_env` (`CRAFTY_*`).
+- **`RedbActorStateStore` + voter replication** — `StoreService`, wire routes
+  `/raft/v1/actor-store/*`, `ClusterActorStateStore`; auto-wired with
+  `CraftyClusterBuilder::data_dir`.
+- **`crafty-http`** — `POST /jobs/{stream}` → `202` + `job_id`; optional
+  `GET /jobs/{stream}/{id}` job metadata; `CraftyApp::jobs_api` behind `http-jobs`
+  feature on `crafty`.
+- **`JobQueue::job_status`** — in-memory, redb, sharded, and cluster wire lookup
+  (`POST /raft/v1/queue/job-status`).
+- **Workers / session product API on `CraftyApp`** — `worker_groups`, `workers`,
+  `cast`, `session` / `session_keyed`, `cast_session`.
+- **`WorkflowBuilder`** — fluent cross-shard saga plans; `onboarding_workflow`
+  example; `scripts/crafty-workflow.sh resume <id>` + `workflow_resume_cli` stub.
+- **`examples/websocket_gateway.rs`** — axum WS + sticky `ActorSession`;
+  `GATEWAY=1` edge split; optional `GATEWAY_TOKEN` auth; auto session reopen on
+  `NoTarget` / TTL expiry.
+- **`scripts/crafty-init.sh`** + `templates/crafty-app/` — 3-node docker-compose
+  dev template (no Redis).
+- **Dashboard** — `/introspect/queues`, `/introspect/sagas`, HTML panels, Prometheus
+  gauges for queue depth and saga state.
+- **Docs & ops** — [production-runbook.md](docs/ops/production-runbook.md),
+  scenario guides ([scenarios/](docs/scenarios/README.md)), product-scenarios ADR;
+  Redis de-emphasized in README/status.
+- **P3 stabilization** — scenario soak bins (`soak_actor_store`, `soak_saga`,
+  `soak_session`) in scheduled CI; [public-api-1.0.md](docs/decisions/public-api-1.0.md),
+  [missing-docs-1.0.md](docs/decisions/missing-docs-1.0.md), [jepsen-1.0.md](docs/decisions/jepsen-1.0.md).
+- **`crafty-node`** published to crates.io (reference binary; build from repo for
+  production).
+
+### Changed
+
+- **Pre-push publish dry-run** — per-crate order includes `crafty-http`; skips
+  `crafty` / `crafty-node` when workspace API is ahead of the last crates.io release.
+
+### Fixed
+
+- **Node router** — `Route::QueueJobStatus` wired through `NodeRouter`.
+- **Examples** — websocket session key sizing; workflow resume CLI saga id type.
 
 ## [0.1.0] — 2026-08-28
 
@@ -103,5 +135,6 @@ tested; APIs are still evolving toward a 1.0 stabilization.
 
 - Bounded `ask` timeout (30s); at-most-once side-effecting `ask` dedup; reply-encode errors surfaced; actor-stream backpressure on QUIC.
 
-[Unreleased]: https://gitlab.com/lemarco/craft/-/compare/v0.1.0...HEAD
+[Unreleased]: https://gitlab.com/lemarco/craft/-/compare/v0.2.0...HEAD
+[0.2.0]: https://gitlab.com/lemarco/craft/-/compare/v0.1.0...v0.2.0
 [0.1.0]: https://gitlab.com/lemarco/craft/-/tags/v0.1.0
