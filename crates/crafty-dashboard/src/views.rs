@@ -146,6 +146,8 @@ pub struct QueueStreamView {
     pub pending: u64,
     /// Jobs currently leased.
     pub leased: u64,
+    /// Jobs in dead letter.
+    pub dead_letter: u64,
     /// Age of the oldest ready pending job in milliseconds.
     pub oldest_pending_age_ms: u64,
 }

@@ -26,6 +26,7 @@ crafty-net.workspace = true
 crafty-macros.workspace = true
 serde = { workspace = true, features = ["derive"] }
 postcard.workspace = true
+cron = "0.15.0"
 redb = "4.2.0"
 thiserror.workspace = true
 tracing.workspace = true

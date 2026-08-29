@@ -23,9 +23,9 @@ use crafty_proto::{
 
 use crate::supervisor::ClusterState;
 use crate::{
-    EnqueueOptions, JobId, JobLifecycle, JobQueue, JobStatus, LeaseId, LeasedJob,
-    NOT_LEADER_REASON, QueueError, QueueMetrics, QueueReplicationOps, ShardedJobQueue,
-    ShardedReplication, WorkerId,
+    EnqueueOptions, JobId, JobLifecycle, JobQueue, JobStatus, LeaseId, LeasedJob, RecurringJob,
+    RedbJobQueue, NOT_LEADER_REASON, QueueError, QueueMetrics, QueueReplicationOps,
+    ShardedJobQueue, ShardedReplication, WorkerId,
 };
 
 fn job_status_to_reply(job_id: u64, status: Option<JobStatus>) -> QueueJobStatusReply {
@@ -38,6 +38,8 @@ fn job_status_to_reply(job_id: u64, status: Option<JobStatus>) -> QueueJobStatus
             priority: 0,
             leased_worker_node: None,
             leased_worker_instance: None,
+            attempts: 0,
+            max_attempts: 0,
             error: None,
         },
         Some(s) => QueueJobStatusReply {
@@ -47,11 +49,14 @@ fn job_status_to_reply(job_id: u64, status: Option<JobStatus>) -> QueueJobStatus
                 JobLifecycle::Pending => QueueJobLifecycleWire::Pending,
                 JobLifecycle::Leased => QueueJobLifecycleWire::Leased,
                 JobLifecycle::Delayed => QueueJobLifecycleWire::Delayed,
+                JobLifecycle::DeadLetter => QueueJobLifecycleWire::DeadLetter,
             }),
             payload_len: s.payload_len,
             priority: s.priority,
             leased_worker_node: s.leased_by.map(|w| w.node.0),
             leased_worker_instance: s.leased_by.map(|w| w.instance),
+            attempts: s.attempts,
+            max_attempts: s.max_attempts,
             error: None,
         },
     }
@@ -63,6 +68,7 @@ fn enqueue_options_from_request(request: &QueueEnqueueRequest) -> EnqueueOptions
         not_before_ms: (request.not_before_ms != 0).then_some(request.not_before_ms),
         shard_key: request.shard_key.clone(),
         dedup_key: request.dedup_key.clone(),
+        max_attempts: request.max_attempts,
     }
 }
 
@@ -77,6 +83,7 @@ const REPLICATE_UNAUTHENTICATED: &str = "queue replicate rejected: unknown calle
 pub struct QueueService {
     node_id: NodeId,
     streams: Mutex<HashMap<String, Arc<dyn JobQueue>>>,
+    redb_streams: Mutex<HashMap<String, Arc<RedbJobQueue>>>,
     sharded: Mutex<HashMap<String, Arc<ShardedJobQueue>>>,
     state: Arc<dyn ClusterState>,
     transport: Arc<dyn Transport>,
@@ -93,10 +100,59 @@ impl QueueService {
         Self {
             node_id,
             streams: Mutex::new(HashMap::new()),
+            redb_streams: Mutex::new(HashMap::new()),
             sharded: Mutex::new(HashMap::new()),
             state,
             transport,
         }
+    }
+
+    /// Register a local redb-backed stream and optional cron schedules.
+    ///
+    /// # Panics
+    /// If an internal mutex is poisoned.
+    pub fn register_redb_stream(
+        &self,
+        name: impl Into<String>,
+        queue: Arc<RedbJobQueue>,
+        schedules: &[RecurringJob],
+    ) {
+        let name = name.into();
+        self.streams
+            .lock()
+            .expect("poisoned")
+            .insert(name.clone(), Arc::clone(&queue) as Arc<dyn JobQueue>);
+        self.redb_streams
+            .lock()
+            .expect("poisoned")
+            .insert(name, Arc::clone(&queue));
+        for job in schedules {
+            let _ = queue.upsert_schedule(job);
+        }
+    }
+
+    /// Fire due recurring schedules on the leader and replicate mutations.
+    pub async fn tick_schedules(&self) -> Result<(), String> {
+        if !self.state.is_leader() {
+            return Ok(());
+        }
+        let backends: Vec<(String, Arc<RedbJobQueue>)> = self
+            .redb_streams
+            .lock()
+            .expect("poisoned")
+            .iter()
+            .map(|(k, v)| (k.clone(), Arc::clone(v)))
+            .collect();
+        for (stream, queue) in backends {
+            let ops = queue
+                .tick_schedules()
+                .await
+                .map_err(|e| e.to_string())?;
+            if !ops.is_empty() {
+                self.replicate_ops(&stream, &ops).await?;
+            }
+        }
+        Ok(())
     }
 
     /// Register a federated sharded stream (logical name → local [`ShardedJobQueue`]).
@@ -534,6 +590,7 @@ impl QueueService {
                         return QueueMetricsReply {
                             pending: 0,
                             leased: 0,
+                            dead_letter: 0,
                             oldest_pending_age_ms: 0,
                             error: Some(e),
                         };
@@ -545,6 +602,7 @@ impl QueueService {
                 Ok(m) => QueueMetricsReply {
                     pending: m.pending,
                     leased: m.leased,
+                    dead_letter: m.dead_letter,
                     oldest_pending_age_ms: u64::try_from(m.oldest_pending_age.as_millis())
                         .unwrap_or(u64::MAX),
                     error: None,
@@ -552,6 +610,7 @@ impl QueueService {
                 Err(e) => QueueMetricsReply {
                     pending: 0,
                     leased: 0,
+                    dead_letter: 0,
                     oldest_pending_age_ms: 0,
                     error: Some(e.to_string()),
                 },
@@ -571,6 +630,7 @@ impl QueueService {
                 Err(e) => QueueMetricsReply {
                     pending: 0,
                     leased: 0,
+                    dead_letter: 0,
                     oldest_pending_age_ms: 0,
                     error: Some(e),
                 },
@@ -593,6 +653,8 @@ impl QueueService {
                             priority: 0,
                             leased_worker_node: None,
                             leased_worker_instance: None,
+                            attempts: 0,
+                            max_attempts: 0,
                             error: Some(e),
                         };
                     }
@@ -609,6 +671,8 @@ impl QueueService {
                     priority: 0,
                     leased_worker_node: None,
                     leased_worker_instance: None,
+                    attempts: 0,
+                    max_attempts: 0,
                     error: Some(e.to_string()),
                 },
             }
@@ -633,8 +697,57 @@ impl QueueService {
                     priority: 0,
                     leased_worker_node: None,
                     leased_worker_instance: None,
+                    attempts: 0,
+                    max_attempts: 0,
                     error: Some(e),
                 },
+            }
+        }
+    }
+
+    async fn handle_requeue_dead_letter(
+        &self,
+        request: crafty_proto::QueueRequeueDeadLetterRequest,
+    ) -> crafty_proto::QueueRequeueDeadLetterReply {
+        if self.state.is_leader() {
+            match self.local_stream(&request.stream) {
+                Err(e) => crafty_proto::QueueRequeueDeadLetterReply { error: Some(e) },
+                Ok(queue) => {
+                    match queue
+                        .requeue_dead_letter_replicated(JobId(request.job_id))
+                        .await
+                    {
+                        Ok(ops) => {
+                            if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
+                                crafty_proto::QueueRequeueDeadLetterReply { error: Some(e) }
+                            } else {
+                                crafty_proto::QueueRequeueDeadLetterReply { error: None }
+                            }
+                        }
+                        Err(e) => crafty_proto::QueueRequeueDeadLetterReply {
+                            error: Some(e.to_string()),
+                        },
+                    }
+                }
+            }
+        } else {
+            let transport = Arc::clone(&self.transport);
+            let request = request.clone();
+            match self
+                .forward_leader(move |leader| {
+                    Box::pin(async move {
+                        crafty_net::send_queue_requeue_dead_letter(
+                            transport.as_ref(),
+                            leader,
+                            &request,
+                        )
+                        .await
+                    })
+                })
+                .await
+            {
+                Ok(reply) => reply,
+                Err(e) => crafty_proto::QueueRequeueDeadLetterReply { error: Some(e) },
             }
         }
     }
@@ -682,6 +795,10 @@ impl QueueService {
             Route::QueueJobStatus => Box::pin(async move {
                 let request: QueueJobStatusRequest = decode_body(&body)?;
                 Ok(encode_body(&service.handle_job_status(request).await)?)
+            }),
+            Route::QueueRequeueDeadLetter => Box::pin(async move {
+                let request: crafty_proto::QueueRequeueDeadLetterRequest = decode_body(&body)?;
+                Ok(encode_body(&service.handle_requeue_dead_letter(request).await)?)
             }),
             Route::QueueReplicate => Box::pin(async move {
                 let request: QueueReplicateRequest = decode_body(&body)?;
@@ -793,6 +910,7 @@ impl JobQueue for ClusterJobQueue {
                     not_before_ms: options.not_before_ms.unwrap_or(0),
                     shard_key: options.shard_key.clone(),
                     dedup_key: options.dedup_key.clone(),
+                    max_attempts: options.max_attempts,
                 },
             )
             .await
@@ -931,6 +1049,7 @@ impl JobQueue for ClusterJobQueue {
             Ok(QueueMetrics {
                 pending: reply.pending,
                 leased: reply.leased,
+                dead_letter: reply.dead_letter,
                 oldest_pending_age: std::time::Duration::from_millis(reply.oldest_pending_age_ms),
             })
         })
@@ -964,6 +1083,7 @@ impl JobQueue for ClusterJobQueue {
                     QueueJobLifecycleWire::Pending => JobLifecycle::Pending,
                     QueueJobLifecycleWire::Leased => JobLifecycle::Leased,
                     QueueJobLifecycleWire::Delayed => JobLifecycle::Delayed,
+                    QueueJobLifecycleWire::DeadLetter => JobLifecycle::DeadLetter,
                 },
                 payload_len: reply.payload_len,
                 priority: reply.priority,
@@ -974,7 +1094,29 @@ impl JobQueue for ClusterJobQueue {
                     }),
                     _ => None,
                 },
+                attempts: reply.attempts,
+                max_attempts: reply.max_attempts,
             }))
+        })
+    }
+
+    fn requeue_dead_letter(&self, job_id: JobId) -> BoxFuture<'_, Result<(), QueueError>> {
+        Box::pin(async move {
+            let leader = self.leader()?;
+            let reply = crafty_net::send_queue_requeue_dead_letter(
+                self.transport.as_ref(),
+                leader,
+                &crafty_proto::QueueRequeueDeadLetterRequest {
+                    stream: self.stream.clone(),
+                    job_id: job_id.0,
+                },
+            )
+            .await
+            .map_err(|e| QueueError::Backend(e.to_string()))?;
+            if let Some(err) = reply.error {
+                return Err(QueueError::Backend(err));
+            }
+            Ok(())
         })
     }
 }

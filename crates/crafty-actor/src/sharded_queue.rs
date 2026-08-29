@@ -276,11 +276,21 @@ impl JobQueue for ShardedJobQueue {
                 let m = shard.metrics().await?;
                 total.pending += m.pending;
                 total.leased += m.leased;
+                total.dead_letter += m.dead_letter;
                 if m.oldest_pending_age > total.oldest_pending_age {
                     total.oldest_pending_age = m.oldest_pending_age;
                 }
             }
             Ok(total)
+        })
+    }
+
+    fn requeue_dead_letter(&self, job_id: JobId) -> BoxFuture<'_, Result<(), QueueError>> {
+        Box::pin(async move {
+            let (shard, local) = decode_id(job_id.0);
+            self.shard(shard)?
+                .requeue_dead_letter(JobId(local))
+                .await
         })
     }
 

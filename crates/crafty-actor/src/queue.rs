@@ -53,6 +53,8 @@ pub struct EnqueueOptions {
     pub shard_key: Option<Vec<u8>>,
     /// Client-supplied idempotency token; duplicate enqueues return the same [`JobId`].
     pub dedup_key: Option<Vec<u8>>,
+    /// Maximum delivery attempts before dead letter (`0` = unlimited retries).
+    pub max_attempts: u32,
 }
 
 impl EnqueueOptions {
@@ -90,6 +92,15 @@ impl EnqueueOptions {
             ..Self::default()
         }
     }
+
+    /// Cap delivery attempts; after the limit the job moves to dead letter.
+    #[must_use]
+    pub fn max_attempts(max: u32) -> Self {
+        Self {
+            max_attempts: max,
+            ..Self::default()
+        }
+    }
 }
 
 /// Lifecycle phase of a job in the queue (observability / HTTP lookup).
@@ -101,6 +112,8 @@ pub enum JobLifecycle {
     Leased,
     /// Enqueued but `not_before` is still in the future.
     Delayed,
+    /// Exhausted retry budget — held until an operator requeues.
+    DeadLetter,
 }
 
 /// Metadata for a single job returned by [`JobQueue::job_status`].
@@ -116,6 +129,10 @@ pub struct JobStatus {
     pub priority: u8,
     /// Set when [`JobLifecycle::Leased`].
     pub leased_by: Option<WorkerId>,
+    /// Delivery attempts recorded so far.
+    pub attempts: u32,
+    /// Configured retry ceiling (`0` = unlimited).
+    pub max_attempts: u32,
 }
 
 /// Depth gauges returned by [`JobQueue::metrics`].
@@ -125,6 +142,8 @@ pub struct QueueMetrics {
     pub pending: u64,
     /// Jobs currently leased.
     pub leased: u64,
+    /// Jobs in the dead-letter set.
+    pub dead_letter: u64,
     /// Age of the oldest ready pending job.
     pub oldest_pending_age: Duration,
 }
@@ -138,6 +157,9 @@ pub enum QueueError {
     /// `lease_id` is unknown or not owned by this worker.
     #[error("invalid or expired lease")]
     InvalidLease,
+    /// Job is not in the dead-letter set.
+    #[error("job is not in dead letter")]
+    NotDeadLetter,
     /// Payload could not be encoded/decoded at the store boundary.
     #[error("queue codec error: {0}")]
     Codec(String),
@@ -225,6 +247,23 @@ pub trait JobQueue: Send + Sync {
         worker: WorkerId,
         lease_id: LeaseId,
     ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>>;
+
+    /// Move a dead-letter job back to pending (operator recovery).
+    fn requeue_dead_letter(&self, job_id: JobId) -> BoxFuture<'_, Result<(), QueueError>>;
+
+    /// Like [`requeue_dead_letter`](Self::requeue_dead_letter) but returns replication ops.
+    fn requeue_dead_letter_replicated(
+        &self,
+        job_id: JobId,
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>> {
+        Box::pin(async move {
+            self.requeue_dead_letter(job_id).await?;
+            Ok(vec![QueueReplicateOp::RequeueDeadLetter {
+                job_id: job_id.0,
+                attempts: 0,
+            }])
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -234,6 +273,33 @@ struct JobEntry {
     priority: u8,
     not_before_ms: u64,
     dedup_key: Option<Vec<u8>>,
+    attempts: u32,
+    max_attempts: u32,
+    dead_letter: bool,
+}
+
+pub(crate) struct AttemptOutcome {
+    pub attempts: u32,
+    pub dead_letter: bool,
+    pub not_before_ms: u64,
+}
+
+pub(crate) fn after_failed_attempt(attempts: u32, max_attempts: u32, now_ms: u64) -> AttemptOutcome {
+    let attempts = attempts.saturating_add(1);
+    if max_attempts > 0 && attempts >= max_attempts {
+        AttemptOutcome {
+            attempts,
+            dead_letter: true,
+            not_before_ms: now_ms,
+        }
+    } else {
+        let delay_ms = (1000u64 * u64::from(attempts)).min(300_000);
+        AttemptOutcome {
+            attempts,
+            dead_letter: false,
+            not_before_ms: now_ms.saturating_add(delay_ms),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -302,6 +368,13 @@ impl Inner {
 
     fn reclaim_expired(&mut self) {
         let now = Instant::now();
+        let now_ms = u64::try_from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis(),
+        )
+        .unwrap_or(u64::MAX);
         let expired: Vec<LeaseId> = self
             .leases
             .iter()
@@ -310,9 +383,81 @@ impl Inner {
             .collect();
         for lease_id in expired {
             if let Some(lease) = self.leases.remove(&lease_id) {
-                self.pending.push_back(lease.job_id);
+                if let Some(entry) = self.jobs.get_mut(&lease.job_id) {
+                    let outcome =
+                        after_failed_attempt(entry.attempts, entry.max_attempts, now_ms);
+                    entry.attempts = outcome.attempts;
+                    entry.dead_letter = outcome.dead_letter;
+                    entry.not_before_ms = outcome.not_before_ms;
+                    if !outcome.dead_letter {
+                        self.pending.push_back(lease.job_id);
+                    }
+                }
             }
         }
+    }
+
+    fn release_expired_lease(
+        &mut self,
+        lease_id: LeaseId,
+        now_ms: u64,
+    ) -> Result<(JobId, AttemptOutcome), QueueError> {
+        let lease = self
+            .leases
+            .remove(&lease_id)
+            .ok_or(QueueError::InvalidLease)?;
+        let entry = self
+            .jobs
+            .get_mut(&lease.job_id)
+            .ok_or(QueueError::InvalidLease)?;
+        let outcome = after_failed_attempt(entry.attempts, entry.max_attempts, now_ms);
+        entry.attempts = outcome.attempts;
+        entry.dead_letter = outcome.dead_letter;
+        entry.not_before_ms = outcome.not_before_ms;
+        if !outcome.dead_letter {
+            self.pending.push_back(lease.job_id);
+        }
+        Ok((lease.job_id, outcome))
+    }
+
+    fn release_lease(
+        &mut self,
+        lease_id: LeaseId,
+        worker: WorkerId,
+        now_ms: u64,
+    ) -> Result<(JobId, AttemptOutcome), QueueError> {
+        let lease = self
+            .leases
+            .remove(&lease_id)
+            .ok_or(QueueError::InvalidLease)?;
+        if lease.worker != worker {
+            self.leases.insert(lease_id, lease);
+            return Err(QueueError::InvalidLease);
+        }
+        let entry = self
+            .jobs
+            .get_mut(&lease.job_id)
+            .ok_or(QueueError::InvalidLease)?;
+        let outcome = after_failed_attempt(entry.attempts, entry.max_attempts, now_ms);
+        entry.attempts = outcome.attempts;
+        entry.dead_letter = outcome.dead_letter;
+        entry.not_before_ms = outcome.not_before_ms;
+        if !outcome.dead_letter {
+            self.pending.push_back(lease.job_id);
+        }
+        Ok((lease.job_id, outcome))
+    }
+
+    fn requeue_dead_letter(&mut self, job_id: JobId, now_ms: u64) -> Result<(), QueueError> {
+        let entry = self.jobs.get_mut(&job_id).ok_or(QueueError::NotDeadLetter)?;
+        if !entry.dead_letter {
+            return Err(QueueError::NotDeadLetter);
+        }
+        entry.dead_letter = false;
+        entry.attempts = 0;
+        entry.not_before_ms = now_ms;
+        self.pending.push_back(job_id);
+        Ok(())
     }
 
     fn job_status(&self, job_id: JobId) -> Option<JobStatus> {
@@ -329,7 +474,9 @@ impl Inner {
             .values()
             .find(|lease| lease.job_id == job_id)
             .map(|lease| lease.worker);
-        let lifecycle = if leased_by.is_some() {
+        let lifecycle = if entry.dead_letter {
+            JobLifecycle::DeadLetter
+        } else if leased_by.is_some() {
             JobLifecycle::Leased
         } else if entry.not_before_ms > now_ms {
             JobLifecycle::Delayed
@@ -344,6 +491,8 @@ impl Inner {
             payload_len: u64::try_from(entry.payload.len()).unwrap_or(u64::MAX),
             priority: entry.priority,
             leased_by,
+            attempts: entry.attempts,
+            max_attempts: entry.max_attempts,
         })
     }
 
@@ -371,6 +520,11 @@ impl Inner {
         QueueMetrics {
             pending: ready_pending as u64,
             leased: self.leases.len() as u64,
+            dead_letter: self
+                .jobs
+                .values()
+                .filter(|entry| entry.dead_letter)
+                .count() as u64,
             oldest_pending_age: oldest,
         }
     }
@@ -436,6 +590,9 @@ impl JobQueue for InMemoryJobQueue {
                         priority: options.priority,
                         not_before_ms,
                         dedup_key: dedup_key.clone(),
+                        attempts: 0,
+                        max_attempts: options.max_attempts,
+                        dead_letter: false,
                     },
                 );
                 inner.pending.push_back(JobId(job_id));
@@ -452,6 +609,8 @@ impl JobQueue for InMemoryJobQueue {
                         priority: options.priority,
                         not_before_ms,
                         dedup_key: options.dedup_key.clone(),
+                        attempts: 0,
+                        max_attempts: options.max_attempts,
                     }],
                 )
             });
@@ -473,6 +632,8 @@ impl JobQueue for InMemoryJobQueue {
                     priority,
                     not_before_ms,
                     dedup_key,
+                    attempts,
+                    max_attempts,
                 } => {
                     if let Some(key) = dedup_key
                         && inner.dedup_lookup(key).is_some()
@@ -489,6 +650,9 @@ impl JobQueue for InMemoryJobQueue {
                             priority: *priority,
                             not_before_ms: *not_before_ms,
                             dedup_key: dedup_key.clone(),
+                            attempts: *attempts,
+                            max_attempts: *max_attempts,
+                            dead_letter: false,
                         });
                         inner.pending.push_back(JobId(*job_id));
                         if let Some(key) = dedup_key {
@@ -526,14 +690,48 @@ impl JobQueue for InMemoryJobQueue {
                     inner.remove_job(JobId(*job_id));
                     Ok(())
                 }
-                QueueReplicateOp::Nack { lease_id, job_id }
-                | QueueReplicateOp::Reclaim { lease_id, job_id } => {
+                QueueReplicateOp::Nack {
+                    lease_id,
+                    job_id,
+                    attempts,
+                    dead_letter,
+                    not_before_ms,
+                }
+                | QueueReplicateOp::Reclaim {
+                    lease_id,
+                    job_id,
+                    attempts,
+                    dead_letter,
+                    not_before_ms,
+                } => {
                     inner.leases.remove(&LeaseId(*lease_id));
-                    if inner.jobs.contains_key(&JobId(*job_id)) {
+                    if let Some(entry) = inner.jobs.get_mut(&JobId(*job_id)) {
+                        entry.attempts = *attempts;
+                        entry.dead_letter = *dead_letter;
+                        entry.not_before_ms = *not_before_ms;
+                        if !dead_letter {
+                            inner.pending.push_back(JobId(*job_id));
+                        }
+                    }
+                    Ok(())
+                }
+                QueueReplicateOp::RequeueDeadLetter { job_id, attempts } => {
+                    if let Some(entry) = inner.jobs.get_mut(&JobId(*job_id)) {
+                        entry.dead_letter = false;
+                        entry.attempts = *attempts;
+                        entry.not_before_ms = u64::try_from(
+                            SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis(),
+                        )
+                        .unwrap_or(u64::MAX);
                         inner.pending.push_back(JobId(*job_id));
                     }
                     Ok(())
                 }
+                QueueReplicateOp::UpsertSchedule { .. }
+                | QueueReplicateOp::UpdateScheduleNextRun { .. } => Ok(()),
             })
         })
     }
@@ -567,15 +765,27 @@ impl JobQueue for InMemoryJobQueue {
                     .map(|(id, lease)| (*id, lease.job_id))
                     .collect()
             };
-            for (lease_id, job_id) in expired {
-                self.with_inner(|inner| {
-                    inner.leases.remove(&lease_id);
-                    inner.pending.push_back(job_id);
+            let now_ms = u64::try_from(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis(),
+            )
+            .unwrap_or(u64::MAX);
+            for (lease_id, _job_id) in expired {
+                let op = self.with_inner(|inner| {
+                    let (job_id, outcome) = inner.release_expired_lease(lease_id, now_ms)?;
+                    Ok::<_, QueueError>(QueueReplicateOp::Reclaim {
+                        lease_id: lease_id.0,
+                        job_id: job_id.0,
+                        attempts: outcome.attempts,
+                        dead_letter: outcome.dead_letter,
+                        not_before_ms: outcome.not_before_ms,
+                    })
                 });
-                ops.push(QueueReplicateOp::Reclaim {
-                    lease_id: lease_id.0,
-                    job_id: job_id.0,
-                });
+                if let Ok(op) = op {
+                    ops.push(op);
+                }
             }
 
             let (jobs, lease_ops) = self.with_inner(|inner| {
@@ -664,21 +874,49 @@ impl JobQueue for InMemoryJobQueue {
         lease_id: LeaseId,
     ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>> {
         Box::pin(async move {
-            let job_id = self.with_inner(|inner| {
-                let lease = inner
-                    .leases
-                    .remove(&lease_id)
-                    .ok_or(QueueError::InvalidLease)?;
-                if lease.worker != worker {
-                    inner.leases.insert(lease_id, lease);
-                    return Err(QueueError::InvalidLease);
-                }
-                inner.pending.push_back(lease.job_id);
-                Ok(lease.job_id.0)
-            })?;
+            let now_ms = u64::try_from(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis(),
+            )
+            .unwrap_or(u64::MAX);
+            let (job_id, outcome) =
+                self.with_inner(|inner| inner.release_lease(lease_id, worker, now_ms))?;
             Ok(vec![QueueReplicateOp::Nack {
                 lease_id: lease_id.0,
-                job_id,
+                job_id: job_id.0,
+                attempts: outcome.attempts,
+                dead_letter: outcome.dead_letter,
+                not_before_ms: outcome.not_before_ms,
+            }])
+        })
+    }
+
+    fn requeue_dead_letter(&self, job_id: JobId) -> BoxFuture<'_, Result<(), QueueError>> {
+        Box::pin(async move {
+            self.requeue_dead_letter_replicated(job_id)
+                .await
+                .map(|_| ())
+        })
+    }
+
+    fn requeue_dead_letter_replicated(
+        &self,
+        job_id: JobId,
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>> {
+        Box::pin(async move {
+            let now_ms = u64::try_from(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis(),
+            )
+            .unwrap_or(u64::MAX);
+            self.with_inner(|inner| inner.requeue_dead_letter(job_id, now_ms))?;
+            Ok(vec![QueueReplicateOp::RequeueDeadLetter {
+                job_id: job_id.0,
+                attempts: 0,
             }])
         })
     }
@@ -887,5 +1125,28 @@ mod tests {
         assert_eq!(status.lifecycle, JobLifecycle::Leased);
         q.ack(worker(0), leased[0].lease_id).await.unwrap();
         assert!(q.job_status(id).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn max_attempts_moves_job_to_dead_letter() {
+        let q = InMemoryJobQueue::new(Duration::from_secs(30));
+        let id = q
+            .enqueue_opts(b"poison", EnqueueOptions::max_attempts(2))
+            .await
+            .unwrap();
+        for _ in 0..2 {
+            let leased = q.lease(worker(0), 1).await.unwrap();
+            q.nack(worker(0), leased[0].lease_id).await.unwrap();
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+        let status = q.job_status(id).await.unwrap().expect("dead letter");
+        assert_eq!(status.lifecycle, JobLifecycle::DeadLetter);
+        assert_eq!(q.metrics().await.unwrap().dead_letter, 1);
+        assert!(q.lease(worker(1), 1).await.unwrap().is_empty());
+
+        q.requeue_dead_letter(id).await.unwrap();
+        let pending = q.job_status(id).await.unwrap().expect("pending again");
+        assert_eq!(pending.lifecycle, JobLifecycle::Pending);
+        assert_eq!(pending.attempts, 0);
     }
 }

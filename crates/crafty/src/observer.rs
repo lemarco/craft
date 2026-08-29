@@ -344,6 +344,12 @@ impl<M: StateMachine> Observer for CraftyObserver<M> {
                         metric_u64(m.leased),
                     );
                     metrics.set(
+                        "crafty_queue_dead_letter",
+                        "Jobs in dead letter.",
+                        &[("stream", &stream)],
+                        metric_u64(m.dead_letter),
+                    );
+                    metrics.set(
                         "crafty_queue_oldest_pending_age_ms",
                         "Age of oldest ready pending job.",
                         &[("stream", &stream)],
@@ -353,6 +359,7 @@ impl<M: StateMachine> Observer for CraftyObserver<M> {
                         stream,
                         pending: m.pending,
                         leased: m.leased,
+                        dead_letter: m.dead_letter,
                         oldest_pending_age_ms,
                     });
                 }

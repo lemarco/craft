@@ -37,9 +37,10 @@ use crafty_actor::{
     ClusterJobQueue, ClusterMessaging, ClusterState, ClusterSupervisor, DEFAULT_DRAIN_TIMEOUT,
     DirectoryPolicy, DirectoryRetry, DirectorySync, JobQueue, MailboxSpool,
     MembershipAutoscalePolicy, NodeService, QueueAutoscaleRegistry, QueueService, RaftDriver,
-    RedbActorStateStore, RedbJobQueue, RedbMailboxSpool, ResourceProfile, RuntimeConfig,
-    ShardedJobQueue, StoreService, UserActor, VpsResources, run_mailbox_spool_drainer,
-    run_queue_autoscaler, run_queue_membership_autoscaler, spawn_multi_raft_node, spawn_node,
+    RecurringJob, RedbActorStateStore, RedbJobQueue, RedbMailboxSpool, ResourceProfile,
+    RuntimeConfig, ShardedJobQueue, StoreService, UserActor, VpsResources,
+    run_mailbox_spool_drainer, run_queue_autoscaler, run_queue_membership_autoscaler,
+    run_queue_schedule_ticker, spawn_multi_raft_node, spawn_node,
 };
 
 use crate::certs::{CertReloadHandle, PemSecurity};
@@ -121,6 +122,12 @@ struct ShardedJobSpec {
     shard_count: usize,
 }
 
+#[derive(Debug, Clone)]
+struct RecurringJobSpec {
+    stream: String,
+    job: RecurringJob,
+}
+
 /// Type-erased membership autoscale background task spawned at node start.
 type MembershipAutoscaleTask = Box<
     dyn FnOnce(
@@ -168,6 +175,7 @@ pub struct CraftyClusterBuilder<M: StateMachine> {
     managed: Vec<ManageFn>,
     job_streams: Vec<JobStreamSpec>,
     job_sharded: Vec<ShardedJobSpec>,
+    recurring_jobs: Vec<RecurringJobSpec>,
     job_autoscale: Vec<AutoscaleTask>,
     job_membership_autoscale: Vec<MembershipAutoscaleTask>,
     queue_autoscale_meta: BTreeMap<String, QueueAutoscalePolicyCommand>,
@@ -215,6 +223,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             managed: Vec::new(),
             job_streams: Vec::new(),
             job_sharded: Vec::new(),
+            recurring_jobs: Vec::new(),
             job_autoscale: Vec::new(),
             job_membership_autoscale: Vec::new(),
             queue_autoscale_meta: BTreeMap::new(),
@@ -640,6 +649,19 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             name: name.to_string(),
             path: Some(path.into()),
             lease_timeout,
+        });
+        self
+    }
+
+    /// Register a cron-driven recurring job on `stream` ([`RecurringJob`]).
+    ///
+    /// Requires [`job_queue`](Self::job_queue) on the same stream. Schedules persist in
+    /// `queue-{stream}.redb` and fire on the queue leader.
+    #[must_use]
+    pub fn recurring_job(mut self, stream: &str, job: RecurringJob) -> Self {
+        self.recurring_jobs.push(RecurringJobSpec {
+            stream: stream.to_string(),
+            job,
         });
         self
     }
@@ -1219,13 +1241,19 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                     })
                     .join(format!("queue-{}.redb", spec.name)),
             };
-            let local: Arc<dyn JobQueue> = Arc::new(
+            let local = Arc::new(
                 RedbJobQueue::open(&path, spec.lease_timeout)
                     .unwrap_or_else(|e| panic!("open job queue at {}: {e}", path.display())),
             );
-            local_backends.insert(spec.name.clone(), Arc::clone(&local));
+            local_backends.insert(spec.name.clone(), Arc::clone(&local) as Arc<dyn JobQueue>);
             if let Some(service) = queue_service.as_ref() {
-                service.register_stream(&spec.name, Arc::clone(&local));
+                let schedules: Vec<RecurringJob> = self
+                    .recurring_jobs
+                    .iter()
+                    .filter(|rj| rj.stream == spec.name)
+                    .map(|rj| rj.job.clone())
+                    .collect();
+                service.register_redb_stream(&spec.name, Arc::clone(&local), &schedules);
             }
             let client: Arc<dyn JobQueue> = Arc::new(ClusterJobQueue::new(
                 &spec.name,
@@ -1520,6 +1548,16 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
             tasks.push(tokio::spawn(async move {
                 run_mailbox_spool_drainer(messaging, Duration::from_millis(500), stop_rx).await;
+            }));
+        }
+
+        if let Some(service) = queue_service.as_ref()
+            && !self.recurring_jobs.is_empty()
+        {
+            let service = Arc::clone(service);
+            let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            tasks.push(tokio::spawn(async move {
+                run_queue_schedule_ticker(service, Duration::from_secs(1), stop_rx).await;
             }));
         }
 

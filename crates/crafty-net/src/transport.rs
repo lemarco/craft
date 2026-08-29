@@ -22,7 +22,8 @@ use crafty_proto::{
     LeaveRequest, LeaveResponse, MigrateReply, MigrateRequest, NodeId, PeerBook, QueueAckReply,
     QueueAckRequest, QueueEnqueueReply, QueueEnqueueRequest, QueueJobStatusReply,
     QueueJobStatusRequest, QueueLeaseReply, QueueLeaseRequest, QueueMetricsReply,
-    QueueMetricsRequest, QueueNackReply, QueueNackRequest, QueueReplicateReply,
+    QueueMetricsRequest, QueueNackReply, QueueNackRequest, QueueRequeueDeadLetterReply,
+    QueueRequeueDeadLetterRequest, QueueReplicateReply,
     QueueReplicateRequest, RaftRpc, RaftRpcReply, RegisterAck, ScaleReply, ScaleRequest,
     SpawnReply, SpawnRequest, StopReply, StopRequest, StoreCompareAndSetReply,
     StoreCompareAndSetRequest, StoreDeleteReply, StoreDeleteRequest, StoreReplicateReply,
@@ -435,6 +436,20 @@ pub async fn send_queue_job_status<T: Transport + ?Sized>(
 ) -> Result<QueueJobStatusReply, TransportError> {
     let body = encode_body(request)?;
     let response = transport.send(peer, Route::QueueJobStatus, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Requeue a dead-letter job (`/queue/requeue-dead-letter`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_queue_requeue_dead_letter<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &QueueRequeueDeadLetterRequest,
+) -> Result<QueueRequeueDeadLetterReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::QueueRequeueDeadLetter, body).await?;
     Ok(decode_body(&response)?)
 }
 

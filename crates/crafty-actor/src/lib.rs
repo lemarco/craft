@@ -24,6 +24,7 @@ mod meta;
 mod placement;
 mod queue;
 mod queue_autoscale;
+mod queue_schedule;
 mod queue_service;
 mod redb_queue;
 mod redb_store;
@@ -57,6 +58,7 @@ pub use placement::{
     ClusterControl, ClusterScaleError, MigrateError, NOT_LEADER_REASON, RemoteSpawnError,
     ScalePlan, plan_scale,
 };
+pub(crate) use queue::after_failed_attempt;
 pub use queue::{
     EnqueueOptions, InMemoryJobQueue, JobId, JobLifecycle, JobQueue, JobStatus, LeaseId, LeasedJob,
     QueueError, QueueMetrics, QueueReplicateOp, QueueReplicationOps, WorkerId, run_queue_consumer,
@@ -64,6 +66,9 @@ pub use queue::{
 pub use queue_autoscale::{
     AutoscalePolicy, MembershipAutoscalePolicy, QueueAutoscaleRegistry, run_queue_autoscaler,
     run_queue_membership_autoscaler,
+};
+pub use queue_schedule::{
+    RecurringJob, parse_cron, run_queue_schedule_ticker, run_recurring_job_ticker,
 };
 pub use queue_service::{ClusterJobQueue, QueueService};
 pub use redb_queue::RedbJobQueue;

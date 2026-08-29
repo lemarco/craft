@@ -47,6 +47,8 @@ pub const QUEUE_NACK_PATH: &str = "/raft/v1/queue/nack";
 pub const QUEUE_METRICS_PATH: &str = "/raft/v1/queue/metrics";
 /// Lookup job metadata by id.
 pub const QUEUE_JOB_STATUS_PATH: &str = "/raft/v1/queue/job-status";
+/// Requeue a dead-letter job.
+pub const QUEUE_REQUEUE_DEAD_LETTER_PATH: &str = "/raft/v1/queue/requeue-dead-letter";
 /// Leader → follower replication of queue mutations (failover durability).
 pub const QUEUE_REPLICATE_PATH: &str = "/raft/v1/queue/replicate";
 /// Set an actor workflow key on the store leader ([actor-state-store](../../../docs/decisions/actor-state-store.md)).
@@ -114,6 +116,8 @@ pub enum Route {
     QueueMetrics,
     /// [`QUEUE_JOB_STATUS_PATH`].
     QueueJobStatus,
+    /// [`QUEUE_REQUEUE_DEAD_LETTER_PATH`].
+    QueueRequeueDeadLetter,
     /// [`QUEUE_REPLICATE_PATH`].
     QueueReplicate,
     /// [`ACTOR_STORE_SET_PATH`].
@@ -128,7 +132,7 @@ pub enum Route {
 
 impl Route {
     /// Every route, in a stable order (handy for building a router or tests).
-    pub const ALL: [Route; 24] = [
+    pub const ALL: [Route; 25] = [
         Route::PeerWire,
         Route::ClientWire,
         Route::ClusterJoin,
@@ -148,6 +152,7 @@ impl Route {
         Route::QueueNack,
         Route::QueueMetrics,
         Route::QueueJobStatus,
+        Route::QueueRequeueDeadLetter,
         Route::QueueReplicate,
         Route::ActorStoreSet,
         Route::ActorStoreDelete,
@@ -178,6 +183,7 @@ impl Route {
             Route::QueueNack => QUEUE_NACK_PATH,
             Route::QueueMetrics => QUEUE_METRICS_PATH,
             Route::QueueJobStatus => QUEUE_JOB_STATUS_PATH,
+            Route::QueueRequeueDeadLetter => QUEUE_REQUEUE_DEAD_LETTER_PATH,
             Route::QueueReplicate => QUEUE_REPLICATE_PATH,
             Route::ActorStoreSet => ACTOR_STORE_SET_PATH,
             Route::ActorStoreDelete => ACTOR_STORE_DELETE_PATH,
@@ -215,6 +221,7 @@ impl Route {
             | Route::QueueNack
             | Route::QueueMetrics
             | Route::QueueJobStatus
+            | Route::QueueRequeueDeadLetter
             | Route::QueueReplicate
             | Route::ActorStoreSet
             | Route::ActorStoreDelete

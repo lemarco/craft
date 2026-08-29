@@ -82,6 +82,7 @@ const fn lifecycle_name(lifecycle: JobLifecycle) -> &'static str {
         JobLifecycle::Pending => "pending",
         JobLifecycle::Leased => "leased",
         JobLifecycle::Delayed => "delayed",
+        JobLifecycle::DeadLetter => "dead_letter",
     }
 }
 

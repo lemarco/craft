@@ -113,6 +113,7 @@ impl Observer for Fake {
                     stream: "jobs".into(),
                     pending: 5,
                     leased: 2,
+                    dead_letter: 1,
                     oldest_pending_age_ms: 1200,
                 }],
             }

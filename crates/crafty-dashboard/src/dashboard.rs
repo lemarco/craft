@@ -54,7 +54,7 @@ pub(crate) const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
   </section>
   <section>
     <h2>Job queues</h2>
-    <table><thead><tr><th>stream</th><th>pending</th><th>leased</th><th>oldest (ms)</th></tr></thead><tbody id="queues"></tbody></table>
+    <table><thead><tr><th>stream</th><th>pending</th><th>leased</th><th>dead letter</th><th>oldest (ms)</th></tr></thead><tbody id="queues"></tbody></table>
   </section>
   <section>
     <h2>Workflows</h2>
@@ -84,7 +84,7 @@ async function refresh() {
     $('actors').innerHTML = (a||[]).map(x =>
       `<tr><td>${x.id}</td><td>${x.actor_type}</td><td>${x.node}</td><td>${x.mailbox_depth}</td><td>${x.generation}</td></tr>`).join('');
     $('queues').innerHTML = ((q && q.streams) || []).map(x =>
-      `<tr><td>${x.stream}</td><td>${x.pending}</td><td>${x.leased}</td><td>${x.oldest_pending_age_ms}</td></tr>`).join('');
+      `<tr><td>${x.stream}</td><td>${x.pending}</td><td>${x.leased}</td><td>${x.dead_letter ?? 0}</td><td>${x.oldest_pending_age_ms}</td></tr>`).join('');
     $('sagas').innerHTML = (s||[]).map(x =>
       `<tr><td>${x.saga_id.slice(0,16)}…</td><td>${x.phase}</td><td>${x.completed_steps}</td><td>${x.failed_step ?? '—'}</td></tr>`).join('');
   } catch (e) { /* transient during elections */ }
