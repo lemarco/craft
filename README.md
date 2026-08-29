@@ -24,9 +24,9 @@
 
 | | |
 |---|---|
-| **Version** | `0.1.0` (pre-1.0) |
-| **Maturity** | Advanced prototype — E2E, chaos, sim, release CI |
-| **Release** | Ready — [releasing.md](docs/releasing.md) |
+| **Version** | `0.2.0` (pre-1.0) |
+| **Maturity** | Advanced prototype — published on [crates.io](https://crates.io/crates/crafty) |
+| **Release** | v0.2.0 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/crafty/0.2.0](https://docs.rs/crafty/0.2.0) |
 | **Full status** | [docs/status.md](docs/status.md) |
 
 ### Highlights
