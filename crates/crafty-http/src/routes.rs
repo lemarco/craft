@@ -14,6 +14,7 @@ use crate::JobsApiState;
 use crate::types::{
     AckBatchAccepted, AckBatchBody, EnqueueAccepted, EnqueueBatchAccepted, EnqueueBatchBody,
     EnqueueBatchJobBody, EnqueueJsonBody, JobStatusResponse, JobsApiError, LeasedByResponse,
+    RequeueAccepted,
 };
 
 /// Query parameters for optional enqueue behaviour.
@@ -31,6 +32,7 @@ pub fn jobs_router() -> Router<Arc<JobsApiState>> {
         .route("/jobs/{stream}", post(post_job))
         .route("/jobs/{stream}/batch", post(post_job_batch))
         .route("/jobs/{stream}/ack-batch", post(post_ack_batch))
+        .route("/jobs/{stream}/{job_id}/requeue", post(post_requeue))
         .route("/jobs/{stream}/{job_id}", get(get_job))
 }
 
@@ -137,6 +139,19 @@ async fn get_job(
     }))
 }
 
+async fn post_requeue(
+    State(state): State<Arc<JobsApiState>>,
+    Path((stream, job_id)): Path<(String, u64)>,
+) -> Result<impl IntoResponse, JobsApiError> {
+    (state.requeue_dead_letter)(stream, job_id)
+        .await
+        .map_err(|e| JobsApiError::Queue(e.to_string()))?;
+    Ok((
+        StatusCode::OK,
+        axum::Json(RequeueAccepted { job_id }),
+    ))
+}
+
 const fn lifecycle_name(lifecycle: JobLifecycle) -> &'static str {
     match lifecycle {
         JobLifecycle::Pending => "pending",
@@ -226,13 +241,19 @@ mod tests {
         enqueue_batch: crate::EnqueueBatchFn,
         ack_batch: crate::AckBatchFn,
         job_status: crate::JobStatusFn,
+        requeue_dead_letter: crate::RequeueDeadLetterFn,
     ) -> Arc<JobsApiState> {
         Arc::new(JobsApiState {
             enqueue,
             enqueue_batch,
             ack_batch,
             job_status,
+            requeue_dead_letter,
         })
+    }
+
+    fn noop_requeue() -> crate::RequeueDeadLetterFn {
+        Arc::new(|_, _| Box::pin(future::ready(Ok(()))))
     }
 
     fn noop_batch() -> crate::EnqueueBatchFn {
@@ -254,6 +275,7 @@ mod tests {
             noop_batch(),
             noop_ack(),
             Arc::new(|_, _| Box::pin(future::ready(Ok(None)))),
+            noop_requeue(),
         );
         let app = jobs_router().with_state(state);
         let req = Request::builder()
@@ -277,6 +299,7 @@ mod tests {
             }),
             noop_ack(),
             Arc::new(|_, _| Box::pin(future::ready(Ok(None)))),
+            noop_requeue(),
         );
         let app = jobs_router().with_state(state);
         let req = Request::builder()
@@ -304,6 +327,7 @@ mod tests {
                 Box::pin(future::ready(Ok(())))
             }),
             Arc::new(|_, _| Box::pin(future::ready(Ok(None)))),
+            noop_requeue(),
         );
         let app = jobs_router().with_state(state);
         let req = Request::builder()
@@ -337,6 +361,7 @@ mod tests {
                     max_attempts: 0,
                 }))))
             }),
+            noop_requeue(),
         );
         let app = jobs_router().with_state(state);
         let req = Request::builder()
@@ -355,6 +380,7 @@ mod tests {
             noop_batch(),
             noop_ack(),
             Arc::new(|_, _| Box::pin(future::ready(Ok(None)))),
+            noop_requeue(),
         );
         let app = jobs_router().with_state(state);
         let req = Request::builder()
@@ -364,6 +390,29 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn post_requeue_returns_ok() {
+        let state = test_state(
+            Arc::new(|_, _, _| Box::pin(future::ready(Ok(JobId(1))))),
+            noop_batch(),
+            noop_ack(),
+            Arc::new(|_, _| Box::pin(future::ready(Ok(None)))),
+            Arc::new(|stream, job_id| {
+                assert_eq!(stream, "emails");
+                assert_eq!(job_id, 9);
+                Box::pin(future::ready(Ok(())))
+            }),
+        );
+        let app = jobs_router().with_state(state);
+        let req = Request::builder()
+            .method("POST")
+            .uri("/jobs/emails/9/requeue")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 
     #[test]

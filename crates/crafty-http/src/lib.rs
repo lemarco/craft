@@ -7,6 +7,7 @@
 //! - `POST /jobs/{stream}` → `202 Accepted` + `{ "job_id": … }`
 //! - `POST /jobs/{stream}/batch` → `202 Accepted` + `{ "job_ids": […] }`
 //! - `POST /jobs/{stream}/ack-batch` → `200 OK` + `{ "acked": N }`
+//! - `POST /jobs/{stream}/{id}/requeue` → `200 OK` + `{ "job_id": … }` (dead-letter retry)
 //! - `GET /jobs/{stream}/{id}` → job metadata when the queue supports lookup
 //!
 //! Wire it to [`CraftyApp::jobs_api`](https://docs.rs/crafty/latest/crafty/struct.CraftyApp.html#method.jobs_api)
@@ -26,6 +27,7 @@ pub use routes::parse_enqueue_body;
 pub use types::{
     AckBatchAccepted, AckBatchBody, EnqueueAccepted, EnqueueBatchAccepted, EnqueueBatchBody,
     EnqueueBatchJobBody, EnqueueJsonBody, JobStatusResponse, JobsApiError, LeasedByResponse,
+    RequeueAccepted,
 };
 
 /// Async enqueue hook used by [`JobsApi`].
@@ -70,12 +72,20 @@ pub type JobStatusFn = Arc<
         + Sync,
 >;
 
+/// Async dead-letter requeue hook used by [`JobsApi`].
+pub type RequeueDeadLetterFn = Arc<
+    dyn Fn(String, u64) -> Pin<Box<dyn Future<Output = Result<(), QueueError>> + Send>>
+        + Send
+        + Sync,
+>;
+
 /// Shared Axum state for job routes.
 pub struct JobsApiState {
     pub(crate) enqueue: EnqueueFn,
     pub(crate) enqueue_batch: EnqueueBatchFn,
     pub(crate) ack_batch: AckBatchFn,
     pub(crate) job_status: JobStatusFn,
+    pub(crate) requeue_dead_letter: RequeueDeadLetterFn,
 }
 
 /// HTTP job enqueue + lookup API.
@@ -85,6 +95,7 @@ pub struct JobsApi {
     enqueue_batch: EnqueueBatchFn,
     ack_batch: AckBatchFn,
     job_status: JobStatusFn,
+    requeue_dead_letter: RequeueDeadLetterFn,
 }
 
 impl JobsApi {
@@ -95,12 +106,14 @@ impl JobsApi {
         enqueue_batch: EnqueueBatchFn,
         ack_batch: AckBatchFn,
         job_status: JobStatusFn,
+        requeue_dead_letter: RequeueDeadLetterFn,
     ) -> Self {
         Self {
             enqueue,
             enqueue_batch,
             ack_batch,
             job_status,
+            requeue_dead_letter,
         }
     }
 
@@ -117,6 +130,7 @@ impl JobsApi {
             enqueue_batch: self.enqueue_batch,
             ack_batch: self.ack_batch,
             job_status: self.job_status,
+            requeue_dead_letter: self.requeue_dead_letter,
         }
     }
 }

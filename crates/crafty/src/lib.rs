@@ -40,6 +40,7 @@ mod app;
 mod builder;
 mod certs;
 mod cluster;
+mod consumer;
 pub mod discovery;
 mod env_config;
 #[cfg(feature = "http-jobs")]
@@ -65,6 +66,8 @@ pub use {crafty_dashboard as dashboard, crafty_macros as macros, crafty_net as n
 pub use crafty_storage as storage;
 
 pub use app::{CraftyApp, CraftyAppBuilder, EmptyStateMachine, WorkerInfo};
+pub use consumer::{ConsumerOpts, JobConsumer};
+pub use crafty_macros::consumer;
 #[cfg(feature = "http-jobs")]
 pub use gateway::{CraftyGatewayState, GatewayConfig, build_gateway_router, spawn_gateway};
 pub use builder::{CraftyClusterBuilder, StartError};

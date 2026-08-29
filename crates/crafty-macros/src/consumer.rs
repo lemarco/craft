@@ -1,0 +1,117 @@
+//! `#[consumer("stream")]` expansion helpers.
+
+use proc_macro2::TokenStream as TokenStream2;
+use quote::quote;
+use syn::{GenericArgument, Ident, ItemFn, PathArguments, ReturnType, Type};
+
+fn to_pascal_case(s: &str) -> String {
+    s.split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            }
+        })
+        .collect()
+}
+
+fn is_byte_slice(ty: &Type) -> bool {
+    match ty {
+        Type::Reference(r) => matches!(&*r.elem, Type::Slice(s) if matches!(&*s.elem, Type::Path(p) if p.path.is_ident("u8"))),
+        _ => false,
+    }
+}
+
+fn result_err_type(ty: &Type) -> Option<Type> {
+    let Type::Path(type_path) = ty else {
+        return None;
+    };
+    let seg = type_path.path.segments.last()?;
+    if seg.ident != "Result" {
+        return None;
+    }
+    let PathArguments::AngleBracketed(args) = &seg.arguments else {
+        return None;
+    };
+    let err = args.args.iter().nth(1)?;
+    match err {
+        GenericArgument::Type(t) => Some(t.clone()),
+        _ => None,
+    }
+}
+
+pub(crate) fn expand_consumer(stream: &str, input_fn: ItemFn) -> TokenStream2 {
+    let fn_name = &input_fn.sig.ident;
+
+    if input_fn.sig.asyncness.is_none() {
+        return syn::Error::new_spanned(
+            &input_fn.sig.fn_token,
+            "`#[consumer]` must be applied to an `async fn`",
+        )
+        .to_compile_error();
+    }
+
+    let Some(first_arg) = input_fn.sig.inputs.first() else {
+        return syn::Error::new_spanned(
+            &input_fn.sig,
+            "`#[consumer]` handler must take `payload: &[u8]` as its first argument",
+        )
+        .to_compile_error();
+    };
+
+    let syn::FnArg::Typed(pat_type) = first_arg else {
+        return syn::Error::new_spanned(
+            first_arg,
+            "`#[consumer]` handler must take `payload: &[u8]` as its first argument",
+        )
+        .to_compile_error();
+    };
+
+    if !is_byte_slice(&pat_type.ty) {
+        return syn::Error::new_spanned(
+            &pat_type.ty,
+            "`#[consumer]` handler first argument must be `&[u8]`",
+        )
+        .to_compile_error();
+    }
+
+    let ReturnType::Type(_, return_ty) = &input_fn.sig.output else {
+        return syn::Error::new_spanned(
+            &input_fn.sig,
+            "`#[consumer]` handler must return `Result<(), E>`",
+        )
+        .to_compile_error();
+    };
+
+    let Some(err_ty) = result_err_type(return_ty) else {
+        return syn::Error::new_spanned(
+            return_ty,
+            "`#[consumer]` handler must return `Result<(), E>`",
+        )
+        .to_compile_error();
+    };
+
+    let consumer_name = Ident::new(
+        &format!("{}Consumer", to_pascal_case(&fn_name.to_string())),
+        fn_name.span(),
+    );
+
+    quote! {
+        #input_fn
+
+        #[doc(hidden)]
+        #[allow(non_camel_case_types, missing_docs)]
+        pub struct #consumer_name;
+
+        impl ::crafty::JobConsumer for #consumer_name {
+            const STREAM: &'static str = #stream;
+            type Error = #err_ty;
+
+            async fn handle(payload: &[u8]) -> ::core::result::Result<(), Self::Error> {
+                #fn_name(payload).await
+            }
+        }
+    }
+}

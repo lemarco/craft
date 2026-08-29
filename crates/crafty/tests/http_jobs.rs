@@ -66,8 +66,62 @@ async fn http_post_job_returns_202_and_enqueues() {
         .uri(format!("/jobs/jobs/{}", job_id.0))
         .body(Body::empty())
         .unwrap();
-    let get_resp = router.oneshot(get_req).await.expect("get");
+    let get_resp = router.clone().oneshot(get_req).await.expect("get");
     assert_eq!(get_resp.status(), StatusCode::OK);
+
+    use crafty::EnqueueOptions;
+    use crafty_actor::JobLifecycle;
+
+    let poison_id = app
+        .enqueue_opts("jobs", b"poison", EnqueueOptions::max_attempts(1))
+        .await
+        .expect("enqueue poison");
+    let queue = app.cluster().job_queue("jobs").expect("queue");
+    let worker = crafty::WorkerId {
+        node: app.cluster().node_id(),
+        instance: 0,
+    };
+    let leased = loop {
+        let jobs = queue.lease(worker, 1).await.expect("lease");
+        if jobs.is_empty() {
+            advance(Duration::from_millis(50)).await;
+            continue;
+        }
+        if jobs[0].job_id == poison_id {
+            break jobs[0].clone();
+        }
+        queue
+            .nack(worker, jobs[0].lease_id)
+            .await
+            .expect("nack unrelated job");
+    };
+    queue
+        .nack(worker, leased.lease_id)
+        .await
+        .expect("nack poison");
+    advance(Duration::from_secs(2)).await;
+
+    let dl_status = app
+        .job_status("jobs", poison_id)
+        .await
+        .expect("status")
+        .expect("row");
+    assert_eq!(dl_status.lifecycle, JobLifecycle::DeadLetter);
+
+    let requeue_req = Request::builder()
+        .method("POST")
+        .uri(format!("/jobs/jobs/{}/requeue", poison_id.0))
+        .body(Body::empty())
+        .unwrap();
+    let requeue_resp = router.oneshot(requeue_req).await.expect("requeue");
+    assert_eq!(requeue_resp.status(), StatusCode::OK);
+
+    let pending = app
+        .job_status("jobs", poison_id)
+        .await
+        .expect("status")
+        .expect("row");
+    assert_eq!(pending.lifecycle, JobLifecycle::Pending);
 
     app.cluster().shutdown();
     let _ = std::fs::remove_dir_all(base);

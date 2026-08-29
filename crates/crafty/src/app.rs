@@ -10,8 +10,8 @@ use std::time::Duration;
 use crafty_actor::ClientError;
 use crafty_actor::NodeHandle;
 use crafty_actor::{
-    ActorSession, CastError, ClusterRef, EnqueueOptions, JobId, JobStatus, LeaseId, UserActor,
-    WorkerId,
+    ActorSession, CastError, ClusterRef, EnqueueOptions, JobId, JobStatus, LeaseId, RecurringJob,
+    UserActor, WorkerId,
 };
 use crafty_core::StateMachine;
 use crafty_net::LocalNetwork;
@@ -158,6 +158,16 @@ impl CraftyAppBuilder {
         A::Config: Clone + Send + Sync + 'static,
     {
         self.inner = self.inner.manage_auto::<A>(name, config);
+        self
+    }
+
+    /// Register a cron-driven recurring job on `stream` ([`RecurringJob`]).
+    ///
+    /// Requires [`Self::job_stream`] on the same stream. Schedules persist in
+    /// `queue-{stream}.redb` and fire on the queue leader.
+    #[must_use]
+    pub fn recurring_job(mut self, stream: &str, job: RecurringJob) -> Self {
+        self.inner = self.inner.recurring_job(stream, job);
         self
     }
 
@@ -503,6 +513,18 @@ impl CraftyApp {
         queue.job_status(job_id).await
     }
 
+    /// Move a dead-letter job back to the pending queue for retry.
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown, the job is not in dead-letter, or requeue fails.
+    pub async fn requeue_dead_letter(
+        &self,
+        stream: &str,
+        job_id: JobId,
+    ) -> Result<(), crafty_actor::QueueError> {
+        self.cluster.requeue_dead_letter(stream, job_id).await
+    }
+
     /// Worker group names known cluster-wide (from the actor directory).
     #[must_use]
     pub fn worker_groups(&self) -> Vec<String> {
@@ -606,7 +628,8 @@ impl CraftyApp {
         let enqueue_app = Arc::clone(&app);
         let batch_app = Arc::clone(&app);
         let ack_app = Arc::clone(&app);
-        let status_app = app;
+        let status_app = Arc::clone(&app);
+        let requeue_app = app;
         crafty_http::JobsApi::new(
             Arc::new(move |stream, payload, opts| {
                 let app = Arc::clone(&enqueue_app);
@@ -629,6 +652,10 @@ impl CraftyApp {
             Arc::new(move |stream, job_id| {
                 let app = Arc::clone(&status_app);
                 Box::pin(async move { app.job_status(&stream, JobId(job_id)).await })
+            }),
+            Arc::new(move |stream, job_id| {
+                let app = Arc::clone(&requeue_app);
+                Box::pin(async move { app.requeue_dead_letter(&stream, JobId(job_id)).await })
             }),
         )
     }

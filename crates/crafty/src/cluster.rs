@@ -514,6 +514,21 @@ impl<M: StateMachine> CraftyCluster<M> {
         queue.ack_batch(worker, lease_ids).await
     }
 
+    /// Move a dead-letter job back to the pending queue for retry.
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown, the job is not in dead-letter, or requeue fails.
+    pub async fn requeue_dead_letter(
+        &self,
+        stream: &str,
+        job_id: crafty_actor::JobId,
+    ) -> Result<(), crafty_actor::QueueError> {
+        let queue = self.job_queue(stream).ok_or_else(|| {
+            crafty_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
+        })?;
+        queue.requeue_dead_letter(job_id).await
+    }
+
     /// Registry of queue autoscale policies replicated via Meta-Raft / group 0.
     #[must_use]
     pub fn queue_autoscale_registry(&self) -> Arc<crafty_actor::QueueAutoscaleRegistry> {

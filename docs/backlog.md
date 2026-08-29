@@ -60,7 +60,7 @@ flowchart TB
     subgraph Jobs["Background jobs"]
         B03[B-03 HTTP jobs API]
         B03a[B-03a enqueue helper]
-        B03b[B-03b consumer macro]
+        B03b[B-03b consumer macro ✅]
         B07a[B-07a queue dashboard]
     end
 
@@ -141,16 +141,17 @@ flowchart TB
 
 ### B-03 ✅ Background jobs — HTTP + DX
 
-**Shipped:** 2026-08-28 — `crafty-http`, `http-jobs` feature, `crafty/tests/http_jobs.rs`.
+**Shipped:** 2026-08-28 — `crafty-http`, `http-jobs` feature, `crafty/tests/http_jobs.rs`. **2026-08-29** — `#[crafty::consumer]`, `CraftyApp::spawn_consumer`, DLQ requeue HTTP + `CraftyApp` parity.
 
 
 | Subtask | Description                                                                 | Status                        |
 | ------- | --------------------------------------------------------------------------- | ----------------------------- |
-| B-03a   | Axum route `POST /jobs/{stream}` → `202` + `{ "job_id": … }` JSON           | ✅ `crafty-http`               |
-| B-03b   | Request body → opaque bytes or JSON envelope (document contract)            | ✅ README                      |
+| B-03a   | Axum route `POST /jobs/{stream}` → `202` + `{ "job_id": … }`; raw or JSON envelope body | ✅ `crafty-http`               |
+| B-03b   | `#[crafty::consumer("stream")]` + `CraftyApp::spawn_consumer` (no manual `run_queue_consumer` + `tokio::spawn`) | ✅ `crafty-macros`, `crafty/tests/consumer.rs` |
 | B-03c   | Optional `GET /jobs/{stream}/{id}` if queue metadata extended               | ✅ `JobQueue::job_status` + HTTP GET |
 | B-03d   | Optional `crafty/http-jobs` feature or `crafty-http` crate (decide in impl) | ✅ `crafty-http` + feature     |
 | B-03e   | Integration test: HTTP enqueue → worker ack                                 | ✅ `crafty/tests/http_jobs.rs` |
+| B-03f   | `CraftyApp` parity: batch enqueue/ack, `requeue_dead_letter`, `recurring_job` builder; HTTP `POST /jobs/{stream}/{id}/requeue` | ✅ `CraftyApp`, `crafty-http` |
 
 
 ---

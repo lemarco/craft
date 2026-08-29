@@ -58,6 +58,13 @@ pub struct AckBatchAccepted {
     pub acked: usize,
 }
 
+/// Successful dead-letter requeue response (`200 OK`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RequeueAccepted {
+    /// Job id moved back to pending.
+    pub job_id: u64,
+}
+
 /// Job lookup response (`200 OK`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct JobStatusResponse {

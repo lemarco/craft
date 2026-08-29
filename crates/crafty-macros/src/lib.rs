@@ -1,18 +1,43 @@
 //! `crafty-macros` — derive/attribute macros for the crafty framework (backlog
 //! Track D).
 //!
-//! The only public entry point is the [`macro@remote_actor`] attribute, which
-//! fills in the boilerplate `postcard` wire codecs on a `UserActor`
-//! implementation so an actor can be spawned on and messaged from remote nodes
+//! Public entry points are the [`macro@remote_actor`] and [`macro@consumer`] attributes.
+//! [`remote_actor`] fills in wire codecs on a `UserActor` impl;
+//! [`consumer`] generates a [`JobConsumer`](crafty::JobConsumer) adapter for queue workers.
+//!
+//! The [`macro@remote_actor`] attribute fills in the boilerplate `postcard` wire codecs on a
+//! `UserActor` implementation so an actor can be spawned on and messaged from remote nodes
 //! (cross-node-actors). The state-machine "derive" of state-machine is instead served by serde
-//! blanket impls in `crafty-core` (see backlog D0/D1), so no `StateMachine`
-//! derive is exported.
+//! blanket impls in `crafty-core` (see backlog D0/D1), so no `StateMachine` derive is exported.
+
+mod consumer;
 
 use proc_macro::TokenStream;
 use quote::quote;
 use std::collections::HashSet;
 use syn::punctuated::Punctuated;
-use syn::{Ident, ImplItem, ItemImpl, Token, parse_macro_input};
+use syn::{Ident, ImplItem, ItemFn, ItemImpl, Token, parse_macro_input};
+
+/// Register an async job handler and generate a [`JobConsumer`](crafty::JobConsumer) adapter.
+///
+/// Apply to an `async fn` taking `&[u8]` and returning `Result<(), E>`:
+///
+/// ```ignore
+/// #[crafty::consumer("emails")]
+/// async fn handle_email(payload: &[u8]) -> Result<(), MyError> {
+///     Ok(())
+/// }
+///
+/// // Spawn with:
+/// app.spawn_consumer(HandleEmailConsumer, ConsumerOpts::default(), stop_rx);
+/// ```
+#[proc_macro_attribute]
+pub fn consumer(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let stream_lit = parse_macro_input!(attr as syn::LitStr);
+    let stream = stream_lit.value();
+    let input_fn = parse_macro_input!(item as ItemFn);
+    consumer::expand_consumer(&stream, input_fn).into()
+}
 
 /// Fill in the `postcard` wire codecs on a `UserActor` `impl` so the actor is
 /// remotely spawnable and addressable (cross-node-actors, backlog D2).

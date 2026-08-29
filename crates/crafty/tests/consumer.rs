@@ -1,0 +1,69 @@
+//! [`CraftyApp::spawn_consumer`] and `#[consumer]` macro integration.
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
+
+use crafty::net::LocalNetwork;
+use crafty::{ConsumerOpts, CraftyApp, NodeId, consumer};
+use crafty_test_support::{advance, wait_for_crafty_leader};
+
+static HANDLED: AtomicUsize = AtomicUsize::new(0);
+
+#[consumer("jobs")]
+async fn handle_job(payload: &[u8]) -> Result<(), ()> {
+    assert_eq!(payload, b"work");
+    HANDLED.fetch_add(1, Ordering::SeqCst);
+    Ok(())
+}
+
+#[tokio::test(start_paused = true)]
+async fn consumer_macro_spawns_and_processes_job() {
+    HANDLED.store(0, Ordering::SeqCst);
+
+    let base = std::env::temp_dir().join(format!(
+        "crafty-consumer-macro-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+
+    let net = LocalNetwork::new();
+    let app = Arc::new(
+        CraftyApp::builder(NodeId(1))
+            .data_dir(&base)
+            .job_stream("jobs", Duration::from_secs(60))
+            .members([NodeId(1)])
+            .tick_period(Duration::from_millis(5))
+            .start_local(&net)
+            .await,
+    );
+
+    wait_for_crafty_leader(app.cluster()).await;
+    advance(Duration::from_millis(200)).await;
+
+    let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+    let consumer = app.spawn_consumer(
+        HandleJobConsumer,
+        ConsumerOpts {
+            batch: 1,
+            idle_sleep: Duration::from_millis(10),
+            ..ConsumerOpts::default()
+        },
+        stop_rx,
+    );
+
+    app.enqueue("jobs", b"work").await.expect("enqueue");
+    advance(Duration::from_millis(500)).await;
+
+    assert_eq!(HANDLED.load(Ordering::SeqCst), 1);
+
+    stop_tx.send(true).unwrap();
+    consumer.await.unwrap();
+
+    app.cluster().shutdown();
+    let _ = std::fs::remove_dir_all(base);
+}

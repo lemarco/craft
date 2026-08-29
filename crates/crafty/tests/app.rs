@@ -38,3 +38,57 @@ async fn crafty_app_start_local_with_data_dir_and_queue() {
     app.cluster().shutdown();
     let _ = std::fs::remove_dir_all(base);
 }
+
+#[tokio::test(start_paused = true)]
+async fn crafty_app_requeue_dead_letter() {
+    use crafty::EnqueueOptions;
+    use crafty_actor::JobLifecycle;
+
+    let base = std::env::temp_dir().join(format!(
+        "crafty-app-requeue-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+
+    let net = LocalNetwork::new();
+    let app = CraftyApp::builder(NodeId(1))
+        .data_dir(&base)
+        .job_stream("jobs", Duration::from_secs(60))
+        .members([NodeId(1)])
+        .tick_period(Duration::from_millis(5))
+        .start_local(&net)
+        .await;
+
+    wait_for_crafty_leader(app.cluster()).await;
+    advance(Duration::from_millis(200)).await;
+
+    let id = app
+        .enqueue_opts("jobs", b"poison", EnqueueOptions::max_attempts(1))
+        .await
+        .expect("enqueue");
+    let queue = app.cluster().job_queue("jobs").expect("queue");
+    let worker = crafty::WorkerId {
+        node: app.cluster().node_id(),
+        instance: 0,
+    };
+    let leased = queue.lease(worker, 1).await.expect("lease");
+    queue
+        .nack(worker, leased[0].lease_id)
+        .await
+        .expect("nack");
+    advance(Duration::from_secs(2)).await;
+
+    let status = app.job_status("jobs", id).await.expect("status").expect("row");
+    assert_eq!(status.lifecycle, JobLifecycle::DeadLetter);
+
+    app.requeue_dead_letter("jobs", id).await.expect("requeue");
+    let pending = app.job_status("jobs", id).await.expect("status").expect("row");
+    assert_eq!(pending.lifecycle, JobLifecycle::Pending);
+
+    app.cluster().shutdown();
+    let _ = std::fs::remove_dir_all(base);
+}
