@@ -36,7 +36,7 @@ pub fn consumer(attr: TokenStream, item: TokenStream) -> TokenStream {
     let stream_lit = parse_macro_input!(attr as syn::LitStr);
     let stream = stream_lit.value();
     let input_fn = parse_macro_input!(item as ItemFn);
-    consumer::expand_consumer(&stream, input_fn).into()
+    consumer::expand_consumer(&stream, &input_fn).into()
 }
 
 /// Fill in the `postcard` wire codecs on a `UserActor` `impl` so the actor is

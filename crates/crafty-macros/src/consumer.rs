@@ -42,12 +42,12 @@ fn result_err_type(ty: &Type) -> Option<Type> {
     }
 }
 
-pub(crate) fn expand_consumer(stream: &str, input_fn: ItemFn) -> TokenStream2 {
+pub(crate) fn expand_consumer(stream: &str, input_fn: &ItemFn) -> TokenStream2 {
     let fn_name = &input_fn.sig.ident;
 
     if input_fn.sig.asyncness.is_none() {
         return syn::Error::new_spanned(
-            &input_fn.sig.fn_token,
+            input_fn.sig.fn_token,
             "`#[consumer]` must be applied to an `async fn`",
         )
         .to_compile_error();
