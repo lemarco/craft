@@ -15,6 +15,11 @@ async fn resolve_dns_seeds_finds_localhost_ordinal_names() {
     );
     for seed in &seeds {
         assert_eq!(seed.addr.port(), 8080);
+        assert!(
+            seed.addr.ip().is_loopback(),
+            "expected loopback, got {}",
+            seed.addr
+        );
     }
 }
 

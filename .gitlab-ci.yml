@@ -50,6 +50,7 @@ fast:
     - !reference [.rust_linux_linker, before_script]
     - rustup component add rustfmt clippy
     - mkdir -p "$CARGO_HOME/bin" && curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C "$CARGO_HOME/bin"
+    - bash scripts/ci-dns-localhost.sh
   script:
     - df -h .
     - cargo fmt --all -- --check
