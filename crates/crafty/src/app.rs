@@ -114,7 +114,7 @@ impl CraftyAppBuilder {
                     routes: None,
                 });
             }
-            return builder;
+            builder
         }
         #[cfg(not(feature = "http-jobs"))]
         Self { inner }
@@ -232,8 +232,8 @@ impl CraftyAppBuilder {
     #[cfg(feature = "http-jobs")]
     #[must_use]
     pub fn gateway_addr(mut self, addr: SocketAddr) -> Self {
-        let jobs_api = self.gateway.as_ref().map_or(true, |g| g.jobs_api);
-        let actors_api = self.gateway.as_ref().map_or(true, |g| g.actors_api);
+        let jobs_api = self.gateway.as_ref().is_none_or(|g| g.jobs_api);
+        let actors_api = self.gateway.as_ref().is_none_or(|g| g.actors_api);
         let routes = self.gateway.and_then(|g| g.routes);
         self.gateway = Some(GatewayConfig {
             addr,
@@ -273,14 +273,18 @@ impl CraftyAppBuilder {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use axum::Router;
-    /// # use crafty::{CraftyApp, CraftyGatewayState};
+    /// # use crafty::{CraftyApp, CraftyAppBuilder, CraftyGatewayState};
     /// # fn demo(builder: CraftyAppBuilder) -> CraftyAppBuilder {
     /// builder.http_routes(|app| {
     ///     Router::new().with_state(CraftyGatewayState { app })
     /// })
     /// # }
     /// ```
+    ///
+    /// # Panics
+    /// If the default gateway address cannot be parsed (only when [`Self::gateway_addr`] was not set).
     #[cfg(feature = "http-jobs")]
+    #[must_use]
     pub fn http_routes<F>(mut self, routes: F) -> Self
     where
         F: FnOnce(Arc<CraftyApp>) -> axum::Router + Send + 'static,
@@ -289,11 +293,14 @@ impl CraftyAppBuilder {
             .gateway
             .as_ref()
             .map_or((true, true), |g| (g.jobs_api, g.actors_api));
-        let addr = self.gateway.map(|g| g.addr).unwrap_or_else(|| {
-            "127.0.0.1:3000"
-                .parse()
-                .expect("default gateway addr")
-        });
+        let addr = self.gateway.map_or_else(
+            || {
+                "127.0.0.1:3000"
+                    .parse()
+                    .expect("default gateway addr")
+            },
+            |g| g.addr,
+        );
         self.gateway = Some(GatewayConfig {
             addr,
             jobs_api,
@@ -330,6 +337,9 @@ impl CraftyAppBuilder {
     }
 
     /// Start cluster + optional gateway, then block until Ctrl-C / SIGINT.
+    ///
+    /// # Errors
+    /// Returns an error when the gateway bind or serve fails.
     #[cfg(feature = "http-jobs")]
     pub async fn run_local_until_shutdown(
         self,

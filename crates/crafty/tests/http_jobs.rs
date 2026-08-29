@@ -6,7 +6,8 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use crafty::net::LocalNetwork;
-use crafty::{CraftyApp, NodeId};
+use crafty::{CraftyApp, EnqueueOptions, NodeId};
+use crafty_actor::JobLifecycle;
 use crafty_test_support::{advance, wait_for_crafty_leader};
 use tower::ServiceExt;
 
@@ -68,9 +69,6 @@ async fn http_post_job_returns_202_and_enqueues() {
         .unwrap();
     let get_resp = router.clone().oneshot(get_req).await.expect("get");
     assert_eq!(get_resp.status(), StatusCode::OK);
-
-    use crafty::EnqueueOptions;
-    use crafty_actor::JobLifecycle;
 
     let poison_id = app
         .enqueue_opts("jobs", b"poison", EnqueueOptions::max_attempts(1))

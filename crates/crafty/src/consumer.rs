@@ -9,7 +9,7 @@ use crafty_actor::{WorkerId, run_queue_consumer};
 use crate::CraftyApp;
 
 /// Options for [`CraftyApp::spawn_consumer`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConsumerOpts {
     /// Worker instance id on this node (distinct consumers on the same stream).
     pub instance: u32,

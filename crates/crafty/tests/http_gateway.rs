@@ -1,4 +1,4 @@
-//! CraftyApp gateway integration (HTTP + WebSocket product surface).
+//! [`CraftyApp`] gateway integration (HTTP + WebSocket product surface).
 
 use std::sync::Arc;
 use std::time::Duration;

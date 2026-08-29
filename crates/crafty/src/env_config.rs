@@ -13,6 +13,7 @@ use crafty_actor::DEFAULT_DRAIN_TIMEOUT;
 use crafty_net::PeerDirectory;
 
 /// Parsed product-app configuration from the environment.
+#[allow(clippy::struct_excessive_bools)] // env toggles map 1:1 to optional features.
 pub struct AppConfig {
     /// This node's id.
     pub node_id: NodeId,
@@ -212,9 +213,8 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         .and_then(|v| v.parse::<u64>().ok())
         .map_or(Duration::from_secs(60), Duration::from_secs);
     let gateway = match env("CRAFTY_GATEWAY").as_deref() {
-        Some("-") => None,
+        Some("-") | None => None,
         Some(a) => Some(a.parse()?),
-        None => None,
     };
     let gateway_jobs_api = !env_bool("CRAFTY_GATEWAY_NO_JOBS");
     let gateway_actors_api = !env_bool("CRAFTY_GATEWAY_NO_ACTORS");

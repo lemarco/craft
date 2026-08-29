@@ -34,7 +34,6 @@ pub struct GatewayConfig {
 }
 
 /// Build the gateway router: custom routes first, then optional product APIs.
-#[must_use]
 pub fn build_gateway_router(app: Arc<CraftyApp>, config: GatewayConfig) -> Router {
     let GatewayConfig {
         addr: _,
@@ -43,9 +42,7 @@ pub fn build_gateway_router(app: Arc<CraftyApp>, config: GatewayConfig) -> Route
         routes,
     } = config;
 
-    let mut router = routes
-        .map(|f| f(Arc::clone(&app)))
-        .unwrap_or_else(Router::new);
+    let mut router = routes.map_or_else(Router::new, |f| f(Arc::clone(&app)));
 
     if actors_api {
         let api = CraftyApp::actors_api(Arc::clone(&app));

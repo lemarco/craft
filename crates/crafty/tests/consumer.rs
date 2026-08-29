@@ -11,6 +11,7 @@ use crafty_test_support::{advance, wait_for_crafty_leader};
 static HANDLED: AtomicUsize = AtomicUsize::new(0);
 
 #[consumer("jobs")]
+#[allow(clippy::unused_async)] // `#[consumer]` requires an async fn signature.
 async fn handle_job(payload: &[u8]) -> Result<(), ()> {
     assert_eq!(payload, b"work");
     HANDLED.fetch_add(1, Ordering::SeqCst);
@@ -46,15 +47,12 @@ async fn consumer_macro_spawns_and_processes_job() {
     advance(Duration::from_millis(200)).await;
 
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
-    let consumer = app.spawn_consumer(
-        HandleJobConsumer,
-        ConsumerOpts {
-            batch: 1,
-            idle_sleep: Duration::from_millis(10),
-            ..ConsumerOpts::default()
-        },
-        stop_rx,
-    );
+    let opts = ConsumerOpts {
+        batch: 1,
+        idle_sleep: Duration::from_millis(10),
+        ..ConsumerOpts::default()
+    };
+    let consumer = app.spawn_consumer(HandleJobConsumer, opts, stop_rx);
 
     app.enqueue("jobs", b"work").await.expect("enqueue");
     advance(Duration::from_millis(500)).await;
