@@ -24,7 +24,7 @@ While iterating: `./scripts/test-with-log.sh -p <crate> --test <name>` — see `
 
 - **MSRV 1.90**, edition 2024, `unsafe` forbidden workspace-wide.
 - **Clippy / rustc: `-D warnings`** (`RUSTFLAGS` in CI and lefthook); **`clippy::pedantic`** via `scripts/clippy-args.sh`.
-- **`missing_docs`**: `warn` on published crates (workspace lint); CI allows via `-A missing_docs` until 1.0 (`deny` at stabilization). Track with `./scripts/docs-missing-audit.sh`.
+- **`missing_docs`**: `deny` on published crates (workspace lint); `publish = false` crates use `missing_docs = "allow"`. Track with `./scripts/docs-missing-audit.sh`.
 - **Conventional commits**: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`.
 - Reference GitLab issues as `#<number>` in commits/MR descriptions.
 - **Do not commit** unless the user explicitly asks.

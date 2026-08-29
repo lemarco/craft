@@ -3,6 +3,7 @@
 //! Talks to a running `crafty-node` cluster (Demo state machine: each propose
 //! increments a counter; query returns the current count) and checks the
 //! recorded history with [`crafty_sim::History`] + [`crafty_sim::Model`].
+#![allow(missing_docs)] // publish = false — E2E harness binary
 
 use std::env;
 use std::net::SocketAddr;

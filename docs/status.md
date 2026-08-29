@@ -88,7 +88,7 @@ Global serializable isolation across shards is **not** a goal — see [cross-sha
 ## Release & ops (process, not missing code)
 
 - **crates.io / docs.rs publish** — published v0.2.0 — see [CHANGELOG.md](../CHANGELOG.md)
-- **Public API docs** — `missing_docs = "warn"` on published crates; CI allows pre-1.0 (`-A missing_docs`). Audit: `./scripts/docs-missing-audit.sh`
+- **Public API docs** — `missing_docs = "deny"` on published crates; `publish = false` crates exempt via crate lint override. Audit: `./scripts/docs-missing-audit.sh`
 - **Real-world soak** — scenario harness in `benchmarks/` (`soak`, `soak_queue`, `soak_multi_raft`, `soak_actor_store`, `soak_saga`, `soak_session`); scheduled CI `bench` job (60–120s budgets); long-running production soak is operator responsibility
 - **Heavy integration tests** — Redis/docker tests gated `#[ignore]` in fast CI; scheduled heavy lane
 

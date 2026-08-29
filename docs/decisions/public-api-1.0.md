@@ -53,7 +53,7 @@ stability promise applies primarily to types re-exported from `crafty`.
 ## 1.0 checklist
 
 - [ ] CHANGELOG documents any breaking diff from this audit
-- [ ] `missing_docs = deny` on published crates (see [missing-docs-1.0.md](missing-docs-1.0.md))
+- [x] `missing_docs = deny` on published crates (see [missing-docs-1.0.md](missing-docs-1.0.md)) — shipped 2026-08-29
 - [ ] `./scripts/docs-missing-audit.sh --workspace` → 0 warnings
 - [ ] Scenario soak harness green in scheduled CI (B-10)
 

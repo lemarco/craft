@@ -450,6 +450,6 @@ async fn local_actor_introspection_tracks_per_instance_mailbox_depth() {
     let views = registry.local_actor_introspection();
     assert_eq!(views.len(), 2, "{views:?}");
     let mut depths: Vec<i64> = views.iter().map(|v| v.mailbox_depth).collect();
-    depths.sort();
+    depths.sort_unstable();
     assert_eq!(depths, vec![1, 2], "per-instance depths: {views:?}");
 }

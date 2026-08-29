@@ -142,7 +142,7 @@ impl QueueService {
     pub fn register_redb_stream(
         &self,
         name: impl Into<String>,
-        queue: Arc<RedbJobQueue>,
+        queue: &Arc<RedbJobQueue>,
         schedules: &[RecurringJob],
         prefetch: usize,
     ) {
@@ -150,11 +150,11 @@ impl QueueService {
         self.streams
             .lock()
             .expect("poisoned")
-            .insert(name.clone(), Arc::clone(&queue) as Arc<dyn JobQueue>);
+            .insert(name.clone(), Arc::clone(queue) as Arc<dyn JobQueue>);
         self.redb_streams
             .lock()
             .expect("poisoned")
-            .insert(name.clone(), Arc::clone(&queue));
+            .insert(name.clone(), Arc::clone(queue));
         if prefetch > 0 {
             self.prefetch
                 .lock()
@@ -167,6 +167,12 @@ impl QueueService {
     }
 
     /// Fire due recurring schedules on the leader and replicate mutations.
+    ///
+    /// # Errors
+    /// Propagates queue or replication failures as strings.
+    ///
+    /// # Panics
+    /// If an internal mutex is poisoned.
     pub async fn tick_schedules(&self) -> Result<(), String> {
         if !self.state.is_leader() {
             return Ok(());
@@ -535,6 +541,7 @@ impl QueueService {
         }
     }
 
+    #[allow(clippy::too_many_lines)] // leader sharded + local + follower forward
     async fn handle_enqueue_batch(
         &self,
         request: QueueEnqueueBatchRequest,

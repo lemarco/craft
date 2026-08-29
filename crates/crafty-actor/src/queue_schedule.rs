@@ -131,6 +131,9 @@ impl RedbJobQueue {
     ///
     /// # Errors
     /// Returns [`QueueError::Backend`] or [`QueueError::Codec`] on failure.
+    ///
+    /// # Panics
+    /// If the redb mutex is poisoned.
     pub fn upsert_schedule(&self, job: &RecurringJob) -> Result<QueueReplicationOps, QueueError> {
         let schedule = parse_cron(&job.cron)?;
         let next_run_ms = next_run_after(&schedule, now_ms())?;
@@ -152,6 +155,9 @@ impl RedbJobQueue {
     ///
     /// # Errors
     /// Returns [`QueueError::Backend`] or [`QueueError::Codec`] on failure.
+    ///
+    /// # Panics
+    /// If the redb mutex is poisoned.
     pub async fn tick_schedules(&self) -> Result<QueueReplicationOps, QueueError> {
         let now = now_ms();
         let due: Vec<RecurringScheduleWire> = {

@@ -167,6 +167,8 @@ mod tests {
                     payload_len: 5,
                     priority: 2,
                     leased_by: None,
+                    attempts: 0,
+                    max_attempts: 0,
                 }))))
             }),
         );

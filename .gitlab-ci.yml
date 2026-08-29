@@ -7,8 +7,8 @@ stages:
 
 variables:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-D warnings -A missing_docs"
-  RUSTDOCFLAGS: "-D warnings -A missing_docs"
+  RUSTFLAGS: "-D warnings"
+  RUSTDOCFLAGS: "-D warnings"
   # Keep cargo's registry/build output inside the project so it can be cached.
   CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
   # saas-linux-small runners (~25G root). Local dev uses unpacked debuginfo for

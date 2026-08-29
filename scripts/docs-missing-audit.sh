@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Report missing-doc warnings on published crates (library-and-publishing).
 #
-# Workspace lints use `missing_docs = "warn"` pre-1.0; CI/hooks allow the lint
-# via RUSTFLAGS `-A missing_docs` so gates stay green. Run this script locally
-# or in release prep to track progress toward `#![deny(missing_docs)]` at 1.0.
+# Workspace lint enforces `missing_docs = "deny"` on published crates. Run this
+# script in release prep to verify the tree is clean (same as CI).
 #
 # Usage:
 #   ./scripts/docs-missing-audit.sh              # default-members (fast)
@@ -38,7 +37,7 @@ if [[ "$count" -gt 0 ]]; then
   if [[ "$count" -gt 40 ]]; then
     log "... ($((count - 40)) more; re-run and pipe to a file for full list)"
   fi
-  log "tip: flip workspace lint to deny and clear warnings before 1.0"
+  log "tip: document public items or add a targeted allow on publish=false crates"
 fi
 
 if [[ "$status" -ne 0 ]]; then

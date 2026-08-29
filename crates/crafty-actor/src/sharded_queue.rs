@@ -465,10 +465,10 @@ mod tests {
             .unwrap();
         assert_eq!(ids.len(), 5);
         assert_eq!(reps.len(), 1);
-        let (shard0, local0) = decode_id(ids[0].0);
+        let (picked_shard, local0) = decode_id(ids[0].0);
         for (offset, id) in ids.iter().enumerate().skip(1) {
             let (shard, local) = decode_id(id.0);
-            assert_eq!(shard, shard0);
+            assert_eq!(shard, picked_shard);
             assert_eq!(local, local0 + offset as u64);
         }
     }

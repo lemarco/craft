@@ -8,8 +8,8 @@
 
 | Phase | Workspace lint | CI / hooks |
 |-------|----------------|------------|
-| **Pre-1.0 (`0.x`)** | `missing_docs = "warn"` | `RUSTFLAGS=-A missing_docs` keeps gates green |
-| **1.0 stabilization** | `missing_docs = "deny"` on **published** crates | No allow; `./scripts/docs-missing-audit.sh --workspace` must pass |
+| **1.0 stabilization** | `missing_docs = "deny"` on **published** crates | No allow in CI/hooks; `./scripts/docs-missing-audit.sh --workspace` must pass |
+| **Pre-1.0 (`0.x`)** | *(historical)* `warn` + CI `-A missing_docs` | Superseded 2026-08-29 (B-11b shipped) |
 
 Published crates are those with `publish = true` in the workspace (see root
 `Cargo.toml` `default-members` / publish scripts).

@@ -295,7 +295,7 @@ flowchart TB
 | Subtask | Description                                       | Status                                                                        |
 | ------- | ------------------------------------------------- | ----------------------------------------------------------------------------- |
 | B-11a   | Public API audit (`CraftyApp`, facade re-exports) | ✅ [public-api-1.0.md](decisions/public-api-1.0.md)                            |
-| B-11b   | `missing_docs = deny` on published crates         | ✅ policy [missing-docs-1.0.md](decisions/missing-docs-1.0.md); flip at 1.0 RC |
+| B-11b   | `missing_docs = deny` on published crates         | ✅ shipped 2026-08-29 |
 | B-11c   | CHANGELOG policy for 1.0 breaking changes         | ✅ [CHANGELOG.md](../CHANGELOG.md)                                             |
 
 

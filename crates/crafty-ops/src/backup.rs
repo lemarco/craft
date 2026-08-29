@@ -14,10 +14,13 @@ use walkdir::WalkDir;
 /// Backup/restore errors.
 #[derive(Debug, Error)]
 pub enum OpsError {
+    /// Local filesystem I/O failure.
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+    /// Object storage backend failure.
     #[error("object store: {0}")]
     ObjectStore(Box<opendal::Error>),
+    /// Invalid paths, layout, or other operational error.
     #[error("{0}")]
     Other(String),
 }

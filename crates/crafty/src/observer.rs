@@ -34,17 +34,17 @@ impl GroupMessageRates {
         stats
             .iter()
             .map(|stat| {
-                let rate = inner
-                    .get(&stat.name)
-                    .map(|(prev_messages, prev_at)| {
-                        let elapsed = now.duration_since(*prev_at).as_secs_f64();
-                        if elapsed > 0.0 {
+                let rate = inner.get(&stat.name).map_or(0.0, |(prev_messages, prev_at)| {
+                    let elapsed = now.duration_since(*prev_at).as_secs_f64();
+                    if elapsed > 0.0 {
+                        #[allow(clippy::cast_precision_loss)]
+                        {
                             stat.messages.saturating_sub(*prev_messages) as f64 / elapsed
-                        } else {
-                            0.0
                         }
-                    })
-                    .unwrap_or(0.0);
+                    } else {
+                        0.0
+                    }
+                });
                 inner.insert(stat.name.clone(), (stat.messages, now));
                 (stat.name.clone(), rate)
             })

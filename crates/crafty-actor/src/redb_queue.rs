@@ -284,6 +284,7 @@ impl RedbJobQueue {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)] // large replicate-op match
     fn apply_replicate_inner(&self, op: &QueueReplicateOp) -> Result<(), QueueError> {
         let db = self.db.lock().expect("poisoned");
         let txn = db.begin_write().map_err(backend)?;
@@ -525,8 +526,7 @@ impl RedbJobQueue {
             .filter_map(std::result::Result::ok)
             .filter(|(_, bytes)| {
                 decode::<StoredJob>(bytes.value())
-                    .ok()
-                    .is_some_and(|stored| stored.dead_letter)
+                    .is_ok_and(|stored| stored.dead_letter)
             })
             .count() as u64;
 

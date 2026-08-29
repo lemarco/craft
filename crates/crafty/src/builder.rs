@@ -1274,7 +1274,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                     .collect();
                 service.register_redb_stream(
                     &spec.name,
-                    Arc::clone(&local),
+                    &local,
                     &schedules,
                     spec.prefetch,
                 );

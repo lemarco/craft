@@ -1,3 +1,6 @@
+//! CLI for snapshot backup/restore (`crafty-ops backup …`).
+#![allow(missing_docs)] // publish = false — internal ops binary
+
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};

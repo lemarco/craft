@@ -2,6 +2,7 @@
 //!
 //! Import the reference KV state machine and cluster polling helpers instead
 //! of copying them into every `tests/` module.
+#![allow(missing_docs)] // publish = false — not shipped on crates.io
 
 pub mod actor;
 pub mod clock;

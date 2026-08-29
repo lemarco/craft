@@ -56,10 +56,9 @@ git push && git push origin v0.1.0
   `release.sh --publish` runs this automatically after a successful upload.
 - **docs.rs** builds automatically on publish, using the
   `[package.metadata.docs.rs] all-features = true` metadata on each crate.
-- **Doc completeness:** workspace lint `missing_docs = "warn"` on published
-  crates ([library-and-publishing](decisions/library-and-publishing.md)); CI
-  allows the lint pre-1.0 (`RUSTFLAGS=-A missing_docs`). Before 1.0, flip to
-  `deny` and run `./scripts/docs-missing-audit.sh --workspace` until clean.
+- **Doc completeness:** workspace lint `missing_docs = "deny"` on published
+  crates ([library-and-publishing](decisions/library-and-publishing.md)); CI and
+  hooks enforce it. Run `./scripts/docs-missing-audit.sh --workspace` before release.
 
 ## Prerequisites
 

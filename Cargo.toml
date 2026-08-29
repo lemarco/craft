@@ -88,8 +88,8 @@ crafty-e2e-queue-client = { path = "crates/crafty-e2e-queue-client", version = "
 # Lints applied across the workspace (library-and-publishing).
 [workspace.lints.rust]
 unsafe_code = "forbid"
-# Pre-1.0: warn (CI allows via RUSTFLAGS -A missing_docs). Deny at 1.0.
-missing_docs = "warn"
+# Published crates: deny undocumented public items (B-11b).
+missing_docs = "deny"
 
 # Faster dev/test compile + faster test runtime (deps optimized, own code debuggable).
 [profile.dev]

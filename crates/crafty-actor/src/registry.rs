@@ -686,6 +686,7 @@ impl<A: UserActor> PoolInner<A> {
     /// instance, and return its id. Shared by fresh spawns and migration
     /// restores. `policy` + `rebuild` drive supervised restarts (E14); a plain
     /// spawn passes [`RestartPolicy::Never`] and `None`.
+    #[allow(clippy::too_many_lines)] // spawn + mailbox wiring
     fn launch(
         self: &Arc<Self>,
         mut state: A,
@@ -820,7 +821,7 @@ impl<A: UserActor> PoolInner<A> {
             .map(|i| {
                 (
                     i.instance,
-                    u64::try_from(now.duration_since(i.spawned_at).as_secs()).unwrap_or(u64::MAX),
+                    now.duration_since(i.spawned_at).as_secs(),
                     i.queued.load(Ordering::Relaxed),
                 )
             })

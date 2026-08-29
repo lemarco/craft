@@ -454,16 +454,15 @@ impl Inner {
             .map(|(id, _)| *id)
             .collect();
         for lease_id in expired {
-            if let Some(lease) = self.leases.remove(&lease_id) {
-                if let Some(entry) = self.jobs.get_mut(&lease.job_id) {
-                    let outcome =
-                        after_failed_attempt(entry.attempts, entry.max_attempts, now_ms);
-                    entry.attempts = outcome.attempts;
-                    entry.dead_letter = outcome.dead_letter;
-                    entry.not_before_ms = outcome.not_before_ms;
-                    if !outcome.dead_letter {
-                        self.pending.push_back(lease.job_id);
-                    }
+            if let Some(lease) = self.leases.remove(&lease_id)
+                && let Some(entry) = self.jobs.get_mut(&lease.job_id)
+            {
+                let outcome = after_failed_attempt(entry.attempts, entry.max_attempts, now_ms);
+                entry.attempts = outcome.attempts;
+                entry.dead_letter = outcome.dead_letter;
+                entry.not_before_ms = outcome.not_before_ms;
+                if !outcome.dead_letter {
+                    self.pending.push_back(lease.job_id);
                 }
             }
         }
@@ -690,6 +689,7 @@ impl JobQueue for InMemoryJobQueue {
         })
     }
 
+    #[allow(clippy::too_many_lines)] // large replicate-op match
     fn apply_replicate<'a>(
         &'a self,
         op: &'a QueueReplicateOp,

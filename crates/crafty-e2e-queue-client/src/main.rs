@@ -3,6 +3,7 @@
 //! Phases (via `CRAFTY_E2E_QUEUE_PHASE`):
 //! - `before_failover` — enqueue five jobs, lease/ack two on a follower worker id
 //! - `after_failover` — assert three pending remain, drain and ack the rest
+#![allow(missing_docs)] // publish = false — E2E harness binary
 
 use std::env;
 use std::net::SocketAddr;
@@ -119,6 +120,7 @@ async fn before_failover(
                 not_before_ms: 0,
                 shard_key: None,
                 dedup_key: None,
+                max_attempts: 0,
             },
         )
         .await
