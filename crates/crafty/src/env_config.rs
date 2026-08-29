@@ -50,6 +50,8 @@ pub struct AppConfig {
     pub gateway: Option<SocketAddr>,
     /// Mount tier C `/jobs/*` on the gateway when `gateway` is set.
     pub gateway_jobs_api: bool,
+    /// Mount `/actors/*` cast + ask on the gateway when `gateway` is set.
+    pub gateway_actors_api: bool,
 }
 
 fn env(key: &str) -> Option<String> {
@@ -215,6 +217,7 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         None => None,
     };
     let gateway_jobs_api = !env_bool("CRAFTY_GATEWAY_NO_JOBS");
+    let gateway_actors_api = !env_bool("CRAFTY_GATEWAY_NO_ACTORS");
     let admin_tls = match (env("CRAFTY_ADMIN_TLS_CERT"), env("CRAFTY_ADMIN_TLS_KEY")) {
         (Some(cert), Some(key)) => Some((PathBuf::from(cert), PathBuf::from(key))),
         (None, None) => None,
@@ -245,5 +248,6 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         job_queue_lease,
         gateway,
         gateway_jobs_api,
+        gateway_actors_api,
     })
 }

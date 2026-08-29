@@ -40,6 +40,7 @@ async fn gateway_serves_jobs_api_on_configured_addr() {
         GatewayConfig {
             addr: "127.0.0.1:0".parse().unwrap(),
             jobs_api: true,
+            actors_api: true,
             routes: None,
         },
     );

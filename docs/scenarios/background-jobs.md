@@ -120,7 +120,9 @@ Wire [`CraftyApp::jobs_api`](../../crates/crafty/src/app.rs) or merge the gatewa
 | Batch ack (workers) | `200 OK` | `POST /jobs/{stream}/ack-batch` · `app.ack_batch` |
 | Job metadata | `200 OK` | `GET /jobs/{stream}/{id}` · `app.job_status` |
 | Requeue dead letter | `200 OK` | `POST /jobs/{stream}/{id}/requeue` · `app.requeue_dead_letter` |
-| Sync read | `200 OK` | `query` or `ask` on your state machine |
+| Sync read / RPC | `200 OK` | `POST /actors/{group}/ask` · `app.ask` |
+| Fire-and-forget to workers | `202 Accepted` | `POST /actors/{group}/cast` · `app.cast` |
+| Raft-linearizable read | `200 OK` | `app.propose` / SM `query` (not HTTP yet) |
 
 ## Autoscale
 

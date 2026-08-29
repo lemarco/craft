@@ -170,6 +170,7 @@ flowchart TB
 | B-04c   | Auth stub + `ActorSession` open on connect                      | ✅ `GATEWAY_TOKEN` |
 | B-04d   | Reconnect: handle `NoTarget`, session TTL expiry                | ✅ auto reopen in example |
 | B-04e   | Optional: checkpoint last N messages to SM (comment in example) | ✅ comment on `ChatWorker` |
+| B-04f   | Product HTTP `POST /actors/{group}/ask` + `/cast` on gateway (`ActorsApi`) | ✅ `crafty-http`, `CraftyApp::actors_api` |
 
 
 ---
@@ -370,7 +371,7 @@ flowchart TB
 | Done when | Item                                                  |
 | --------- | ----------------------------------------------------- |
 | ✅         | Migration, supervisor, `RedbActorStateStore`, SM path |
-| ✅         | B-02d `worker_groups`, `workers`, `cast` on `CraftyApp` |
+| ✅         | B-02d `worker_groups`, `workers`, `cast`, `ask` on `CraftyApp` |
 | ✅         | B-10a soak                                            |
 
 

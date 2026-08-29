@@ -17,12 +17,48 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 - (none)
 
-## [0.2.1] — 2026-08-29
+## [0.2.2] — 2026-08-29
+
+Product throughput and ops release: queue batch/prefetch, dead-letter recovery,
+cron scheduling, actor-store TTL/GC, and a dedicated **`CraftyApp` HTTP gateway**.
 
 ### Added
 
-- Job queue batch enqueue/ack wire types and cluster API; sharded batch routing; leader prefetch eviction on ack.
-- Dashboard actor **msg/s** column; observer mailbox depth, uptime, and message-rate sampling.
+- **Queue batch enqueue/ack** — wire routes `POST /raft/v1/queue/enqueue-batch` and
+  `ack-batch`; `JobQueue::enqueue_batch_opts_replicated` / `ack_batch_replicated`;
+  single-transaction redb paths in `RedbJobQueue`; sharded batch routing;
+  `CraftyCluster` / `CraftyApp` `enqueue_batch` / `ack_batch`; defaults
+  `DEFAULT_QUEUE_BATCH_MAX = 256`.
+- **Leader prefetch cache** — `QueuePrefetchCache` on the queue leader; leases
+  served from RAM when possible (`lease_prefetched`); cache fill on enqueue,
+  eviction on ack; `CraftyClusterBuilder::job_queue_prefetch` (default 256);
+  safe disk fallback after leader failover.
+- **Dead letter queue (DLQ)** — jobs moved to dead-letter after max attempts;
+  `requeue_dead_letter` on cluster/facade; wire `QueueRequeueDeadLetter`;
+  `POST /jobs/{stream}/{id}/requeue` in `crafty-http`.
+- **Recurring / cron jobs** — `RecurringJob` + `parse_cron`; leader
+  `queue_schedule` ticker enqueues on schedule; `CraftyAppBuilder::recurring_job`.
+- **Actor store TTL + GC** — `set_with_ttl` on `RedbActorStateStore`; periodic
+  leader GC removes expired keys and replicates deletes; builder wires
+  `run_actor_store_gc_ticker` with `data_dir`.
+- **`CraftyApp` gateway** — `gateway` module: separate public HTTP listener
+  (`.gateway_addr`, `CRAFTY_GATEWAY`, `CRAFTY_GATEWAY_NO_JOBS` /
+  `CRAFTY_GATEWAY_NO_ACTORS`); optional mount of tier C jobs + actors APIs;
+  `.gateway_routes` for custom Axum/WebSocket handlers; integration test
+  `http_gateway`.
+- **`#[crafty::consumer]` macro** — generates a `JobConsumer` adapter over
+  `run_queue_consumer` for typed queue workers.
+- **HTTP batch routes** — `POST /jobs/{stream}/batch`, `POST /jobs/{stream}/ack-batch`
+  in `crafty-http`.
+- **Tests** — `crafty-actor` `queue_throughput`; facade prefetch-after-ack regression;
+  gateway and DLQ HTTP routes.
+
+### Changed
+
+- Dashboard actor **msg/s** column; observer mailbox depth, uptime, and
+  message-rate sampling (carried from 0.2.1 development).
+
+## [0.2.1] — 2026-08-29
 
 ### Changed
 
@@ -146,6 +182,8 @@ tested; APIs are still evolving toward a 1.0 stabilization.
 
 - Bounded `ask` timeout (30s); at-most-once side-effecting `ask` dedup; reply-encode errors surfaced; actor-stream backpressure on QUIC.
 
-[Unreleased]: https://gitlab.com/lemarco/craft/-/compare/v0.2.0...HEAD
+[Unreleased]: https://gitlab.com/lemarco/craft/-/compare/v0.2.2...HEAD
+[0.2.2]: https://gitlab.com/lemarco/craft/-/compare/v0.2.1...v0.2.2
+[0.2.1]: https://gitlab.com/lemarco/craft/-/compare/v0.2.0...v0.2.1
 [0.2.0]: https://gitlab.com/lemarco/craft/-/compare/v0.1.0...v0.2.0
 [0.1.0]: https://gitlab.com/lemarco/craft/-/tags/v0.1.0

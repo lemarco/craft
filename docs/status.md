@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Version** | `0.2.0` (pre-1.0 — API may change on minor bumps) |
+| **Version** | `0.2.2` (pre-1.0 — API may change on minor bumps) |
 | **MSRV** | 1.90 |
 | **Maturity** | Advanced prototype — full test pyramid, E2E/chaos, published on [crates.io](https://crates.io/crates/crafty) |
 
@@ -41,9 +41,12 @@
 - Optional `DirectoryPolicy::ReadYourWrites` and `ask_linearizable` (directory visibility, not Raft-linearizable actor state)
 - **Durable mailbox spool** — redb outbox/inbox for cross-node `/actor/deliver` (`.durable_mailbox(true)` + `data_dir`)
 - **Durable actor workflow store** — `RedbActorStateStore` + voter replication; auto with `.data_dir()` ([actor-state-store](decisions/actor-state-store.md))
+- **Actor store TTL + GC** — per-key TTL on `set`/`set_with_ttl`; periodic leader GC ticker replicates expired-key deletes to voters (`DEFAULT_ACTOR_STORE_GC_PERIOD`, `DEFAULT_ACTOR_STORE_GC_MAX_KEYS`)
 - **Product API** — [`CraftyApp`](../crates/crafty/src/app.rs), [getting-started.md](getting-started.md)
 - Redis-backed `ActorStateStore` (`crafty-store-redis`); actor migration RPC
-- **`JobQueue`** — `InMemoryJobQueue`, `RedbJobQueue`, sharded streams, priority/delayed enqueue, leader `QueueService` with parallel sync voter replication + replicate auth, `ClusterJobQueue`, worker + membership autoscale, Meta-Raft autoscale policy ([job-queue](decisions/job-queue.md))
+- **`JobQueue`** — `InMemoryJobQueue`, `RedbJobQueue`, sharded streams, priority/delayed enqueue, **batch enqueue/ack** (single redb txn + one replicate RTT), **leader prefetch cache** (`job_queue_prefetch`, default 256), dead-letter lifecycle + **`requeue_dead_letter`**, **recurring/cron jobs** (`RecurringJob`, `queue_schedule` ticker), leader `QueueService` with parallel sync voter replication + replicate auth, `ClusterJobQueue`, `run_queue_consumer` + **`#[crafty::consumer]`** macro, worker + membership autoscale, Meta-Raft autoscale policy ([job-queue](decisions/job-queue.md))
+- **`crafty-http` jobs API** — `POST /jobs/{stream}/batch`, `POST /jobs/{stream}/ack-batch`, `POST /jobs/{stream}/{id}/requeue`; mounted on admin or **`CraftyApp` gateway**
+- **`CraftyApp` gateway** — separate HTTP listener (`.gateway_addr`, `CRAFTY_GATEWAY`); optional mount of jobs + actors APIs; custom Axum/WebSocket routes via `.gateway_routes` ([examples/websocket_gateway.rs](../examples/websocket_gateway.rs))
 - **Job queue E2E** — `./e2e/queue.sh` (QUIC/mTLS, enqueue → follower worker → leader failover); `crafty-node` env `CRAFTY_DATA_DIR` + `CRAFTY_JOB_QUEUE`
 - **Examples** — `job_queue_worker` (follower `ClusterJobQueue` + failover), `job_queue_cluster` (sharding, dedup, autoscale)
 
@@ -87,7 +90,7 @@ Global serializable isolation across shards is **not** a goal — see [cross-sha
 
 ## Release & ops (process, not missing code)
 
-- **crates.io / docs.rs publish** — published v0.2.0 — see [CHANGELOG.md](../CHANGELOG.md)
+- **crates.io / docs.rs publish** — v0.2.2 (see [CHANGELOG.md](../CHANGELOG.md); v0.2.0–0.2.1 on crates.io)
 - **Public API docs** — `missing_docs = "deny"` on published crates; `publish = false` crates exempt via crate lint override. Audit: `./scripts/docs-missing-audit.sh`
 - **Real-world soak** — scenario harness in `benchmarks/` (`soak`, `soak_queue`, `soak_multi_raft`, `soak_actor_store`, `soak_saga`, `soak_session`); scheduled CI `bench` job (60–120s budgets); long-running production soak is operator responsibility
 - **Heavy integration tests** — Redis/docker tests gated `#[ignore]` in fast CI; scheduled heavy lane
@@ -115,11 +118,11 @@ Four application patterns on one runtime — **no mandatory Redis or Kubernetes*
 
 | Scenario | Guide | Runtime |
 |----------|-------|---------|
-| Background jobs | [scenarios/background-jobs.md](scenarios/background-jobs.md) | ✅ `RedbJobQueue` |
-| Stateful workers | [scenarios/stateful-workers.md](scenarios/stateful-workers.md) | ✅ `RedbActorStateStore` |
-| Real-time / session | [scenarios/realtime-sessions.md](scenarios/realtime-sessions.md) | ✅ `ActorSession` |
+| Background jobs | [scenarios/background-jobs.md](scenarios/background-jobs.md) | ✅ batch/prefetch, DLQ, cron, `crafty-http` |
+| Stateful workers | [scenarios/stateful-workers.md](scenarios/stateful-workers.md) | ✅ `RedbActorStateStore` + TTL/GC |
+| Real-time / session | [scenarios/realtime-sessions.md](scenarios/realtime-sessions.md) | ✅ `ActorSession` + gateway WS |
 | Workflows | [scenarios/workflows.md](scenarios/workflows.md) | ✅ Meta-Raft saga journal |
-| Product API | [getting-started.md](getting-started.md) | ✅ `CraftyApp` |
+| Product API | [getting-started.md](getting-started.md) | ✅ `CraftyApp` + gateway |
 
 Decision: [decisions/product-scenarios.md](decisions/product-scenarios.md) · Backlog: [backlog.md](backlog.md)
 

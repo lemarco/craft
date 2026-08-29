@@ -12,7 +12,18 @@
 //!
 //! Wire it to [`CraftyApp::jobs_api`](https://docs.rs/crafty/latest/crafty/struct.CraftyApp.html#method.jobs_api)
 //! or custom enqueue / lookup closures.
+//!
+//! # Actors API
+//!
+//! [`ActorsApi`] exposes:
+//!
+//! - `POST /actors/{group}/ask` → `200 OK` + `{ "reply_b64": … }` (or raw bytes with `Accept: application/octet-stream`)
+//! - `POST /actors/{group}/cast` → `202 Accepted`
+//!
+//! Wire it to [`CraftyApp::actors_api`](https://docs.rs/crafty/latest/crafty/struct.CraftyApp.html#method.actors_api).
 
+mod actor_routes;
+mod actor_types;
 mod routes;
 mod types;
 
@@ -21,8 +32,9 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use axum::Router;
-use crafty_actor::{EnqueueOptions, JobId, JobStatus, LeaseId, QueueError, WorkerId};
+use crafty_actor::{CastError, ClusterAskError, EnqueueOptions, JobId, JobStatus, LeaseId, QueueError, WorkerId};
 
+pub use actor_types::{ActorsApiError, AskAccepted};
 pub use routes::parse_enqueue_body;
 pub use types::{
     AckBatchAccepted, AckBatchBody, EnqueueAccepted, EnqueueBatchAccepted, EnqueueBatchBody,
@@ -131,6 +143,55 @@ impl JobsApi {
             ack_batch: self.ack_batch,
             job_status: self.job_status,
             requeue_dead_letter: self.requeue_dead_letter,
+        }
+    }
+}
+
+/// Async ask hook used by [`ActorsApi`].
+pub type AskFn = Arc<
+    dyn Fn(String, Vec<u8>) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ClusterAskError>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// Async cast hook used by [`ActorsApi`].
+pub type CastFn = Arc<
+    dyn Fn(String, Vec<u8>) -> Pin<Box<dyn Future<Output = Result<(), CastError>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// Shared Axum state for actor routes.
+pub struct ActorsApiState {
+    pub(crate) ask: AskFn,
+    pub(crate) cast: CastFn,
+}
+
+/// HTTP actor cast / ask API.
+#[derive(Clone)]
+pub struct ActorsApi {
+    ask: AskFn,
+    cast: CastFn,
+}
+
+impl ActorsApi {
+    /// Build from custom ask and cast closures.
+    #[must_use]
+    pub fn new(ask: AskFn, cast: CastFn) -> Self {
+        Self { ask, cast }
+    }
+
+    /// Axum routes for actor cast and ask. Merge into your app and call [`Self::into_state`].
+    pub fn router(&self) -> Router<Arc<ActorsApiState>> {
+        actor_routes::actors_router()
+    }
+
+    /// State handle for [`Self::router`].
+    #[must_use]
+    pub fn into_state(self) -> ActorsApiState {
+        ActorsApiState {
+            ask: self.ask,
+            cast: self.cast,
         }
     }
 }

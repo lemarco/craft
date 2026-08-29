@@ -10,8 +10,8 @@ use std::time::Duration;
 use crafty_actor::ClientError;
 use crafty_actor::NodeHandle;
 use crafty_actor::{
-    ActorSession, CastError, ClusterRef, EnqueueOptions, JobId, JobStatus, LeaseId, RecurringJob,
-    UserActor, WorkerId,
+    ActorSession, CastError, ClusterAskError, ClusterRef, EnqueueOptions, JobId, JobStatus, LeaseId,
+    RecurringJob, UserActor, WorkerId,
 };
 use crafty_core::StateMachine;
 use crafty_net::LocalNetwork;
@@ -110,6 +110,7 @@ impl CraftyAppBuilder {
                 builder.gateway = Some(GatewayConfig {
                     addr,
                     jobs_api: cfg.gateway_jobs_api,
+                    actors_api: cfg.gateway_actors_api,
                     routes: None,
                 });
             }
@@ -225,19 +226,19 @@ impl CraftyAppBuilder {
     /// Public HTTP / WebSocket gateway bind address (`http-jobs` feature).
     ///
     /// When set, [`Self::start_local_shared`] or [`Self::run_local_until_shutdown`]
-    /// serves tier C job routes (unless disabled via [`Self::gateway_jobs_api`]) plus
+    /// serves tier C job routes (unless disabled via [`Self::gateway_jobs_api`]),
+    /// actor cast/ask routes (unless disabled via [`Self::gateway_actors_api`]), plus
     /// any routes from [`Self::http_routes`].
     #[cfg(feature = "http-jobs")]
     #[must_use]
     pub fn gateway_addr(mut self, addr: SocketAddr) -> Self {
-        let jobs_api = self
-            .gateway
-            .as_ref()
-            .map_or(true, |g| g.jobs_api);
+        let jobs_api = self.gateway.as_ref().map_or(true, |g| g.jobs_api);
+        let actors_api = self.gateway.as_ref().map_or(true, |g| g.actors_api);
         let routes = self.gateway.and_then(|g| g.routes);
         self.gateway = Some(GatewayConfig {
             addr,
             jobs_api,
+            actors_api,
             routes,
         });
         self
@@ -249,6 +250,16 @@ impl CraftyAppBuilder {
     pub fn gateway_jobs_api(mut self, enabled: bool) -> Self {
         if let Some(gateway) = self.gateway.as_mut() {
             gateway.jobs_api = enabled;
+        }
+        self
+    }
+
+    /// Mount `/actors/*` cast + ask routes on the gateway (default: `true`).
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn gateway_actors_api(mut self, enabled: bool) -> Self {
+        if let Some(gateway) = self.gateway.as_mut() {
+            gateway.actors_api = enabled;
         }
         self
     }
@@ -274,10 +285,10 @@ impl CraftyAppBuilder {
     where
         F: FnOnce(Arc<CraftyApp>) -> axum::Router + Send + 'static,
     {
-        let jobs_api = self
+        let (jobs_api, actors_api) = self
             .gateway
             .as_ref()
-            .map_or(true, |g| g.jobs_api);
+            .map_or((true, true), |g| (g.jobs_api, g.actors_api));
         let addr = self.gateway.map(|g| g.addr).unwrap_or_else(|| {
             "127.0.0.1:3000"
                 .parse()
@@ -286,6 +297,7 @@ impl CraftyAppBuilder {
         self.gateway = Some(GatewayConfig {
             addr,
             jobs_api,
+            actors_api,
             routes: Some(Box::new(routes)),
         });
         self
@@ -553,6 +565,15 @@ impl CraftyApp {
         self.cluster.messaging().cast(group, payload).await
     }
 
+    /// Round-robin ask (request/reply) to any instance in `group`.
+    ///
+    /// # Errors
+    /// Returns [`ClusterAskError`] when the group has no workers, delivery fails, or the handler
+    /// does not reply within the ask deadline.
+    pub async fn ask(&self, group: &str, payload: Vec<u8>) -> Result<Vec<u8>, ClusterAskError> {
+        self.cluster.messaging().ask(group, payload).await
+    }
+
     /// Cast to a sticky session opened via [`Self::session`].
     ///
     /// # Errors
@@ -656,6 +677,31 @@ impl CraftyApp {
             Arc::new(move |stream, job_id| {
                 let app = Arc::clone(&requeue_app);
                 Box::pin(async move { app.requeue_dead_letter(&stream, JobId(job_id)).await })
+            }),
+        )
+    }
+
+    /// HTTP actor cast / ask API. Requires `http-jobs` feature.
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use crafty::CraftyApp;
+    /// # async fn demo(app: Arc<CraftyApp>) {
+    /// let _api = CraftyApp::actors_api(app);
+    /// # }
+    /// ```
+    #[cfg(feature = "http-jobs")]
+    pub fn actors_api(app: Arc<Self>) -> crafty_http::ActorsApi {
+        let ask_app = Arc::clone(&app);
+        let cast_app = app;
+        crafty_http::ActorsApi::new(
+            Arc::new(move |group, payload| {
+                let app = Arc::clone(&ask_app);
+                Box::pin(async move { app.ask(&group, payload).await })
+            }),
+            Arc::new(move |group, payload| {
+                let app = Arc::clone(&cast_app);
+                Box::pin(async move { app.cast(&group, payload).await })
             }),
         )
     }

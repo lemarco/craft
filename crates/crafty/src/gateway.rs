@@ -27,16 +27,19 @@ pub struct GatewayConfig {
     pub addr: SocketAddr,
     /// Mount tier C `/jobs/*` routes (requires `http-jobs` feature).
     pub jobs_api: bool,
+    /// Mount `/actors/*` cast + ask routes (requires `http-jobs` feature).
+    pub actors_api: bool,
     /// Optional custom routes (WebSocket, sync HTTP, etc.).
     pub routes: Option<GatewayRoutesFn>,
 }
 
-/// Build the gateway router: custom routes first, optional jobs API as fallback.
+/// Build the gateway router: custom routes first, then optional product APIs.
 #[must_use]
 pub fn build_gateway_router(app: Arc<CraftyApp>, config: GatewayConfig) -> Router {
     let GatewayConfig {
         addr: _,
         jobs_api,
+        actors_api,
         routes,
     } = config;
 
@@ -44,10 +47,14 @@ pub fn build_gateway_router(app: Arc<CraftyApp>, config: GatewayConfig) -> Route
         .map(|f| f(Arc::clone(&app)))
         .unwrap_or_else(Router::new);
 
+    if actors_api {
+        let api = CraftyApp::actors_api(Arc::clone(&app));
+        router = router.merge(api.router().with_state(Arc::new(api.into_state())));
+    }
+
     if jobs_api {
-        let api = CraftyApp::jobs_api(Arc::clone(&app));
-        let jobs = api.router().with_state(Arc::new(api.into_state()));
-        router = router.fallback_service(jobs.into_service());
+        let api = CraftyApp::jobs_api(app);
+        router = router.merge(api.router().with_state(Arc::new(api.into_state())));
     }
 
     router

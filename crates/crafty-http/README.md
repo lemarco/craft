@@ -47,3 +47,15 @@ Acknowledge many leases in one transaction (HTTP workers). JSON body:
 ```
 
 Returns **`200 OK`** with `{ "acked": N }`.
+
+### `POST /actors/{group}/ask`
+
+Request/reply to a worker group (round-robin). Same body rules as job enqueue (raw or JSON `payload` / `payload_b64`).
+
+Returns **`200 OK`** with `{ "reply_b64": "…" }`, or raw bytes when `Accept: application/octet-stream`.
+
+### `POST /actors/{group}/cast`
+
+Fire-and-forget message to a worker group. Same body rules as above.
+
+Returns **`202 Accepted`**.
