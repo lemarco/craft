@@ -314,7 +314,9 @@ pub trait JobQueue: Send + Sync {
             let mut ids = Vec::with_capacity(jobs.len());
             let mut ops = Vec::new();
             for (payload, options) in jobs {
-                let (id, mut step) = self.enqueue_opts_replicated(payload, options.clone()).await?;
+                let (id, mut step) = self
+                    .enqueue_opts_replicated(payload, options.clone())
+                    .await?;
                 ids.push(id);
                 ops.append(&mut step);
             }
@@ -356,7 +358,11 @@ pub(crate) struct AttemptOutcome {
     pub not_before_ms: u64,
 }
 
-pub(crate) fn after_failed_attempt(attempts: u32, max_attempts: u32, now_ms: u64) -> AttemptOutcome {
+pub(crate) fn after_failed_attempt(
+    attempts: u32,
+    max_attempts: u32,
+    now_ms: u64,
+) -> AttemptOutcome {
     let attempts = attempts.saturating_add(1);
     if max_attempts > 0 && attempts >= max_attempts {
         AttemptOutcome {
@@ -520,7 +526,10 @@ impl Inner {
     }
 
     fn requeue_dead_letter(&mut self, job_id: JobId, now_ms: u64) -> Result<(), QueueError> {
-        let entry = self.jobs.get_mut(&job_id).ok_or(QueueError::NotDeadLetter)?;
+        let entry = self
+            .jobs
+            .get_mut(&job_id)
+            .ok_or(QueueError::NotDeadLetter)?;
         if !entry.dead_letter {
             return Err(QueueError::NotDeadLetter);
         }
@@ -591,11 +600,7 @@ impl Inner {
         QueueMetrics {
             pending: ready_pending as u64,
             leased: self.leases.len() as u64,
-            dead_letter: self
-                .jobs
-                .values()
-                .filter(|entry| entry.dead_letter)
-                .count() as u64,
+            dead_letter: self.jobs.values().filter(|entry| entry.dead_letter).count() as u64,
             oldest_pending_age: oldest,
         }
     }
@@ -1005,7 +1010,7 @@ impl JobQueue for InMemoryJobQueue {
 /// Poll a [`JobQueue`], invoke `handle` on each payload, then ack or nack.
 ///
 /// Leases up to `batch` jobs per poll and acknowledges successes with
-/// [`JobQueue::ack_batch`] (one leader transaction when using [`ClusterJobQueue`]).
+/// [`JobQueue::ack_batch`] (one leader transaction when using [`crate::ClusterJobQueue`]).
 ///
 /// Runs until `stop` is set. When the queue is empty, sleeps `idle_sleep` between polls.
 pub async fn run_queue_consumer<Q, F, Fut, E>(
@@ -1260,9 +1265,7 @@ mod tests {
         use std::sync::Arc;
 
         let q = Arc::new(InMemoryJobQueue::new(Duration::from_secs(30)));
-        q.enqueue_batch(&[b"1".as_slice(), b"2"])
-            .await
-            .unwrap();
+        q.enqueue_batch(&[b"1".as_slice(), b"2"]).await.unwrap();
         let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
         let worker = worker(0);
         let queue = Arc::clone(&q);
