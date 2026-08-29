@@ -3,7 +3,7 @@
 //!
 //! Public entry points are the [`macro@remote_actor`] and [`macro@consumer`] attributes.
 //! [`remote_actor`] fills in wire codecs on a `UserActor` impl;
-//! [`consumer`] generates a [`JobConsumer`](crafty::JobConsumer) adapter for queue workers.
+//! [`consumer`] generates a `JobConsumer` adapter for queue workers (re-exported by the `crafty` crate).
 //!
 //! The [`macro@remote_actor`] attribute fills in the boilerplate `postcard` wire codecs on a
 //! `UserActor` implementation so an actor can be spawned on and messaged from remote nodes
@@ -18,7 +18,7 @@ use std::collections::HashSet;
 use syn::punctuated::Punctuated;
 use syn::{Ident, ImplItem, ItemFn, ItemImpl, Token, parse_macro_input};
 
-/// Register an async job handler and generate a [`JobConsumer`](crafty::JobConsumer) adapter.
+/// Register an async job handler and generate a `JobConsumer` adapter.
 ///
 /// Apply to an `async fn` taking `&[u8]` and returning `Result<(), E>`:
 ///
