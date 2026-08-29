@@ -190,7 +190,7 @@ fn parse_batch_job(job: EnqueueBatchJobBody) -> Result<(Vec<u8>, EnqueueOptions)
     };
     let opts = EnqueueOptions {
         priority: job.priority,
-        dedup_key: job.dedup.map(|key| key.into_bytes()),
+        dedup_key: job.dedup.map(String::into_bytes),
         ..Default::default()
     };
     Ok((payload, opts))
