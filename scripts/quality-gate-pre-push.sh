@@ -36,26 +36,10 @@ log ">> doc"
 cargo doc --workspace --no-deps --all-features 2>&1 | maybe_tee
 
 log ">> publish dry-run"
-# Per-crate dry-run in dependency order; --no-verify avoids resolving against
-# crates.io when the workspace has API ahead of the last published release.
-PUBLISH_DRY_RUN_ORDER=(
-    crafty-macros crafty-proto crafty-core crafty-storage crafty-net
-    crafty-actor crafty-client crafty-dashboard crafty-http crafty-sim crafty-store-redis
-    crafty crafty-node
-)
-WS_VERSION="$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')"
-crate_on_index() {
-    curl -fsS -H "User-Agent: crafty-gate" \
-        "https://crates.io/api/v1/crates/${1}/${WS_VERSION}" >/dev/null 2>&1
-}
-for pkg in "${PUBLISH_DRY_RUN_ORDER[@]}"; do
-    if [[ "$pkg" == "crafty" || "$pkg" == "crafty-node" ]] \
-        && ! crate_on_index crafty-http; then
-        log ">> publish dry-run skip $pkg (crafty-http ${WS_VERSION} not on crates.io yet)"
-        continue
-    fi
-    cargo publish -p "$pkg" --dry-run --no-verify --allow-dirty 2>&1 | maybe_tee
-done
+# Workspace dry-run resolves path deps locally (per-crate dry-run fails when the
+# new workspace version is not yet on crates.io — e.g. crafty-proto 0.2.0 during
+# a 0.1 → 0.2 release).
+cargo publish --workspace --dry-run --allow-dirty 2>&1 | maybe_tee
 
 log ">> msrv"
 bash scripts/check-msrv.sh 2>&1 | maybe_tee
