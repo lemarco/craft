@@ -575,6 +575,25 @@ pub trait ActorObserver: Send + Sync {
 /// instance task at launch.
 type ObserverHook = Arc<Mutex<Option<Arc<dyn ActorObserver>>>>;
 
+fn mailbox_depth_u64(depth: i64) -> u64 {
+    depth.max(0).cast_unsigned()
+}
+
+/// Point-in-time introspection for one locally hosted actor instance (Observer /
+/// dashboard). Remote instances are not included (directory entries on other
+/// nodes report zero).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalActorIntrospection {
+    /// Registered group name.
+    pub name: String,
+    /// Instance index within the group.
+    pub instance: u32,
+    /// Currently-queued messages for this instance (instantaneous).
+    pub mailbox_depth: i64,
+    /// Wall-time since this instance task was launched on this node.
+    pub uptime_secs: u64,
+}
+
 /// A point-in-time snapshot of one actor group's runtime counters, for metrics
 /// sampling (observability §2). Cumulative counters (`messages`, `handle_nanos`) are
 /// monotonic; the sampler derives rates/latency by differencing successive
@@ -599,6 +618,9 @@ struct Instance<A: UserActor> {
     instance: u32,
     tx: mpsc::UnboundedSender<Mailbox<A>>,
     join: JoinHandle<()>,
+    spawned_at: Instant,
+    /// Enqueued-but-unhandled messages for this instance (Track H / Observer).
+    queued: Arc<AtomicI64>,
 }
 
 /// The shared state of a named actor group (one instance = a singleton).
@@ -672,12 +694,14 @@ impl<A: UserActor> PoolInner<A> {
     ) -> u32 {
         let instance = self.next_instance.fetch_add(1, Ordering::Relaxed);
         let (tx, mut rx) = mpsc::unbounded_channel::<Mailbox<A>>();
+        let instance_queued = Arc::new(AtomicI64::new(0));
         let mut stop_rx = self.stop.subscribe();
         let restarts = Arc::clone(&self.restarts);
         let roster = Arc::clone(&self.instances);
         let messages = Arc::clone(&self.messages);
         let handle_nanos = Arc::clone(&self.handle_nanos);
-        let queued = Arc::clone(&self.queued);
+        let group_queued = Arc::clone(&self.queued);
+        let inst_queued = Arc::clone(&instance_queued);
         // Bind the observer once (installed before any spawn, observability Track H),
         // so per-message hooks never touch the shared lock.
         let observer = self.observer.lock().unwrap().clone();
@@ -702,7 +726,8 @@ impl<A: UserActor> PoolInner<A> {
                     }
                     maybe = rx.recv() => match maybe {
                         Some(Mailbox::User(msg)) => {
-                            queued.fetch_sub(1, Ordering::Relaxed);
+                            group_queued.fetch_sub(1, Ordering::Relaxed);
+                            inst_queued.fetch_sub(1, Ordering::Relaxed);
                             let started = Instant::now();
                             let result = state.handle(msg).await;
                             let elapsed = started.elapsed();
@@ -772,11 +797,34 @@ impl<A: UserActor> PoolInner<A> {
             }
             state.stopped().await;
         });
+        let spawned_at = Instant::now();
         self.instances
             .lock()
             .unwrap()
-            .push(Instance { instance, tx, join });
+            .push(Instance {
+                instance,
+                tx,
+                join,
+                spawned_at,
+                queued: instance_queued,
+            });
         instance
+    }
+
+    fn instance_introspection(&self) -> Vec<(u32, u64, i64)> {
+        let now = Instant::now();
+        self.instances
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|i| {
+                (
+                    i.instance,
+                    u64::try_from(now.duration_since(i.spawned_at).as_secs()).unwrap_or(u64::MAX),
+                    i.queued.load(Ordering::Relaxed),
+                )
+            })
+            .collect()
     }
 
     /// Start one instance and register it. On failure nothing is registered.
@@ -819,53 +867,63 @@ impl<A: UserActor> PoolInner<A> {
         self.restarts.load(Ordering::Relaxed)
     }
 
-    /// A clone of the round-robin-selected instance's sender.
-    fn pick_rr(&self) -> Option<mpsc::UnboundedSender<Mailbox<A>>> {
+    /// A clone of the round-robin-selected instance's sender and depth counter.
+    fn pick_rr(&self) -> Option<(mpsc::UnboundedSender<Mailbox<A>>, Arc<AtomicI64>)> {
         let instances = self.instances.lock().unwrap();
         if instances.is_empty() {
             return None;
         }
         let i = self.rr.fetch_add(1, Ordering::Relaxed) % instances.len();
-        Some(instances[i].tx.clone())
+        Some((
+            instances[i].tx.clone(),
+            Arc::clone(&instances[i].queued),
+        ))
     }
 
     /// A clone of the instance selected by the consistent hash ring for `key`.
-    fn pick_keyed(&self, key: u64) -> Option<mpsc::UnboundedSender<Mailbox<A>>> {
+    fn pick_keyed(&self, key: u64) -> Option<(mpsc::UnboundedSender<Mailbox<A>>, Arc<AtomicI64>)> {
         let instances = self.instances.lock().unwrap();
         if instances.is_empty() {
             return None;
         }
         let index =
             crate::ring::pick_index(key, instances.len(), crate::ring::group_salt(&self.name));
-        Some(instances[index].tx.clone())
+        Some((
+            instances[index].tx.clone(),
+            Arc::clone(&instances[index].queued),
+        ))
     }
 
     fn send_rr(&self, msg: A::Message) -> Result<(), SendError> {
         if self.draining.load(Ordering::SeqCst) {
             return Err(SendError::Draining);
         }
-        let tx = self.pick_rr().ok_or(SendError::NoInstances)?;
-        self.enqueue(&tx, msg).map_err(|_| SendError::Closed)
+        let (tx, queued) = self.pick_rr().ok_or(SendError::NoInstances)?;
+        self.enqueue(&tx, &queued, msg)
+            .map_err(|_| SendError::Closed)
     }
 
     fn send_keyed(&self, key: u64, msg: A::Message) -> Result<(), SendError> {
         if self.draining.load(Ordering::SeqCst) {
             return Err(SendError::Draining);
         }
-        let tx = self.pick_keyed(key).ok_or(SendError::NoInstances)?;
-        self.enqueue(&tx, msg).map_err(|_| SendError::Closed)
+        let (tx, queued) = self.pick_keyed(key).ok_or(SendError::NoInstances)?;
+        self.enqueue(&tx, &queued, msg)
+            .map_err(|_| SendError::Closed)
     }
 
-    /// Enqueue a user message and bump the mailbox-depth gauge on success. The
-    /// counter is decremented by the instance task when it dequeues (Track H).
+    /// Enqueue a user message and bump the mailbox-depth gauges on success. The
+    /// counters are decremented by the instance task when it dequeues (Track H).
     fn enqueue(
         &self,
         tx: &mpsc::UnboundedSender<Mailbox<A>>,
+        instance_queued: &Arc<AtomicI64>,
         msg: A::Message,
     ) -> Result<(), A::Message> {
         match tx.send(Mailbox::User(msg)) {
             Ok(()) => {
                 self.queued.fetch_add(1, Ordering::Relaxed);
+                instance_queued.fetch_add(1, Ordering::Relaxed);
                 Ok(())
             }
             Err(mpsc::error::SendError(Mailbox::User(msg))) => Err(msg),
@@ -879,16 +937,16 @@ impl<A: UserActor> PoolInner<A> {
         if self.draining.load(Ordering::SeqCst) {
             return Err(DeliverError::Draining);
         }
-        let tx = {
+        let (tx, queued) = {
             let instances = self.instances.lock().unwrap();
             instances
                 .iter()
                 .find(|i| i.instance == instance)
+                .map(|i| (i.tx.clone(), Arc::clone(&i.queued)))
                 .ok_or(DeliverError::NoInstance(instance))?
-                .tx
-                .clone()
         };
-        self.enqueue(&tx, msg).map_err(|_| DeliverError::Closed)
+        self.enqueue(&tx, &queued, msg)
+            .map_err(|_| DeliverError::Closed)
     }
 
     /// Capture instance `instance`'s migration snapshot. The request rides the
@@ -1004,6 +1062,8 @@ trait GroupLifecycle: Send + Sync {
     /// Runtime counters `(instances, messages, handle_nanos, mailbox_depth)` for
     /// metrics sampling (Track H).
     fn runtime_stats(&self) -> (usize, u64, u64, i64);
+    /// Per-instance uptime and mailbox depth for Observer introspection.
+    fn instance_introspection(&self) -> Vec<(u32, u64, i64)>;
     /// Gracefully drain and stop the group with `timeout` (E12, drain-timeout).
     fn drain(self: Arc<Self>, timeout: Duration) -> BoxFuture<'static, DrainOutcome>;
     /// Per-group graceful-drain override ([drain-timeout]).
@@ -1039,6 +1099,9 @@ impl<A: UserActor> GroupLifecycle for PoolInner<A> {
             self.handle_nanos.load(Ordering::Relaxed),
             self.queued.load(Ordering::Relaxed),
         )
+    }
+    fn instance_introspection(&self) -> Vec<(u32, u64, i64)> {
+        PoolInner::instance_introspection(self)
     }
     fn drain(self: Arc<Self>, timeout: Duration) -> BoxFuture<'static, DrainOutcome> {
         Box::pin(async move { PoolInner::drain(&self, timeout).await })
@@ -1339,6 +1402,30 @@ impl ActorRegistry {
                     handle_nanos,
                     mailbox_depth,
                 }
+            })
+            .collect()
+    }
+
+    /// Snapshot locally hosted instances for Observer / dashboard introspection.
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
+    #[must_use]
+    pub fn local_actor_introspection(&self) -> Vec<LocalActorIntrospection> {
+        let groups = self.groups.lock().unwrap();
+        groups
+            .iter()
+            .flat_map(|(name, entry)| {
+                entry
+                    .lifecycle
+                    .instance_introspection()
+                    .into_iter()
+                    .map(|(instance, uptime_secs, mailbox_depth)| LocalActorIntrospection {
+                        name: name.clone(),
+                        instance,
+                        mailbox_depth,
+                        uptime_secs,
+                    })
             })
             .collect()
     }
@@ -1655,12 +1742,26 @@ impl ActorRegistry {
     /// If the internal mutex is poisoned.
     #[must_use]
     pub fn local_registrations(&self, node_id: NodeId) -> Vec<ActorRegistration> {
+        let stats: HashMap<(String, u32), (u64, u64)> = self
+            .local_actor_introspection()
+            .into_iter()
+            .map(|i| {
+                (
+                    (i.name, i.instance),
+                    (mailbox_depth_u64(i.mailbox_depth), i.uptime_secs),
+                )
+            })
+            .collect();
         let groups = self.groups.lock().unwrap();
         let mut out = Vec::new();
         for (name, entry) in groups.iter() {
             let actor_type = ActorTypeId(entry.lifecycle.type_name().to_string());
             let migratable = entry.lifecycle.migratable();
             for instance in entry.lifecycle.instance_ids() {
+                let (mailbox_depth, uptime_secs) = stats
+                    .get(&(name.clone(), instance))
+                    .copied()
+                    .unwrap_or((0, 0));
                 out.push(ActorRegistration {
                     id: ActorId {
                         node: node_id,
@@ -1670,6 +1771,8 @@ impl ActorRegistry {
                     },
                     actor_type: actor_type.clone(),
                     migratable,
+                    mailbox_depth,
+                    uptime_secs,
                 });
             }
         }

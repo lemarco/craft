@@ -77,9 +77,9 @@ pub use redb_queue::RedbJobQueue;
 pub use redb_store::{RedbActorStateStore, StoreReplicationOps};
 pub use registry::{
     ASK_TIMEOUT, ActorGroupStats, ActorObserver, ActorRef, ActorRegistry, AskError,
-    ConfigCodecError, DEFAULT_DRAIN_TIMEOUT, DeliverError, DrainOutcome, MessageDecodeError,
-    MigrationError, PlacementMode, PoolRef, RestartPolicy, RpcReplyPort, ScaleError, SendError,
-    SnapshotError, SpawnError, StopError, UserActor, WireReplyPort,
+    ConfigCodecError, DEFAULT_DRAIN_TIMEOUT, DeliverError, DrainOutcome, LocalActorIntrospection,
+    MessageDecodeError, MigrationError, PlacementMode, PoolRef, RestartPolicy, RpcReplyPort,
+    ScaleError, SendError, SnapshotError, SpawnError, StopError, UserActor, WireReplyPort,
 };
 pub use resources::{ResourceProfile, VpsResources};
 pub use ring::{VIRTUAL_NODES, group_salt, hash_bytes, hash_key as ring_hash_key, pick_index};

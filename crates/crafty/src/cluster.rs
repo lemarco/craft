@@ -466,6 +466,38 @@ impl<M: StateMachine> CraftyCluster<M> {
         self.job_queues.get(stream).cloned()
     }
 
+    /// Enqueue many jobs in one leader transaction (tier C batch path).
+    ///
+    /// Batches are capped at [`crafty_actor::DEFAULT_QUEUE_BATCH_MAX`] jobs per RPC.
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or enqueue fails.
+    pub async fn enqueue_batch(
+        &self,
+        stream: &str,
+        payloads: &[&[u8]],
+    ) -> Result<Vec<crafty_actor::JobId>, crafty_actor::QueueError> {
+        let queue = self.job_queue(stream).ok_or_else(|| {
+            crafty_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
+        })?;
+        queue.enqueue_batch(payloads).await
+    }
+
+    /// Enqueue many jobs with per-job options in one leader transaction.
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or enqueue fails.
+    pub async fn enqueue_batch_opts(
+        &self,
+        stream: &str,
+        jobs: &[(Vec<u8>, crafty_actor::EnqueueOptions)],
+    ) -> Result<Vec<crafty_actor::JobId>, crafty_actor::QueueError> {
+        let queue = self.job_queue(stream).ok_or_else(|| {
+            crafty_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
+        })?;
+        queue.enqueue_batch_opts(jobs).await
+    }
+
     /// Registry of queue autoscale policies replicated via Meta-Raft / group 0.
     #[must_use]
     pub fn queue_autoscale_registry(&self) -> Arc<crafty_actor::QueueAutoscaleRegistry> {

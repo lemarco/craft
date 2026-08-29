@@ -80,6 +80,8 @@ pub struct ActorView {
     pub uptime_secs: u64,
     /// Restart/migration generation.
     pub generation: u32,
+    /// Handled messages per second (group rate on the hosting node; `0` when unknown).
+    pub messages_per_sec: f64,
 }
 
 /// Per-node view for `GET /introspect/node/{id}` (observability §4).

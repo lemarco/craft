@@ -261,16 +261,16 @@ fn messaging_on(
 // ---------------------------------------------------------------------------
 
 fn reg(node: u64, name: &str, instance: u32) -> ActorRegistration {
-    ActorRegistration {
-        id: ActorId {
+    ActorRegistration::new(
+        ActorId {
             node: NodeId(node),
             name: name.to_string(),
             instance,
             generation: 0,
         },
-        actor_type: ActorTypeId("Worker".to_string()),
-        migratable: false,
-    }
+        ActorTypeId("Worker".to_string()),
+        false,
+    )
 }
 
 fn update(node: u64, regs: Vec<ActorRegistration>) -> DirectoryUpdate {

@@ -77,6 +77,7 @@ impl Observer for Fake {
                 mailbox_depth: 3,
                 uptime_secs: 42,
                 generation: 1,
+                messages_per_sec: 12.5,
             }]
         })
     }
@@ -91,6 +92,7 @@ impl Observer for Fake {
                 mailbox_depth: 3,
                 uptime_secs: 42,
                 generation: 1,
+                messages_per_sec: 12.5,
             })
         })
     }
@@ -298,6 +300,7 @@ async fn introspection_routes_return_json() {
     let (status, body) = get(addr, "/introspect/actors").await;
     assert_eq!(status, 200);
     assert!(body.contains("OrderWorker"));
+    assert!(body.contains("\"messages_per_sec\":12.5"));
 
     let (status, body) = get(addr, "/introspect/actors/orders/0").await;
     assert_eq!(status, 200);

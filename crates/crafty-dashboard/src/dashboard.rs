@@ -50,7 +50,7 @@ pub(crate) const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
   </section>
   <section>
     <h2>Actors</h2>
-    <table><thead><tr><th>id</th><th>type</th><th>node</th><th>mailbox</th><th>gen</th></tr></thead><tbody id="actors"></tbody></table>
+    <table><thead><tr><th>id</th><th>type</th><th>node</th><th>mailbox</th><th>uptime</th><th>msg/s</th><th>gen</th></tr></thead><tbody id="actors"></tbody></table>
   </section>
   <section>
     <h2>Job queues</h2>
@@ -82,7 +82,7 @@ async function refresh() {
     $('nodes').innerHTML = (c.nodes||[]).map(n =>
       `<tr><td>${n.id}</td><td>${n.role}</td><td>${n.member}</td></tr>`).join('');
     $('actors').innerHTML = (a||[]).map(x =>
-      `<tr><td>${x.id}</td><td>${x.actor_type}</td><td>${x.node}</td><td>${x.mailbox_depth}</td><td>${x.generation}</td></tr>`).join('');
+      `<tr><td>${x.id}</td><td>${x.actor_type}</td><td>${x.node}</td><td>${x.mailbox_depth}</td><td>${x.uptime_secs}s</td><td>${(x.messages_per_sec ?? 0).toFixed(1)}</td><td>${x.generation}</td></tr>`).join('');
     $('queues').innerHTML = ((q && q.streams) || []).map(x =>
       `<tr><td>${x.stream}</td><td>${x.pending}</td><td>${x.leased}</td><td>${x.dead_letter ?? 0}</td><td>${x.oldest_pending_age_ms}</td></tr>`).join('');
     $('sagas').innerHTML = (s||[]).map(x =>

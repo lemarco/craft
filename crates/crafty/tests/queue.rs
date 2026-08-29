@@ -148,6 +148,38 @@ fn shutdown_queue_cluster(net: &LocalNetwork, clusters: Vec<Arc<CraftyCluster<Kv
 }
 
 #[tokio::test(start_paused = true)]
+async fn batch_enqueue_and_ack_through_cluster_client() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (net, clusters) = spawn_queue_cluster(&dir, false).await;
+    let leader = await_crafty_leader(&clusters).await;
+    advance(Duration::from_millis(200)).await;
+
+    let ids = leader
+        .enqueue_batch("jobs", &[b"j1", b"j2", b"j3"])
+        .await
+        .expect("batch enqueue");
+    assert_eq!(ids.len(), 3);
+
+    let worker = WorkerId {
+        node: leader.node_id(),
+        instance: 1,
+    };
+    let queue = leader.job_queue("jobs").expect("queue");
+    let leased = queue.lease(worker, 8).await.expect("lease");
+    assert_eq!(leased.len(), 3);
+    let lease_ids: Vec<_> = leased.iter().map(|j| j.lease_id).collect();
+    queue.ack_batch(worker, &lease_ids).await.expect("ack batch");
+
+    let metrics = queue.metrics().await.expect("metrics");
+    assert_eq!(metrics.pending, 0);
+    assert_eq!(metrics.leased, 0);
+
+    drop(queue);
+    drop(leader);
+    shutdown_queue_cluster(&net, clusters);
+}
+
+#[tokio::test(start_paused = true)]
 async fn enqueue_replicates_to_every_voter_redb() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (net, clusters) = spawn_queue_cluster(&dir, false).await;

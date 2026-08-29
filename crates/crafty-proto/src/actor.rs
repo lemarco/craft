@@ -35,6 +35,26 @@ pub struct ActorRegistration {
     pub actor_type: ActorTypeId,
     /// Whether the actor carries migratable state (cross-node-actors migration).
     pub migratable: bool,
+    /// Instantaneous mailbox depth on the hosting node (Observer / dashboard).
+    #[serde(default)]
+    pub mailbox_depth: u64,
+    /// Seconds since the instance was spawned on the hosting node.
+    #[serde(default)]
+    pub uptime_secs: u64,
+}
+
+impl ActorRegistration {
+    /// Build a directory entry; runtime stats default to zero.
+    #[must_use]
+    pub fn new(id: ActorId, actor_type: ActorTypeId, migratable: bool) -> Self {
+        Self {
+            id,
+            actor_type,
+            migratable,
+            mailbox_depth: 0,
+            uptime_secs: 0,
+        }
+    }
 }
 
 /// A state-based directory update: node `node`'s **complete** set of local

@@ -1,15 +1,14 @@
 //! The [`Observer`] the admin server reads from (health-admin-port readiness, observability §4
 //! introspection), backed by a live node: consensus status comes from the
 //! [`NodeHandle`], the actor picture from the shared [`ActorDirectory`] and the
-//! local [`ActorRegistry`].
-//!
-//! Mailbox depth and per-actor uptime are not yet plumbed through the registry,
-//! so those fields report `0` for now (tracked as observability follow-ups);
-//! everything else reflects real runtime state.
+//! local [`ActorRegistry`] (mailbox depth + uptime for actors hosted here; remote
+//! stats arrive via directory anti-entropy).
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Mutex;
+use std::time::Instant;
 
 use crafty_core::{Role, StateMachine};
 use crafty_dashboard::{
@@ -18,11 +17,40 @@ use crafty_dashboard::{
 };
 use crafty_proto::NodeId;
 
-use crafty_actor::{ActorDirectory, ActorRegistry, JobQueue, NodeHandle};
+use crafty_actor::{ActorDirectory, ActorGroupStats, ActorRegistry, JobQueue, NodeHandle};
 use crafty_client::SagaJournalPhase;
 
 use crate::multi_raft::MultiRaftState;
 use crate::saga::SagaRegistry;
+
+/// Derives per-group message rates from cumulative registry counters between polls.
+#[derive(Default)]
+struct GroupMessageRates(Mutex<HashMap<String, (u64, Instant)>>);
+
+impl GroupMessageRates {
+    fn snapshot(&self, stats: &[ActorGroupStats]) -> HashMap<String, f64> {
+        let now = Instant::now();
+        let mut inner = self.0.lock().expect("lock");
+        stats
+            .iter()
+            .map(|stat| {
+                let rate = inner
+                    .get(&stat.name)
+                    .map(|(prev_messages, prev_at)| {
+                        let elapsed = now.duration_since(*prev_at).as_secs_f64();
+                        if elapsed > 0.0 {
+                            stat.messages.saturating_sub(*prev_messages) as f64 / elapsed
+                        } else {
+                            0.0
+                        }
+                    })
+                    .unwrap_or(0.0);
+                inner.insert(stat.name.clone(), (stat.messages, now));
+                (stat.name.clone(), rate)
+            })
+            .collect()
+    }
+}
 
 /// A read-only view onto one running node for the admin/dashboard endpoints.
 pub(crate) struct CraftyObserver<M: StateMachine> {
@@ -30,6 +58,7 @@ pub(crate) struct CraftyObserver<M: StateMachine> {
     handle: NodeHandle<M>,
     directory: Arc<ActorDirectory>,
     registry: ActorRegistry,
+    message_rates: Arc<GroupMessageRates>,
     shard_count: u32,
     shard_routing: crafty_core::ShardRoutingKind,
     raft_groups: u32,
@@ -65,6 +94,7 @@ impl<M: StateMachine> CraftyObserver<M> {
             handle,
             directory,
             registry,
+            message_rates: Arc::new(GroupMessageRates::default()),
             shard_count,
             shard_routing,
             raft_groups,
@@ -120,6 +150,10 @@ fn metric_u64(v: u64) -> f64 {
 #[allow(clippy::cast_precision_loss)] // Prometheus gauges use f64; saga counts fit in practice.
 fn metric_usize(v: usize) -> f64 {
     v as f64
+}
+
+fn mailbox_depth_u64(depth: i64) -> u64 {
+    depth.max(0).cast_unsigned()
 }
 
 impl<M: StateMachine> Observer for CraftyObserver<M> {
@@ -259,16 +293,43 @@ impl<M: StateMachine> Observer for CraftyObserver<M> {
 
     fn actors(&self) -> BoxFuture<'_, Vec<ActorView>> {
         Box::pin(async move {
+            let group_rates = self.message_rates.snapshot(&self.registry.stats());
+            let local: HashMap<(String, u32), (u64, u64)> = self
+                .registry
+                .local_actor_introspection()
+                .into_iter()
+                .map(|i| {
+                    (
+                        (i.name, i.instance),
+                        (mailbox_depth_u64(i.mailbox_depth), i.uptime_secs),
+                    )
+                })
+                .collect();
+
             let mut out = Vec::new();
             for name in self.directory.groups() {
                 for reg in self.directory.lookup(&name) {
+                    let (mailbox_depth, uptime_secs) = if reg.id.node == self.node_id {
+                        local
+                            .get(&(reg.id.name.clone(), reg.id.instance))
+                            .copied()
+                            .unwrap_or((reg.mailbox_depth, reg.uptime_secs))
+                    } else {
+                        (reg.mailbox_depth, reg.uptime_secs)
+                    };
+                    let messages_per_sec = if reg.id.node == self.node_id {
+                        *group_rates.get(&reg.id.name).unwrap_or(&0.0)
+                    } else {
+                        0.0
+                    };
                     out.push(ActorView {
                         id: actor_key(&reg),
                         node: reg.id.node.0,
                         actor_type: reg.actor_type.0.clone(),
-                        mailbox_depth: 0,
-                        uptime_secs: 0,
+                        mailbox_depth,
+                        uptime_secs,
                         generation: u32::try_from(reg.id.generation).unwrap_or(u32::MAX),
+                        messages_per_sec,
                     });
                 }
             }
@@ -403,5 +464,36 @@ impl<M: StateMachine> Observer for CraftyObserver<M> {
             out.sort_by(|a, b| a.saga_id.cmp(&b.saga_id));
             out
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn group_message_rates_derives_per_second() {
+        let rates = GroupMessageRates::default();
+        let first = vec![ActorGroupStats {
+            name: "workers".into(),
+            instances: 1,
+            messages: 10,
+            handle_nanos: 0,
+            mailbox_depth: 0,
+        }];
+        assert_eq!(rates.snapshot(&first).get("workers"), Some(&0.0));
+
+        thread::sleep(Duration::from_millis(100));
+        let second = vec![ActorGroupStats {
+            name: "workers".into(),
+            instances: 1,
+            messages: 15,
+            handle_nanos: 0,
+            mailbox_depth: 0,
+        }];
+        let rate = rates.snapshot(&second)["workers"];
+        assert!(rate > 40.0 && rate < 60.0, "expected ~50 msg/s, got {rate}");
     }
 }

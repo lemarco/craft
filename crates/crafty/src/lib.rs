@@ -68,11 +68,12 @@ pub use certs::{CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert
 pub use cluster::{AddRaftGroupsError, ClusterFacts, CraftyCluster, LeaveError, ScaleClusterError};
 pub use crafty_actor::{
     ActorSession, AutoscalePolicy, ClusterActorStateStore, ClusterJobQueue, DEFAULT_DRAIN_TIMEOUT,
-    DirectoryPolicy, DirectoryRetry, EnqueueOptions, InMemoryJobQueue, InMemoryMailboxSpool, JobId,
-    JobQueue, LeaseId, LeasedJob, MailboxSpool, MembershipAutoscalePolicy, QueueError,
-    QueueMetrics, QueueService, RecurringJob, RedbActorStateStore, RedbJobQueue, RedbMailboxSpool,
-    ShardedJobQueue, StoreService, WorkerId, run_queue_autoscaler, run_queue_consumer,
-    run_queue_membership_autoscaler, run_queue_schedule_ticker,
+    DEFAULT_QUEUE_BATCH_MAX, DEFAULT_QUEUE_PREFETCH, DirectoryPolicy, DirectoryRetry,
+    EnqueueOptions, InMemoryJobQueue, InMemoryMailboxSpool, JobId, JobQueue, LeaseId, LeasedJob,
+    MailboxSpool, MembershipAutoscalePolicy, QueueError, QueueMetrics, QueueService, RecurringJob,
+    RedbActorStateStore, RedbJobQueue, RedbMailboxSpool, ShardedJobQueue, StoreService, WorkerId,
+    run_queue_autoscaler, run_queue_consumer, run_queue_membership_autoscaler,
+    run_queue_schedule_ticker,
 };
 pub use crafty_actor::{ResourceProfile, VpsResources};
 pub use crafty_core::ReachabilityConfig;

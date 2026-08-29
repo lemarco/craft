@@ -265,6 +265,46 @@ pub trait JobQueue: Send + Sync {
         })
     }
 
+    /// Append many jobs in one leader transaction when the backend supports it.
+    fn enqueue_batch_opts<'a>(
+        &'a self,
+        jobs: &'a [(Vec<u8>, EnqueueOptions)],
+    ) -> BoxFuture<'a, Result<Vec<JobId>, QueueError>> {
+        Box::pin(async move {
+            let (ids, _) = self.enqueue_batch_opts_replicated(jobs).await?;
+            Ok(ids)
+        })
+    }
+
+    /// Like [`enqueue_batch_opts`](Self::enqueue_batch_opts) with default options per payload.
+    fn enqueue_batch<'a>(
+        &'a self,
+        payloads: &'a [&'a [u8]],
+    ) -> BoxFuture<'a, Result<Vec<JobId>, QueueError>> {
+        Box::pin(async move {
+            let jobs: Vec<(Vec<u8>, EnqueueOptions)> = payloads
+                .iter()
+                .map(|payload| ((*payload).to_vec(), EnqueueOptions::default()))
+                .collect();
+            self.enqueue_batch_opts(&jobs).await
+        })
+    }
+
+    /// Acknowledge many leases in one leader transaction when supported.
+    fn ack_batch<'a>(
+        &'a self,
+        worker: WorkerId,
+        lease_ids: &'a [LeaseId],
+    ) -> BoxFuture<'a, Result<(), QueueError>> {
+        Box::pin(async move {
+            if lease_ids.is_empty() {
+                return Ok(());
+            }
+            self.ack_batch_replicated(worker, lease_ids).await?;
+            Ok(())
+        })
+    }
+
     /// Append many jobs in one backend transaction when supported.
     fn enqueue_batch_opts_replicated<'a>(
         &'a self,
@@ -964,6 +1004,9 @@ impl JobQueue for InMemoryJobQueue {
 
 /// Poll a [`JobQueue`], invoke `handle` on each payload, then ack or nack.
 ///
+/// Leases up to `batch` jobs per poll and acknowledges successes with
+/// [`JobQueue::ack_batch`] (one leader transaction when using [`ClusterJobQueue`]).
+///
 /// Runs until `stop` is set. When the queue is empty, sleeps `idle_sleep` between polls.
 pub async fn run_queue_consumer<Q, F, Fut, E>(
     queue: std::sync::Arc<Q>,
@@ -996,19 +1039,26 @@ pub async fn run_queue_consumer<Q, F, Fut, E>(
             }
             continue;
         }
+        let mut acks = Vec::with_capacity(jobs.len());
+        let mut nacks = Vec::new();
         for job in jobs {
             if *stop.borrow() {
-                let _ = queue.nack(worker, job.lease_id).await;
-                return;
+                nacks.push(job.lease_id);
+                break;
             }
             match handle(&job.payload).await {
-                Ok(()) => {
-                    let _ = queue.ack(worker, job.lease_id).await;
-                }
-                Err(_) => {
-                    let _ = queue.nack(worker, job.lease_id).await;
-                }
+                Ok(()) => acks.push(job.lease_id),
+                Err(_) => nacks.push(job.lease_id),
             }
+        }
+        if !acks.is_empty() {
+            let _ = queue.ack_batch(worker, &acks).await;
+        }
+        for lease_id in nacks {
+            let _ = queue.nack(worker, lease_id).await;
+        }
+        if *stop.borrow() {
+            return;
         }
     }
 }
@@ -1187,5 +1237,55 @@ mod tests {
         let pending = q.job_status(id).await.unwrap().expect("pending again");
         assert_eq!(pending.lifecycle, JobLifecycle::Pending);
         assert_eq!(pending.attempts, 0);
+    }
+
+    #[tokio::test]
+    async fn enqueue_batch_and_ack_batch_round_trip() {
+        let q = InMemoryJobQueue::new(Duration::from_secs(30));
+        let ids = q
+            .enqueue_batch(&[b"a".as_slice(), b"b", b"c"])
+            .await
+            .unwrap();
+        assert_eq!(ids.len(), 3);
+
+        let leased = q.lease(worker(0), 8).await.unwrap();
+        assert_eq!(leased.len(), 3);
+        let lease_ids: Vec<_> = leased.iter().map(|j| j.lease_id).collect();
+        q.ack_batch(worker(0), &lease_ids).await.unwrap();
+        assert_eq!(q.metrics().await.unwrap().pending, 0);
+    }
+
+    #[tokio::test]
+    async fn run_queue_consumer_acks_leased_batch() {
+        use std::sync::Arc;
+
+        let q = Arc::new(InMemoryJobQueue::new(Duration::from_secs(30)));
+        q.enqueue_batch(&[b"1".as_slice(), b"2"])
+            .await
+            .unwrap();
+        let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+        let worker = worker(0);
+        let queue = Arc::clone(&q);
+        let consumer = tokio::spawn(async move {
+            run_queue_consumer(
+                queue,
+                worker,
+                8,
+                Duration::from_millis(10),
+                stop_rx,
+                |payload| {
+                    let len = payload.len();
+                    async move {
+                        assert!(len > 0);
+                        Ok::<(), ()>(())
+                    }
+                },
+            )
+            .await;
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        stop_tx.send(true).unwrap();
+        consumer.await.unwrap();
+        assert_eq!(q.metrics().await.unwrap().pending, 0);
     }
 }

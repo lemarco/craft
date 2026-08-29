@@ -139,16 +139,16 @@ fn nodes(ids: &[u64]) -> Vec<NodeId> {
 }
 
 fn worker_reg(node: u64, name: &str) -> ActorRegistration {
-    ActorRegistration {
-        id: ActorId {
+    ActorRegistration::new(
+        ActorId {
             node: NodeId(node),
             name: name.to_string(),
             instance: 0,
             generation: 0,
         },
-        actor_type: ActorTypeId(std::any::type_name::<Worker>().to_string()),
-        migratable: false,
-    }
+        ActorTypeId(std::any::type_name::<Worker>().to_string()),
+        false,
+    )
 }
 
 // --- Scenarios ------------------------------------------------------------

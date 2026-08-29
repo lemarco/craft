@@ -18,16 +18,16 @@ use crafty_actor::{ActorDirectory, ActorRegistry, DirectorySync, UserActor};
 // ---------------------------------------------------------------------------
 
 fn reg(node: u64, name: &str, instance: u32) -> ActorRegistration {
-    ActorRegistration {
-        id: ActorId {
+    ActorRegistration::new(
+        ActorId {
             node: NodeId(node),
             name: name.to_string(),
             instance,
             generation: 0,
         },
-        actor_type: ActorTypeId("Worker".to_string()),
-        migratable: false,
-    }
+        ActorTypeId("Worker".to_string()),
+        false,
+    )
 }
 
 fn update(node: u64, epoch: u64, regs: Vec<ActorRegistration>) -> DirectoryUpdate {
@@ -227,4 +227,59 @@ async fn republishing_a_smaller_set_revokes_missing_instances() {
         1,
         "node 2 sees the scaled-in count after republish"
     );
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("stall")]
+struct StallError;
+
+enum StallMsg {
+    Stall,
+    Queued,
+}
+
+struct StallWorker;
+
+impl UserActor for StallWorker {
+    type Config = ();
+    type Message = StallMsg;
+    type Error = StallError;
+
+    fn start(_config: Self::Config) -> Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn handle(&mut self, msg: Self::Message) -> Result<(), Self::Error> {
+        match msg {
+            StallMsg::Stall => {
+                std::future::pending::<()>().await;
+                Ok(())
+            }
+            StallMsg::Queued => Ok(()),
+        }
+    }
+}
+
+#[tokio::test]
+async fn directory_replicates_runtime_stats_to_peers() {
+    let net = LocalNetwork::new();
+    let (sync1, _dir1) = node(&net, 1);
+    let (_sync2, dir2) = node(&net, 2);
+    let peers = [NodeId(1), NodeId(2)];
+
+    let reg = ActorRegistry::new_dev();
+    let actor = reg.spawn::<StallWorker>("workers", ()).unwrap();
+    actor.send(StallMsg::Stall).unwrap();
+    actor.send(StallMsg::Queued).unwrap();
+    actor.send(StallMsg::Queued).unwrap();
+    tokio::task::yield_now().await;
+
+    sync1
+        .publish(&peers, reg.local_registrations(NodeId(1)))
+        .await;
+
+    let remote = dir2.lookup("workers");
+    assert_eq!(remote.len(), 1, "{remote:?}");
+    assert_eq!(remote[0].id.node, NodeId(1));
+    assert_eq!(remote[0].mailbox_depth, 2, "queued depth replicated");
 }

@@ -367,3 +367,89 @@ async fn ask_times_out_when_the_actor_never_replies() {
         "expected a caller-side timeout, got {err:?}"
     );
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("stall")]
+struct StallError;
+
+enum StallMsg {
+    Stall,
+    Queued,
+}
+
+struct StallWorker;
+
+impl UserActor for StallWorker {
+    type Config = ();
+    type Message = StallMsg;
+    type Error = StallError;
+
+    fn start(_config: Self::Config) -> Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn handle(&mut self, msg: Self::Message) -> Result<(), Self::Error> {
+        match msg {
+            StallMsg::Stall => {
+                std::future::pending::<()>().await;
+                Ok(())
+            }
+            StallMsg::Queued => Ok(()),
+        }
+    }
+}
+
+#[tokio::test]
+async fn local_actor_introspection_reports_mailbox_depth_and_uptime() {
+    let registry = ActorRegistry::new_dev();
+    let actor = registry.spawn::<StallWorker>("stall", ()).unwrap();
+    actor.send(StallMsg::Stall).unwrap();
+    actor.send(StallMsg::Queued).unwrap();
+    actor.send(StallMsg::Queued).unwrap();
+    tokio::task::yield_now().await;
+
+    let views = registry.local_actor_introspection();
+    assert_eq!(views.len(), 1, "{views:?}");
+    assert_eq!(views[0].name, "stall");
+    assert_eq!(views[0].instance, 0);
+    assert_eq!(views[0].mailbox_depth, 2, "two messages still queued");
+
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let views = registry.local_actor_introspection();
+    assert!(views[0].uptime_secs >= 1, "uptime: {}", views[0].uptime_secs);
+}
+
+#[tokio::test]
+async fn local_actor_introspection_tracks_per_instance_mailbox_depth() {
+    let registry = ActorRegistry::new_dev();
+    let pool = registry.spawn_pool::<StallWorker>("stall", 2, ()).unwrap();
+    let ids = pool.instance_ids();
+    assert_eq!(ids.len(), 2);
+
+    let salt = crafty_actor::group_salt(pool.name());
+    let key_for = |target: u32| -> String {
+        for n in 0..1000 {
+            let key = format!("tenant-{n}");
+            let idx = crafty_actor::pick_index(crafty_actor::ring_hash_key(&key), 2, salt);
+            if ids[idx] == target {
+                return key;
+            }
+        }
+        panic!("no routing key for instance {target}");
+    };
+    let busy = key_for(ids[0]);
+    let idle = key_for(ids[1]);
+
+    pool.send_keyed(&busy, StallMsg::Stall).unwrap();
+    pool.send_keyed(&busy, StallMsg::Queued).unwrap();
+    pool.send_keyed(&busy, StallMsg::Queued).unwrap();
+    pool.send_keyed(&idle, StallMsg::Stall).unwrap();
+    pool.send_keyed(&idle, StallMsg::Queued).unwrap();
+    tokio::task::yield_now().await;
+
+    let views = registry.local_actor_introspection();
+    assert_eq!(views.len(), 2, "{views:?}");
+    let mut depths: Vec<i64> = views.iter().map(|v| v.mailbox_depth).collect();
+    depths.sort();
+    assert_eq!(depths, vec![1, 2], "per-instance depths: {views:?}");
+}

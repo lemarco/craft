@@ -116,6 +116,17 @@ impl CraftyAppBuilder {
         self
     }
 
+    /// Tune leader prefetch depth for `stream` (default [`crate::DEFAULT_QUEUE_PREFETCH`]).
+    ///
+    /// Prefetch keeps recently enqueued payloads in RAM on the queue leader so
+    /// [`lease`](crafty_actor::JobQueue::lease) skips re-reading from `redb`.
+    /// Set `prefetch` to `0` to disable.
+    #[must_use]
+    pub fn job_queue_prefetch(mut self, stream: &str, prefetch: usize) -> Self {
+        self.inner = self.inner.job_queue_prefetch(stream, prefetch);
+        self
+    }
+
     /// Register a managed auto-worker group (one worker per live node).
     #[must_use]
     pub fn manage_auto<A: UserActor>(mut self, name: &str, config: A::Config) -> Self
@@ -302,6 +313,32 @@ impl CraftyApp {
             crafty_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
         })?;
         queue.enqueue_opts(payload, options).await
+    }
+
+    /// Enqueue many jobs in one leader transaction (tier C batch path).
+    ///
+    /// Batches are capped at [`crate::DEFAULT_QUEUE_BATCH_MAX`] jobs per RPC.
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or enqueue fails.
+    pub async fn enqueue_batch(
+        &self,
+        stream: &str,
+        payloads: &[&[u8]],
+    ) -> Result<Vec<JobId>, crafty_actor::QueueError> {
+        self.cluster.enqueue_batch(stream, payloads).await
+    }
+
+    /// Enqueue many jobs with per-job options in one leader transaction.
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or enqueue fails.
+    pub async fn enqueue_batch_opts(
+        &self,
+        stream: &str,
+        jobs: &[(Vec<u8>, EnqueueOptions)],
+    ) -> Result<Vec<JobId>, crafty_actor::QueueError> {
+        self.cluster.enqueue_batch_opts(stream, jobs).await
     }
 
     /// Lookup job metadata by id (`None` when acked or unknown).
