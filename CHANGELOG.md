@@ -17,6 +17,17 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 - (none)
 
+## [0.2.1] — 2026-08-29
+
+### Added
+
+- Job queue batch enqueue/ack wire types and cluster API; sharded batch routing; leader prefetch eviction on ack.
+- Dashboard actor **msg/s** column; observer mailbox depth, uptime, and message-rate sampling.
+
+### Changed
+
+- **B-11b:** workspace `missing_docs = "deny"` on published crates; CI/hooks no longer allow undocumented public API.
+
 ## [0.2.0] — 2026-08-29
 
 Product layer release: **`CraftyApp`** facade, four scenario guides, HTTP jobs API,
