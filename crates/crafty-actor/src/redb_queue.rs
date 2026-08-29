@@ -11,11 +11,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crafty_proto::{QueueReplicateOp, decode, encode};
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 
-use super::{
-    after_failed_attempt, BoxFuture, EnqueueOptions, JobId, JobLifecycle, JobQueue, JobStatus,
-    LeaseId, LeasedJob, QueueError, QueueMetrics, QueueReplicationOps, WorkerId,
-};
 use super::queue_prefetch::CachedPendingJob;
+use super::{
+    BoxFuture, EnqueueOptions, JobId, JobLifecycle, JobQueue, JobStatus, LeaseId, LeasedJob,
+    QueueError, QueueMetrics, QueueReplicationOps, WorkerId, after_failed_attempt,
+};
 
 const JOBS: TableDefinition<u64, &[u8]> = TableDefinition::new("queue_jobs");
 const PENDING: TableDefinition<u64, &[u8]> = TableDefinition::new("queue_pending");
@@ -525,8 +525,7 @@ impl RedbJobQueue {
             .map_err(backend)?
             .filter_map(std::result::Result::ok)
             .filter(|(_, bytes)| {
-                decode::<StoredJob>(bytes.value())
-                    .is_ok_and(|stored| stored.dead_letter)
+                decode::<StoredJob>(bytes.value()).is_ok_and(|stored| stored.dead_letter)
             })
             .count() as u64;
 
@@ -706,11 +705,8 @@ impl RedbJobQueue {
                 assigned.push(JobId(job_id));
             }
 
-            meta.insert(
-                K_NEXT_JOB,
-                encode(&next_job_id).map_err(codec)?.as_slice(),
-            )
-            .map_err(backend)?;
+            meta.insert(K_NEXT_JOB, encode(&next_job_id).map_err(codec)?.as_slice())
+                .map_err(backend)?;
         }
         txn.commit().map_err(backend)?;
         Ok((assigned, ops))
@@ -736,8 +732,7 @@ impl RedbJobQueue {
                     None => return Err(QueueError::InvalidLease),
                     Some(bytes) => decode(bytes.value()).map_err(codec)?,
                 };
-                if stored.worker_node != worker.node.0
-                    || stored.worker_instance != worker.instance
+                if stored.worker_node != worker.node.0 || stored.worker_instance != worker.instance
                 {
                     leases
                         .insert(lease_id.0, encode(&stored).map_err(codec)?.as_slice())
@@ -1020,9 +1015,7 @@ impl JobQueue for RedbJobQueue {
                 stored.not_before_ms = now_ms();
                 jobs.insert(job_id.0, encode(&stored).map_err(codec)?.as_slice())
                     .map_err(backend)?;
-                pending
-                    .insert(job_id.0, &[] as &[u8])
-                    .map_err(backend)?;
+                pending.insert(job_id.0, &[] as &[u8]).map_err(backend)?;
             }
             txn.commit().map_err(backend)?;
             Ok(vec![QueueReplicateOp::RequeueDeadLetter {
@@ -1142,10 +1135,7 @@ mod tests {
         let leased = q.lease(worker(0), 4).await.unwrap();
         assert_eq!(leased.len(), 2);
         let lease_ids: Vec<LeaseId> = leased.iter().map(|j| j.lease_id).collect();
-        let ack_ops = q
-            .ack_batch_replicated(worker(0), &lease_ids)
-            .await
-            .unwrap();
+        let ack_ops = q.ack_batch_replicated(worker(0), &lease_ids).await.unwrap();
         assert_eq!(ack_ops.len(), 2);
         assert_eq!(q.metrics().await.unwrap().pending, 0);
     }

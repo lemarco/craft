@@ -6,8 +6,8 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
 
 use crafty_core::{Role, StateMachine};
@@ -34,17 +34,19 @@ impl GroupMessageRates {
         stats
             .iter()
             .map(|stat| {
-                let rate = inner.get(&stat.name).map_or(0.0, |(prev_messages, prev_at)| {
-                    let elapsed = now.duration_since(*prev_at).as_secs_f64();
-                    if elapsed > 0.0 {
-                        #[allow(clippy::cast_precision_loss)]
-                        {
-                            stat.messages.saturating_sub(*prev_messages) as f64 / elapsed
+                let rate = inner
+                    .get(&stat.name)
+                    .map_or(0.0, |(prev_messages, prev_at)| {
+                        let elapsed = now.duration_since(*prev_at).as_secs_f64();
+                        if elapsed > 0.0 {
+                            #[allow(clippy::cast_precision_loss)]
+                            {
+                                stat.messages.saturating_sub(*prev_messages) as f64 / elapsed
+                            }
+                        } else {
+                            0.0
                         }
-                    } else {
-                        0.0
-                    }
-                });
+                    });
                 inner.insert(stat.name.clone(), (stat.messages, now));
                 (stat.name.clone(), rate)
             })

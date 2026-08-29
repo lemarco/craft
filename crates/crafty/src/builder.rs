@@ -35,10 +35,10 @@ use tokio::net::TcpListener;
 use crafty_actor::{
     ActorDirectory, ActorRegistry, AutoscalePolicy, ClusterActorStateStore, ClusterControl,
     ClusterJobQueue, ClusterMessaging, ClusterState, ClusterSupervisor, DEFAULT_DRAIN_TIMEOUT,
-    DirectoryPolicy, DirectoryRetry, DirectorySync, JobQueue, MailboxSpool,
+    DEFAULT_QUEUE_PREFETCH, DirectoryPolicy, DirectoryRetry, DirectorySync, JobQueue, MailboxSpool,
     MembershipAutoscalePolicy, NodeService, QueueAutoscaleRegistry, QueueService, RaftDriver,
     RecurringJob, RedbActorStateStore, RedbJobQueue, RedbMailboxSpool, ResourceProfile,
-    RuntimeConfig, ShardedJobQueue, StoreService, UserActor, VpsResources, DEFAULT_QUEUE_PREFETCH,
+    RuntimeConfig, ShardedJobQueue, StoreService, UserActor, VpsResources,
     run_mailbox_spool_drainer, run_queue_autoscaler, run_queue_membership_autoscaler,
     run_queue_schedule_ticker, spawn_multi_raft_node, spawn_node,
 };
@@ -1272,12 +1272,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                     .filter(|rj| rj.stream == spec.name)
                     .map(|rj| rj.job.clone())
                     .collect();
-                service.register_redb_stream(
-                    &spec.name,
-                    &local,
-                    &schedules,
-                    spec.prefetch,
-                );
+                service.register_redb_stream(&spec.name, &local, &schedules, spec.prefetch);
             }
             let client: Arc<dyn JobQueue> = Arc::new(ClusterJobQueue::new(
                 &spec.name,

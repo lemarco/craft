@@ -19,16 +19,15 @@ use std::sync::{Arc, Mutex};
 use crafty_proto::{
     ActorEnvelope, CatalogAddRequest, CatalogAddResponse, ClientRequest, ClientResponse,
     DeliverAck, DirectoryUpdate, GroupMigrateReply, GroupMigrateRequest, JoinRequest, JoinResponse,
-    LeaveRequest, LeaveResponse, MigrateReply, MigrateRequest, NodeId, PeerBook, QueueAckBatchReply,
-    QueueAckBatchRequest, QueueAckReply, QueueAckRequest, QueueEnqueueBatchReply,
-    QueueEnqueueBatchRequest, QueueEnqueueReply, QueueEnqueueRequest, QueueJobStatusReply,
-    QueueJobStatusRequest, QueueLeaseReply, QueueLeaseRequest, QueueMetricsReply,
-    QueueMetricsRequest, QueueNackReply, QueueNackRequest, QueueRequeueDeadLetterReply,
-    QueueRequeueDeadLetterRequest, QueueReplicateReply,
-    QueueReplicateRequest, RaftRpc, RaftRpcReply, RegisterAck, ScaleReply, ScaleRequest,
-    SpawnReply, SpawnRequest, StopReply, StopRequest, StoreCompareAndSetReply,
-    StoreCompareAndSetRequest, StoreDeleteReply, StoreDeleteRequest, StoreReplicateReply,
-    StoreReplicateRequest, StoreSetReply, StoreSetRequest,
+    LeaveRequest, LeaveResponse, MigrateReply, MigrateRequest, NodeId, PeerBook,
+    QueueAckBatchReply, QueueAckBatchRequest, QueueAckReply, QueueAckRequest,
+    QueueEnqueueBatchReply, QueueEnqueueBatchRequest, QueueEnqueueReply, QueueEnqueueRequest,
+    QueueJobStatusReply, QueueJobStatusRequest, QueueLeaseReply, QueueLeaseRequest,
+    QueueMetricsReply, QueueMetricsRequest, QueueNackReply, QueueNackRequest, QueueReplicateReply,
+    QueueReplicateRequest, QueueRequeueDeadLetterReply, QueueRequeueDeadLetterRequest, RaftRpc,
+    RaftRpcReply, RegisterAck, ScaleReply, ScaleRequest, SpawnReply, SpawnRequest, StopReply,
+    StopRequest, StoreCompareAndSetReply, StoreCompareAndSetRequest, StoreDeleteReply,
+    StoreDeleteRequest, StoreReplicateReply, StoreReplicateRequest, StoreSetReply, StoreSetRequest,
 };
 
 use crate::route::Route;
@@ -478,7 +477,9 @@ pub async fn send_queue_requeue_dead_letter<T: Transport + ?Sized>(
     request: &QueueRequeueDeadLetterRequest,
 ) -> Result<QueueRequeueDeadLetterReply, TransportError> {
     let body = encode_body(request)?;
-    let response = transport.send(peer, Route::QueueRequeueDeadLetter, body).await?;
+    let response = transport
+        .send(peer, Route::QueueRequeueDeadLetter, body)
+        .await?;
     Ok(decode_body(&response)?)
 }
 

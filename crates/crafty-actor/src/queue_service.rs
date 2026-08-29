@@ -23,12 +23,12 @@ use crafty_proto::{
     QueueNackReply, QueueNackRequest, QueueReplicateOp, QueueReplicateReply, QueueReplicateRequest,
 };
 
-use crate::queue_prefetch::{CachedPendingJob, QueuePrefetchCache, DEFAULT_QUEUE_BATCH_MAX};
+use crate::queue_prefetch::{CachedPendingJob, DEFAULT_QUEUE_BATCH_MAX, QueuePrefetchCache};
 use crate::sharded_queue::decode_global_id;
 use crate::supervisor::ClusterState;
 use crate::{
-    EnqueueOptions, JobId, JobLifecycle, JobQueue, JobStatus, LeaseId, LeasedJob, RecurringJob,
-    RedbJobQueue, NOT_LEADER_REASON, QueueError, QueueMetrics, QueueReplicationOps,
+    EnqueueOptions, JobId, JobLifecycle, JobQueue, JobStatus, LeaseId, LeasedJob,
+    NOT_LEADER_REASON, QueueError, QueueMetrics, QueueReplicationOps, RecurringJob, RedbJobQueue,
     ShardedJobQueue, ShardedReplication, WorkerId,
 };
 
@@ -185,10 +185,7 @@ impl QueueService {
             .map(|(k, v)| (k.clone(), Arc::clone(v)))
             .collect();
         for (stream, queue) in backends {
-            let ops = queue
-                .tick_schedules()
-                .await
-                .map_err(|e| e.to_string())?;
+            let ops = queue.tick_schedules().await.map_err(|e| e.to_string())?;
             if !ops.is_empty() {
                 self.replicate_ops(&stream, &ops).await?;
             }
@@ -561,17 +558,9 @@ impl QueueService {
                 let batch: Vec<(Vec<u8>, EnqueueOptions)> = request
                     .jobs
                     .iter()
-                    .map(|job| {
-                        (
-                            job.payload.clone(),
-                            enqueue_options_from_batch_job(job),
-                        )
-                    })
+                    .map(|job| (job.payload.clone(), enqueue_options_from_batch_job(job)))
                     .collect();
-                match sharded
-                    .enqueue_batch_opts_replicated_sharded(&batch)
-                    .await
-                {
+                match sharded.enqueue_batch_opts_replicated_sharded(&batch).await {
                     Ok((ids, reps)) => {
                         if let Err(e) = self.replicate_sharded(&request.stream, &reps).await {
                             return QueueEnqueueBatchReply {
@@ -610,12 +599,7 @@ impl QueueService {
                     let batch: Vec<(Vec<u8>, EnqueueOptions)> = request
                         .jobs
                         .iter()
-                        .map(|job| {
-                            (
-                                job.payload.clone(),
-                                enqueue_options_from_batch_job(job),
-                            )
-                        })
+                        .map(|job| (job.payload.clone(), enqueue_options_from_batch_job(job)))
                         .collect();
                     match queue.enqueue_batch_opts_replicated(&batch).await {
                         Ok((ids, ops)) => {
@@ -1179,7 +1163,9 @@ impl QueueService {
             }),
             Route::QueueRequeueDeadLetter => Box::pin(async move {
                 let request: crafty_proto::QueueRequeueDeadLetterRequest = decode_body(&body)?;
-                Ok(encode_body(&service.handle_requeue_dead_letter(request).await)?)
+                Ok(encode_body(
+                    &service.handle_requeue_dead_letter(request).await,
+                )?)
             }),
             Route::QueueReplicate => Box::pin(async move {
                 let request: QueueReplicateRequest = decode_body(&body)?;

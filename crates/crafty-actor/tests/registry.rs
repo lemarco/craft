@@ -416,7 +416,11 @@ async fn local_actor_introspection_reports_mailbox_depth_and_uptime() {
 
     tokio::time::sleep(Duration::from_millis(1100)).await;
     let views = registry.local_actor_introspection();
-    assert!(views[0].uptime_secs >= 1, "uptime: {}", views[0].uptime_secs);
+    assert!(
+        views[0].uptime_secs >= 1,
+        "uptime: {}",
+        views[0].uptime_secs
+    );
 }
 
 #[tokio::test]

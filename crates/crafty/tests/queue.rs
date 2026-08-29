@@ -168,7 +168,10 @@ async fn batch_enqueue_and_ack_through_cluster_client() {
     let leased = queue.lease(worker, 8).await.expect("lease");
     assert_eq!(leased.len(), 3);
     let lease_ids: Vec<_> = leased.iter().map(|j| j.lease_id).collect();
-    queue.ack_batch(worker, &lease_ids).await.expect("ack batch");
+    queue
+        .ack_batch(worker, &lease_ids)
+        .await
+        .expect("ack batch");
 
     let metrics = queue.metrics().await.expect("metrics");
     assert_eq!(metrics.pending, 0);

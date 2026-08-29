@@ -64,11 +64,11 @@ pub use queue::{
     EnqueueOptions, InMemoryJobQueue, JobId, JobLifecycle, JobQueue, JobStatus, LeaseId, LeasedJob,
     QueueError, QueueMetrics, QueueReplicateOp, QueueReplicationOps, WorkerId, run_queue_consumer,
 };
-pub use queue_prefetch::{DEFAULT_QUEUE_BATCH_MAX, DEFAULT_QUEUE_PREFETCH};
 pub use queue_autoscale::{
     AutoscalePolicy, MembershipAutoscalePolicy, QueueAutoscaleRegistry, run_queue_autoscaler,
     run_queue_membership_autoscaler,
 };
+pub use queue_prefetch::{DEFAULT_QUEUE_BATCH_MAX, DEFAULT_QUEUE_PREFETCH};
 pub use queue_schedule::{
     RecurringJob, parse_cron, run_queue_schedule_ticker, run_recurring_job_ticker,
 };

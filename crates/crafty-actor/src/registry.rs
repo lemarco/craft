@@ -799,16 +799,13 @@ impl<A: UserActor> PoolInner<A> {
             state.stopped().await;
         });
         let spawned_at = Instant::now();
-        self.instances
-            .lock()
-            .unwrap()
-            .push(Instance {
-                instance,
-                tx,
-                join,
-                spawned_at,
-                queued: instance_queued,
-            });
+        self.instances.lock().unwrap().push(Instance {
+            instance,
+            tx,
+            join,
+            spawned_at,
+            queued: instance_queued,
+        });
         instance
     }
 
@@ -875,10 +872,7 @@ impl<A: UserActor> PoolInner<A> {
             return None;
         }
         let i = self.rr.fetch_add(1, Ordering::Relaxed) % instances.len();
-        Some((
-            instances[i].tx.clone(),
-            Arc::clone(&instances[i].queued),
-        ))
+        Some((instances[i].tx.clone(), Arc::clone(&instances[i].queued)))
     }
 
     /// A clone of the instance selected by the consistent hash ring for `key`.
@@ -1417,16 +1411,14 @@ impl ActorRegistry {
         groups
             .iter()
             .flat_map(|(name, entry)| {
-                entry
-                    .lifecycle
-                    .instance_introspection()
-                    .into_iter()
-                    .map(|(instance, uptime_secs, mailbox_depth)| LocalActorIntrospection {
+                entry.lifecycle.instance_introspection().into_iter().map(
+                    |(instance, uptime_secs, mailbox_depth)| LocalActorIntrospection {
                         name: name.clone(),
                         instance,
                         mailbox_depth,
                         uptime_secs,
-                    })
+                    },
+                )
             })
             .collect()
     }

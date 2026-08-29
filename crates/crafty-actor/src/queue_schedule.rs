@@ -109,7 +109,9 @@ fn normalize_cron(expr: &str) -> Result<String, QueueError> {
     match fields.len() {
         5 => Ok(format!("0 {}", fields.join(" "))),
         6 => Ok(fields.join(" ")),
-        n => Err(codec(format!("cron expression needs 5 or 6 fields, got {n}"))),
+        n => Err(codec(format!(
+            "cron expression needs 5 or 6 fields, got {n}"
+        ))),
     }
 }
 

@@ -117,11 +117,10 @@ impl ShardedJobQueue {
         let mut by_shard: HashMap<usize, Vec<(usize, Vec<u8>, EnqueueOptions)>> = HashMap::new();
         for (idx, (payload, options)) in jobs.iter().enumerate() {
             let shard = self.pick_shard(payload, options.shard_key.as_deref());
-            by_shard.entry(shard).or_default().push((
-                idx,
-                payload.clone(),
-                options.clone(),
-            ));
+            by_shard
+                .entry(shard)
+                .or_default()
+                .push((idx, payload.clone(), options.clone()));
         }
         let mut ids = vec![JobId(0); jobs.len()];
         let mut replications = Vec::new();
@@ -365,9 +364,7 @@ impl JobQueue for ShardedJobQueue {
     fn requeue_dead_letter(&self, job_id: JobId) -> BoxFuture<'_, Result<(), QueueError>> {
         Box::pin(async move {
             let (shard, local) = decode_id(job_id.0);
-            self.shard(shard)?
-                .requeue_dead_letter(JobId(local))
-                .await
+            self.shard(shard)?.requeue_dead_letter(JobId(local)).await
         })
     }
 
