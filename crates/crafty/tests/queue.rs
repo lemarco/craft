@@ -509,6 +509,8 @@ async fn queue_replicate_rejects_non_leader_caller() {
                 priority: 0,
                 not_before_ms: 1,
                 dedup_key: None,
+                attempts: 0,
+                max_attempts: 0,
             }],
         },
     )

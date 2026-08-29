@@ -1027,6 +1027,8 @@ mod tests {
         let leased = q.lease(worker(0), 1).await.unwrap();
         q.nack(worker(0), leased[0].lease_id).await.unwrap();
 
+        // First failure schedules ~1s backoff before the job is leasable again.
+        tokio::time::sleep(Duration::from_millis(1100)).await;
         let again = q.lease(worker(1), 1).await.unwrap();
         assert_eq!(again[0].payload, b"x");
     }
@@ -1040,8 +1042,13 @@ mod tests {
 
         tokio::time::sleep(Duration::from_millis(40)).await;
         let m = q.metrics().await.unwrap();
-        assert_eq!(m.pending, 1);
         assert_eq!(m.leased, 0);
+        // Reclaimed jobs wait out the retry backoff before counting as pending.
+        assert_eq!(m.pending, 0);
+
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        let m = q.metrics().await.unwrap();
+        assert_eq!(m.pending, 1);
 
         let again = q.lease(worker(1), 1).await.unwrap();
         assert_eq!(again[0].payload, b"z");

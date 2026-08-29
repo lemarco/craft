@@ -4,9 +4,10 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use chrono::{TimeZone, Utc};
 use crafty_proto::{QueueReplicateOp, RecurringScheduleWire, decode, encode};
 use cron::Schedule;
-use redb::{ReadableTable, TableDefinition};
+use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 
 use super::redb_queue::RedbJobQueue;
 use super::{EnqueueOptions, JobQueue, QueueError, QueueReplicationOps};
@@ -113,19 +114,16 @@ fn normalize_cron(expr: &str) -> Result<String, QueueError> {
 }
 
 fn next_run_after(schedule: &Schedule, after_ms: u64) -> Result<u64, QueueError> {
-    let after = UNIX_EPOCH
-        + Duration::from_millis(after_ms.min(i64::MAX as u64))
-        + Duration::from_millis(1);
+    let after_ms_i64 = i64::try_from(after_ms).unwrap_or(i64::MAX);
+    let after = Utc
+        .timestamp_millis_opt(after_ms_i64.saturating_add(1))
+        .single()
+        .ok_or_else(|| codec("invalid timestamp"))?;
     let next = schedule
         .after(&after)
         .next()
         .ok_or_else(|| codec("cron schedule has no upcoming fire time"))?;
-    Ok(u64::try_from(
-        next.duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis(),
-    )
-    .unwrap_or(u64::MAX))
+    Ok(u64::try_from(next.timestamp_millis().max(0)).unwrap_or(u64::MAX))
 }
 
 impl RedbJobQueue {

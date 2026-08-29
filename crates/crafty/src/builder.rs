@@ -1328,7 +1328,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             Arc::clone(&control),
             Arc::clone(&messaging),
             Arc::clone(&directory_sync),
-            queue_service,
+            queue_service.clone(),
             store_service,
             Arc::clone(&peers),
             multi_raft.as_ref().map(|state| {

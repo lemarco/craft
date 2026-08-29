@@ -75,7 +75,7 @@ fn now_ms() -> u64 {
 #[derive(Debug)]
 pub struct RedbJobQueue {
     lease_timeout: Duration,
-    db: Mutex<Database>,
+    pub(crate) db: Mutex<Database>,
     acks_since_compact: AtomicU64,
 }
 
@@ -939,6 +939,7 @@ mod tests {
             q.nack(worker(0), leased[0].lease_id).await.unwrap();
         }
         let q = RedbJobQueue::open(&path, Duration::from_secs(30)).unwrap();
+        tokio::time::sleep(Duration::from_millis(1100)).await;
         let m = q.metrics().await.unwrap();
         assert_eq!(m.pending, 1);
         let leased = q.lease(worker(1), 1).await.unwrap();
