@@ -42,6 +42,8 @@ mod certs;
 mod cluster;
 pub mod discovery;
 mod env_config;
+#[cfg(feature = "http-jobs")]
+mod gateway;
 mod handler;
 mod multi_raft;
 mod observer;
@@ -63,6 +65,8 @@ pub use {crafty_dashboard as dashboard, crafty_macros as macros, crafty_net as n
 pub use crafty_storage as storage;
 
 pub use app::{CraftyApp, CraftyAppBuilder, EmptyStateMachine, WorkerInfo};
+#[cfg(feature = "http-jobs")]
+pub use gateway::{CraftyGatewayState, GatewayConfig, build_gateway_router, spawn_gateway};
 pub use builder::{CraftyClusterBuilder, StartError};
 pub use certs::{CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_from_env};
 pub use cluster::{AddRaftGroupsError, ClusterFacts, CraftyCluster, LeaveError, ScaleClusterError};

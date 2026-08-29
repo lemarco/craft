@@ -3,6 +3,7 @@
 
 use std::convert::Infallible;
 use std::hash::Hash;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -21,6 +22,10 @@ use crate::builder::{CraftyClusterBuilder, StartError};
 use crate::cluster::CraftyCluster;
 use crate::env_config::{AppConfig, app_config_from_env};
 use crate::security::Security;
+#[cfg(feature = "http-jobs")]
+use crate::gateway::GatewayConfig;
+#[cfg(feature = "http-jobs")]
+use crate::gateway::spawn_gateway as spawn_gateway_task;
 
 /// A worker instance registered in the cluster directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,6 +66,8 @@ impl StateMachine for EmptyStateMachine {
 /// Fluent builder for [`CraftyApp`].
 pub struct CraftyAppBuilder {
     inner: CraftyClusterBuilder<EmptyStateMachine>,
+    #[cfg(feature = "http-jobs")]
+    gateway: Option<GatewayConfig>,
 }
 
 impl CraftyAppBuilder {
@@ -93,6 +100,22 @@ impl CraftyAppBuilder {
         if !cfg.join_seeds.is_empty() {
             inner = inner.join_seeds(cfg.join_seeds.clone());
         }
+        #[cfg(feature = "http-jobs")]
+        {
+            let mut builder = Self {
+                inner,
+                gateway: None,
+            };
+            if let Some(addr) = cfg.gateway {
+                builder.gateway = Some(GatewayConfig {
+                    addr,
+                    jobs_api: cfg.gateway_jobs_api,
+                    routes: None,
+                });
+            }
+            return builder;
+        }
+        #[cfg(not(feature = "http-jobs"))]
         Self { inner }
     }
 
@@ -189,10 +212,118 @@ impl CraftyAppBuilder {
         self
     }
 
+    /// Public HTTP / WebSocket gateway bind address (`http-jobs` feature).
+    ///
+    /// When set, [`Self::start_local_shared`] or [`Self::run_local_until_shutdown`]
+    /// serves tier C job routes (unless disabled via [`Self::gateway_jobs_api`]) plus
+    /// any routes from [`Self::http_routes`].
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn gateway_addr(mut self, addr: SocketAddr) -> Self {
+        let jobs_api = self
+            .gateway
+            .as_ref()
+            .map_or(true, |g| g.jobs_api);
+        let routes = self.gateway.and_then(|g| g.routes);
+        self.gateway = Some(GatewayConfig {
+            addr,
+            jobs_api,
+            routes,
+        });
+        self
+    }
+
+    /// Mount tier C `/jobs/*` routes on the gateway (default: `true`).
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn gateway_jobs_api(mut self, enabled: bool) -> Self {
+        if let Some(gateway) = self.gateway.as_mut() {
+            gateway.jobs_api = enabled;
+        }
+        self
+    }
+
+    /// Custom Axum routes for the product gateway (WebSocket, sync HTTP, …).
+    ///
+    /// The closure receives [`Arc<CraftyApp>`] so handlers can call `session`,
+    /// `cast`, `enqueue`, etc. Use [`crate::CraftyGatewayState`] when you prefer
+    /// explicit Axum state:
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use axum::Router;
+    /// # use crafty::{CraftyApp, CraftyGatewayState};
+    /// # fn demo(builder: CraftyAppBuilder) -> CraftyAppBuilder {
+    /// builder.http_routes(|app| {
+    ///     Router::new().with_state(CraftyGatewayState { app })
+    /// })
+    /// # }
+    /// ```
+    #[cfg(feature = "http-jobs")]
+    pub fn http_routes<F>(mut self, routes: F) -> Self
+    where
+        F: FnOnce(Arc<CraftyApp>) -> axum::Router + Send + 'static,
+    {
+        let jobs_api = self
+            .gateway
+            .as_ref()
+            .map_or(true, |g| g.jobs_api);
+        let addr = self.gateway.map(|g| g.addr).unwrap_or_else(|| {
+            "127.0.0.1:3000"
+                .parse()
+                .expect("default gateway addr")
+        });
+        self.gateway = Some(GatewayConfig {
+            addr,
+            jobs_api,
+            routes: Some(Box::new(routes)),
+        });
+        self
+    }
+
+    /// Admin / dashboard HTTP listen address (forwards to the cluster builder).
+    #[must_use]
+    pub fn admin_addr(mut self, addr: SocketAddr) -> Self {
+        self.inner = self.inner.admin_addr(addr);
+        self
+    }
+
     /// Start over the in-memory [`LocalNetwork`] (tests / local dev).
     pub async fn start_local(self, net: &LocalNetwork) -> CraftyApp {
         let cluster = self.inner.start_local(net).await;
         CraftyApp { cluster }
+    }
+
+    /// Like [`Self::start_local`], but returns [`Arc`] and spawns the gateway when configured.
+    #[cfg(feature = "http-jobs")]
+    pub async fn start_local_shared(self, net: &LocalNetwork) -> Arc<CraftyApp> {
+        let gateway = self.gateway;
+        let app = Arc::new(CraftyApp {
+            cluster: self.inner.start_local(net).await,
+        });
+        if let Some(config) = gateway {
+            spawn_gateway_task(Arc::clone(&app), config);
+        }
+        app
+    }
+
+    /// Start cluster + optional gateway, then block until Ctrl-C / SIGINT.
+    #[cfg(feature = "http-jobs")]
+    pub async fn run_local_until_shutdown(
+        self,
+        net: &LocalNetwork,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let gateway = self.gateway;
+        let app = Arc::new(CraftyApp {
+            cluster: self.inner.start_local(net).await,
+        });
+        if let Some(config) = gateway {
+            crate::gateway::run_gateway_until_shutdown(Arc::clone(&app), config).await?;
+        } else {
+            tokio::signal::ctrl_c().await?;
+        }
+        app.cluster().shutdown();
+        Ok(())
     }
 
     /// Start over QUIC with mTLS [`Security`].
@@ -221,6 +352,8 @@ impl CraftyApp {
     pub fn builder(node_id: NodeId) -> CraftyAppBuilder {
         CraftyAppBuilder {
             inner: CraftyClusterBuilder::new(node_id, EmptyStateMachine),
+            #[cfg(feature = "http-jobs")]
+            gateway: None,
         }
     }
 
@@ -447,6 +580,14 @@ impl CraftyApp {
         tokio::signal::ctrl_c().await?;
         self.cluster.shutdown();
         Ok(())
+    }
+
+    /// Spawn the product HTTP / WebSocket gateway on a background task.
+    ///
+    /// Requires `http-jobs` feature and an [`Arc`] handle so routes can call into the app.
+    #[cfg(feature = "http-jobs")]
+    pub fn spawn_gateway(app: Arc<Self>, config: GatewayConfig) {
+        crate::gateway::spawn_gateway(app, config);
     }
 
     /// HTTP job enqueue API (`POST /jobs/{stream}` → `202`). Requires `http-jobs` feature.

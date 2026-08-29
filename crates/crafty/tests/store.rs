@@ -7,6 +7,7 @@ use crafty::core::StateMachine;
 use crafty::net::LocalNetwork;
 use crafty::proto::LogIndex;
 use crafty::{CraftyCluster, NodeId};
+use crafty_test_support::{advance, await_crafty_leader};
 
 #[derive(Default)]
 struct Empty;
@@ -31,19 +32,24 @@ impl StateMachine for Empty {
     }
 }
 
-async fn await_leader(clusters: &[Arc<CraftyCluster<Empty>>]) -> NodeId {
+async fn await_store_leader(clusters: &[Arc<CraftyCluster<Empty>>]) -> Arc<CraftyCluster<Empty>> {
     for _ in 0..500 {
         for c in clusters {
-            if c.is_leader().await {
-                return c.node_id();
+            if !c.is_leader().await {
+                continue;
+            }
+            let store = c.actor_state_store().expect("auto durable store");
+            if store.set("_probe", b"1", None).await.is_ok() {
+                let _ = store.delete("_probe").await;
+                return Arc::clone(c);
             }
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
     }
-    panic!("no leader elected");
+    panic!("store leader not ready");
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn durable_actor_store_replicates_to_voters() {
     let base = std::env::temp_dir().join(format!(
         "crafty-store-test-{}",
@@ -71,16 +77,13 @@ async fn durable_actor_store_replicates_to_voters() {
         clusters.push(cluster);
     }
 
-    let leader_id = await_leader(&clusters).await;
-    let leader = clusters
-        .iter()
-        .find(|c| c.node_id() == leader_id)
-        .expect("leader cluster");
+    let leader = await_crafty_leader(&clusters).await;
+    advance(Duration::from_millis(100)).await;
 
     let store = leader.actor_state_store().expect("auto durable store");
     store.set("order:1", b"done", None).await.unwrap();
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    advance(Duration::from_millis(100)).await;
 
     for c in &clusters {
         let local = c.actor_state_store().expect("store on every node");
@@ -98,7 +101,7 @@ async fn durable_actor_store_replicates_to_voters() {
     let _ = std::fs::remove_dir_all(base);
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn store_replicate_rejects_non_leader_caller() {
     use crafty::net::{LocalTransport, send_store_replicate};
     use crafty_proto::{StoreReplicateOp, StoreReplicateRequest};
@@ -125,8 +128,8 @@ async fn store_replicate_rejects_non_leader_caller() {
         ));
     }
 
-    let _leader = await_leader(&clusters).await;
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    let _leader = await_crafty_leader(&clusters).await;
+    advance(Duration::from_millis(100)).await;
 
     let follower = LocalTransport::new(net.clone(), NodeId(2));
     let reply = send_store_replicate(
@@ -176,12 +179,7 @@ async fn ttl_keys_expire_on_cluster_store() {
         ));
     }
 
-    let leader_id = await_leader(&clusters).await;
-    let leader = clusters
-        .iter()
-        .find(|c| c.node_id() == leader_id)
-        .expect("leader");
-
+    let leader = await_store_leader(&clusters).await;
     let store = leader.actor_state_store().expect("auto durable store");
     store
         .set("session:1", b"open", Some(Duration::from_secs(1)))

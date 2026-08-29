@@ -28,6 +28,7 @@ crafty-client.workspace = true
 crafty-macros.workspace = true
 crafty-dashboard.workspace = true
 crafty-http = { workspace = true, optional = true }
+axum = { version = "0.8", features = ["json", "ws"], optional = true }
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "net", "signal"] }
 thiserror.workspace = true
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
@@ -40,7 +41,7 @@ dev-certs = ["crafty-net/dev-certs"]
 # Forwards to `crafty-proto/json-wire`; never enable in production.
 json-wire = ["crafty-proto/json-wire"]
 # Product HTTP helpers (`POST /jobs/{stream}`) via optional `crafty-http` crate.
-http-jobs = ["dep:crafty-http"]
+http-jobs = ["dep:crafty-http", "dep:axum"]
 
 [dev-dependencies]
 crafty-http.workspace = true
@@ -55,6 +56,11 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net",
 serde = { workspace = true, features = ["derive"] }
 # The QUIC/mTLS integration test mints a shared dev cluster CA.
 crafty-net = { workspace = true, features = ["dev-certs"] }
+
+[[test]]
+name = "http_gateway"
+path = "tests/http_gateway.rs"
+required-features = ["http-jobs"]
 
 [[test]]
 name = "http_jobs"

@@ -82,19 +82,31 @@ impl RedbActorStateStore {
 
     fn read_value(&self, key: &str) -> Result<Option<Vec<u8>>, StoreError> {
         let now = now_ms();
-        let db = self.db.lock().expect("poisoned");
-        let txn = db.begin_read().map_err(backend)?;
-        let table = txn.open_table(KV).map_err(backend)?;
-        let Some(bytes) = table.get(key).map_err(backend)? else {
-            return Ok(None);
-        };
-        let stored: StoredValue = decode(bytes.value()).map_err(codec)?;
-        if stored.expires_at_ms != 0 && stored.expires_at_ms <= now {
-            drop(txn);
-            self.delete_expired(key)?;
-            return Ok(None);
+        enum ReadOutcome {
+            Expired,
+            Value(Vec<u8>),
         }
-        Ok(Some(stored.value))
+        let outcome = {
+            let db = self.db.lock().expect("poisoned");
+            let txn = db.begin_read().map_err(backend)?;
+            let table = txn.open_table(KV).map_err(backend)?;
+            let Some(bytes) = table.get(key).map_err(backend)? else {
+                return Ok(None);
+            };
+            let stored: StoredValue = decode(bytes.value()).map_err(codec)?;
+            if stored.expires_at_ms != 0 && stored.expires_at_ms <= now {
+                ReadOutcome::Expired
+            } else {
+                ReadOutcome::Value(stored.value)
+            }
+        };
+        match outcome {
+            ReadOutcome::Expired => {
+                self.delete_expired(key)?;
+                Ok(None)
+            }
+            ReadOutcome::Value(value) => Ok(Some(value)),
+        }
     }
 
     fn delete_expired(&self, key: &str) -> Result<(), StoreError> {
@@ -326,11 +338,20 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let store = RedbActorStateStore::open(dir.path().join("actor-store.redb")).expect("open");
         store
-            .set("k", b"v", Some(Duration::from_millis(20)))
+            .set("k", b"v", Some(Duration::from_secs(3600)))
             .await
             .expect("set");
         assert_eq!(store.get("k").await.unwrap(), Some(b"v".to_vec()));
-        tokio::time::sleep(Duration::from_millis(40)).await;
+
+        // Backdate expiry (store TTL uses wall clock, not tokio test clock).
+        store
+            .apply_replicate(&StoreReplicateOp::Set {
+                key: "k".into(),
+                value: b"v".to_vec(),
+                expires_at_ms: 1,
+            })
+            .expect("expire");
+
         assert_eq!(store.get("k").await.unwrap(), None);
     }
 

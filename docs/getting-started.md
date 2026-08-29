@@ -116,11 +116,19 @@ crafty = { version = "0.1", features = ["http-jobs"] }
 use std::sync::Arc;
 use crafty::CraftyApp;
 
-let app = Arc::new(app);
+let app = CraftyApp::builder(NodeId(1))
+    .data_dir("/var/lib/crafty")
+    .gateway_addr("0.0.0.0:3000".parse()?)
+    .start_local_shared(&net)
+    .await;
+
+// Or mount routes manually:
 let api = CraftyApp::jobs_api(Arc::clone(&app));
 let router = api.router().with_state(Arc::new(api.into_state()));
 // POST /jobs/{stream} → 202 { "job_id": … }
 ```
+
+Gateway helpers (`gateway_addr`, `http_routes`, `CraftyGatewayState`) ship with the `http-jobs` feature. Set `CRAFTY_GATEWAY=host:port` for env-based bind.
 
 See [crafty-http README](../../crates/crafty-http/README.md) and [background-jobs](scenarios/background-jobs.md).
 

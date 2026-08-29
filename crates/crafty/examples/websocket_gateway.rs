@@ -19,7 +19,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use crafty::actor::{UserActor, remote_actor};
 use crafty::net::LocalNetwork;
-use crafty::{CraftyApp, NodeId};
+use crafty::{CraftyApp, CraftyGatewayState, NodeId};
 use crafty_actor::CastError;
 
 const SESSION_TTL: Duration = Duration::from_secs(3600);
@@ -29,11 +29,6 @@ struct ConnectQuery {
     user: String,
     /// Optional shared secret when `GATEWAY_TOKEN` is set.
     token: Option<String>,
-}
-
-#[derive(Clone)]
-struct GatewayState {
-    app: Arc<CraftyApp>,
 }
 
 #[derive(Debug)]
@@ -93,7 +88,7 @@ fn session_recoverable(err: &CastError) -> bool {
 async fn ws_handler(
     ws: WebSocketUpgrade,
     Query(query): Query<ConnectQuery>,
-    State(state): State<GatewayState>,
+    State(state): State<CraftyGatewayState>,
 ) -> Response {
     if !gateway_token_ok(query.token.as_deref()) {
         return (StatusCode::UNAUTHORIZED, "invalid gateway token").into_response();
@@ -102,7 +97,7 @@ async fn ws_handler(
         .into_response()
 }
 
-async fn handle_socket(mut socket: WebSocket, state: GatewayState, user: String) {
+async fn handle_socket(mut socket: WebSocket, state: CraftyGatewayState, user: String) {
     let mut session = open_chat_session(state.app.as_ref(), &user);
     if session.is_none() {
         let _ = socket
@@ -136,7 +131,7 @@ async fn handle_socket(mut socket: WebSocket, state: GatewayState, user: String)
 }
 
 async fn cast_with_reconnect(
-    state: &GatewayState,
+    state: &CraftyGatewayState,
     user: &str,
     session: &mut Option<crafty_actor::ActorSession>,
     payload: Vec<u8>,
@@ -163,21 +158,26 @@ async fn cast_with_reconnect(
     Err(CastError::NoTarget("chat".into()))
 }
 
+fn gateway_routes(app: Arc<CraftyApp>) -> Router {
+    Router::new()
+        .route("/ws", get(ws_handler))
+        .with_state(CraftyGatewayState { app })
+}
+
 #[tokio::main]
 async fn main() {
     let gateway_mode = std::env::var("GATEWAY").ok().as_deref() == Some("1");
 
     let net = LocalNetwork::new();
-    let app = Arc::new(
-        CraftyApp::builder(NodeId(1))
-            .members([NodeId(1)])
-            .tick_period(Duration::from_millis(10))
-            .reconcile_period(Duration::from_millis(20))
-            .directory_publish_period(Duration::from_millis(20))
-            .manage_auto::<ChatWorker>("chat", 0)
-            .start_local(&net)
-            .await,
-    );
+    let mut builder = CraftyApp::builder(NodeId(1))
+        .members([NodeId(1)])
+        .tick_period(Duration::from_millis(10))
+        .reconcile_period(Duration::from_millis(20))
+        .directory_publish_period(Duration::from_millis(20))
+        .manage_auto::<ChatWorker>("chat", 0)
+        .gateway_addr("127.0.0.1:3000".parse().expect("gateway addr"))
+        .gateway_jobs_api(false)
+        .http_routes(gateway_routes);
 
     if gateway_mode {
         println!("gateway mode: WS on :3000 (workers run elsewhere in production)");
@@ -185,21 +185,8 @@ async fn main() {
         println!("worker mode: cluster + local WS on :3000 for demo");
     }
 
-    let gateway = GatewayState {
-        app: Arc::clone(&app),
-    };
-    let router = Router::new()
-        .route("/ws", get(ws_handler))
-        .with_state(gateway);
-
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
-        .await
-        .expect("bind gateway");
+    let app = builder.start_local_shared(&net).await;
     println!("WebSocket gateway listening on ws://127.0.0.1:3000/ws?user=alice");
-
-    tokio::spawn(async move {
-        axum::serve(listener, router).await.expect("serve");
-    });
 
     tokio::signal::ctrl_c().await.expect("ctrl-c");
     app.cluster().shutdown();

@@ -46,6 +46,10 @@ pub struct AppConfig {
     pub job_queue_stream: Option<String>,
     /// Job queue lease timeout.
     pub job_queue_lease: Duration,
+    /// Optional product gateway listen address (`None` when disabled).
+    pub gateway: Option<SocketAddr>,
+    /// Mount tier C `/jobs/*` on the gateway when `gateway` is set.
+    pub gateway_jobs_api: bool,
 }
 
 fn env(key: &str) -> Option<String> {
@@ -205,6 +209,12 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
     let job_queue_lease = env("CRAFTY_JOB_QUEUE_LEASE_SECS")
         .and_then(|v| v.parse::<u64>().ok())
         .map_or(Duration::from_secs(60), Duration::from_secs);
+    let gateway = match env("CRAFTY_GATEWAY").as_deref() {
+        Some("-") => None,
+        Some(a) => Some(a.parse()?),
+        None => None,
+    };
+    let gateway_jobs_api = !env_bool("CRAFTY_GATEWAY_NO_JOBS");
     let admin_tls = match (env("CRAFTY_ADMIN_TLS_CERT"), env("CRAFTY_ADMIN_TLS_KEY")) {
         (Some(cert), Some(key)) => Some((PathBuf::from(cert), PathBuf::from(key))),
         (None, None) => None,
@@ -233,5 +243,7 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         data_dir,
         job_queue_stream,
         job_queue_lease,
+        gateway,
+        gateway_jobs_api,
     })
 }
