@@ -25,6 +25,11 @@ struct StoredValue {
     expires_at_ms: u64,
 }
 
+enum ReadOutcome {
+    Expired,
+    Value(Vec<u8>),
+}
+
 /// Replication batch produced by a leader mutation.
 pub type StoreReplicationOps = Vec<StoreReplicateOp>;
 
@@ -82,10 +87,6 @@ impl RedbActorStateStore {
 
     fn read_value(&self, key: &str) -> Result<Option<Vec<u8>>, StoreError> {
         let now = now_ms();
-        enum ReadOutcome {
-            Expired,
-            Value(Vec<u8>),
-        }
         let outcome = {
             let db = self.db.lock().expect("poisoned");
             let txn = db.begin_read().map_err(backend)?;
@@ -219,6 +220,9 @@ impl RedbActorStateStore {
     ///
     /// # Errors
     /// Returns [`StoreError`] when the redb scan or delete transaction fails.
+    ///
+    /// # Panics
+    /// If an internal mutex is poisoned.
     pub fn gc_expired(&self, max_keys: usize) -> Result<(usize, StoreReplicationOps), StoreError> {
         if max_keys == 0 {
             return Ok((0, Vec::new()));
@@ -244,13 +248,11 @@ impl RedbActorStateStore {
             return Ok((0, Vec::new()));
         }
         let mut ops = Vec::with_capacity(expired.len());
-        for key in &expired {
-            self.apply_delete(key)?;
-            ops.push(StoreReplicateOp::Delete {
-                key: key.to_string(),
-            });
+        for key in expired {
+            self.apply_delete(&key)?;
+            ops.push(StoreReplicateOp::Delete { key });
         }
-        Ok((expired.len(), ops))
+        Ok((ops.len(), ops))
     }
 }
 
