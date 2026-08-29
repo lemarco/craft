@@ -264,6 +264,38 @@ pub trait JobQueue: Send + Sync {
             }])
         })
     }
+
+    /// Append many jobs in one backend transaction when supported.
+    fn enqueue_batch_opts_replicated<'a>(
+        &'a self,
+        jobs: &'a [(Vec<u8>, EnqueueOptions)],
+    ) -> BoxFuture<'a, Result<(Vec<JobId>, QueueReplicationOps), QueueError>> {
+        Box::pin(async move {
+            let mut ids = Vec::with_capacity(jobs.len());
+            let mut ops = Vec::new();
+            for (payload, options) in jobs {
+                let (id, mut step) = self.enqueue_opts_replicated(payload, options.clone()).await?;
+                ids.push(id);
+                ops.append(&mut step);
+            }
+            Ok((ids, ops))
+        })
+    }
+
+    /// Acknowledge many leases in one backend transaction when supported.
+    fn ack_batch_replicated<'a>(
+        &'a self,
+        worker: WorkerId,
+        lease_ids: &'a [LeaseId],
+    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+        Box::pin(async move {
+            let mut ops = Vec::with_capacity(lease_ids.len());
+            for lease_id in lease_ids {
+                ops.extend(self.ack_replicated(worker, *lease_id).await?);
+            }
+            Ok(ops)
+        })
+    }
 }
 
 #[derive(Debug)]

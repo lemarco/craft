@@ -19,8 +19,9 @@ use std::sync::{Arc, Mutex};
 use crafty_proto::{
     ActorEnvelope, CatalogAddRequest, CatalogAddResponse, ClientRequest, ClientResponse,
     DeliverAck, DirectoryUpdate, GroupMigrateReply, GroupMigrateRequest, JoinRequest, JoinResponse,
-    LeaveRequest, LeaveResponse, MigrateReply, MigrateRequest, NodeId, PeerBook, QueueAckReply,
-    QueueAckRequest, QueueEnqueueReply, QueueEnqueueRequest, QueueJobStatusReply,
+    LeaveRequest, LeaveResponse, MigrateReply, MigrateRequest, NodeId, PeerBook, QueueAckBatchReply,
+    QueueAckBatchRequest, QueueAckReply, QueueAckRequest, QueueEnqueueBatchReply,
+    QueueEnqueueBatchRequest, QueueEnqueueReply, QueueEnqueueRequest, QueueJobStatusReply,
     QueueJobStatusRequest, QueueLeaseReply, QueueLeaseRequest, QueueMetricsReply,
     QueueMetricsRequest, QueueNackReply, QueueNackRequest, QueueRequeueDeadLetterReply,
     QueueRequeueDeadLetterRequest, QueueReplicateReply,
@@ -369,6 +370,20 @@ pub async fn send_queue_enqueue<T: Transport + ?Sized>(
     Ok(decode_body(&response)?)
 }
 
+/// Enqueue many jobs in one leader transaction (`/queue/enqueue-batch`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_queue_enqueue_batch<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &QueueEnqueueBatchRequest,
+) -> Result<QueueEnqueueBatchReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::QueueEnqueueBatch, body).await?;
+    Ok(decode_body(&response)?)
+}
+
 /// Lease jobs from a queue stream (`/queue/lease`).
 ///
 /// # Errors
@@ -394,6 +409,20 @@ pub async fn send_queue_ack<T: Transport + ?Sized>(
 ) -> Result<QueueAckReply, TransportError> {
     let body = encode_body(request)?;
     let response = transport.send(peer, Route::QueueAck, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Acknowledge many leased jobs in one leader transaction (`/queue/ack-batch`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_queue_ack_batch<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &QueueAckBatchRequest,
+) -> Result<QueueAckBatchReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::QueueAckBatch, body).await?;
     Ok(decode_body(&response)?)
 }
 

@@ -37,10 +37,14 @@ pub const CLUSTER_GROUP_MIGRATE_PATH: &str = "/raft/v1/cluster/group/migrate";
 pub const CLUSTER_CATALOG_ADD_PATH: &str = "/raft/v1/cluster/catalog/add";
 /// Enqueue a job on the leader queue service ([job-queue](../../../docs/decisions/job-queue.md)).
 pub const QUEUE_ENQUEUE_PATH: &str = "/raft/v1/queue/enqueue";
+/// Enqueue many jobs in one leader transaction.
+pub const QUEUE_ENQUEUE_BATCH_PATH: &str = "/raft/v1/queue/enqueue-batch";
 /// Lease jobs from a queue stream.
 pub const QUEUE_LEASE_PATH: &str = "/raft/v1/queue/lease";
 /// Acknowledge a leased job.
 pub const QUEUE_ACK_PATH: &str = "/raft/v1/queue/ack";
+/// Acknowledge many leased jobs in one leader transaction.
+pub const QUEUE_ACK_BATCH_PATH: &str = "/raft/v1/queue/ack-batch";
 /// Return a leased job to pending.
 pub const QUEUE_NACK_PATH: &str = "/raft/v1/queue/nack";
 /// Queue depth gauges for autoscale / observability.
@@ -106,10 +110,14 @@ pub enum Route {
     ClusterCatalogAdd,
     /// [`QUEUE_ENQUEUE_PATH`].
     QueueEnqueue,
+    /// [`QUEUE_ENQUEUE_BATCH_PATH`].
+    QueueEnqueueBatch,
     /// [`QUEUE_LEASE_PATH`].
     QueueLease,
     /// [`QUEUE_ACK_PATH`].
     QueueAck,
+    /// [`QUEUE_ACK_BATCH_PATH`].
+    QueueAckBatch,
     /// [`QUEUE_NACK_PATH`].
     QueueNack,
     /// [`QUEUE_METRICS_PATH`].
@@ -132,7 +140,7 @@ pub enum Route {
 
 impl Route {
     /// Every route, in a stable order (handy for building a router or tests).
-    pub const ALL: [Route; 25] = [
+    pub const ALL: [Route; 27] = [
         Route::PeerWire,
         Route::ClientWire,
         Route::ClusterJoin,
@@ -147,8 +155,10 @@ impl Route {
         Route::ClusterGroupMigrate,
         Route::ClusterCatalogAdd,
         Route::QueueEnqueue,
+        Route::QueueEnqueueBatch,
         Route::QueueLease,
         Route::QueueAck,
+        Route::QueueAckBatch,
         Route::QueueNack,
         Route::QueueMetrics,
         Route::QueueJobStatus,
@@ -178,8 +188,10 @@ impl Route {
             Route::ClusterGroupMigrate => CLUSTER_GROUP_MIGRATE_PATH,
             Route::ClusterCatalogAdd => CLUSTER_CATALOG_ADD_PATH,
             Route::QueueEnqueue => QUEUE_ENQUEUE_PATH,
+            Route::QueueEnqueueBatch => QUEUE_ENQUEUE_BATCH_PATH,
             Route::QueueLease => QUEUE_LEASE_PATH,
             Route::QueueAck => QUEUE_ACK_PATH,
+            Route::QueueAckBatch => QUEUE_ACK_BATCH_PATH,
             Route::QueueNack => QUEUE_NACK_PATH,
             Route::QueueMetrics => QUEUE_METRICS_PATH,
             Route::QueueJobStatus => QUEUE_JOB_STATUS_PATH,
@@ -216,8 +228,10 @@ impl Route {
             | Route::ActorStop
             | Route::ActorRegister
             | Route::QueueEnqueue
+            | Route::QueueEnqueueBatch
             | Route::QueueLease
             | Route::QueueAck
+            | Route::QueueAckBatch
             | Route::QueueNack
             | Route::QueueMetrics
             | Route::QueueJobStatus

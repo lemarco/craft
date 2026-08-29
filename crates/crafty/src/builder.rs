@@ -38,7 +38,7 @@ use crafty_actor::{
     DirectoryPolicy, DirectoryRetry, DirectorySync, JobQueue, MailboxSpool,
     MembershipAutoscalePolicy, NodeService, QueueAutoscaleRegistry, QueueService, RaftDriver,
     RecurringJob, RedbActorStateStore, RedbJobQueue, RedbMailboxSpool, ResourceProfile,
-    RuntimeConfig, ShardedJobQueue, StoreService, UserActor, VpsResources,
+    RuntimeConfig, ShardedJobQueue, StoreService, UserActor, VpsResources, DEFAULT_QUEUE_PREFETCH,
     run_mailbox_spool_drainer, run_queue_autoscaler, run_queue_membership_autoscaler,
     run_queue_schedule_ticker, spawn_multi_raft_node, spawn_node,
 };
@@ -114,6 +114,7 @@ struct JobStreamSpec {
     name: String,
     path: Option<PathBuf>,
     lease_timeout: Duration,
+    prefetch: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -633,6 +634,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             name: name.to_string(),
             path: None,
             lease_timeout,
+            prefetch: DEFAULT_QUEUE_PREFETCH,
         });
         self
     }
@@ -649,7 +651,23 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             name: name.to_string(),
             path: Some(path.into()),
             lease_timeout,
+            prefetch: DEFAULT_QUEUE_PREFETCH,
         });
+        self
+    }
+
+    /// Tune leader prefetch depth for `stream` (default [`DEFAULT_QUEUE_PREFETCH`]).
+    ///
+    /// Prefetch keeps recently enqueued payloads in RAM on the queue leader so
+    /// [`lease`](crafty_actor::JobQueue::lease) skips re-reading from `redb`.
+    /// Set `prefetch` to `0` to disable.
+    #[must_use]
+    pub fn job_queue_prefetch(mut self, stream: &str, prefetch: usize) -> Self {
+        for spec in &mut self.job_streams {
+            if spec.name == stream {
+                spec.prefetch = prefetch;
+            }
+        }
         self
     }
 
@@ -760,6 +778,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                 name: format!("{name}~{i}"),
                 path: None,
                 lease_timeout,
+                prefetch: DEFAULT_QUEUE_PREFETCH,
             });
         }
         self.job_sharded.push(ShardedJobSpec {
@@ -1253,7 +1272,12 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                     .filter(|rj| rj.stream == spec.name)
                     .map(|rj| rj.job.clone())
                     .collect();
-                service.register_redb_stream(&spec.name, Arc::clone(&local), &schedules);
+                service.register_redb_stream(
+                    &spec.name,
+                    Arc::clone(&local),
+                    &schedules,
+                    spec.prefetch,
+                );
             }
             let client: Arc<dyn JobQueue> = Arc::new(ClusterJobQueue::new(
                 &spec.name,

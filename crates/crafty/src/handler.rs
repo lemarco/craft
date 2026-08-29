@@ -159,8 +159,10 @@ impl RequestHandler for NodeRouter {
             // Cross-node actor message delivery.
             Route::ActorDeliver => self.messaging.handle(route, body),
             Route::QueueEnqueue
+            | Route::QueueEnqueueBatch
             | Route::QueueLease
             | Route::QueueAck
+            | Route::QueueAckBatch
             | Route::QueueNack
             | Route::QueueMetrics
             | Route::QueueJobStatus
@@ -199,8 +201,10 @@ impl RequestHandler for NodeRouter {
     ) -> BoxFuture<'static, Result<Body, TransportError>> {
         match route {
             Route::QueueEnqueue
+            | Route::QueueEnqueueBatch
             | Route::QueueLease
             | Route::QueueAck
+            | Route::QueueAckBatch
             | Route::QueueNack
             | Route::QueueMetrics
             | Route::QueueJobStatus

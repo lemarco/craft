@@ -35,6 +35,46 @@ pub struct QueueEnqueueReply {
     pub error: Option<String>,
 }
 
+/// One job in a batch enqueue (`POST /raft/v1/queue/enqueue-batch`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueBatchEnqueueJob {
+    /// Opaque job body.
+    pub payload: Vec<u8>,
+    /// Higher values are leased before lower (default `0`).
+    #[serde(default)]
+    pub priority: u8,
+    /// Earliest wall time (unix ms) the job may be leased; `0` = immediately.
+    #[serde(default)]
+    pub not_before_ms: u64,
+    /// Optional routing key for sharded streams.
+    #[serde(default)]
+    pub shard_key: Option<Vec<u8>>,
+    /// Idempotency key — retries return the same `job_id` while the job exists.
+    #[serde(default)]
+    pub dedup_key: Option<Vec<u8>>,
+    /// Maximum delivery attempts before dead letter (`0` = unlimited).
+    #[serde(default)]
+    pub max_attempts: u32,
+}
+
+/// Enqueue many jobs in one leader transaction (`POST /raft/v1/queue/enqueue-batch`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueEnqueueBatchRequest {
+    /// Logical queue stream name.
+    pub stream: String,
+    /// Jobs to append (leader caps batch size).
+    pub jobs: Vec<QueueBatchEnqueueJob>,
+}
+
+/// Response to [`QueueEnqueueBatchRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueEnqueueBatchReply {
+    /// Assigned ids in the same order as the request (dedup hits echo existing ids).
+    pub job_ids: Vec<u64>,
+    /// Set when the batch failed before any job was committed.
+    pub error: Option<String>,
+}
+
 /// Lease jobs for a worker (`POST /raft/v1/queue/lease`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueLeaseRequest {
@@ -85,6 +125,27 @@ pub struct QueueAckRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueAckReply {
     /// Set when ack failed (unknown lease, wrong worker, etc.).
+    pub error: Option<String>,
+}
+
+/// Acknowledge many leased jobs in one leader transaction
+/// (`POST /raft/v1/queue/ack-batch`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueAckBatchRequest {
+    /// Queue stream the leases belong to.
+    pub stream: String,
+    /// Leasing worker node id.
+    pub worker_node: u64,
+    /// Leasing worker instance id.
+    pub worker_instance: u32,
+    /// Lease tokens from [`QueueLeasedJobWire::lease_id`].
+    pub lease_ids: Vec<u64>,
+}
+
+/// Response to [`QueueAckBatchRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueAckBatchReply {
+    /// Set when the batch ack failed.
     pub error: Option<String>,
 }
 

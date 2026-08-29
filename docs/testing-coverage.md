@@ -142,6 +142,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | **Job queue replicate auth + parallel replicate** | ✅ `queue_service` | ✅ `queue` (`queue_replicate_rejects_non_leader_caller`) | — | — | ✅ |
 | **Meta-Raft queue autoscale policy** | ✅ `queue_autoscale_policy` (core) | ✅ `queue` (autoscale tests) | — | — | ✅ |
 | **RedbJobQueue ack-driven compaction** | ✅ `redb_queue` | ✅ `queue` | — | — | ✅ |
+| **Queue throughput (batch enqueue/ack + leader prefetch)** | ✅ `redb_queue`, `queue_prefetch` | — | — | — | ✅ |
 | **Job queue E2E (QUIC enqueue → follower lease/ack → leader failover)** | — | — | — | ✅ `e2e/queue.sh` | ✅ |
 | **Durable mailbox outbox/inbox** | ✅ `mailbox_spool` | ✅ `mailbox_spool` (wire) | — | — | ✅ |
 | Actor state store resume + idempotency (facade) | — | ✅ `actor_store_resume` | — | — | ✅ |
