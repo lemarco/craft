@@ -18,6 +18,9 @@ maybe_tee() {
 
 export NEXTEST_PROFILE=ci
 
+log ">> fmt"
+bash scripts/gate-fmt.sh --check 2>&1 | maybe_tee
+
 log ">> clippy (pedantic)"
 bash scripts/gate-clippy.sh 2>&1 | maybe_tee
 
