@@ -39,7 +39,7 @@ members = [
 exclude = ["benchmarks", "crates/crafty-fuzz"]
 
 [workspace.package]
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 rust-version = "1.90"
 license = "MIT OR Apache-2.0"
@@ -68,22 +68,22 @@ quote = "1"
 proc-macro2 = "1"
 
 # Internal crates referenced by path within the workspace.
-crafty-proto = { path = "crates/crafty-proto", version = "0.2.1" }
-crafty-core = { path = "crates/crafty-core", version = "0.2.1" }
-crafty-storage = { path = "crates/crafty-storage", version = "0.2.1" }
-crafty-net = { path = "crates/crafty-net", version = "0.2.1" }
-crafty-macros = { path = "crates/crafty-macros", version = "0.2.1" }
-crafty-actor = { path = "crates/crafty-actor", version = "0.2.1" }
-crafty-client = { path = "crates/crafty-client", version = "0.2.1" }
-crafty-store-redis = { path = "crates/crafty-store-redis", version = "0.2.1" }
-crafty-dashboard = { path = "crates/crafty-dashboard", version = "0.2.1" }
-crafty-http = { path = "crates/crafty-http", version = "0.2.1" }
-crafty-sim = { path = "crates/crafty-sim", version = "0.2.1" }
-crafty = { path = "crates/crafty", version = "0.2.1" }
-crafty-test-support = { path = "crates/crafty-test-support", version = "0.2.1" }
-crafty-ops = { path = "crates/crafty-ops", version = "0.2.1" }
-crafty-e2e-client = { path = "crates/crafty-e2e-client", version = "0.2.1" }
-crafty-e2e-queue-client = { path = "crates/crafty-e2e-queue-client", version = "0.2.1" }
+crafty-proto = { path = "crates/crafty-proto", version = "0.2.2" }
+crafty-core = { path = "crates/crafty-core", version = "0.2.2" }
+crafty-storage = { path = "crates/crafty-storage", version = "0.2.2" }
+crafty-net = { path = "crates/crafty-net", version = "0.2.2" }
+crafty-macros = { path = "crates/crafty-macros", version = "0.2.2" }
+crafty-actor = { path = "crates/crafty-actor", version = "0.2.2" }
+crafty-client = { path = "crates/crafty-client", version = "0.2.2" }
+crafty-store-redis = { path = "crates/crafty-store-redis", version = "0.2.2" }
+crafty-dashboard = { path = "crates/crafty-dashboard", version = "0.2.2" }
+crafty-http = { path = "crates/crafty-http", version = "0.2.2" }
+crafty-sim = { path = "crates/crafty-sim", version = "0.2.2" }
+crafty = { path = "crates/crafty", version = "0.2.2" }
+crafty-test-support = { path = "crates/crafty-test-support", version = "0.2.2" }
+crafty-ops = { path = "crates/crafty-ops", version = "0.2.2" }
+crafty-e2e-client = { path = "crates/crafty-e2e-client", version = "0.2.2" }
+crafty-e2e-queue-client = { path = "crates/crafty-e2e-queue-client", version = "0.2.2" }
 
 # Lints applied across the workspace (library-and-publishing).
 [workspace.lints.rust]
