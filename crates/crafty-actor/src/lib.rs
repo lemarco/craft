@@ -74,7 +74,10 @@ pub use queue_schedule::{
 };
 pub use queue_service::{ClusterJobQueue, QueueService};
 pub use redb_queue::RedbJobQueue;
-pub use redb_store::{RedbActorStateStore, StoreReplicationOps};
+pub use redb_store::{
+    DEFAULT_ACTOR_STORE_GC_MAX_KEYS, DEFAULT_ACTOR_STORE_GC_PERIOD, RedbActorStateStore,
+    StoreReplicationOps,
+};
 pub use registry::{
     ASK_TIMEOUT, ActorGroupStats, ActorObserver, ActorRef, ActorRegistry, AskError,
     ConfigCodecError, DEFAULT_DRAIN_TIMEOUT, DeliverError, DrainOutcome, LocalActorIntrospection,
@@ -97,5 +100,7 @@ pub use sharded::{
 };
 pub use store::{ActorStateStore, BoxFuture, InMemoryStore, StoreError};
 pub use store_codec::{store_get, store_set};
-pub use store_service::{ClusterActorStateStore, StoreService};
+pub use store_service::{
+    ClusterActorStateStore, StoreService, run_actor_store_gc_ticker,
+};
 pub use supervisor::{ClusterState, ClusterSupervisor, GroupReconcile, ReconcileReport};

@@ -249,6 +249,24 @@ impl StoreService {
         StoreReplicateReply { error: None }
     }
 
+    /// Leader-only sweep of expired TTL keys; replicates deletes to voters.
+    ///
+    /// # Errors
+    /// Returns an error when the local scan/delete or replication fails.
+    pub async fn gc_expired_ttl(&self, max_keys: usize) -> Result<usize, String> {
+        if !self.state.is_leader() {
+            return Ok(0);
+        }
+        let (removed, ops) = self
+            .local
+            .gc_expired(max_keys)
+            .map_err(|e| e.to_string())?;
+        if removed > 0 {
+            self.replicate_ops(&ops).await?;
+        }
+        Ok(removed)
+    }
+
     /// Wire entry point when the service is held in an [`Arc`].
     #[must_use]
     pub fn handle_request(
@@ -404,5 +422,28 @@ impl ActorStateStore for ClusterActorStateStore {
             }
             Ok(reply.applied)
         })
+    }
+}
+
+/// Leader-only loop: purge expired actor-store TTL keys with voter replication.
+pub async fn run_actor_store_gc_ticker(
+    service: Arc<StoreService>,
+    poll_interval: Duration,
+    max_keys: usize,
+    mut stop: tokio::sync::watch::Receiver<bool>,
+) {
+    loop {
+        if *stop.borrow() {
+            break;
+        }
+        let _ = service.gc_expired_ttl(max_keys).await;
+        tokio::select! {
+            () = tokio::time::sleep(poll_interval) => {}
+            _ = stop.changed() => {
+                if *stop.borrow() {
+                    break;
+                }
+            }
+        }
     }
 }

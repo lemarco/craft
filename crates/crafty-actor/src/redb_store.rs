@@ -6,11 +6,17 @@ use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crafty_proto::{StoreReplicateOp, decode, encode};
-use redb::{Database, ReadableDatabase, TableDefinition};
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 
 use super::store::{ActorStateStore, BoxFuture, StoreError};
 
 const KV: TableDefinition<&str, &[u8]> = TableDefinition::new("actor_store_kv");
+
+/// Default max expired keys removed per GC pass on the store leader.
+pub const DEFAULT_ACTOR_STORE_GC_MAX_KEYS: usize = 256;
+
+/// Default interval for the leader-only actor-store TTL GC loop.
+pub const DEFAULT_ACTOR_STORE_GC_PERIOD: Duration = Duration::from_secs(60);
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 struct StoredValue {
@@ -192,6 +198,48 @@ impl RedbActorStateStore {
         let ops = self.set_replicated(key, value, ttl)?;
         Ok((true, ops))
     }
+
+    /// Remove up to `max_keys` entries whose TTL has elapsed.
+    ///
+    /// Returns the number of keys deleted and replication ops for voters.
+    /// Keys with `expires_at_ms == 0` are never collected here (lazy expiry on
+    /// [`ActorStateStore::get`] still applies when they carry a TTL).
+    ///
+    /// # Errors
+    /// Returns [`StoreError`] when the redb scan or delete transaction fails.
+    pub fn gc_expired(&self, max_keys: usize) -> Result<(usize, StoreReplicationOps), StoreError> {
+        if max_keys == 0 {
+            return Ok((0, Vec::new()));
+        }
+        let now = now_ms();
+        let mut expired = Vec::new();
+        {
+            let db = self.db.lock().expect("poisoned");
+            let txn = db.begin_read().map_err(backend)?;
+            let table = txn.open_table(KV).map_err(backend)?;
+            for item in table.iter().map_err(backend)? {
+                let (key, bytes) = item.map_err(backend)?;
+                let stored: StoredValue = decode(bytes.value()).map_err(codec)?;
+                if stored.expires_at_ms != 0 && stored.expires_at_ms <= now {
+                    expired.push(key.value().to_string());
+                    if expired.len() >= max_keys {
+                        break;
+                    }
+                }
+            }
+        }
+        if expired.is_empty() {
+            return Ok((0, Vec::new()));
+        }
+        let mut ops = Vec::with_capacity(expired.len());
+        for key in &expired {
+            self.apply_delete(key)?;
+            ops.push(StoreReplicateOp::Delete {
+                key: key.to_string(),
+            });
+        }
+        Ok((expired.len(), ops))
+    }
 }
 
 impl ActorStateStore for RedbActorStateStore {
@@ -271,5 +319,46 @@ mod tests {
             .compare_and_set_replicated("k", None, b"w", None)
             .expect("cas");
         assert!(!applied);
+    }
+
+    #[tokio::test]
+    async fn ttl_expires_lazily_on_get() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = RedbActorStateStore::open(dir.path().join("actor-store.redb")).expect("open");
+        store
+            .set("k", b"v", Some(Duration::from_millis(20)))
+            .await
+            .expect("set");
+        assert_eq!(store.get("k").await.unwrap(), Some(b"v".to_vec()));
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        assert_eq!(store.get("k").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn gc_expired_removes_unread_ttl_keys() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = RedbActorStateStore::open(dir.path().join("actor-store.redb")).expect("open");
+        store
+            .apply_replicate(&StoreReplicateOp::Set {
+                key: "stale".into(),
+                value: b"1".to_vec(),
+                expires_at_ms: 1,
+            })
+            .expect("set stale");
+        store
+            .apply_replicate(&StoreReplicateOp::Set {
+                key: "live".into(),
+                value: b"2".to_vec(),
+                expires_at_ms: 0,
+            })
+            .expect("set live");
+
+        let (removed, ops) = store.gc_expired(256).expect("gc");
+        assert_eq!(removed, 1);
+        assert_eq!(ops.len(), 1);
+        assert!(matches!(ops[0], StoreReplicateOp::Delete { .. }));
+
+        assert_eq!(store.get("stale").await.unwrap(), None);
+        assert_eq!(store.get("live").await.unwrap(), Some(b"2".to_vec()));
     }
 }

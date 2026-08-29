@@ -41,6 +41,7 @@ use crafty_actor::{
     RuntimeConfig, ShardedJobQueue, StoreService, UserActor, VpsResources,
     run_mailbox_spool_drainer, run_queue_autoscaler, run_queue_membership_autoscaler,
     run_queue_schedule_ticker, spawn_multi_raft_node, spawn_node,
+    DEFAULT_ACTOR_STORE_GC_MAX_KEYS, DEFAULT_ACTOR_STORE_GC_PERIOD, run_actor_store_gc_ticker,
 };
 
 use crate::certs::{CertReloadHandle, PemSecurity};
@@ -1348,7 +1349,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             Arc::clone(&messaging),
             Arc::clone(&directory_sync),
             queue_service.clone(),
-            store_service,
+            store_service.clone(),
             Arc::clone(&peers),
             multi_raft.as_ref().map(|state| {
                 Arc::new(ArcGroupMigrate(Arc::clone(state))) as Arc<dyn GroupMigratePort>
@@ -1578,6 +1579,20 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
             tasks.push(tokio::spawn(async move {
                 run_queue_schedule_ticker(service, Duration::from_secs(1), stop_rx).await;
+            }));
+        }
+
+        if let Some(service) = store_service.as_ref() {
+            let service = Arc::clone(service);
+            let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            tasks.push(tokio::spawn(async move {
+                run_actor_store_gc_ticker(
+                    service,
+                    DEFAULT_ACTOR_STORE_GC_PERIOD,
+                    DEFAULT_ACTOR_STORE_GC_MAX_KEYS,
+                    stop_rx,
+                )
+                .await;
             }));
         }
 

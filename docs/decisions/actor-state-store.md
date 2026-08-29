@@ -75,7 +75,7 @@ Mirror [job-queue voter replication](job-queue.md):
 
 - File: `{data_dir}/actor-store.redb` (or per-tenant prefix table)
 - Leader mutations replicate to voters via dedicated RPC (same durability model as queue)
-- TTL keys: periodic GC task (optional v1 — can defer TTL to v2)
+- TTL keys: lazy expiry on `get` + leader periodic GC (replicated deletes, default 60s / 256 keys)
 
 ### What external Redis is still for
 

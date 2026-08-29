@@ -150,3 +150,58 @@ async fn store_replicate_rejects_non_leader_caller() {
     }
     let _ = std::fs::remove_dir_all(base);
 }
+
+#[tokio::test]
+async fn ttl_keys_expire_on_cluster_store() {
+    let base = std::env::temp_dir().join(format!(
+        "crafty-store-ttl-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let net = LocalNetwork::new();
+    let mut clusters = Vec::new();
+    for id in ids {
+        clusters.push(Arc::new(
+            CraftyCluster::builder(id, Empty)
+                .members(ids)
+                .data_dir(base.join(format!("node-{}", id.0)))
+                .tick_period(Duration::from_millis(5))
+                .start_local(&net)
+                .await,
+        ));
+    }
+
+    let leader_id = await_leader(&clusters).await;
+    let leader = clusters
+        .iter()
+        .find(|c| c.node_id() == leader_id)
+        .expect("leader");
+
+    let store = leader.actor_state_store().expect("auto durable store");
+    store
+        .set("session:1", b"open", Some(Duration::from_secs(1)))
+        .await
+        .unwrap();
+
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+
+    for c in &clusters {
+        let local = c.actor_state_store().expect("store on every node");
+        assert_eq!(
+            local.get("session:1").await.unwrap(),
+            None,
+            "node {:?} should not see expired key",
+            c.node_id()
+        );
+    }
+
+    for c in clusters {
+        c.shutdown();
+    }
+    let _ = std::fs::remove_dir_all(base);
+}
