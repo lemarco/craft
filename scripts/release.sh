@@ -59,7 +59,7 @@ set_version() {
     tmp="$(mktemp)"
     awk -v old="$old" -v ver="$version" '
         $0 == "version = \"" old "\"" { print "version = \"" ver "\""; next }
-        /^crafty[a-z-]* = / {
+        /^crafty[a-z0-9-]* = / {
             gsub("version = \"" old "\"", "version = \"" ver "\""); print; next
         }
         { print }
