@@ -74,6 +74,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn remove_job_evicts_stale_entry() {
+        let mut cache = QueuePrefetchCache::new(8);
+        cache.insert_enqueued(CachedPendingJob {
+            job_id: 1,
+            payload: b"a".to_vec(),
+            priority: 0,
+            not_before_ms: 0,
+        });
+        cache.insert_enqueued(CachedPendingJob {
+            job_id: 2,
+            payload: b"b".to_vec(),
+            priority: 0,
+            not_before_ms: 0,
+        });
+        cache.remove_job(1);
+        let leased = cache.select_for_lease(8, 0);
+        assert_eq!(leased.len(), 1);
+        assert_eq!(leased[0].job_id, 2);
+    }
+
+    #[test]
     fn higher_priority_leased_first() {
         let mut cache = QueuePrefetchCache::new(8);
         cache.insert_enqueued(CachedPendingJob {

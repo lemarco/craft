@@ -24,6 +24,7 @@ use crafty_proto::{
 };
 
 use crate::queue_prefetch::{CachedPendingJob, QueuePrefetchCache, DEFAULT_QUEUE_BATCH_MAX};
+use crate::sharded_queue::decode_global_id;
 use crate::supervisor::ClusterState;
 use crate::{
     EnqueueOptions, JobId, JobLifecycle, JobQueue, JobStatus, LeaseId, LeasedJob, RecurringJob,
@@ -357,6 +358,50 @@ impl QueueService {
         });
     }
 
+    fn evict_prefetch(&self, stream: &str, job_ids: impl IntoIterator<Item = u64>) {
+        let mut prefetch = self.prefetch.lock().expect("poisoned");
+        let Some(cache) = prefetch.get_mut(stream) else {
+            return;
+        };
+        for job_id in job_ids {
+            cache.remove_job(job_id);
+        }
+    }
+
+    fn evict_prefetch_ack_ops(&self, stream: &str, ops: &[QueueReplicateOp]) {
+        self.evict_prefetch(
+            stream,
+            ops.iter().filter_map(|op| match op {
+                QueueReplicateOp::Ack { job_id, .. } => Some(*job_id),
+                _ => None,
+            }),
+        );
+    }
+
+    fn evict_prefetch_sharded_acks(&self, base: &str, reps: &[ShardedReplication]) {
+        for rep in reps {
+            self.evict_prefetch_ack_ops(&shard_stream_name(base, rep.shard), &rep.ops);
+        }
+    }
+
+    fn cache_enqueued_sharded(
+        &self,
+        base: &str,
+        global_id: u64,
+        payload: Vec<u8>,
+        priority: u8,
+        not_before_ms: u64,
+    ) {
+        let (shard, local) = decode_global_id(global_id);
+        self.cache_enqueued(
+            &shard_stream_name(base, shard),
+            local,
+            payload,
+            priority,
+            not_before_ms,
+        );
+    }
+
     async fn lease_redb_with_prefetch(
         &self,
         stream: &str,
@@ -413,6 +458,13 @@ impl QueueService {
                                 error: Some(e),
                             };
                         }
+                        self.cache_enqueued_sharded(
+                            &request.stream,
+                            id.0,
+                            request.payload.clone(),
+                            request.priority,
+                            request.not_before_ms,
+                        );
                         return QueueEnqueueReply {
                             job_id: Some(id.0),
                             error: None,
@@ -499,36 +551,48 @@ impl QueueService {
         }
         if self.state.is_leader() {
             if let Some(sharded) = self.sharded_stream(&request.stream) {
-                let mut ids = Vec::with_capacity(request.jobs.len());
-                let mut reps = Vec::new();
-                for job in &request.jobs {
-                    let options = enqueue_options_from_batch_job(job);
-                    match sharded
-                        .enqueue_opts_replicated_sharded(&job.payload, options)
-                        .await
-                    {
-                        Ok((id, rep)) => {
-                            ids.push(id.0);
-                            reps.push(rep);
-                        }
-                        Err(e) => {
+                let batch: Vec<(Vec<u8>, EnqueueOptions)> = request
+                    .jobs
+                    .iter()
+                    .map(|job| {
+                        (
+                            job.payload.clone(),
+                            enqueue_options_from_batch_job(job),
+                        )
+                    })
+                    .collect();
+                match sharded
+                    .enqueue_batch_opts_replicated_sharded(&batch)
+                    .await
+                {
+                    Ok((ids, reps)) => {
+                        if let Err(e) = self.replicate_sharded(&request.stream, &reps).await {
                             return QueueEnqueueBatchReply {
-                                job_ids: ids,
-                                error: Some(e.to_string()),
+                                job_ids: Vec::new(),
+                                error: Some(e),
                             };
                         }
+                        for (job, id) in request.jobs.iter().zip(&ids) {
+                            self.cache_enqueued_sharded(
+                                &request.stream,
+                                id.0,
+                                job.payload.clone(),
+                                job.priority,
+                                job.not_before_ms,
+                            );
+                        }
+                        return QueueEnqueueBatchReply {
+                            job_ids: ids.into_iter().map(|id| id.0).collect(),
+                            error: None,
+                        };
+                    }
+                    Err(e) => {
+                        return QueueEnqueueBatchReply {
+                            job_ids: Vec::new(),
+                            error: Some(e.to_string()),
+                        };
                     }
                 }
-                if let Err(e) = self.replicate_sharded(&request.stream, &reps).await {
-                    return QueueEnqueueBatchReply {
-                        job_ids: Vec::new(),
-                        error: Some(e),
-                    };
-                }
-                return QueueEnqueueBatchReply {
-                    job_ids: ids,
-                    error: None,
-                };
             }
             match self.local_stream(&request.stream) {
                 Err(e) => QueueEnqueueBatchReply {
@@ -612,21 +676,23 @@ impl QueueService {
             };
             let lease_ids: Vec<LeaseId> = request.lease_ids.iter().map(|id| LeaseId(*id)).collect();
             if let Some(sharded) = self.sharded_stream(&request.stream) {
-                let mut reps = Vec::new();
-                for lease_id in &lease_ids {
-                    match sharded.ack_replicated_sharded(worker, *lease_id).await {
-                        Ok(rep) => reps.push(rep),
-                        Err(e) => {
-                            return QueueAckBatchReply {
-                                error: Some(e.to_string()),
-                            };
+                match sharded
+                    .ack_batch_replicated_sharded(worker, &lease_ids)
+                    .await
+                {
+                    Ok(reps) => {
+                        if let Err(e) = self.replicate_sharded(&request.stream, &reps).await {
+                            return QueueAckBatchReply { error: Some(e) };
                         }
+                        self.evict_prefetch_sharded_acks(&request.stream, &reps);
+                        return QueueAckBatchReply { error: None };
+                    }
+                    Err(e) => {
+                        return QueueAckBatchReply {
+                            error: Some(e.to_string()),
+                        };
                     }
                 }
-                if let Err(e) = self.replicate_sharded(&request.stream, &reps).await {
-                    return QueueAckBatchReply { error: Some(e) };
-                }
-                return QueueAckBatchReply { error: None };
             }
             match self.local_stream(&request.stream) {
                 Err(e) => QueueAckBatchReply { error: Some(e) },
@@ -635,6 +701,7 @@ impl QueueService {
                         if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
                             QueueAckBatchReply { error: Some(e) }
                         } else {
+                            self.evict_prefetch_ack_ops(&request.stream, &ops);
                             QueueAckBatchReply { error: None }
                         }
                     }
@@ -765,9 +832,16 @@ impl QueueService {
                     .await
                 {
                     Ok(rep) => {
-                        if let Err(e) = self.replicate_sharded(&request.stream, &[rep]).await {
+                        if let Err(e) = self
+                            .replicate_sharded(&request.stream, std::slice::from_ref(&rep))
+                            .await
+                        {
                             return QueueAckReply { error: Some(e) };
                         }
+                        self.evict_prefetch_sharded_acks(
+                            &request.stream,
+                            std::slice::from_ref(&rep),
+                        );
                         return QueueAckReply { error: None };
                     }
                     Err(e) => {
@@ -787,6 +861,7 @@ impl QueueService {
                         if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
                             return QueueAckReply { error: Some(e) };
                         }
+                        self.evict_prefetch_ack_ops(&request.stream, &ops);
                         QueueAckReply { error: None }
                     }
                     Err(e) => QueueAckReply {

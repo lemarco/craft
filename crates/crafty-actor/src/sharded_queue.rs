@@ -3,6 +3,7 @@
 //! Spreads enqueue/load across independent queue shards (separate redb files and
 //! replication paths) while presenting one logical queue to producers/consumers.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::{
@@ -28,6 +29,11 @@ fn encode_id(shard: usize, local: u64) -> u64 {
 
 fn decode_id(id: u64) -> (usize, u64) {
     ((id >> SHARD_SHIFT) as usize, id & LOCAL_MASK)
+}
+
+/// Split a global sharded job/lease id into `(shard_index, local_id)`.
+pub(crate) fn decode_global_id(id: u64) -> (usize, u64) {
+    decode_id(id)
 }
 
 /// Routes jobs across `shards` by hashing the shard key (or payload).
@@ -95,6 +101,77 @@ impl ShardedJobQueue {
             JobId(encode_id(shard, local.0)),
             ShardedReplication { shard, ops },
         ))
+    }
+
+    /// Batch enqueue on routed shards; returns global job ids in input order.
+    ///
+    /// # Errors
+    /// Returns [`QueueError`] if routing or any shard batch enqueue fails.
+    pub async fn enqueue_batch_opts_replicated_sharded(
+        &self,
+        jobs: &[(Vec<u8>, EnqueueOptions)],
+    ) -> Result<(Vec<JobId>, Vec<ShardedReplication>), QueueError> {
+        if jobs.is_empty() {
+            return Ok((Vec::new(), Vec::new()));
+        }
+        let mut by_shard: HashMap<usize, Vec<(usize, Vec<u8>, EnqueueOptions)>> = HashMap::new();
+        for (idx, (payload, options)) in jobs.iter().enumerate() {
+            let shard = self.pick_shard(payload, options.shard_key.as_deref());
+            by_shard.entry(shard).or_default().push((
+                idx,
+                payload.clone(),
+                options.clone(),
+            ));
+        }
+        let mut ids = vec![JobId(0); jobs.len()];
+        let mut replications = Vec::new();
+        for (shard, batch) in by_shard {
+            let shard_jobs: Vec<(Vec<u8>, EnqueueOptions)> = batch
+                .iter()
+                .map(|(_, payload, options)| (payload.clone(), options.clone()))
+                .collect();
+            let (local_ids, ops) = self
+                .shard(shard)?
+                .enqueue_batch_opts_replicated(&shard_jobs)
+                .await?;
+            if !ops.is_empty() {
+                replications.push(ShardedReplication { shard, ops });
+            }
+            for ((idx, _, _), local_id) in batch.into_iter().zip(local_ids) {
+                ids[idx] = JobId(encode_id(shard, local_id.0));
+            }
+        }
+        Ok((ids, replications))
+    }
+
+    /// Batch ack across shards; groups leases by encoded shard index.
+    ///
+    /// # Errors
+    /// Returns [`QueueError`] if any shard index is invalid or ack fails.
+    pub async fn ack_batch_replicated_sharded(
+        &self,
+        worker: WorkerId,
+        lease_ids: &[LeaseId],
+    ) -> Result<Vec<ShardedReplication>, QueueError> {
+        if lease_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut by_shard: HashMap<usize, Vec<LeaseId>> = HashMap::new();
+        for lease_id in lease_ids {
+            let (shard, local) = decode_id(lease_id.0);
+            by_shard.entry(shard).or_default().push(LeaseId(local));
+        }
+        let mut replications = Vec::new();
+        for (shard, locals) in by_shard {
+            let ops = self
+                .shard(shard)?
+                .ack_batch_replicated(worker, &locals)
+                .await?;
+            if !ops.is_empty() {
+                replications.push(ShardedReplication { shard, ops });
+            }
+        }
+        Ok(replications)
     }
 
     /// Lease across shards; replication ops are grouped per shard.
@@ -362,6 +439,60 @@ mod tests {
         for job in leased {
             q.ack(worker, job.lease_id).await.unwrap();
         }
+        assert_eq!(q.metrics().await.unwrap().pending, 0);
+    }
+
+    #[tokio::test]
+    async fn batch_enqueue_preserves_input_order_on_one_shard() {
+        let shards: Vec<_> = (0..4)
+            .map(|_| Arc::new(InMemoryJobQueue::new(Duration::from_secs(30))) as Arc<dyn JobQueue>)
+            .collect();
+        let q = ShardedJobQueue::new(shards);
+        let batch: Vec<(Vec<u8>, EnqueueOptions)> = (0..5u8)
+            .map(|i| {
+                (
+                    vec![i],
+                    EnqueueOptions {
+                        shard_key: Some(b"tenant-a".to_vec()),
+                        ..EnqueueOptions::default()
+                    },
+                )
+            })
+            .collect();
+        let (ids, reps) = q
+            .enqueue_batch_opts_replicated_sharded(&batch)
+            .await
+            .unwrap();
+        assert_eq!(ids.len(), 5);
+        assert_eq!(reps.len(), 1);
+        let (shard0, local0) = decode_id(ids[0].0);
+        for (offset, id) in ids.iter().enumerate().skip(1) {
+            let (shard, local) = decode_id(id.0);
+            assert_eq!(shard, shard0);
+            assert_eq!(local, local0 + offset as u64);
+        }
+    }
+
+    #[tokio::test]
+    async fn batch_ack_routes_by_shard() {
+        let shards: Vec<_> = (0..3)
+            .map(|_| Arc::new(InMemoryJobQueue::new(Duration::from_secs(30))) as Arc<dyn JobQueue>)
+            .collect();
+        let q = ShardedJobQueue::new(shards);
+        for i in 0..6u8 {
+            q.enqueue(&[i]).await.unwrap();
+        }
+        let worker = WorkerId {
+            node: crafty_proto::NodeId(1),
+            instance: 0,
+        };
+        let leased = q.lease(worker, 6).await.unwrap();
+        let lease_ids: Vec<LeaseId> = leased.iter().map(|j| j.lease_id).collect();
+        let reps = q
+            .ack_batch_replicated_sharded(worker, &lease_ids)
+            .await
+            .unwrap();
+        assert!(!reps.is_empty());
         assert_eq!(q.metrics().await.unwrap().pending, 0);
     }
 }
