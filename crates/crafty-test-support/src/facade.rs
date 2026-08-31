@@ -21,10 +21,7 @@ pub async fn boot_local_app(
 ) -> Arc<CraftyApp> {
     let mut opts = RunOpts::local();
     opts.wait_ready = wait_ready;
-    builder
-        .boot_for_test(opts)
-        .await
-        .expect("boot_local_app")
+    builder.boot_for_test(opts).await.expect("boot_local_app")
 }
 
 /// Poll until one cluster in `clusters` reports leader, or panic after ~10s.

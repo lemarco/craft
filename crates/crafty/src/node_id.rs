@@ -22,8 +22,5 @@ pub fn read_persisted(data_dir: &Path) -> Option<NodeId> {
 /// Returns an I/O error when the directory or file cannot be written.
 pub fn persist(data_dir: &Path, node_id: NodeId) -> io::Result<()> {
     std::fs::create_dir_all(data_dir)?;
-    std::fs::write(
-        data_dir.join(NODE_ID_FILE),
-        format!("{}\n", node_id.0),
-    )
+    std::fs::write(data_dir.join(NODE_ID_FILE), format!("{}\n", node_id.0))
 }

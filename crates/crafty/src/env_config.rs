@@ -132,7 +132,9 @@ pub fn gateway_only_from_env() -> bool {
 
 /// Parse `CRAFTY_NODE_ID` when explicitly set (otherwise id comes from disk or assignment).
 pub fn node_id_from_env() -> Option<NodeId> {
-    env("CRAFTY_NODE_ID").and_then(|raw| raw.parse::<u64>().ok()).map(NodeId)
+    env("CRAFTY_NODE_ID")
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .map(NodeId)
 }
 
 /// Resolve the node id before boot: persisted file, explicit env, or seed default.
@@ -145,11 +147,7 @@ fn resolve_node_id(data_dir: Option<&PathBuf>, joining: bool) -> NodeId {
     if let Some(id) = node_id_from_env() {
         return id;
     }
-    if joining {
-        NodeId(0)
-    } else {
-        NodeId(1)
-    }
+    if joining { NodeId(0) } else { NodeId(1) }
 }
 
 /// Resolve `host:port` with brief DNS retry.
@@ -233,7 +231,8 @@ fn load_security_from_env(
         (None, None, None) => {
             if members.len() > 1 || joining {
                 return Err(
-                    "multi-node clusters need CRAFTY_CERT_DIR or CRAFTY_NODE_CERT/KEY/CA_CERT".into(),
+                    "multi-node clusters need CRAFTY_CERT_DIR or CRAFTY_NODE_CERT/KEY/CA_CERT"
+                        .into(),
                 );
             }
             #[cfg(feature = "dev-certs")]

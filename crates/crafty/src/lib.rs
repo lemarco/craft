@@ -36,16 +36,15 @@
 //!
 //! See the `docs/` directory for architecture and design decision records.
 
+mod actor_group;
 mod app;
 mod app_opts;
-mod actor_group;
 mod builder;
-mod configure;
-mod queue_opts;
-mod cron_opts;
 mod certs;
 mod cluster;
+mod configure;
 mod consumer;
+mod cron_opts;
 pub mod discovery;
 mod env_config;
 #[cfg(feature = "http-jobs")]
@@ -54,6 +53,7 @@ mod handler;
 mod multi_raft;
 mod node_id;
 mod observer;
+mod queue_opts;
 mod ready;
 mod saga;
 mod security;
@@ -72,18 +72,19 @@ pub use {crafty_dashboard as dashboard, crafty_macros as macros, crafty_net as n
 #[doc(inline)]
 pub use crafty_storage as storage;
 
+pub use actor_group::ActorGroupOpts;
 pub use app::{
     CraftyApp, CraftyAppBuilder, EmptyStateMachine, ShutdownOpts, WorkerInfo, WorkflowPlanFn,
     journal_workflow,
 };
-pub use actor_group::ActorGroupOpts;
-pub use configure::CraftyConfigure;
-pub use queue_opts::QueueOpts;
-pub use cron_opts::CronOpts;
 pub use app_opts::RunOpts;
 pub use builder::{CraftyClusterBuilder, StartError};
-pub use certs::{CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_for_node, cert_paths_from_env};
+pub use certs::{
+    CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_for_node,
+    cert_paths_from_env,
+};
 pub use cluster::{AddRaftGroupsError, ClusterFacts, CraftyCluster, LeaveError, ScaleClusterError};
+pub use configure::CraftyConfigure;
 pub use consumer::{ConsumerGroup, ConsumerOpts, JobConsumer};
 pub use crafty_actor::{
     ActorSession, AutoscalePolicy, ClusterActorStateStore, ClusterJobQueue, DEFAULT_DRAIN_TIMEOUT,
@@ -104,12 +105,16 @@ pub use crafty_http::{
     SagaBody, WorkflowAccepted, WorkflowsApi, WorkflowsApiError, spawn_workflows_server,
 };
 pub use crafty_macros::consumer;
+pub use cron_opts::CronOpts;
 pub use env_config::{
     AppConfig, NodeRole, app_config_from_env, consumers_enabled_from_env, gateway_only_from_env,
     node_role_from_env, workers_enabled_from_env,
 };
 #[cfg(feature = "http-jobs")]
-pub use gateway::{CraftyGatewayState, GatewayConfig, GatewayOpts, build_gateway_router, spawn_gateway};
+pub use gateway::{
+    CraftyGatewayState, GatewayConfig, GatewayOpts, build_gateway_router, spawn_gateway,
+};
+pub use queue_opts::QueueOpts;
 pub use ready::ReadyOpts;
 pub use saga::{
     CompositeSagaJournal, Group0SagaJournal, MetaRaftSagaJournal, SagaRegistry, StoreSagaJournal,

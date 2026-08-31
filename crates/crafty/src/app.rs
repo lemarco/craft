@@ -28,13 +28,13 @@ use crate::app_opts::RunOpts;
 use crate::builder::{CraftyClusterBuilder, StartError};
 use crate::cluster::CraftyCluster;
 use crate::configure::CraftyConfigure;
-use crate::env_config::{AppConfig, app_config_from_env};
 use crate::cron_opts::CronOpts;
-use crate::queue_opts::QueueOpts;
-#[cfg(feature = "http-jobs")]
-use crate::gateway::{GatewayConfig, GatewayOpts};
+use crate::env_config::{AppConfig, app_config_from_env};
 #[cfg(feature = "http-jobs")]
 use crate::gateway::spawn_gateway as spawn_gateway_task;
+#[cfg(feature = "http-jobs")]
+use crate::gateway::{GatewayConfig, GatewayOpts};
+use crate::queue_opts::QueueOpts;
 
 type ConsumerSpawnFn =
     Box<dyn FnOnce(Arc<CraftyApp>, tokio::sync::watch::Receiver<bool>) -> JoinHandle<()> + Send>;

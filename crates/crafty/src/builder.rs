@@ -986,9 +986,8 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                 if self.node_id == NodeId(0) {
                     self.node_id = NodeId(1);
                 }
-                node_id::persist(data_dir, self.node_id).map_err(|e| {
-                    StartError::Config(format!("persist node id: {e}"))
-                })?;
+                node_id::persist(data_dir, self.node_id)
+                    .map_err(|e| StartError::Config(format!("persist node id: {e}")))?;
                 if !self.members.contains(&self.node_id) {
                     self.members.push(self.node_id);
                     self.members.sort();
@@ -1002,13 +1001,12 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         let mut server_cfg = server_config(&security.identity, security.roots.clone())?;
         let mut client_cfg = client_config(&security.identity, security.roots.clone())?;
 
-        let server =
-            Arc::new(
-                QuicServer::bind(listen, server_cfg.clone()).map_err(|source| StartError::Bind {
-                    addr: listen,
-                    source,
-                })?,
-            );
+        let server = Arc::new(
+            QuicServer::bind(listen, server_cfg.clone()).map_err(|source| StartError::Bind {
+                addr: listen,
+                source,
+            })?,
+        );
         // Share the bound endpoint so outbound dials reuse the listener socket.
         let endpoint = server.endpoint().clone();
         let quic = Arc::new(QuicTransport::with_policy(
@@ -1035,9 +1033,8 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             self.members = membership.voters.clone();
             pre_joined = true;
             if let Some(ref data_dir) = self.data_dir {
-                node_id::persist(data_dir, assigned).map_err(|e| {
-                    StartError::Config(format!("persist assigned node id: {e}"))
-                })?;
+                node_id::persist(data_dir, assigned)
+                    .map_err(|e| StartError::Config(format!("persist assigned node id: {e}")))?;
             }
             quic.learn_peer(assigned, listen);
             if !peers.contains(assigned) {
@@ -1966,7 +1963,10 @@ async fn join_cluster_auto(
     seeds: &[Seed],
     advertise: SocketAddr,
 ) -> Result<(NodeId, Membership), StartError> {
-    debug_assert!(!seeds.is_empty(), "join_cluster_auto requires at least one seed");
+    debug_assert!(
+        !seeds.is_empty(),
+        "join_cluster_auto requires at least one seed"
+    );
 
     let mut booked = false;
     let mut last_err = String::from("no seeds");

@@ -1,7 +1,9 @@
 //! [`CraftyApp`] workflow integration (coordination machinery, not tier-A SM).
 
 use crafty::client::SagaOutcome;
-use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, ReadyOpts, WorkflowBuilder, journal_workflow};
+use crafty::{
+    CraftyApp, CraftyConfigure, GatewayOpts, ReadyOpts, WorkflowBuilder, journal_workflow,
+};
 use crafty_test_support::{TICK_PERIOD, boot_local_app, fast_raft_config_with_seed};
 
 fn noop_plan(saga_id: &str) -> crafty_client::SagaPlan {
@@ -45,7 +47,10 @@ async fn crafty_app_workflows_api_on_gateway() {
                 ..CraftyConfigure::default()
             })
             .workflows(noop_plan, journal_workflow)
-            .gateway("127.0.0.1:0".parse().expect("addr"), GatewayOpts::default().with_workflows_api(true)),
+            .gateway(
+                "127.0.0.1:0".parse().expect("addr"),
+                GatewayOpts::default().with_workflows_api(true),
+            ),
         Some(ReadyOpts::default()),
     )
     .await;
@@ -56,7 +61,10 @@ async fn crafty_app_workflows_api_on_gateway() {
 
 #[cfg(feature = "http-jobs")]
 mod gateway_merge {
-    use crafty::{CraftyApp, CraftyConfigure, GatewayConfig, ReadyOpts, build_gateway_router, journal_workflow};
+    use crafty::{
+        CraftyApp, CraftyConfigure, GatewayConfig, ReadyOpts, build_gateway_router,
+        journal_workflow,
+    };
     use crafty_test_support::{TICK_PERIOD, boot_local_app, fast_raft_config_with_seed};
 
     use super::noop_plan;

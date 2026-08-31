@@ -56,7 +56,10 @@ impl Default for CraftyConfigure {
 impl CraftyConfigure {
     /// Apply to a cluster builder (used by [`CraftyAppBuilder::configure`]).
     #[must_use]
-    pub(crate) fn apply_to(self, inner: CraftyClusterBuilder<EmptyStateMachine>) -> CraftyClusterBuilder<EmptyStateMachine> {
+    pub(crate) fn apply_to(
+        self,
+        inner: CraftyClusterBuilder<EmptyStateMachine>,
+    ) -> CraftyClusterBuilder<EmptyStateMachine> {
         let mut inner = if let Some(node_id) = self.node_id {
             CraftyClusterBuilder::new(node_id, EmptyStateMachine)
         } else {
