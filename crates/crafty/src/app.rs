@@ -128,23 +128,23 @@ impl CraftyAppBuilder {
     /// Merge env-only settings into `builder` when not already set in code.
     fn apply_env_config(mut self, cfg: &AppConfig) -> Self {
         self.inner = self.inner.merge_app_config(cfg);
-        if let Some(stream) = cfg.job_queue_stream.clone() {
-            if !self.reg_jobs {
-                self.reg_jobs = true;
-                self = self.queue([QueueOpts::new(stream, cfg.job_queue_lease)]);
-            }
+        if let Some(stream) = cfg.job_queue_stream.clone()
+            && !self.reg_jobs
+        {
+            self.reg_jobs = true;
+            self = self.queue([QueueOpts::new(stream, cfg.job_queue_lease)]);
         }
         #[cfg(feature = "http-jobs")]
-        if self.gateway.is_none() {
-            if let Some(addr) = cfg.gateway {
-                self.gateway = Some(GatewayConfig {
-                    addr,
-                    jobs_api: cfg.gateway_jobs_api,
-                    actors_api: cfg.gateway_actors_api,
-                    workflows_api: cfg.gateway_workflows_api,
-                    routes: None,
-                });
-            }
+        if self.gateway.is_none()
+            && let Some(addr) = cfg.gateway
+        {
+            self.gateway = Some(GatewayConfig {
+                addr,
+                jobs_api: cfg.gateway_jobs_api,
+                actors_api: cfg.gateway_actors_api,
+                workflows_api: cfg.gateway_workflows_api,
+                routes: None,
+            });
         }
         self
     }

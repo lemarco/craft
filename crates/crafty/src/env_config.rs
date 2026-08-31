@@ -139,10 +139,10 @@ pub fn node_id_from_env() -> Option<NodeId> {
 
 /// Resolve the node id before boot: persisted file, explicit env, or seed default.
 fn resolve_node_id(data_dir: Option<&PathBuf>, joining: bool) -> NodeId {
-    if let Some(dir) = data_dir {
-        if let Some(id) = node_id::read_persisted(dir) {
-            return id;
-        }
+    if let Some(dir) = data_dir
+        && let Some(id) = node_id::read_persisted(dir)
+    {
+        return id;
     }
     if let Some(id) = node_id_from_env() {
         return id;

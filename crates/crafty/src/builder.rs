@@ -376,10 +376,10 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         if !cfg.members.is_empty() {
             self = self.members(cfg.members.clone());
         }
-        if self.data_dir.is_none() {
-            if let Some(dir) = cfg.data_dir.clone() {
-                self.data_dir = Some(dir);
-            }
+        if self.data_dir.is_none()
+            && let Some(dir) = cfg.data_dir.clone()
+        {
+            self.data_dir = Some(dir);
         }
         self = self
             .allow_join(cfg.allow_join)
@@ -388,15 +388,15 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         if !cfg.join_seeds.is_empty() {
             self = self.join_seeds(cfg.join_seeds.clone());
         }
-        if self.admin_addr.is_none() {
-            if let Some(admin) = cfg.admin {
-                self = self.admin_addr(admin);
-            }
+        if self.admin_addr.is_none()
+            && let Some(admin) = cfg.admin
+        {
+            self = self.admin_addr(admin);
         }
-        if self.admin_tls.is_none() {
-            if let Some((cert, key)) = cfg.admin_tls.clone() {
-                self = self.admin_tls(cert, key);
-            }
+        if self.admin_tls.is_none()
+            && let Some((cert, key)) = cfg.admin_tls.clone()
+        {
+            self = self.admin_tls(cert, key);
         }
         self
     }
@@ -932,6 +932,9 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
     }
 
     /// Like [`start_quic`](Self::start_quic) with PEM reload paths and optional cert directory.
+    ///
+    /// # Errors
+    /// Same as [`start_quic`](Self::start_quic).
     pub async fn start_quic_cluster(
         self,
         security: Security,
@@ -961,6 +964,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             .await
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn start_quic_inner(
         mut self,
         mut security: Security,

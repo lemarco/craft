@@ -15,6 +15,7 @@ use super::app::CraftyApp;
 ///
 /// [`Default`] mounts nothing — set [`.routes`](Self::routes) for your handlers and opt in
 /// to `jobs_api` / `actors_api` / `workflows_api` only for local dev behind auth.
+#[derive(Default)]
 pub struct GatewayOpts {
     /// Mount tier C `/jobs/*` routes (unauthenticated — opt in deliberately).
     pub jobs_api: bool,
@@ -23,17 +24,6 @@ pub struct GatewayOpts {
     /// Mount `/workflows/run` and `/workflows/resume` (unauthenticated — opt in deliberately).
     pub workflows_api: bool,
     routes: Option<GatewayRoutesFn>,
-}
-
-impl Default for GatewayOpts {
-    fn default() -> Self {
-        Self {
-            jobs_api: false,
-            actors_api: false,
-            workflows_api: false,
-            routes: None,
-        }
-    }
 }
 
 impl fmt::Debug for GatewayOpts {
