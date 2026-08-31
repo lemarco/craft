@@ -15,7 +15,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 Enable `dev-certs` for local single-node without PEM files:
 
 ```toml
-crafty = { version = "0.3", features = ["dev-certs"] }
+crafty = { version = "0.4", features = ["dev-certs"] }
 ```
 
 ## 2. Minimal app
@@ -126,7 +126,7 @@ Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store
 Enable the `http-jobs` feature and mount the Axum router on your gateway VPS:
 
 ```toml
-crafty = { version = "0.3", features = ["http-jobs"] }
+crafty = { version = "0.4", features = ["http-jobs"] }
 ```
 
 ```rust

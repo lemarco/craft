@@ -9,6 +9,12 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-31
+
+**Gateway + ops release.** Sticky gateway sessions (HTTP/WS), optional gateway TLS,
+graceful drain, self-update coordinator, and a narrower public re-export surface
+(`prelude` / `advanced` / `env`).
+
 ### Added
 
 - **Self-update coordinator** — reference [`UpgradeMachine`](crates/crafty-core/src/upgrade.rs),
@@ -265,7 +271,8 @@ tested; APIs are still evolving toward a 1.0 stabilization.
 
 - Bounded `ask` timeout (30s); at-most-once side-effecting `ask` dedup; reply-encode errors surfaced; actor-stream backpressure on QUIC.
 
-[Unreleased]: https://gitlab.com/lemarco/craft/-/compare/v0.3.0...HEAD
+[Unreleased]: https://gitlab.com/lemarco/craft/-/compare/v0.4.0...HEAD
+[0.4.0]: https://gitlab.com/lemarco/craft/-/compare/v0.3.0...v0.4.0
 [0.3.0]: https://gitlab.com/lemarco/craft/-/compare/v0.2.2...v0.3.0
 [0.2.2]: https://gitlab.com/lemarco/craft/-/compare/v0.2.1...v0.2.2
 [0.2.1]: https://gitlab.com/lemarco/craft/-/compare/v0.2.0...v0.2.1

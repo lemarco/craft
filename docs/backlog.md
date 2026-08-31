@@ -1,6 +1,6 @@
 # Backlog
 
-Product and implementation backlog for crafty **0.2.x → 1.0**. Shipped capabilities stay in [status.md](status.md); design rationale in [decisions/](decisions/).
+Product and implementation backlog for crafty **0.4.x → 1.0**. Shipped capabilities stay in [status.md](status.md); design rationale in [decisions/](decisions/).
 
 **Product vision:** [decisions/product-scenarios.md](decisions/product-scenarios.md) — four scenarios, **no mandatory Redis**.
 

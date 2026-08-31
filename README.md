@@ -24,9 +24,9 @@
 
 | | |
 |---|---|
-| **Version** | `0.3.0` (pre-1.0) |
+| **Version** | `0.4.0` (pre-1.0) |
 | **Maturity** | Advanced prototype — published on [crates.io](https://crates.io/crates/crafty) |
-| **Release** | v0.3.0 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/crafty/0.3.0](https://docs.rs/crafty/0.3.0) |
+| **Release** | v0.4.0 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/crafty/0.4.0](https://docs.rs/crafty/0.4.0) |
 | **Full status** | [docs/status.md](docs/status.md) |
 
 ### Highlights
@@ -35,8 +35,9 @@
 - Multi-Raft write scaling: **Meta-Raft coordinator** (join/catalog/saga isolated from user groups), dynamic catalog, stable shards, group migration, per-group membership
 - Cross-shard saga coordinator + optional 2PC; follower/lease reads
 - mTLS hot reload, reachability-driven supervisor, `crafty-ops` backup
-- **Product showcases** — four standalone apps in [`examples/`](examples/README.md) (jobs, stateful workers, realtime, workflows)
-- **`CraftyApp`** + optional HTTP gateway, batch jobs, actor-store TTL/GC — [getting-started](docs/getting-started.md)
+- **Product showcases** — five standalone apps in [`examples/`](examples/README.md) (jobs, stateful workers, realtime, workflows, self-update)
+- **`CraftyApp`** + HTTP gateway (sticky sessions, TLS, drain), batch jobs, actor-store TTL/GC — [getting-started](docs/getting-started.md)
+- **Self-update coordinator** — leader reconcile + local executor ([upgrade-coordinator](docs/decisions/upgrade-coordinator.md))
 - Design decision records — [docs/decisions/](docs/decisions/)
 
 ### Not yet (by design or process)
