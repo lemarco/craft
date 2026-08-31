@@ -17,7 +17,54 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 - (none)
 
-## [0.2.2] — 2026-08-31
+## [0.3.0] — 2026-08-31
+
+**Breaking product API release.** Single boot path (always QUIC cluster from env), config
+structs instead of long builder chains, gateway built-in routes opt-in by default, and
+auto-assigned node ids for joiners.
+
+### Added
+
+- **`CraftyConfigure`** — runtime tuning via `.configure()`: `tick_period`,
+  `reconcile_period`, `directory_publish_period`, `raft_config`, `admin_addr`, optional
+  `node_id` override.
+- **`QueueOpts` / `.queue([…])`** — durable stream registration (`name`, `lease`,
+  `prefetch`); replaces `.job_stream` / `.job_queue_prefetch`.
+- **`CronOpts` / `.cron([…])`** — recurring enqueue schedules, separate from queue
+  registration.
+- **`ActorGroupOpts`** — `.actors(name, ActorGroupOpts::new(config))` (one worker per live
+  node) or `.fixed(config, n)` (fixed pool); replaces `.manage_auto` / `.manage` on the
+  product builder.
+- **`GatewayOpts`** — fluent `.with_jobs_api` / `.with_actors_api` /
+  `.with_workflows_api` and `.routes(|app| Router)`; replaces `.gateway_addr`,
+  `.gateway_routes`, and `CRAFTY_GATEWAY_NO_*` env vars.
+- **Auto node id** — seed defaults to `NodeId(1)`; joiners request assignment from the
+  leader; persisted at `{data_dir}/node-id`. `CRAFTY_NODE_ID` remains an optional override.
+- **Join wire** — `JoinRequest.node_id: Option<NodeId>`; `JoinResponse::Accepted` carries
+  assigned `node_id`.
+- **Queue replicate auth** — `QueueReplicateRequest.leader_id` for leader-only apply on
+  followers.
+
+### Changed
+
+- **Always cluster** — `RunOpts::default()` always boots a QUIC member (seed or joiner);
+  topology from `CRAFTY_*` env only. `RunOpts::local()` is `#[doc(hidden)]` for tests.
+- **Gateway security defaults** — built-in `/jobs/*`, `/actors/*`, `/workflows/*` are
+  **disabled** unless opted in via `GatewayOpts` or `CRAFTY_GATEWAY_JOBS=1` /
+  `CRAFTY_GATEWAY_ACTORS=1` / `CRAFTY_GATEWAY_WORKFLOWS=1`.
+- **Removed from product builder** — `from_config`, `from_env`, `members`, `.http_routes`,
+  `.gateway_jobs_api` / `.gateway_actors_api` / `.gateway_workflows_api`,
+  `.recurring_job` (use `.cron`), separate actor registration helpers.
+- **Showcases + template** — all four examples and `templates/crafty-app` use the unified
+  `CraftyApp::builder()…run(RunOpts::default())` pattern.
+- **Docs** — getting-started, scenarios, product-scenarios ADR updated for the new API.
+
+### Removed
+
+- **`RunOpts::local()`** from public docs (still available for integration tests).
+- **`members`** from `CraftyConfigure` / product env surface (advanced: `CraftyClusterBuilder`).
+- **`CRAFTY_GATEWAY_NO_*`** env vars (replaced by opt-in `CRAFTY_GATEWAY_*=1` flags).
+
 
 Product throughput and ops release: queue batch/prefetch, dead-letter recovery,
 cron scheduling, actor-store TTL/GC, and a dedicated **`CraftyApp` HTTP gateway**.
@@ -184,7 +231,8 @@ tested; APIs are still evolving toward a 1.0 stabilization.
 
 - Bounded `ask` timeout (30s); at-most-once side-effecting `ask` dedup; reply-encode errors surfaced; actor-stream backpressure on QUIC.
 
-[Unreleased]: https://gitlab.com/lemarco/craft/-/compare/v0.2.2...HEAD
+[Unreleased]: https://gitlab.com/lemarco/craft/-/compare/v0.3.0...HEAD
+[0.3.0]: https://gitlab.com/lemarco/craft/-/compare/v0.2.2...v0.3.0
 [0.2.2]: https://gitlab.com/lemarco/craft/-/compare/v0.2.1...v0.2.2
 [0.2.1]: https://gitlab.com/lemarco/craft/-/compare/v0.2.0...v0.2.1
 [0.2.0]: https://gitlab.com/lemarco/craft/-/compare/v0.1.0...v0.2.0
