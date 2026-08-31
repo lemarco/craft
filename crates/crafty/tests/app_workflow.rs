@@ -2,7 +2,7 @@
 
 use crafty::client::SagaOutcome;
 use crafty::{
-    CraftyApp, CraftyConfigure, GatewayOpts, ReadyOpts, WorkflowBuilder, journal_workflow,
+    CraftyApp, CraftyConfigure, GatewayOpts, ReadyOpts, WorkflowBuilder, WorkflowOpts, journal_workflow,
 };
 use crafty_test_support::{TICK_PERIOD, boot_local_app, fast_raft_config_with_seed};
 
@@ -26,7 +26,10 @@ async fn crafty_app_runs_workflow_locally() {
                 tick_period: TICK_PERIOD,
                 ..CraftyConfigure::default()
             })
-            .workflows(noop_plan, journal_workflow),
+            .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
+            .gateway(
+                GatewayOpts::new("127.0.0.1:0".parse().expect("addr")).with_workflows_api(true),
+            ),
         Some(ReadyOpts::default()),
     )
     .await;
@@ -46,10 +49,9 @@ async fn crafty_app_workflows_api_on_gateway() {
                 tick_period: TICK_PERIOD,
                 ..CraftyConfigure::default()
             })
-            .workflows(noop_plan, journal_workflow)
+            .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
             .gateway(
-                "127.0.0.1:0".parse().expect("addr"),
-                GatewayOpts::default().with_workflows_api(true),
+                GatewayOpts::new("127.0.0.1:0".parse().expect("addr")).with_workflows_api(true),
             ),
         Some(ReadyOpts::default()),
     )
@@ -61,9 +63,9 @@ async fn crafty_app_workflows_api_on_gateway() {
 
 #[cfg(feature = "http-jobs")]
 mod gateway_merge {
+    use crafty::advanced::{GatewayConfig, build_gateway_router};
     use crafty::{
-        CraftyApp, CraftyConfigure, GatewayConfig, ReadyOpts, build_gateway_router,
-        journal_workflow,
+        CraftyApp, CraftyConfigure, GatewayOpts, ReadyOpts, WorkflowOpts, journal_workflow,
     };
     use crafty_test_support::{TICK_PERIOD, boot_local_app, fast_raft_config_with_seed};
 
@@ -80,20 +82,19 @@ mod gateway_merge {
                     tick_period: TICK_PERIOD,
                     ..CraftyConfigure::default()
                 })
-                .workflows(noop_plan, journal_workflow),
+                .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
+                .gateway(
+                    GatewayOpts::new("127.0.0.1:0".parse().expect("addr")).with_workflows_api(true),
+                ),
             Some(ReadyOpts::default()),
         )
         .await;
 
         let router = build_gateway_router(
             app,
-            GatewayConfig {
-                addr: "127.0.0.1:0".parse().expect("addr"),
-                jobs_api: false,
-                actors_api: false,
-                workflows_api: true,
-                routes: None,
-            },
+            GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
+                .with_workflows_api(true)
+                .build_config(),
         );
         let _ = router;
     }

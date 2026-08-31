@@ -16,6 +16,7 @@ type ConsumerSpawnFn = Box<
 /// Spawn one or more tier-C [`JobConsumer`] loops with a shared stop channel.
 #[derive(Default)]
 pub struct ConsumerGroup {
+    streams: Vec<String>,
     spawners: Vec<ConsumerSpawnFn>,
 }
 
@@ -29,10 +30,17 @@ impl ConsumerGroup {
     /// Register a consumer (pass the generated unit struct for type inference).
     #[must_use]
     pub fn add<C: JobConsumer>(mut self, consumer: C, opts: ConsumerOpts) -> Self {
+        self.streams.push(C::STREAM.to_string());
         self.spawners.push(Box::new(move |app, stop| {
             app.spawn_consumer(consumer, opts, stop)
         }));
         self
+    }
+
+    /// Split into stream names and spawn closures for [`CraftyAppBuilder::consumers`].
+    #[must_use]
+    pub fn into_parts(self) -> (Vec<String>, Vec<ConsumerSpawnFn>) {
+        (self.streams, self.spawners)
     }
 
     /// Start every registered consumer; returns `(stop_tx, join handles)`.

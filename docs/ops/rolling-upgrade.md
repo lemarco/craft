@@ -47,8 +47,17 @@ shape, not application semantics.
 - [ ] Snapshot / `crafty-ops backup export` before risky upgrades
 - [ ] Post-upgrade: `/ready`, sample propose/query, `e2e/run.sh` or nightly linearizability gate
 
+## Automated self-update (no external orchestrator)
+
+For a **leader-coordinated**, **self-downloading** rolling upgrade (StateMachine grants
+one node at a time; binary replaces itself and exits; systemd restarts), see
+[upgrade-coordinator.md](../decisions/upgrade-coordinator.md).
+
+That pattern automates this runbook. It does **not** relax `app_version` rules below.
+
 ## Related
 
+- [upgrade-coordinator.md](../decisions/upgrade-coordinator.md) — proposed reference pattern
 - [cluster-membership.md#version-skew--hard-reject](../decisions/cluster-membership.md#version-skew--hard-reject)
 - [multi-raft.md#production-reliability](../decisions/multi-raft.md#production-reliability)
 - [docs/ops/backup-restore.md](backup-restore.md)

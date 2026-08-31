@@ -1,40 +1,32 @@
 //! # crafty
 //!
-//! A library-first distributed framework: write your state machine and actors
-//! once, then run the same binary on as many nodes as you like. Nodes form a
-//! Raft cluster over HTTP/3 (mTLS), replicate a linearizable state machine, and
-//! host supervised actors that can message, spawn, and migrate across nodes.
+//! Distributed Raft + actor framework for product apps ([`CraftyApp`]) and advanced
+//! cluster programming ([`advanced`]).
 //!
-//! This facade re-exports the stable public API; most users depend only on
-//! `crafty` (library-and-publishing). The [`CraftyCluster`] builder is the main entry point:
+//! ## Product path
 //!
 //! ```no_run
 //! use std::time::Duration;
-//! use crafty::{CraftyCluster, NodeId};
-//! use crafty::net::LocalNetwork;
-//! # use crafty::core::{Config, StateMachine};
-//! # use crafty::proto::LogIndex;
-//! # #[derive(Default)]
-//! # struct Counter(u64);
-//! # impl StateMachine for Counter {
-//! #     type Command = u64; type Query = (); type Response = u64; type Error = std::convert::Infallible;
-//! #     fn apply(&mut self, _: LogIndex, c: &u64) -> Result<u64, Self::Error> { self.0 += *c; Ok(self.0) }
-//! #     fn query(&self, _: &()) -> Result<u64, Self::Error> { Ok(self.0) }
-//! #     fn snapshot(&self) -> Result<Vec<u8>, Self::Error> { Ok(self.0.to_le_bytes().to_vec()) }
-//! #     fn restore(&mut self, b: &[u8]) -> Result<(), Self::Error> { self.0 = u64::from_le_bytes(b.try_into().unwrap()); Ok(()) }
-//! # }
-//! # async fn run() {
-//! let net = LocalNetwork::new();
-//! let cluster = CraftyCluster::builder(NodeId(1), Counter::default())
-//!     .members([NodeId(1), NodeId(2), NodeId(3)])
-//!     .tick_period(Duration::from_millis(10))
-//!     .start_local(&net)
-//!     .await;
-//! # let _ = cluster;
-//! # }
+//! use crafty::prelude::*;
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     init_tracing();
+//!     CraftyApp::builder()
+//!         .data_dir("/var/lib/crafty")
+//!         .queue([QueueOpts::new("jobs", Duration::from_secs(300))])
+//!         .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?).with_jobs_api(true))
+//!         .run(RunOpts::default().with_wait_queue("jobs"))
+//!         .await
+//! }
 //! ```
 //!
-//! See the `docs/` directory for architecture and design decision records.
+//! ## Advanced path
+//!
+//! [`CraftyCluster`](advanced::CraftyCluster) + [`CraftyClusterBuilder`](advanced::CraftyClusterBuilder)
+//! for custom state machines, journals, and queue tuning — see [`advanced`].
+//!
+//! Environment variables: [`env`]. Architecture: `docs/` in the repository.
 
 mod actor_group;
 mod app;
@@ -47,7 +39,6 @@ mod consumer;
 mod cron_opts;
 pub mod discovery;
 mod env_config;
-#[cfg(feature = "http-jobs")]
 mod gateway;
 mod handler;
 mod multi_raft;
@@ -59,6 +50,16 @@ mod saga;
 mod security;
 mod two_phase;
 mod workflow;
+mod workflow_opts;
+
+/// Advanced cluster / journal / queue APIs.
+pub mod advanced;
+/// `CRAFTY_*` boot configuration.
+pub mod env;
+/// Rolling self-update coordinator (reference [`UpgradeMachine`](core::UpgradeMachine)).
+pub mod upgrade;
+/// Typical product imports (`CraftyApp`, opts structs, `consumer!`, …).
+pub mod prelude;
 
 #[doc(inline)]
 pub use crafty_proto::{self as proto, NodeId, PROTOCOL_VERSION, Term};
@@ -72,74 +73,40 @@ pub use {crafty_dashboard as dashboard, crafty_macros as macros, crafty_net as n
 #[doc(inline)]
 pub use crafty_storage as storage;
 
+// --- Product facade (also available via `prelude`) ---------------------------
+
 pub use actor_group::ActorGroupOpts;
-pub use app::{
-    CraftyApp, CraftyAppBuilder, EmptyStateMachine, ShutdownOpts, WorkerInfo, WorkflowPlanFn,
-    journal_workflow,
-};
+pub use app::{CraftyApp, CraftyAppBuilder, ShutdownOpts, journal_workflow};
 pub use app_opts::RunOpts;
-pub use builder::{CraftyClusterBuilder, StartError};
-pub use certs::{
-    CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_for_node,
-    cert_paths_from_env,
-};
-pub use cluster::{AddRaftGroupsError, ClusterFacts, CraftyCluster, LeaveError, ScaleClusterError};
+pub use builder::StartError;
 pub use configure::CraftyConfigure;
 pub use consumer::{ConsumerGroup, ConsumerOpts, JobConsumer};
-pub use crafty_actor::{
-    ActorSession, AutoscalePolicy, ClusterActorStateStore, ClusterJobQueue, DEFAULT_DRAIN_TIMEOUT,
-    DEFAULT_QUEUE_BATCH_MAX, DEFAULT_QUEUE_PREFETCH, DirectoryPolicy, DirectoryRetry,
-    EnqueueOptions, InMemoryJobQueue, InMemoryMailboxSpool, JobId, JobQueue, LeaseId, LeasedJob,
-    MailboxSpool, MembershipAutoscalePolicy, QueueError, QueueMetrics, QueueService, RecurringJob,
-    RedbActorStateStore, RedbJobQueue, RedbMailboxSpool, ShardedJobQueue, StoreService, WorkerId,
-    run_queue_autoscaler, run_queue_consumer, run_queue_membership_autoscaler,
-    run_queue_schedule_ticker,
-};
-pub use crafty_actor::{ResourceProfile, VpsResources};
-pub use crafty_core::ReachabilityConfig;
-pub use crafty_core::kv;
-pub use crafty_core::kv::{Kv, KvCommand, KvError, KvMachine, KvQuery, KvResponse};
-pub use crafty_core::{CompactionPolicy, DEFAULT_COMPACT_BYTES, DEFAULT_COMPACT_ENTRIES};
-#[cfg(feature = "http-jobs")]
-pub use crafty_http::{
-    SagaBody, WorkflowAccepted, WorkflowsApi, WorkflowsApiError, spawn_workflows_server,
-};
-pub use crafty_macros::consumer;
 pub use cron_opts::CronOpts;
-pub use env_config::{
-    AppConfig, NodeRole, app_config_from_env, consumers_enabled_from_env, gateway_only_from_env,
-    node_role_from_env, workers_enabled_from_env,
-};
-#[cfg(feature = "http-jobs")]
 pub use gateway::{
-    CraftyGatewayState, GatewayConfig, GatewayOpts, build_gateway_router, spawn_gateway,
+    ConnectionGuard, ConnectionTracker, CraftyGatewayState, ExtractedIdentity, GatewayHandle,
+    GatewayIdentity, GatewayOpts, GatewayRequest, GatewayTlsPaths, GatewayTokenIdentity,
+    IdentityError, IdentityTypeError, NoWorkerError, OpenActorSessionError, SessionHandle,
+    SessionKey, DEFAULT_GATEWAY_DRAIN_TIMEOUT, spawn_gateway,
 };
 pub use queue_opts::QueueOpts;
 pub use ready::ReadyOpts;
-pub use saga::{
-    CompositeSagaJournal, Group0SagaJournal, MetaRaftSagaJournal, SagaRegistry, StoreSagaJournal,
-    record_saga_metrics, saga_metrics_callback,
-};
-pub use security::Security;
-pub use two_phase::{
-    CompositeTwoPhaseJournal, MetaRaftTwoPhaseJournal, StoreTwoPhaseJournal, TwoPhaseRegistry,
-    record_two_phase_event, record_two_phase_gc_aborted, record_two_phase_metrics,
-    two_phase_metrics_callback,
-};
 pub use workflow::{WorkflowBuildError, WorkflowBuilder};
+pub use workflow_opts::WorkflowOpts;
 
-/// The peer address book ([`NodeId`] → socket) used to dial cluster members
-/// over QUIC. Re-exported for building [`CraftyClusterBuilder::start_quic`] args.
-#[doc(no_inline)]
-pub use crafty_net::PeerDirectory;
-#[doc(no_inline)]
-pub use crafty_net::{CertPaths, load_pem_material};
+pub use advanced::{CraftyCluster, CraftyClusterBuilder};
 
-/// Commonly used telemetry/observability types, re-exported for convenience.
-#[doc(no_inline)]
-pub use crafty_dashboard::{
-    CraftyEvent, EventBus, EventSubscription, Metrics, StopReason, TraceOpts, init_tracing,
+pub use upgrade::{
+    ArtifactManifest, UpgradeCommand, UpgradeError, UpgradeMachine, UpgradeOpts, UpgradePhase,
+    UpgradeQuery, UpgradeResponse, UpgradeRunError, UpgradeState, UpgradeView, fetch_artifact,
+    plan_next_grant, report_upgrade_boot, running_app_version, spawn_upgrade_coordinator,
+    spawn_upgrade_runtime, upgrade_view, verify_sha256_hex,
 };
+#[cfg(feature = "http-jobs")]
+pub use upgrade::upgrade_api;
+
+pub use crafty_macros::consumer;
+
+pub use crafty_dashboard::{CraftyEvent, EventBus, EventSubscription, Metrics, StopReason, TraceOpts, init_tracing};
 
 /// Library version string (from `Cargo.toml`).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

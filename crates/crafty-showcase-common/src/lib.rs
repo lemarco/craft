@@ -1,5 +1,7 @@
 //! Shared helpers for product showcases (`examples/*`).
 
+pub mod gateway_auth;
+
 use std::path::PathBuf;
 
 /// Map `0.0.0.0:port` to `127.0.0.1:port` for local browser/curl hints.

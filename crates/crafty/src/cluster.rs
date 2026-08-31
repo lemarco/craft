@@ -31,7 +31,7 @@ use crafty_actor::{
 
 use crate::multi_raft::MultiRaftState;
 
-use crate::CraftyClusterBuilder;
+use crate::builder::CraftyClusterBuilder;
 use crate::certs::CertReloadHandle;
 
 #[allow(clippy::cast_precision_loss)] // Prometheus gauges use f64; Raft indices fit in practice.

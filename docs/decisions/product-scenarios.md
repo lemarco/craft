@@ -69,10 +69,7 @@ CraftyApp::builder()
     .data_dir("/var/lib/crafty")
     .queue([QueueOpts::new("emails", Duration::from_secs(300))])
     .consumer(SendEmailConsumer, Default::default())
-    .gateway(
-        "0.0.0.0:8090".parse()?,
-        GatewayOpts::default().with_jobs_api(true),
-    )
+    .gateway(GatewayOpts::new("0.0.0.0:8090".parse()?).with_jobs_api(true))
     .run(RunOpts::default().with_wait_queue("emails"))
     .await?;
 ```

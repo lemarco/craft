@@ -33,6 +33,7 @@
 - Reachability signal distinct from membership; crash-driven supervisor reconcile against `reachable_nodes()`
 - Phi-accrual / tunable reachability (`ReachabilityConfig`)
 - `crafty-ops` snapshot backup/restore; rolling wire N/N−1 compatibility
+- **Self-update coordinator** — `crafty_core::upgrade` reference SM, leader reconcile + local executor (`crafty::upgrade`), HTTP `GET/POST /cluster/upgrade*` ([upgrade-coordinator](decisions/upgrade-coordinator.md), [examples/self-update](../examples/self-update/))
 
 ### Actors
 
@@ -46,7 +47,7 @@
 - Redis-backed `ActorStateStore` (`crafty-store-redis`); actor migration RPC
 - **`JobQueue`** — `InMemoryJobQueue`, `RedbJobQueue`, sharded streams, priority/delayed enqueue, **batch enqueue/ack** (single redb txn + one replicate RTT), **leader prefetch cache** (`job_queue_prefetch`, default 256), dead-letter lifecycle + **`requeue_dead_letter`**, **recurring/cron jobs** (`RecurringJob`, `queue_schedule` ticker), leader `QueueService` with parallel sync voter replication + replicate auth, `ClusterJobQueue`, `run_queue_consumer` + **`#[crafty::consumer]`** macro, worker + membership autoscale, Meta-Raft autoscale policy ([job-queue](decisions/job-queue.md))
 - **`crafty-http` jobs API** — `POST /jobs/{stream}/batch`, `POST /jobs/{stream}/ack-batch`, `POST /jobs/{stream}/{id}/requeue`; mounted on admin or **`CraftyApp` gateway**
-- **`CraftyApp` gateway** — separate HTTP listener (`.gateway(addr, GatewayOpts)`); built-in `/jobs/*`, `/actors/*`, `/workflows/*` **opt-in** via `GatewayOpts::with_*_api(true)` or `CRAFTY_GATEWAY_*=1`; custom Axum/WebSocket via `.routes(|app| …)` ([examples/realtime/](../examples/realtime/)); boot with `RunOpts::default()` + `CRAFTY_*` env
+- **`CraftyApp` gateway** — separate HTTP listener (`.gateway(GatewayOpts::new(addr))`); optional HTTPS/WSS via `.tls()` / `CRAFTY_GATEWAY_TLS_*`; built-in `/jobs/*`, `/actors/*`, `/workflows/*` **opt-in** via `GatewayOpts::with_*_api(true)` or `CRAFTY_GATEWAY_*=1`; custom Axum/WebSocket via `.routes(|app| …)` ([examples/realtime/](../examples/realtime/)); boot with `RunOpts::default()` + `CRAFTY_*` env
 - **Job queue E2E** — `./e2e/queue.sh` (QUIC/mTLS, enqueue → follower worker → leader failover); `crafty-node` env `CRAFTY_DATA_DIR` + `CRAFTY_JOB_QUEUE`
 - **Product showcases** — `examples/background-jobs`, `stateful-workers`, `realtime`, `workflows`
 

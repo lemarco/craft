@@ -9,7 +9,7 @@ use std::env;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use crafty::{ConsumerOpts, CraftyApp, CraftyConfigure, GatewayOpts, QueueOpts, RunOpts, consumer};
+use crafty::{ConsumerGroup, ConsumerOpts, CraftyApp, CraftyConfigure, GatewayOpts, QueueOpts, RunOpts, consumer};
 use crafty_showcase_common::{data_dir, display_addr};
 
 static HANDLED: AtomicUsize = AtomicUsize::new(0);
@@ -51,7 +51,11 @@ fn server_builder() -> crafty::CraftyAppBuilder {
         .unwrap_or_else(|_| "127.0.0.1:8090".into())
         .parse()
         .expect("gateway");
-    let mut builder = CraftyApp::builder()
+    let mut group = ConsumerGroup::new();
+    for instance in 0..worker_count() {
+        group = group.add(SendEmailConsumer, consumer_opts(instance));
+    }
+    CraftyApp::builder()
         .data_dir(dir)
         .queue([QueueOpts::new(STREAM, Duration::from_secs(300))])
         .configure(CraftyConfigure {
@@ -60,11 +64,8 @@ fn server_builder() -> crafty::CraftyAppBuilder {
             admin_addr: Some("127.0.0.1:9080".parse().expect("admin")),
             ..CraftyConfigure::default()
         })
-        .gateway(gateway, GatewayOpts::default().with_jobs_api(true));
-    for instance in 0..worker_count() {
-        builder = builder.consumer(SendEmailConsumer, consumer_opts(instance));
-    }
-    builder
+        .gateway(GatewayOpts::new(gateway).with_jobs_api(true))
+        .consumers(group)
 }
 
 #[tokio::main]

@@ -6,8 +6,9 @@ Idempotent order processing with [`ActorStateStore`](../../crates/crafty-actor/s
 
 | Piece | Role |
 |-------|------|
-| This binary | `OrderProcessor` actor + HTTP cast API |
-| [`trigger.sh`](trigger.sh) | Cast one order id (`202 Accepted`) |
+| This binary | `OrderProcessor` actor + HTTP cast API + authenticated submit route |
+| [`trigger.sh`](trigger.sh) | Cast one order id via built-in `/actors/orders/cast` (`202 Accepted`) |
+| [`trigger-auth.sh`](trigger-auth.sh) | Same flow via custom `POST /orders/submit` + [`GatewayIdentity`](../../crates/crafty/src/gateway/identity.rs) |
 | [`trigger-batch.sh`](trigger-batch.sh) | Round-robin cast across gateways + idempotency re-send |
 | Admin | Dashboard + actor introspection |
 
@@ -24,6 +25,7 @@ cargo run --release
 
 ```bash
 ./trigger.sh 1001
+./trigger-auth.sh tenant-1 1001   # custom gateway route + sticky session key
 ./trigger.sh 1001   # second call — idempotent skip
 ```
 

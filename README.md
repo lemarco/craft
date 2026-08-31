@@ -92,10 +92,7 @@ CraftyApp::builder()
         admin_addr: Some("127.0.0.1:8080".parse()?),
         ..CraftyConfigure::default()
     })
-    .gateway(
-        "127.0.0.1:8090".parse()?,
-        GatewayOpts::default().with_jobs_api(true),
-    )
+    .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?).with_jobs_api(true))
     .run(RunOpts::default().with_wait_queue("jobs"))
     .await?;
 ```

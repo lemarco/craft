@@ -1,7 +1,8 @@
 //! CLI for product showcase HTTP gateways (`publish = false`).
 
 use crafty_showcase_client::{
-    ClientError, cast_actor, enqueue_job, resume_workflow, run_workflow, ws_chat,
+    ClientError, cast_actor, enqueue_job, post_chat, post_chat_bearer, resume_workflow,
+    run_workflow, submit_order_auth, ws_chat,
 };
 
 fn usage() -> ! {
@@ -11,6 +12,9 @@ fn usage() -> ! {
   crafty-showcase-client cast <gateway> <group> <payload>
   crafty-showcase-client workflow run <trigger> <saga-id>
   crafty-showcase-client workflow resume <trigger> <saga-id>
+  crafty-showcase-client chat <gateway> <user> <message> [token]
+  crafty-showcase-client chat-bearer <gateway> <user> <message> <bearer>
+  crafty-showcase-client submit <gateway> <tenant> <order-id> [token]
   crafty-showcase-client ws <gateway> <user> <message>"
     );
     std::process::exit(2);
@@ -58,6 +62,40 @@ async fn main() -> Result<(), ClientError> {
             let message = args.next().unwrap_or_else(|| usage());
             let reply = ws_chat(&gateway, &user, &message).await?;
             println!("ws → {reply}");
+        }
+        "chat" => {
+            let gateway = args.next().unwrap_or_else(|| usage());
+            let user = args.next().unwrap_or_else(|| usage());
+            let message = args.next().unwrap_or_else(|| usage());
+            let token = args.next();
+            print_resp(
+                "chat",
+                &post_chat(&gateway, &user, &message, token.as_deref()).await?,
+            );
+        }
+        "chat-bearer" => {
+            let gateway = args.next().unwrap_or_else(|| usage());
+            let user = args.next().unwrap_or_else(|| usage());
+            let message = args.next().unwrap_or_else(|| usage());
+            let bearer = args.next().unwrap_or_else(|| usage());
+            print_resp(
+                "chat",
+                &post_chat_bearer(&gateway, &user, &message, &bearer).await?,
+            );
+        }
+        "submit" => {
+            let gateway = args.next().unwrap_or_else(|| usage());
+            let tenant = args.next().unwrap_or_else(|| usage());
+            let order_id: u64 = args
+                .next()
+                .unwrap_or_else(|| usage())
+                .parse()
+                .unwrap_or_else(|_| usage());
+            let token = args.next();
+            print_resp(
+                "submit",
+                &submit_order_auth(&gateway, &tenant, order_id, token.as_deref()).await?,
+            );
         }
         _ => usage(),
     }

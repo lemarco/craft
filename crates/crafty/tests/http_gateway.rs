@@ -5,9 +5,8 @@ use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
-use crafty::{
-    CraftyApp, CraftyConfigure, GatewayConfig, GatewayOpts, QueueOpts, build_gateway_router,
-};
+use crafty::advanced::build_gateway_router;
+use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, QueueOpts};
 use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
 use tower::ServiceExt;
 
@@ -31,10 +30,7 @@ async fn gateway_serves_jobs_api_on_configured_addr() {
                 tick_period: Duration::from_millis(5),
                 ..CraftyConfigure::default()
             })
-            .gateway(
-                "127.0.0.1:0".parse().unwrap(),
-                GatewayOpts::default().with_jobs_api(true),
-            ),
+            .gateway(GatewayOpts::new("127.0.0.1:0".parse().unwrap()).with_jobs_api(true)),
         None,
     )
     .await;
@@ -44,13 +40,10 @@ async fn gateway_serves_jobs_api_on_configured_addr() {
 
     let router = build_gateway_router(
         Arc::clone(&app),
-        GatewayConfig {
-            addr: "127.0.0.1:0".parse().unwrap(),
-            jobs_api: true,
-            actors_api: true,
-            workflows_api: false,
-            routes: None,
-        },
+        GatewayOpts::new("127.0.0.1:0".parse().unwrap())
+            .with_jobs_api(true)
+            .with_actors_api(true)
+            .build_config(),
     );
 
     let req = Request::builder()

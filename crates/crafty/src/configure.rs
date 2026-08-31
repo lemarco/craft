@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use crafty_core::Config;
 
-use crate::EmptyStateMachine;
+use crate::app::EmptyStateMachine;
 use crate::NodeId;
 use crate::builder::CraftyClusterBuilder;
 

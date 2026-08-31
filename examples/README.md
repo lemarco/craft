@@ -9,9 +9,10 @@ Excluded from the root workspace `cargo check` (like `benchmarks/`). CI runs `./
 | Folder | Tier | Pattern | Local | Cluster |
 |--------|------|---------|-------|---------|
 | [`background-jobs/`](background-jobs/) | C | HTTP `202` → queue → `#[consumer]` | `cargo run --release` | `./cluster.sh up` |
-| [`stateful-workers/`](stateful-workers/) | B | `ActorStateStore` + idempotent cast | `cargo run --release` | `./cluster.sh up` |
-| [`realtime/`](realtime/) | B | WebSocket → sticky `ActorSession` | `cargo run --release` | `./cluster.sh up` |
+| [`realtime/`](realtime/) | B | WebSocket + HTTP → sticky `ActorSession` | `cargo run --release` | `./cluster.sh up` |
+| [`stateful-workers/`](stateful-workers/) | B | `ActorStateStore` + idempotent cast + auth HTTP | `cargo run --release` | `./cluster.sh up` |
 | [`workflows/`](workflows/) | coordination | Saga journal + actor/queue steps | `cargo run --release` | `./cluster.sh up` |
+| [`self-update/`](self-update/) | ops | Leader-coordinated rolling self-update | `cargo run --release` | `./cluster.sh up` |
 
 ## Reading the code
 
@@ -38,6 +39,8 @@ Built automatically by `./cluster.sh setup`:
 ```bash
 ./target/debug/crafty-showcase-client job 127.0.0.1:8090 emails hello
 ./target/debug/crafty-showcase-client cast 127.0.0.1:8190 orders 1001
+./target/debug/crafty-showcase-client submit 127.0.0.1:8190 tenant-1 1001
+./target/debug/crafty-showcase-client chat 127.0.0.1:8294 alice hello
 ./target/debug/crafty-showcase-client ws 127.0.0.1:8294 alice hello
 ./target/debug/crafty-showcase-client workflow run 127.0.0.1:8490 onboard-42
 ```
@@ -102,7 +105,7 @@ Certs and shared dev infra: [`dev/`](../dev/) (`dev/certs/`, `dev/cluster-common
 |----------|------------------------|----------------|
 | background-jobs | HTTP `:8090–8092` | `:9180` |
 | stateful-workers | HTTP `:8190–8192` | `:9280` |
-| realtime | WS `:8294–8296` | `:9380` |
+| realtime | HTTP + WS `:8294–8296` | `:9380` |
 | workflows | HTTP trigger `:8490–8492` | `:9480` |
 
 Forward gateway/WS/trigger + admin in Cursor/SSH when developing remotely.

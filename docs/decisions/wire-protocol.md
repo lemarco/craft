@@ -96,6 +96,12 @@ Responses: plain HTTP, JSON (admin is **not** the postcard hot path).
 
 Admin carries **no consensus / client data**. Default plain HTTP; optional server-only TLS via `.admin_tls()` / `CRAFTY_ADMIN_TLS_*`. No mTLS requirement. No mutation endpoints in v1.
 
+## Product gateway port
+
+**Separate product HTTP listener** (address from [`GatewayOpts::new`](../../crates/crafty/src/gateway/mod.rs) / `CRAFTY_GATEWAY`), distinct from admin and QUIC.
+
+Default plain HTTP / WS. Optional server-only TLS via [`.tls()`](../../crates/crafty/src/gateway/mod.rs) / `CRAFTY_GATEWAY_TLS_*` — WebSocket upgrades use **WSS** automatically on a TLS listener. No client certificates.
+
 ## Consequences
 
 **Positive:** Single transport story; compact binary codec; standard LB probes on admin port; debuggable HTTP semantics.

@@ -16,7 +16,7 @@ crafty = { path = "../../crates/crafty", features = ["http-jobs"] }
 crafty-actor = { path = "../../crates/crafty-actor" }
 crafty-showcase-client = { path = "../../crates/crafty-showcase-client" }
 crafty-showcase-common = { path = "../../crates/crafty-showcase-common" }
-axum = "0.8"
+axum = { version = "0.8", features = ["json"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net", "io-util"] }
 serde = { version = "1", features = ["derive"] }
 tracing = "0.1"

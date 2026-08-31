@@ -6,10 +6,12 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::certs::{PemSecurity, cert_paths_for_node, cert_paths_from_env};
 use crate::discovery::Seed;
 use crate::node_id;
 use crate::security::Security;
-use crate::{CertPaths, NodeId, PemSecurity, cert_paths_for_node, cert_paths_from_env};
+use crate::NodeId;
+use crafty_net::CertPaths;
 use crafty_actor::DEFAULT_DRAIN_TIMEOUT;
 use crafty_net::PeerDirectory;
 
@@ -58,6 +60,10 @@ pub struct AppConfig {
     pub gateway_actors_api: bool,
     /// Mount `/workflows/*` on the gateway when `gateway` is set (`CRAFTY_GATEWAY_WORKFLOWS=1`).
     pub gateway_workflows_api: bool,
+    /// Product gateway connection drain timeout (`CRAFTY_GATEWAY_DRAIN_TIMEOUT`).
+    pub gateway_drain_timeout: Duration,
+    /// Optional gateway TLS PEM paths (`CRAFTY_GATEWAY_TLS_*`).
+    pub gateway_tls: Option<(PathBuf, PathBuf)>,
 }
 
 fn env(key: &str) -> Option<String> {
@@ -260,6 +266,12 @@ fn drain_timeout_from_env() -> Duration {
         .map_or(DEFAULT_DRAIN_TIMEOUT, Duration::from_secs)
 }
 
+fn gateway_drain_timeout_from_env() -> Duration {
+    env("CRAFTY_GATEWAY_DRAIN_TIMEOUT")
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .map_or(crate::gateway::DEFAULT_GATEWAY_DRAIN_TIMEOUT, Duration::from_secs)
+}
+
 /// Load [`AppConfig`] from standard `CRAFTY_*` environment variables.
 ///
 /// # Errors
@@ -323,6 +335,16 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
     let gateway_jobs_api = env_bool("CRAFTY_GATEWAY_JOBS");
     let gateway_actors_api = env_bool("CRAFTY_GATEWAY_ACTORS");
     let gateway_workflows_api = env_bool("CRAFTY_GATEWAY_WORKFLOWS");
+    let gateway_tls = match (env("CRAFTY_GATEWAY_TLS_CERT"), env("CRAFTY_GATEWAY_TLS_KEY")) {
+        (Some(cert), Some(key)) => Some((PathBuf::from(cert), PathBuf::from(key))),
+        (None, None) => None,
+        _ => {
+            return Err(
+                "CRAFTY_GATEWAY_TLS_CERT and CRAFTY_GATEWAY_TLS_KEY must both be set or both unset"
+                    .into(),
+            );
+        }
+    };
     let admin_tls = match (env("CRAFTY_ADMIN_TLS_CERT"), env("CRAFTY_ADMIN_TLS_KEY")) {
         (Some(cert), Some(key)) => Some((PathBuf::from(cert), PathBuf::from(key))),
         (None, None) => None,
@@ -356,5 +378,7 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         gateway_jobs_api,
         gateway_actors_api,
         gateway_workflows_api,
+        gateway_drain_timeout: gateway_drain_timeout_from_env(),
+        gateway_tls,
     })
 }

@@ -56,6 +56,17 @@ pub fn ws_message(user: &str, text: &str, cast_ok: bool) {
     );
 }
 
+pub fn http_message(user: &str, text: &str, cast_ok: bool) {
+    tracing::debug!(
+        target: "showcase",
+        showcase = NAME,
+        user,
+        text,
+        cast_ok,
+        "HTTP chat cast"
+    );
+}
+
 pub fn session_reconnect(user: &str, attempt: u32) {
     tracing::debug!(
         target: "showcase",

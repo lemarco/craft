@@ -145,10 +145,7 @@ Attribute-based worker registration remains aspirational. Today use `.actors()`:
 CraftyApp::builder()
     .data_dir("/var/lib/crafty")
     .actors::<OrderProcessor>("orders", ActorGroupOpts::fixed(processor_cfg(), 1))
-    .gateway(
-        "127.0.0.1:8190".parse()?,
-        GatewayOpts::default().with_actors_api(true),
-    )
+    .gateway(GatewayOpts::new("127.0.0.1:8190".parse()?).with_actors_api(true))
     .run(RunOpts::default())
     .await?;
 ```

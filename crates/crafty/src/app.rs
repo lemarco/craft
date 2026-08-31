@@ -1,12 +1,9 @@
 //! [`CraftyApp`] — product-facing entry point over [`CraftyCluster`](super::cluster::CraftyCluster)
 //! ([product-scenarios](../../../docs/decisions/product-scenarios.md)).
 
+use std::collections::HashSet;
 use std::convert::Infallible;
-use std::future::Future;
 use std::hash::Hash;
-#[cfg(feature = "http-jobs")]
-use std::net::SocketAddr;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -30,26 +27,13 @@ use crate::cluster::CraftyCluster;
 use crate::configure::CraftyConfigure;
 use crate::cron_opts::CronOpts;
 use crate::env_config::{AppConfig, app_config_from_env};
-#[cfg(feature = "http-jobs")]
 use crate::gateway::spawn_gateway as spawn_gateway_task;
-#[cfg(feature = "http-jobs")]
-use crate::gateway::{GatewayConfig, GatewayOpts};
+use crate::gateway::{GatewayConfig, GatewayHandle, GatewayOpts};
 use crate::queue_opts::QueueOpts;
+use crate::workflow_opts::{WorkflowOpts, WorkflowRegistration, resolve_workflow};
 
 type ConsumerSpawnFn =
     Box<dyn FnOnce(Arc<CraftyApp>, tokio::sync::watch::Receiver<bool>) -> JoinHandle<()> + Send>;
-
-/// Builds [`SagaPlan`] values from HTTP / CLI saga ids.
-pub type WorkflowPlanFn = Arc<dyn Fn(&str) -> SagaPlan + Send + Sync>;
-
-type WorkflowRunnerFn = Arc<
-    dyn Fn(
-            Arc<CraftyApp>,
-            SagaPlan,
-        ) -> Pin<Box<dyn Future<Output = Result<SagaOutcome, SagaError>> + Send>>
-        + Send
-        + Sync,
->;
 
 /// Run a workflow using the default keyed client and Meta-Raft journal.
 ///
@@ -74,6 +58,8 @@ pub struct ShutdownOpts {
     pub drain_actors: bool,
     /// Stop tier-C consumers: send on the watch sender, then await these handles.
     pub consumers: Option<(tokio::sync::watch::Sender<bool>, Vec<JoinHandle<()>>)>,
+    /// Drain the product HTTP gateway (WebSocket / long-lived HTTP) before shutdown.
+    pub drain_gateway: bool,
 }
 
 /// A worker instance registered in the cluster directory.
@@ -115,12 +101,13 @@ impl StateMachine for EmptyStateMachine {
 /// Fluent builder for [`CraftyApp`].
 pub struct CraftyAppBuilder {
     inner: CraftyClusterBuilder<EmptyStateMachine>,
-    plan_builder: Option<WorkflowPlanFn>,
-    workflow_runner: Option<WorkflowRunnerFn>,
+    workflows: Vec<WorkflowRegistration>,
     reg_jobs: bool,
     reg_actors: bool,
+    queue_streams: HashSet<String>,
+    cron_streams: Vec<String>,
+    consumer_streams: Vec<String>,
     pending_consumers: Vec<ConsumerSpawnFn>,
-    #[cfg(feature = "http-jobs")]
     gateway: Option<GatewayConfig>,
 }
 
@@ -132,33 +119,59 @@ impl CraftyAppBuilder {
             && !self.reg_jobs
         {
             self.reg_jobs = true;
+            self.queue_streams.insert(stream.clone());
             self = self.queue([QueueOpts::new(stream, cfg.job_queue_lease)]);
         }
-        #[cfg(feature = "http-jobs")]
         if self.gateway.is_none()
             && let Some(addr) = cfg.gateway
         {
-            self.gateway = Some(GatewayConfig {
-                addr,
-                jobs_api: cfg.gateway_jobs_api,
-                actors_api: cfg.gateway_actors_api,
-                workflows_api: cfg.gateway_workflows_api,
-                routes: None,
-            });
+            let mut opts = GatewayOpts::new(addr)
+                .with_jobs_api(cfg.gateway_jobs_api)
+                .with_actors_api(cfg.gateway_actors_api)
+                .with_workflows_api(cfg.gateway_workflows_api)
+                .drain_timeout(cfg.gateway_drain_timeout);
+            if let Some((cert, key)) = cfg.gateway_tls.clone() {
+                opts = opts.tls(cert, key);
+            }
+            self.gateway = Some(opts.into_config());
+        } else if let Some(gateway) = self.gateway.as_mut()
+            && gateway.tls.is_none()
+            && let Some((cert, key)) = cfg.gateway_tls.clone()
+        {
+            gateway.tls = Some(crate::gateway::GatewayTlsPaths { cert, key });
         }
         self
     }
 
-    /// Register a tier-C [`crate::JobConsumer`] loop (started in [`Self::run`]).
+    /// Register tier-C [`crate::JobConsumer`] loops (started in [`Self::run`]).
+    ///
+    /// Prefer [`.consumers`](Self::consumers) when registering several workers at once.
+    ///
+    /// # Errors
+    /// [`Self::run`] / [`Self::boot_for_test`] fail at boot when `C::STREAM` was not registered
+    /// via [`.queue`](Self::queue).
     #[must_use]
     pub fn consumer<C: crate::JobConsumer>(
         mut self,
         consumer: C,
         opts: crate::ConsumerOpts,
     ) -> Self {
+        self.consumer_streams.push(C::STREAM.to_string());
         self.pending_consumers.push(Box::new(move |app, stop| {
             app.spawn_consumer(consumer, opts, stop)
         }));
+        self
+    }
+
+    /// Register several consumers via [`ConsumerGroup`].
+    ///
+    /// # Errors
+    /// Same stream / queue rules as [`.consumer`](Self::consumer).
+    #[must_use]
+    pub fn consumers(mut self, group: crate::ConsumerGroup) -> Self {
+        let (streams, spawners) = group.into_parts();
+        self.consumer_streams.extend(streams);
+        self.pending_consumers.extend(spawners);
         self
     }
 
@@ -167,6 +180,7 @@ impl CraftyAppBuilder {
     pub fn queue(mut self, queues: impl IntoIterator<Item = QueueOpts>) -> Self {
         for opts in queues {
             self.reg_jobs = true;
+            self.queue_streams.insert(opts.name.clone());
             self.inner = self.inner.job_queue(&opts.name, opts.lease);
             self.inner = self.inner.job_queue_prefetch(&opts.name, opts.prefetch);
         }
@@ -174,9 +188,14 @@ impl CraftyAppBuilder {
     }
 
     /// Register cron-driven recurring enqueues (requires matching [`.queue`](Self::queue) streams).
+    ///
+    /// # Errors
+    /// [`Self::run`] / [`Self::boot_for_test`] fail at boot when a cron stream has no matching
+    /// [`.queue`](Self::queue) registration.
     #[must_use]
     pub fn cron(mut self, schedules: impl IntoIterator<Item = CronOpts>) -> Self {
         for opts in schedules {
+            self.cron_streams.push(opts.stream.clone());
             self.inner = self.inner.recurring_job(&opts.stream, opts.job);
         }
         self
@@ -197,41 +216,77 @@ impl CraftyAppBuilder {
         self
     }
 
-    /// Register workflow plans and runner for HTTP `/workflows/*` and [`CraftyApp::run_workflow_id`].
+    /// Register workflow plans and runners for HTTP `/workflows/*` and [`CraftyApp::run_workflow_id`].
     ///
-    /// Use [`journal_workflow`] as the runner when the default keyed client + Meta-Raft journal is enough.
+    /// Use [`WorkflowOpts::new`] + [`journal_workflow`] when the default keyed client is enough.
+    ///
+    /// # Errors
+    /// [`Self::run`] / [`Self::boot_for_test`] fail at boot unless [`.gateway`](Self::gateway)
+    /// enables workflows via `.with_workflows_api(true)` (or `CRAFTY_GATEWAY_WORKFLOWS=1` at boot).
     #[must_use]
-    pub fn workflows<F, R, Fut>(mut self, plan: F, runner: R) -> Self
-    where
-        F: Fn(&str) -> SagaPlan + Send + Sync + 'static,
-        R: Fn(Arc<CraftyApp>, SagaPlan) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<SagaOutcome, SagaError>> + Send + 'static,
-    {
-        self.plan_builder = Some(Arc::new(plan));
-        self.workflow_runner = Some(Arc::new(move |app, p| Box::pin(runner(app, p))));
+    pub fn workflows(
+        mut self,
+        specs: impl IntoIterator<Item = WorkflowOpts>,
+    ) -> Self {
+        self.workflows
+            .extend(specs.into_iter().map(WorkflowOpts::into_registration));
         self
     }
 
     /// Public HTTP gateway — custom routes and optional built-in APIs ([`GatewayOpts`]).
-    #[cfg(feature = "http-jobs")]
     #[must_use]
-    pub fn gateway(mut self, addr: SocketAddr, opts: GatewayOpts) -> Self {
-        self.gateway = Some(opts.into_config(addr));
+    pub fn gateway(mut self, opts: GatewayOpts) -> Self {
+        self.gateway = Some(opts.into_config());
         self
+    }
+
+    fn validate(&self) -> Result<(), StartError> {
+        for stream in &self.cron_streams {
+            if !self.queue_streams.contains(stream) {
+                return Err(StartError::Config(format!(
+                    "`.cron()` stream {stream:?} has no matching `.queue()` registration"
+                )));
+            }
+        }
+        for stream in &self.consumer_streams {
+            if !self.queue_streams.contains(stream) {
+                return Err(StartError::Config(format!(
+                    "`.consumer()` stream {stream:?} has no matching `.queue()` registration"
+                )));
+            }
+        }
+        if !self.workflows.is_empty() {
+            match self.gateway.as_ref() {
+                Some(g) if g.workflows_api => {}
+                Some(_) => {
+                    return Err(StartError::Config(
+                        "`.workflows([…])` requires `.gateway(GatewayOpts::new(addr).with_workflows_api(true))`"
+                            .into(),
+                    ));
+                }
+                None => {
+                    return Err(StartError::Config(
+                        "`.workflows([…])` requires `.gateway(GatewayOpts::new(addr).with_workflows_api(true))` (or `CRAFTY_GATEWAY` + `CRAFTY_GATEWAY_WORKFLOWS=1`)"
+                            .into(),
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     async fn finish_start(
         app: CraftyApp,
-        #[cfg(feature = "http-jobs")] gateway: Option<GatewayConfig>,
+        gateway: Option<GatewayConfig>,
         wait_ready: Option<crate::ReadyOpts>,
     ) -> Result<Arc<CraftyApp>, StartError> {
         let app = Arc::new(app);
-        #[cfg(feature = "http-jobs")]
         if let Some(config) = gateway {
             let addr = config.addr;
-            spawn_gateway_task(Arc::clone(&app), config)
+            let handle = spawn_gateway_task(Arc::clone(&app), config)
                 .await
                 .map_err(|e| StartError::Config(format!("gateway bind to {addr}: {e}")))?;
+            *app.gateway.lock().await = Some(handle);
         }
         if let Some(opts) = wait_ready {
             app.wait_until_ready(opts).await;
@@ -241,14 +296,12 @@ impl CraftyAppBuilder {
 
     async fn boot(self, opts: &mut RunOpts) -> Result<Arc<CraftyApp>, StartError> {
         if let Some(net) = opts.local_net.as_ref() {
-            let plan_builder = self.plan_builder;
-            let workflow_runner = self.workflow_runner;
-            #[cfg(feature = "http-jobs")]
+            self.validate()?;
+            let workflows = self.workflows;
             let gateway = self.gateway;
             let cluster = self.inner.start_local(net).await;
             return Self::finish_start(
-                Self::assemble_app(cluster, plan_builder, workflow_runner),
-                #[cfg(feature = "http-jobs")]
+                Self::assemble_app(cluster, workflows),
                 gateway,
                 opts.wait_ready.clone(),
             )
@@ -257,9 +310,8 @@ impl CraftyAppBuilder {
         let cfg = app_config_from_env().map_err(|e| StartError::Config(e.to_string()))?;
         let mut builder = self;
         builder = builder.apply_env_config(&cfg);
-        let plan_builder = builder.plan_builder;
-        let workflow_runner = builder.workflow_runner;
-        #[cfg(feature = "http-jobs")]
+        builder.validate()?;
+        let workflows = builder.workflows;
         let gateway = builder.gateway;
         let cluster = builder
             .inner
@@ -272,8 +324,7 @@ impl CraftyAppBuilder {
             )
             .await?;
         Self::finish_start(
-            Self::assemble_app(cluster, plan_builder, workflow_runner),
-            #[cfg(feature = "http-jobs")]
+            Self::assemble_app(cluster, workflows),
             gateway,
             opts.wait_ready.clone(),
         )
@@ -308,14 +359,13 @@ impl CraftyAppBuilder {
 
     fn assemble_app(
         cluster: CraftyCluster<EmptyStateMachine>,
-        plan_builder: Option<WorkflowPlanFn>,
-        workflow_runner: Option<WorkflowRunnerFn>,
+        workflows: Vec<WorkflowRegistration>,
     ) -> CraftyApp {
         CraftyApp {
             cluster,
-            plan_builder,
-            workflow_runner,
+            workflows,
             workflow_lock: Arc::new(Mutex::new(())),
+            gateway: tokio::sync::Mutex::new(None),
         }
     }
 
@@ -343,9 +393,9 @@ impl CraftyAppBuilder {
 /// Running product app handle ([`EmptyStateMachine`] by default).
 pub struct CraftyApp {
     cluster: CraftyCluster<EmptyStateMachine>,
-    plan_builder: Option<WorkflowPlanFn>,
-    workflow_runner: Option<WorkflowRunnerFn>,
+    workflows: Vec<WorkflowRegistration>,
     workflow_lock: Arc<Mutex<()>>,
+    gateway: tokio::sync::Mutex<Option<GatewayHandle>>,
 }
 
 impl CraftyApp {
@@ -354,12 +404,13 @@ impl CraftyApp {
     pub fn builder() -> CraftyAppBuilder {
         CraftyAppBuilder {
             inner: CraftyClusterBuilder::new(NodeId(1), EmptyStateMachine),
-            plan_builder: None,
-            workflow_runner: None,
+            workflows: Vec::new(),
             reg_jobs: false,
             reg_actors: false,
+            queue_streams: HashSet::new(),
+            cron_streams: Vec::new(),
+            consumer_streams: Vec::new(),
             pending_consumers: Vec::new(),
-            #[cfg(feature = "http-jobs")]
             gateway: None,
         }
     }
@@ -555,6 +606,22 @@ impl CraftyApp {
             .await
     }
 
+    /// Ask through a sticky session opened via [`Self::session`].
+    ///
+    /// # Errors
+    /// Returns [`ClusterAskError`] when the session target is gone, delivery fails, or the
+    /// handler does not reply within the ask deadline.
+    pub async fn ask_session(
+        &self,
+        session: &ActorSession,
+        payload: Vec<u8>,
+    ) -> Result<Vec<u8>, ClusterAskError> {
+        self.cluster
+            .messaging()
+            .ask_session(session, payload)
+            .await
+    }
+
     /// Open a sticky session to a keyed worker pool (product helper).
     pub fn session<K: Hash>(
         &self,
@@ -604,13 +671,18 @@ impl CraftyApp {
         self.cluster.keyed_client()
     }
 
-    /// Gracefully stop consumers, drain actors, optionally leave the cluster, then shutdown.
+    /// Gracefully stop consumers, drain gateway + actors, optionally leave the cluster, then shutdown.
     pub async fn shutdown_graceful(&self, opts: ShutdownOpts) {
         if let Some((stop_tx, handles)) = opts.consumers {
             let _ = stop_tx.send(true);
             for handle in handles {
                 let _ = handle.await;
             }
+        }
+        if opts.drain_gateway
+            && let Some(handle) = self.gateway.lock().await.take()
+        {
+            handle.drain().await;
         }
         if opts.drain_actors {
             for name in self.cluster.registry().names() {
@@ -631,50 +703,43 @@ impl CraftyApp {
                 .map_or(true, |c| c.graceful_leave),
             drain_actors: true,
             consumers: None,
+            drain_gateway: true,
         }
     }
 
-    async fn run_workflow_plan(self: &Arc<Self>, plan: SagaPlan) -> Result<SagaOutcome, SagaError> {
+    async fn run_workflow_plan(
+        self: &Arc<Self>,
+        saga_id: &str,
+        plan: SagaPlan,
+    ) -> Result<SagaOutcome, SagaError> {
         let _guard = self.workflow_lock.lock().await;
-        let runner = self.workflow_runner.as_ref().ok_or(SagaError::Journal(
-            crafty_client::SagaJournalError::Backend(
-                "workflows require `.workflows(plan, runner)`".into(),
-            ),
-        ))?;
-        runner(Arc::clone(self), plan).await
+        let spec = resolve_workflow(&self.workflows, saga_id)?;
+        (spec.runner)(Arc::clone(self), plan).await
     }
 
-    /// Run a workflow by saga id (requires `.workflows(plan, runner)` on the builder).
+    /// Run a workflow by saga id (requires `.workflows([…])` on the builder).
     ///
     /// # Errors
-    /// Returns [`SagaError`] when no plan builder was configured or execution fails.
+    /// Returns [`SagaError`] when no workflow was configured or execution fails.
     pub async fn run_workflow_id(
         self: &Arc<Self>,
         saga_id: &str,
     ) -> Result<SagaOutcome, SagaError> {
-        let plan_builder = self.plan_builder.as_ref().ok_or(SagaError::Journal(
-            crafty_client::SagaJournalError::Backend(
-                "workflows require `.workflows(plan, runner)`".into(),
-            ),
-        ))?;
-        let plan = plan_builder(saga_id);
-        self.run_workflow_plan(plan).await
+        let spec = resolve_workflow(&self.workflows, saga_id)?;
+        let plan = (spec.plan)(saga_id);
+        self.run_workflow_plan(saga_id, plan).await
     }
 
-    /// Resume a workflow by saga id (requires `.workflows(plan, runner)` on the builder).
+    /// Resume a workflow by saga id (requires `.workflows([…])` on the builder).
     ///
     /// # Errors
-    /// Returns [`SagaError`] when no plan builder was configured or resume fails.
+    /// Returns [`SagaError`] when no workflow was configured or resume fails.
     pub async fn resume_workflow_id(
         self: &Arc<Self>,
         saga_id: &str,
     ) -> Result<SagaOutcome, SagaError> {
-        let plan_builder = self.plan_builder.as_ref().ok_or(SagaError::Journal(
-            crafty_client::SagaJournalError::Backend(
-                "workflows require `.workflows(plan, runner)`".into(),
-            ),
-        ))?;
-        let plan = plan_builder(saga_id);
+        let spec = resolve_workflow(&self.workflows, saga_id)?;
+        let plan = (spec.plan)(saga_id);
         let _guard = self.workflow_lock.lock().await;
         let client = self.keyed_client();
         self.resume_workflow(client.as_ref(), &plan).await
@@ -711,12 +776,11 @@ impl CraftyApp {
 
     /// Spawn the product HTTP / WebSocket gateway on a background task.
     ///
-    /// Requires `http-jobs` feature and an [`Arc`] handle so routes can call into the app.
+    /// Requires an [`Arc`] handle so routes can call into the app.
     ///
     /// # Errors
     /// Returns [`std::io::Error`] when the listen socket cannot be bound.
-    #[cfg(feature = "http-jobs")]
-    pub async fn spawn_gateway(app: Arc<Self>, config: GatewayConfig) -> std::io::Result<()> {
+    pub async fn spawn_gateway(app: Arc<Self>, config: GatewayConfig) -> std::io::Result<GatewayHandle> {
         crate::gateway::spawn_gateway(app, config).await
     }
 

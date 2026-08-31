@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crafty::AutoscalePolicy;
-use crafty::CraftyCluster;
+use crafty::advanced::CraftyCluster;
 use crafty::EnqueueOptions;
 use crafty::JobQueue;
 use crafty::MembershipAutoscalePolicy;

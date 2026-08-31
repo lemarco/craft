@@ -11,11 +11,45 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ### Added
 
-- (none)
+- **Self-update coordinator** — reference [`UpgradeMachine`](crates/crafty-core/src/upgrade.rs),
+  leader reconcile + local executor ([`spawn_upgrade_runtime`](crates/crafty/src/upgrade/mod.rs)),
+  HTTP [`GET/POST /cluster/upgrade*`](crates/crafty-http/src/upgrade_routes.rs),
+  showcase [`examples/self-update/`](examples/self-update/).
+  ADR: [upgrade-coordinator](docs/decisions/upgrade-coordinator.md).
+- **Gateway identity + sticky sessions** — [`GatewayIdentity`](crates/crafty/src/gateway/identity.rs),
+  [`CraftyGatewayState::extract_session`](crates/crafty/src/gateway/mod.rs),
+  [`extract_session_parts`](crates/crafty/src/gateway/mod.rs) / [`open_actor_session_parts`](crates/crafty/src/gateway/mod.rs) for WebSocket handlers,
+  [`extract_session_from`](crates/crafty/src/gateway/mod.rs) / [`open_actor_session_from`](crates/crafty/src/gateway/mod.rs) for plain HTTP GET,
+  [`SessionHandle`](crates/crafty/src/gateway/session.rs) (cast/ask + auto-reopen),
+  showcases: HTTP + WS in [`examples/realtime/`](examples/realtime/), auth submit in [`examples/stateful-workers/`](examples/stateful-workers/).
+  [`GatewayHandle`](crates/crafty/src/gateway/drain.rs) graceful drain,
+  [`GatewayOpts::identity_mapped`](crates/crafty/src/gateway/mod.rs) for custom session keys.
+  ADR: [gateway-identity](docs/decisions/gateway-identity.md).
+- **`CRAFTY_GATEWAY_DRAIN_TIMEOUT`** — product gateway connection drain (default 30s).
+- **Gateway TLS (HTTPS / WSS)** — [`GatewayOpts::tls`](crates/crafty/src/gateway/mod.rs);
+  `CRAFTY_GATEWAY_TLS_CERT` + `CRAFTY_GATEWAY_TLS_KEY` (server-only PEM, same semantics as admin TLS).
 
 ### Changed
 
-- (none)
+- **`GatewayOpts::routes`** — closure receives [`CraftyGatewayState`] (not `Arc<CraftyApp>`).
+  Use [`.routes_with_app`](crates/crafty/src/gateway/mod.rs) for app-only routes.
+- **`spawn_gateway`** — returns [`GatewayHandle`]; [`ShutdownOpts::drain_gateway`] (default `true`).
+- **`GatewayOpts`** — listen address moved into `GatewayOpts::new(addr)`; `.gateway(opts)` takes
+  a single argument (matches `QueueOpts::new`, `CronOpts::new`, …). Public bool fields removed;
+  use `.with_jobs_api` / `.with_actors_api` / `.with_workflows_api` only.
+- **`CraftyAppBuilder` validation** — boot fails fast when `.cron()` or `.consumer()` reference
+  a stream missing from `.queue()`, or when `.workflows([…])` is set without
+  `.gateway(…).with_workflows_api(true)`.
+- **`.consumers(ConsumerGroup)`** — register multiple tier-C workers in one call (replaces
+  looping `.consumer()`).
+- **`.workflows([WorkflowOpts::…])`** — vector of workflow configs; optional `WorkflowOpts::named`
+  prefix for multi-workflow dispatch.
+- **`crafty::prelude` / `crafty::advanced` / `crafty::env`** — product imports via `prelude`;
+  cluster/journal/queue internals under `advanced`; `CRAFTY_*` helpers under `env`.
+- **`http-jobs` default feature** — gateway API (`GatewayOpts`, `.gateway()`) always available;
+  built-in `/jobs/*`, `/actors/*`, `/workflows/*` routes require `http-jobs` (now default).
+- **Root re-exports narrowed** — advanced types moved to [`advanced`](crates/crafty/src/advanced.rs);
+  [`lib.rs`](crates/crafty/src/lib.rs) rustdoc centers on [`CraftyApp`](crates/crafty/src/app.rs).
 
 ## [0.3.0] — 2026-08-31
 

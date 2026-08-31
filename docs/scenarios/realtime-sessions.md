@@ -89,24 +89,117 @@ Recommended deployment:
 
 Same artifact on every VPS; LB round-robins **gateways only**. Workers communicate over existing mTLS peer paths ([wire-protocol](../decisions/wire-protocol.md)).
 
-### 4. WebSocket handler (see showcase)
+### 4. WebSocket handler (gateway identity + session)
 
-Full runnable example: [`examples/realtime/`](../../examples/realtime/). Sketch:
+Decision: [gateway-identity](../decisions/gateway-identity.md). Full example: [`examples/realtime/`](../../examples/realtime/).
 
 ```rust
-async fn on_ws(socket: WebSocket, cluster: Arc<CraftyCluster<MySm>>) {
-    let user_id = authenticate(&socket).await?;
-    let session = open_session(&cluster, user_id).await?;
+use std::time::Duration;
+use axum::http::{HeaderMap, Method, Uri};
+use axum::{Router, extract::State, routing::get};
+use crafty::{
+    CraftyGatewayState, GatewayIdentity, GatewayOpts, GatewayRequest, SessionHandle, SessionKey,
+};
 
-    while let Some(Ok(frame)) = socket.next().await {
-        let msg = decode(frame)?;
-        let reply = cluster.messaging().ask_session(&session, msg).await?;
-        socket.send(encode(reply)).await?;
+// Your auth (JWT, cookie→DB, …) — crafty only calls extract().
+struct AppIdentity { /* db, jwt, … */ }
+impl GatewayIdentity for AppIdentity {
+    type Identity = UserId;
+    async fn extract(&self, req: &GatewayRequest<'_>) -> Result<UserId, crafty::IdentityError> {
+        /* … */
+    }
+}
+impl SessionKey for UserId {
+    fn session_key(&self) -> std::borrow::Cow<'_, str> {
+        self.0.to_string().into()
+    }
+}
+
+async fn ws(
+    ws: WebSocketUpgrade,
+    State(state): State<CraftyGatewayState>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+) -> Response {
+    let mut handle = match state
+        .open_actor_session_parts("chat", &method, &uri, &headers, Some(Duration::from_secs(3600)))
+        .await
+    {
+        Ok(h) => h,
+        Err(e) => return e.into_response(),
+    };
+    ws.on_upgrade(move |socket| async move {
+        let _guard = state.track_connection();
+        while let Some(Ok(Message::Text(text))) = socket.recv().await {
+            let payload = crafty::proto::encode(&text).unwrap();
+            let _ = handle.cast(payload).await;
+            let _ = socket.send(Message::Text(format!("ok: {text}"))).await;
+        }
+    })
+    .into_response()
+}
+
+CraftyApp::builder()
+    .gateway(GatewayOpts::new(addr).identity(AppIdentity { /* … */ }).routes(|state| {
+        Router::new().route("/ws", get(ws)).with_state(state)
+    }));
+```
+
+Gateway does **not** hold conversation state — only the session handle ([`SessionHandle`](../../crates/crafty/src/gateway/session.rs)).
+
+### 5. HTTP handlers (same identity)
+
+Use [`open_actor_session_parts`](../../crates/crafty/src/gateway/mod.rs) when the handler also extracts a JSON body; use [`open_actor_session_from`](../../crates/crafty/src/gateway/mod.rs) / [`extract_session_from`](../../crates/crafty/src/gateway/mod.rs) on plain GET handlers.
+
+Showcases: [`examples/realtime/src/gateway_http.rs`](../../examples/realtime/src/gateway_http.rs) (`POST /chat`, `GET /me`), [`examples/stateful-workers/src/gateway_orders.rs`](../../examples/stateful-workers/src/gateway_orders.rs) (`POST /orders/submit` beside built-in `/actors/*`).
+
+```rust
+use axum::extract::Json;
+use axum::http::{HeaderMap, Method, Request, Uri};
+use axum::response::IntoResponse;
+
+#[derive(Deserialize)]
+struct ChatPost { message: String }
+
+async fn post_chat(
+    State(state): State<CraftyGatewayState>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    Json(body): Json<ChatPost>,
+) -> Response {
+    let mut handle = match state
+        .open_actor_session_parts("chat", &method, &uri, &headers, Some(Duration::from_secs(3600)))
+        .await
+    {
+        Ok(h) => h,
+        Err(e) => return e.into_response(),
+    };
+    let payload = crafty::proto::encode(&body.message).unwrap();
+    match handle.cast(payload).await {
+        Ok(()) => Json(json!({ "ok": true })).into_response(),
+        Err(e) => (StatusCode::BAD_GATEWAY, e.to_string()).into_response(),
+    }
+}
+
+async fn get_me(
+    State(state): State<CraftyGatewayState>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+) -> Response {
+    match state
+        .extract_session_parts(&method, &uri, &headers)
+        .await
+    {
+        Ok(id) => Json(json!({ "user": id.session_key() })).into_response(),
+        Err(e) => e.into_response(),
     }
 }
 ```
 
-Gateway does **not** hold conversation state — only the session handle.
+Integration tests: [`crafty/tests/gateway_http.rs`](../../crates/crafty/tests/gateway_http.rs).
 
 ## Consistency choices
 

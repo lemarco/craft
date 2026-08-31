@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crafty::CraftyApp;
 use crafty::CraftyAppBuilder;
-use crafty::CraftyCluster;
+use crafty::advanced::CraftyCluster;
 use crafty::ReadyOpts;
 use crafty::RunOpts;
 use crafty::core::{Role, StateMachine};

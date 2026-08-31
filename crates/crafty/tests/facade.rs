@@ -11,7 +11,8 @@ use crafty::actor::{ConfigCodecError, UserActor};
 use crafty::core::{Config, FailureDetectorKind, ReachabilityConfig};
 use crafty::net::LocalNetwork;
 use crafty::proto;
-use crafty::{CraftyCluster, NodeId};
+use crafty::advanced::CraftyCluster;
+use crafty::NodeId;
 use crafty_test_support::{
     Cmd, Kv, Qry, Resp, TICK_PERIOD, advance, await_crafty_leader, eventually_async_default,
     eventually_default, fast_raft_config,
@@ -527,7 +528,7 @@ async fn builder_wires_actor_state_store() {
 
 #[tokio::test(start_paused = true)]
 async fn builder_wires_resource_profile() {
-    use crafty::{ResourceProfile, VpsResources};
+    use crafty::advanced::{ResourceProfile, VpsResources};
 
     let net = LocalNetwork::new();
     let cluster = CraftyCluster::builder(NodeId(1), Kv::default())

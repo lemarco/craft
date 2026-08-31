@@ -33,10 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     CraftyApp::builder()
         .data_dir("/tmp/my-app")
         .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
-        .gateway(
-            "127.0.0.1:8090".parse()?,
-            GatewayOpts::default(), // add .routes(...) and opt-in APIs as needed
-        )
+        .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?)) // add .routes(...) and opt-in APIs as needed
         .run(RunOpts::default().with_wait_queue("jobs"))
         .await
 }
@@ -58,6 +55,8 @@ Same code as above. [`cluster.sh`](../examples/background-jobs/cluster.sh) sets 
 | `CRAFTY_JOIN_SEEDS` | Join existing cluster (`id@host:port`) |
 | `CRAFTY_ALLOW_JOIN` | Seed accepts joins (default `1` when not joining) |
 | `CRAFTY_GATEWAY` | Product HTTP/WS bind |
+| `CRAFTY_GATEWAY_TLS_CERT` / `CRAFTY_GATEWAY_TLS_KEY` | Gateway HTTPS / WSS (optional; both required) |
+| `CRAFTY_ADMIN_TLS_CERT` / `CRAFTY_ADMIN_TLS_KEY` | Admin HTTPS (optional; both required) |
 | `CRAFTY_JOB_QUEUE` | Job stream name (optional) |
 
 Node id is **not** configured — seed gets `1`, joiners are assigned by the leader and persisted under `CRAFTY_DATA_DIR`.
@@ -137,10 +136,7 @@ use crafty::{CraftyApp, GatewayOpts, QueueOpts, RunOpts};
 CraftyApp::builder()
     .data_dir("/var/lib/crafty")
     .queue([QueueOpts::new("jobs", Duration::from_secs(300))])
-    .gateway(
-        "0.0.0.0:3000".parse()?,
-        GatewayOpts::default().with_jobs_api(true),
-    )
+    .gateway(GatewayOpts::new("0.0.0.0:3000".parse()?).with_jobs_api(true))
     .run(RunOpts::default().with_wait_queue("jobs"))
     .await?;
 
@@ -168,14 +164,43 @@ Example: `./scripts/run-example.sh workflows`.
 
 ## 8. Real-time gateway
 
-WebSocket + session routing showcase:
+WebSocket + sticky session routing. Auth stays in your code via [`GatewayIdentity`](scenarios/realtime-sessions.md); crafty maps identity → session key and opens a [`SessionHandle`](scenarios/realtime-sessions.md).
+
+```rust
+use axum::http::{HeaderMap, Method, Uri};
+use axum::response::IntoResponse;
+use crafty::{CraftyGatewayState, GatewayOpts, GatewayIdentity, GatewayRequest, SessionKey};
+
+// WebSocket upgrade: use Method + Uri + HeaderMap (not Request — upgrade consumes the body).
+async fn ws(
+    ws: WebSocketUpgrade,
+    State(state): State<CraftyGatewayState>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+) -> Response {
+    let mut handle = match state
+        .open_actor_session_parts("chat", &method, &uri, &headers, Some(Duration::from_secs(3600)))
+        .await
+    {
+        Ok(h) => h,
+        Err(e) => return e.into_response(),
+    };
+    // ws.on_upgrade(|socket| async move { handle.cast(...).await; … })
+}
+
+CraftyApp::builder()
+    .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?).identity(MyAuth).routes(|state| { /* Router */ }));
+```
+
+Runnable showcase:
 
 ```bash
 cd examples/realtime && cargo run --release
 ./trigger.sh alice hello   # uses crafty-showcase-client or websocat
 ```
 
-See [realtime-sessions](scenarios/realtime-sessions.md).
+See [realtime-sessions](scenarios/realtime-sessions.md) and [gateway-identity](decisions/gateway-identity.md).
 
 ## 9. Scaffold a new project
 

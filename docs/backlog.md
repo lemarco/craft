@@ -329,6 +329,7 @@ flowchart TB
 | O-02 | PostgreSQL `ActorStateStore`     | Only if external integration demand                                  |
 | O-03 | Redis Cluster auto-discovery     | Deferred in [actor-state-redis](decisions/actor-state-redis.md)      |
 | O-04 | Kubernetes operator              | **Non-goal** per [product-scenarios](decisions/product-scenarios.md) |
+| O-05 | Self-update coordinator          | ✅ [upgrade-coordinator](decisions/upgrade-coordinator.md) — `crafty_core::upgrade`, facade coordinator, `crafty-http` API, `examples/self-update` |
 
 
 ---

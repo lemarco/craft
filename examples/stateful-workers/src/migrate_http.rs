@@ -21,10 +21,10 @@ fn migrate_target() -> NodeId {
         .unwrap_or(NodeId(2))
 }
 
-pub fn migrate_routes(app: Arc<CraftyApp>) -> Router {
+pub fn migrate_routes(state: crafty::CraftyGatewayState) -> Router {
     Router::new()
         .route("/demo/migrate/run", post(run_demo))
-        .with_state(app)
+        .with_state(state.app)
 }
 
 async fn run_demo(State(app): State<Arc<CraftyApp>>) -> impl IntoResponse {

@@ -33,6 +33,7 @@ Architecture and decision records for the distributive Raft actor system.
 | Deployment (library-first framework, VPS) | [deployment-model](decisions/deployment-model.md) |
 | Elasticity, workers, auto-spawn & supervisor | [cluster-elasticity](decisions/cluster-elasticity.md) |
 | Membership, discovery, join/leave & liveness | [cluster-membership](decisions/cluster-membership.md) |
+| Self-update coordinator (leader + SM, no orchestrator) | [upgrade-coordinator](decisions/upgrade-coordinator.md) |
 
 ### Actors
 
@@ -63,7 +64,7 @@ Architecture and decision records for the distributive Raft actor system.
 ## Operations runbooks
 
 - [ops/backup-restore.md](ops/backup-restore.md) — `crafty-ops` snapshot export/import
-- [ops/rolling-upgrade.md](ops/rolling-upgrade.md) — wire N/N−1 vs app semver
+- [ops/rolling-upgrade.md](ops/rolling-upgrade.md) — wire N/N−1 vs app semver; links [upgrade-coordinator](decisions/upgrade-coordinator.md) for automated rolling
 
 ## Reference
 

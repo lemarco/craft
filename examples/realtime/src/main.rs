@@ -1,51 +1,30 @@
 //! # Real-time sessions showcase (messaging **tier B** + sticky sessions)
 //!
-//! ```text
-//!  Browser / websocat       WS Gateway (any node)       ActorSession            ChatWorker
-//!       |    ws://…/ws?user=alice  |                            |                         |
-//!       | ----------------------> | open session(user=alice)   |                         |
-//!       |                         | --------------------------> | cast(message) --------> |
-//!       | <---------------- ok ---|                            |                         |
-//! ```
-//!
-//! **ActorSession** pins a user id to a concrete worker instance so consecutive
-//! WebSocket messages hit the same in-memory `ChatWorker` (live chat, game room).
-//!
-//! Cluster mode: three **identical** nodes — each runs WS gateway + chat workers
-//! (same binary on every VPS; connect to any node's WebSocket URL).
-//!
-//! ## Debug logs
-//!
-//! `RUST_LOG=showcase=debug` — WebSocket + session events on `target: "showcase"`.
+//! WebSocket **and** authenticated HTTP on the same gateway identity.
 
 mod debug;
+mod gateway_http;
 
 use std::env;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use axum::Router;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Query, State};
-use axum::http::StatusCode;
+use axum::extract::State;
+use axum::http::{HeaderMap, Method, Uri};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use crafty::actor::{UserActor, remote_actor};
-use crafty::{ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayOpts, ReadyOpts, RunOpts};
-use crafty_actor::CastError;
+use crafty::{
+    ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayOpts, ReadyOpts,
+    RunOpts,
+};
+use crafty_showcase_common::gateway_auth::ShowcaseGatewayIdentity;
 use crafty_showcase_common::{data_dir, display_addr};
 
 const DATA_DIR_NAME: &str = "crafty-showcase-realtime";
-
-/// How long the directory keeps `(user → worker)` mapping without traffic.
 const SESSION_TTL: Duration = Duration::from_secs(3600);
-
-#[derive(Debug, serde::Deserialize)]
-struct ConnectQuery {
-    user: String,
-    /// Optional shared secret — set `GATEWAY_TOKEN` on server to require `?token=…`.
-    token: Option<String>,
-}
 
 #[derive(Debug)]
 struct ChatErr;
@@ -56,7 +35,6 @@ impl std::fmt::Display for ChatErr {
 }
 impl std::error::Error for ChatErr {}
 
-/// In-memory chat history per worker instance — **hot state**, lost on crash.
 struct ChatWorker {
     history: Mutex<Vec<String>>,
 }
@@ -67,7 +45,7 @@ impl UserActor for ChatWorker {
     type Message = String;
     type Error = ChatErr;
 
-    fn start(_seed: Self::Config) -> Result<Self, Self::Error> {
+    fn start(_seed: Self::Config) -> Result<Self, ChatErr> {
         Ok(Self {
             history: Mutex::new(Vec::new()),
         })
@@ -85,64 +63,54 @@ impl UserActor for ChatWorker {
     }
 }
 
-fn gateway_token_ok(token: Option<&str>) -> bool {
-    match env::var("GATEWAY_TOKEN") {
-        Ok(expected) if !expected.is_empty() => token == Some(expected.as_str()),
-        _ => true,
-    }
-}
-
-fn open_chat_session(app: &CraftyApp, user: &str) -> Option<crafty_actor::ActorSession> {
-    app.session_str("chat", user, Some(SESSION_TTL))
-}
-
-fn session_recoverable(err: &CastError) -> bool {
-    matches!(err, CastError::NoTarget(_))
-        || format!("{err}").contains("NoTarget")
-        || format!("{err}").contains("expired")
-}
-
 async fn ws_handler(
     ws: WebSocketUpgrade,
-    Query(query): Query<ConnectQuery>,
     State(state): State<CraftyGatewayState>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
 ) -> Response {
-    let token_ok = gateway_token_ok(query.token.as_deref());
-    debug::ws_connect(&query.user, token_ok);
-    if !token_ok {
-        return (StatusCode::UNAUTHORIZED, "invalid gateway token").into_response();
-    }
-    ws.on_upgrade(move |socket| handle_socket(socket, state, query.user))
-        .into_response()
+    let handle = match state
+        .open_actor_session_parts("chat", &method, &uri, &headers, Some(SESSION_TTL))
+        .await
+    {
+        Ok(h) => h,
+        Err(err) => return err.into_response(),
+    };
+    let session_key = handle.session_key().to_string();
+    debug::ws_connect(&session_key, true);
+
+    ws.on_upgrade(move |socket| async move {
+        handle_socket(socket, state, session_key, handle).await;
+    })
+    .into_response()
 }
 
-async fn handle_socket(mut socket: WebSocket, state: CraftyGatewayState, user: String) {
-    let mut session = open_chat_session(state.app.as_ref(), &user);
-    debug::session_open(&user, session.is_some());
-    if session.is_none() {
-        let _ = socket
-            .send(Message::Text("no chat worker available".into()))
-            .await;
-        return;
-    }
-
+async fn handle_socket(
+    mut socket: WebSocket,
+    state: CraftyGatewayState,
+    session_key: String,
+    mut handle: crafty::SessionHandle,
+) {
+    let _conn = state.track_connection();
+    debug::session_open(&session_key, true);
     let _ = socket
-        .send(Message::Text(format!("session open for {user}").into()))
+        .send(Message::Text(format!("session open for {session_key}").into()))
         .await;
 
     while let Some(Ok(msg)) = socket.recv().await {
         if let Message::Text(text) = msg {
             let text = text.to_string();
             let payload = crafty::proto::encode(&text).expect("encode chat msg");
-            match cast_with_reconnect(&state, &user, &mut session, payload).await {
+            match handle.cast(payload).await {
                 Ok(()) => {
-                    debug::ws_message(&user, &text, true);
+                    debug::ws_message(&session_key, &text, true);
                     let _ = socket
                         .send(Message::Text(format!("ok: {text}").into()))
                         .await;
                 }
                 Err(e) => {
-                    debug::ws_message(&user, &text, false);
+                    debug::ws_message(&session_key, &text, false);
                     let _ = socket
                         .send(Message::Text(format!("session error: {e}").into()))
                         .await;
@@ -150,41 +118,15 @@ async fn handle_socket(mut socket: WebSocket, state: CraftyGatewayState, user: S
             }
         }
     }
+    let _ = state;
 }
 
-async fn cast_with_reconnect(
-    state: &CraftyGatewayState,
-    user: &str,
-    session: &mut Option<crafty_actor::ActorSession>,
-    payload: Vec<u8>,
-) -> Result<(), CastError> {
-    for attempt in 0..2 {
-        let Some(active) = session.as_ref() else {
-            *session = open_chat_session(state.app.as_ref(), user);
-            if session.is_none() {
-                return Err(CastError::NoTarget("chat".into()));
-            }
-            continue;
-        };
-        match state.app.cast_session(active, payload.clone()).await {
-            Ok(()) => return Ok(()),
-            Err(e) if attempt == 0 && session_recoverable(&e) => {
-                debug::session_reconnect(user, attempt + 1);
-                *session = open_chat_session(state.app.as_ref(), user);
-                if session.is_none() {
-                    return Err(e);
-                }
-            }
-            Err(e) => return Err(e),
-        }
-    }
-    Err(CastError::NoTarget("chat".into()))
-}
-
-fn gateway_routes(app: Arc<CraftyApp>) -> Router {
+fn gateway_routes(state: CraftyGatewayState) -> Router {
     Router::new()
         .route("/ws", get(ws_handler))
-        .with_state(CraftyGatewayState { app })
+        .route("/chat", post(gateway_http::post_chat))
+        .route("/me", get(gateway_http::get_me))
+        .with_state(state)
 }
 
 fn server_builder() -> crafty::CraftyAppBuilder {
@@ -207,7 +149,11 @@ fn server_builder() -> crafty::CraftyAppBuilder {
             admin_addr: Some("127.0.0.1:9380".parse().expect("admin")),
             ..CraftyConfigure::default()
         })
-        .gateway(gateway, GatewayOpts::default().routes(gateway_routes))
+        .gateway(
+            GatewayOpts::new(gateway)
+                .identity(ShowcaseGatewayIdentity::from_env())
+                .routes(gateway_routes),
+        )
 }
 
 #[tokio::main]
@@ -227,7 +173,10 @@ fn print_banner() {
     println!("  listen   {}", env::var("CRAFTY_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
     if env::var("CRAFTY_GATEWAY").is_ok_and(|g| g != "-") {
         let gw = env::var("CRAFTY_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8294".into());
-        println!("  websocket ws://{}/ws?user=alice", display_addr(&gw));
+        let host = display_addr(&gw);
+        println!("  websocket ws://{host}/ws?user=alice");
+        println!("  http chat POST http://{host}/chat?user=alice  (JSON {{\"message\":\"…\"}})");
+        println!("  http me    GET  http://{host}/me?user=alice");
     }
     if let Ok(admin) = env::var("CRAFTY_ADMIN") {
         if admin != "-" {
@@ -241,6 +190,7 @@ fn print_banner() {
     }
     println!("  cluster  ./cluster.sh setup && ./cluster.sh up");
     println!("  trigger  ./trigger.sh alice hello");
+    println!("  http     ./trigger-http.sh alice hello");
     println!("  data_dir {}", data_dir(DATA_DIR_NAME).display());
     println!("press Ctrl-C to stop");
 }

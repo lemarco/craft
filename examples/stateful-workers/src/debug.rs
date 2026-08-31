@@ -35,6 +35,17 @@ pub fn order_cast(order_id: u64, gateway: &str) {
     );
 }
 
+pub fn order_submit(order_id: u64, tenant: &str, ok: bool) {
+    tracing::debug!(
+        target: "showcase",
+        showcase = NAME,
+        order_id,
+        tenant,
+        ok,
+        "authenticated HTTP order submit"
+    );
+}
+
 pub fn order_handle(order_id: u64, idempotent_skip: bool) {
     tracing::debug!(
         target: "showcase",

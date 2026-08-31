@@ -28,21 +28,30 @@ crafty-client.workspace = true
 crafty-macros.workspace = true
 crafty-dashboard.workspace = true
 crafty-http = { workspace = true, optional = true }
-axum = { version = "0.8", features = ["json", "ws"], optional = true }
+axum = { version = "0.8", features = ["json", "ws"] }
+hyper = { version = "1.10.1", features = ["server", "http1"] }
+hyper-util = { version = "0.1.20", features = ["tokio"] }
+tokio-rustls = "0.26"
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "net", "signal"] }
 serde.workspace = true
 thiserror.workspace = true
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+sha2 = "0.10"
+hex = "0.4"
+tracing = "0.1"
 
 [features]
+default = ["http-jobs"]
 # Convenience helpers to mint a dev cluster CA + per-node identities. Not for
 # production (operators provide real certs). Forwards to `crafty-net/dev-certs`.
 dev-certs = ["crafty-net/dev-certs"]
 # Dev-only: switch the entire wire to human-readable JSON (future-work-and-risks item 4).
 # Forwards to `crafty-proto/json-wire`; never enable in production.
 json-wire = ["crafty-proto/json-wire"]
-# Product HTTP helpers (`POST /jobs/{stream}`) via optional `crafty-http` crate.
-http-jobs = ["dep:crafty-http", "dep:axum"]
+# Built-in `/jobs/*`, `/actors/*`, `/workflows/*` gateway routes via `crafty-http`.
+# Custom gateway routes (WebSocket, Axum) work without this feature.
+http-jobs = ["dep:crafty-http"]
 
 [dev-dependencies]
 crafty-http.workspace = true
@@ -52,11 +61,23 @@ crafty-test-support = { path = "../crafty-test-support", features = ["facade"] }
 rcgen = "0.14"
 rustls-pemfile = "2"
 tempfile = "3"
+sha2 = "0.10"
+hex = "0.4"
 tokio-rustls = "0.26"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "io-util", "test-util"] }
+futures-util = "0.3"
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 serde = { workspace = true, features = ["derive"] }
 # The QUIC/mTLS integration test mints a shared dev cluster CA.
 crafty-net = { workspace = true, features = ["dev-certs"] }
+
+[[test]]
+name = "gateway_ws"
+path = "tests/gateway_ws.rs"
+
+[[test]]
+name = "gateway_tls"
+path = "tests/gateway_tls.rs"
 
 [[test]]
 name = "http_gateway"

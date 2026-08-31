@@ -6,7 +6,7 @@ mod onboarding;
 use std::env;
 use std::time::Duration;
 
-use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, ReadyOpts, RunOpts};
+use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, ReadyOpts, RunOpts, WorkflowOpts};
 use crafty_showcase_common::{data_dir, display_addr};
 
 use crate::onboarding::{apply_workers, build_plan, run_onboarding_plan};
@@ -23,14 +23,14 @@ fn server_builder() -> crafty::CraftyAppBuilder {
     apply_workers(
         CraftyApp::builder()
             .data_dir(dir)
-            .workflows(build_plan, run_onboarding_plan)
+            .workflows([WorkflowOpts::named("onboard", build_plan, run_onboarding_plan)])
             .configure(CraftyConfigure {
                 tick_period: Duration::from_millis(10),
                 reconcile_period: Duration::from_millis(20),
                 admin_addr: Some("127.0.0.1:9480".parse().expect("admin")),
                 ..CraftyConfigure::default()
             })
-            .gateway(gateway, GatewayOpts::default().with_workflows_api(true)),
+            .gateway(GatewayOpts::new(gateway).with_workflows_api(true)),
     )
 }
 

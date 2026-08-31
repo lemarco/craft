@@ -36,6 +36,8 @@ mod actor_routes;
 mod actor_types;
 mod routes;
 mod types;
+mod upgrade_routes;
+mod upgrade_types;
 mod workflow_routes;
 mod workflow_types;
 
@@ -55,6 +57,8 @@ pub use types::{
     EnqueueBatchJobBody, EnqueueJsonBody, JobStatusResponse, JobsApiError, LeasedByResponse,
     RequeueAccepted,
 };
+pub use upgrade_routes::{UpgradeApi, UpgradeApiState, upgrade_router};
+pub use upgrade_types::{SetDesiredBody, UpgradeApiError, UpgradeStatusResponse};
 
 /// Async enqueue hook used by [`JobsApi`].
 pub type EnqueueFn = Arc<

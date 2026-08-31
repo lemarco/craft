@@ -1,0 +1,20 @@
+# Self-update showcase — leader-coordinated rolling upgrade (upgrade-coordinator ADR).
+#
+#   cargo run --release          # terminal 1 — seed node
+#   ./cluster.sh up              # 3-node QUIC cluster
+#   ./trigger-upgrade.sh         # POST desired manifest (dry-run by default)
+[package]
+name = "crafty-showcase-self-update"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+crafty = { path = "../../crates/crafty", features = ["http-jobs", "dev-certs"] }
+crafty-showcase-common = { path = "../../crates/crafty-showcase-common" }
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt"] }

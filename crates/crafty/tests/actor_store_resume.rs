@@ -12,7 +12,7 @@ use crafty::actor::{ActorStateStore, ConfigCodecError, InMemoryStore, UserActor}
 use crafty::core::{Config, StateMachine};
 use crafty::net::LocalNetwork;
 use crafty::proto::{self, LogIndex};
-use crafty::{CraftyCluster, NodeId};
+use crafty::advanced::{CraftyCluster, NodeId};
 use crafty_test_support::{await_crafty_leader, eventually_async_default};
 use serde::{Deserialize, Serialize};
 

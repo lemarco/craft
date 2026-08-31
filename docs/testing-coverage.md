@@ -90,6 +90,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Cluster leave RPC (`/cluster/leave`, `CraftyCluster::leave`) | — | ✅ `runtime`, `multi_raft` | — | — | ✅ |
 | Leader-side reachability / hysteresis / phi-accrual | ✅ | ✅ | — | — | ✅ |
 | Wire protocol N/N−1 compat band | ✅ | ✅ | — | — | ✅ |
+| Rolling upgrade coordinator (`crafty_core::upgrade`, leader-last grant) | ✅ | ✅ `upgrade`, `upgrade_coordinator` | — | — | ✅ |
 | Admin HTTPS (server TLS) | ✅ | ✅ `admin`, `facade` | — | 🔒 nightly | ✅ |
 | Snapshot backup CLI (`crafty-ops`) | — | ✅ | — | — | ✅ |
 | External linearizability (Jepsen-lite) | — | — | ✅ | ✅ `linearizability.sh` | ✅ |
@@ -221,6 +222,7 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | Closed | What | Where |
 |--------|------|-------|
 | 2026-08 | Scenario soak per product path (actor store, saga resume, session restart) | `benchmarks/soak_{actor_store,saga,session}.rs`, `.gitlab-ci.yml` `bench` |
+| 2026-08 | Gateway identity, `SessionHandle`, WS + HTTP E2E, gateway drain | `crafty/src/gateway/`, `crafty/tests/{gateway_identity,gateway_ws,gateway_http}.rs`, `examples/{realtime,stateful-workers}/`, `docs/decisions/gateway-identity.md` |
 | 2026-08 | Transport + facade gaps: QUIC backoff, DNS discovery, queue compaction, auto-spawn sim, admin/leave E2E | `crafty-net/tests/quic.rs`, `crafty/tests/{discovery,queue}.rs`, `crafty-sim/tests/{auto_spawn,actor_scenarios}.rs`, `e2e/{run,leave}.sh` |
 | 2026-08 | Runtime fatal-error observable path (`status()` → `None`, `Stopped`) | `crafty-actor/tests/runtime.rs` |
 | 2026-08 | Multi-Raft sim: shard routing + independent group safety | `crafty-sim/tests/multi_raft.rs` |

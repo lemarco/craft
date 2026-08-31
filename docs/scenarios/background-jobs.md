@@ -162,10 +162,7 @@ Declarative `.jobs(...)` / attribute macros for workers remain aspirational. Tod
 CraftyApp::builder()
     .queue([QueueOpts::new("emails", Duration::from_secs(300))])
     .consumer(SendEmailConsumer, ConsumerOpts::default())
-    .gateway(
-        "127.0.0.1:8090".parse()?,
-        GatewayOpts::default().with_jobs_api(true),
-    )
+    .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?).with_jobs_api(true))
     .run(RunOpts::default().with_wait_queue("emails"))
     .await?;
 ```

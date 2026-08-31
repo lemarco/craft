@@ -67,6 +67,32 @@ fn host_only(base: &str) -> String {
         .to_string()
 }
 
+/// POST JSON to `http://{base}{path}` with optional extra headers.
+///
+/// # Errors
+/// Returns [`ClientError`] on connect, I/O, or malformed HTTP response.
+pub async fn post_json_with_headers(
+    base: &str,
+    path: &str,
+    json_body: &str,
+    extra_headers: &[(&str, &str)],
+) -> Result<HttpResponse, ClientError> {
+    let host = host_only(base);
+    let mut header_lines = String::from("Content-Type: application/json\r\nConnection: close\r\n");
+    for (name, value) in extra_headers {
+        header_lines.push_str(&format!("{name}: {value}\r\n"));
+    }
+    let req = format!(
+        "POST {path} HTTP/1.1\r\nHost: {host}\r\n{header_lines}Content-Length: {}\r\n\r\n{json_body}",
+        json_body.len()
+    );
+    let mut stream = tokio::net::TcpStream::connect(&host).await?;
+    stream.write_all(req.as_bytes()).await?;
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).await?;
+    parse_response(&raw)
+}
+
 /// POST JSON to `http://{base}{path}`.
 ///
 /// # Errors
@@ -76,16 +102,64 @@ pub async fn post_json(
     path: &str,
     json_body: &str,
 ) -> Result<HttpResponse, ClientError> {
-    let host = host_only(base);
-    let req = format!(
-        "POST {path} HTTP/1.1\r\nHost: {host}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{json_body}",
-        json_body.len()
-    );
-    let mut stream = tokio::net::TcpStream::connect(&host).await?;
-    stream.write_all(req.as_bytes()).await?;
-    let mut raw = Vec::new();
-    stream.read_to_end(&mut raw).await?;
-    parse_response(&raw)
+    post_json_with_headers(base, path, json_body, &[]).await
+}
+
+/// Authenticated chat cast (`POST /chat?user=…`) for the realtime showcase.
+///
+/// # Errors
+/// Returns [`ClientError`] when the gateway request fails.
+pub async fn post_chat(
+    gateway: &str,
+    user: &str,
+    message: &str,
+    token: Option<&str>,
+) -> Result<HttpResponse, ClientError> {
+    let path = match token {
+        Some(t) => format!("/chat?user={user}&token={t}"),
+        None => format!("/chat?user={user}"),
+    };
+    let body = serde_json::json!({ "message": message }).to_string();
+    post_json(gateway, &path, &body).await
+}
+
+/// Chat cast with Bearer token + `X-Crafty-User` (realtime showcase).
+///
+/// # Errors
+/// Returns [`ClientError`] when the gateway request fails.
+pub async fn post_chat_bearer(
+    gateway: &str,
+    user: &str,
+    message: &str,
+    bearer: &str,
+) -> Result<HttpResponse, ClientError> {
+    let body = serde_json::json!({ "message": message }).to_string();
+    let auth = format!("Bearer {bearer}");
+    post_json_with_headers(
+        gateway,
+        "/chat",
+        &body,
+        &[("Authorization", auth.as_str()), ("X-Crafty-User", user)],
+    )
+    .await
+}
+
+/// Authenticated order submit (`POST /orders/submit?user=…`) for stateful-workers showcase.
+///
+/// # Errors
+/// Returns [`ClientError`] when the gateway request fails.
+pub async fn submit_order_auth(
+    gateway: &str,
+    tenant: &str,
+    order_id: u64,
+    token: Option<&str>,
+) -> Result<HttpResponse, ClientError> {
+    let path = match token {
+        Some(t) => format!("/orders/submit?user={tenant}&token={t}"),
+        None => format!("/orders/submit?user={tenant}"),
+    };
+    let body = serde_json::json!({ "order_id": order_id }).to_string();
+    post_json(gateway, &path, &body).await
 }
 
 /// Enqueue a tier C job (`POST /jobs/{stream}` → 202).

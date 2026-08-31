@@ -13,6 +13,7 @@
 //! QUIC migration: `CRAFTY_MIGRATE_DEMO=1` + `./cluster.sh 1-migrate|2-migrate`, then `./cluster.sh migrate-run`.
 
 mod debug;
+mod gateway_orders;
 mod migrate_counter;
 mod migrate_demo;
 mod migrate_http;
@@ -24,6 +25,7 @@ use std::time::Duration;
 use crafty::{
     ActorGroupOpts, CraftyApp, CraftyAppBuilder, CraftyConfigure, GatewayOpts, ReadyOpts, RunOpts,
 };
+use crafty_showcase_common::gateway_auth::ShowcaseGatewayIdentity;
 use crafty_showcase_common::{data_dir, display_addr, env_flag};
 
 use crate::migrate_counter::StatefulCounter;
@@ -49,11 +51,14 @@ fn apply_actors(builder: CraftyAppBuilder) -> CraftyAppBuilder {
     }
 }
 
-fn gateway_opts() -> GatewayOpts {
+fn gateway_opts(addr: std::net::SocketAddr) -> GatewayOpts {
+    let opts = GatewayOpts::new(addr);
     if migrate_demo_mode() {
-        GatewayOpts::default().routes(|app| migrate_http::migrate_routes(app))
+        opts.routes(|state| migrate_http::migrate_routes(state))
     } else {
-        GatewayOpts::default().with_actors_api(true)
+        opts.identity(ShowcaseGatewayIdentity::from_env())
+            .routes(gateway_orders::routes)
+            .with_actors_api(true)
     }
 }
 
@@ -74,7 +79,7 @@ fn server_builder() -> CraftyAppBuilder {
                 ..CraftyConfigure::default()
             }),
     )
-    .gateway(gateway, gateway_opts())
+    .gateway(gateway_opts(gateway))
 }
 
 async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
@@ -112,10 +117,9 @@ fn print_banner() {
         println!("  listen   {}", env::var("CRAFTY_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
         if env::var("CRAFTY_GATEWAY").is_ok_and(|g| g != "-") {
             let gw = env::var("CRAFTY_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8190".into());
-            println!(
-                "  gateway  http://{}/actors/orders/cast",
-                display_addr(&gw)
-            );
+            let host = display_addr(&gw);
+            println!("  gateway  http://{host}/actors/orders/cast  (built-in ActorsApi)");
+            println!("  auth     POST http://{host}/orders/submit?user=tenant-1  (custom identity route)");
         }
         if env::var("CRAFTY_JOIN_SEEDS").is_ok() {
             println!("  join     via CRAFTY_JOIN_SEEDS");
@@ -126,6 +130,7 @@ fn print_banner() {
     }
     if !migrate_demo_mode() {
         println!("  trigger  ./trigger.sh <order-id>");
+        println!("  auth     ./trigger-auth.sh tenant-1 <order-id>");
     }
     println!("  cluster  ./cluster.sh setup && ./cluster.sh up");
     println!("  migrate  cargo run --release -- migrate-demo");

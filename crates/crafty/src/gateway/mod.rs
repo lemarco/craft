@@ -1,0 +1,441 @@
+//! Product HTTP / WebSocket gateway for [`CraftyApp`](super::app::CraftyApp).
+
+mod drain;
+mod identity;
+mod session;
+
+use std::fmt;
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
+
+use axum::Router;
+use axum::http::{HeaderMap, Method, Uri};
+use crafty_dashboard::AdminTlsPaths;
+
+use super::app::CraftyApp;
+
+/// PEM paths for server-only TLS on the product gateway (HTTPS / WSS).
+pub type GatewayTlsPaths = AdminTlsPaths;
+
+pub use drain::{ConnectionGuard, ConnectionTracker, GatewayHandle};
+pub use identity::{
+    ExtractedIdentity, GatewayIdentity, GatewayRequest, GatewayTokenIdentity, IdentityError,
+    IdentityTypeError, SessionKey,
+};
+pub use session::{NoWorkerError, OpenActorSessionError, SessionHandle};
+
+/// Default gateway drain when [`GatewayOpts::drain_timeout`] is omitted.
+pub const DEFAULT_GATEWAY_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Product HTTP gateway: listen address, custom Axum routes, optional built-in APIs.
+pub struct GatewayOpts {
+    addr: SocketAddr,
+    jobs_api: bool,
+    actors_api: bool,
+    workflows_api: bool,
+    identity: Option<Arc<dyn identity::DynGatewayIdentity>>,
+    routes: Option<GatewayRoutesFn>,
+    drain_timeout: Duration,
+    tls: Option<GatewayTlsPaths>,
+}
+
+impl fmt::Debug for GatewayOpts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GatewayOpts")
+            .field("addr", &self.addr)
+            .field("jobs_api", &self.jobs_api)
+            .field("actors_api", &self.actors_api)
+            .field("workflows_api", &self.workflows_api)
+            .field("identity", &self.identity.as_ref().map(|_| "<extractor>"))
+            .field("routes", &self.routes.as_ref().map(|_| "<router>"))
+            .field("drain_timeout", &self.drain_timeout)
+            .field("tls", &self.tls.as_ref().map(|_| "<pem>"))
+            .finish()
+    }
+}
+
+impl GatewayOpts {
+    /// Bind address with no routes and no built-in APIs mounted.
+    #[must_use]
+    pub fn new(addr: SocketAddr) -> Self {
+        Self {
+            addr,
+            jobs_api: false,
+            actors_api: false,
+            workflows_api: false,
+            identity: None,
+            routes: None,
+            drain_timeout: DEFAULT_GATEWAY_DRAIN_TIMEOUT,
+            tls: None,
+        }
+    }
+
+    /// Public HTTP bind address.
+    #[must_use]
+    pub fn addr(&self) -> SocketAddr {
+        self.addr
+    }
+
+    /// User identity extractor; session key defaults to [`SessionKey`] on `Identity`.
+    #[must_use]
+    pub fn identity<I>(mut self, extractor: I) -> Self
+    where
+        I: GatewayIdentity,
+        I::Identity: SessionKey,
+    {
+        self.identity = Some(identity::erase_identity(extractor));
+        self
+    }
+
+    /// Identity extractor with a custom session-key mapping (when identity ≠ session key).
+    #[must_use]
+    pub fn identity_mapped<I, F>(mut self, extractor: I, session_key: F) -> Self
+    where
+        I: GatewayIdentity,
+        I::Identity: 'static,
+        F: Fn(&I::Identity) -> String + Send + Sync + 'static,
+    {
+        self.identity = Some(identity::erase_identity_mapped(extractor, session_key));
+        self
+    }
+
+    /// Max wait for active gateway connections during graceful shutdown.
+    #[must_use]
+    pub fn drain_timeout(mut self, timeout: Duration) -> Self {
+        self.drain_timeout = timeout;
+        self
+    }
+
+    /// Serve the gateway over **TLS** (server-only) using PEM `cert` and `key`.
+    ///
+    /// WebSocket upgrades on this listener use **WSS** automatically.
+    #[must_use]
+    pub fn tls(mut self, cert: impl Into<PathBuf>, key: impl Into<PathBuf>) -> Self {
+        self.tls = Some(GatewayTlsPaths {
+            cert: cert.into(),
+            key: key.into(),
+        });
+        self
+    }
+
+    /// Enable or disable tier C `/jobs/*` routes.
+    #[must_use]
+    pub fn with_jobs_api(mut self, enabled: bool) -> Self {
+        self.jobs_api = enabled;
+        self
+    }
+
+    /// Enable or disable `/actors/*` cast + ask routes.
+    #[must_use]
+    pub fn with_actors_api(mut self, enabled: bool) -> Self {
+        self.actors_api = enabled;
+        self
+    }
+
+    /// Enable or disable `/workflows/run` and `/workflows/resume`.
+    #[must_use]
+    pub fn with_workflows_api(mut self, enabled: bool) -> Self {
+        self.workflows_api = enabled;
+        self
+    }
+
+    /// Custom Axum routes (WebSocket, authenticated HTTP, …).
+    #[must_use]
+    pub fn routes<F>(mut self, routes: F) -> Self
+    where
+        F: FnOnce(CraftyGatewayState) -> Router + Send + 'static,
+    {
+        self.routes = Some(Box::new(routes));
+        self
+    }
+
+    /// Convenience: custom routes with only [`CraftyApp`] (no identity on state).
+    #[must_use]
+    pub fn routes_with_app<F>(mut self, routes: F) -> Self
+    where
+        F: FnOnce(Arc<CraftyApp>) -> Router + Send + 'static,
+    {
+        self.routes = Some(Box::new(move |state| routes(state.app)));
+        self
+    }
+
+    /// Collect gateway wiring for [`build_gateway_router`] / [`spawn_gateway`].
+    #[must_use]
+    pub fn build_config(self) -> GatewayConfig {
+        self.into_config()
+    }
+
+    #[must_use]
+    pub(crate) fn into_config(self) -> GatewayConfig {
+        GatewayConfig {
+            addr: self.addr,
+            jobs_api: self.jobs_api,
+            actors_api: self.actors_api,
+            workflows_api: self.workflows_api,
+            identity: self.identity,
+            routes: self.routes,
+            drain_timeout: self.drain_timeout,
+            tls: self.tls,
+        }
+    }
+}
+
+/// Shared Axum state for gateway handlers that need the running app.
+#[derive(Clone)]
+pub struct CraftyGatewayState {
+    /// Running product app handle.
+    pub app: Arc<CraftyApp>,
+    identity: Option<Arc<dyn identity::DynGatewayIdentity>>,
+    connections: Option<Arc<ConnectionTracker>>,
+}
+
+impl fmt::Debug for CraftyGatewayState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CraftyGatewayState")
+            .field("identity", &self.identity.as_ref().map(|_| "<extractor>"))
+            .field(
+                "connections",
+                &self
+                    .connections
+                    .as_ref()
+                    .map(|c| c.active())
+                    .unwrap_or(0),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+impl CraftyGatewayState {
+    /// Gateway state with only the app handle (no identity extractor).
+    #[must_use]
+    pub fn new(app: Arc<CraftyApp>) -> Self {
+        Self {
+            app,
+            identity: None,
+            connections: None,
+        }
+    }
+
+    /// Track a live connection until the returned guard drops (for gateway drain).
+    #[must_use]
+    pub fn track_connection(&self) -> Option<ConnectionGuard<'_>> {
+        self.connections.as_ref().map(|c| c.track())
+    }
+
+    /// Extract authenticated identity and session key.
+    pub async fn extract_session(
+        &self,
+        req: &GatewayRequest<'_>,
+    ) -> Result<ExtractedIdentity, IdentityError> {
+        match &self.identity {
+            Some(extractor) => extractor.extract_dyn(req).await,
+            None => Err(IdentityError::NotConfigured),
+        }
+    }
+
+    /// [`extract_session`](Self::extract_session) from any HTTP request.
+    pub async fn extract_session_from<B>(
+        &self,
+        req: &axum::http::Request<B>,
+    ) -> Result<ExtractedIdentity, IdentityError> {
+        let gw_req = GatewayRequest::from_http(req);
+        self.extract_session(&gw_req).await
+    }
+
+    /// Auth + sticky [`SessionHandle`] in one call.
+    pub async fn open_actor_session(
+        &self,
+        group: &str,
+        req: &GatewayRequest<'_>,
+        ttl: Option<Duration>,
+    ) -> Result<SessionHandle, OpenActorSessionError> {
+        let extracted = self.extract_session(req).await?;
+        SessionHandle::open_from_extracted(&self.app, group, &extracted, ttl)
+            .ok_or_else(|| NoWorkerError(group.to_string()).into())
+    }
+
+    /// Like [`Self::open_actor_session`] from any HTTP request.
+    pub async fn open_actor_session_from<B>(
+        &self,
+        group: &str,
+        req: &axum::http::Request<B>,
+        ttl: Option<Duration>,
+    ) -> Result<SessionHandle, OpenActorSessionError> {
+        let gw_req = GatewayRequest::from_http(req);
+        self.open_actor_session(group, &gw_req, ttl).await
+    }
+
+    /// [`extract_session`](Self::extract_session) from axum **parts** (WebSocket upgrade handlers).
+    ///
+    /// Use with [`WebSocketUpgrade`](axum::extract::ws::WebSocketUpgrade) — do not also extract
+    /// [`Request`](axum::http::Request); the upgrade consumes the body.
+    pub async fn extract_session_parts(
+        &self,
+        method: &Method,
+        uri: &Uri,
+        headers: &HeaderMap,
+    ) -> Result<ExtractedIdentity, IdentityError> {
+        let gw_req = GatewayRequest::from_parts(method, uri, headers);
+        self.extract_session(&gw_req).await
+    }
+
+    /// Like [`Self::open_actor_session`] from axum **parts** (WebSocket upgrade handlers).
+    pub async fn open_actor_session_parts(
+        &self,
+        group: &str,
+        method: &Method,
+        uri: &Uri,
+        headers: &HeaderMap,
+        ttl: Option<Duration>,
+    ) -> Result<SessionHandle, OpenActorSessionError> {
+        let gw_req = GatewayRequest::from_parts(method, uri, headers);
+        self.open_actor_session(group, &gw_req, ttl).await
+    }
+
+    /// Gateway state with app handle and identity extractor.
+    #[must_use]
+    pub fn with_identity<I>(app: Arc<CraftyApp>, extractor: I) -> Self
+    where
+        I: GatewayIdentity,
+        I::Identity: SessionKey,
+    {
+        Self {
+            app,
+            identity: Some(identity::erase_identity(extractor)),
+            connections: None,
+        }
+    }
+
+    /// Like [`Self::with_identity`] but map session key separately from identity.
+    #[must_use]
+    pub fn with_identity_mapped<I, F>(app: Arc<CraftyApp>, extractor: I, session_key: F) -> Self
+    where
+        I: GatewayIdentity,
+        I::Identity: 'static,
+        F: Fn(&I::Identity) -> String + Send + Sync + 'static,
+    {
+        Self {
+            app,
+            identity: Some(identity::erase_identity_mapped(extractor, session_key)),
+            connections: None,
+        }
+    }
+
+    pub(crate) fn from_parts(
+        app: Arc<CraftyApp>,
+        identity: Option<Arc<dyn identity::DynGatewayIdentity>>,
+        connections: Option<Arc<ConnectionTracker>>,
+    ) -> Self {
+        Self {
+            app,
+            identity,
+            connections,
+        }
+    }
+}
+
+/// User-supplied gateway router builder (captures [`CraftyGatewayState`] in handlers).
+pub type GatewayRoutesFn = Box<dyn FnOnce(CraftyGatewayState) -> Router + Send>;
+
+/// Gateway listen address and route wiring collected on [`super::app::CraftyAppBuilder`].
+pub struct GatewayConfig {
+    /// Public HTTP bind address.
+    pub addr: SocketAddr,
+    /// Mount tier C `/jobs/*` routes (requires `http-jobs` feature).
+    pub jobs_api: bool,
+    /// Mount `/actors/*` cast + ask routes (requires `http-jobs` feature).
+    pub actors_api: bool,
+    /// Optional custom routes (WebSocket, sync HTTP, etc.).
+    pub routes: Option<GatewayRoutesFn>,
+    /// Mount `/workflows/*` routes when a plan builder is configured.
+    pub workflows_api: bool,
+    /// Optional identity extractor ([`GatewayOpts::identity`]).
+    pub(crate) identity: Option<Arc<dyn identity::DynGatewayIdentity>>,
+    /// Graceful drain timeout for active connections.
+    pub drain_timeout: Duration,
+    /// Optional server-only TLS (`CRAFTY_GATEWAY_TLS_*` / [`GatewayOpts::tls`]).
+    pub tls: Option<GatewayTlsPaths>,
+}
+
+/// Build the gateway router: custom routes first, then optional product APIs.
+pub fn build_gateway_router(app: Arc<CraftyApp>, config: GatewayConfig) -> Router {
+    build_gateway_router_with_tracker(app, config, None)
+}
+
+fn build_gateway_router_with_tracker(
+    app: Arc<CraftyApp>,
+    config: GatewayConfig,
+    connections: Option<Arc<ConnectionTracker>>,
+) -> Router {
+    let GatewayConfig {
+        addr: _,
+        jobs_api,
+        actors_api,
+        workflows_api,
+        identity,
+        routes,
+        drain_timeout: _,
+        tls: _,
+    } = config;
+
+    let state = CraftyGatewayState::from_parts(Arc::clone(&app), identity, connections);
+    let mut router = routes.map_or_else(Router::new, |f| f(state));
+
+    #[cfg(feature = "http-jobs")]
+    {
+        if workflows_api {
+            let api = CraftyApp::workflows_api(Arc::clone(&app));
+            router = router.merge(api.router().with_state(Arc::new(api.into_state())));
+        }
+
+        if actors_api {
+            let api = CraftyApp::actors_api(Arc::clone(&app));
+            router = router.merge(api.router().with_state(Arc::new(api.into_state())));
+        }
+
+        if jobs_api {
+            let api = CraftyApp::jobs_api(app);
+            router = router.merge(api.router().with_state(Arc::new(api.into_state())));
+        }
+    }
+    #[cfg(not(feature = "http-jobs"))]
+    {
+        let _ = (jobs_api, actors_api, workflows_api, app);
+    }
+
+    router
+}
+
+/// Spawn the gateway HTTP server; returns a [`GatewayHandle`] for graceful drain.
+///
+/// # Errors
+/// Returns [`std::io::Error`] when the listen socket cannot be bound or TLS PEM
+/// material is invalid.
+pub async fn spawn_gateway(app: Arc<CraftyApp>, config: GatewayConfig) -> std::io::Result<GatewayHandle> {
+    let addr = config.addr;
+    let drain_timeout = config.drain_timeout;
+    let tls_paths = config.tls.clone();
+    let connections = Arc::new(ConnectionTracker::default());
+    let router = build_gateway_router_with_tracker(
+        Arc::clone(&app),
+        config,
+        Some(Arc::clone(&connections)),
+    );
+    let tls = tls_paths
+        .as_ref()
+        .map(crafty_dashboard::admin_tls_config)
+        .transpose()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    let scheme = if tls.is_some() { "https" } else { "http" };
+    eprintln!("crafty: gateway listening on {scheme}://{addr}");
+    Ok(drain::spawn_serve(
+        listener,
+        router,
+        connections,
+        drain_timeout,
+        tls,
+    ))
+}

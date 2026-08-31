@@ -28,10 +28,7 @@ use crafty::{CraftyApp, GatewayOpts, QueueOpts, RunOpts};
 CraftyApp::builder()
     .data_dir("/tmp/my-app")
     .queue([QueueOpts::new("jobs", Duration::from_secs(300))])
-    .gateway(
-        "127.0.0.1:8090".parse()?,
-        GatewayOpts::default().with_jobs_api(true),
-    )
+    .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?).with_jobs_api(true))
     .run(RunOpts::default().with_wait_queue("jobs"))
     .await?;
 # Ok(())
