@@ -135,7 +135,7 @@ Decision: [decisions/product-scenarios.md](decisions/product-scenarios.md) · Ba
 |-----|---------|
 | [examples/README.md](../examples/README.md) | Four product showcases (local + QUIC cluster) |
 | [scenarios/README.md](scenarios/README.md) | Product scenario index |
-| [backlog.md](backlog.md) | Planned work (0.2.x → 1.0) |
+| [backlog.md](backlog.md) | Planned work (0.4.x → 1.0) |
 | [architecture.md](architecture.md) | Crate graph, data flows |
 | [decisions/](decisions/) | Design decision records |
 | [testing-coverage.md](testing-coverage.md) | Test inventory |

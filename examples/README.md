@@ -1,6 +1,6 @@
 # Product showcases
 
-Four standalone projects — one per [product scenario](../docs/scenarios/README.md). Each has its own `Cargo.toml`, README, `cluster.sh` (QUIC/mTLS), and `trigger.sh`.
+Four standalone projects — one per [product scenario](../docs/scenarios/README.md), plus a fifth ops showcase. Each has its own `Cargo.toml`, README, `cluster.sh` (QUIC/mTLS), and `trigger.sh`.
 
 Shared helpers: [`crafty-showcase-common`](../crates/crafty-showcase-common/) (env/cluster utilities). HTTP/WS client: [`crafty-showcase-client`](../crates/crafty-showcase-client/) (built by `./cluster.sh setup`).
 
