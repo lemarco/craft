@@ -13,6 +13,7 @@ pub use crafty_proto as proto;
 mod compaction;
 mod config;
 mod failure_detector;
+pub mod kv;
 mod log;
 mod node;
 mod rng;
@@ -28,6 +29,7 @@ pub use failure_detector::{
     AckWindowLiveness, FailureDetectorKind, PhiAccrualDetector, PhiAccrualLiveness,
     ReachabilityConfig,
 };
+pub use kv::{Kv, KvCommand, KvError, KvMachine, KvQuery, KvResponse};
 pub use node::{
     CatalogProposeError, Committed, Config, MembershipError, NotLeader, Output, Persist, RaftNode,
     ReadId, Role, SnapshotState,

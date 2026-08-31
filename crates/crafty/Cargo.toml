@@ -30,6 +30,7 @@ crafty-dashboard.workspace = true
 crafty-http = { workspace = true, optional = true }
 axum = { version = "0.8", features = ["json", "ws"], optional = true }
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "net", "signal"] }
+serde.workspace = true
 thiserror.workspace = true
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 
@@ -70,8 +71,4 @@ required-features = ["http-jobs"]
 [[test]]
 name = "http_actors"
 path = "tests/http_actors.rs"
-required-features = ["http-jobs"]
-
-[[example]]
-name = "websocket_gateway"
 required-features = ["http-jobs"]

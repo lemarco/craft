@@ -311,6 +311,17 @@ impl MembershipTelemetry {
             });
         }
 
+        let commit_advanced = self
+            .prev
+            .as_ref()
+            .is_some_and(|p| p.commit_index != status.commit_index);
+        if commit_advanced {
+            let _ = self.events.emit(CraftyEvent::RaftCommitted {
+                commit_index: status.commit_index.0,
+                term: status.term.0,
+            });
+        }
+
         let mut departed = Vec::new();
         let mut unreachable = Vec::new();
         let mut membership_changed = false;
@@ -942,6 +953,29 @@ impl<M: StateMachine> CraftyCluster<M> {
             .status()
             .await
             .is_some_and(|s| matches!(s.role, crafty_core::Role::Leader))
+    }
+
+    /// Poll until this node is leader and optional job streams are mounted.
+    ///
+    /// Returns `true` when ready, `false` on timeout. Does not panic — use in
+    /// examples and edge gateways that start before peer workers.
+    pub async fn wait_until_ready(&self, opts: crate::ReadyOpts) -> bool {
+        let deadline = tokio::time::Instant::now() + opts.timeout;
+        loop {
+            let leader = self.is_leader().await;
+            let queues_ok = opts.job_streams.is_empty()
+                || opts
+                    .job_streams
+                    .iter()
+                    .all(|stream| self.job_queue(stream).is_some());
+            if leader && queues_ok {
+                return true;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return false;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
     }
 
     /// Request removal of this node from the cluster registry (group 0). Contact

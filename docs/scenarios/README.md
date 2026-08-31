@@ -11,7 +11,7 @@ Guides for building on crafty **without mandatory Redis or Kubernetes**. Each sc
 |---------|-------|---------------|----------------|
 | Async work, retries, many workers | [Background jobs](background-jobs.md) | ✅ `RedbJobQueue`, E2E, HTTP `202` | Dashboard queue view |
 | Actor state survives VPS crash | [Stateful workers](stateful-workers.md) | ✅ `RedbActorStateStore`, migration | — |
-| WebSocket / live session to one worker | [Real-time sessions](realtime-sessions.md) | ✅ `ActorSession`, gateway example | Auth stub (backlog) |
+| WebSocket / live session to one worker | [Real-time sessions](realtime-sessions.md) | ✅ `ActorSession`, gateway showcase | Auth beyond token stub |
 | Multi-step process with compensation | [Workflows](workflows.md) | ✅ `WorkflowBuilder`, Meta-Raft journal | Dashboard saga view |
 
 ## Shared persistence model
@@ -60,13 +60,12 @@ flowchart LR
 
 | Scenario | Example |
 |----------|---------|
-| Background jobs | `cargo run -p crafty --example job_queue_worker` |
-| Jobs + autoscale | `cargo run -p crafty --example job_queue_cluster` |
-| Cluster actors | `cargo run -p crafty --example actors_cluster` |
-| Actor + store split | `cargo run -p crafty --example hexagonal_actor_store` (`.data_dir` → redb prod path) |
-| WebSocket gateway | `cargo run -p crafty --example websocket_gateway` |
-| Onboarding workflow | `cargo run -p crafty --example onboarding_workflow` |
-| VPS join | `cargo run -p crafty --example vps_join` |
+| Background jobs | `./scripts/run-example.sh background-jobs` |
+| Stateful workers | `./scripts/run-example.sh stateful-workers` |
+| Real-time / session | `./scripts/run-example.sh realtime` |
+| Workflows | `./scripts/run-example.sh workflows` |
+
+Full index: [examples/README.md](../examples/README.md).
 
 E2E: `./e2e/queue.sh` (QUIC/mTLS, failover).
 

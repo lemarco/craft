@@ -3,9 +3,9 @@
 Three VPS-equivalent nodes sharing a dev CA. Generate certs first:
 
 ```bash
-../examples/certs/generate.sh --ca-only --out ./certs
+../dev/certs/generate.sh --ca-only --out ./certs
 for id in 1 2 3; do
-  ../examples/certs/generate.sh --node-id "$id" --out ./certs \
+  ../dev/certs/generate.sh --node-id "$id" --out ./certs \
     --ca ./certs/ca.pem --ca-key ./certs/ca.key
 done
 ```

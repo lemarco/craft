@@ -2,7 +2,7 @@
 
 **Pattern:** WebSocket or long-lived HTTP to a **pinned worker**; gateway VPS stays stateless; workers scale on the cluster.
 
-**Status:** `ActorSession`, consistent-hash routing **shipped**. WebSocket gateway example — [backlog B-04](../backlog.md).
+**Status:** **Shipped** in 0.2.x — `ActorSession`, gateway showcase ([examples/realtime/](../../examples/realtime/)), `ActorsApi` on product gateway.
 
 ## When to use
 
@@ -89,7 +89,9 @@ Recommended deployment:
 
 Same artifact on every VPS; LB round-robins **gateways only**. Workers communicate over existing mTLS peer paths ([wire-protocol](../decisions/wire-protocol.md)).
 
-### 4. WebSocket handler (sketch — B-04 will ship full example)
+### 4. WebSocket handler (see showcase)
+
+Full runnable example: [`examples/realtime/`](../../examples/realtime/). Sketch:
 
 ```rust
 async fn on_ws(socket: WebSocket, cluster: Arc<CraftyCluster<MySm>>) {
@@ -142,24 +144,15 @@ See [read-consistency](../decisions/client-and-routing.md#read-consistency).
 
 ## Examples
 
-| Asset | Status |
-|-------|--------|
+| Asset | Purpose |
+|-------|---------|
 | `crafty-actor/tests/messaging.rs` — `cast_session` | ✅ |
-| `examples/cluster_ref_routing.rs` | ✅ routing |
-| `examples/websocket_gateway.rs` | 🔲 B-04 |
+| [`examples/realtime/`](../../examples/realtime/) | WebSocket + `ActorSession` showcase |
+| `crafty/tests/http_actors.rs` | HTTP cast/ask on gateway |
 
-## Target product API (backlog)
+## Future polish
 
-```rust
-CraftyApp::from_env()
-    .workers(ChatWorker, pool: PerNode)
-    .http_routes(|r| r.ws("/chat", chat_handler))
-    .run()
-    .await?;
-
-let session = app.session("chat", user_id).await?;
-app.ask_session(&session, msg).await?;
-```
+Gateway auth beyond `GATEWAY_TOKEN` query param — apps add JWT/API keys in custom routes.
 
 ## Related
 

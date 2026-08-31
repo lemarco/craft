@@ -46,9 +46,9 @@
 - Redis-backed `ActorStateStore` (`crafty-store-redis`); actor migration RPC
 - **`JobQueue`** — `InMemoryJobQueue`, `RedbJobQueue`, sharded streams, priority/delayed enqueue, **batch enqueue/ack** (single redb txn + one replicate RTT), **leader prefetch cache** (`job_queue_prefetch`, default 256), dead-letter lifecycle + **`requeue_dead_letter`**, **recurring/cron jobs** (`RecurringJob`, `queue_schedule` ticker), leader `QueueService` with parallel sync voter replication + replicate auth, `ClusterJobQueue`, `run_queue_consumer` + **`#[crafty::consumer]`** macro, worker + membership autoscale, Meta-Raft autoscale policy ([job-queue](decisions/job-queue.md))
 - **`crafty-http` jobs API** — `POST /jobs/{stream}/batch`, `POST /jobs/{stream}/ack-batch`, `POST /jobs/{stream}/{id}/requeue`; mounted on admin or **`CraftyApp` gateway**
-- **`CraftyApp` gateway** — separate HTTP listener (`.gateway_addr`, `CRAFTY_GATEWAY`); optional mount of jobs + actors APIs; custom Axum/WebSocket routes via `.gateway_routes` ([examples/websocket_gateway.rs](../examples/websocket_gateway.rs))
+- **`CraftyApp` gateway** — separate HTTP listener (`.gateway_addr`, `CRAFTY_GATEWAY`); use `start_from_env_shared` / `start_from_config_shared` on QUIC; optional mount of jobs + actors APIs; custom Axum/WebSocket routes via `.http_routes` ([examples/realtime/](../examples/realtime/))
 - **Job queue E2E** — `./e2e/queue.sh` (QUIC/mTLS, enqueue → follower worker → leader failover); `crafty-node` env `CRAFTY_DATA_DIR` + `CRAFTY_JOB_QUEUE`
-- **Examples** — `job_queue_worker` (follower `ClusterJobQueue` + failover), `job_queue_cluster` (sharding, dedup, autoscale)
+- **Product showcases** — `examples/background-jobs`, `stateful-workers`, `realtime`, `workflows`
 
 ### Multi-Raft write scaling
 
@@ -90,7 +90,7 @@ Global serializable isolation across shards is **not** a goal — see [cross-sha
 
 ## Release & ops (process, not missing code)
 
-- **crates.io / docs.rs publish** — v0.2.2 (see [CHANGELOG.md](../CHANGELOG.md); v0.2.0–0.2.1 on crates.io)
+- **crates.io / docs.rs publish** — v0.2.2 ready (see [CHANGELOG.md](../CHANGELOG.md)); tag + `./scripts/release.sh 0.2.2 --publish-only` after commit
 - **Public API docs** — `missing_docs = "deny"` on published crates; `publish = false` crates exempt via crate lint override. Audit: `./scripts/docs-missing-audit.sh`
 - **Real-world soak** — scenario harness in `benchmarks/` (`soak`, `soak_queue`, `soak_multi_raft`, `soak_actor_store`, `soak_saga`, `soak_session`); scheduled CI `bench` job (60–120s budgets); long-running production soak is operator responsibility
 - **Heavy integration tests** — Redis/docker tests gated `#[ignore]` in fast CI; scheduled heavy lane

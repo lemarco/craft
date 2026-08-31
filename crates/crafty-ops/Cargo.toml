@@ -29,6 +29,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util
 walkdir = "2"
 
 [dev-dependencies]
-crafty-ops = { path = ".", version = "0.2.1" }
+crafty-ops = { path = ".", version = "0.2.2" }
 tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

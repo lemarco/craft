@@ -1,0 +1,20 @@
+# Real-time sessions showcase — tier B: WebSocket gateway + sticky `ActorSession`.
+#
+#   cargo run --release          # gateway + chat workers (local demo)
+#   ./trigger.sh alice hello     # send one WS message (needs websocat)
+[package]
+name = "crafty-showcase-realtime"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+crafty = { path = "../../crates/crafty", features = ["http-jobs"] }
+crafty-actor = { path = "../../crates/crafty-actor" }
+crafty-showcase-common = { path = "../../crates/crafty-showcase-common" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
+axum = { version = "0.8", features = ["json", "ws"] }
+serde = { version = "1", features = ["derive"] }
+tracing = "0.1"

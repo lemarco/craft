@@ -58,20 +58,19 @@ pub fn build_gateway_router(app: Arc<CraftyApp>, config: GatewayConfig) -> Route
 
 /// Spawn the gateway HTTP server on a background task.
 ///
-/// Bind failures are logged to stderr; the cluster keeps running.
-pub fn spawn_gateway(app: Arc<CraftyApp>, config: GatewayConfig) {
+/// Binds synchronously before returning so callers can fail fast when the port is
+/// taken. Serve errors are logged to stderr; the cluster keeps running.
+pub async fn spawn_gateway(app: Arc<CraftyApp>, config: GatewayConfig) -> std::io::Result<()> {
     let addr = config.addr;
     let router = build_gateway_router(app, config);
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    eprintln!("crafty: gateway listening on http://{addr}");
     tokio::spawn(async move {
-        match tokio::net::TcpListener::bind(addr).await {
-            Ok(listener) => {
-                if let Err(e) = axum::serve(listener, router).await {
-                    eprintln!("crafty: gateway server on {addr} failed: {e}");
-                }
-            }
-            Err(e) => eprintln!("crafty: gateway bind to {addr} failed: {e}"),
+        if let Err(e) = axum::serve(listener, router).await {
+            eprintln!("crafty: gateway server on {addr} failed: {e}");
         }
     });
+    Ok(())
 }
 
 /// Async helper used by [`super::app::CraftyAppBuilder::run_local_until_shutdown`].

@@ -64,12 +64,11 @@ let cluster = CraftyCluster::builder(NodeId(1), Counter::default())
 
 - `dev-certs` *(off by default)* — helpers to mint a throwaway cluster CA and
   per-node identities for local development. Production deployments supply real
-  certificates instead (see the `examples/certs/` provisioning script).
+  certificates instead (see the `dev/certs/` provisioning script).
 
 ## Learn more
 
-- Runnable examples: `cargo run -p crafty --example kv_store`
-  (also `three_node_local`, `actors_cluster`).
+- Product showcases: `./scripts/run-example.sh background-jobs` — full index in [examples/README.md](../examples/README.md).
 - The reference runner binary: [`crafty-node`](../crafty-node) (repo only, not on crates.io).
 - Architecture, ADRs, and the wire protocol: [repository docs](https://gitlab.com/lemarco/craft/-/tree/master/docs)
 

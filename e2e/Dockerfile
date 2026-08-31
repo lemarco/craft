@@ -15,6 +15,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /src/target/debug/crafty-node /usr/local/bin/crafty-node
 COPY --from=build /src/target/debug/crafty-e2e-queue-client /usr/local/bin/crafty-e2e-queue-client
-COPY examples/certs/generate.sh /app/generate.sh
+COPY dev/certs/generate.sh /app/generate.sh
 RUN chmod +x /app/generate.sh
 ENTRYPOINT ["crafty-node"]

@@ -33,10 +33,13 @@ members = [
     "crates/crafty-ops",
     "crates/crafty-e2e-client",
     "crates/crafty-e2e-queue-client",
+    "crates/crafty-dev-client",
+    "crates/crafty-showcase-client",
+    "crates/crafty-showcase-common",
 ]
-# `benchmarks/` is a standalone crate (its own workspace) so criterion never
-# compiles in the fast lane; it path-depends on these crates. See backlog T10.
-exclude = ["benchmarks", "crates/crafty-fuzz"]
+# `benchmarks/` and `examples/` are standalone crates (own workspace tables) so
+# criterion and demo binaries never compile in the fast lane. See backlog T10.
+exclude = ["benchmarks", "examples", "crates/crafty-fuzz"]
 
 [workspace.package]
 version = "0.2.2"
@@ -84,6 +87,7 @@ crafty-test-support = { path = "crates/crafty-test-support", version = "0.2.2" }
 crafty-ops = { path = "crates/crafty-ops", version = "0.2.2" }
 crafty-e2e-client = { path = "crates/crafty-e2e-client", version = "0.2.2" }
 crafty-e2e-queue-client = { path = "crates/crafty-e2e-queue-client", version = "0.2.2" }
+crafty-dev-client = { path = "crates/crafty-dev-client", version = "0.2.2" }
 
 # Lints applied across the workspace (library-and-publishing).
 [workspace.lints.rust]

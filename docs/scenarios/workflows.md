@@ -2,7 +2,7 @@
 
 **Pattern:** Multi-step business processes with forward steps and compensators; journal survives process restart; steps can call queue, actors, or Raft.
 
-**Status:** `run_saga`, `resume_saga`, Meta-Raft journal **shipped**. Fluent workflow builder — [backlog B-05](../backlog.md).
+**Status:** **Shipped** in 0.2.x — `WorkflowBuilder`, `CraftyApp::run_workflow`, Meta-Raft journal, [examples/workflows/](../../examples/workflows/).
 
 ## When to use
 

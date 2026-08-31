@@ -32,7 +32,7 @@
 //! With no cert vars set, a throwaway dev CA is minted for a **single-node**
 //! cluster (great for `cargo run -p crafty-node`). A multi-node cluster needs a
 //! shared CA: provide `CRAFTY_NODE_CERT`/`CRAFTY_NODE_KEY`/`CRAFTY_CA_CERT` on
-//! every node (mint them with `examples/certs/generate.sh`; see `docs/certs.md`)
+//! every node (mint them with `dev/certs/generate.sh`; see `docs/certs.md`)
 //! and either list every member in `CRAFTY_PEERS` (static) or point new nodes at
 //! `CRAFTY_JOIN_SEEDS` / `CRAFTY_DISCOVERY` to grow the cluster dynamically.
 

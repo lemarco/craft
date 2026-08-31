@@ -1,0 +1,23 @@
+[package]
+name = "crafty-dev-client"
+description = "Hands-on demo client for the local 3-node QUIC cluster (Raft + job queue)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "crafty-dev-client"
+path = "src/main.rs"
+
+[dependencies]
+crafty-client.workspace = true
+crafty-net.workspace = true
+crafty-proto.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

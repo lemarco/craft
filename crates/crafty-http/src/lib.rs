@@ -21,11 +21,23 @@
 //! - `POST /actors/{group}/cast` → `202 Accepted`
 //!
 //! Wire it to [`CraftyApp::actors_api`](https://docs.rs/crafty/latest/crafty/struct.CraftyApp.html#method.actors_api).
+//!
+//! # Workflows API
+//!
+//! [`WorkflowsApi`] exposes:
+//!
+//! - `GET /health` → `200 OK`
+//! - `POST /workflows/run` → `200 OK` + `{ "saga_id", "outcome" }`
+//! - `POST /workflows/resume` → `200 OK` + `{ "saga_id", "outcome" }`
+//!
+//! Wire custom run/resume hooks for saga coordination (requires in-process journal).
 
 mod actor_routes;
 mod actor_types;
 mod routes;
 mod types;
+mod workflow_routes;
+mod workflow_types;
 
 use std::future::Future;
 use std::pin::Pin;
@@ -199,4 +211,80 @@ impl ActorsApi {
             cast: self.cast,
         }
     }
+}
+
+pub use workflow_types::{SagaBody, WorkflowAccepted, WorkflowsApiError};
+
+/// Async run hook used by [`WorkflowsApi`].
+pub type RunWorkflowFn = Arc<
+    dyn Fn(
+            String,
+        )
+            -> Pin<Box<dyn Future<Output = Result<WorkflowAccepted, WorkflowsApiError>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// Async resume hook used by [`WorkflowsApi`].
+pub type ResumeWorkflowFn = Arc<
+    dyn Fn(
+            String,
+        )
+            -> Pin<Box<dyn Future<Output = Result<WorkflowAccepted, WorkflowsApiError>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// Shared Axum state for workflow routes.
+pub struct WorkflowsApiState {
+    pub(crate) run: RunWorkflowFn,
+    pub(crate) resume: ResumeWorkflowFn,
+}
+
+/// HTTP keyed-saga trigger API.
+#[derive(Clone)]
+pub struct WorkflowsApi {
+    run: RunWorkflowFn,
+    resume: ResumeWorkflowFn,
+}
+
+impl WorkflowsApi {
+    /// Build from custom run and resume closures.
+    #[must_use]
+    pub fn new(run: RunWorkflowFn, resume: ResumeWorkflowFn) -> Self {
+        Self { run, resume }
+    }
+
+    /// Axum routes for workflow run/resume. Merge into your app and call [`Self::into_state`].
+    pub fn router(&self) -> Router<Arc<WorkflowsApiState>> {
+        workflow_routes::workflows_router()
+    }
+
+    /// State handle for [`Self::router`].
+    #[must_use]
+    pub fn into_state(self) -> WorkflowsApiState {
+        WorkflowsApiState {
+            run: self.run,
+            resume: self.resume,
+        }
+    }
+}
+
+/// Bind and serve workflow routes on `addr` (background task).
+///
+/// Used by tier A showcases when saga coordination must stay in-process on node 1
+/// (`CRAFTY_TRIGGER` listener).
+pub async fn spawn_workflows_server(
+    api: WorkflowsApi,
+    addr: std::net::SocketAddr,
+) -> std::io::Result<()> {
+    let router = api.router().with_state(Arc::new(api.into_state()));
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    eprintln!("crafty: workflows API listening on http://{addr}");
+    tokio::spawn(async move {
+        if let Err(e) = axum::serve(listener, router).await {
+            eprintln!("crafty: workflows API on {addr} failed: {e}");
+        }
+    });
+    Ok(())
 }

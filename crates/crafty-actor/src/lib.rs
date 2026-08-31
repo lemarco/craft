@@ -24,6 +24,7 @@ mod meta;
 mod placement;
 mod queue;
 mod queue_autoscale;
+mod queue_lifecycle;
 mod queue_prefetch;
 mod queue_schedule;
 mod queue_service;
@@ -68,6 +69,7 @@ pub use queue_autoscale::{
     AutoscalePolicy, MembershipAutoscalePolicy, QueueAutoscaleRegistry, run_queue_autoscaler,
     run_queue_membership_autoscaler,
 };
+pub use queue_lifecycle::QueueLifecycleEvent;
 pub use queue_prefetch::{DEFAULT_QUEUE_BATCH_MAX, DEFAULT_QUEUE_PREFETCH};
 pub use queue_schedule::{
     RecurringJob, parse_cron, run_queue_schedule_ticker, run_recurring_job_ticker,

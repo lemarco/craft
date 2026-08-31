@@ -1,0 +1,13 @@
+[package]
+name = "crafty-showcase-common"
+description = "Shared helpers for product showcases (not published to crates.io)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true

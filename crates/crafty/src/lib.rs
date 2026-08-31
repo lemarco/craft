@@ -48,6 +48,7 @@ mod gateway;
 mod handler;
 mod multi_raft;
 mod observer;
+mod ready;
 mod saga;
 mod security;
 mod two_phase;
@@ -81,11 +82,21 @@ pub use crafty_actor::{
 };
 pub use crafty_actor::{ResourceProfile, VpsResources};
 pub use crafty_core::ReachabilityConfig;
+pub use crafty_core::kv;
+pub use crafty_core::kv::{Kv, KvCommand, KvError, KvMachine, KvQuery, KvResponse};
 pub use crafty_core::{CompactionPolicy, DEFAULT_COMPACT_BYTES, DEFAULT_COMPACT_ENTRIES};
+#[cfg(feature = "http-jobs")]
+pub use crafty_http::{
+    SagaBody, WorkflowAccepted, WorkflowsApi, WorkflowsApiError, spawn_workflows_server,
+};
 pub use crafty_macros::consumer;
-pub use env_config::{AppConfig, app_config_from_env};
+pub use env_config::{
+    AppConfig, NodeRole, app_config_from_env, consumers_enabled_from_env, gateway_only_from_env,
+    node_role_from_env, workers_enabled_from_env,
+};
 #[cfg(feature = "http-jobs")]
 pub use gateway::{CraftyGatewayState, GatewayConfig, build_gateway_router, spawn_gateway};
+pub use ready::ReadyOpts;
 pub use saga::{
     CompositeSagaJournal, Group0SagaJournal, MetaRaftSagaJournal, SagaRegistry, StoreSagaJournal,
     record_saga_metrics, saga_metrics_callback,

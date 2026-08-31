@@ -379,6 +379,8 @@ pub struct QueueReplicateRequest {
     pub stream: String,
     /// Idempotent mutations to apply in order.
     pub ops: Vec<QueueReplicateOp>,
+    /// Declared Raft leader id (must match the receiver's leader hint).
+    pub leader_id: u64,
 }
 
 /// Response to [`QueueReplicateRequest`].

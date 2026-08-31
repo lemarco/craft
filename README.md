@@ -52,11 +52,10 @@ cd crafty
 lefthook install
 ./scripts/quality-gate-pre-commit.sh
 
-cargo run -p crafty --example kv_store
-cargo run -p crafty --example three_node_local
-cargo run -p crafty --example actors_cluster
-cargo run -p crafty --example job_queue_worker   # cluster queue: follower worker + failover
-cargo run -p crafty --example job_queue_cluster  # sharded queue, dedup, autoscale
+./scripts/run-example.sh background-jobs
+./scripts/run-example.sh stateful-workers
+./scripts/run-example.sh realtime
+./scripts/run-example.sh workflows
 
 ./e2e/run.sh      # 3-node QUIC/mTLS election + failover
 ./e2e/queue.sh    # job queue over QUIC (enqueue, follower lease/ack, leader failover)

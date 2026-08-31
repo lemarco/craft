@@ -2,7 +2,7 @@
 
 **Pattern:** Sidekiq / Celery-style async work — enqueue now, workers consume later, survive crash and leader failover.
 
-**Status:** Runtime **shipped** (0.1.0). Product helpers (`CraftyApp`, HTTP `202`, consumer macro) — [backlog B-03](../backlog.md) ✅.
+**Status:** **Shipped** in 0.2.x — `CraftyApp`, HTTP `202`/batch, `#[crafty::consumer]`, gateway, DLQ requeue, cron schedules.
 
 ## When to use
 
@@ -49,7 +49,7 @@ let app = CraftyApp::builder(NodeId(1))
             enabled: true,
         },
     )
-    .start_from_env()
+    .start_from_env_shared()
     .await?;
 ```
 
@@ -105,7 +105,7 @@ let worker = app.spawn_consumer(
 // … later: stop_tx.send(true)?; worker.await?;
 ```
 
-**Lower level:** [`run_queue_consumer`](../../crates/crafty-actor/src/queue.rs) on `cluster.job_queue("stream")` when you need a custom loop (see `examples/job_queue_worker.rs`).
+**Lower level:** [`run_queue_consumer`](../../crates/crafty-actor/src/queue.rs) on `cluster.job_queue("stream")` when you need a custom loop. See [background-jobs showcase](../../examples/background-jobs/) or `./e2e/queue.sh` for QUIC failover.
 
 **Idempotency:** use `EnqueueOptions::dedup_key` and/or store processed ids in your `StateMachine` or `ActorStateStore`.
 
@@ -149,24 +149,25 @@ Policy can persist in Meta-Raft ([job-queue](../decisions/job-queue.md)).
 
 | Asset | Purpose |
 |-------|---------|
-| `examples/job_queue_worker.rs` | 3-node, follower consumer, leader failover (manual `run_queue_consumer`) |
-| `examples/job_queue_cluster.rs` | Sharded, priority, dedup, autoscale |
-| `e2e/queue.sh` | Real QUIC/mTLS |
+| [`examples/background-jobs/`](../../examples/background-jobs/) | Tier C showcase — HTTP `202`, `#[consumer]` |
+| `e2e/queue.sh` | Real QUIC/mTLS, follower worker + leader failover |
 | `crafty/tests/queue.rs` | Integration |
 | `crafty/tests/consumer.rs` | `#[crafty::consumer]` + `spawn_consumer` |
 | `crafty/tests/http_jobs.rs` | HTTP enqueue, batch, DLQ requeue |
 
-## Target product API (remaining backlog)
+## Future polish (not blocking 0.2.2)
 
-Partially landed via `CraftyApp` + consumer macro. Still aspirational:
+Declarative worker registration remains aspirational:
 
 ```rust
 CraftyApp::from_env()
-    .jobs("emails", EmailWorker::handle)  // declarative worker registration
+    .jobs("emails", EmailWorker::handle)
     .workers(EmailWorker, scale: Auto)
     .run()
     .await?;
 ```
+
+Use `.manage_auto` / `.manage` on the builder today ([examples/background-jobs/](../../examples/background-jobs/)).
 
 ## Related
 

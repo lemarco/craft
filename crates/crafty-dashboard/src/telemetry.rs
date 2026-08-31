@@ -107,6 +107,76 @@ pub enum CraftyEvent {
         /// Groups retired on this node.
         retire: Vec<u32>,
     },
+    /// The Raft commit index advanced on this node.
+    RaftCommitted {
+        /// New commit index.
+        commit_index: u64,
+        /// Current term.
+        term: u64,
+    },
+    /// A job was enqueued on a stream.
+    JobEnqueued {
+        /// Stream name.
+        stream: String,
+        /// Assigned job id.
+        job_id: u64,
+    },
+    /// A job was leased to a worker.
+    JobLeased {
+        /// Stream name.
+        stream: String,
+        /// Leased job id.
+        job_id: u64,
+        /// Lease token for ack/nack.
+        lease_id: u64,
+        /// Worker node id.
+        worker_node: u64,
+        /// Worker instance id on that node.
+        worker_instance: u32,
+    },
+    /// A lease was acknowledged (job completed).
+    JobAcked {
+        /// Stream name.
+        stream: String,
+        /// Acknowledged lease id.
+        lease_id: u64,
+        /// Worker node id.
+        worker_node: u64,
+    },
+}
+
+impl CraftyEvent {
+    /// Map a queue wire lifecycle hook into a dashboard telemetry event.
+    #[must_use]
+    pub fn from_queue_lifecycle(ev: crafty_actor::QueueLifecycleEvent) -> Self {
+        match ev {
+            crafty_actor::QueueLifecycleEvent::Enqueued { stream, job_id } => {
+                Self::JobEnqueued { stream, job_id }
+            }
+            crafty_actor::QueueLifecycleEvent::Leased {
+                stream,
+                job_id,
+                lease_id,
+                worker_node,
+                worker_instance,
+            } => Self::JobLeased {
+                stream,
+                job_id,
+                lease_id,
+                worker_node,
+                worker_instance,
+            },
+            crafty_actor::QueueLifecycleEvent::Acked {
+                stream,
+                lease_id,
+                worker_node,
+            } => Self::JobAcked {
+                stream,
+                lease_id,
+                worker_node,
+            },
+        }
+    }
 }
 
 /// Options for opt-in per-message tracing (observability §7). Off by default; when
@@ -238,5 +308,35 @@ mod tests {
         let json =
             serde_json::to_string(&CraftyEvent::LeaderChanged { term: 4, leader: 2 }).unwrap();
         assert_eq!(json, r#"{"event":"leader_changed","term":4,"leader":2}"#);
+        let json = serde_json::to_string(&CraftyEvent::JobEnqueued {
+            stream: "jobs".into(),
+            job_id: 7,
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            r#"{"event":"job_enqueued","stream":"jobs","job_id":7}"#
+        );
+    }
+
+    #[test]
+    fn queue_lifecycle_maps_to_crafty_event() {
+        let ev = CraftyEvent::from_queue_lifecycle(crafty_actor::QueueLifecycleEvent::Leased {
+            stream: "jobs".into(),
+            job_id: 3,
+            lease_id: 99,
+            worker_node: 4,
+            worker_instance: 1,
+        });
+        assert_eq!(
+            ev,
+            CraftyEvent::JobLeased {
+                stream: "jobs".into(),
+                job_id: 3,
+                lease_id: 99,
+                worker_node: 4,
+                worker_instance: 1,
+            }
+        );
     }
 }

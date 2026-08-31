@@ -57,7 +57,7 @@ Production examples document a **single cluster CA** issuing:
 - **Node certs** (peer + server for `/client/wire`)
 - **Client certs** (each app/service that uses `RemoteClient`)
 
-Provide `examples/certs/` script: generate CA, node cert, client cert.
+Provide `dev/certs/` script: generate CA, node cert, client cert.
 
 ## Rust stack
 

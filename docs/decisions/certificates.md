@@ -12,7 +12,7 @@ Users need mTLS material for VPS deploys ([security](security.md)). v1 ships man
 
 Ship **both**:
 
-1. **`examples/certs/`** — runnable script(s) to generate dev/small-prod PKI
+1. **`dev/certs/`** — runnable script(s) to generate dev/small-prod PKI
 2. **`docs/certs.md`** — manual OpenSSL equivalent + env var reference + rotation notes
 
 ### Script output
@@ -73,7 +73,7 @@ Builder: `Security::from_pem_files` → `PemSecurity`; `.cert_watch(period)` ena
 
 | Path | Purpose |
 |------|---------|
-| `examples/step-ca/` | docker-compose + bootstrap + renewal demo |
+| `dev/step-ca/` | docker-compose + bootstrap + renewal demo |
 | `docs/certs.md` § Automation | Operator runbook |
 | `crafty-net` pem + reload | Load + apply |
 | `crafty` `PemSecurity` / `CertReloadHandle` | Facade + `crafty-node` wiring |

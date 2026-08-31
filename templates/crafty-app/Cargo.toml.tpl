@@ -5,9 +5,9 @@ edition = "2024"
 publish = false
 
 [dependencies]
-crafty = "0.1"
+crafty = { version = "0.2", features = ["dev-certs"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 
 [features]
-default = []
+default = ["http-jobs"]
 http-jobs = ["crafty/http-jobs"]

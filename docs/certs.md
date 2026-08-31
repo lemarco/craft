@@ -16,22 +16,22 @@ with the bundled script or by hand with OpenSSL — and how to hand it to
 
 ## Quick start (the script)
 
-`examples/certs/generate.sh` uses only `openssl`, so it runs on Linux (OpenSSL)
+`dev/certs/generate.sh` uses only `openssl`, so it runs on Linux (OpenSSL)
 and macOS (LibreSSL) with no Rust toolchain.
 
 ```bash
 # First VPS — creates the cluster CA next to node 1's cert:
-./examples/certs/generate.sh --node-id 1 --out ./certs
+./dev/certs/generate.sh --node-id 1 --out ./certs
 
 # Every additional VPS — reuse the same CA (copy ca.pem/ca.key there, or point at them):
-./examples/certs/generate.sh --node-id 2 --out ./certs --ca ./certs/ca.pem --ca-key ./certs/ca.key
-./examples/certs/generate.sh --node-id 3 --out ./certs --ca ./certs/ca.pem --ca-key ./certs/ca.key
+./dev/certs/generate.sh --node-id 2 --out ./certs --ca ./certs/ca.pem --ca-key ./certs/ca.key
+./dev/certs/generate.sh --node-id 3 --out ./certs --ca ./certs/ca.pem --ca-key ./certs/ca.key
 
 # A client certificate for an app that uses RemoteClient:
-./examples/certs/generate.sh --client --name my-app --out ./certs --ca ./certs/ca.pem --ca-key ./certs/ca.key
+./dev/certs/generate.sh --client --name my-app --out ./certs --ca ./certs/ca.pem --ca-key ./certs/ca.key
 
 # Or just the CA:
-./examples/certs/generate.sh --ca-only --out ./certs
+./dev/certs/generate.sh --ca-only --out ./certs
 ```
 
 Artifacts written to `--out`:
@@ -177,8 +177,8 @@ CN is free-form.
 
    The joiner fetches the peer-address book from the seed over `/cluster/peers`,
    the leader commits a membership change adding it, and addresses propagate both
-   ways so every node can reach the newcomer. See the `vps_join` example
-   (`cargo run -p crafty --example vps_join --features dev-certs`).
+   ways so every node can reach the newcomer.    See [`dev/3node/README.md`](../dev/3node/README.md) and dynamic `join` on
+   [`crafty-node`](../../crates/crafty-node/README.md).
 
 > **Static membership still works** for fixed clusters: bootstrap the full member
 > set up front via matching `CRAFTY_PEERS` + `.members(...)`. Dynamic `join` is the
@@ -212,7 +212,7 @@ Reload on the **Raft leader** is rejected unless you call
 
 | Environment | Issuer | Example |
 |-------------|--------|---------|
-| VPS / compose | [step-ca](https://smallstep.com/docs/step-ca/) | [`examples/step-ca/`](../examples/step-ca/) |
+| VPS / compose | [step-ca](https://smallstep.com/docs/step-ca/) | [`dev/step-ca/`](../dev/step-ca/) |
 
 Public ACME (Let's Encrypt) is **not** supported for crafty wire identities — you
 need a private CA with `serverAuth` + `clientAuth` and SAN `crafty-node-<id>`.

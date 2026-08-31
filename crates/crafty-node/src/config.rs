@@ -112,7 +112,7 @@ pub fn load_security(
             if members.len() > 1 || joining {
                 return Err("multi-node clusters need shared certs: set \
                      CRAFTY_NODE_CERT/CRAFTY_NODE_KEY/CRAFTY_CA_CERT on every node \
-                     (mint them with examples/certs/generate.sh; see docs/certs.md). \
+                     (mint them with dev/certs/generate.sh; see docs/certs.md). \
                      A per-process dev CA only works for a single node."
                     .into());
             }
@@ -386,8 +386,7 @@ mod tests {
     }
 
     fn generate_script() -> Option<PathBuf> {
-        let script =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/certs/generate.sh");
+        let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../dev/certs/generate.sh");
         script.is_file().then_some(script)
     }
 

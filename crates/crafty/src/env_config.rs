@@ -66,6 +66,65 @@ fn env_bool(key: &str) -> bool {
     )
 }
 
+/// Process role — **advanced production split only**.
+///
+/// Product showcases run the same binary on every node (gateway + workers). Use
+/// [`NodeRole::Gateway`] only when you deliberately want edge-only ingress without
+/// local consumers or supervised actors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeRole {
+    /// Gateway and workers/consumers on the same node (local dev default).
+    Both,
+    /// Edge node: HTTP/WebSocket ingress without local workers or consumers.
+    Gateway,
+    /// Worker-only node (still honors `CRAFTY_GATEWAY` when set).
+    Worker,
+}
+
+/// Parse [`NodeRole`] from `CRAFTY_ROLE` with legacy env fallbacks.
+///
+/// Legacy mapping (when `CRAFTY_ROLE` is unset):
+/// - `CRAFTY_NO_CONSUMER=1`, `CRAFTY_GATEWAY_ONLY=1`, or `GATEWAY=1` → [`NodeRole::Gateway`]
+#[must_use]
+pub fn node_role_from_env() -> NodeRole {
+    if let Some(raw) = env("CRAFTY_ROLE") {
+        return match raw.to_ascii_lowercase().as_str() {
+            "gateway" | "edge" => NodeRole::Gateway,
+            "worker" => NodeRole::Worker,
+            _ => NodeRole::Both,
+        };
+    }
+    if env_bool("CRAFTY_NO_CONSUMER")
+        || env_bool("CRAFTY_GATEWAY_ONLY")
+        || env("GATEWAY").as_deref() == Some("1")
+    {
+        return NodeRole::Gateway;
+    }
+    NodeRole::Both
+}
+
+/// Whether this node should skip tier C consumers (`#[consumer]` loops).
+///
+/// **Advanced:** returns `false` when `CRAFTY_ROLE=gateway`. Showcases do not set this.
+#[must_use]
+pub fn consumers_enabled_from_env() -> bool {
+    !matches!(node_role_from_env(), NodeRole::Gateway)
+}
+
+/// Whether this node should register supervised actors / auto-scaled workers.
+///
+/// **Advanced:** returns `false` when `CRAFTY_ROLE=gateway`. Showcases do not set this.
+#[must_use]
+pub fn workers_enabled_from_env() -> bool {
+    !matches!(node_role_from_env(), NodeRole::Gateway)
+}
+
+/// Whether this node is configured as gateway-only (no local workers/consumers).
+#[must_use]
+pub fn gateway_only_from_env() -> bool {
+    matches!(node_role_from_env(), NodeRole::Gateway)
+}
+
 /// Parse `CRAFTY_NODE_ID` (default `1`).
 pub fn node_id_from_env() -> Result<NodeId, Box<dyn Error>> {
     if let Some(raw) = env("CRAFTY_NODE_ID") {

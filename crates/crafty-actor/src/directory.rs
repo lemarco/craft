@@ -300,6 +300,24 @@ impl ClusterRef {
         self.pick_keyed(key)
             .map(|r| crate::session::ActorSession::new(&r, ttl))
     }
+
+    /// Like [`Self::session_keyed`] but accepts a string session key directly.
+    #[must_use]
+    pub fn session_str(
+        &self,
+        key: &str,
+        ttl: Option<std::time::Duration>,
+    ) -> Option<crate::session::ActorSession> {
+        let key = key.to_string();
+        self.session_keyed(&key, ttl)
+    }
+
+    /// Resolve the target instance for a string routing key.
+    #[must_use]
+    pub fn pick_keyed_str(&self, key: &str) -> Option<ActorRegistration> {
+        let key = key.to_string();
+        self.pick_keyed(&key)
+    }
 }
 
 /// Bridges an [`ActorDirectory`] to the network (E7): publishes this node's

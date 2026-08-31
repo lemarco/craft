@@ -74,7 +74,7 @@ flowchart TB
 
     subgraph Sessions["Real-time / session"]
         B04[B-04 websocket example]
-        B04a[B-04a gateway env split]
+        B04a[B-04a WS gateway example]
         B04b[B-04b session helpers]
         B10b[B-10b session migration soak]
     end
@@ -166,7 +166,7 @@ flowchart TB
 | Subtask | Description                                                     | Status |
 | ------- | --------------------------------------------------------------- | ------ |
 | B-04a   | `examples/websocket_gateway.rs` — axum WS + `ChatWorker`        | ✅      |
-| B-04b   | Document `GATEWAY=1` vs worker role (same binary, env split)    | ✅      |
+| B-04b   | Homogeneous cluster showcases (same binary every node; `CRAFTY_ROLE` advanced only) | ✅      |
 | B-04c   | Auth stub + `ActorSession` open on connect                      | ✅ `GATEWAY_TOKEN` |
 | B-04d   | Reconnect: handle `NoTarget`, session TTL expiry                | ✅ auto reopen in example |
 | B-04e   | Optional: checkpoint last N messages to SM (comment in example) | ✅ comment on `ChatWorker` |

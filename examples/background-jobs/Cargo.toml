@@ -1,0 +1,17 @@
+# Background jobs showcase — tier C: HTTP 202 → durable queue → worker.
+#
+#   cargo run --release          # terminal 1 — gateway + consumer
+#   ./trigger.sh welcome-user-42 # terminal 2
+[package]
+name = "crafty-showcase-background-jobs"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+crafty = { path = "../../crates/crafty", features = ["http-jobs"] }
+crafty-showcase-common = { path = "../../crates/crafty-showcase-common" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
+tracing = "0.1"

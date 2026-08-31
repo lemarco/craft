@@ -30,8 +30,11 @@ pub(crate) const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
   .kv { display:flex; justify-content:space-between; padding:3px 0; }
   .kv span:first-child { color:var(--muted); }
   #log { max-height:320px; overflow:auto; margin:0; padding:0; list-style:none; }
-  #log li { padding:4px 8px; border-bottom:1px solid var(--line); white-space:pre-wrap; }
-  #log li .t { color:var(--accent); }
+  #log li { padding:4px 8px; border-bottom:1px solid var(--line); white-space:pre-wrap; font-size:13px; }
+  #log li .t { color:var(--muted); font-size:12px; margin-right:8px; }
+  #log li .k { color:var(--accent); }
+  #log li .q { color:var(--warn); }
+  #log li .r { color:var(--ok); }
   .badge { padding:1px 7px; border-radius:10px; font-size:12px; background:#21262d; }
   .badge.leader { color:var(--ok); }
 </style>
@@ -89,6 +92,24 @@ async function refresh() {
       `<tr><td>${x.saga_id.slice(0,16)}…</td><td>${x.phase}</td><td>${x.completed_steps}</td><td>${x.failed_step ?? '—'}</td></tr>`).join('');
   } catch (e) { /* transient during elections */ }
 }
+function formatEvent(raw) {
+  try {
+    const e = JSON.parse(raw);
+    switch (e.event) {
+      case 'job_enqueued': return `<span class="k">queue</span> ${e.stream}: enqueued job <b>${e.job_id}</b>`;
+      case 'job_leased': return `<span class="q">queue</span> ${e.stream}: leased job <b>${e.job_id}</b> → worker ${e.worker_node}#${e.worker_instance}`;
+      case 'job_acked': return `<span class="r">queue</span> ${e.stream}: ack lease <b>${e.lease_id}</b> (worker ${e.worker_node})`;
+      case 'raft_committed': return `<span class="k">raft</span> commit index <b>${e.commit_index}</b> (term ${e.term})`;
+      case 'leader_changed': return `<span class="k">raft</span> leader → node <b>${e.leader}</b> (term ${e.term})`;
+      case 'node_joined': return `node <b>${e.node_id}</b> joined cluster`;
+      case 'node_left': return `node <b>${e.node_id}</b> left (${e.graceful ? 'graceful' : 'ungraceful'})`;
+      case 'actor_spawned': return `actor spawned: ${e.id}`;
+      case 'actor_stopped': return `actor stopped: ${e.id} (${e.reason})`;
+      case 'message_handled': return `${e.id}: message handled (${e.latency_ms} ms)`;
+      default: return `<span class="k">${e.event ?? 'event'}</span> ${raw}`;
+    }
+  } catch (_) { return raw; }
+}
 function connect() {
   const es = new EventSource('/dashboard/events');
   es.onopen = () => { $('livedot').classList.add('live'); $('livetext').textContent = 'live'; };
@@ -96,7 +117,7 @@ function connect() {
   es.onmessage = (m) => {
     const li = document.createElement('li');
     const now = new Date().toLocaleTimeString();
-    li.innerHTML = `<span class="t">${now}</span>  ${m.data}`;
+    li.innerHTML = `<span class="t">${now}</span>${formatEvent(m.data)}`;
     const log = $('log');
     log.prepend(li);
     while (log.childElementCount > 200) log.removeChild(log.lastChild);

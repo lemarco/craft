@@ -38,6 +38,12 @@ cargo test --workspace --doc --all-features 2>&1 | maybe_tee
 log ">> doc"
 cargo doc --workspace --no-deps --all-features 2>&1 | maybe_tee
 
+log ">> examples check"
+bash scripts/check-examples.sh 2>&1 | maybe_tee
+
+log ">> showcase common + client"
+cargo check -p crafty-showcase-common -p crafty-showcase-client 2>&1 | maybe_tee
+
 log ">> publish dry-run"
 # Workspace dry-run resolves path deps locally (per-crate dry-run fails when the
 # new workspace version is not yet on crates.io — e.g. crafty-proto 0.2.0 during

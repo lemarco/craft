@@ -1239,11 +1239,17 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         let queue_service: Option<Arc<QueueService>> = if self.job_streams.is_empty() {
             None
         } else {
-            Some(Arc::new(QueueService::new(
-                node_id,
-                Arc::clone(&facts) as Arc<dyn ClusterState>,
-                Arc::clone(&transport),
-            )))
+            let events_for_queue = events.clone();
+            Some(Arc::new(
+                QueueService::new(
+                    node_id,
+                    Arc::clone(&facts) as Arc<dyn ClusterState>,
+                    Arc::clone(&transport),
+                )
+                .with_lifecycle_hook(Arc::new(move |ev| {
+                    let _ = events_for_queue.emit(CraftyEvent::from_queue_lifecycle(ev));
+                })),
+            ))
         };
         let mut job_queues: HashMap<String, Arc<dyn JobQueue>> = HashMap::new();
         let mut local_backends: HashMap<String, Arc<dyn JobQueue>> = HashMap::new();

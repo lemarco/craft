@@ -2,7 +2,7 @@
 
 **Pattern:** Long-running or resumable work on actors; state survives VPS crash and graceful leave without Redis.
 
-**Status:** Migration + supervisor **shipped**. Durable workflow store: `InMemoryStore` (dev) or `StateMachine`; production **`RedbActorStateStore`** — [backlog B-01](../backlog.md).
+**Status:** **Shipped** in 0.2.x — migration + supervisor + **`RedbActorStateStore`** (voter replication, TTL/GC).
 
 ## When to use
 
@@ -17,7 +17,7 @@
 | Level | Mechanism | Survives crash? |
 |-------|-----------|-----------------|
 | **Hot** | Fields on actor struct + [`ActorSession`](../../crates/crafty-actor/src/session.rs) | ❌ (OK for live session) |
-| **Workflow keys** | [`ActorStateStore`](../../crates/crafty-actor/src/store.rs) → redb (B-01) | ✅ (target) |
+| **Workflow keys** | [`ActorStateStore`](../../crates/crafty-actor/src/store.rs) → `RedbActorStateStore` | ✅ |
 | **Domain data** | `StateMachine` via `propose` | ✅ (Raft replicated) |
 
 ## Architecture
@@ -51,7 +51,7 @@ let cluster = CraftyCluster::builder(node_id, machine)
     .await?;
 ```
 
-Production: replace with `RedbActorStateStore` when **B-01** lands — same trait, no API change.
+Production: `RedbActorStateStore` is wired automatically with `.data_dir()` — same trait, no API change.
 
 ### 2. Stateful worker — write-through
 
@@ -125,7 +125,7 @@ Documented in [actor-routing-tier3](../decisions/actor-routing-tier3.md). For du
 
 | Concern | Action |
 |---------|--------|
-| Backup | `actor-store.redb` (B-01) + `group-*.redb` if using SM |
+| Backup | `actor-store.redb` + `group-*.redb` if using SM |
 | Drain | `CRAFTY_DRAIN_TIMEOUT` / per-group override |
 | Split brain vs SM | Never contradict SM in actor store — SM wins |
 

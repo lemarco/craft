@@ -100,6 +100,12 @@ impl CraftyAppBuilder {
         if !cfg.join_seeds.is_empty() {
             inner = inner.join_seeds(cfg.join_seeds.clone());
         }
+        if let Some(admin) = cfg.admin {
+            inner = inner.admin_addr(admin);
+        }
+        if let Some((cert, key)) = cfg.admin_tls.clone() {
+            inner = inner.admin_tls(cert, key);
+        }
         #[cfg(feature = "http-jobs")]
         {
             let mut builder = Self {
@@ -327,7 +333,10 @@ impl CraftyAppBuilder {
             cluster: self.inner.start_local(net).await,
         });
         if let Some(config) = gateway {
-            spawn_gateway_task(Arc::clone(&app), config);
+            let addr = config.addr;
+            spawn_gateway_task(Arc::clone(&app), config)
+                .await
+                .unwrap_or_else(|e| panic!("crafty: gateway bind to {addr} failed: {e}"));
         }
         app
     }
@@ -367,6 +376,27 @@ impl CraftyAppBuilder {
         let cluster = self.inner.start_quic(security, listen, peers).await?;
         Ok(CraftyApp { cluster })
     }
+
+    /// Like [`Self::start_quic`], but returns [`Arc`] and spawns the gateway when configured.
+    #[cfg(feature = "http-jobs")]
+    pub async fn start_quic_shared(
+        self,
+        security: Security,
+        listen: std::net::SocketAddr,
+        peers: crafty_net::PeerDirectory,
+    ) -> Result<Arc<CraftyApp>, StartError> {
+        let gateway = self.gateway;
+        let app = Arc::new(CraftyApp {
+            cluster: self.inner.start_quic(security, listen, peers).await?,
+        });
+        if let Some(config) = gateway {
+            let addr = config.addr;
+            spawn_gateway_task(Arc::clone(&app), config)
+                .await
+                .map_err(|e| StartError::Config(format!("gateway bind to {addr}: {e}")))?;
+        }
+        Ok(app)
+    }
 }
 
 /// Running product app handle ([`EmptyStateMachine`] by default).
@@ -387,17 +417,43 @@ impl CraftyApp {
 
     /// Start over QUIC using a parsed [`AppConfig`].
     ///
+    /// Does **not** spawn the product gateway — use [`Self::start_from_config_shared`]
+    /// when [`AppConfig::gateway`](crate::env_config::AppConfig::gateway) is set.
+    ///
     /// # Errors
     /// Returns [`StartError`] when bind or join fails.
     pub async fn start_from_config(cfg: AppConfig) -> Result<Self, StartError> {
         let builder = CraftyAppBuilder::from_config(&cfg);
-        let listen = cfg.listen;
-        let peers = cfg.peers;
-        let security = cfg.security;
-        builder.start_quic(security, listen, peers).await
+        builder
+            .start_quic(cfg.security, cfg.listen, cfg.peers)
+            .await
+    }
+
+    /// Like [`Self::start_from_config`], but returns [`Arc`] and spawns the product gateway.
+    ///
+    /// # Errors
+    /// Returns [`StartError`] when QUIC bind or gateway bind fails.
+    #[cfg(feature = "http-jobs")]
+    pub async fn start_from_config_shared(cfg: AppConfig) -> Result<Arc<Self>, StartError> {
+        CraftyAppBuilder::from_config(&cfg)
+            .start_quic_shared(cfg.security, cfg.listen, cfg.peers)
+            .await
+    }
+
+    /// Like [`Self::start_from_config`], but returns [`Arc`] and spawns the product gateway.
+    ///
+    /// # Errors
+    /// Returns [`StartError`] when env parsing, QUIC bind, or gateway bind fails.
+    #[cfg(feature = "http-jobs")]
+    pub async fn start_from_env_shared() -> Result<Arc<Self>, StartError> {
+        let cfg = app_config_from_env().map_err(|e| StartError::Config(e.to_string()))?;
+        Self::start_from_config_shared(cfg).await
     }
 
     /// Parse `CRAFTY_*` environment variables and start over QUIC.
+    ///
+    /// Does **not** spawn the product gateway — use [`Self::start_from_env_shared`]
+    /// when `CRAFTY_GATEWAY` is set (`http-jobs` feature).
     ///
     /// # Errors
     /// Returns an error when env parsing or cluster start fails.
@@ -605,6 +661,16 @@ impl CraftyApp {
         self.session_keyed(group, key, ttl)
     }
 
+    /// Like [`Self::session`] but accepts a string routing key (WebSocket users, tenants).
+    pub fn session_str(
+        &self,
+        group: &str,
+        key: &str,
+        ttl: Option<Duration>,
+    ) -> Option<ActorSession> {
+        self.cluster_ref(group).session_str(key, ttl)
+    }
+
     /// Open a sticky session to a keyed worker pool.
     pub fn session_keyed<K: Hash>(
         &self,
@@ -621,6 +687,13 @@ impl CraftyApp {
         self.cluster.directory().cluster(group)
     }
 
+    /// Poll until Raft elected a leader and optional job streams are mounted.
+    ///
+    /// Returns `true` when ready. On timeout, returns `false` (does not panic).
+    pub async fn wait_until_ready(&self, opts: crate::ReadyOpts) -> bool {
+        self.cluster.wait_until_ready(opts).await
+    }
+
     /// Block until Ctrl-C / SIGINT, then shut down the node.
     ///
     /// # Errors
@@ -631,12 +704,24 @@ impl CraftyApp {
         Ok(())
     }
 
+    /// Like [`Self::run_until_shutdown`] for an [`Arc`] handle (showcase binaries).
+    ///
+    /// # Errors
+    /// Returns an error when the signal handler fails to install.
+    pub async fn run_until_shutdown_shared(
+        app: Arc<Self>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        tokio::signal::ctrl_c().await?;
+        app.cluster().shutdown();
+        Ok(())
+    }
+
     /// Spawn the product HTTP / WebSocket gateway on a background task.
     ///
     /// Requires `http-jobs` feature and an [`Arc`] handle so routes can call into the app.
     #[cfg(feature = "http-jobs")]
-    pub fn spawn_gateway(app: Arc<Self>, config: GatewayConfig) {
-        crate::gateway::spawn_gateway(app, config);
+    pub async fn spawn_gateway(app: Arc<Self>, config: GatewayConfig) -> std::io::Result<()> {
+        crate::gateway::spawn_gateway(app, config).await
     }
 
     /// HTTP job enqueue API (`POST /jobs/{stream}` → `202`). Requires `http-jobs` feature.

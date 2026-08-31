@@ -23,6 +23,7 @@ use crafty_proto::{
     QueueNackReply, QueueNackRequest, QueueReplicateOp, QueueReplicateReply, QueueReplicateRequest,
 };
 
+use crate::queue_lifecycle::QueueLifecycleEvent;
 use crate::queue_prefetch::{CachedPendingJob, DEFAULT_QUEUE_BATCH_MAX, QueuePrefetchCache};
 use crate::sharded_queue::{decode_global_id, encode_global_id};
 use crate::supervisor::ClusterState;
@@ -100,7 +101,6 @@ fn now_ms() -> u64 {
     .unwrap_or(u64::MAX)
 }
 const REPLICATE_NOT_LEADER: &str = "queue replicate rejected: caller is not raft leader";
-const REPLICATE_UNAUTHENTICATED: &str = "queue replicate rejected: unknown caller";
 
 /// Serves `/raft/v1/queue/*` on the leader; followers transparently forward.
 pub struct QueueService {
@@ -111,6 +111,7 @@ pub struct QueueService {
     sharded: Mutex<HashMap<String, Arc<ShardedJobQueue>>>,
     state: Arc<dyn ClusterState>,
     transport: Arc<dyn Transport>,
+    lifecycle_hook: Option<Arc<dyn Fn(QueueLifecycleEvent) + Send + Sync>>,
 }
 
 impl QueueService {
@@ -129,7 +130,56 @@ impl QueueService {
             sharded: Mutex::new(HashMap::new()),
             state,
             transport,
+            lifecycle_hook: None,
         }
+    }
+
+    /// Emit [`QueueLifecycleEvent`]s to the dashboard / user sinks (observability).
+    #[must_use]
+    pub fn with_lifecycle_hook(
+        mut self,
+        hook: Arc<dyn Fn(QueueLifecycleEvent) + Send + Sync>,
+    ) -> Self {
+        self.lifecycle_hook = Some(hook);
+        self
+    }
+
+    fn emit_lifecycle(&self, event: QueueLifecycleEvent) {
+        if let Some(hook) = &self.lifecycle_hook {
+            hook(event);
+        }
+    }
+
+    fn emit_enqueued(&self, stream: &str, job_id: u64) {
+        self.emit_lifecycle(QueueLifecycleEvent::Enqueued {
+            stream: stream.to_owned(),
+            job_id,
+        });
+    }
+
+    fn emit_leased(
+        &self,
+        stream: &str,
+        job_id: u64,
+        lease_id: u64,
+        worker_node: u64,
+        worker_instance: u32,
+    ) {
+        self.emit_lifecycle(QueueLifecycleEvent::Leased {
+            stream: stream.to_owned(),
+            job_id,
+            lease_id,
+            worker_node,
+            worker_instance,
+        });
+    }
+
+    fn emit_acked(&self, stream: &str, lease_id: u64, worker_node: u64) {
+        self.emit_lifecycle(QueueLifecycleEvent::Acked {
+            stream: stream.to_owned(),
+            lease_id,
+            worker_node,
+        });
     }
 
     /// Register a local redb-backed stream, optional prefetch depth, and cron schedules.
@@ -256,6 +306,7 @@ impl QueueService {
         let request = QueueReplicateRequest {
             stream: stream.to_string(),
             ops: ops.clone(),
+            leader_id: self.node_id.0,
         };
         let mut set = JoinSet::new();
         for peer in peers {
@@ -296,14 +347,11 @@ impl QueueService {
         Ok(())
     }
 
-    fn authorize_replicate(&self, from: Option<NodeId>) -> Result<(), String> {
-        let Some(from) = from else {
-            return Err(REPLICATE_UNAUTHENTICATED.to_string());
-        };
+    fn authorize_replicate(&self, declared_leader: NodeId) -> Result<(), String> {
         let Some(leader) = self.state.leader_id() else {
             return Err("no raft leader elected".to_string());
         };
-        if from != leader {
+        if declared_leader != leader {
             return Err(REPLICATE_NOT_LEADER.to_string());
         }
         Ok(())
@@ -311,10 +359,10 @@ impl QueueService {
 
     async fn handle_replicate(
         &self,
-        from: Option<NodeId>,
+        _from: Option<NodeId>,
         request: QueueReplicateRequest,
     ) -> QueueReplicateReply {
-        if let Err(e) = self.authorize_replicate(from) {
+        if let Err(e) = self.authorize_replicate(NodeId(request.leader_id)) {
             return QueueReplicateReply { error: Some(e) };
         }
         match self.local_stream(&request.stream) {
@@ -527,6 +575,7 @@ impl QueueService {
                             request.priority,
                             request.not_before_ms,
                         );
+                        self.emit_enqueued(&request.stream, id.0);
                         return QueueEnqueueReply {
                             job_id: Some(id.0),
                             error: None,
@@ -565,6 +614,7 @@ impl QueueService {
                                 request.priority,
                                 request.not_before_ms,
                             );
+                            self.emit_enqueued(&request.stream, id.0);
                             QueueEnqueueReply {
                                 job_id: Some(id.0),
                                 error: None,
@@ -635,6 +685,7 @@ impl QueueService {
                                 job.priority,
                                 job.not_before_ms,
                             );
+                            self.emit_enqueued(&request.stream, id.0);
                         }
                         return QueueEnqueueBatchReply {
                             job_ids: ids.into_iter().map(|id| id.0).collect(),
@@ -676,6 +727,7 @@ impl QueueService {
                                     job.priority,
                                     job.not_before_ms,
                                 );
+                                self.emit_enqueued(&request.stream, id.0);
                             }
                             QueueEnqueueBatchReply {
                                 job_ids: ids.into_iter().map(|id| id.0).collect(),
@@ -735,6 +787,9 @@ impl QueueService {
                             return QueueAckBatchReply { error: Some(e) };
                         }
                         self.evict_prefetch_sharded_acks(&request.stream, &reps);
+                        for lease_id in &request.lease_ids {
+                            self.emit_acked(&request.stream, *lease_id, request.worker_node);
+                        }
                         return QueueAckBatchReply { error: None };
                     }
                     Err(e) => {
@@ -752,6 +807,9 @@ impl QueueService {
                             QueueAckBatchReply { error: Some(e) }
                         } else {
                             self.evict_prefetch_ack_ops(&request.stream, &ops);
+                            for lease_id in &request.lease_ids {
+                                self.emit_acked(&request.stream, *lease_id, request.worker_node);
+                            }
                             QueueAckBatchReply { error: None }
                         }
                     }
@@ -794,6 +852,15 @@ impl QueueService {
                                 jobs: Vec::new(),
                                 error: Some(e),
                             };
+                        }
+                        for j in &jobs {
+                            self.emit_leased(
+                                &request.stream,
+                                j.job_id.0,
+                                j.lease_id.0,
+                                request.worker_node,
+                                request.worker_instance,
+                            );
                         }
                         return QueueLeaseReply {
                             jobs: jobs
@@ -840,6 +907,15 @@ impl QueueService {
                                     jobs: Vec::new(),
                                     error: Some(e),
                                 };
+                            }
+                            for j in &jobs {
+                                self.emit_leased(
+                                    &request.stream,
+                                    j.job_id.0,
+                                    j.lease_id.0,
+                                    request.worker_node,
+                                    request.worker_instance,
+                                );
                             }
                             QueueLeaseReply {
                                 jobs: Self::leased_to_wire(jobs),
@@ -895,6 +971,7 @@ impl QueueService {
                             &request.stream,
                             std::slice::from_ref(&rep),
                         );
+                        self.emit_acked(&request.stream, request.lease_id, request.worker_node);
                         return QueueAckReply { error: None };
                     }
                     Err(e) => {
@@ -915,6 +992,7 @@ impl QueueService {
                             return QueueAckReply { error: Some(e) };
                         }
                         self.evict_prefetch_ack_ops(&request.stream, &ops);
+                        self.emit_acked(&request.stream, request.lease_id, request.worker_node);
                         QueueAckReply { error: None }
                     }
                     Err(e) => QueueAckReply {

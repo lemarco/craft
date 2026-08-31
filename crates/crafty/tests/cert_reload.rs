@@ -10,7 +10,7 @@ use crafty_test_support::{advance, free_udp};
 #[tokio::test(start_paused = true)]
 async fn pem_hot_reload_reissues_leaf_without_restart() {
     let ws = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let script = ws.join("examples/certs/generate.sh");
+    let script = ws.join("dev/certs/generate.sh");
     if !script.is_file() {
         eprintln!("skip: generate.sh not found at {}", script.display());
         return;

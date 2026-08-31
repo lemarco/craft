@@ -3,3 +3,6 @@
 Cargo.lock
 **/*.rs.bk
 .DS_Store
+
+# Cursor Playwright MCP session dumps (console logs, page snapshots)
+.playwright-mcp/

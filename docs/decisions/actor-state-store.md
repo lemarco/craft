@@ -26,7 +26,7 @@ The original ADR recommended **Redis** as the primary example. Product direction
 | Backend | Role | Status |
 |---------|------|--------|
 | **`InMemoryStore`** | Tests, single-node dev | **shipped** |
-| **`RedbActorStateStore`** | Production, `{data_dir}/actor-store.redb`, voter replication like `RedbJobQueue` | **backlog B-01** |
+| **`RedbActorStateStore`** | Production, `{data_dir}/actor-store.redb`, voter replication like `RedbJobQueue` | **shipped** (0.2.x) |
 | **`RedisStore`** (`crafty-store-redis`) | Optional — shared cache with non-crafty services | **shipped** |
 
 Product getting started and [scenario guides](../scenarios/README.md) use **redb or SM only**. Redis is documented under optional integration.
@@ -38,7 +38,7 @@ Product getting started and [scenario guides](../scenarios/README.md) use **redb
 | Business entity the product audits | `StateMachine` via `propose` |
 | Job payload / retry | `JobQueue` via `enqueue` |
 | Hot state for one session (loss on crash OK) | Actor struct fields + [`ActorSession`](../../crates/crafty-actor/src/session.rs) |
-| Idempotency / step counter across crash | `ActorStateStore` (redb when B-01 lands) |
+| Idempotency / step counter across crash | `ActorStateStore` (`RedbActorStateStore` with `.data_dir()`) |
 | Saga coordinator progress (multi-step workflow) | `MetaRaftSagaJournal` / `CompositeSagaJournal` ([workflows](../scenarios/workflows.md)) |
 
 ### Framework surface (shipped port)
@@ -53,7 +53,7 @@ pub trait ActorStateStore: Send + Sync {
 
 CraftyCluster::builder()
     .data_dir("/var/lib/crafty")
-    .actor_state_store(store)  // InMemoryStore (dev) or RedbActorStateStore (prod, backlog)
+    .actor_state_store(store)  // auto: RedbActorStateStore when `.data_dir()` is set
     .auto_workers([...])
 ```
 
@@ -69,7 +69,7 @@ Inject into actors via builder / `WorkerCtx` (see [stateful-workers](../scenario
 
 Raft `migration_snapshot` remains for small in-flight buffers only.
 
-### `RedbActorStateStore` design sketch (backlog B-01)
+### `RedbActorStateStore` (shipped)
 
 Mirror [job-queue voter replication](job-queue.md):
 
@@ -94,7 +94,6 @@ Not required for any of the four [product scenarios](product-scenarios.md) when 
 
 **Negative**
 
-- B-01 must ship before “production stateful worker keys without SM” is complete
 - Cross-region active-active still needs explicit architecture (not solved by local redb alone)
 
 ## Related

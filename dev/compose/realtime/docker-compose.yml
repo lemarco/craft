@@ -1,0 +1,104 @@
+# One-command 3-node realtime cluster (tier B showcase).
+#
+#   cd dev/compose/realtime
+#   docker compose up --build
+#
+# WebSocket: ws://127.0.0.1:8294/ws?user=alice
+# Admin:     http://127.0.0.1:9380/dashboard
+
+x-showcase-build: &showcase-build
+  build:
+    context: ../../..
+    dockerfile: examples/realtime/Dockerfile
+
+x-node-env: &node-env
+  CRAFTY_PEERS: "1@node1:7743,2@node2:7753,3@node3:7763"
+  CRAFTY_CA_CERT: /certs/ca.pem
+  RUST_LOG: info,showcase=debug,crafty=info,crafty_net=warn
+
+services:
+  certgen:
+    <<: *showcase-build
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        if [ ! -f /certs/ca.pem ]; then
+          /app/generate.sh --ca-only --out /certs
+          for id in 1 2 3; do
+            /app/generate.sh --node-id "$$id" --out /certs \
+              --ca /certs/ca.pem --ca-key /certs/ca.key
+          done
+        fi
+        ls -1 /certs
+    volumes:
+      - certs:/certs
+
+  node1:
+    <<: *showcase-build
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+    environment:
+      <<: *node-env
+      CRAFTY_NODE_ID: "1"
+      CRAFTY_LISTEN: 0.0.0.0:7743
+      CRAFTY_ADMIN: 0.0.0.0:9380
+      CRAFTY_GATEWAY: 0.0.0.0:8294
+      CRAFTY_NODE_CERT: /certs/node-1.pem
+      CRAFTY_NODE_KEY: /certs/node-1.key
+      CRAFTY_DATA_DIR: /data
+    volumes:
+      - certs:/certs
+      - node1-data:/data
+    ports:
+      - "8294:8294"
+      - "9380:9380"
+
+  node2:
+    <<: *showcase-build
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+    environment:
+      <<: *node-env
+      CRAFTY_NODE_ID: "2"
+      CRAFTY_LISTEN: 0.0.0.0:7753
+      CRAFTY_ADMIN: 0.0.0.0:9381
+      CRAFTY_GATEWAY: 0.0.0.0:8295
+      CRAFTY_NODE_CERT: /certs/node-2.pem
+      CRAFTY_NODE_KEY: /certs/node-2.key
+      CRAFTY_DATA_DIR: /data
+    volumes:
+      - certs:/certs
+      - node2-data:/data
+    ports:
+      - "8295:8295"
+      - "9381:9381"
+
+  node3:
+    <<: *showcase-build
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+    environment:
+      <<: *node-env
+      CRAFTY_NODE_ID: "3"
+      CRAFTY_LISTEN: 0.0.0.0:7763
+      CRAFTY_ADMIN: 0.0.0.0:9382
+      CRAFTY_GATEWAY: 0.0.0.0:8296
+      CRAFTY_NODE_CERT: /certs/node-3.pem
+      CRAFTY_NODE_KEY: /certs/node-3.key
+      CRAFTY_DATA_DIR: /data
+    volumes:
+      - certs:/certs
+      - node3-data:/data
+    ports:
+      - "8296:8296"
+      - "9382:9382"
+
+volumes:
+  certs:
+  node1-data:
+  node2-data:
+  node3-data:

@@ -46,22 +46,21 @@ See [job-queue](job-queue.md) for why mailboxes and Raft logs are not misused as
 
 **Non-goals:** Kubernetes as core product, one-container-per-actor microservices, mandatory Redis/PostgreSQL/RabbitMQ.
 
-### Unified product surface (target)
+### Unified product surface (shipped in 0.2.x)
 
-Today users assemble [`CraftyClusterBuilder`](../../crates/crafty/src/builder.rs) directly. The target **product API** wraps the same runtime:
+[`CraftyApp`](../../crates/crafty/src/app.rs) wraps the same runtime as `CraftyClusterBuilder`:
 
 ```rust
-// Target (backlog: CraftyApp) — not shipped yet; see docs/backlog.md
-CraftyApp::from_env()
-    .jobs("emails", EmailWorker::handle)
-    .workers(EmailWorker, scale: Auto)
-    .workflows([onboard_user])
-    .http_routes(gateway_routes())
-    .run_until_shutdown()
-    .await?;
+use std::sync::Arc;
+use crafty::{CraftyApp, ReadyOpts};
+
+let app: Arc<CraftyApp> = CraftyApp::start_from_env_shared().await?;
+app.wait_until_ready(ReadyOpts::default().with_queue("emails")).await;
+// spawn consumers, custom http_routes, WebSocket handlers…
+CraftyApp::run_until_shutdown_shared(app).await?;
 ```
 
-Until `CraftyApp` lands, each [scenario guide](../scenarios/README.md) documents the current builder-level wiring and points at examples.
+Declarative `.jobs(...)` / `.workers(..., scale: Auto)` registration remains aspirational — use `.manage_auto` / `.manage` on the builder today ([examples/](../../examples/README.md)).
 
 ### Scenario composition
 
@@ -92,25 +91,26 @@ Typical flows:
 - **Session:** WebSocket → `ActorSession` → `ask_session` (B + W)
 - **Workflow:** `run_saga` (A journal) with steps calling C, B, or A
 
-### What is shipped vs backlog
+### What is shipped vs polish backlog
 
-| Capability | Status | Backlog id |
-|------------|--------|------------|
+| Capability | Status | Notes |
+|------------|--------|-------|
 | `RedbJobQueue`, `ClusterJobQueue`, autoscale | **shipped** | — |
 | Saga journal (`MetaRaftSagaJournal`, `CompositeSagaJournal`) | **shipped** | — |
 | `ActorSession`, consistent-hash routing | **shipped** | — |
 | Actor migration on leave/crash | **shipped** | — |
-| `InMemoryStore` for actor workflow keys | **shipped** (dev) | — |
-| `RedbActorStateStore` + voter replication | **shipped** | — |
-| `CraftyApp` product facade | **shipped** | — |
-| HTTP jobs API helper (`202 + job_id`) | **backlog** | B-03 |
-| `websocket_gateway` example | **backlog** | B-04 |
-| Workflow fluent builder | **backlog** | B-05 |
-| `crafty init` template (all four scenarios) | **backlog** | B-06 |
-| Dashboard: queue depth + workflow status | **backlog** | B-07 |
-| Scenario docs de-emphasize Redis in getting started | **backlog** | B-08 |
+| `RedbActorStateStore` + voter replication + TTL/GC | **shipped** | B-01 ✅ |
+| `CraftyApp` product facade + gateway | **shipped** | B-02 ✅ |
+| HTTP jobs API (`202`, batch, DLQ requeue) | **shipped** | B-03 ✅ |
+| Real-time showcase + `ActorsApi` on gateway | **shipped** | B-04 ✅ — [examples/realtime/](../examples/realtime/) |
+| `WorkflowBuilder` + resume CLI | **shipped** | B-05 ✅ |
+| `crafty init` template | **shipped** | B-06 ✅ — polish: richer worker stubs |
+| Dashboard: queue depth + saga status | **shipped** | B-07 ✅ |
+| Scenario docs (redb-first, no mandatory Redis) | **shipped** | B-08 ✅ |
+| Gateway auth (beyond `GATEWAY_TOKEN` stub) | **polish** | — |
+| E2E HTTP batch via gateway in docker | **polish** | QUIC queue E2E exists |
 
-Full list: [backlog.md](../backlog.md).
+Full epic list: [backlog.md](../backlog.md) (P0–P3 ✅).
 
 ## Consequences
 
@@ -122,9 +122,9 @@ Full list: [backlog.md](../backlog.md).
 
 **Negative**
 
-- Current API is still builder-heavy until `CraftyApp` ships
-- Stateful workers need `RedbActorStateStore` before production crash-safe workflow keys without external DB
-- WebSocket gateway remains user-owned thin layer (by design — not a second server product)
+- Declarative `.jobs()` / `.workers()` builder sugar still aspirational — use `manage_auto` today
+- WebSocket gateway auth remains a thin stub (`GATEWAY_TOKEN`) — production apps add their own layer
+- Stateful workers need `RedbActorStateStore` + SM discipline — keys without SM still require explicit design
 
 ## Related
 

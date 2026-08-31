@@ -32,7 +32,7 @@ Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `crafty-core`, I
 crates/
 ├── crafty/              # facade — primary user dependency (CraftyCluster builder)
 ├── crafty-proto/        # IDs, log, wire types, encode/decode
-├── crafty-core/         # pure Raft FSM + shard planners
+├── crafty-core/         # pure Raft FSM + shard planners + reference `kv` StateMachine
 ├── crafty-storage/      # LogStore, HardState, Snapshot (+ redb)
 ├── crafty-net/          # HTTP/3 server, QUIC transport, PeerDirectory
 ├── crafty-actor/        # NodeService, ShardedNodeService, registry, supervisor

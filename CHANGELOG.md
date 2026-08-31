@@ -17,7 +17,7 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 - (none)
 
-## [0.2.2] — 2026-08-29
+## [0.2.2] — 2026-08-31
 
 Product throughput and ops release: queue batch/prefetch, dead-letter recovery,
 cron scheduling, actor-store TTL/GC, and a dedicated **`CraftyApp` HTTP gateway**.
@@ -57,6 +57,7 @@ cron scheduling, actor-store TTL/GC, and a dedicated **`CraftyApp` HTTP gateway*
 
 - Dashboard actor **msg/s** column; observer mailbox depth, uptime, and
   message-rate sampling (carried from 0.2.1 development).
+- **`start_from_config_shared`** — QUIC production start with `CRAFTY_GATEWAY` auto-spawn (pair with `start_from_env_shared`).
 
 ## [0.2.1] — 2026-08-29
 

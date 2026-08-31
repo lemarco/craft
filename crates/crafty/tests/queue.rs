@@ -567,6 +567,7 @@ async fn queue_replicate_rejects_non_leader_caller() {
         NodeId(3),
         &QueueReplicateRequest {
             stream: "jobs".into(),
+            leader_id: 2,
             ops: vec![QueueReplicateOp::Enqueue {
                 job_id: 99,
                 payload: b"x".to_vec(),
