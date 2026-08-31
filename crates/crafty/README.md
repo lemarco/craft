@@ -12,7 +12,7 @@ depend only on `crafty`.
 
 ```toml
 [dependencies]
-crafty = "0.1"
+crafty = "0.2"
 ```
 
 ## Quickstart

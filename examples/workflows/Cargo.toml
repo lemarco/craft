@@ -7,10 +7,8 @@ publish = false
 [workspace]
 
 [dependencies]
-crafty = { path = "../../crates/crafty" }
-crafty-client = { path = "../../crates/crafty-client" }
-crafty-http = { path = "../../crates/crafty-http" }
-crafty-net = { path = "../../crates/crafty-net" }
+crafty = { path = "../../crates/crafty", features = ["http-jobs"] }
+crafty-actor = { path = "../../crates/crafty-actor" }
 crafty-showcase-common = { path = "../../crates/crafty-showcase-common" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net"] }
 serde = { version = "1", features = ["derive"] }

@@ -5,21 +5,22 @@ use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
-use crafty::net::LocalNetwork;
-use crafty::{CraftyApp, NodeId};
-use crafty_test_support::{advance, wait_for_crafty_leader};
+use crafty::{CraftyApp, CraftyConfigure, NodeId};
+use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
 use tower::ServiceExt;
 
 #[tokio::test(start_paused = true)]
 async fn http_ask_returns_503_when_group_has_no_workers() {
-    let net = LocalNetwork::new();
-    let app = Arc::new(
-        CraftyApp::builder(NodeId(1))
-            .members([NodeId(1)])
-            .tick_period(Duration::from_millis(5))
-            .start_local(&net)
-            .await,
-    );
+    let app = boot_local_app(
+        CraftyApp::builder()
+            .configure(CraftyConfigure {
+                members: vec![NodeId(1)],
+                tick_period: Duration::from_millis(5),
+                ..CraftyConfigure::default()
+            }),
+        None,
+    )
+    .await;
 
     wait_for_crafty_leader(app.cluster()).await;
     advance(Duration::from_millis(200)).await;

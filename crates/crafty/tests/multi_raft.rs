@@ -357,7 +357,7 @@ async fn join_fourth_node(
 
     let request = JoinRequest {
         protocol_version: PROTOCOL_VERSION,
-        node_id: joiner_id,
+        node_id: Some(joiner_id),
         advertise_addr: "node4.local:7443".to_string(),
     };
     let response = send_join_request(net, leader.node_id(), &request)

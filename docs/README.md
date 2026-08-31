@@ -4,7 +4,7 @@ Architecture and decision records for the distributive Raft actor system.
 
 **Start here:** [status.md](status.md) (current capabilities and limits) · [architecture.md](architecture.md) (crate graph)
 
-**Product teams:** [scenarios/](scenarios/README.md) (jobs, workers, sessions, workflows — no mandatory Redis) · [backlog.md](backlog.md)
+**Product teams:** [scenarios/](scenarios/README.md) (jobs, workers, sessions, workflows — no mandatory Redis) · [examples/](../examples/README.md) (runnable showcases) · [backlog.md](backlog.md)
 
 ## Decision records
 

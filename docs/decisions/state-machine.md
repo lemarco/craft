@@ -9,7 +9,7 @@ The cluster needs a user-defined state machine applied after log entries commit.
 
 ## Decision
 
-Ship a **generic trait + macros** for user-defined state machines. The KV store lives under `examples/` as a reference implementation, not as the only supported machine.
+Ship a **generic trait + macros** for user-defined state machines. A minimal reference KV lives in [`crafty_core::kv`](../../crates/crafty-core/src/kv.rs) (re-exported as `crafty::kv`); product showcases under [`examples/`](../../examples/README.md) demonstrate tier A/B/C patterns.
 
 ## Design sketch
 

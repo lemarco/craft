@@ -369,7 +369,7 @@ async fn a_new_node_joins_a_running_cluster() {
     let entry = ids.into_iter().find(|id| *id != leader).unwrap();
     let request = JoinRequest {
         protocol_version: PROTOCOL_VERSION,
-        node_id: joiner,
+        node_id: Some(joiner),
         advertise_addr: "node4.local:7443".to_string(),
     };
     let response = send_join_request(&cluster.net, entry, &request)
@@ -425,7 +425,7 @@ async fn a_new_node_joins_a_running_cluster() {
     // A version-skewed join is hard-rejected (join-version-skew).
     let skew = JoinRequest {
         protocol_version: PROTOCOL_VERSION + 1,
-        node_id: NodeId(5),
+        node_id: Some(NodeId(5)),
         advertise_addr: "node5.local:7443".to_string(),
     };
     let skew_resp = send_join_request(&cluster.net, leader, &skew)
@@ -445,6 +445,36 @@ async fn a_new_node_joins_a_running_cluster() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn leader_assigns_node_id_when_join_request_omits_it() {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let cluster = Cluster::start(&ids);
+    let leader = cluster.wait_for_leader().await;
+
+    let request = JoinRequest {
+        protocol_version: PROTOCOL_VERSION,
+        node_id: None,
+        advertise_addr: "auto.local:7443".to_string(),
+    };
+    let response = send_join_request(&cluster.net, leader, &request)
+        .await
+        .expect("auto join request");
+
+    match response {
+        JoinResponse::Accepted {
+            node_id,
+            membership,
+            ..
+        } => {
+            assert_eq!(node_id, NodeId(4));
+            assert!(membership.voters.contains(&NodeId(4)));
+        }
+        other => panic!("expected Accepted, got {other:?}"),
+    }
+
+    cluster.shutdown();
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_node_leaves_a_running_cluster() {
     let ids = [NodeId(1), NodeId(2), NodeId(3), NodeId(4)];
     let mut cluster = Cluster::start(&ids[..3]);
@@ -455,7 +485,7 @@ async fn a_node_leaves_a_running_cluster() {
     let joiner = NodeId(4);
     let join_request = JoinRequest {
         protocol_version: PROTOCOL_VERSION,
-        node_id: joiner,
+        node_id: Some(joiner),
         advertise_addr: "node4.local:7443".to_string(),
     };
     let join_resp = send_join_request(&cluster.net, leader, &join_request)

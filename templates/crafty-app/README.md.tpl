@@ -14,4 +14,4 @@ Then: `docker compose up`
 
 Each node uses embedded **redb** (`data_dir`) — no Redis.
 
-See [crafty scenarios](https://gitlab.com/lemarco/craft/-/tree/master/docs/scenarios).
+See [getting-started](../../docs/getting-started.md) and [product scenarios](../../docs/scenarios/README.md). Runnable showcases: [examples/](../../examples/README.md).

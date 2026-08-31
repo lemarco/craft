@@ -1,12 +1,10 @@
 //! [`CraftyApp::spawn_consumer`] and `#[consumer]` macro integration.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use crafty::net::LocalNetwork;
-use crafty::{ConsumerOpts, CraftyApp, NodeId, consumer};
-use crafty_test_support::{advance, wait_for_crafty_leader};
+use crafty::{ConsumerOpts, CraftyApp, CraftyConfigure, NodeId, consumer};
+use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
 
 static HANDLED: AtomicUsize = AtomicUsize::new(0);
 
@@ -32,16 +30,18 @@ async fn consumer_macro_spawns_and_processes_job() {
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).unwrap();
 
-    let net = LocalNetwork::new();
-    let app = Arc::new(
-        CraftyApp::builder(NodeId(1))
+    let app = boot_local_app(
+        CraftyApp::builder()
             .data_dir(&base)
-            .job_stream("jobs", Duration::from_secs(60))
-            .members([NodeId(1)])
-            .tick_period(Duration::from_millis(5))
-            .start_local(&net)
-            .await,
-    );
+            .queue("jobs", Duration::from_secs(60))
+            .configure(CraftyConfigure {
+                members: vec![NodeId(1)],
+                tick_period: Duration::from_millis(5),
+                ..CraftyConfigure::default()
+            }),
+        None,
+    )
+    .await;
 
     wait_for_crafty_leader(app.cluster()).await;
     advance(Duration::from_millis(200)).await;

@@ -261,6 +261,7 @@ impl MembershipTelemetry {
 
     /// Record a fresh status: publish consensus gauges, emit leader/membership
     /// change events, and return the membership delta vs the previous tick.
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn record(&mut self, status: &NodeStatus) -> StatusDelta {
         let node = self.node_label.as_str();
         self.metrics.set(
@@ -447,6 +448,15 @@ impl<M: StateMachine> CraftyCluster<M> {
     #[must_use]
     pub fn members(&self) -> &[NodeId] {
         &self.members
+    }
+
+    /// Keyed client for cross-shard sagas / workflows (uses this node's transport).
+    #[must_use]
+    pub fn keyed_client(&self) -> Arc<crafty_client::RemoteClient> {
+        Arc::new(crafty_client::RemoteClient::new(
+            Arc::clone(&self.transport),
+            self.members.clone(),
+        ))
     }
 
     /// How much of this VPS the worker should use (one-worker-per-vps).

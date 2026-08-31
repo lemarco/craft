@@ -176,3 +176,13 @@ pub fn cert_paths_from_env(
 ) -> CertPaths {
     CertPaths::new(node_cert, node_key, ca_cert)
 }
+
+/// Per-node PEM paths under a shared cert directory (`CRAFTY_CERT_DIR`).
+#[must_use]
+pub fn cert_paths_for_node(cert_dir: &std::path::Path, node_id: NodeId) -> CertPaths {
+    CertPaths::new(
+        cert_dir.join(format!("node-{}.pem", node_id.0)),
+        cert_dir.join(format!("node-{}.key", node_id.0)),
+        cert_dir.join("ca.pem"),
+    )
+}

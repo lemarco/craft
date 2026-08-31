@@ -7,8 +7,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::discovery::Seed;
+use crate::node_id;
 use crate::security::Security;
-use crate::{CertPaths, NodeId, PemSecurity, cert_paths_from_env};
+use crate::{CertPaths, NodeId, PemSecurity, cert_paths_for_node, cert_paths_from_env};
 use crafty_actor::DEFAULT_DRAIN_TIMEOUT;
 use crafty_net::PeerDirectory;
 
@@ -39,6 +40,8 @@ pub struct AppConfig {
     pub security: Security,
     /// On-disk PEM paths when configured.
     pub pem_paths: Option<CertPaths>,
+    /// Shared cert directory; per-node PEMs are picked after id resolution.
+    pub cert_dir: Option<PathBuf>,
     /// Actor drain timeout.
     pub drain_timeout: Duration,
     /// Persistent data directory.
@@ -53,6 +56,8 @@ pub struct AppConfig {
     pub gateway_jobs_api: bool,
     /// Mount `/actors/*` cast + ask on the gateway when `gateway` is set.
     pub gateway_actors_api: bool,
+    /// Mount `/workflows/*` on the gateway when `gateway` is set ([`CraftyApp::workflows_api`]).
+    pub gateway_workflows_api: bool,
 }
 
 fn env(key: &str) -> Option<String> {
@@ -125,12 +130,26 @@ pub fn gateway_only_from_env() -> bool {
     matches!(node_role_from_env(), NodeRole::Gateway)
 }
 
-/// Parse `CRAFTY_NODE_ID` (default `1`).
-pub fn node_id_from_env() -> Result<NodeId, Box<dyn Error>> {
-    if let Some(raw) = env("CRAFTY_NODE_ID") {
-        return Ok(NodeId(raw.parse()?));
+/// Parse `CRAFTY_NODE_ID` when explicitly set (otherwise id comes from disk or assignment).
+pub fn node_id_from_env() -> Option<NodeId> {
+    env("CRAFTY_NODE_ID").and_then(|raw| raw.parse::<u64>().ok()).map(NodeId)
+}
+
+/// Resolve the node id before boot: persisted file, explicit env, or seed default.
+fn resolve_node_id(data_dir: Option<&PathBuf>, joining: bool) -> NodeId {
+    if let Some(dir) = data_dir {
+        if let Some(id) = node_id::read_persisted(dir) {
+            return id;
+        }
     }
-    Ok(NodeId(1))
+    if let Some(id) = node_id_from_env() {
+        return id;
+    }
+    if joining {
+        NodeId(0)
+    } else {
+        NodeId(1)
+    }
 }
 
 /// Resolve `host:port` with brief DNS retry.
@@ -189,7 +208,18 @@ fn load_security_from_env(
     node_id: NodeId,
     members: &[NodeId],
     joining: bool,
+    cert_dir: Option<&std::path::Path>,
 ) -> Result<(Security, Option<CertPaths>), Box<dyn Error>> {
+    if let Some(dir) = cert_dir {
+        let tls_id = if node_id == NodeId(0) {
+            NodeId(1)
+        } else {
+            node_id
+        };
+        let paths = cert_paths_for_node(dir, tls_id);
+        let loaded = PemSecurity::load(tls_id, paths.clone())?;
+        return Ok((loaded.security, Some(paths)));
+    }
     match (
         env("CRAFTY_NODE_CERT"),
         env("CRAFTY_NODE_KEY"),
@@ -202,7 +232,9 @@ fn load_security_from_env(
         }
         (None, None, None) => {
             if members.len() > 1 || joining {
-                return Err("multi-node clusters need CRAFTY_NODE_CERT/KEY/CA_CERT".into());
+                return Err(
+                    "multi-node clusters need CRAFTY_CERT_DIR or CRAFTY_NODE_CERT/KEY/CA_CERT".into(),
+                );
             }
             #[cfg(feature = "dev-certs")]
             {
@@ -234,11 +266,11 @@ fn drain_timeout_from_env() -> Duration {
 /// # Errors
 /// Returns an error when required variables are missing or invalid.
 pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
-    let node_id = node_id_from_env()?;
     let listen: SocketAddr = env("CRAFTY_LISTEN")
         .as_deref()
         .unwrap_or("0.0.0.0:7443")
         .parse()?;
+    let data_dir = env("CRAFTY_DATA_DIR").map(PathBuf::from);
     let admin = match env("CRAFTY_ADMIN").as_deref() {
         Some("-") => None,
         Some(a) => Some(a.parse()?),
@@ -249,6 +281,19 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         None => Vec::new(),
     };
     let joining = !join_seeds.is_empty();
+    let node_id = resolve_node_id(data_dir.as_ref(), joining);
+    let allow_join = match env("CRAFTY_ALLOW_JOIN") {
+        Some(_) => env_bool("CRAFTY_ALLOW_JOIN"),
+        None => !joining,
+    };
+    let allow_leave = match env("CRAFTY_ALLOW_LEAVE") {
+        Some(_) => env_bool("CRAFTY_ALLOW_LEAVE"),
+        None => true,
+    };
+    let graceful_leave = match env("CRAFTY_GRACEFUL_LEAVE") {
+        Some(_) => env_bool("CRAFTY_GRACEFUL_LEAVE"),
+        None => true,
+    };
     let (mut peers, mut members) = match env("CRAFTY_PEERS") {
         Some(raw) => parse_peers(&raw)?,
         None => (PeerDirectory::new(), Vec::new()),
@@ -262,8 +307,9 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
             peers.insert(node_id, listen);
         }
     }
-    let (security, pem_paths) = load_security_from_env(node_id, &members, joining)?;
-    let data_dir = env("CRAFTY_DATA_DIR").map(PathBuf::from);
+    let cert_dir = env("CRAFTY_CERT_DIR").map(PathBuf::from);
+    let (security, pem_paths) =
+        load_security_from_env(node_id, &members, joining, cert_dir.as_deref())?;
     let job_queue_stream = env("CRAFTY_JOB_QUEUE");
     if job_queue_stream.is_some() && data_dir.is_none() {
         return Err("CRAFTY_JOB_QUEUE requires CRAFTY_DATA_DIR".into());
@@ -277,6 +323,7 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
     };
     let gateway_jobs_api = !env_bool("CRAFTY_GATEWAY_NO_JOBS");
     let gateway_actors_api = !env_bool("CRAFTY_GATEWAY_NO_ACTORS");
+    let gateway_workflows_api = !env_bool("CRAFTY_GATEWAY_NO_WORKFLOWS");
     let admin_tls = match (env("CRAFTY_ADMIN_TLS_CERT"), env("CRAFTY_ADMIN_TLS_KEY")) {
         (Some(cert), Some(key)) => Some((PathBuf::from(cert), PathBuf::from(key))),
         (None, None) => None,
@@ -296,11 +343,12 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         peers,
         members,
         join_seeds,
-        allow_join: env_bool("CRAFTY_ALLOW_JOIN"),
-        allow_leave: env_bool("CRAFTY_ALLOW_LEAVE"),
-        graceful_leave: env_bool("CRAFTY_GRACEFUL_LEAVE"),
+        allow_join,
+        allow_leave,
+        graceful_leave,
         security,
         pem_paths,
+        cert_dir,
         drain_timeout: drain_timeout_from_env(),
         data_dir,
         job_queue_stream,
@@ -308,5 +356,6 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         gateway,
         gateway_jobs_api,
         gateway_actors_api,
+        gateway_workflows_api,
     })
 }

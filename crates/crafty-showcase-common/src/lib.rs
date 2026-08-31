@@ -2,14 +2,6 @@
 
 use std::path::PathBuf;
 
-/// True when `CRAFTY_PEERS` is set (QUIC cluster mode).
-#[must_use]
-pub fn cluster_mode() -> bool {
-    std::env::var("CRAFTY_PEERS")
-        .ok()
-        .is_some_and(|v| !v.trim().is_empty())
-}
-
 /// Map `0.0.0.0:port` to `127.0.0.1:port` for local browser/curl hints.
 #[must_use]
 pub fn display_addr(addr: &str) -> String {
@@ -24,8 +16,7 @@ pub fn display_addr(addr: &str) -> String {
 #[must_use]
 pub fn data_dir(default_name: &str) -> PathBuf {
     std::env::var("CRAFTY_DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| std::env::temp_dir().join(default_name))
+        .map_or_else(|_| std::env::temp_dir().join(default_name), PathBuf::from)
 }
 
 /// Parse common truthy env flags (`1`, `true`, `yes`, `on`).

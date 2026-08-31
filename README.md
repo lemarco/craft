@@ -24,9 +24,9 @@
 
 | | |
 |---|---|
-| **Version** | `0.2.0` (pre-1.0) |
+| **Version** | `0.2.2` (pre-1.0) |
 | **Maturity** | Advanced prototype — published on [crates.io](https://crates.io/crates/crafty) |
-| **Release** | v0.2.0 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/crafty/0.2.0](https://docs.rs/crafty/0.2.0) |
+| **Release** | v0.2.2 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/crafty/0.2.2](https://docs.rs/crafty/0.2.2) |
 | **Full status** | [docs/status.md](docs/status.md) |
 
 ### Highlights
@@ -35,7 +35,8 @@
 - Multi-Raft write scaling: **Meta-Raft coordinator** (join/catalog/saga isolated from user groups), dynamic catalog, stable shards, group migration, per-group membership
 - Cross-shard saga coordinator + optional 2PC; follower/lease reads
 - mTLS hot reload, reachability-driven supervisor, `crafty-ops` backup
-- **Durable job queue** (tier C): `job_queue`, worker autoscale, sync voter replication — [job-queue](docs/decisions/job-queue.md)
+- **Product showcases** — four standalone apps in [`examples/`](examples/README.md) (jobs, stateful workers, realtime, workflows)
+- **`CraftyApp`** + optional HTTP gateway, batch jobs, actor-store TTL/GC — [getting-started](docs/getting-started.md)
 - Design decision records — [docs/decisions/](docs/decisions/)
 
 ### Not yet (by design or process)
@@ -111,12 +112,10 @@ Durable mailbox (tier B spool): `.data_dir(path).durable_mailbox(true)` — writ
 
 ```toml
 [dependencies]
-crafty = "0.1"
+crafty = "0.2"
 ```
 
-```sh
-cargo install crafty-node   # reference runner binary
-```
+Product apps: enable `http-jobs` for tier C HTTP routes and `dev-certs` for local QUIC without PEM files — see [getting-started](docs/getting-started.md).
 
 ## Workspace crates
 
@@ -124,7 +123,7 @@ cargo install crafty-node   # reference runner binary
 |-------|---------|
 | [`crafty`](crates/crafty) | Facade + `CraftyCluster` builder |
 | [`crafty-http`](crates/crafty-http) | Product HTTP (`POST /jobs/{stream}` → 202) |
-| [`crafty-core`](crates/crafty-core) | Pure Raft FSM + shard planners |
+| [`crafty-core`](crates/crafty-core) | Pure Raft FSM + shard planners + reference [`kv`](crates/crafty-core/src/kv.rs) StateMachine |
 | [`crafty-proto`](crates/crafty-proto) | Wire types + codec |
 | [`crafty-storage`](crates/crafty-storage) | Durable log, snapshots |
 | [`crafty-net`](crates/crafty-net) | HTTP/3 / QUIC + mTLS |

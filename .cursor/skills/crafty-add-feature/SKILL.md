@@ -62,4 +62,4 @@ Use [crafty-testing](../crafty-testing/SKILL.md):
 
 - [ ] Builder option on `CraftyCluster::builder()` if user-facing
 - [ ] Re-export types users need from `crafty` crate root
-- [ ] Example in `crates/crafty/examples/` for non-trivial flows
+- [ ] Example in [`examples/`](../../examples/README.md) or extend an existing showcase for non-trivial product flows

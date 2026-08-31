@@ -8,6 +8,51 @@ use crafty_actor::{WorkerId, run_queue_consumer};
 
 use crate::CraftyApp;
 
+type ConsumerSpawnFn = Box<
+    dyn FnOnce(Arc<CraftyApp>, tokio::sync::watch::Receiver<bool>) -> tokio::task::JoinHandle<()>
+        + Send,
+>;
+
+/// Spawn one or more tier-C [`JobConsumer`] loops with a shared stop channel.
+#[derive(Default)]
+pub struct ConsumerGroup {
+    spawners: Vec<ConsumerSpawnFn>,
+}
+
+impl ConsumerGroup {
+    /// Empty group — chain [`.add`](Self::add) then [`.spawn`](Self::spawn).
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register a consumer (pass the generated unit struct for type inference).
+    #[must_use]
+    pub fn add<C: JobConsumer>(mut self, consumer: C, opts: ConsumerOpts) -> Self {
+        self.spawners.push(Box::new(move |app, stop| {
+            app.spawn_consumer(consumer, opts, stop)
+        }));
+        self
+    }
+
+    /// Start every registered consumer; returns `(stop_tx, join handles)`.
+    pub fn spawn(
+        self,
+        app: &Arc<CraftyApp>,
+    ) -> (
+        tokio::sync::watch::Sender<bool>,
+        Vec<tokio::task::JoinHandle<()>>,
+    ) {
+        let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+        let handles = self
+            .spawners
+            .into_iter()
+            .map(|spawn| spawn(Arc::clone(app), stop_rx.clone()))
+            .collect();
+        (stop_tx, handles)
+    }
+}
+
 /// Options for [`CraftyApp::spawn_consumer`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConsumerOpts {
@@ -47,7 +92,7 @@ pub trait JobConsumer: Send + Sync + 'static {
 impl CraftyApp {
     /// Spawn a background task that leases from `C::STREAM`, invokes the handler, and ack/nacks.
     ///
-    /// Requires the stream to be registered via [`crate::CraftyAppBuilder::job_stream`].
+    /// Requires the stream to be registered via [`crate::CraftyAppBuilder::queue`].
     /// Pass a [`tokio::sync::watch`] stop receiver to shut the loop down cleanly.
     /// The `_consumer` value is only used for type inference (see [`macro@crate::consumer`]).
     ///
@@ -64,7 +109,7 @@ impl CraftyApp {
             let queue = app
                 .cluster()
                 .job_queue(C::STREAM)
-                .expect("consumer stream must be registered via job_stream/job_queue");
+                .expect("consumer stream must be registered via .queue");
             let worker = WorkerId {
                 node: app.cluster().node_id(),
                 instance: opts.instance,

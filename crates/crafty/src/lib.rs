@@ -37,7 +37,10 @@
 //! See the `docs/` directory for architecture and design decision records.
 
 mod app;
+mod app_opts;
+mod actor_group;
 mod builder;
+mod configure;
 mod certs;
 mod cluster;
 mod consumer;
@@ -47,6 +50,7 @@ mod env_config;
 mod gateway;
 mod handler;
 mod multi_raft;
+mod node_id;
 mod observer;
 mod ready;
 mod saga;
@@ -66,11 +70,17 @@ pub use {crafty_dashboard as dashboard, crafty_macros as macros, crafty_net as n
 #[doc(inline)]
 pub use crafty_storage as storage;
 
-pub use app::{CraftyApp, CraftyAppBuilder, EmptyStateMachine, WorkerInfo};
+pub use app::{
+    CraftyApp, CraftyAppBuilder, EmptyStateMachine, ShutdownOpts, WorkerInfo, WorkflowPlanFn,
+    journal_workflow,
+};
+pub use actor_group::ActorGroupOpts;
+pub use configure::CraftyConfigure;
+pub use app_opts::RunOpts;
 pub use builder::{CraftyClusterBuilder, StartError};
-pub use certs::{CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_from_env};
+pub use certs::{CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_for_node, cert_paths_from_env};
 pub use cluster::{AddRaftGroupsError, ClusterFacts, CraftyCluster, LeaveError, ScaleClusterError};
-pub use consumer::{ConsumerOpts, JobConsumer};
+pub use consumer::{ConsumerGroup, ConsumerOpts, JobConsumer};
 pub use crafty_actor::{
     ActorSession, AutoscalePolicy, ClusterActorStateStore, ClusterJobQueue, DEFAULT_DRAIN_TIMEOUT,
     DEFAULT_QUEUE_BATCH_MAX, DEFAULT_QUEUE_PREFETCH, DirectoryPolicy, DirectoryRetry,
@@ -95,7 +105,7 @@ pub use env_config::{
     node_role_from_env, workers_enabled_from_env,
 };
 #[cfg(feature = "http-jobs")]
-pub use gateway::{CraftyGatewayState, GatewayConfig, build_gateway_router, spawn_gateway};
+pub use gateway::{CraftyGatewayState, GatewayConfig, GatewayOpts, build_gateway_router, spawn_gateway};
 pub use ready::ReadyOpts;
 pub use saga::{
     CompositeSagaJournal, Group0SagaJournal, MetaRaftSagaJournal, SagaRegistry, StoreSagaJournal,

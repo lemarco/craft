@@ -1,22 +1,37 @@
-//! {{PROJECT_NAME}} — crafty product app starter (no Redis required).
+//! {{PROJECT_NAME}} — crafty product app (always a QUIC cluster member).
 
-use crafty::CraftyApp;
+use std::time::Duration;
+
+use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, RunOpts};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     crafty::init_tracing();
 
-    // TODO: register workers — use CraftyApp::builder(...).manage_auto before start in production
+    // TODO: register workers / consumers before `.run`
 
     #[cfg(feature = "http-jobs")]
     {
-        let app = CraftyApp::start_from_env_shared().await?;
-        return CraftyApp::run_until_shutdown_shared(app).await;
+        CraftyApp::builder()
+            .data_dir("/tmp/{{PROJECT_NAME}}")
+            .queue("jobs", Duration::from_secs(300))
+            .gateway("127.0.0.1:8090".parse()?, GatewayOpts::default())
+            .configure(CraftyConfigure {
+                admin_addr: Some("127.0.0.1:8080".parse()?),
+                ..CraftyConfigure::default()
+            })
+            .run(RunOpts::default())
+            .await?;
+        return Ok(());
     }
 
     #[cfg(not(feature = "http-jobs"))]
     {
-        let app = CraftyApp::start_from_env().await?;
-        app.run_until_shutdown().await
+        CraftyApp::builder()
+            .data_dir("/tmp/{{PROJECT_NAME}}")
+            .run(RunOpts::default())
+            .await?;
     }
+
+    Ok(())
 }

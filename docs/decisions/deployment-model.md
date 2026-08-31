@@ -17,7 +17,8 @@ Operational model: **VPS / bare metal** — one process per node; docker-compose
 | Artifact | Role |
 |----------|------|
 | **`crafty-*` crates + `CraftyCluster` API** | Primary product — user embeds in their app |
-| **`examples/`** | Reference apps (KV, multi-VPS join) |
+| **`examples/`** | Four product showcases (jobs, stateful workers, realtime, workflows) — each standalone `Cargo.toml`, local + QUIC `cluster.sh` |
+| **`dev/`** | Shared cluster helpers (`cluster-common.sh`), certs, optional Docker Compose per showcase |
 | **`crafty-node` (optional)** | Thin wrapper around the same API for demos only — not a plugin host |
 
 The user ships **one binary** built from their app. Production runs **N processes** (N VPSes), each process = **one Raft peer** + **local actor runtime**. Same codebase everywhere; config differs per VPS (`node_id`, listen addr, join target).

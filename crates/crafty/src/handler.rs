@@ -112,8 +112,10 @@ impl RequestHandler for NodeRouter {
             // this node (leader or the forwarding follower) can dial the newcomer
             // before the address gossip converges (discovery, join-rpc).
             Route::ClusterJoin => {
-                if let Ok(request) = decode_body::<JoinRequest>(&body) {
-                    self.peers.learn(request.node_id, &request.advertise_addr);
+                if let Ok(request) = decode_body::<JoinRequest>(&body)
+                    && let Some(id) = request.node_id
+                {
+                    self.peers.learn(id, &request.advertise_addr);
                 }
                 self.service.handle(route, body)
             }

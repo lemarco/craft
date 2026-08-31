@@ -68,6 +68,9 @@ fn host_only(base: &str) -> String {
 }
 
 /// POST JSON to `http://{base}{path}`.
+///
+/// # Errors
+/// Returns [`ClientError`] on connect, I/O, or malformed HTTP response.
 pub async fn post_json(
     base: &str,
     path: &str,
@@ -86,6 +89,9 @@ pub async fn post_json(
 }
 
 /// Enqueue a tier C job (`POST /jobs/{stream}` → 202).
+///
+/// # Errors
+/// Returns [`ClientError`] when the gateway request fails.
 pub async fn enqueue_job(
     gateway: &str,
     stream: &str,
@@ -96,6 +102,9 @@ pub async fn enqueue_job(
 }
 
 /// Cast to an actor group (`POST /actors/{group}/cast` → 202).
+///
+/// # Errors
+/// Returns [`ClientError`] when the gateway request fails.
 pub async fn cast_actor(
     gateway: &str,
     group: &str,
@@ -106,18 +115,27 @@ pub async fn cast_actor(
 }
 
 /// Run a keyed saga (`POST /workflows/run` → 200).
+///
+/// # Errors
+/// Returns [`ClientError`] when the gateway request fails.
 pub async fn run_workflow(trigger: &str, saga_id: &str) -> Result<HttpResponse, ClientError> {
     let body = serde_json::json!({ "saga_id": saga_id }).to_string();
     post_json(trigger, "/workflows/run", &body).await
 }
 
 /// Resume a keyed saga (`POST /workflows/resume` → 200).
+///
+/// # Errors
+/// Returns [`ClientError`] when the gateway request fails.
 pub async fn resume_workflow(trigger: &str, saga_id: &str) -> Result<HttpResponse, ClientError> {
     let body = serde_json::json!({ "saga_id": saga_id }).to_string();
     post_json(trigger, "/workflows/resume", &body).await
 }
 
 /// Send one chat line over WebSocket (`/ws?user=…`).
+///
+/// # Errors
+/// Returns [`ClientError`] on WebSocket connect, send, or unexpected frame.
 pub async fn ws_chat(gateway: &str, user: &str, message: &str) -> Result<String, ClientError> {
     let host = host_only(gateway);
     let url = format!("ws://{host}/ws?user={user}");

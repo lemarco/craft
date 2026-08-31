@@ -73,9 +73,9 @@ fn node_from_env(key: &str) -> Result<NodeId, String> {
     ))
 }
 
-fn demo_config() -> Result<DemoConfig, String> {
+fn demo_config() -> DemoConfig {
     let worker_peer = node_from_env("CRAFTY_DEMO_WORKER_PEER").unwrap_or(NodeId(2));
-    Ok(DemoConfig {
+    DemoConfig {
         propose_via: node_from_env("CRAFTY_DEMO_PROPOSE_NODE").unwrap_or(NodeId(1)),
         query_via: node_from_env("CRAFTY_DEMO_QUERY_NODE").unwrap_or(NodeId(3)),
         worker_peer,
@@ -91,7 +91,7 @@ fn demo_config() -> Result<DemoConfig, String> {
             .ok()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "jobs".into()),
-    })
+    }
 }
 
 fn decode_u64(bytes: &[u8]) -> Result<u64, String> {
@@ -469,15 +469,14 @@ async fn watch_demo(transport: Arc<dyn Transport>, cfg: &DemoConfig) -> Result<(
 }
 
 async fn run(mode: &str, transport: Arc<dyn Transport>, cfg: &DemoConfig) -> Result<(), String> {
-    match mode {
-        "watch" => watch_demo(transport, cfg).await,
-        _ => {
-            raft_demo(Arc::clone(&transport), cfg, 3).await?;
-            queue_demo(transport, cfg).await?;
-            println!();
-            println!("demo OK — dashboard: pending=0 on stream `{}`", cfg.stream);
-            Ok(())
-        }
+    if mode == "watch" {
+        watch_demo(transport, cfg).await
+    } else {
+        raft_demo(Arc::clone(&transport), cfg, 3).await?;
+        queue_demo(transport, cfg).await?;
+        println!();
+        println!("demo OK — dashboard: pending=0 on stream `{}`", cfg.stream);
+        Ok(())
     }
 }
 
@@ -495,7 +494,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         env("CRAFTY_NODE_KEY")?,
         env("CRAFTY_CA_CERT")?,
     );
-    let cfg = demo_config()?;
+    let cfg = demo_config();
 
     let material = load_pem_material(node_id, &paths)?;
     let client_cfg = client_config(&material.identity, material.roots)?;

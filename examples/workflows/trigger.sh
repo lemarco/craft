@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# Run or resume the onboarding saga (round-robin triggers 8490/8491/8492 in cluster).
+# Run or resume the onboarding saga (round-robin gateways 8490/8491/8492 in cluster).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"
-TRIGGERS=(127.0.0.1:8490 127.0.0.1:8491 127.0.0.1:8492)
-TRIGGER="${CRAFTY_TRIGGER:-127.0.0.1:8490}"
-TRIGGER="${TRIGGER#http://}"
-TRIGGER="${TRIGGER#https://}"
+GATEWAYS=(127.0.0.1:8490 127.0.0.1:8491 127.0.0.1:8492)
+GATEWAY="${CRAFTY_GATEWAY:-127.0.0.1:8490}"
+GATEWAY="${GATEWAY#http://}"
+GATEWAY="${GATEWAY#https://}"
 CLIENT="$CRAFT_ROOT/target/debug/crafty-showcase-client"
 
-pick_trigger() {
-    for t in "${TRIGGERS[@]}"; do
-        if curl -sf "http://$t/health" >/dev/null 2>&1; then
-            echo "$t"
+pick_gateway() {
+    for g in "${GATEWAYS[@]}"; do
+        if curl -sf "http://$g/health" >/dev/null 2>&1; then
+            echo "$g"
             return 0
         fi
     done
-    echo "$TRIGGER"
+    echo "$GATEWAY"
 }
 
 if [ "${1:-}" = "resume" ]; then
     SAGA="${2:-onboard-42}"
-    HOST=$(pick_trigger)
+    HOST=$(pick_gateway)
     if [ -x "$CLIENT" ]; then
         exec "$CLIENT" workflow resume "$HOST" "$SAGA"
     fi
@@ -32,7 +32,7 @@ if [ "${1:-}" = "resume" ]; then
         -w '\n→ HTTP %{http_code}\n'
 else
     SAGA="${1:-onboard-42}"
-    HOST=$(pick_trigger)
+    HOST=$(pick_gateway)
     if curl -sf "http://$HOST/health" >/dev/null 2>&1; then
         if [ -x "$CLIENT" ]; then
             exec "$CLIENT" workflow run "$HOST" "$SAGA"
@@ -43,7 +43,8 @@ else
             -d "{\"saga_id\":\"$SAGA\"}" \
             -w '\n→ HTTP %{http_code}\n'
     else
-        exec cargo run --manifest-path "$ROOT/Cargo.toml" --release --quiet -- run "$SAGA"
+        echo "error: no gateway on $GATEWAY — start the server: cargo run --release" >&2
+        exit 1
     fi
 fi
 

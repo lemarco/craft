@@ -2,9 +2,8 @@
 
 use std::time::Duration;
 
-use crafty::net::LocalNetwork;
-use crafty::{CraftyApp, NodeId};
-use crafty_test_support::{advance, wait_for_crafty_leader};
+use crafty::{CraftyApp, CraftyConfigure, NodeId};
+use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
 
 #[tokio::test(start_paused = true)]
 async fn crafty_app_start_local_with_data_dir_and_queue() {
@@ -18,14 +17,18 @@ async fn crafty_app_start_local_with_data_dir_and_queue() {
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).unwrap();
 
-    let net = LocalNetwork::new();
-    let app = CraftyApp::builder(NodeId(1))
-        .data_dir(&base)
-        .job_stream("jobs", Duration::from_secs(60))
-        .members([NodeId(1)])
-        .tick_period(Duration::from_millis(5))
-        .start_local(&net)
-        .await;
+    let app = boot_local_app(
+        CraftyApp::builder()
+            .data_dir(&base)
+            .queue("jobs", Duration::from_secs(60))
+            .configure(CraftyConfigure {
+                members: vec![NodeId(1)],
+                tick_period: Duration::from_millis(5),
+                ..CraftyConfigure::default()
+            }),
+        None,
+    )
+    .await;
 
     wait_for_crafty_leader(app.cluster()).await;
     // Let the keepalive loop refresh [`ClusterFacts`] before queue RPC routing.
@@ -54,14 +57,18 @@ async fn crafty_app_requeue_dead_letter() {
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).unwrap();
 
-    let net = LocalNetwork::new();
-    let app = CraftyApp::builder(NodeId(1))
-        .data_dir(&base)
-        .job_stream("jobs", Duration::from_secs(60))
-        .members([NodeId(1)])
-        .tick_period(Duration::from_millis(5))
-        .start_local(&net)
-        .await;
+    let app = boot_local_app(
+        CraftyApp::builder()
+            .data_dir(&base)
+            .queue("jobs", Duration::from_secs(60))
+            .configure(CraftyConfigure {
+                members: vec![NodeId(1)],
+                tick_period: Duration::from_millis(5),
+                ..CraftyConfigure::default()
+            }),
+        None,
+    )
+    .await;
 
     wait_for_crafty_leader(app.cluster()).await;
     advance(Duration::from_millis(200)).await;

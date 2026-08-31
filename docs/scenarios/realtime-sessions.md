@@ -76,7 +76,7 @@ let reply = cluster
     .await?;
 ```
 
-Facade helpers may wrap `ClusterRef` — see `cluster_ref_routing` example.
+Facade helpers may wrap `ClusterRef` — see [`examples/realtime/`](../../examples/realtime/).
 
 ### 3. Gateway role (same binary, env flag)
 

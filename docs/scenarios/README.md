@@ -67,7 +67,7 @@ flowchart LR
 
 Full index: [examples/README.md](../examples/README.md).
 
-E2E: `./e2e/queue.sh` (QUIC/mTLS, failover).
+E2E: `./e2e/queue.sh` (QUIC/mTLS, failover). Product HTTP/WS: [`examples/`](../examples/README.md) + `./scripts/check-examples.sh`.
 
 ## Related
 

@@ -31,10 +31,9 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use crafty::actor::{UserActor, remote_actor};
-use crafty::net::LocalNetwork;
-use crafty::{CraftyApp, CraftyAppBuilder, CraftyGatewayState, NodeId, ReadyOpts, app_config_from_env};
+use crafty::{ActorGroupOpts, CraftyApp, CraftyAppBuilder, CraftyConfigure, CraftyGatewayState, GatewayOpts, ReadyOpts, RunOpts};
 use crafty_actor::CastError;
-use crafty_showcase_common::{cluster_mode, data_dir, display_addr};
+use crafty_showcase_common::{data_dir, display_addr};
 
 const DATA_DIR_NAME: &str = "crafty-showcase-realtime";
 
@@ -188,102 +187,65 @@ fn gateway_routes(app: Arc<CraftyApp>) -> Router {
         .with_state(CraftyGatewayState { app })
 }
 
-fn apply_workers(builder: CraftyAppBuilder) -> CraftyAppBuilder {
-    builder
-        .manage_auto::<ChatWorker>("chat", 0)
-        .directory_publish_period(Duration::from_millis(20))
+fn base_builder() -> CraftyAppBuilder {
+    CraftyApp::builder()
+        .actors::<ChatWorker>("chat", ActorGroupOpts::new(0))
+        .configure(CraftyConfigure {
+            tick_period: Duration::from_millis(10),
+            reconcile_period: Duration::from_millis(20),
+            directory_publish_period: Duration::from_millis(20),
+            ..CraftyConfigure::default()
+        })
+        .http_routes(gateway_routes)
 }
 
-async fn start_local() -> Result<Arc<CraftyApp>, Box<dyn std::error::Error>> {
-    let data_dir = data_dir(DATA_DIR_NAME);
-    std::fs::create_dir_all(&data_dir)?;
+fn server_builder() -> crafty::CraftyAppBuilder {
+    let dir = data_dir(DATA_DIR_NAME);
+    let _ = std::fs::create_dir_all(&dir);
     let gateway: std::net::SocketAddr = env::var("CRAFTY_GATEWAY")
         .unwrap_or_else(|_| "127.0.0.1:8294".into())
-        .parse()?;
-    let net = LocalNetwork::new();
-    Ok(
-        apply_workers(
-            CraftyApp::builder(NodeId(1))
-                .data_dir(&data_dir)
-                .members([NodeId(1)])
-                .tick_period(Duration::from_millis(10))
-                .reconcile_period(Duration::from_millis(20)),
-        )
-        .admin_addr("127.0.0.1:9380".parse()?)
-        .gateway_addr(gateway)
-        .gateway_jobs_api(false)
-        .http_routes(gateway_routes)
-        .start_local_shared(&net)
-        .await,
-    )
+        .parse()
+        .expect("gateway");
+    base_builder()
+        .data_dir(dir)
+        .configure(CraftyConfigure {
+            admin_addr: Some("127.0.0.1:9380".parse().expect("admin")),
+            ..CraftyConfigure::default()
+        })
+        .gateway(gateway, GatewayOpts { jobs_api: false, ..Default::default() })
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     debug::init_tracing();
-
-    let cluster = cluster_mode();
-    let app = if cluster {
-        let cfg = app_config_from_env().map_err(|e| format!("config: {e}"))?;
-        let app = apply_workers(CraftyAppBuilder::from_config(&cfg))
-            .tick_period(Duration::from_millis(10))
-            .reconcile_period(Duration::from_millis(20))
-            .http_routes(gateway_routes)
-            .start_quic_shared(cfg.security, cfg.listen, cfg.peers)
-            .await
-            .map_err(|e| format!("start: {e}"))?;
-        wait_ready(&app).await;
-        app
-    } else {
-        start_local().await?
-    };
-
-    debug::startup(
-        if cluster { "quic" } else { "local" },
-        app.cluster().node_id().0,
-        &data_dir(DATA_DIR_NAME),
-    );
-    print_banner(&app).await;
-    tokio::signal::ctrl_c().await?;
+    debug::startup("quic", 0, &data_dir(DATA_DIR_NAME));
+    print_banner();
+    server_builder()
+        .run(RunOpts::default().with_wait_ready(ReadyOpts::default()))
+        .await?;
     debug::shutdown();
-    app.cluster().shutdown();
     Ok(())
 }
 
-async fn wait_ready(app: &CraftyApp) {
-    if app.wait_until_ready(ReadyOpts::default()).await {
-        debug::cluster_ready();
-    } else {
-        tracing::warn!(target: "showcase", showcase = debug::NAME, "cluster not ready after 60s");
-        eprintln!("warn: no leader yet — start nodes 2+3 before connecting WS");
-    }
-}
-
-async fn print_banner(app: &CraftyApp) {
-    let node_id = app.cluster().node_id().0;
+fn print_banner() {
     println!("crafty showcase · real-time sessions (tier B)");
-    if cluster_mode() {
-        println!("  mode     QUIC cluster (node {node_id})");
-        println!("  listen   {}", env::var("CRAFTY_LISTEN").unwrap_or_default());
-        if env::var("CRAFTY_GATEWAY").is_ok_and(|g| g != "-") {
-            let gw = env::var("CRAFTY_GATEWAY").unwrap_or_default();
-            println!("  websocket ws://{}/ws?user=alice", display_addr(&gw));
-        }
-        if let Ok(admin) = env::var("CRAFTY_ADMIN") {
-            if admin != "-" {
-                println!("  admin    http://{}/dashboard", display_addr(&admin));
-            }
-        }
-        println!("  worker   chat actors (auto-scaled on this node)");
-    } else {
-        let gateway = env::var("CRAFTY_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8294".into());
-        println!("  mode     local (single process)");
-        println!("  websocket ws://{gateway}/ws?user=alice");
-        println!("  admin    http://127.0.0.1:9380/dashboard");
-        println!("  cluster  ./cluster.sh setup && ./cluster.sh up");
+    println!("  listen   {}", env::var("CRAFTY_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
+    if env::var("CRAFTY_GATEWAY").is_ok_and(|g| g != "-") {
+        let gw = env::var("CRAFTY_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8294".into());
+        println!("  websocket ws://{}/ws?user=alice", display_addr(&gw));
     }
+    if let Ok(admin) = env::var("CRAFTY_ADMIN") {
+        if admin != "-" {
+            println!("  admin    http://{}/dashboard", display_addr(&admin));
+        }
+    }
+    if env::var("CRAFTY_JOIN_SEEDS").is_ok() {
+        println!("  join     via CRAFTY_JOIN_SEEDS");
+    } else {
+        println!("  role     seed");
+    }
+    println!("  cluster  ./cluster.sh setup && ./cluster.sh up");
     println!("  trigger  ./trigger.sh alice hello");
-    println!("  debug    RUST_LOG=showcase=debug");
     println!("  data_dir {}", data_dir(DATA_DIR_NAME).display());
     println!("press Ctrl-C to stop");
 }

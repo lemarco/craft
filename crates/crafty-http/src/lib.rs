@@ -274,6 +274,9 @@ impl WorkflowsApi {
 ///
 /// Used by tier A showcases when saga coordination must stay in-process on node 1
 /// (`CRAFTY_TRIGGER` listener).
+///
+/// # Errors
+/// Returns [`std::io::Error`] when the listen socket cannot be bound.
 pub async fn spawn_workflows_server(
     api: WorkflowsApi,
     addr: std::net::SocketAddr,

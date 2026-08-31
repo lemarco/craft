@@ -80,7 +80,7 @@ impl UserActor for OrderProcessor {
 }
 ```
 
-Pass `store` in `WorkerConfig` when spawning (see `hexagonal_actor_store` example).
+Pass `store` in `WorkerConfig` when spawning — see [`examples/stateful-workers/`](../../examples/stateful-workers/).
 
 ### 3. Domain data in StateMachine
 
@@ -133,11 +133,11 @@ Documented in [actor-routing-tier3](../decisions/actor-routing-tier3.md). For du
 
 | Asset | Notes |
 |-------|-------|
-| `examples/hexagonal_actor_store.rs` | SM vs store split; swap `InMemoryStore` → redb |
-| `examples/actors_cluster.rs` | Cross-node workers |
+| [`examples/stateful-workers/`](../../examples/stateful-workers/) | `ActorStateStore` + idempotent cast + migration demo |
+| [`examples/stateful-workers/src/migrate_demo.rs`](../../examples/stateful-workers/src/migrate_demo.rs) | LocalNetwork migration walkthrough |
 | `crafty-sim/tests/actor_scenarios.rs` | `scale_cluster`, migration |
 
-## Target product API (backlog)
+## Future polish
 
 ```rust
 #[crafty::worker(durable = true)]
@@ -154,4 +154,4 @@ CraftyApp::from_env()
 - [actor-state-store](../decisions/actor-state-store.md) — redb-first ADR
 - [background-jobs](background-jobs.md) — async alternative to long handler
 - [realtime-sessions](realtime-sessions.md) — sticky in-memory state
-- [backlog.md](../backlog.md) — B-01, B-08
+- [backlog.md](../backlog.md) — polish items

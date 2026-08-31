@@ -31,8 +31,8 @@ Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `crafty-core`, I
 ```
 crates/
 ├── crafty/              # facade — primary user dependency (CraftyCluster builder)
-├── crafty-proto/        # IDs, log, wire types, encode/decode
 ├── crafty-core/         # pure Raft FSM + shard planners + reference `kv` StateMachine
+├── crafty-proto/        # IDs, log, wire types, encode/decode
 ├── crafty-storage/      # LogStore, HardState, Snapshot (+ redb)
 ├── crafty-net/          # HTTP/3 server, QUIC transport, PeerDirectory
 ├── crafty-actor/        # NodeService, ShardedNodeService, registry, supervisor
@@ -44,9 +44,14 @@ crates/
 ├── crafty-dashboard/    # admin HTTP + observability views
 ├── crafty-ops/          # backup/restore CLI
 └── crafty-test-support/ # shared test harness helpers
+
+examples/                # four product showcases (standalone Cargo.toml each; not workspace members)
+dev/                     # certs, cluster-common.sh, compose/, 3-node crafty-node demo
 ```
 
-See [naming](decisions/naming.md).
+Reference tier **A** KV: [`crafty_core::kv`](../crates/crafty-core/src/kv.rs) (re-exported as `crafty::kv`).
+
+See [naming](decisions/naming.md) and [examples/README.md](../examples/README.md).
 
 ## Node internals (single-Raft; multi-Raft stacks N drivers)
 

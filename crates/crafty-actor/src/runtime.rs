@@ -718,7 +718,7 @@ struct Runtime<M: StateMachine> {
     pending_read_confirms: HashMap<ReadId, ReadConfirmSender>,
     /// Join requests awaiting their membership-change entry to commit, keyed by
     /// that entry's log index.
-    pending_joins: HashMap<LogIndex, oneshot::Sender<JoinResponse>>,
+    pending_joins: HashMap<LogIndex, (oneshot::Sender<JoinResponse>, NodeId)>,
     /// Leave requests awaiting their membership-change entry to commit.
     pending_leaves: HashMap<LogIndex, oneshot::Sender<LeaveResponse>>,
     /// Catalog add requests awaiting their catalog entry to commit.
@@ -917,9 +917,10 @@ impl<M: StateMachine> Runtime<M> {
         let leader = self.driver.node().id();
         let membership = self.driver.node().committed_membership();
         for index in ready {
-            if let Some(tx) = self.pending_joins.remove(&index) {
+            if let Some((tx, assigned)) = self.pending_joins.remove(&index) {
                 let _ = tx.send(JoinResponse::Accepted {
                     leader,
+                    node_id: assigned,
                     membership: membership.clone(),
                 });
             }
@@ -966,7 +967,7 @@ impl<M: StateMachine> Runtime<M> {
         for (_, tx) in self.pending_read_confirms.drain() {
             let _ = tx.send(Err(ClientError::NotLeader { leader }));
         }
-        for (_, tx) in self.pending_joins.drain() {
+        for (_, (tx, _)) in self.pending_joins.drain() {
             let _ = tx.send(JoinResponse::Redirect { leader });
         }
         for (_, tx) in self.pending_leaves.drain() {
@@ -1344,6 +1345,17 @@ impl<M: StateMachine> Runtime<M> {
         Ok(())
     }
 
+    fn next_free_node_id(occupied: &[NodeId]) -> NodeId {
+        let mut n = 1u64;
+        loop {
+            let candidate = NodeId(n);
+            if !occupied.contains(&candidate) {
+                return candidate;
+            }
+            n += 1;
+        }
+    }
+
     /// Validate and (on the leader) start a cluster join as a membership change
     /// (join-rpc, join-version-skew). The join resolves to [`JoinResponse::Accepted`] once the
     /// membership entry commits (see [`resolve_committed_joins`]).
@@ -1375,17 +1387,21 @@ impl<M: StateMachine> Runtime<M> {
             return Ok(());
         }
         let mut voters = self.driver.node().voters();
-        if voters.contains(&request.node_id) {
+        let assigned = match request.node_id {
+            Some(id) => id,
+            None => Self::next_free_node_id(&voters),
+        };
+        if voters.contains(&assigned) {
             let _ = respond.send(JoinResponse::Rejected {
                 reason: JoinRejection::Duplicate,
             });
             return Ok(());
         }
-        voters.push(request.node_id);
+        voters.push(assigned);
 
         match self.driver.propose_membership(voters, Vec::new())? {
             Ok((index, step)) => {
-                self.pending_joins.insert(index, respond);
+                self.pending_joins.insert(index, (respond, assigned));
                 let _ = self.settle(step);
             }
             Err(MembershipError::NotLeader { leader }) => {

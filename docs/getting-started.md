@@ -18,82 +18,70 @@ Enable `dev-certs` for local single-node without PEM files:
 crafty = { version = "0.2", features = ["dev-certs"] }
 ```
 
-## 2. Minimal app (local dev)
+## 2. Minimal app
+
+Every process is a **QUIC cluster member**: solo `cargo run` is a one-node seed (`CRAFTY_ALLOW_JOIN=1` by default); add nodes with `CRAFTY_JOIN_SEEDS`. Same binary, same `.run()`.
 
 ```rust
 use std::time::Duration;
-use crafty::{CraftyApp, NodeId};
-use crafty::net::LocalNetwork;
+use crafty::{CraftyApp, RunOpts};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     crafty::init_tracing();
-    let net = LocalNetwork::new();
-    let app = CraftyApp::builder(NodeId(1))
-        .data_dir("/tmp/my-app")
-        .job_stream("jobs", Duration::from_secs(60))
-        .members([NodeId(1)])
-        .start_local_shared(&net)
-        .await;
 
-    app.enqueue("jobs", b"hello").await?;
-    app.run_until_shutdown().await
+    CraftyApp::builder()
+        .data_dir("/tmp/my-app")
+        .queue("jobs", Duration::from_secs(60))
+        .gateway("127.0.0.1:8090".parse()?)
+        .run(RunOpts::default().with_wait_queue("jobs"))
+        .await
 }
 ```
 
-With `data_dir`, crafty automatically opens:
+With `dev-certs` and no PEM env vars, a solo seed uses ephemeral mTLS automatically.
 
-- `{data_dir}/actor-store.redb` — durable actor workflow keys (voter replicated)
-- `{data_dir}/queue-jobs.redb` — when `.job_stream("jobs", …)` is registered
+With `data_dir`, crafty opens `{data_dir}/actor-store.redb`, `{data_dir}/queue-*.redb`, and `{data_dir}/node-id` (assigned id, persisted across restarts).
 
-## 3. Production (env-driven)
+## 3. Multi-node (env only)
 
-Same binary on every VPS; config via environment (see `crafty-node` for the full list):
+Same code as above. [`cluster.sh`](../examples/background-jobs/cluster.sh) sets env per process — no separate “cluster main”.
 
 | Variable | Purpose |
 |----------|---------|
-| `CRAFTY_NODE_ID` | This node |
-| `CRAFTY_LISTEN` | QUIC `host:port` |
-| `CRAFTY_DATA_DIR` | redb directory |
+| `CRAFTY_LISTEN` | QUIC `host:port` (default `0.0.0.0:7443`) |
+| `CRAFTY_DATA_DIR` | redb + `node-id` file |
+| `CRAFTY_CERT_DIR` | Shared dir with `node-{id}.pem` + `ca.pem` |
+| `CRAFTY_JOIN_SEEDS` | Join existing cluster (`id@host:port`) |
+| `CRAFTY_ALLOW_JOIN` | Seed accepts joins (default `1` when not joining) |
+| `CRAFTY_GATEWAY` | Product HTTP/WS bind |
 | `CRAFTY_JOB_QUEUE` | Job stream name (optional) |
-| `CRAFTY_PEERS` | Static `id@host:port,...` |
-| `CRAFTY_JOIN_SEEDS` | Dynamic join seeds |
-| `CRAFTY_NODE_CERT` / `KEY` / `CA` | mTLS (required multi-node) |
-| `CRAFTY_GATEWAY` | Product HTTP/WS bind (optional) |
 
-Every node can run gateway + workers — the cluster routes work. For edge-only ingress (no local consumers), set `CRAFTY_ROLE=gateway` (advanced; see [`env_config.rs`](../crates/crafty/src/env_config.rs)).
+Node id is **not** configured — seed gets `1`, joiners are assigned by the leader and persisted under `CRAFTY_DATA_DIR`.
 
-```rust
-use crafty::ReadyOpts;
-
-let app = CraftyApp::start_from_env_shared().await?;
-app.wait_until_ready(ReadyOpts::default().with_queue("jobs")).await;
-// spawn consumers, then:
-app.run_until_shutdown_shared().await?;
-```
-
-Or build from env manually:
-
-```rust
-let cfg = crafty::app_config_from_env()?;
-let app = CraftyApp::builder(cfg.node_id)
-    .data_dir(cfg.data_dir.expect("CRAFTY_DATA_DIR"))
-    .job_stream("jobs", cfg.job_queue_lease)
-    .members(cfg.members)
-    .start_quic_shared(cfg.security, cfg.listen, cfg.peers)
-    .await?;
-```
+Edge-only ingress (no local consumers): `CRAFTY_ROLE=gateway` (advanced).
 
 ## 4. Try the showcases
 
-Four end-to-end examples under [`examples/`](../examples/README.md):
+Four standalone projects under [`examples/`](../examples/README.md) — excluded from workspace default-members; each has `Cargo.toml`, README, `trigger.sh`, and QUIC `cluster.sh`:
+
+| Showcase | Tier | Run |
+|----------|------|-----|
+| [background-jobs](../examples/background-jobs/) | C | `./scripts/run-example.sh background-jobs` |
+| [stateful-workers](../examples/stateful-workers/) | B | `./scripts/run-example.sh stateful-workers` |
+| [realtime](../examples/realtime/) | B | `./scripts/run-example.sh realtime` |
+| [workflows](../examples/workflows/) | A | `./scripts/run-example.sh workflows` |
+
+3-node QUIC cluster (any showcase):
 
 ```bash
-./scripts/run-example.sh background-jobs
-cd examples/background-jobs && ./cluster.sh setup && ./cluster.sh up
+cd examples/background-jobs
+./cluster.sh setup && ./cluster.sh up && ./trigger.sh hello
 ```
 
-Internal HTTP/WS client (not on crates.io):
+Shared infra: [`dev/`](../dev/README.md) (`cluster-common.sh`, `certs/generate.sh`). Docker Compose per showcase: `dev/compose/<name>/`.
+
+Internal HTTP/WS client (not on crates.io; built by `./cluster.sh setup`):
 
 ```bash
 cargo build -p crafty-showcase-client
@@ -101,14 +89,16 @@ cargo build -p crafty-showcase-client
 ./target/debug/crafty-showcase-client ws 127.0.0.1:8294 alice hello
 ```
 
-Docker Compose clusters: [`dev/compose/`](../dev/compose/).
+Reference tier **A** KV StateMachine (without a full app): [`crafty_core::kv`](../crates/crafty-core/src/kv.rs) (`crafty::kv` on the facade).
 
 ## 5. Workers (actors)
 
 Register a worker type and let the leader place instances (one per VPS by default):
 
 ```rust
+use std::time::Duration;
 use crafty::actor::{UserActor, remote_actor};
+use crafty::{CraftyApp, RunOpts};
 
 struct EmailWorker;
 
@@ -120,11 +110,11 @@ impl UserActor for EmailWorker {
     // …
 }
 
-let app = CraftyApp::builder(NodeId(1))
+CraftyApp::builder()
     .data_dir("/var/lib/crafty")
-    .manage_auto::<EmailWorker>("email", ())
-    .start_local_shared(&net)
-    .await;
+    .actors::<EmailWorker>("email", ActorGroupOpts::default())
+    .run(RunOpts::default())
+    .await?;
 ```
 
 Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store_set`](../../crates/crafty-actor/src/store_codec.rs) — backed by redb when `data_dir` is set.
@@ -138,15 +128,15 @@ crafty = { version = "0.2", features = ["http-jobs"] }
 ```
 
 ```rust
-use std::sync::Arc;
-use crafty::CraftyApp;
+use std::time::Duration;
+use crafty::{CraftyApp, RunOpts};
 
-let app = CraftyApp::builder(NodeId(1))
+CraftyApp::builder()
     .data_dir("/var/lib/crafty")
-    .gateway_addr("0.0.0.0:3000".parse()?)
-    .gateway_jobs_api(true)
-    .start_local_shared(&net)
-    .await;
+    .queue("jobs", Duration::from_secs(300))
+    .gateway("0.0.0.0:3000".parse()?)
+    .run(RunOpts::default().with_wait_queue("jobs"))
+    .await?;
 
 // POST /jobs/{stream} → 202 { "job_id": … }
 ```
@@ -195,7 +185,7 @@ Generates a `CraftyApp` stub, docker-compose for 3-node local dev, and links to 
 
 | Need | How |
 |------|-----|
-| Live dashboard | `.admin_addr("0.0.0.0:8080")` or `CRAFTY_ADMIN` → `http://host:8080/dashboard` |
+| Live dashboard | `.configure(CraftyConfigure { admin_addr: Some(...), ..Default::default() })` or `CRAFTY_ADMIN` |
 | Queue / workflow panels | Dashboard polls `/introspect/queues` and `/introspect/sagas` |
 | Prometheus | Scrape `GET /metrics` (includes `crafty_queue_*`, `crafty_saga_*`) |
 | Production checklist | [ops/production-runbook.md](ops/production-runbook.md) |

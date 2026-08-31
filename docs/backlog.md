@@ -160,12 +160,12 @@ flowchart TB
 
 ### B-04 ✅ Real-time — WebSocket gateway
 
-**Shipped:** 2026-08-28 — `examples/websocket_gateway.rs`.
+**Shipped:** 2026-08-28 — [`examples/realtime/`](../../examples/realtime/).
 
 
 | Subtask | Description                                                     | Status |
 | ------- | --------------------------------------------------------------- | ------ |
-| B-04a   | `examples/websocket_gateway.rs` — axum WS + `ChatWorker`        | ✅      |
+| B-04a   | [`examples/realtime/`](../../examples/realtime/) — axum WS + `ChatWorker` | ✅      |
 | B-04b   | Homogeneous cluster showcases (same binary every node; `CRAFTY_ROLE` advanced only) | ✅      |
 | B-04c   | Auth stub + `ActorSession` open on connect                      | ✅ `GATEWAY_TOKEN` |
 | B-04d   | Reconnect: handle `NoTarget`, session TTL expiry                | ✅ auto reopen in example |
@@ -187,7 +187,7 @@ flowchart TB
 | B-05a   | `WorkflowBuilder` — named `.step(id, fn)`, `.compensate(id, fn)`            | ✅                |
 | B-05b   | Builds `SagaPlan`; runs via `run_saga` / `CompositeSagaJournal`             | ✅                |
 | B-05c   | `CraftyApp::workflow(name, builder_fn)` registration                        | ✅ `run_workflow` |
-| B-05d   | Example: `onboarding_workflow` — saga + enqueue + propose steps             | ✅                |
+| B-05d   | Example: [`examples/workflows/`](../../examples/workflows/) — saga + enqueue + propose steps | ✅                |
 | B-05e   | `crafty workflow resume <id>` CLI stub (optional, via `crafty-node` or ops) | ✅ `scripts/crafty-workflow.sh` |
 
 
@@ -242,7 +242,7 @@ flowchart TB
 | B-08a   | Product scenario ADR + four scenario guides                                                                      | ✅      |
 | B-08b   | [actor-state-redis](decisions/actor-state-redis.md) banner → [actor-state-store](decisions/actor-state-store.md) | ✅      |
 | B-08c   | [status.md](status.md), [README.md](README.md), [AGENTS.md](../AGENTS.md) links                                  | ✅      |
-| B-08d   | Update `hexagonal_actor_store` comments: redb prod path                                                          | ✅      |
+| B-08d   | Product showcases document redb prod path (`examples/stateful-workers`, …) | ✅      |
 | B-08e   | `docs/getting-started.md` — full tutorial, no Redis                                                              | ✅      |
 | B-08f   | README root: link scenarios + positioning paragraph                                                              | ✅      |
 

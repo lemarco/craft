@@ -6,7 +6,7 @@ closing a gap.
 
 **Strategy:** [testing-strategy](decisions/testing-strategy.md)  
 **Feature status:** [status.md](status.md)  
-**Last audit:** 2026-08-28
+**Last audit:** 2026-08-31
 
 Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** scheduled / `#[ignore]` only
 
@@ -27,7 +27,7 @@ Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** sch
 | E2E | Real processes, QUIC, mTLS, chaos | `e2e/run.sh`, `e2e/leave.sh`, `e2e/queue.sh`, `e2e/chaos.sh`, `e2e/cert_renew.sh`, `e2e/linearizability.sh` | 6 scenarios | 🔒 nightly |
 | Fuzz | Wire decode never panics | `crafty-fuzz` | 1 target | 🔒 nightly |
 | Bench / soak | Throughput, long-run sim | `benchmarks/` | — | 🔒 nightly |
-| Examples | Runnable demos | `examples/` (standalone workspace) | 13 bins | — |
+| Examples | Product showcases (standalone crates) | [`examples/`](../../examples/README.md) | 4 apps | `./scripts/check-examples.sh` |
 
 ---
 
@@ -243,7 +243,9 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-08 | Saga hardening v2: group 0 journal fallback + coordinator restart resume | `crafty-proto/saga_journal`, `crafty-core/node`, `crafty-actor/runtime`, `crafty/src/saga.rs`, `crafty/tests/saga.rs` |
 | 2026-08 | Saga journal layered tests (proto/core/driver/runtime/facade) | `crafty-proto`, `crafty-core/tests/saga_journal.rs`, `crafty-actor/tests/{driver,runtime}.rs`, `crafty/tests/saga.rs` |
 | 2026-08 | Durable 2PC prepare timeout GC + `resume_cross_shard_2pc` | `crafty-actor/runtime`, `crafty-client/two_phase`, `crafty/tests/two_phase.rs` |
-| 2026-08 | 2PC facade + client journal + metrics + sim partition test | `crafty/src/two_phase.rs`, `crafty-proto/two_phase_journal`, `crafty-sim/tests/two_phase.rs`, `examples/cross_shard_2pc.rs` |
+| 2026-08 | 2PC facade + client journal + metrics + sim partition test | `crafty/src/two_phase.rs`, `crafty-proto/two_phase_journal`, `crafty-sim/tests/two_phase.rs`, `crafty/tests/two_phase.rs` |
+| 2026-08 | Product showcases (4 standalone examples + cluster scripts) | `examples/{background-jobs,stateful-workers,realtime,workflows}/`, `dev/cluster-common.sh`, `./scripts/check-examples.sh` |
+| 2026-08 | Reference KV in `crafty_core::kv` (single source, re-exported by facade) | `crafty-core/src/kv.rs`, `crafty-test-support` `TrackedKv` only |
 | 2026-08 | Durable cross-shard 2PC (`durable_cross_shard_2pc`, `EntryPayload::TwoPhasePrepare/Abort`) | `crafty-proto/src/two_phase.rs`, `crafty-core/tests/two_phase_journal.rs`, `crafty/tests/two_phase.rs` |
 | 2026-08 | Tier 2 Phase 2: dynamic catalog runtime (`add_raft_groups`, `/cluster/catalog/add`) | `crafty-proto/catalog`, `crafty-actor/runtime`, `crafty/tests/multi_raft.rs`, `docs/decisions/multi-raft.md` |
 | 2026-08 | Tier 2 multi-Raft architecture ADR + Phase 1 pure planners | `crafty-core/src/shard.rs`, `docs/decisions/multi-raft.md` |

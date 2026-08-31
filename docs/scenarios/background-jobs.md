@@ -33,11 +33,10 @@ Producer (any node)          Leader QueueService          Workers (any node)
 ```rust
 use std::time::Duration;
 
-use crafty::{CraftyApp, NodeId, RecurringJob};
+use crafty::{CraftyApp, RecurringJob, RunOpts};
 
-let app = CraftyApp::builder(NodeId(1))
-    .data_dir("/var/lib/crafty")
-    .job_stream("emails", Duration::from_secs(300)) // lease timeout
+CraftyApp::builder()
+    .queue("emails", Duration::from_secs(300))
     .recurring_job(
         "emails",
         RecurringJob {
@@ -49,11 +48,11 @@ let app = CraftyApp::builder(NodeId(1))
             enabled: true,
         },
     )
-    .start_from_env_shared()
+    .run(RunOpts::default().with_wait_queue("emails"))
     .await?;
 ```
 
-Cluster-level autoscale, sharded streams, priority, dedup: see `job_queue_cluster` example and [job-queue](../decisions/job-queue.md#v2-features).
+Cluster-level autoscale, sharded streams, priority, dedup: see [background-jobs showcase](../../examples/background-jobs/) and [job-queue](../decisions/job-queue.md#v2-features).
 
 ### 2. Enqueue (from any node)
 
@@ -167,7 +166,7 @@ CraftyApp::from_env()
     .await?;
 ```
 
-Use `.manage_auto` / `.manage` on the builder today ([examples/background-jobs/](../../examples/background-jobs/)).
+Use `.actors_auto` / `.actors` on the builder today ([examples/background-jobs/](../../examples/background-jobs/)).
 
 ## Related
 

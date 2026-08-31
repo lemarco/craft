@@ -6,12 +6,13 @@ Distributed Raft + actor framework in Rust. Read before making changes.
 
 1. [docs/status.md](docs/status.md) — current capabilities and limits
 2. [docs/scenarios/README.md](docs/scenarios/README.md) — product scenarios (jobs, workers, sessions, workflows)
-3. [docs/backlog.md](docs/backlog.md) — implementation backlog
-4. [docs/architecture.md](docs/architecture.md) — crate graph
-5. [docs/decisions/architecture-style.md](docs/decisions/architecture-style.md) — pure core, trait ports
-6. [docs/decisions/product-scenarios.md](docs/decisions/product-scenarios.md) — actor-first platform, no mandatory Redis
-7. [docs/decisions/testing-strategy.md](docs/decisions/testing-strategy.md) — test pyramid
-8. [docs/testing-coverage.md](docs/testing-coverage.md) — test inventory
+3. [examples/README.md](examples/README.md) — four runnable showcases (local + QUIC cluster)
+4. [docs/backlog.md](docs/backlog.md) — implementation backlog
+5. [docs/architecture.md](docs/architecture.md) — crate graph
+6. [docs/decisions/architecture-style.md](docs/decisions/architecture-style.md) — pure core, trait ports
+7. [docs/decisions/product-scenarios.md](docs/decisions/product-scenarios.md) — actor-first platform, no mandatory Redis
+8. [docs/decisions/testing-strategy.md](docs/decisions/testing-strategy.md) — test pyramid
+9. [docs/testing-coverage.md](docs/testing-coverage.md) — test inventory
 
 ## Cursor config
 

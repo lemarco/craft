@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Realtime — 3-node QUIC cluster (tier B: WebSocket + ActorSession)
+# Real-time sessions — 3-node QUIC cluster (tier B WebSocket showcase)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"
@@ -7,11 +7,37 @@ source "$CRAFT_ROOT/dev/cluster-common.sh"
 
 DEV="${CRAFTY_RT_CLUSTER_DIR:-$CRAFT_ROOT/target/crafty-realtime-cluster}"
 CERTS="$DEV/certs"
-PEERS="1@127.0.0.1:7743,2@127.0.0.1:7753,3@127.0.0.1:7763"
+SEED="1@127.0.0.1:7743"
 BIN="crafty-showcase-realtime"
-CLUSTER_PORTS=(7743 7753 7763 8294 8295 8296 9380 9381 9382)
+CLUSTER_PORTS=(7743 7753 7763 7773 8290 8291 8292 9380 9381 9382 9383)
 
-cluster_common_init "$ROOT" "$BIN" "$DEV" "$CERTS" "$PEERS"
+cluster_common_init "$ROOT" "$BIN" "$DEV" "$CERTS" "$SEED"
+
+stop() {
+    cluster_stop
+    local busy=0 port
+    for port in "${CLUSTER_PORTS[@]}"; do
+        if cluster_port_in_use "$port"; then
+            busy=1
+            echo "  still listening on :$port"
+            cluster_show_port_holders "$port" | sed 's/^/    /'
+        fi
+    done
+    [ "$busy" = 0 ] && echo "OK: cluster ports free"
+}
+
+status() {
+    echo "realtime cluster ports (forward WS 8290 + admin 9380):"
+    for port in "${CLUSTER_PORTS[@]}"; do
+        if cluster_port_in_use "$port"; then
+            echo "  :$port IN USE"
+            cluster_show_port_holders "$port" | sed 's/^/    /'
+        else
+            echo "  :$port free"
+        fi
+    done
+    pgrep -af "$BIN" 2>/dev/null | sed 's/^/  /' || echo "  (no processes)"
+}
 
 health() {
     local adm=000 i
@@ -21,56 +47,38 @@ health() {
         sleep 1
     done
     echo "admin GET /health → $adm"
-    CLIENT="$CRAFT_ROOT/target/debug/crafty-showcase-client"
-    if [ -x "$CLIENT" ]; then
-        if reply=$("$CLIENT" ws 127.0.0.1:8294 health ping 2>/dev/null) && echo "$reply" | rg -q 'ok:|session open'; then
-            echo "websocket /ws → OK ($reply)"
-            echo "OK: cluster ready"
-        else
-            echo "websocket /ws → failed ($reply)"
-        fi
-    elif command -v websocat >/dev/null 2>&1; then
-        if printf 'ping\n' | timeout 3 websocat -1 'ws://127.0.0.1:8294/ws?user=health' 2>/dev/null | rg -q 'ok:|session open'; then
-            echo "websocket /ws → OK"
-            echo "OK: cluster ready"
-        else
-            echo "websocket /ws → failed (ensure nodes 2+3 running)"
-        fi
-    else
-        [ "$adm" = 200 ] && echo "OK: admin up (build crafty-showcase-client or install websocat)" || echo "not ready"
-    fi
+    [ "$adm" = 200 ] && echo "OK: cluster ready (connect ws://127.0.0.1:8290/ws?user=alice)" || echo "not ready"
 }
 
-node_env() {
-    local id=$1 listen=$2 admin=$3 gateway=$4
-    cluster_node_env_base "$id" "$listen" "$admin" "$gateway"
+reset() {
+    stop
+    rm -rf "$DEV/data" "$DEV/logs"
+    mkdir -p "$DEV/data"/{node-1,node-2,node-3,node-4}
+    echo "OK: ./cluster.sh up  or  ./cluster.sh 1|2|3"
 }
-
-reset() { cluster_stop; rm -rf "$DEV/data" "$DEV/logs"; mkdir -p "$DEV/data"/{node-1,node-2,node-3}; echo "OK"; }
 
 setup() {
-    cluster_setup_all 1 2 3
+    cluster_setup_all 1 2 3 4
     echo "OK. Quick start: ./cluster.sh up"
+    echo "Or terminals: ./cluster.sh 1 | 2 | 3"
 }
 
 run_node() {
     local id=$1 listen=$2 admin=$3 gateway=$4
-    node_env "$id" "$listen" "$admin" "$gateway"
     cluster_run_node "$id" "$listen" "$admin" "$gateway"
 }
 
 run_node_bg() {
     local id=$1 listen=$2 admin=$3 gateway=$4
-    node_env "$id" "$listen" "$admin" "$gateway"
-    cluster_run_node_bg "$id"
+    cluster_run_node_bg "$id" "$listen" "$admin" "$gateway"
 }
 
 up() {
     cluster_stop
     rm -rf "$DEV/logs"
-    run_node_bg 1 127.0.0.1:7743 "${CLUSTER_ADMIN_BIND}:9380" 127.0.0.1:8294
-    run_node_bg 2 127.0.0.1:7753 "${CLUSTER_ADMIN_BIND}:9381" 127.0.0.1:8295
-    run_node_bg 3 127.0.0.1:7763 "${CLUSTER_ADMIN_BIND}:9382" 127.0.0.1:8296
+    run_node_bg 1 127.0.0.1:7743 "${CLUSTER_ADMIN_BIND}:9380" 127.0.0.1:8290
+    run_node_bg 2 127.0.0.1:7753 "${CLUSTER_ADMIN_BIND}:9381" 127.0.0.1:8291
+    run_node_bg 3 127.0.0.1:7763 "${CLUSTER_ADMIN_BIND}:9382" 127.0.0.1:8292
     echo ">> waiting for health"
     sleep 3
     health
@@ -79,17 +87,14 @@ up() {
 case "${1:-}" in
   setup) setup ;;
   reset) reset ;;
-  stop) cluster_stop ;;
+  stop) stop ;;
   up) up ;;
   logs) cluster_logs_tail "${2:-1}" ;;
-  status)
-    for port in "${CLUSTER_PORTS[@]}"; do
-        cluster_port_in_use "$port" && echo "  :$port IN USE" || echo "  :$port free"
-    done
-    ;;
+  status) status ;;
   health) health ;;
-  1) run_node 1 127.0.0.1:7743 "${CLUSTER_ADMIN_BIND}:9380" 127.0.0.1:8294 ;;
-  2) run_node 2 127.0.0.1:7753 "${CLUSTER_ADMIN_BIND}:9381" 127.0.0.1:8295 ;;
-  3) run_node 3 127.0.0.1:7763 "${CLUSTER_ADMIN_BIND}:9382" 127.0.0.1:8296 ;;
-  *) echo "usage: $0 setup | reset | stop | up | logs [N] | status | health | 1 | 2 | 3" >&2; exit 1 ;;
+  1) run_node 1 127.0.0.1:7743 "${CLUSTER_ADMIN_BIND}:9380" 127.0.0.1:8290 ;;
+  2) run_node 2 127.0.0.1:7753 "${CLUSTER_ADMIN_BIND}:9381" 127.0.0.1:8291 ;;
+  3) run_node 3 127.0.0.1:7763 "${CLUSTER_ADMIN_BIND}:9382" 127.0.0.1:8292 ;;
+  4) run_node 4 127.0.0.1:7773 "${CLUSTER_ADMIN_BIND}:9383" - ;;
+  *) echo "usage: $0 setup | reset | stop | up | logs [N] | status | health | 1 | 2 | 3 | 4" >&2; exit 1 ;;
 esac

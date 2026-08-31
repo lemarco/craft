@@ -14,8 +14,8 @@ pub fn startup(mode: &str, node_id: u64, data_dir: &std::path::Path) {
         mode,
         node_id,
         data_dir = %data_dir.display(),
-        trigger = ?std::env::var("CRAFTY_TRIGGER").ok(),
-        peers = ?std::env::var("CRAFTY_PEERS").ok(),
+        gateway = ?std::env::var("CRAFTY_GATEWAY").ok(),
+        join_seeds = ?std::env::var("CRAFTY_JOIN_SEEDS").ok(),
         "showcase starting"
     );
 }
@@ -52,6 +52,10 @@ pub fn saga_outcome(saga_id: &str, outcome: &str) {
         outcome,
         "saga finished"
     );
+}
+
+pub fn onboarding_step(line: &str) {
+    tracing::debug!(target: "showcase", showcase = NAME, step = line, "onboarding");
 }
 
 pub fn http_trigger(path: &str, saga_id: &str) {

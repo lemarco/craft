@@ -1,11 +1,31 @@
-//! Helpers for [`crafty::CraftyCluster`] integration tests.
+//! Helpers for [`crafty::CraftyCluster`] and [`crafty::CraftyApp`] integration tests.
 
 use std::sync::Arc;
 
+use crafty::CraftyApp;
+use crafty::CraftyAppBuilder;
 use crafty::CraftyCluster;
+use crafty::ReadyOpts;
+use crafty::RunOpts;
 use crafty::core::{Role, StateMachine};
 
 use crate::clock::{POLL_STEP, advance};
+
+/// Boot a local [`CraftyApp`] for integration tests (no Ctrl-C loop).
+///
+/// # Panics
+/// When boot fails.
+pub async fn boot_local_app(
+    builder: CraftyAppBuilder,
+    wait_ready: Option<ReadyOpts>,
+) -> Arc<CraftyApp> {
+    let mut opts = RunOpts::local();
+    opts.wait_ready = wait_ready;
+    builder
+        .boot_for_test(opts)
+        .await
+        .expect("boot_local_app")
+}
 
 /// Poll until one cluster in `clusters` reports leader, or panic after ~10s.
 ///

@@ -58,6 +58,7 @@ cron scheduling, actor-store TTL/GC, and a dedicated **`CraftyApp` HTTP gateway*
 - Dashboard actor **msg/s** column; observer mailbox depth, uptime, and
   message-rate sampling (carried from 0.2.1 development).
 - **`start_from_config_shared`** — QUIC production start with `CRAFTY_GATEWAY` auto-spawn (pair with `start_from_env_shared`).
+- **Docs** — synced for `0.2.2`: four product showcases under [`examples/`](examples/README.md) (replaces removed `crates/crafty/examples/*`); reference KV in [`crafty_core::kv`](crates/crafty-core/src/kv.rs).
 
 ## [0.2.1] — 2026-08-29
 

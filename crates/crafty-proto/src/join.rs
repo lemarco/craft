@@ -9,8 +9,9 @@ use crate::{Membership, NodeId};
 pub struct JoinRequest {
     /// Wire/protocol version of the joining node (join-version-skew).
     pub protocol_version: u32,
-    /// Desired node id.
-    pub node_id: NodeId,
+    /// Desired node id, or `None` to have the leader assign the next free id.
+    #[serde(default)]
+    pub node_id: Option<NodeId>,
     /// Address peers should use to reach the joining node.
     pub advertise_addr: String,
 }
@@ -22,6 +23,8 @@ pub enum JoinResponse {
     Accepted {
         /// Current leader.
         leader: NodeId,
+        /// Id assigned to this node (matches the request when one was given).
+        node_id: NodeId,
         /// Resulting cluster membership.
         membership: Membership,
     },

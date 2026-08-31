@@ -26,7 +26,7 @@ use crafty_net::{
     server_config,
 };
 use crafty_proto::{
-    CatalogCommand, JoinRejection, JoinRequest, JoinResponse, NodeId, PROTOCOL_VERSION,
+    CatalogCommand, JoinRejection, JoinRequest, JoinResponse, Membership, NodeId, PROTOCOL_VERSION,
     QueueAutoscalePolicyCommand,
 };
 use crafty_storage::GroupRedbLayout;
@@ -44,11 +44,12 @@ use crafty_actor::{
     run_queue_membership_autoscaler, run_queue_schedule_ticker, spawn_multi_raft_node, spawn_node,
 };
 
-use crate::certs::{CertReloadHandle, PemSecurity};
+use crate::certs::{CertReloadHandle, PemSecurity, cert_paths_for_node};
 use crate::cluster::{ClusterFacts, CraftyCluster};
 use crate::discovery::Seed;
 use crate::handler::{NoPeers, NodeRouter, PeerSource, QuicPeers};
 use crate::multi_raft::{ArcGroupMigrate, GroupMigratePort, MultiRaftState};
+use crate::node_id;
 use crate::observer::CraftyObserver;
 use crate::security::Security;
 
@@ -367,6 +368,36 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
     #[must_use]
     pub fn data_dir(mut self, path: impl Into<PathBuf>) -> Self {
         self.data_dir = Some(path.into());
+        self
+    }
+
+    /// Apply `CRAFTY_*` cluster settings without overwriting values set in code.
+    pub(crate) fn merge_app_config(mut self, cfg: &crate::env_config::AppConfig) -> Self {
+        if !cfg.members.is_empty() {
+            self = self.members(cfg.members.clone());
+        }
+        if self.data_dir.is_none() {
+            if let Some(dir) = cfg.data_dir.clone() {
+                self.data_dir = Some(dir);
+            }
+        }
+        self = self
+            .allow_join(cfg.allow_join)
+            .allow_leave(cfg.allow_leave)
+            .drain_timeout(cfg.drain_timeout);
+        if !cfg.join_seeds.is_empty() {
+            self = self.join_seeds(cfg.join_seeds.clone());
+        }
+        if self.admin_addr.is_none() {
+            if let Some(admin) = cfg.admin {
+                self = self.admin_addr(admin);
+            }
+        }
+        if self.admin_tls.is_none() {
+            if let Some((cert, key)) = cfg.admin_tls.clone() {
+                self = self.admin_tls(cert, key);
+            }
+        }
         self
     }
 
@@ -896,7 +927,21 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         listen: SocketAddr,
         peers: PeerDirectory,
     ) -> Result<CraftyCluster<M>, StartError> {
-        self.start_quic_inner(security, listen, peers, None).await
+        self.start_quic_inner(security, listen, peers, None, None)
+            .await
+    }
+
+    /// Like [`start_quic`](Self::start_quic) with PEM reload paths and optional cert directory.
+    pub async fn start_quic_cluster(
+        self,
+        security: Security,
+        listen: SocketAddr,
+        peers: PeerDirectory,
+        pem_paths: Option<crafty_net::CertPaths>,
+        cert_dir: Option<PathBuf>,
+    ) -> Result<CraftyCluster<M>, StartError> {
+        self.start_quic_inner(security, listen, peers, pem_paths, cert_dir)
+            .await
     }
 
     /// Like [`start_quic`](Self::start_quic) but loads from [`PemSecurity`] and,
@@ -912,23 +957,54 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         peers: PeerDirectory,
     ) -> Result<CraftyCluster<M>, StartError> {
         let paths = pem.paths.clone();
-        self.start_quic_inner(pem.security, listen, peers, Some(paths))
+        self.start_quic_inner(pem.security, listen, peers, Some(paths), None)
             .await
     }
 
     async fn start_quic_inner(
-        self,
-        security: Security,
+        mut self,
+        mut security: Security,
         listen: SocketAddr,
-        peers: PeerDirectory,
-        pem_paths: Option<crafty_net::CertPaths>,
+        mut peers: PeerDirectory,
+        mut pem_paths: Option<crafty_net::CertPaths>,
+        cert_dir: Option<PathBuf>,
     ) -> Result<CraftyCluster<M>, StartError> {
-        let server_cfg = server_config(&security.identity, security.roots.clone())?;
-        let client_cfg = client_config(&security.identity, security.roots)?;
+        let dynamic_join = !self.join_seeds.is_empty();
+        if let Some(ref data_dir) = self.data_dir {
+            if let Some(persisted) = node_id::read_persisted(data_dir) {
+                self.node_id = persisted;
+                if !dynamic_join {
+                    if !self.members.contains(&persisted) {
+                        self.members.push(persisted);
+                        self.members.sort();
+                    }
+                    if !peers.contains(persisted) {
+                        peers.insert(persisted, listen);
+                    }
+                }
+            } else if !dynamic_join {
+                if self.node_id == NodeId(0) {
+                    self.node_id = NodeId(1);
+                }
+                node_id::persist(data_dir, self.node_id).map_err(|e| {
+                    StartError::Config(format!("persist node id: {e}"))
+                })?;
+                if !self.members.contains(&self.node_id) {
+                    self.members.push(self.node_id);
+                    self.members.sort();
+                }
+                if !peers.contains(self.node_id) {
+                    peers.insert(self.node_id, listen);
+                }
+            }
+        }
+
+        let mut server_cfg = server_config(&security.identity, security.roots.clone())?;
+        let mut client_cfg = client_config(&security.identity, security.roots.clone())?;
 
         let server =
             Arc::new(
-                QuicServer::bind(listen, server_cfg).map_err(|source| StartError::Bind {
+                QuicServer::bind(listen, server_cfg.clone()).map_err(|source| StartError::Bind {
                     addr: listen,
                     source,
                 })?,
@@ -937,21 +1013,51 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         let endpoint = server.endpoint().clone();
         let quic = Arc::new(QuicTransport::with_policy(
             endpoint,
-            client_cfg,
-            peers,
+            client_cfg.clone(),
+            peers.clone(),
             BackoffPolicy::default(),
             self.traffic_policy.clone(),
         ));
-        // Advertise our own address so it flows out over `/cluster/peers`.
-        quic.learn_peer(self.node_id, listen);
         let seeds = crate::discovery::dedupe_seeds(self.join_seeds.iter().copied(), self.node_id);
         for seed in &seeds {
             quic.learn_peer(seed.node_id, seed.addr);
         }
-        let transport: Arc<dyn Transport> = quic.clone();
-        let peer_source: Arc<dyn PeerSource> = Arc::new(QuicPeers(Arc::clone(&quic)));
+
+        let mut pre_joined = false;
+        if dynamic_join
+            && self
+                .data_dir
+                .as_ref()
+                .is_none_or(|dir| node_id::read_persisted(dir).is_none())
+        {
+            let (assigned, membership) = join_cluster_auto(&quic, &seeds, listen).await?;
+            self.node_id = assigned;
+            self.members = membership.voters.clone();
+            pre_joined = true;
+            if let Some(ref data_dir) = self.data_dir {
+                node_id::persist(data_dir, assigned).map_err(|e| {
+                    StartError::Config(format!("persist assigned node id: {e}"))
+                })?;
+            }
+            quic.learn_peer(assigned, listen);
+            if !peers.contains(assigned) {
+                peers.insert(assigned, listen);
+            }
+            if let Some(ref dir) = cert_dir {
+                pem_paths = Some(cert_paths_for_node(dir, assigned));
+                let loaded = PemSecurity::load(assigned, pem_paths.clone().unwrap())?;
+                security = loaded.security;
+                server_cfg = server_config(&security.identity, security.roots.clone())?;
+                client_cfg = client_config(&security.identity, security.roots.clone())?;
+                server.reload(server_cfg);
+                quic.reload(client_cfg).await;
+            }
+        }
 
         let node_id = self.node_id;
+        quic.learn_peer(node_id, listen);
+        let transport: Arc<dyn Transport> = quic.clone();
+        let peer_source: Arc<dyn PeerSource> = Arc::new(QuicPeers(Arc::clone(&quic)));
         let sync_period = self.publish_period;
         let cert_watch = self.cert_watch;
         let (mut cluster, router) = self
@@ -968,8 +1074,11 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         // reachable seed, then ask to join (the seed forwards to the leader).
         // Blocks until the membership change commits or a deadline elapses
         // (discovery, join-rpc); tries every seed for resilience.
-        if !seeds.is_empty() {
+        if !seeds.is_empty() && !pre_joined {
             join_cluster(&quic, node_id, &seeds, listen).await?;
+        } else if pre_joined {
+            // Confirm membership (Duplicate) after auto-assigned pre-join.
+            let _ = join_cluster(&quic, node_id, &seeds, listen).await;
         }
 
         if let Some(paths) = pem_paths {
@@ -1811,7 +1920,7 @@ async fn join_cluster(
     // `Redirect` means "no leader yet" — retry against the next seed.
     let request = JoinRequest {
         protocol_version: PROTOCOL_VERSION,
-        node_id,
+        node_id: Some(node_id),
         advertise_addr: advertise.to_string(),
     };
     for attempt in 0..JOIN_ATTEMPTS {
@@ -1848,5 +1957,80 @@ async fn join_cluster(
     }
     Err(StartError::Join(
         "join did not commit before the retry budget elapsed".to_string(),
+    ))
+}
+
+/// Pre-join handshake: leader assigns a node id before this node starts Raft.
+async fn join_cluster_auto(
+    quic: &Arc<QuicTransport>,
+    seeds: &[Seed],
+    advertise: SocketAddr,
+) -> Result<(NodeId, Membership), StartError> {
+    debug_assert!(!seeds.is_empty(), "join_cluster_auto requires at least one seed");
+
+    let mut booked = false;
+    let mut last_err = String::from("no seeds");
+    'book: for attempt in 0..JOIN_ATTEMPTS {
+        for seed in seeds {
+            match fetch_peers(&**quic, seed.node_id).await {
+                Ok(book) => {
+                    for entry in book.entries {
+                        if let Ok(addr) = entry.addr.parse::<SocketAddr>() {
+                            quic.learn_peer(entry.node, addr);
+                        }
+                    }
+                    booked = true;
+                    break 'book;
+                }
+                Err(e) => last_err = e.to_string(),
+            }
+        }
+        if attempt + 1 < JOIN_ATTEMPTS {
+            tokio::time::sleep(JOIN_BACKOFF).await;
+        }
+    }
+    if !booked {
+        return Err(StartError::Join(format!(
+            "no seed reachable to bootstrap discovery: {last_err}"
+        )));
+    }
+
+    let request = JoinRequest {
+        protocol_version: PROTOCOL_VERSION,
+        node_id: None,
+        advertise_addr: advertise.to_string(),
+    };
+    for attempt in 0..JOIN_ATTEMPTS {
+        let last = attempt + 1 == JOIN_ATTEMPTS;
+        for (i, seed) in seeds.iter().enumerate() {
+            let last_seed = last && i + 1 == seeds.len();
+            match send_join_request(&**quic, seed.node_id, &request).await {
+                Ok(JoinResponse::Accepted {
+                    node_id,
+                    membership,
+                    ..
+                }) => return Ok((node_id, membership)),
+                Ok(JoinResponse::Rejected { reason }) => {
+                    return Err(StartError::Join(format!(
+                        "cluster rejected auto join: {reason:?}"
+                    )));
+                }
+                Ok(JoinResponse::Redirect { leader }) if last_seed => {
+                    return Err(StartError::Join(format!(
+                        "no leader available to assign node id (hint: {leader:?})"
+                    )));
+                }
+                Err(e) if last_seed => {
+                    return Err(StartError::Join(format!("auto join request failed: {e}")));
+                }
+                Ok(JoinResponse::Redirect { .. }) | Err(_) => {}
+            }
+        }
+        if attempt + 1 < JOIN_ATTEMPTS {
+            tokio::time::sleep(JOIN_BACKOFF).await;
+        }
+    }
+    Err(StartError::Join(
+        "auto join did not commit before the retry budget elapsed".to_string(),
     ))
 }

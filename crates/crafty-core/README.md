@@ -4,6 +4,8 @@ Pure Raft consensus state machine for the
 [crafty](https://crates.io/crates/crafty) framework — **no I/O**, no async runtime,
 no wall clock.
 
+Includes [`kv`](src/kv.rs) — a reference key/value [`StateMachine`](src/state_machine.rs) for tutorials and tests (re-exported by the `crafty` facade as `crafty::kv`).
+
 Consensus is modeled as `RaftInput → (state, RaftOutput)`; side effects are
 returned as data and executed by the outer runtime (`crafty-actor`).
 

@@ -5,10 +5,9 @@ use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
-use crafty::net::LocalNetwork;
-use crafty::{CraftyApp, EnqueueOptions, NodeId};
+use crafty::{CraftyApp, CraftyConfigure, EnqueueOptions, NodeId};
 use crafty_actor::JobLifecycle;
-use crafty_test_support::{advance, wait_for_crafty_leader};
+use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
 use tower::ServiceExt;
 
 #[tokio::test(start_paused = true)]
@@ -23,16 +22,18 @@ async fn http_post_job_returns_202_and_enqueues() {
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).unwrap();
 
-    let net = LocalNetwork::new();
-    let app = Arc::new(
-        CraftyApp::builder(NodeId(1))
+    let app = boot_local_app(
+        CraftyApp::builder()
             .data_dir(&base)
-            .job_stream("jobs", Duration::from_secs(60))
-            .members([NodeId(1)])
-            .tick_period(Duration::from_millis(5))
-            .start_local(&net)
-            .await,
-    );
+            .queue("jobs", Duration::from_secs(60))
+            .configure(CraftyConfigure {
+                members: vec![NodeId(1)],
+                tick_period: Duration::from_millis(5),
+                ..CraftyConfigure::default()
+            }),
+        None,
+    )
+    .await;
 
     wait_for_crafty_leader(app.cluster()).await;
     advance(Duration::from_millis(200)).await;

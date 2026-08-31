@@ -835,6 +835,7 @@ impl QueueService {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_lease(&self, request: QueueLeaseRequest) -> QueueLeaseReply {
         if self.state.is_leader() {
             let worker = WorkerId {

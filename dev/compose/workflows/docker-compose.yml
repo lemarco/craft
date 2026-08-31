@@ -44,7 +44,9 @@ services:
       CRAFTY_NODE_ID: "1"
       CRAFTY_LISTEN: 0.0.0.0:7843
       CRAFTY_ADMIN: 0.0.0.0:9480
-      CRAFTY_TRIGGER: 0.0.0.0:8490
+      CRAFTY_GATEWAY: 0.0.0.0:8490
+      CRAFTY_GATEWAY_NO_JOBS: "1"
+      CRAFTY_GATEWAY_NO_ACTORS: "1"
       CRAFTY_NODE_CERT: /certs/node-1.pem
       CRAFTY_NODE_KEY: /certs/node-1.key
       CRAFTY_DATA_DIR: /data
@@ -65,7 +67,9 @@ services:
       CRAFTY_NODE_ID: "2"
       CRAFTY_LISTEN: 0.0.0.0:7853
       CRAFTY_ADMIN: 0.0.0.0:9481
-      CRAFTY_TRIGGER: 0.0.0.0:8491
+      CRAFTY_GATEWAY: 0.0.0.0:8491
+      CRAFTY_GATEWAY_NO_JOBS: "1"
+      CRAFTY_GATEWAY_NO_ACTORS: "1"
       CRAFTY_NODE_CERT: /certs/node-2.pem
       CRAFTY_NODE_KEY: /certs/node-2.key
       CRAFTY_DATA_DIR: /data
@@ -86,7 +90,9 @@ services:
       CRAFTY_NODE_ID: "3"
       CRAFTY_LISTEN: 0.0.0.0:7863
       CRAFTY_ADMIN: 0.0.0.0:9482
-      CRAFTY_TRIGGER: 0.0.0.0:8492
+      CRAFTY_GATEWAY: 0.0.0.0:8492
+      CRAFTY_GATEWAY_NO_JOBS: "1"
+      CRAFTY_GATEWAY_NO_ACTORS: "1"
       CRAFTY_NODE_CERT: /certs/node-3.pem
       CRAFTY_NODE_KEY: /certs/node-3.key
       CRAFTY_DATA_DIR: /data

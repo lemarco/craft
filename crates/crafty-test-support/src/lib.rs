@@ -18,7 +18,7 @@ pub use clock::{
 };
 #[cfg(feature = "facade")]
 pub use facade::{
-    await_crafty_leader, wait_for_crafty_leader, wait_for_crafty_stopped,
+    await_crafty_leader, boot_local_app, wait_for_crafty_leader, wait_for_crafty_stopped,
     wait_for_each_group_cluster_leader, wait_for_group_leader_on_any, wait_for_group_leaders,
 };
 pub use harness::{

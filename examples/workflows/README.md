@@ -2,34 +2,42 @@
 
 Multi-step onboarding with compensators; journal in `group-meta.redb`.
 
+Uses [`CraftyKvApp`](../../crates/crafty/src/kv_app.rs) — same onboarding path as the other product showcases.
+
 ## What you run
 
 | Piece | Role |
 |-------|------|
-| This binary | 3-node `KvMachine` cluster + Meta-Raft saga journal |
-| [`trigger.sh`](trigger.sh) | Run saga (local CLI or cluster HTTP) |
+| This binary | `CraftyKvApp` + gateway `/workflows/*` |
+| [`trigger.sh`](trigger.sh) | Run / resume saga via gateway HTTP |
 | Admin | Dashboard **Sagas** panel |
 
-## Quick start (local — one terminal)
+## Quick start (local — two terminals)
 
-In-process 3-member cluster (fastest way to see journal + resume):
+**Terminal 1** — start gateway + Raft:
 
 ```bash
 cd examples/workflows
 cargo run --release
-# same as: cargo run --release -- run onboard-42
 ```
 
-Resume (same `data_dir`):
+**Terminal 2** — trigger saga:
 
 ```bash
+./trigger.sh onboard-42
+./trigger.sh resume onboard-42
+```
+
+CLI-only (no HTTP server):
+
+```bash
+cargo run --release -- run onboard-42
 cargo run --release -- resume onboard-42
-# or: ./trigger.sh resume onboard-42   # falls back to local when no trigger HTTP
 ```
 
 ## Quick start (cluster)
 
-Three **identical** nodes — each runs admin + workflow trigger HTTP:
+Three **identical** nodes — each runs admin + workflow gateway:
 
 ```bash
 cd examples/workflows
@@ -37,16 +45,16 @@ cd examples/workflows
 ./cluster.sh up
 ./cluster.sh health
 ./trigger.sh onboard-42
-./trigger.sh resume onboard-42   # idempotent when already completed
+./trigger.sh resume onboard-42
 ```
 
-| Node | QUIC | Admin | Trigger HTTP |
-|------|------|-------|--------------|
+| Node | QUIC | Admin | Gateway |
+|------|------|-------|---------|
 | 1 | `:7843` | `:9480` | `:8490` |
 | 2 | `:7853` | `:9481` | `:8491` |
 | 3 | `:7863` | `:9482` | `:8492` |
 
-Connect to any node's trigger URL. Forward **8490** and **9480** in Cursor/SSH. Watch the **Sagas** table on the dashboard after `./trigger.sh`.
+Connect to any node's gateway URL. Forward **8490** and **9480** in Cursor/SSH.
 
 Docker Compose: `cd dev/compose/workflows && docker compose up --build`
 
@@ -54,8 +62,9 @@ Docker Compose: `cd dev/compose/workflows && docker compose up --build`
 
 | Var | Default | Meaning |
 |-----|---------|---------|
+| `CRAFTY_GATEWAY` | `127.0.0.1:8490` (local) | Product HTTP bind (`/workflows/run`, `/workflows/resume`) |
 | `CRAFTY_DATA_DIR` | `/tmp/crafty-showcase-workflows` | Raft + Meta-Raft redb |
-| `CRAFTY_PEERS` | unset | When set → QUIC cluster server mode |
-| `CRAFTY_TRIGGER` | unset | Workflow HTTP bind (`/workflows/run`, `/workflows/resume`) |
+| `CRAFTY_PEERS` | unset | When set → QUIC cluster mode |
+| `CRAFTY_GATEWAY_NO_WORKFLOWS` | unset | Set `1` to disable `/workflows/*` on gateway |
 
 Guide: [docs/scenarios/workflows.md](../../docs/scenarios/workflows.md)

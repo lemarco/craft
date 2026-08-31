@@ -10,6 +10,27 @@ use axum::Router;
 
 use super::app::CraftyApp;
 
+/// Which product HTTP APIs to mount on [`.gateway`](super::app::CraftyAppBuilder::gateway).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GatewayOpts {
+    /// Mount tier C `/jobs/*` routes.
+    pub jobs_api: bool,
+    /// Mount `/actors/*` cast + ask routes.
+    pub actors_api: bool,
+    /// Mount `/workflows/run` and `/workflows/resume`.
+    pub workflows_api: bool,
+}
+
+impl Default for GatewayOpts {
+    fn default() -> Self {
+        Self {
+            jobs_api: true,
+            actors_api: true,
+            workflows_api: true,
+        }
+    }
+}
+
 /// Shared Axum state for gateway handlers that need the running app.
 #[derive(Clone)]
 pub struct CraftyGatewayState {
@@ -30,6 +51,8 @@ pub struct GatewayConfig {
     pub actors_api: bool,
     /// Optional custom routes (WebSocket, sync HTTP, etc.).
     pub routes: Option<GatewayRoutesFn>,
+    /// Mount `/workflows/*` routes when a plan builder is configured.
+    pub workflows_api: bool,
 }
 
 /// Build the gateway router: custom routes first, then optional product APIs.
@@ -38,10 +61,16 @@ pub fn build_gateway_router(app: Arc<CraftyApp>, config: GatewayConfig) -> Route
         addr: _,
         jobs_api,
         actors_api,
+        workflows_api,
         routes,
     } = config;
 
     let mut router = routes.map_or_else(Router::new, |f| f(Arc::clone(&app)));
+
+    if workflows_api {
+        let api = CraftyApp::workflows_api(Arc::clone(&app));
+        router = router.merge(api.router().with_state(Arc::new(api.into_state())));
+    }
 
     if actors_api {
         let api = CraftyApp::actors_api(Arc::clone(&app));
@@ -60,6 +89,9 @@ pub fn build_gateway_router(app: Arc<CraftyApp>, config: GatewayConfig) -> Route
 ///
 /// Binds synchronously before returning so callers can fail fast when the port is
 /// taken. Serve errors are logged to stderr; the cluster keeps running.
+///
+/// # Errors
+/// Returns [`std::io::Error`] when the listen socket cannot be bound.
 pub async fn spawn_gateway(app: Arc<CraftyApp>, config: GatewayConfig) -> std::io::Result<()> {
     let addr = config.addr;
     let router = build_gateway_router(app, config);
@@ -70,23 +102,5 @@ pub async fn spawn_gateway(app: Arc<CraftyApp>, config: GatewayConfig) -> std::i
             eprintln!("crafty: gateway server on {addr} failed: {e}");
         }
     });
-    Ok(())
-}
-
-/// Async helper used by [`super::app::CraftyAppBuilder::run_local_until_shutdown`].
-pub async fn run_gateway_until_shutdown(
-    app: Arc<CraftyApp>,
-    config: GatewayConfig,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let addr = config.addr;
-    let router = build_gateway_router(app, config);
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    let serve = axum::serve(listener, router);
-    tokio::select! {
-        res = serve => {
-            res?;
-        }
-        _ = tokio::signal::ctrl_c() => {}
-    }
     Ok(())
 }

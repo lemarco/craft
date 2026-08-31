@@ -7,11 +7,12 @@ source "$CRAFT_ROOT/dev/cluster-common.sh"
 
 DEV="${CRAFTY_BG_JOBS_CLUSTER_DIR:-$CRAFT_ROOT/target/crafty-bg-jobs-cluster}"
 CERTS="$DEV/certs"
-PEERS="1@127.0.0.1:7543,2@127.0.0.1:7553,3@127.0.0.1:7563"
+PEERS="1@127.0.0.1:7543"
+SEED="$PEERS"
 BIN="crafty-showcase-background-jobs"
 CLUSTER_PORTS=(7543 7553 7563 7573 8090 8091 8092 9180 9181 9182 9183)
 
-cluster_common_init "$ROOT" "$BIN" "$DEV" "$CERTS" "$PEERS"
+cluster_common_init "$ROOT" "$BIN" "$DEV" "$CERTS" "$SEED"
 
 stop() {
     cluster_stop
@@ -55,7 +56,7 @@ health() {
 
 node_env() {
     local id=$1 listen=$2 admin=$3 gateway=$4
-    cluster_node_env_base "$id" "$listen" "$admin" "$gateway"
+    cluster_prepare_node "$id" "$listen" "$admin" "$gateway"
     export CRAFTY_JOB_QUEUE=emails
     export CRAFTY_JOB_QUEUE_LEASE_SECS=300
 }
@@ -82,7 +83,7 @@ run_node() {
 run_node_bg() {
     local id=$1 listen=$2 admin=$3 gateway=$4
     node_env "$id" "$listen" "$admin" "$gateway"
-    cluster_run_node_bg "$id"
+    cluster_run_node_bg "$id" "$listen" "$admin" "$gateway"
 }
 
 up() {

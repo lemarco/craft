@@ -499,7 +499,7 @@ async fn membership_autoscale_invokes_join_hook() {
                     NodeId(1),
                     &JoinRequest {
                         protocol_version: PROTOCOL_VERSION,
-                        node_id: joiner_id,
+                        node_id: Some(joiner_id),
                         advertise_addr: "node4.local:7443".to_string(),
                     },
                 )

@@ -14,7 +14,7 @@ Four application patterns cover most distributed product work:
 | Background jobs | Sidekiq-style durable queue | [background-jobs](../scenarios/background-jobs.md) |
 | Stateful workers | Crash-safe actors + migration | [stateful-workers](../scenarios/stateful-workers.md) |
 | Real-time / session | Sticky actors + stateless gateway | [realtime-sessions](../scenarios/realtime-sessions.md) |
-| Workflow | Saga + queue as mini-Temporal | [workflows](../scenarios/workflows.md) |
+| Workflow | Saga coordination (not embedded DB) | [workflows](../scenarios/workflows.md) |
 
 All four compose on the same runtime. No separate job server, workflow server, or mandatory external KV.
 
@@ -22,15 +22,26 @@ All four compose on the same runtime. No separate job server, workflow server, o
 
 ### Positioning
 
-> **Crafty** — write actors; the cluster scales when you add VPSes. Jobs, stateful workers, sessions, and workflows are built in. Persistence defaults to **embedded `redb` + Raft** under `data_dir`. No Kubernetes. No mandatory Redis.
+> **Crafty** — a **distributed coordination runtime**: cache hooks, job queue, actors, workflow machinery, cron. **Same [`CraftyApp`](../../crates/crafty/src/app.rs) API** on one laptop or N VPSes. Domain data stays in **your** Postgres / services — crafty is not an application database. Cluster membership is **automatic** (seed + join); graceful shutdown drains actors and can leave the cluster. No Kubernetes. No mandatory Redis.
 
-### Three persistence tiers (product view)
+### Coordination vs domain data
+
+| Built into crafty | Stays external |
+|-------------------|----------------|
+| Job queue, cron, lease/ack | Business tables (Postgres, …) |
+| Actors, sessions, directory | Authoritative domain SM as product DB |
+| Saga / workflow **journal** | Long-running side effects via enqueue / HTTP / cast |
+| `ActorStateStore` (idempotency, step keys) | Mandatory Redis |
+
+Advanced teams may embed a custom [`StateMachine`](../../crates/crafty-core/src/lib.rs) via [`CraftyCluster`](../../crates/crafty/src/cluster.rs) — that is **not** the default [`CraftyApp`](../../crates/crafty/src/app.rs) product path.
+
+### Three messaging tiers (product view)
 
 | Tier | Mechanism | Product use |
 |------|-----------|-------------|
-| **A — Consensus** | Raft → `StateMachine` | Orders, balances, config — linearizable domain data |
 | **B — Actor mailbox** | `send` / `ask` / `ActorSession` | RPC, sync HTTP, real-time session to a pinned worker |
 | **C — Job queue** | `JobQueue` → `RedbJobQueue` | Async backlog, many workers, autoscale |
+| **Workflow machinery** | Meta-Raft saga journal + steps | Multi-step processes with compensators; steps call B/C or external APIs |
 
 Actor **workflow keys** (idempotency, step progress outside SM) use [`ActorStateStore`](actor-state-store.md) — default path **`redb`**, not Redis.
 
@@ -51,16 +62,18 @@ See [job-queue](job-queue.md) for why mailboxes and Raft logs are not misused as
 [`CraftyApp`](../../crates/crafty/src/app.rs) wraps the same runtime as `CraftyClusterBuilder`:
 
 ```rust
-use std::sync::Arc;
-use crafty::{CraftyApp, ReadyOpts};
+use std::time::Duration;
+use crafty::{CraftyApp, RunOpts};
 
-let app: Arc<CraftyApp> = CraftyApp::start_from_env_shared().await?;
-app.wait_until_ready(ReadyOpts::default().with_queue("emails")).await;
-// spawn consumers, custom http_routes, WebSocket handlers…
-CraftyApp::run_until_shutdown_shared(app).await?;
+CraftyApp::builder()
+    .queue("emails", Duration::from_secs(300))
+    .consumer(SendEmailConsumer, Default::default())
+    .gateway("0.0.0.0:8090".parse()?)
+    .run(RunOpts::default().with_wait_queue("emails"))
+    .await?;
 ```
 
-Declarative `.jobs(...)` / `.workers(..., scale: Auto)` registration remains aspirational — use `.manage_auto` / `.manage` on the builder today ([examples/](../../examples/README.md)).
+Declarative `.jobs(...)` / `.workers(..., scale: Auto)` registration remains aspirational — use `.actors_auto` / `.actors` on the builder today ([examples/](../../examples/README.md)).
 
 ### Scenario composition
 
@@ -73,15 +86,15 @@ flowchart TB
     subgraph Cluster["crafty cluster"]
         B[Tier B — ask / ActorSession]
         C[Tier C — JobQueue enqueue]
-        A[Tier A — propose / saga]
-        W[Workers — scale_cluster]
+        W[Workflow journal + steps]
+        A[Workers — scale_cluster]
     end
 
     HTTP --> B
     HTTP --> C
-    B --> W
-    C --> W
-    A --> W
+    B --> A
+    C --> A
+    W --> A
 ```
 
 Typical flows:
@@ -89,7 +102,7 @@ Typical flows:
 - **Async API:** HTTP `202` → `enqueue` (C) → worker `lease`/`ack` (C + W)
 - **Sync API:** HTTP `200` → `ask` or `query` (B or A)
 - **Session:** WebSocket → `ActorSession` → `ask_session` (B + W)
-- **Workflow:** `run_saga` (A journal) with steps calling C, B, or A
+- **Workflow:** `run_workflow` / HTTP `/workflows/*` — journal in Meta-Raft; steps call actors, queue, or external HTTP
 
 ### What is shipped vs polish backlog
 
@@ -122,7 +135,7 @@ Full epic list: [backlog.md](../backlog.md) (P0–P3 ✅).
 
 **Negative**
 
-- Declarative `.jobs()` / `.workers()` builder sugar still aspirational — use `manage_auto` today
+- Declarative `.jobs()` / `.workers()` builder sugar still aspirational — use `actors_auto` today
 - WebSocket gateway auth remains a thin stub (`GATEWAY_TOKEN`) — production apps add their own layer
 - Stateful workers need `RedbActorStateStore` + SM discipline — keys without SM still require explicit design
 

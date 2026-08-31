@@ -137,11 +137,12 @@ Global serializable isolation across shards is **not** a goal ([multi-raft](../d
 
 | Asset | Purpose |
 |-------|---------|
+| [`examples/workflows/`](../../examples/workflows/) | Meta-Raft saga + compensators + resume |
 | `crafty/tests/saga.rs` | Facade integration |
-| `examples/cross_shard_2pc.rs` | Advanced cross-shard |
+| `crafty/tests/two_phase.rs` | Cross-shard 2PC (advanced) |
 | `crafty-client` | `run_saga`, `SagaPlan` API |
 
-## Target product API (backlog B-05)
+## Future polish
 
 ```rust
 app.workflow("onboard_user", |w| async move {

@@ -11,7 +11,7 @@ Excluded from the root workspace `cargo check` (like `benchmarks/`). CI runs `./
 | [`background-jobs/`](background-jobs/) | C | HTTP `202` → queue → `#[consumer]` | `cargo run --release` | `./cluster.sh up` |
 | [`stateful-workers/`](stateful-workers/) | B | `ActorStateStore` + idempotent cast | `cargo run --release` | `./cluster.sh up` |
 | [`realtime/`](realtime/) | B | WebSocket → sticky `ActorSession` | `cargo run --release` | `./cluster.sh up` |
-| [`workflows/`](workflows/) | A | Meta-Raft saga + compensators | `cargo run --release` | `./cluster.sh up` |
+| [`workflows/`](workflows/) | coordination | Saga journal + actor/queue steps | `cargo run --release` | `./cluster.sh up` |
 
 ## Reading the code
 
@@ -19,16 +19,16 @@ Each showcase `src/main.rs` is heavily commented:
 
 - **What** tier (A/B/C) and data flow diagram in the module doc
 - **Why** that tier vs the others (jobs vs actors vs saga)
-- **How** local mode differs from `CRAFTY_PEERS` cluster mode
+- **How** solo vs multi-node (`CRAFTY_JOIN_SEEDS` on nodes 2+; node 1 seed with `CRAFTY_ALLOW_JOIN`)
 - **`cluster.sh`** header explains env vars and port layout
 
-Start with [`background-jobs/src/main.rs`](background-jobs/src/main.rs) — the other three follow the same local/cluster split.
+Start with [`background-jobs/src/main.rs`](background-jobs/src/main.rs) — the other three follow the same pattern.
 
 ### Shared cluster env
 
 Every showcase runs the **same binary on every node** — gateway + workers/consumers on each VPS. The cluster routes work (Raft leader, queue lease, actor directory); you do not split ingress vs worker roles in the happy path.
 
-- Readiness: `app.wait_until_ready(ReadyOpts::default().with_queue("emails"))` instead of hand-rolled polls
+- Readiness: `RunOpts::default().with_wait_queue("emails")` (or `.with_wait_ready(...)`)
 - **Advanced:** the library still supports `CRAFTY_ROLE=gateway|worker|both` for production edge-only nodes — not used by default in these showcases
 
 ### Internal HTTP/WS client (`crafty-showcase-client`, not on crates.io)
