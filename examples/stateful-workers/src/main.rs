@@ -87,6 +87,7 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     debug::init_tracing();
     let mode = env::args().nth(1).unwrap_or_default();

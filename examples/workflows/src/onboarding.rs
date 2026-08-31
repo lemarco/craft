@@ -3,6 +3,7 @@
 use std::future::Future;
 use std::sync::Arc;
 
+use crafty::ActorGroupOpts;
 use crafty::CraftyApp;
 use crafty::actor::{UserActor, remote_actor};
 use crafty::client::{Client, ClientError, KeyedClient, RemoteClient, SagaOutcome, SagaPlan, SagaError};
@@ -149,6 +150,7 @@ pub async fn run_onboarding_plan(app: Arc<CraftyApp>, plan: SagaPlan) -> Result<
 }
 
 /// Resume onboarding workflow after partial progress.
+#[allow(dead_code)]
 pub async fn resume_onboarding_plan(
     app: Arc<CraftyApp>,
     plan: SagaPlan,

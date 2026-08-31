@@ -75,6 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     server_builder()
         .run(RunOpts::default().with_wait_queue(STREAM))
         .await?;
+    debug::shutdown(worker_count() as usize);
     Ok(())
 }
 

@@ -31,7 +31,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use crafty::actor::{UserActor, remote_actor};
-use crafty::{ActorGroupOpts, CraftyApp, CraftyAppBuilder, CraftyConfigure, CraftyGatewayState, GatewayOpts, ReadyOpts, RunOpts};
+use crafty::{ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayOpts, ReadyOpts, RunOpts};
 use crafty_actor::CastError;
 use crafty_showcase_common::{data_dir, display_addr};
 

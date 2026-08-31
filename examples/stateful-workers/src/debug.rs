@@ -20,6 +20,7 @@ pub fn startup(mode: &str, node_id: u64, data_dir: &std::path::Path) {
     );
 }
 
+#[allow(dead_code)]
 pub fn cluster_ready() {
     tracing::debug!(target: "showcase", showcase = NAME, "cluster ready");
 }

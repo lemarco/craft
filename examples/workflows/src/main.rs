@@ -6,7 +6,7 @@ mod onboarding;
 use std::env;
 use std::time::Duration;
 
-use crafty::{ActorGroupOpts, CraftyApp, CraftyConfigure, GatewayOpts, ReadyOpts, RunOpts};
+use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, ReadyOpts, RunOpts};
 use crafty_showcase_common::{data_dir, display_addr};
 
 use crate::onboarding::{apply_workers, build_plan, run_onboarding_plan};

@@ -20,10 +20,12 @@ pub fn startup(mode: &str, node_id: u64, data_dir: &std::path::Path) {
     );
 }
 
+#[allow(dead_code)]
 pub fn cluster_ready() {
     tracing::debug!(target: "showcase", showcase = NAME, "cluster ready");
 }
 
+#[allow(dead_code)]
 pub fn saga_run(saga_id: &str, local: bool) {
     tracing::debug!(
         target: "showcase",
@@ -34,6 +36,7 @@ pub fn saga_run(saga_id: &str, local: bool) {
     );
 }
 
+#[allow(dead_code)]
 pub fn saga_resume(saga_id: &str, local: bool) {
     tracing::debug!(
         target: "showcase",
@@ -44,6 +47,7 @@ pub fn saga_resume(saga_id: &str, local: bool) {
     );
 }
 
+#[allow(dead_code)]
 pub fn saga_outcome(saga_id: &str, outcome: &str) {
     tracing::debug!(
         target: "showcase",
@@ -58,6 +62,7 @@ pub fn onboarding_step(line: &str) {
     tracing::debug!(target: "showcase", showcase = NAME, step = line, "onboarding");
 }
 
+#[allow(dead_code)]
 pub fn http_trigger(path: &str, saga_id: &str) {
     tracing::debug!(
         target: "showcase",
