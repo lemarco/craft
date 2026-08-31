@@ -149,7 +149,7 @@ impl CraftyAppBuilder {
         self
     }
 
-    /// Register a tier-C [`JobConsumer`] loop (started in [`Self::run`]).
+    /// Register a tier-C [`crate::JobConsumer`] loop (started in [`Self::run`]).
     #[must_use]
     pub fn consumer<C: crate::JobConsumer>(
         mut self,
