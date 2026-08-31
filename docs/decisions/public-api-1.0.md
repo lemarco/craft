@@ -14,7 +14,7 @@ stability promise applies primarily to types re-exported from `crafty`.
 
 | Area | Types | Notes |
 |------|-------|-------|
-| App | `CraftyApp`, `CraftyAppBuilder`, `AppConfig`, `app_config_from_env` | Preferred product path |
+| App | `CraftyApp`, `CraftyAppBuilder`, `CraftyConfigure`, `QueueOpts`, `CronOpts`, `ActorGroupOpts`, `GatewayOpts`, `RunOpts` | Preferred product path; env via `CRAFTY_*` at boot |
 | Cluster | `CraftyCluster`, `CraftyClusterBuilder`, `StartError` | Full control / examples |
 | Identity | `NodeId`, `Security`, `PeerDirectory`, cert reload helpers | Multi-node wiring |
 | Jobs (tier C) | `JobQueue`, `EnqueueOptions`, `run_queue_consumer`, `ClusterJobQueue` | Via `CraftyApp::enqueue` |

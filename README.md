@@ -79,7 +79,28 @@ See [job-queue](docs/decisions/job-queue.md) and [protocol.md](docs/protocol.md#
 
 ---
 
-## Quick API sketch
+## Quick API sketch (product)
+
+```rust
+use std::time::Duration;
+use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, QueueOpts, RunOpts};
+
+CraftyApp::builder()
+    .data_dir("/var/lib/crafty")
+    .queue([QueueOpts::new("jobs", Duration::from_secs(300))])
+    .configure(CraftyConfigure {
+        admin_addr: Some("127.0.0.1:8080".parse()?),
+        ..CraftyConfigure::default()
+    })
+    .gateway(
+        "127.0.0.1:8090".parse()?,
+        GatewayOpts::default().with_jobs_api(true),
+    )
+    .run(RunOpts::default().with_wait_queue("jobs"))
+    .await?;
+```
+
+## Advanced (`CraftyCluster`)
 
 ```rust
 use std::time::Duration;
@@ -112,7 +133,7 @@ Durable mailbox (tier B spool): `.data_dir(path).durable_mailbox(true)` — writ
 
 ```toml
 [dependencies]
-crafty = "0.2"
+crafty = "0.3"
 ```
 
 Product apps: enable `http-jobs` for tier C HTTP routes and `dev-certs` for local QUIC without PEM files — see [getting-started](docs/getting-started.md).

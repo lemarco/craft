@@ -110,7 +110,7 @@ let worker = app.spawn_consumer(
 
 ### 4. HTTP mapping (recommended)
 
-Wire [`CraftyApp::jobs_api`](../../crates/crafty/src/app.rs) or merge the gateway (`http-jobs` feature). Request bodies: raw bytes or JSON `{ "payload": "…" }` / `{ "payload_b64": "…" }` ([`crafty-http` README](../../crates/crafty-http/README.md)).
+Wire the gateway (`http-jobs` feature) with [`GatewayOpts`](../../crates/crafty/src/gateway.rs) — built-in `/jobs/*` routes are **opt-in** (`.with_jobs_api(true)` or `CRAFTY_GATEWAY_JOBS=1`). Request bodies: raw bytes or JSON `{ "payload": "…" }` / `{ "payload_b64": "…" }` ([`crafty-http` README](../../crates/crafty-http/README.md)).
 
 | Intent | Response | Route / API |
 |--------|----------|-------------|
@@ -154,19 +154,23 @@ Policy can persist in Meta-Raft ([job-queue](../decisions/job-queue.md)).
 | `crafty/tests/consumer.rs` | `#[crafty::consumer]` + `spawn_consumer` |
 | `crafty/tests/http_jobs.rs` | HTTP enqueue, batch, DLQ requeue |
 
-## Future polish (not blocking 0.2.2)
+## Future polish
 
-Declarative worker registration remains aspirational:
+Declarative `.jobs(...)` / attribute macros for workers remain aspirational. Today:
 
 ```rust
-CraftyApp::from_env()
-    .jobs("emails", EmailWorker::handle)
-    .workers(EmailWorker, scale: Auto)
-    .run()
+CraftyApp::builder()
+    .queue([QueueOpts::new("emails", Duration::from_secs(300))])
+    .consumer(SendEmailConsumer, ConsumerOpts::default())
+    .gateway(
+        "127.0.0.1:8090".parse()?,
+        GatewayOpts::default().with_jobs_api(true),
+    )
+    .run(RunOpts::default().with_wait_queue("emails"))
     .await?;
 ```
 
-Use `.actors_auto` / `.actors` on the builder today ([examples/background-jobs/](../../examples/background-jobs/)).
+See [examples/background-jobs/](../../examples/background-jobs/).
 
 ## Related
 

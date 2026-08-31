@@ -57,23 +57,27 @@ See [job-queue](job-queue.md) for why mailboxes and Raft logs are not misused as
 
 **Non-goals:** Kubernetes as core product, one-container-per-actor microservices, mandatory Redis/PostgreSQL/RabbitMQ.
 
-### Unified product surface (shipped in 0.2.x)
+### Unified product surface (0.3.0)
 
 [`CraftyApp`](../../crates/crafty/src/app.rs) wraps the same runtime as `CraftyClusterBuilder`:
 
 ```rust
 use std::time::Duration;
-use crafty::{CraftyApp, RunOpts};
+use crafty::{CraftyApp, GatewayOpts, QueueOpts, RunOpts};
 
 CraftyApp::builder()
+    .data_dir("/var/lib/crafty")
     .queue([QueueOpts::new("emails", Duration::from_secs(300))])
     .consumer(SendEmailConsumer, Default::default())
-    .gateway("0.0.0.0:8090".parse()?)
+    .gateway(
+        "0.0.0.0:8090".parse()?,
+        GatewayOpts::default().with_jobs_api(true),
+    )
     .run(RunOpts::default().with_wait_queue("emails"))
     .await?;
 ```
 
-Declarative `.jobs(...)` / `.workers(..., scale: Auto)` registration remains aspirational — use `.actors_auto` / `.actors` on the builder today ([examples/](../../examples/README.md)).
+Declarative `.jobs(...)` / `.workers(..., scale: Auto)` registration remains aspirational — use `.queue`, `.consumer`, and `.actors(name, ActorGroupOpts::…)` today ([examples/](../../examples/README.md)).
 
 ### Scenario composition
 
@@ -135,7 +139,7 @@ Full epic list: [backlog.md](../backlog.md) (P0–P3 ✅).
 
 **Negative**
 
-- Declarative `.jobs()` / `.workers()` builder sugar still aspirational — use `actors_auto` today
+- Declarative `.jobs()` / `.workers()` builder sugar still aspirational — use `.queue`, `.consumer`, and `.actors(name, ActorGroupOpts::…)` today
 - WebSocket gateway auth remains a thin stub (`GATEWAY_TOKEN`) — production apps add their own layer
 - Stateful workers need `RedbActorStateStore` + SM discipline — keys without SM still require explicit design
 

@@ -8,14 +8,14 @@ Quick path for **product teams** using [`CraftyApp`](../../crates/crafty/src/app
 
 ```toml
 [dependencies]
-crafty = "0.2"
+crafty = "0.3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 ```
 
 Enable `dev-certs` for local single-node without PEM files:
 
 ```toml
-crafty = { version = "0.2", features = ["dev-certs"] }
+crafty = { version = "0.3", features = ["dev-certs"] }
 ```
 
 ## 2. Minimal app
@@ -24,7 +24,7 @@ Every process is a **QUIC cluster member**: solo `cargo run` is a one-node seed 
 
 ```rust
 use std::time::Duration;
-use crafty::{CraftyApp, RunOpts};
+use crafty::{CraftyApp, GatewayOpts, QueueOpts, RunOpts};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -33,7 +33,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     CraftyApp::builder()
         .data_dir("/tmp/my-app")
         .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
-        .gateway("127.0.0.1:8090".parse()?)
+        .gateway(
+            "127.0.0.1:8090".parse()?,
+            GatewayOpts::default(), // add .routes(...) and opt-in APIs as needed
+        )
         .run(RunOpts::default().with_wait_queue("jobs"))
         .await
 }
@@ -98,7 +101,7 @@ Register a worker type and let the leader place instances (one per VPS by defaul
 ```rust
 use std::time::Duration;
 use crafty::actor::{UserActor, remote_actor};
-use crafty::{CraftyApp, RunOpts};
+use crafty::{ActorGroupOpts, CraftyApp, RunOpts};
 
 struct EmailWorker;
 
@@ -124,17 +127,20 @@ Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store
 Enable the `http-jobs` feature and mount the Axum router on your gateway VPS:
 
 ```toml
-crafty = { version = "0.2", features = ["http-jobs"] }
+crafty = { version = "0.3", features = ["http-jobs"] }
 ```
 
 ```rust
 use std::time::Duration;
-use crafty::{CraftyApp, QueueOpts, RunOpts};
+use crafty::{CraftyApp, GatewayOpts, QueueOpts, RunOpts};
 
 CraftyApp::builder()
     .data_dir("/var/lib/crafty")
     .queue([QueueOpts::new("jobs", Duration::from_secs(300))])
-    .gateway("0.0.0.0:3000".parse()?)
+    .gateway(
+        "0.0.0.0:3000".parse()?,
+        GatewayOpts::default().with_jobs_api(true),
+    )
     .run(RunOpts::default().with_wait_queue("jobs"))
     .await?;
 

@@ -46,7 +46,7 @@
 - Redis-backed `ActorStateStore` (`crafty-store-redis`); actor migration RPC
 - **`JobQueue`** — `InMemoryJobQueue`, `RedbJobQueue`, sharded streams, priority/delayed enqueue, **batch enqueue/ack** (single redb txn + one replicate RTT), **leader prefetch cache** (`job_queue_prefetch`, default 256), dead-letter lifecycle + **`requeue_dead_letter`**, **recurring/cron jobs** (`RecurringJob`, `queue_schedule` ticker), leader `QueueService` with parallel sync voter replication + replicate auth, `ClusterJobQueue`, `run_queue_consumer` + **`#[crafty::consumer]`** macro, worker + membership autoscale, Meta-Raft autoscale policy ([job-queue](decisions/job-queue.md))
 - **`crafty-http` jobs API** — `POST /jobs/{stream}/batch`, `POST /jobs/{stream}/ack-batch`, `POST /jobs/{stream}/{id}/requeue`; mounted on admin or **`CraftyApp` gateway**
-- **`CraftyApp` gateway** — separate HTTP listener (`.gateway`, `CRAFTY_GATEWAY`); use `.run_with_config` / `CraftyApp::run_from_env` on QUIC; optional mount of jobs + actors APIs; custom Axum/WebSocket routes via `.http_routes` ([examples/realtime/](../examples/realtime/))
+- **`CraftyApp` gateway** — separate HTTP listener (`.gateway(addr, GatewayOpts)`); built-in `/jobs/*`, `/actors/*`, `/workflows/*` **opt-in** via `GatewayOpts::with_*_api(true)` or `CRAFTY_GATEWAY_*=1`; custom Axum/WebSocket via `.routes(|app| …)` ([examples/realtime/](../examples/realtime/)); boot with `RunOpts::default()` + `CRAFTY_*` env
 - **Job queue E2E** — `./e2e/queue.sh` (QUIC/mTLS, enqueue → follower worker → leader failover); `crafty-node` env `CRAFTY_DATA_DIR` + `CRAFTY_JOB_QUEUE`
 - **Product showcases** — `examples/background-jobs`, `stateful-workers`, `realtime`, `workflows`
 

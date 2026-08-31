@@ -139,15 +139,21 @@ Documented in [actor-routing-tier3](../decisions/actor-routing-tier3.md). For du
 
 ## Future polish
 
-```rust
-#[crafty::worker(durable = true)]
-struct OrderProcessor { /* ... */ }
+Attribute-based worker registration remains aspirational. Today use `.actors()`:
 
-CraftyApp::from_env()
-    .workers(OrderProcessor, pool: Auto)
-    .run()
+```rust
+CraftyApp::builder()
+    .data_dir("/var/lib/crafty")
+    .actors::<OrderProcessor>("orders", ActorGroupOpts::fixed(processor_cfg(), 1))
+    .gateway(
+        "127.0.0.1:8190".parse()?,
+        GatewayOpts::default().with_actors_api(true),
+    )
+    .run(RunOpts::default())
     .await?;
 ```
+
+See [examples/stateful-workers/](../../examples/stateful-workers/).
 
 ## Related
 
