@@ -4,13 +4,11 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crafty::AutoscalePolicy;
-use crafty::advanced::CraftyCluster;
-use crafty::EnqueueOptions;
-use crafty::JobQueue;
-use crafty::MembershipAutoscalePolicy;
-use crafty::RedbJobQueue;
 use crafty::actor::{ConfigCodecError, UserActor, WorkerId};
+use crafty::advanced::{
+    AutoscalePolicy, CraftyCluster, EnqueueOptions, JobQueue, MembershipAutoscalePolicy,
+    RedbJobQueue,
+};
 use crafty::net::LocalNetwork;
 use crafty::net::send_join_request;
 use crafty::proto::{self, NodeId};

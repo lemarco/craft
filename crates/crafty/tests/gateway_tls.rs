@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -14,28 +14,31 @@ use crafty::{
     ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayOpts, SessionHandle,
     spawn_gateway,
 };
-use crafty_test_support::{
-    advance, boot_local_app, eventually_default, wait_for_crafty_leader,
-};
+use crafty_test_support::{advance, boot_local_app, eventually_default, wait_for_crafty_leader};
 use futures_util::{SinkExt, StreamExt};
 use rustls::pki_types::CertificateDer;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_tungstenite::Connector;
-use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::connect_async_tls_with_config;
+use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 struct FixedToken;
 
 impl crafty::GatewayIdentity for FixedToken {
     type Identity = String;
 
+    #[allow(clippy::unused_async_trait_impl)]
     async fn extract(
         &self,
         req: &crafty::GatewayRequest<'_>,
     ) -> Result<String, crafty::IdentityError> {
-        let user = req.query("user").ok_or(crafty::IdentityError::Unauthorized)?;
-        let token = req.query("token").ok_or(crafty::IdentityError::Unauthorized)?;
+        let user = req
+            .query("user")
+            .ok_or(crafty::IdentityError::Unauthorized)?;
+        let token = req
+            .query("token")
+            .ok_or(crafty::IdentityError::Unauthorized)?;
         if token == "secret" {
             Ok(user)
         } else {
@@ -85,7 +88,13 @@ async fn ws_handler(
     headers: HeaderMap,
 ) -> Response {
     let handle = match state
-        .open_actor_session_parts("echo", &method, &uri, &headers, Some(Duration::from_secs(60)))
+        .open_actor_session_parts(
+            "echo",
+            &method,
+            &uri,
+            &headers,
+            Some(Duration::from_secs(60)),
+        )
         .await
     {
         Ok(h) => h,
@@ -129,11 +138,8 @@ fn mint_gateway_tls_files() -> (
     CertificateDer<'static>,
 ) {
     let dir = tempfile::tempdir().unwrap();
-    let cert = rcgen::generate_simple_self_signed(vec![
-        "localhost".into(),
-        "127.0.0.1".into(),
-    ])
-    .unwrap();
+    let cert =
+        rcgen::generate_simple_self_signed(vec!["localhost".into(), "127.0.0.1".into()]).unwrap();
     let cert_path = dir.path().join("cert.pem");
     let key_path = dir.path().join("key.pem");
     std::fs::write(&cert_path, cert.cert.pem()).unwrap();
@@ -210,7 +216,10 @@ async fn boot_echo_app(base: &std::path::Path) -> Arc<CraftyApp> {
     .await;
     wait_for_crafty_leader(app.cluster()).await;
     advance(Duration::from_millis(500)).await;
-    eventually_default("echo worker in directory", || app.cluster_ref("echo").len() >= 1).await;
+    eventually_default("echo worker in directory", || {
+        !app.cluster_ref("echo").is_empty()
+    })
+    .await;
     app
 }
 

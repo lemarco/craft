@@ -14,8 +14,8 @@ pub use crate::gateway::{
 };
 pub use crate::queue_opts::QueueOpts;
 pub use crate::ready::ReadyOpts;
-pub use crate::workflow_opts::WorkflowOpts;
 pub use crate::workflow::{WorkflowBuildError, WorkflowBuilder};
+pub use crate::workflow_opts::WorkflowOpts;
 pub use crafty_dashboard::init_tracing;
 pub use crafty_macros::consumer;
 pub use crafty_proto::NodeId;

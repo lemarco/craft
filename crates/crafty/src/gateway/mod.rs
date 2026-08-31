@@ -197,11 +197,7 @@ impl fmt::Debug for CraftyGatewayState {
             .field("identity", &self.identity.as_ref().map(|_| "<extractor>"))
             .field(
                 "connections",
-                &self
-                    .connections
-                    .as_ref()
-                    .map(|c| c.active())
-                    .unwrap_or(0),
+                &self.connections.as_ref().map_or(0, |c| c.active()),
             )
             .finish_non_exhaustive()
     }
@@ -225,6 +221,9 @@ impl CraftyGatewayState {
     }
 
     /// Extract authenticated identity and session key.
+    ///
+    /// # Errors
+    /// Returns [`IdentityError::NotConfigured`] when no extractor was set, or the extractor's error.
     pub async fn extract_session(
         &self,
         req: &GatewayRequest<'_>,
@@ -236,6 +235,9 @@ impl CraftyGatewayState {
     }
 
     /// [`extract_session`](Self::extract_session) from any HTTP request.
+    ///
+    /// # Errors
+    /// Same as [`Self::extract_session`].
     pub async fn extract_session_from<B>(
         &self,
         req: &axum::http::Request<B>,
@@ -245,6 +247,9 @@ impl CraftyGatewayState {
     }
 
     /// Auth + sticky [`SessionHandle`] in one call.
+    ///
+    /// # Errors
+    /// Returns identity errors, or [`OpenActorSessionError::NoWorker`] when no worker is available.
     pub async fn open_actor_session(
         &self,
         group: &str,
@@ -257,6 +262,9 @@ impl CraftyGatewayState {
     }
 
     /// Like [`Self::open_actor_session`] from any HTTP request.
+    ///
+    /// # Errors
+    /// Same as [`Self::open_actor_session`].
     pub async fn open_actor_session_from<B>(
         &self,
         group: &str,
@@ -271,6 +279,9 @@ impl CraftyGatewayState {
     ///
     /// Use with [`WebSocketUpgrade`](axum::extract::ws::WebSocketUpgrade) — do not also extract
     /// [`Request`](axum::http::Request); the upgrade consumes the body.
+    ///
+    /// # Errors
+    /// Same as [`Self::extract_session`].
     pub async fn extract_session_parts(
         &self,
         method: &Method,
@@ -282,6 +293,9 @@ impl CraftyGatewayState {
     }
 
     /// Like [`Self::open_actor_session`] from axum **parts** (WebSocket upgrade handlers).
+    ///
+    /// # Errors
+    /// Same as [`Self::open_actor_session`].
     pub async fn open_actor_session_parts(
         &self,
         group: &str,
@@ -413,16 +427,16 @@ fn build_gateway_router_with_tracker(
 /// # Errors
 /// Returns [`std::io::Error`] when the listen socket cannot be bound or TLS PEM
 /// material is invalid.
-pub async fn spawn_gateway(app: Arc<CraftyApp>, config: GatewayConfig) -> std::io::Result<GatewayHandle> {
+pub async fn spawn_gateway(
+    app: Arc<CraftyApp>,
+    config: GatewayConfig,
+) -> std::io::Result<GatewayHandle> {
     let addr = config.addr;
     let drain_timeout = config.drain_timeout;
     let tls_paths = config.tls.clone();
     let connections = Arc::new(ConnectionTracker::default());
-    let router = build_gateway_router_with_tracker(
-        Arc::clone(&app),
-        config,
-        Some(Arc::clone(&connections)),
-    );
+    let router =
+        build_gateway_router_with_tracker(Arc::clone(&app), config, Some(Arc::clone(&connections)));
     let tls = tls_paths
         .as_ref()
         .map(crafty_dashboard::admin_tls_config)

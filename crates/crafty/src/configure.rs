@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use crafty_core::Config;
 
-use crate::app::EmptyStateMachine;
 use crate::NodeId;
+use crate::app::EmptyStateMachine;
 use crate::builder::CraftyClusterBuilder;
 
 /// Cluster runtime options for [`.configure`](super::app::CraftyAppBuilder::configure).

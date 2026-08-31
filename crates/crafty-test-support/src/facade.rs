@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use crafty::CraftyApp;
 use crafty::CraftyAppBuilder;
-use crafty::advanced::CraftyCluster;
 use crafty::ReadyOpts;
 use crafty::RunOpts;
+use crafty::advanced::CraftyCluster;
 use crafty::core::{Role, StateMachine};
 
 use crate::clock::{POLL_STEP, advance};

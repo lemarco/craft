@@ -14,13 +14,13 @@ mod compaction;
 mod config;
 mod failure_detector;
 pub mod kv;
-pub mod upgrade;
 mod log;
 mod node;
 mod rng;
 mod shard;
 mod state_machine;
 mod two_phase;
+pub mod upgrade;
 
 pub use compaction::{
     CompactionPolicy, CompactionStats, DEFAULT_COMPACT_BYTES, DEFAULT_COMPACT_ENTRIES,
@@ -31,11 +31,6 @@ pub use failure_detector::{
     ReachabilityConfig,
 };
 pub use kv::{Kv, KvCommand, KvError, KvMachine, KvQuery, KvResponse};
-pub use upgrade::{
-    ArtifactManifest, UpgradeCommand, UpgradeError, UpgradeMachine, UpgradePhase, UpgradeQuery,
-    UpgradeResponse, UpgradeState, UpgradeStateMachine, UpgradeView, plan_next_grant,
-    upgrade_state_for_planning, upgrade_view,
-};
 pub use node::{
     CatalogProposeError, Committed, Config, MembershipError, NotLeader, Output, Persist, RaftNode,
     ReadId, Role, SnapshotState,
@@ -58,4 +53,9 @@ pub use state_machine::{Command, Query, StateMachine};
 pub use two_phase::{
     TWO_PHASE_DEFAULT_PREPARE_TIMEOUT_MS, TWO_PHASE_MAX_GROUPS, TWO_PHASE_MAX_PAYLOAD,
     TWO_PHASE_MAX_STEPS, TwoPhasePlan, TwoPhasePlanError, TwoPhaseStep, validate_two_phase_plan,
+};
+pub use upgrade::{
+    ArtifactManifest, UpgradeCommand, UpgradeError, UpgradeMachine, UpgradePhase, UpgradeQuery,
+    UpgradeResponse, UpgradeState, UpgradeStateMachine, UpgradeView, plan_next_grant,
+    upgrade_state_for_planning, upgrade_view,
 };

@@ -40,10 +40,11 @@ mod config;
 
 use std::error::Error;
 
+use crafty::CraftyCluster;
+use crafty::advanced::PemSecurity;
 use crafty::core::StateMachine;
 use crafty::discovery::resolve_dns_seeds;
 use crafty::proto::LogIndex;
-use crafty::{CraftyCluster, PemSecurity};
 
 use config::{cert_watch_period_from_env, config_from_env};
 

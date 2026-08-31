@@ -1,6 +1,6 @@
 //! Minimal HTTP/1.1 client for product showcase gateways (no extra deps).
 
-use std::fmt;
+use std::fmt::{self, Write};
 
 use futures_util::{SinkExt, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -80,7 +80,7 @@ pub async fn post_json_with_headers(
     let host = host_only(base);
     let mut header_lines = String::from("Content-Type: application/json\r\nConnection: close\r\n");
     for (name, value) in extra_headers {
-        header_lines.push_str(&format!("{name}: {value}\r\n"));
+        let _ = write!(header_lines, "{name}: {value}\r\n");
     }
     let req = format!(
         "POST {path} HTTP/1.1\r\nHost: {host}\r\n{header_lines}Content-Length: {}\r\n\r\n{json_body}",

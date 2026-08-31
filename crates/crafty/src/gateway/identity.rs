@@ -40,22 +40,28 @@ impl<'a> GatewayRequest<'a> {
     #[must_use]
     pub fn query(&self, name: &str) -> Option<String> {
         let query = self.uri.query()?;
-        form_urlencoded_query(query).find_map(|(k, v)| {
-            (k == name).then(|| percent_decode(v))
-        })
+        form_urlencoded_query(query).find_map(|(k, v)| (k == name).then(|| percent_decode(v)))
     }
 
     /// Cookie value for `name`, if present.
     #[must_use]
     pub fn cookie(&self, name: &str) -> Option<&str> {
-        let header = self.headers.get(axum::http::header::COOKIE)?.to_str().ok()?;
+        let header = self
+            .headers
+            .get(axum::http::header::COOKIE)?
+            .to_str()
+            .ok()?;
         parse_cookie(header, name)
     }
 
     /// Bearer token from `Authorization`, if present.
     #[must_use]
     pub fn bearer_token(&self) -> Option<&str> {
-        let header = self.headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
+        let header = self
+            .headers
+            .get(axum::http::header::AUTHORIZATION)?
+            .to_str()
+            .ok()?;
         header.strip_prefix("Bearer ")
     }
 }
@@ -171,9 +177,11 @@ pub(crate) trait DynGatewayIdentity: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<ExtractedIdentity, IdentityError>> + Send + 'a>>;
 }
 
+type SessionKeyFn = Arc<dyn Fn(&dyn Any) -> String + Send + Sync>;
+
 struct IdentityAdapter<I> {
     inner: I,
-    session_key: Arc<dyn Fn(&dyn Any) -> String + Send + Sync>,
+    session_key: SessionKeyFn,
 }
 
 impl<I> DynGatewayIdentity for IdentityAdapter<I>
@@ -213,7 +221,10 @@ where
     })
 }
 
-pub(crate) fn erase_identity_mapped<I, F>(extractor: I, session_key: F) -> Arc<dyn DynGatewayIdentity>
+pub(crate) fn erase_identity_mapped<I, F>(
+    extractor: I,
+    session_key: F,
+) -> Arc<dyn DynGatewayIdentity>
 where
     I: GatewayIdentity,
     I::Identity: 'static,
@@ -256,6 +267,7 @@ impl GatewayTokenIdentity {
 impl GatewayIdentity for GatewayTokenIdentity {
     type Identity = String;
 
+    #[allow(clippy::unused_async_trait_impl)]
     async fn extract(&self, req: &GatewayRequest<'_>) -> Result<String, IdentityError> {
         let user = req.query("user").ok_or(IdentityError::Unauthorized)?;
         let token = req.query("token").ok_or(IdentityError::Unauthorized)?;
@@ -280,15 +292,14 @@ fn percent_decode(input: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(byte) = u8::from_str_radix(
-                std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""),
-                16,
-            ) {
-                out.push(byte);
-                i += 3;
-                continue;
-            }
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let Ok(byte) =
+                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+        {
+            out.push(byte);
+            i += 3;
+            continue;
         }
         out.push(bytes[i]);
         i += 1;

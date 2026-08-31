@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::{HeaderMap, Method, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -14,9 +14,7 @@ use crafty::advanced::build_gateway_router;
 use crafty::{
     ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayOpts, SessionHandle,
 };
-use crafty_test_support::{
-    advance, boot_local_app, eventually_default, wait_for_crafty_leader,
-};
+use crafty_test_support::{advance, boot_local_app, eventually_default, wait_for_crafty_leader};
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
@@ -25,12 +23,17 @@ struct FixedToken;
 impl crafty::GatewayIdentity for FixedToken {
     type Identity = String;
 
+    #[allow(clippy::unused_async_trait_impl)]
     async fn extract(
         &self,
         req: &crafty::GatewayRequest<'_>,
     ) -> Result<String, crafty::IdentityError> {
-        let user = req.query("user").ok_or(crafty::IdentityError::Unauthorized)?;
-        let token = req.query("token").ok_or(crafty::IdentityError::Unauthorized)?;
+        let user = req
+            .query("user")
+            .ok_or(crafty::IdentityError::Unauthorized)?;
+        let token = req
+            .query("token")
+            .ok_or(crafty::IdentityError::Unauthorized)?;
         if token == "secret" {
             Ok(user)
         } else {
@@ -76,7 +79,13 @@ async fn ws_handler(
     headers: HeaderMap,
 ) -> Response {
     let handle = match state
-        .open_actor_session_parts("echo", &method, &uri, &headers, Some(Duration::from_secs(60)))
+        .open_actor_session_parts(
+            "echo",
+            &method,
+            &uri,
+            &headers,
+            Some(Duration::from_secs(60)),
+        )
         .await
     {
         Ok(h) => h,
@@ -109,7 +118,9 @@ async fn handle_socket(
 }
 
 fn gateway_routes(state: CraftyGatewayState) -> Router {
-    Router::new().route("/ws", get(ws_handler)).with_state(state)
+    Router::new()
+        .route("/ws", get(ws_handler))
+        .with_state(state)
 }
 
 #[tokio::test(start_paused = true)]
@@ -141,7 +152,10 @@ async fn websocket_gateway_casts_to_worker() {
     wait_for_crafty_leader(app.cluster()).await;
     advance(Duration::from_millis(500)).await;
 
-    eventually_default("echo worker in directory", || app.cluster_ref("echo").len() >= 1).await;
+    eventually_default("echo worker in directory", || {
+        !app.cluster_ref("echo").is_empty()
+    })
+    .await;
 
     let config = GatewayOpts::new("127.0.0.1:0".parse().unwrap())
         .identity(FixedToken)
@@ -156,7 +170,9 @@ async fn websocket_gateway_casts_to_worker() {
     });
 
     let url = format!("ws://{addr}/ws?user=alice&token=secret");
-    let (mut ws, _) = tokio_tungstenite::connect_async(url).await.expect("ws connect");
+    let (mut ws, _) = tokio_tungstenite::connect_async(url)
+        .await
+        .expect("ws connect");
     ws.send(WsMessage::Text("hello".into())).await.unwrap();
     let reply = ws.next().await.expect("frame").expect("ok");
     assert_eq!(reply.into_text().unwrap(), "ok: hello");

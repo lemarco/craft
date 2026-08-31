@@ -56,10 +56,10 @@ mod workflow_opts;
 pub mod advanced;
 /// `CRAFTY_*` boot configuration.
 pub mod env;
-/// Rolling self-update coordinator (reference [`UpgradeMachine`](core::UpgradeMachine)).
-pub mod upgrade;
 /// Typical product imports (`CraftyApp`, opts structs, `consumer!`, …).
 pub mod prelude;
+/// Rolling self-update coordinator (reference [`UpgradeMachine`](core::UpgradeMachine)).
+pub mod upgrade;
 
 #[doc(inline)]
 pub use crafty_proto::{self as proto, NodeId, PROTOCOL_VERSION, Term};
@@ -83,10 +83,10 @@ pub use configure::CraftyConfigure;
 pub use consumer::{ConsumerGroup, ConsumerOpts, JobConsumer};
 pub use cron_opts::CronOpts;
 pub use gateway::{
-    ConnectionGuard, ConnectionTracker, CraftyGatewayState, ExtractedIdentity, GatewayHandle,
-    GatewayIdentity, GatewayOpts, GatewayRequest, GatewayTlsPaths, GatewayTokenIdentity,
-    IdentityError, IdentityTypeError, NoWorkerError, OpenActorSessionError, SessionHandle,
-    SessionKey, DEFAULT_GATEWAY_DRAIN_TIMEOUT, spawn_gateway,
+    ConnectionGuard, ConnectionTracker, CraftyGatewayState, DEFAULT_GATEWAY_DRAIN_TIMEOUT,
+    ExtractedIdentity, GatewayHandle, GatewayIdentity, GatewayOpts, GatewayRequest,
+    GatewayTlsPaths, GatewayTokenIdentity, IdentityError, IdentityTypeError, NoWorkerError,
+    OpenActorSessionError, SessionHandle, SessionKey, spawn_gateway,
 };
 pub use queue_opts::QueueOpts;
 pub use ready::ReadyOpts;
@@ -95,18 +95,20 @@ pub use workflow_opts::WorkflowOpts;
 
 pub use advanced::{CraftyCluster, CraftyClusterBuilder};
 
+#[cfg(feature = "http-jobs")]
+pub use upgrade::upgrade_api;
 pub use upgrade::{
     ArtifactManifest, UpgradeCommand, UpgradeError, UpgradeMachine, UpgradeOpts, UpgradePhase,
     UpgradeQuery, UpgradeResponse, UpgradeRunError, UpgradeState, UpgradeView, fetch_artifact,
     plan_next_grant, report_upgrade_boot, running_app_version, spawn_upgrade_coordinator,
     spawn_upgrade_runtime, upgrade_view, verify_sha256_hex,
 };
-#[cfg(feature = "http-jobs")]
-pub use upgrade::upgrade_api;
 
 pub use crafty_macros::consumer;
 
-pub use crafty_dashboard::{CraftyEvent, EventBus, EventSubscription, Metrics, StopReason, TraceOpts, init_tracing};
+pub use crafty_dashboard::{
+    CraftyEvent, EventBus, EventSubscription, Metrics, StopReason, TraceOpts, init_tracing,
+};
 
 /// Library version string (from `Cargo.toml`).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

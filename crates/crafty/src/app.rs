@@ -224,10 +224,7 @@ impl CraftyAppBuilder {
     /// [`Self::run`] / [`Self::boot_for_test`] fail at boot unless [`.gateway`](Self::gateway)
     /// enables workflows via `.with_workflows_api(true)` (or `CRAFTY_GATEWAY_WORKFLOWS=1` at boot).
     #[must_use]
-    pub fn workflows(
-        mut self,
-        specs: impl IntoIterator<Item = WorkflowOpts>,
-    ) -> Self {
+    pub fn workflows(mut self, specs: impl IntoIterator<Item = WorkflowOpts>) -> Self {
         self.workflows
             .extend(specs.into_iter().map(WorkflowOpts::into_registration));
         self
@@ -616,10 +613,7 @@ impl CraftyApp {
         session: &ActorSession,
         payload: Vec<u8>,
     ) -> Result<Vec<u8>, ClusterAskError> {
-        self.cluster
-            .messaging()
-            .ask_session(session, payload)
-            .await
+        self.cluster.messaging().ask_session(session, payload).await
     }
 
     /// Open a sticky session to a keyed worker pool (product helper).
@@ -780,7 +774,10 @@ impl CraftyApp {
     ///
     /// # Errors
     /// Returns [`std::io::Error`] when the listen socket cannot be bound.
-    pub async fn spawn_gateway(app: Arc<Self>, config: GatewayConfig) -> std::io::Result<GatewayHandle> {
+    pub async fn spawn_gateway(
+        app: Arc<Self>,
+        config: GatewayConfig,
+    ) -> std::io::Result<GatewayHandle> {
         crate::gateway::spawn_gateway(app, config).await
     }
 

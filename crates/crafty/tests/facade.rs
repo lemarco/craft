@@ -7,12 +7,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crafty::NodeId;
 use crafty::actor::{ConfigCodecError, UserActor};
+use crafty::advanced::CraftyCluster;
 use crafty::core::{Config, FailureDetectorKind, ReachabilityConfig};
 use crafty::net::LocalNetwork;
 use crafty::proto;
-use crafty::advanced::CraftyCluster;
-use crafty::NodeId;
 use crafty_test_support::{
     Cmd, Kv, Qry, Resp, TICK_PERIOD, advance, await_crafty_leader, eventually_async_default,
     eventually_default, fast_raft_config,

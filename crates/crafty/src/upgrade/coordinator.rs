@@ -5,10 +5,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use crafty_core::UpgradeMachine;
 use crafty_core::upgrade::{
     UpgradeCommand, UpgradePhase, plan_next_grant, upgrade_state_for_planning,
 };
-use crafty_core::UpgradeMachine;
 use crafty_proto::NodeId;
 use thiserror::Error;
 use tokio::task::JoinHandle;

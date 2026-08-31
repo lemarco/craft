@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use crafty::advanced::RecurringJob;
 use crafty::{
-    ConsumerOpts, CraftyApp, CraftyConfigure, CronOpts, GatewayOpts, QueueOpts,
-    RunOpts, StartError, WorkflowBuilder, WorkflowOpts, consumer, journal_workflow,
+    ConsumerOpts, CraftyApp, CraftyConfigure, CronOpts, GatewayOpts, QueueOpts, RunOpts,
+    StartError, WorkflowBuilder, WorkflowOpts, consumer, journal_workflow,
 };
 use crafty_test_support::{TICK_PERIOD, fast_raft_config_with_seed};
 

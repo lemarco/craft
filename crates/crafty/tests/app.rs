@@ -43,7 +43,8 @@ async fn crafty_app_start_local_with_data_dir_and_queue() {
 
 #[tokio::test(start_paused = true)]
 async fn crafty_app_requeue_dead_letter() {
-    use crafty::EnqueueOptions;
+    use crafty::actor::WorkerId;
+    use crafty::advanced::EnqueueOptions;
     use crafty_actor::JobLifecycle;
 
     let base = std::env::temp_dir().join(format!(
@@ -76,7 +77,7 @@ async fn crafty_app_requeue_dead_letter() {
         .await
         .expect("enqueue");
     let queue = app.cluster().job_queue("jobs").expect("queue");
-    let worker = crafty::WorkerId {
+    let worker = WorkerId {
         node: app.cluster().node_id(),
         instance: 0,
     };

@@ -5,7 +5,9 @@ use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
-use crafty::{CraftyApp, CraftyConfigure, EnqueueOptions, QueueOpts};
+use crafty::actor::WorkerId;
+use crafty::advanced::EnqueueOptions;
+use crafty::{CraftyApp, CraftyConfigure, QueueOpts};
 use crafty_actor::JobLifecycle;
 use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
 use tower::ServiceExt;
@@ -75,7 +77,7 @@ async fn http_post_job_returns_202_and_enqueues() {
         .await
         .expect("enqueue poison");
     let queue = app.cluster().job_queue("jobs").expect("queue");
-    let worker = crafty::WorkerId {
+    let worker = WorkerId {
         node: app.cluster().node_id(),
         instance: 0,
     };

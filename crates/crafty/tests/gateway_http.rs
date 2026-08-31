@@ -3,20 +3,19 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Router;
 use axum::Json;
+use axum::Router;
 use axum::body::Body;
 use axum::http::{HeaderMap, Method, Request, StatusCode, Uri};
-use axum::routing::{get, post};
 use axum::response::{IntoResponse, Response};
+use axum::routing::{get, post};
 use crafty::actor::{UserActor, remote_actor};
 use crafty::advanced::build_gateway_router;
 use crafty::{
-    ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayOpts, OpenActorSessionError,
+    ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayOpts,
+    OpenActorSessionError,
 };
-use crafty_test_support::{
-    advance, boot_local_app, eventually_default, wait_for_crafty_leader,
-};
+use crafty_test_support::{advance, boot_local_app, eventually_default, wait_for_crafty_leader};
 use serde::{Deserialize, Serialize};
 use tower::ServiceExt;
 
@@ -25,6 +24,7 @@ struct FixedToken;
 impl crafty::GatewayIdentity for FixedToken {
     type Identity = String;
 
+    #[allow(clippy::unused_async_trait_impl)]
     async fn extract(
         &self,
         req: &crafty::GatewayRequest<'_>,
@@ -40,8 +40,12 @@ impl crafty::GatewayIdentity for FixedToken {
                 .map(str::to_string)
                 .ok_or(crafty::IdentityError::Unauthorized);
         }
-        let user = req.query("user").ok_or(crafty::IdentityError::Unauthorized)?;
-        let token = req.query("token").ok_or(crafty::IdentityError::Unauthorized)?;
+        let user = req
+            .query("user")
+            .ok_or(crafty::IdentityError::Unauthorized)?;
+        let token = req
+            .query("token")
+            .ok_or(crafty::IdentityError::Unauthorized)?;
         if token == "secret" {
             Ok(user)
         } else {
@@ -103,7 +107,13 @@ async fn post_chat(
     Json(body): Json<ChatPost>,
 ) -> Result<Json<ChatAck>, OpenActorSessionError> {
     let mut handle = state
-        .open_actor_session_parts("echo", &method, &uri, &headers, Some(Duration::from_secs(60)))
+        .open_actor_session_parts(
+            "echo",
+            &method,
+            &uri,
+            &headers,
+            Some(Duration::from_secs(60)),
+        )
         .await?;
     let user = handle.session_key().to_string();
     let payload = crafty::proto::encode(&body.message).expect("encode");
@@ -117,10 +127,7 @@ async fn get_me(
     uri: Uri,
     headers: HeaderMap,
 ) -> Response {
-    match state
-        .extract_session_parts(&method, &uri, &headers)
-        .await
-    {
+    match state.extract_session_parts(&method, &uri, &headers).await {
         Ok(extracted) => Json(MeResponse {
             user: extracted.session_key().to_string(),
         })
@@ -152,7 +159,10 @@ async fn boot_with_workers(base: &std::path::Path) -> Arc<CraftyApp> {
     .await;
     wait_for_crafty_leader(app.cluster()).await;
     advance(Duration::from_millis(500)).await;
-    eventually_default("echo worker in directory", || app.cluster_ref("echo").len() >= 1).await;
+    eventually_default("echo worker in directory", || {
+        !app.cluster_ref("echo").is_empty()
+    })
+    .await;
     app
 }
 

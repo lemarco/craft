@@ -1,8 +1,8 @@
 //! Raft propose/query with transparent leader forwarding (any cluster member).
 
 use crafty_client::{RemoteClient, TypedClient};
-use crafty_core::upgrade::{UpgradeCommand, UpgradeQuery, UpgradeResponse, UpgradeView};
 use crafty_core::UpgradeMachine;
+use crafty_core::upgrade::{UpgradeCommand, UpgradeQuery, UpgradeResponse, UpgradeView};
 
 use super::coordinator::UpgradeRunError;
 use crate::cluster::CraftyCluster;
@@ -39,8 +39,8 @@ pub async fn query_upgrade_view(
         .await?;
     match response {
         UpgradeResponse::View(view) => Ok(view),
-        UpgradeResponse::Ok => Err(UpgradeRunError::Client(
-            crafty_actor::ClientError::Driver("unexpected upgrade query response".into()),
-        )),
+        UpgradeResponse::Ok => Err(UpgradeRunError::Client(crafty_actor::ClientError::Driver(
+            "unexpected upgrade query response".into(),
+        ))),
     }
 }

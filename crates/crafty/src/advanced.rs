@@ -9,7 +9,9 @@ pub use crate::certs::{
     CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_for_node,
     cert_paths_from_env,
 };
-pub use crate::cluster::{AddRaftGroupsError, ClusterFacts, CraftyCluster, LeaveError, ScaleClusterError};
+pub use crate::cluster::{
+    AddRaftGroupsError, ClusterFacts, CraftyCluster, LeaveError, ScaleClusterError,
+};
 pub use crate::gateway::{GatewayConfig, GatewayHandle, build_gateway_router, spawn_gateway};
 pub use crate::saga::{
     CompositeSagaJournal, Group0SagaJournal, MetaRaftSagaJournal, SagaRegistry, StoreSagaJournal,
@@ -20,6 +22,11 @@ pub use crate::two_phase::{
     CompositeTwoPhaseJournal, MetaRaftTwoPhaseJournal, StoreTwoPhaseJournal, TwoPhaseRegistry,
     record_two_phase_event, record_two_phase_gc_aborted, record_two_phase_metrics,
     two_phase_metrics_callback,
+};
+pub use crate::upgrade::{
+    UpgradeFetchError, UpgradeInstallError, UpgradeOpts, UpgradeRunError, atomic_symlink_install,
+    fetch_artifact, report_upgrade_boot, running_app_version, spawn_upgrade_coordinator,
+    spawn_upgrade_runtime, verify_sha256_hex,
 };
 pub use crate::workflow::{WorkflowBuildError, WorkflowBuilder};
 pub use crafty_actor::{
@@ -37,13 +44,7 @@ pub use crafty_core::kv;
 pub use crafty_core::kv::{Kv, KvCommand, KvError, KvMachine, KvQuery, KvResponse};
 pub use crafty_core::upgrade::{
     ArtifactManifest, UpgradeCommand, UpgradeError, UpgradeMachine, UpgradePhase, UpgradeQuery,
-    UpgradeResponse, UpgradeState, UpgradeStateMachine, UpgradeView, plan_next_grant,
-    upgrade_view,
-};
-pub use crate::upgrade::{
-    UpgradeFetchError, UpgradeInstallError, UpgradeOpts, UpgradeRunError, atomic_symlink_install,
-    fetch_artifact, report_upgrade_boot, running_app_version, spawn_upgrade_coordinator,
-    spawn_upgrade_runtime, verify_sha256_hex,
+    UpgradeResponse, UpgradeState, UpgradeStateMachine, UpgradeView, plan_next_grant, upgrade_view,
 };
 pub use crafty_core::{CompactionPolicy, DEFAULT_COMPACT_BYTES, DEFAULT_COMPACT_ENTRIES};
 #[cfg(feature = "http-jobs")]

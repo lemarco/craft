@@ -2,7 +2,8 @@
 
 use crafty::client::SagaOutcome;
 use crafty::{
-    CraftyApp, CraftyConfigure, GatewayOpts, ReadyOpts, WorkflowBuilder, WorkflowOpts, journal_workflow,
+    CraftyApp, CraftyConfigure, GatewayOpts, ReadyOpts, WorkflowBuilder, WorkflowOpts,
+    journal_workflow,
 };
 use crafty_test_support::{TICK_PERIOD, boot_local_app, fast_raft_config_with_seed};
 
@@ -63,7 +64,7 @@ async fn crafty_app_workflows_api_on_gateway() {
 
 #[cfg(feature = "http-jobs")]
 mod gateway_merge {
-    use crafty::advanced::{GatewayConfig, build_gateway_router};
+    use crafty::advanced::build_gateway_router;
     use crafty::{
         CraftyApp, CraftyConfigure, GatewayOpts, ReadyOpts, WorkflowOpts, journal_workflow,
     };

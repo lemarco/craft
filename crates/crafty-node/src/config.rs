@@ -6,8 +6,9 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crafty::NodeId;
+use crafty::advanced::{CertPaths, PeerDirectory, PemSecurity, Security, cert_paths_from_env};
 use crafty::discovery::Seed;
-use crafty::{NodeId, PeerDirectory, PemSecurity, Security, cert_paths_from_env};
 use crafty_actor::DEFAULT_DRAIN_TIMEOUT;
 
 /// Parsed runtime configuration from the environment.
@@ -36,7 +37,7 @@ pub struct NodeConfig {
     /// before stopping (requires at least one other live member).
     pub graceful_leave: bool,
     /// On-disk PEM paths when production TLS material is configured.
-    pub pem_paths: Option<crafty::CertPaths>,
+    pub pem_paths: Option<CertPaths>,
     /// Loaded mTLS identity + trust roots.
     pub security: Security,
     /// Graceful actor drain timeout ([drain-timeout]).
@@ -101,7 +102,7 @@ pub fn load_security(
     members: &[NodeId],
     joining: bool,
     pem: &PemEnv<'_>,
-) -> Result<(Security, Option<crafty::CertPaths>), Box<dyn Error>> {
+) -> Result<(Security, Option<CertPaths>), Box<dyn Error>> {
     match (pem.node_cert, pem.node_key, pem.ca_cert) {
         (Some(cert), Some(key), Some(ca)) => {
             let paths = cert_paths_from_env(cert, key, ca);
@@ -132,7 +133,7 @@ pub fn load_security_from_env(
     node_id: NodeId,
     members: &[NodeId],
     joining: bool,
-) -> Result<(Security, Option<crafty::CertPaths>), Box<dyn Error>> {
+) -> Result<(Security, Option<CertPaths>), Box<dyn Error>> {
     load_security(
         node_id,
         members,

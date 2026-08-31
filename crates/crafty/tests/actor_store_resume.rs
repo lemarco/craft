@@ -8,11 +8,12 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
+use crafty::NodeId;
 use crafty::actor::{ActorStateStore, ConfigCodecError, InMemoryStore, UserActor};
+use crafty::advanced::CraftyCluster;
 use crafty::core::{Config, StateMachine};
 use crafty::net::LocalNetwork;
 use crafty::proto::{self, LogIndex};
-use crafty::advanced::{CraftyCluster, NodeId};
 use crafty_test_support::{await_crafty_leader, eventually_async_default};
 use serde::{Deserialize, Serialize};
 

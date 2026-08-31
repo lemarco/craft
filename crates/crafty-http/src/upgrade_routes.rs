@@ -22,9 +22,7 @@ pub type UpgradeViewFn = Arc<
 
 /// Async set-desired hook for [`UpgradeApi`].
 pub type SetDesiredFn = Arc<
-    dyn Fn(
-            ArtifactManifest,
-        ) -> Pin<Box<dyn Future<Output = Result<(), UpgradeApiError>> + Send>>
+    dyn Fn(ArtifactManifest) -> Pin<Box<dyn Future<Output = Result<(), UpgradeApiError>> + Send>>
         + Send
         + Sync,
 >;
@@ -51,7 +49,6 @@ impl UpgradeApi {
     }
 
     /// Axum sub-router (`GET/POST /cluster/upgrade…`).
-    #[must_use]
     pub fn router(&self) -> Router<Arc<UpgradeApiState>> {
         upgrade_router()
     }
@@ -97,6 +94,8 @@ mod tests {
     use crafty_core::UpgradeView;
     use tower::ServiceExt;
 
+    use std::collections::BTreeSet;
+
     use super::*;
 
     #[tokio::test]
@@ -107,7 +106,7 @@ mod tests {
                     Ok(UpgradeView {
                         desired: None,
                         granted: None,
-                        completed: Default::default(),
+                        completed: BTreeSet::default(),
                         pending: vec![],
                         fleet_ready: true,
                         aborted: None,
@@ -134,11 +133,7 @@ mod tests {
         let called = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let flag = Arc::clone(&called);
         let state = Arc::new(UpgradeApiState {
-            view: Arc::new(|| {
-                Box::pin(async {
-                    Err(UpgradeApiError::Backend("unused".into()))
-                })
-            }),
+            view: Arc::new(|| Box::pin(async { Err(UpgradeApiError::Backend("unused".into())) })),
             set_desired: Arc::new(move |_| {
                 let flag = Arc::clone(&flag);
                 Box::pin(async move {

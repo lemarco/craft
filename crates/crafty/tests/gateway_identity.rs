@@ -15,10 +15,8 @@ struct FixedToken;
 impl GatewayIdentity for FixedToken {
     type Identity = String;
 
-    async fn extract(
-        &self,
-        req: &GatewayRequest<'_>,
-    ) -> Result<String, IdentityError> {
+    #[allow(clippy::unused_async_trait_impl)]
+    async fn extract(&self, req: &GatewayRequest<'_>) -> Result<String, IdentityError> {
         let user = req.query("user").ok_or(IdentityError::Unauthorized)?;
         let token = req.query("token").ok_or(IdentityError::Unauthorized)?;
         if token == "secret" {
@@ -46,10 +44,8 @@ struct RoomIdentity;
 impl GatewayIdentity for RoomIdentity {
     type Identity = UserIdentity;
 
-    async fn extract(
-        &self,
-        req: &GatewayRequest<'_>,
-    ) -> Result<UserIdentity, IdentityError> {
+    #[allow(clippy::unused_async_trait_impl)]
+    async fn extract(&self, req: &GatewayRequest<'_>) -> Result<UserIdentity, IdentityError> {
         let user = req.query("user").ok_or(IdentityError::Unauthorized)?;
         Ok(UserIdentity {
             user_id: user,

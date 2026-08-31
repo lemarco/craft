@@ -327,10 +327,7 @@ mod tests {
         assert_eq!(plan_next_grant(&state, &m, leader), Some(NodeId(1)));
 
         state.granted = Some(NodeId(1));
-        state.last_report.insert(
-            NodeId(1),
-            UpgradePhase::Ready,
-        );
+        state.last_report.insert(NodeId(1), UpgradePhase::Ready);
         state.completed.insert(NodeId(1));
         state.granted = None;
 
@@ -349,16 +346,10 @@ mod tests {
             sha256_hex: "ab".repeat(64),
             min_protocol: None,
         };
-        sm.apply(
-            LogIndex(1),
-            &UpgradeCommand::SetDesired(manifest),
-        )
-        .unwrap();
-        sm.apply(
-            LogIndex(2),
-            &UpgradeCommand::Grant { node_id: NodeId(1) },
-        )
-        .unwrap();
+        sm.apply(LogIndex(1), &UpgradeCommand::SetDesired(manifest))
+            .unwrap();
+        sm.apply(LogIndex(2), &UpgradeCommand::Grant { node_id: NodeId(1) })
+            .unwrap();
         sm.apply(
             LogIndex(3),
             &UpgradeCommand::Report {
@@ -395,9 +386,7 @@ mod tests {
             .unwrap();
         }
         let UpgradeResponse::View(view) = sm
-            .query(&UpgradeQuery::View {
-                members: members(),
-            })
+            .query(&UpgradeQuery::View { members: members() })
             .unwrap()
         else {
             panic!("expected view");

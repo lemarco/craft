@@ -79,9 +79,9 @@ pub(crate) fn resolve_workflow<'a>(
     saga_id: &str,
 ) -> Result<&'a WorkflowRegistration, SagaError> {
     if workflows.is_empty() {
-        return Err(SagaError::Journal(crafty_client::SagaJournalError::Backend(
-            "workflows require `.workflows([…])`".into(),
-        )));
+        return Err(SagaError::Journal(
+            crafty_client::SagaJournalError::Backend("workflows require `.workflows([…])`".into()),
+        ));
     }
     if workflows.len() == 1 {
         return Ok(&workflows[0]);
@@ -94,7 +94,7 @@ pub(crate) fn resolve_workflow<'a>(
                 .is_some_and(|prefix| saga_id.starts_with(prefix))
         })
         .collect();
-    matches.sort_by_key(|w| std::cmp::Reverse(w.prefix.as_ref().map(String::len).unwrap_or(0)));
+    matches.sort_by_key(|w| std::cmp::Reverse(w.prefix.as_ref().map_or(0, String::len)));
     matches.into_iter().next().ok_or_else(|| {
         SagaError::Journal(crafty_client::SagaJournalError::Backend(format!(
             "no workflow registered for saga id {saga_id:?}"

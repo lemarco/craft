@@ -93,8 +93,7 @@ pub(crate) fn spawn_serve(
     let serve = tokio::spawn(async move {
         let addr = listener
             .local_addr()
-            .map(|a| a.to_string())
-            .unwrap_or_else(|_| "?".into());
+            .map_or_else(|_| "?".into(), |a| a.to_string());
         let result = match tls {
             Some(tls) => serve_tls(listener, router, tls, shutdown_rx).await,
             None => serve_plain(listener, router, shutdown_rx).await,

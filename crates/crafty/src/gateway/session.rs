@@ -30,7 +30,9 @@ impl IntoResponse for OpenActorSessionError {
     fn into_response(self) -> Response {
         match self {
             Self::Identity(err) => err.into_response(),
-            Self::NoWorker(err) => (StatusCode::SERVICE_UNAVAILABLE, err.to_string()).into_response(),
+            Self::NoWorker(err) => {
+                (StatusCode::SERVICE_UNAVAILABLE, err.to_string()).into_response()
+            }
         }
     }
 }
@@ -129,11 +131,7 @@ impl SessionHandle {
         self.ask_with_retries(payload, 1).await
     }
 
-    async fn cast_with_retries(
-        &mut self,
-        payload: Vec<u8>,
-        retries: u8,
-    ) -> Result<(), CastError> {
+    async fn cast_with_retries(&mut self, payload: Vec<u8>, retries: u8) -> Result<(), CastError> {
         for attempt in 0..=retries {
             let Some(session) = self.session.as_ref() else {
                 if !self.reopen() {

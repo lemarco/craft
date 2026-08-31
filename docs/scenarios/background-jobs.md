@@ -57,7 +57,7 @@ Cluster-level autoscale, sharded streams, priority, dedup: see [background-jobs 
 ### 2. Enqueue (from any node)
 
 ```rust
-use crafty::EnqueueOptions;
+use crafty::advanced::EnqueueOptions;
 
 let job_id = app.enqueue("emails", br#"{"to":"user@example.com"}"#).await?;
 

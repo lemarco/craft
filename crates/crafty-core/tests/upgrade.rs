@@ -2,8 +2,8 @@
 
 use crafty_core::proto::LogIndex;
 use crafty_core::{
-    ArtifactManifest, Command, UpgradeCommand, UpgradeMachine, UpgradePhase, UpgradeQuery,
-    UpgradeResponse, StateMachine, plan_next_grant,
+    ArtifactManifest, Command, StateMachine, UpgradeCommand, UpgradeMachine, UpgradePhase,
+    UpgradeQuery, UpgradeResponse, plan_next_grant,
 };
 use crafty_proto::NodeId;
 
@@ -66,9 +66,7 @@ fn rolling_grants_follow_leader_last_lowest_id() {
     }
 
     let UpgradeResponse::View(view) = sm
-        .query(&UpgradeQuery::View {
-            members: members(),
-        })
+        .query(&UpgradeQuery::View { members: members() })
         .expect("view")
     else {
         panic!("expected view");
@@ -89,8 +87,5 @@ fn abort_stops_further_grants() {
         },
     )
     .unwrap();
-    assert_eq!(
-        plan_next_grant(sm.state(), &members(), NodeId(1)),
-        None
-    );
+    assert_eq!(plan_next_grant(sm.state(), &members(), NodeId(1)), None);
 }

@@ -3,9 +3,8 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use crafty::CraftyCluster;
-use crafty::StoreSagaJournal;
 use crafty::actor::{ActorStateStore, InMemoryStore};
+use crafty::advanced::{CraftyCluster, StoreSagaJournal};
 use crafty::client::{
     KeyedClient, RemoteClient, RetryPolicy, RunSagaOpts, SagaJournal, SagaJournalPhase,
     SagaOutcome, SagaPlan, SagaStep, run_saga,

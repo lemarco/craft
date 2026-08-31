@@ -27,13 +27,10 @@ pub fn upgrade_api(cluster: Arc<CraftyCluster<UpgradeMachine>>) -> UpgradeApi {
         Arc::new(move |manifest| {
             let cluster = Arc::clone(&set_cluster);
             Box::pin(async move {
-                propose_upgrade(
-                    cluster.as_ref(),
-                    UpgradeCommand::SetDesired(manifest),
-                )
-                .await
-                .map(|_| ())
-                .map_err(|e| UpgradeApiError::Backend(e.to_string()))
+                propose_upgrade(cluster.as_ref(), UpgradeCommand::SetDesired(manifest))
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| UpgradeApiError::Backend(e.to_string()))
             })
         }),
     )

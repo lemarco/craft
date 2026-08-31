@@ -43,6 +43,7 @@ impl ShowcaseGatewayIdentity {
 impl GatewayIdentity for ShowcaseGatewayIdentity {
     type Identity = String;
 
+    #[allow(clippy::unused_async_trait_impl)]
     async fn extract(&self, req: &GatewayRequest<'_>) -> Result<String, IdentityError> {
         let expected = self.expected_token();
 

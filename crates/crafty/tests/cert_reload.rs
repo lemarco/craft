@@ -4,7 +4,8 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
-use crafty::{CertPaths, CraftyCluster, NodeId, PemSecurity, ReloadOpts};
+use crafty::advanced::{CertPaths, PeerDirectory, PemSecurity, ReloadOpts};
+use crafty::{CraftyCluster, NodeId};
 use crafty_test_support::{advance, free_udp};
 
 #[tokio::test(start_paused = true)]
@@ -50,7 +51,7 @@ async fn pem_hot_reload_reissues_leaf_without_restart() {
     let pem1 = PemSecurity::load(NodeId(1), paths1.clone()).expect("load node 1");
     let pem2 = PemSecurity::load(NodeId(2), paths2).expect("load node 2");
 
-    let mut peers = crafty::PeerDirectory::new();
+    let mut peers = PeerDirectory::new();
     peers.insert(NodeId(1), listen1);
     peers.insert(NodeId(2), listen2);
 

@@ -3,13 +3,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crafty::CraftyCluster;
+use crafty::net::LocalNetwork;
+use crafty::proto::NodeId;
 use crafty::upgrade::{
     ArtifactManifest, UpgradeCommand, UpgradeMachine, UpgradeOpts, UpgradeQuery, UpgradeResponse,
     spawn_upgrade_coordinator,
 };
-use crafty::CraftyCluster;
-use crafty::net::LocalNetwork;
-use crafty::proto::NodeId;
 use crafty_test_support::{
     TICK_PERIOD, advance, await_crafty_leader, eventually_async_default, fast_raft_config,
     wait_for_crafty_leader,
@@ -157,7 +157,10 @@ async fn set_desired_replicates_on_three_node_cluster() {
 
     advance(TICK_PERIOD).await;
     let view = upgrade_view(leader.as_ref()).await;
-    assert_eq!(view.desired.as_ref().map(|d| d.app_version.as_str()), Some("1.2.3"));
+    assert_eq!(
+        view.desired.as_ref().map(|d| d.app_version.as_str()),
+        Some("1.2.3")
+    );
 
     for cluster in &clusters {
         cluster.shutdown();

@@ -83,7 +83,8 @@ If you build your own binary instead of using `crafty-node`, load the PEM files
 into a [`Security`](https://docs.rs/crafty) and pass it to `start_quic`:
 
 ```rust,ignore
-use crafty::{CraftyCluster, NodeId, PeerDirectory, Security};
+use crafty::advanced::{PeerDirectory, Security};
+use crafty::{CraftyCluster, NodeId};
 use crafty::net::NodeIdentity;
 
 // Load node-<id>.pem / .key and ca.pem (e.g. with rustls-pemfile), then:
