@@ -1,6 +1,6 @@
-//! Reference key/value [`StateMachine`](crafty_core::StateMachine) types shared across tests.
+//! Reference key/value [`StateMachine`] types shared across tests.
 //!
-//! Canonical implementation: [`crafty_core::kv`](crafty_core::kv). This module re-exports it
+//! Canonical implementation: [`crafty_core::kv`]. This module re-exports it
 //! and adds test-only helpers (`TrackedKv`, short type aliases).
 
 pub use crafty_core::kv::{Kv, KvCommand, KvError, KvMachine, KvQuery, KvResponse};
