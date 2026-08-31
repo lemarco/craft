@@ -1,10 +1,10 @@
 //! Grant ordering and rolling completion for the reference upgrade machine.
 
-use crafty_core::upgrade::{
-    ArtifactManifest, UpgradeCommand, UpgradeMachine, UpgradePhase, UpgradeQuery, UpgradeResponse,
-    plan_next_grant,
+use crafty_core::proto::LogIndex;
+use crafty_core::{
+    ArtifactManifest, Command, UpgradeCommand, UpgradeMachine, UpgradePhase, UpgradeQuery,
+    UpgradeResponse, StateMachine, plan_next_grant,
 };
-use crafty_core::{LogIndex, StateMachine};
 use crafty_proto::NodeId;
 
 fn manifest() -> ArtifactManifest {
@@ -18,6 +18,25 @@ fn manifest() -> ArtifactManifest {
 
 fn members() -> Vec<NodeId> {
     vec![NodeId(1), NodeId(2), NodeId(3)]
+}
+
+#[test]
+fn upgrade_command_postcard_roundtrip() {
+    let manifest = manifest();
+    let manifest_bytes = crafty_proto::encode(&manifest).expect("manifest encode");
+    crafty_proto::decode::<ArtifactManifest>(&manifest_bytes).expect("manifest decode");
+
+    let cmd = UpgradeCommand::SetDesired(manifest);
+    let bytes = Command::to_bytes(&cmd).expect("encode");
+    let decoded = UpgradeCommand::from_bytes(&bytes).expect("decode");
+    assert_eq!(decoded, cmd);
+
+    let grant = UpgradeCommand::Grant { node_id: NodeId(1) };
+    let grant_bytes = Command::to_bytes(&grant).expect("grant encode");
+    assert_eq!(
+        UpgradeCommand::from_bytes(&grant_bytes).expect("grant decode"),
+        grant
+    );
 }
 
 #[test]

@@ -23,28 +23,23 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crafty::discovery::resolve_dns_seeds;
+use crafty::advanced::PemSecurity;
 use crafty::upgrade::{UpgradeMachine, UpgradeOpts, spawn_upgrade_runtime, upgrade_api};
-use crafty::{CraftyCluster, PemSecurity, ReadyOpts, init_tracing};
+use crafty::{CraftyCluster, ReadyOpts};
 use crafty_showcase_common::{data_dir, display_addr, env_flag};
 
 const DATA_DIR_NAME: &str = "crafty-showcase-self-update";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    init_tracing();
+    debug::init_tracing();
     debug::startup();
 
     let cfg = debug::config_from_env()?;
-    let mut seeds = cfg.join_seeds.clone();
-    if let Some(dns) = &cfg.discovery {
-        seeds.extend(
-            resolve_dns_seeds(&dns.prefix, &dns.service, dns.replicas, dns.port).await?,
-        );
-    }
+    let seeds = cfg.join_seeds.clone();
 
     let mut builder = CraftyCluster::builder(cfg.node_id, UpgradeMachine::default())
-        .members(cfg.members.clone());
+        .members(cfg.members.iter().copied());
     if let Some(admin) = cfg.admin {
         builder = builder.admin_addr(admin);
     }

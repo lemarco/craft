@@ -22,7 +22,7 @@ pub struct ArtifactManifest {
     /// SHA-256 of the artifact bytes (hex-encoded).
     pub sha256_hex: String,
     /// Optional lower bound for [`crafty_proto::PROTOCOL_VERSION`] compatibility.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub min_protocol: Option<u32>,
 }
 
@@ -205,6 +205,18 @@ pub fn upgrade_view(state: &UpgradeState, members: &[NodeId]) -> UpgradeView {
     }
 }
 
+/// Build planning state from a query view (leader reconcile helper).
+#[must_use]
+pub fn upgrade_state_for_planning(view: &UpgradeView) -> UpgradeState {
+    UpgradeState {
+        desired: view.desired.clone(),
+        granted: view.granted,
+        completed: view.completed.clone(),
+        last_report: BTreeMap::new(),
+        aborted: view.aborted.clone(),
+    }
+}
+
 fn apply_command(state: &mut UpgradeState, command: &UpgradeCommand) -> Result<(), UpgradeError> {
     match command {
         UpgradeCommand::SetDesired(manifest) => {
@@ -362,7 +374,6 @@ mod tests {
     #[test]
     fn fleet_ready_when_all_members_complete() {
         let mut sm = UpgradeMachine::default();
-        sm.set_query_members(members());
         sm.apply(
             LogIndex(1),
             &UpgradeCommand::SetDesired(ArtifactManifest {

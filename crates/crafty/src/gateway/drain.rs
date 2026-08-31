@@ -5,8 +5,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use axum::Router;
-use hyper_util::rt::{TokioExecutor, TokioIo};
-use hyper_util::server::conn::auto::Builder;
+use hyper::server::conn::http1;
+use hyper_util::rt::TokioIo;
 use hyper_util::service::TowerToHyperService;
 use rustls::ServerConfig;
 use tokio::sync::watch;
@@ -152,8 +152,9 @@ async fn serve_tls(
                             };
                             let io = TokioIo::new(tls_stream);
                             let service = TowerToHyperService::new(router);
-                            let _ = Builder::new(TokioExecutor::new())
+                            let _ = http1::Builder::new()
                                 .serve_connection(io, service)
+                                .with_upgrades()
                                 .await;
                         });
                     }

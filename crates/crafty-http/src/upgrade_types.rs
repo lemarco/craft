@@ -2,7 +2,7 @@
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use crafty_core::upgrade::{ArtifactManifest, UpgradeView};
+use crafty_core::{ArtifactManifest, UpgradeView};
 use serde::{Deserialize, Serialize};
 
 /// Body for `POST /cluster/upgrade/desired`.

@@ -129,7 +129,11 @@ fn mint_gateway_tls_files() -> (
     CertificateDer<'static>,
 ) {
     let dir = tempfile::tempdir().unwrap();
-    let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+    let cert = rcgen::generate_simple_self_signed(vec![
+        "localhost".into(),
+        "127.0.0.1".into(),
+    ])
+    .unwrap();
     let cert_path = dir.path().join("cert.pem");
     let key_path = dir.path().join("key.pem");
     std::fs::write(&cert_path, cert.cert.pem()).unwrap();

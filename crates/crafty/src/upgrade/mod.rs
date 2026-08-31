@@ -3,6 +3,7 @@
 //! Reference [`UpgradeMachine`] in `crafty-core`, leader reconcile + local executor in
 //! [`spawn_upgrade_coordinator`], HTTP hooks via `crafty-http` [`UpgradeApi`](crafty_http::UpgradeApi).
 
+mod client;
 mod coordinator;
 mod fetch;
 #[cfg(feature = "http-jobs")]
@@ -20,7 +21,7 @@ pub use install::{
 pub use crafty_core::upgrade::{
     ArtifactManifest, UpgradeCommand, UpgradeError, UpgradeMachine, UpgradePhase, UpgradeQuery,
     UpgradeResponse, UpgradeState, UpgradeStateMachine, UpgradeView, plan_next_grant,
-    upgrade_view,
+    upgrade_state_for_planning, upgrade_view,
 };
 
 use std::sync::Arc;
@@ -28,6 +29,8 @@ use std::sync::Arc;
 use crafty_core::UpgradeMachine as UpgradeStateMachineAlias;
 
 use crate::cluster::CraftyCluster;
+
+use self::client::{propose_upgrade, query_upgrade_view};
 
 /// After restart, report `Ready` when the running build matches the desired manifest.
 ///
@@ -37,28 +40,21 @@ pub async fn report_upgrade_boot(
     cluster: &CraftyCluster<UpgradeStateMachineAlias>,
 ) -> Result<(), UpgradeRunError> {
     let members: Vec<crafty_proto::NodeId> = cluster.members().to_vec();
-    let response = cluster
-        .handle()
-        .query(crafty_core::UpgradeQuery::View {
-            members: members.clone(),
-        })
-        .await?;
-    let crafty_core::UpgradeResponse::View(view) = response else {
-        return Ok(());
-    };
+    let view = query_upgrade_view(cluster, &members).await?;
     if view
         .desired
         .as_ref()
         .is_some_and(|d| d.app_version == running_app_version())
         && !view.completed.contains(&cluster.node_id())
     {
-        cluster
-            .handle()
-            .propose(crafty_core::UpgradeCommand::Report {
+        propose_upgrade(
+            cluster,
+            crafty_core::UpgradeCommand::Report {
                 node_id: cluster.node_id(),
                 phase: crafty_core::UpgradePhase::Ready,
-            })
-            .await?;
+            },
+        )
+        .await?;
     }
     Ok(())
 }

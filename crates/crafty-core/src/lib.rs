@@ -14,7 +14,7 @@ mod compaction;
 mod config;
 mod failure_detector;
 pub mod kv;
-mod upgrade;
+pub mod upgrade;
 mod log;
 mod node;
 mod rng;
@@ -33,7 +33,8 @@ pub use failure_detector::{
 pub use kv::{Kv, KvCommand, KvError, KvMachine, KvQuery, KvResponse};
 pub use upgrade::{
     ArtifactManifest, UpgradeCommand, UpgradeError, UpgradeMachine, UpgradePhase, UpgradeQuery,
-    UpgradeResponse, UpgradeState, UpgradeStateMachine, UpgradeView, plan_next_grant, upgrade_view,
+    UpgradeResponse, UpgradeState, UpgradeStateMachine, UpgradeView, plan_next_grant,
+    upgrade_state_for_planning, upgrade_view,
 };
 pub use node::{
     CatalogProposeError, Committed, Config, MembershipError, NotLeader, Output, Persist, RaftNode,

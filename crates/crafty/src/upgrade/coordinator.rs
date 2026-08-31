@@ -6,8 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crafty_core::upgrade::{
-    ArtifactManifest, UpgradeCommand, UpgradePhase, UpgradeQuery, UpgradeResponse,
-    UpgradeState, plan_next_grant,
+    UpgradeCommand, UpgradePhase, plan_next_grant, upgrade_state_for_planning,
 };
 use crafty_core::UpgradeMachine;
 use crafty_proto::NodeId;
@@ -15,6 +14,7 @@ use thiserror::Error;
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
+use super::client::{propose_upgrade, query_upgrade_view};
 use super::fetch::{UpgradeFetchError, fetch_artifact};
 use super::install::{
     UpgradeInstallError, atomic_symlink_install, running_app_version, verify_sha256_hex,
@@ -64,7 +64,10 @@ impl UpgradeOpts {
 pub enum UpgradeRunError {
     /// Raft client error.
     #[error("{0}")]
-    Client(#[from] crafty_client::ClientError),
+    Client(#[from] crafty_actor::ClientError),
+    /// Remote client error (leader forwarding).
+    #[error("{0}")]
+    Remote(#[from] crafty_client::ClientError),
     /// Download failed.
     #[error("{0}")]
     Fetch(#[from] UpgradeFetchError),
@@ -98,7 +101,7 @@ async fn tick(
     executing: &Arc<AtomicBool>,
 ) -> Result<(), UpgradeRunError> {
     let members: Vec<NodeId> = cluster.members().to_vec();
-    let view = query_view(cluster, &members).await?;
+    let view = query_upgrade_view(cluster, &members).await?;
 
     if cluster.is_leader().await {
         leader_reconcile(cluster, &members, &view).await?;
@@ -114,39 +117,22 @@ async fn tick(
         tokio::spawn(async move {
             if let Err(e) = run_local_upgrade(&cluster, &opts).await {
                 warn!(error = %e, "local upgrade failed");
-                let _ = cluster
-                    .handle()
-                    .propose(UpgradeCommand::Report {
+                let _ = propose_upgrade(
+                    cluster.as_ref(),
+                    UpgradeCommand::Report {
                         node_id: cluster.node_id(),
                         phase: UpgradePhase::Failed {
                             message: e.to_string(),
                         },
-                    })
-                    .await;
+                    },
+                )
+                .await;
             }
             executing.store(false, Ordering::SeqCst);
         });
     }
 
     Ok(())
-}
-
-async fn query_view(
-    cluster: &CraftyCluster<UpgradeMachine>,
-    members: &[NodeId],
-) -> Result<crafty_core::UpgradeView, UpgradeRunError> {
-    let response = cluster
-        .handle()
-        .query(UpgradeQuery::View {
-            members: members.to_vec(),
-        })
-        .await?;
-    match response {
-        UpgradeResponse::View(view) => Ok(view),
-        UpgradeResponse::Ok => Err(UpgradeRunError::Client(
-            crafty_client::ClientError::Server("unexpected upgrade query response".into()),
-        )),
-    }
 }
 
 async fn leader_reconcile(
@@ -165,21 +151,12 @@ async fn leader_reconcile(
         .await
         .and_then(|s| s.leader)
         .unwrap_or(cluster.node_id());
-    let state = UpgradeState {
-        desired: view.desired.clone(),
-        granted: view.granted,
-        completed: view.completed.clone(),
-        last_report: std::collections::BTreeMap::new(),
-        aborted: view.aborted.clone(),
-    };
+    let state = upgrade_state_for_planning(view);
     let Some(next) = plan_next_grant(&state, members, leader_id) else {
         return Ok(());
     };
     info!(?next, "upgrade coordinator granting slot");
-    cluster
-        .handle()
-        .propose(UpgradeCommand::Grant { node_id: next })
-        .await?;
+    propose_upgrade(cluster, UpgradeCommand::Grant { node_id: next }).await?;
     Ok(())
 }
 
@@ -188,29 +165,31 @@ async fn run_local_upgrade(
     opts: &UpgradeOpts,
 ) -> Result<(), UpgradeRunError> {
     let members: Vec<NodeId> = cluster.members().to_vec();
-    let view = query_view(cluster, &members).await?;
+    let view = query_upgrade_view(cluster, &members).await?;
     let Some(desired) = view.desired else {
         return Ok(());
     };
 
     if running_app_version() == desired.app_version {
-        cluster
-            .handle()
-            .propose(UpgradeCommand::Report {
+        propose_upgrade(
+            cluster,
+            UpgradeCommand::Report {
                 node_id: cluster.node_id(),
                 phase: UpgradePhase::Ready,
-            })
-            .await?;
+            },
+        )
+        .await?;
         return Ok(());
     }
 
-    cluster
-        .handle()
-        .propose(UpgradeCommand::Report {
+    propose_upgrade(
+        cluster,
+        UpgradeCommand::Report {
             node_id: cluster.node_id(),
             phase: UpgradePhase::Downloading,
-        })
-        .await?;
+        },
+    )
+    .await?;
 
     let bytes = fetch_artifact(&desired.url).await?;
     verify_sha256_hex(&bytes, &desired.sha256_hex)?;
@@ -225,31 +204,34 @@ async fn run_local_upgrade(
     }
 
     if opts.dry_run {
-        cluster
-            .handle()
-            .propose(UpgradeCommand::Report {
+        propose_upgrade(
+            cluster,
+            UpgradeCommand::Report {
                 node_id: cluster.node_id(),
                 phase: UpgradePhase::Ready,
-            })
-            .await?;
+            },
+        )
+        .await?;
         return Ok(());
     }
 
-    cluster
-        .handle()
-        .propose(UpgradeCommand::Report {
+    propose_upgrade(
+        cluster,
+        UpgradeCommand::Report {
             node_id: cluster.node_id(),
             phase: UpgradePhase::Installed,
-        })
-        .await?;
+        },
+    )
+    .await?;
 
-    cluster
-        .handle()
-        .propose(UpgradeCommand::Report {
+    propose_upgrade(
+        cluster,
+        UpgradeCommand::Report {
             node_id: cluster.node_id(),
             phase: UpgradePhase::Restarting,
-        })
-        .await?;
+        },
+    )
+    .await?;
 
     if cluster.members().len() > 1 {
         let _ = cluster.leave().await;

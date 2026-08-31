@@ -32,7 +32,7 @@ axum = { version = "0.8", features = ["json", "ws"] }
 hyper = { version = "1.10.1", features = ["server", "http1"] }
 hyper-util = { version = "0.1.20", features = ["tokio"] }
 tokio-rustls = "0.26"
-tokio = { version = "1", features = ["rt", "time", "sync", "macros", "net", "signal"] }
+tokio = { version = "1", features = ["rt", "time", "sync", "macros", "net", "signal", "fs"] }
 serde.workspace = true
 thiserror.workspace = true
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }

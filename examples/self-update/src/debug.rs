@@ -5,8 +5,12 @@ use std::error::Error;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
 
+use crafty::advanced::{
+    CertPaths, PemSecurity, Security, cert_paths_from_env,
+};
 use crafty::discovery::Seed;
-use crafty::{CertPaths, NodeId, PeerDirectory, PemSecurity, Security, cert_paths_from_env};
+use crafty::net::PeerDirectory;
+use crafty::NodeId;
 use crafty_showcase_common::data_dir;
 
 const DATA_DIR_NAME: &str = "crafty-showcase-self-update";
@@ -160,13 +164,13 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
     let data_dir = env("CRAFTY_DATA_DIR")
         .map(PathBuf::from)
         .or_else(|| Some(data_dir(DATA_DIR_NAME)));
-    let (security, pem_paths) = load_security(node_id, &members, !join_seeds.is_empty())?;
+    let (security, pem_paths) = load_security(node_id, members.as_slice(), !join_seeds.is_empty())?;
     Ok(NodeConfig {
         node_id,
         listen,
         admin,
         gateway,
-        members,
+        members: members.to_vec(),
         join_seeds,
         allow_join: env_bool("CRAFTY_ALLOW_JOIN"),
         allow_leave: env_bool("CRAFTY_ALLOW_LEAVE"),

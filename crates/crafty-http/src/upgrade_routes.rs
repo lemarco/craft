@@ -9,7 +9,7 @@ use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Router, http::StatusCode};
-use crafty_core::upgrade::ArtifactManifest;
+use crafty_core::ArtifactManifest;
 
 use crate::upgrade_types::{SetDesiredBody, UpgradeApiError, UpgradeStatusResponse};
 
@@ -94,7 +94,7 @@ mod tests {
 
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
-    use crafty_core::upgrade::UpgradeView;
+    use crafty_core::UpgradeView;
     use tower::ServiceExt;
 
     use super::*;
