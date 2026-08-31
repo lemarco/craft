@@ -163,7 +163,7 @@ impl CraftyAppBuilder {
         self
     }
 
-    /// Register several consumers via [`ConsumerGroup`].
+    /// Register several consumers via [`crate::ConsumerGroup`].
     ///
     /// # Errors
     /// Same stream / queue rules as [`.consumer`](Self::consumer).
@@ -487,7 +487,7 @@ impl CraftyApp {
 
     /// Enqueue many jobs in one leader transaction (tier C batch path).
     ///
-    /// Batches are capped at [`crate::DEFAULT_QUEUE_BATCH_MAX`] jobs per RPC.
+    /// Batches are capped at [`crate::advanced::DEFAULT_QUEUE_BATCH_MAX`] jobs per RPC.
     ///
     /// # Errors
     /// Returns an error when the stream is unknown or enqueue fails.

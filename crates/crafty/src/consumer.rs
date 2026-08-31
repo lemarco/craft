@@ -37,7 +37,7 @@ impl ConsumerGroup {
         self
     }
 
-    /// Split into stream names and spawn closures for [`CraftyAppBuilder::consumers`].
+    /// Split into stream names and spawn closures for [`crate::CraftyAppBuilder::consumers`].
     #[must_use]
     pub fn into_parts(self) -> (Vec<String>, Vec<ConsumerSpawnFn>) {
         (self.streams, self.spawners)

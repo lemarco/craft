@@ -23,10 +23,10 @@
 //!
 //! ## Advanced path
 //!
-//! [`CraftyCluster`](advanced::CraftyCluster) + [`CraftyClusterBuilder`](advanced::CraftyClusterBuilder)
+//! [`CraftyCluster`] + [`CraftyClusterBuilder`]
 //! for custom state machines, journals, and queue tuning — see [`advanced`].
 //!
-//! Environment variables: [`env`]. Architecture: `docs/` in the repository.
+//! Environment variables: [`mod@env`]. Architecture: `docs/` in the repository.
 
 mod actor_group;
 mod app;

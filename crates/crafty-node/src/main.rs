@@ -1,6 +1,6 @@
 //! `crafty-node` — reference runner for a single crafty cluster node (backlog
 //! J3). It reads its configuration from the environment, builds the mTLS
-//! [`crafty::Security`], and starts a node over the live QUIC transport with a built-in
+//! [`crafty::advanced::Security`], and starts a node over the live QUIC transport with a built-in
 //! demo state machine, then runs until `SIGINT`/Ctrl-C.
 //!
 //! It exists to smoke-test deployments and to serve as a copyable template —
