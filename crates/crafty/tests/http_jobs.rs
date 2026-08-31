@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
-use crafty::{CraftyApp, CraftyConfigure, EnqueueOptions, NodeId};
+use crafty::{CraftyApp, CraftyConfigure, EnqueueOptions, QueueOpts};
 use crafty_actor::JobLifecycle;
 use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
 use tower::ServiceExt;
@@ -25,9 +25,8 @@ async fn http_post_job_returns_202_and_enqueues() {
     let app = boot_local_app(
         CraftyApp::builder()
             .data_dir(&base)
-            .queue("jobs", Duration::from_secs(60))
+            .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
             .configure(CraftyConfigure {
-                members: vec![NodeId(1)],
                 tick_period: Duration::from_millis(5),
                 ..CraftyConfigure::default()
             }),

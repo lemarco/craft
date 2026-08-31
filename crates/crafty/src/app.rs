@@ -14,7 +14,7 @@ use crafty_actor::ClientError;
 use crafty_actor::NodeHandle;
 use crafty_actor::{
     ActorSession, CastError, ClusterAskError, ClusterRef, EnqueueOptions, JobId, JobStatus,
-    LeaseId, RecurringJob, UserActor, WorkerId,
+    LeaseId, UserActor, WorkerId,
 };
 use crafty_client::{SagaError, SagaOutcome, SagaPlan};
 use crafty_core::StateMachine;
@@ -29,8 +29,10 @@ use crate::builder::{CraftyClusterBuilder, StartError};
 use crate::cluster::CraftyCluster;
 use crate::configure::CraftyConfigure;
 use crate::env_config::{AppConfig, app_config_from_env};
+use crate::cron_opts::CronOpts;
+use crate::queue_opts::QueueOpts;
 #[cfg(feature = "http-jobs")]
-use crate::gateway::{GatewayConfig, GatewayOpts, GatewayRoutesFn};
+use crate::gateway::{GatewayConfig, GatewayOpts};
 #[cfg(feature = "http-jobs")]
 use crate::gateway::spawn_gateway as spawn_gateway_task;
 
@@ -120,8 +122,6 @@ pub struct CraftyAppBuilder {
     pending_consumers: Vec<ConsumerSpawnFn>,
     #[cfg(feature = "http-jobs")]
     gateway: Option<GatewayConfig>,
-    #[cfg(feature = "http-jobs")]
-    gateway_routes: Option<GatewayRoutesFn>,
 }
 
 impl CraftyAppBuilder {
@@ -131,9 +131,7 @@ impl CraftyAppBuilder {
         if let Some(stream) = cfg.job_queue_stream.clone() {
             if !self.reg_jobs {
                 self.reg_jobs = true;
-                self.inner = self
-                    .inner
-                    .job_queue(&stream, cfg.job_queue_lease);
+                self = self.queue([QueueOpts::new(stream, cfg.job_queue_lease)]);
             }
         }
         #[cfg(feature = "http-jobs")]
@@ -144,7 +142,7 @@ impl CraftyAppBuilder {
                     jobs_api: cfg.gateway_jobs_api,
                     actors_api: cfg.gateway_actors_api,
                     workflows_api: cfg.gateway_workflows_api,
-                    routes: self.gateway_routes.take(),
+                    routes: None,
                 });
             }
         }
@@ -164,11 +162,23 @@ impl CraftyAppBuilder {
         self
     }
 
-    /// Register a durable job stream (requires [`Self::data_dir`]).
+    /// Register durable job streams (requires [`Self::data_dir`]).
     #[must_use]
-    pub fn queue(mut self, name: &str, lease_timeout: Duration) -> Self {
-        self.reg_jobs = true;
-        self.inner = self.inner.job_queue(name, lease_timeout);
+    pub fn queue(mut self, queues: impl IntoIterator<Item = QueueOpts>) -> Self {
+        for opts in queues {
+            self.reg_jobs = true;
+            self.inner = self.inner.job_queue(&opts.name, opts.lease);
+            self.inner = self.inner.job_queue_prefetch(&opts.name, opts.prefetch);
+        }
+        self
+    }
+
+    /// Register cron-driven recurring enqueues (requires matching [`.queue`](Self::queue) streams).
+    #[must_use]
+    pub fn cron(mut self, schedules: impl IntoIterator<Item = CronOpts>) -> Self {
+        for opts in schedules {
+            self.inner = self.inner.recurring_job(&opts.stream, opts.job);
+        }
         self
     }
 
@@ -202,22 +212,11 @@ impl CraftyAppBuilder {
         self
     }
 
-    /// Public HTTP gateway with tier C / actors / workflows APIs ([`GatewayOpts`]).
+    /// Public HTTP gateway — custom routes and optional built-in APIs ([`GatewayOpts`]).
     #[cfg(feature = "http-jobs")]
     #[must_use]
     pub fn gateway(mut self, addr: SocketAddr, opts: GatewayOpts) -> Self {
-        let routes = self
-            .gateway
-            .as_mut()
-            .and_then(|g| g.routes.take())
-            .or_else(|| self.gateway_routes.take());
-        self.gateway = Some(GatewayConfig {
-            addr,
-            jobs_api: opts.jobs_api,
-            actors_api: opts.actors_api,
-            workflows_api: opts.workflows_api,
-            routes,
-        });
+        self.gateway = Some(opts.into_config(addr));
         self
     }
 
@@ -327,27 +326,6 @@ impl CraftyAppBuilder {
         self
     }
 
-    /// Tune leader prefetch depth for `stream` (default [`crate::DEFAULT_QUEUE_PREFETCH`]).
-    ///
-    /// Prefetch keeps recently enqueued payloads in RAM on the queue leader so
-    /// [`lease`](crafty_actor::JobQueue::lease) skips re-reading from `redb`.
-    /// Set `prefetch` to `0` to disable.
-    #[must_use]
-    pub fn job_queue_prefetch(mut self, stream: &str, prefetch: usize) -> Self {
-        self.inner = self.inner.job_queue_prefetch(stream, prefetch);
-        self
-    }
-
-    /// Register a cron-driven recurring job on `stream` ([`RecurringJob`]).
-    ///
-    /// Requires [`.queue`](Self::queue) on the same stream. Schedules persist in
-    /// `queue-{stream}.redb` and fire on the queue leader.
-    #[must_use]
-    pub fn recurring_job(mut self, stream: &str, job: RecurringJob) -> Self {
-        self.inner = self.inner.recurring_job(stream, job);
-        self
-    }
-
     /// Apply runtime / cluster tuning ([`CraftyConfigure`]).
     #[must_use]
     pub fn configure(mut self, config: CraftyConfigure) -> Self {
@@ -359,23 +337,6 @@ impl CraftyAppBuilder {
     #[must_use]
     pub fn inner_mut(&mut self) -> &mut CraftyClusterBuilder<EmptyStateMachine> {
         &mut self.inner
-    }
-
-    /// Custom Axum routes for the product gateway (WebSocket, sync HTTP, …).
-    ///
-    /// Call before [`.gateway`](Self::gateway). The closure receives [`Arc<CraftyApp>`] so handlers
-    /// can call `session`, `cast`, `enqueue`, etc.
-    ///
-    /// # Panics
-    /// Never — routes are stored until [`.gateway`](Self::gateway) binds the listen address.
-    #[cfg(feature = "http-jobs")]
-    #[must_use]
-    pub fn http_routes<F>(mut self, routes: F) -> Self
-    where
-        F: FnOnce(Arc<CraftyApp>) -> axum::Router + Send + 'static,
-    {
-        self.gateway_routes = Some(Box::new(routes));
-        self
     }
 }
 
@@ -400,8 +361,6 @@ impl CraftyApp {
             pending_consumers: Vec::new(),
             #[cfg(feature = "http-jobs")]
             gateway: None,
-            #[cfg(feature = "http-jobs")]
-            gateway_routes: None,
         }
     }
 

@@ -45,7 +45,7 @@ async fn crafty_app_workflows_api_on_gateway() {
                 ..CraftyConfigure::default()
             })
             .workflows(noop_plan, journal_workflow)
-            .gateway("127.0.0.1:0".parse().expect("addr"), GatewayOpts::default()),
+            .gateway("127.0.0.1:0".parse().expect("addr"), GatewayOpts::default().with_workflows_api(true)),
         Some(ReadyOpts::default()),
     )
     .await;

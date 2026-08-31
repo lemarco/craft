@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
-use crafty::{CraftyApp, CraftyConfigure, GatewayConfig, GatewayOpts, build_gateway_router};
+use crafty::{CraftyApp, CraftyConfigure, GatewayConfig, GatewayOpts, QueueOpts, build_gateway_router};
 use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
 use tower::ServiceExt;
 
@@ -24,12 +24,12 @@ async fn gateway_serves_jobs_api_on_configured_addr() {
     let app = boot_local_app(
         CraftyApp::builder()
             .data_dir(&base)
-            .queue("jobs", Duration::from_secs(60))
+            .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
             .configure(CraftyConfigure {
                 tick_period: Duration::from_millis(5),
                 ..CraftyConfigure::default()
             })
-            .gateway("127.0.0.1:0".parse().unwrap(), GatewayOpts::default()),
+            .gateway("127.0.0.1:0".parse().unwrap(), GatewayOpts::default().with_jobs_api(true)),
         None,
     )
     .await;

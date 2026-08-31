@@ -52,11 +52,11 @@ pub struct AppConfig {
     pub job_queue_lease: Duration,
     /// Optional product gateway listen address (`None` when disabled).
     pub gateway: Option<SocketAddr>,
-    /// Mount tier C `/jobs/*` on the gateway when `gateway` is set.
+    /// Mount tier C `/jobs/*` on the gateway when `gateway` is set (`CRAFTY_GATEWAY_JOBS=1`).
     pub gateway_jobs_api: bool,
-    /// Mount `/actors/*` cast + ask on the gateway when `gateway` is set.
+    /// Mount `/actors/*` cast + ask on the gateway when `gateway` is set (`CRAFTY_GATEWAY_ACTORS=1`).
     pub gateway_actors_api: bool,
-    /// Mount `/workflows/*` on the gateway when `gateway` is set ([`CraftyApp::workflows_api`]).
+    /// Mount `/workflows/*` on the gateway when `gateway` is set (`CRAFTY_GATEWAY_WORKFLOWS=1`).
     pub gateway_workflows_api: bool,
 }
 
@@ -321,9 +321,9 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         Some("-") | None => None,
         Some(a) => Some(a.parse()?),
     };
-    let gateway_jobs_api = !env_bool("CRAFTY_GATEWAY_NO_JOBS");
-    let gateway_actors_api = !env_bool("CRAFTY_GATEWAY_NO_ACTORS");
-    let gateway_workflows_api = !env_bool("CRAFTY_GATEWAY_NO_WORKFLOWS");
+    let gateway_jobs_api = env_bool("CRAFTY_GATEWAY_JOBS");
+    let gateway_actors_api = env_bool("CRAFTY_GATEWAY_ACTORS");
+    let gateway_workflows_api = env_bool("CRAFTY_GATEWAY_WORKFLOWS");
     let admin_tls = match (env("CRAFTY_ADMIN_TLS_CERT"), env("CRAFTY_ADMIN_TLS_KEY")) {
         (Some(cert), Some(key)) => Some((PathBuf::from(cert), PathBuf::from(key))),
         (None, None) => None,

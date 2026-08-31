@@ -3,6 +3,7 @@
 //! Mount custom Axum routes and (with the `http-jobs` feature) tier C job paths on a
 //! separate listener from the admin dashboard and the mTLS crafty wire.
 
+use std::fmt;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -10,23 +11,83 @@ use axum::Router;
 
 use super::app::CraftyApp;
 
-/// Which product HTTP APIs to mount on [`.gateway`](super::app::CraftyAppBuilder::gateway).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Product HTTP gateway: custom Axum routes + optional built-in APIs.
+///
+/// [`Default`] mounts nothing — set [`.routes`](Self::routes) for your handlers and opt in
+/// to `jobs_api` / `actors_api` / `workflows_api` only for local dev behind auth.
 pub struct GatewayOpts {
-    /// Mount tier C `/jobs/*` routes.
+    /// Mount tier C `/jobs/*` routes (unauthenticated — opt in deliberately).
     pub jobs_api: bool,
-    /// Mount `/actors/*` cast + ask routes.
+    /// Mount `/actors/*` cast + ask routes (unauthenticated — opt in deliberately).
     pub actors_api: bool,
-    /// Mount `/workflows/run` and `/workflows/resume`.
+    /// Mount `/workflows/run` and `/workflows/resume` (unauthenticated — opt in deliberately).
     pub workflows_api: bool,
+    routes: Option<GatewayRoutesFn>,
 }
 
 impl Default for GatewayOpts {
     fn default() -> Self {
         Self {
-            jobs_api: true,
-            actors_api: true,
-            workflows_api: true,
+            jobs_api: false,
+            actors_api: false,
+            workflows_api: false,
+            routes: None,
+        }
+    }
+}
+
+impl fmt::Debug for GatewayOpts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GatewayOpts")
+            .field("jobs_api", &self.jobs_api)
+            .field("actors_api", &self.actors_api)
+            .field("workflows_api", &self.workflows_api)
+            .field("routes", &self.routes.as_ref().map(|_| "<router>"))
+            .finish()
+    }
+}
+
+impl GatewayOpts {
+    /// Enable or disable tier C `/jobs/*` routes.
+    #[must_use]
+    pub fn with_jobs_api(mut self, enabled: bool) -> Self {
+        self.jobs_api = enabled;
+        self
+    }
+
+    /// Enable or disable `/actors/*` cast + ask routes.
+    #[must_use]
+    pub fn with_actors_api(mut self, enabled: bool) -> Self {
+        self.actors_api = enabled;
+        self
+    }
+
+    /// Enable or disable `/workflows/run` and `/workflows/resume`.
+    #[must_use]
+    pub fn with_workflows_api(mut self, enabled: bool) -> Self {
+        self.workflows_api = enabled;
+        self
+    }
+
+    /// Custom Axum routes (WebSocket, authenticated HTTP, …).
+    ///
+    /// The closure receives [`Arc<CraftyApp>`] — use [`CraftyGatewayState`] or bind `app` directly.
+    #[must_use]
+    pub fn routes<F>(mut self, routes: F) -> Self
+    where
+        F: FnOnce(Arc<CraftyApp>) -> Router + Send + 'static,
+    {
+        self.routes = Some(Box::new(routes));
+        self
+    }
+
+    pub(crate) fn into_config(self, addr: SocketAddr) -> GatewayConfig {
+        GatewayConfig {
+            addr,
+            jobs_api: self.jobs_api,
+            actors_api: self.actors_api,
+            workflows_api: self.workflows_api,
+            routes: self.routes,
         }
     }
 }
@@ -65,7 +126,7 @@ pub fn build_gateway_router(app: Arc<CraftyApp>, config: GatewayConfig) -> Route
         routes,
     } = config;
 
-    let mut router = routes.map_or_else(Router::new, |f| f(Arc::clone(&app)));
+    let mut router = routes.map_or_else(Router::new, |f| f(app.clone()));
 
     if workflows_api {
         let api = CraftyApp::workflows_api(Arc::clone(&app));

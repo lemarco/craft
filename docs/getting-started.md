@@ -32,7 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     CraftyApp::builder()
         .data_dir("/tmp/my-app")
-        .queue("jobs", Duration::from_secs(60))
+        .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
         .gateway("127.0.0.1:8090".parse()?)
         .run(RunOpts::default().with_wait_queue("jobs"))
         .await
@@ -129,11 +129,11 @@ crafty = { version = "0.2", features = ["http-jobs"] }
 
 ```rust
 use std::time::Duration;
-use crafty::{CraftyApp, RunOpts};
+use crafty::{CraftyApp, QueueOpts, RunOpts};
 
 CraftyApp::builder()
     .data_dir("/var/lib/crafty")
-    .queue("jobs", Duration::from_secs(300))
+    .queue([QueueOpts::new("jobs", Duration::from_secs(300))])
     .gateway("0.0.0.0:3000".parse()?)
     .run(RunOpts::default().with_wait_queue("jobs"))
     .await?;

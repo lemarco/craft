@@ -66,7 +66,7 @@ use std::time::Duration;
 use crafty::{CraftyApp, RunOpts};
 
 CraftyApp::builder()
-    .queue("emails", Duration::from_secs(300))
+    .queue([QueueOpts::new("emails", Duration::from_secs(300))])
     .consumer(SendEmailConsumer, Default::default())
     .gateway("0.0.0.0:8090".parse()?)
     .run(RunOpts::default().with_wait_queue("emails"))

@@ -28,8 +28,6 @@ use crate::builder::CraftyClusterBuilder;
 pub struct CraftyConfigure {
     /// Override node id before boot (joiners usually leave unset).
     pub node_id: Option<NodeId>,
-    /// Bootstrap Raft voters. Empty = solo seed (`[node_id]`).
-    pub members: Vec<NodeId>,
     /// Raft election / heartbeat tuning.
     pub raft_config: Config,
     /// Wall-clock duration of one logical Raft tick.
@@ -46,7 +44,6 @@ impl Default for CraftyConfigure {
     fn default() -> Self {
         Self {
             node_id: None,
-            members: Vec::new(),
             raft_config: Config::default(),
             tick_period: Duration::from_millis(50),
             reconcile_period: Duration::from_millis(250),
@@ -65,9 +62,6 @@ impl CraftyConfigure {
         } else {
             inner
         };
-        if !self.members.is_empty() {
-            inner = inner.members(self.members);
-        }
         inner = inner
             .raft_config(self.raft_config)
             .tick_period(self.tick_period)

@@ -33,11 +33,11 @@ Producer (any node)          Leader QueueService          Workers (any node)
 ```rust
 use std::time::Duration;
 
-use crafty::{CraftyApp, RecurringJob, RunOpts};
+use crafty::{CraftyApp, CronOpts, QueueOpts, RecurringJob, RunOpts};
 
 CraftyApp::builder()
-    .queue("emails", Duration::from_secs(300))
-    .recurring_job(
+    .queue([QueueOpts::new("emails", Duration::from_secs(300))])
+    .cron([CronOpts::new(
         "emails",
         RecurringJob {
             name: "daily-digest".into(),
@@ -47,7 +47,7 @@ CraftyApp::builder()
             max_attempts: 0,
             enabled: true,
         },
-    )
+    )])
     .run(RunOpts::default().with_wait_queue("emails"))
     .await?;
 ```

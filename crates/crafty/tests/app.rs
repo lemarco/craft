@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crafty::{CraftyApp, CraftyConfigure, NodeId};
+use crafty::{CraftyApp, CraftyConfigure, QueueOpts};
 use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
 
 #[tokio::test(start_paused = true)]
@@ -20,9 +20,8 @@ async fn crafty_app_start_local_with_data_dir_and_queue() {
     let app = boot_local_app(
         CraftyApp::builder()
             .data_dir(&base)
-            .queue("jobs", Duration::from_secs(60))
+            .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
             .configure(CraftyConfigure {
-                members: vec![NodeId(1)],
                 tick_period: Duration::from_millis(5),
                 ..CraftyConfigure::default()
             }),
@@ -60,9 +59,8 @@ async fn crafty_app_requeue_dead_letter() {
     let app = boot_local_app(
         CraftyApp::builder()
             .data_dir(&base)
-            .queue("jobs", Duration::from_secs(60))
+            .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
             .configure(CraftyConfigure {
-                members: vec![NodeId(1)],
                 tick_period: Duration::from_millis(5),
                 ..CraftyConfigure::default()
             }),

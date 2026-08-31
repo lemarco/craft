@@ -65,6 +65,6 @@ Docker Compose: `cd dev/compose/workflows && docker compose up --build`
 | `CRAFTY_GATEWAY` | `127.0.0.1:8490` (local) | Product HTTP bind (`/workflows/run`, `/workflows/resume`) |
 | `CRAFTY_DATA_DIR` | `/tmp/crafty-showcase-workflows` | Raft + Meta-Raft redb |
 | `CRAFTY_PEERS` | unset | When set → QUIC cluster mode |
-| `CRAFTY_GATEWAY_NO_WORKFLOWS` | unset | Set `1` to disable `/workflows/*` on gateway |
+| `CRAFTY_GATEWAY_WORKFLOWS` | unset | Set `1` to mount `/workflows/*` when gateway comes from env only |
 
 Guide: [docs/scenarios/workflows.md](../../docs/scenarios/workflows.md)

@@ -30,14 +30,7 @@ fn server_builder() -> crafty::CraftyAppBuilder {
                 admin_addr: Some("127.0.0.1:9480".parse().expect("admin")),
                 ..CraftyConfigure::default()
             })
-            .gateway(
-                gateway,
-                GatewayOpts {
-                    jobs_api: false,
-                    actors_api: false,
-                    ..Default::default()
-                },
-            ),
+            .gateway(gateway, GatewayOpts::default().with_workflows_api(true)),
     )
 }
 

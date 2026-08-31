@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
-use crafty::{CraftyApp, CraftyConfigure, NodeId};
+use crafty::{CraftyApp, CraftyConfigure};
 use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
 use tower::ServiceExt;
 
@@ -14,7 +14,6 @@ async fn http_ask_returns_503_when_group_has_no_workers() {
     let app = boot_local_app(
         CraftyApp::builder()
             .configure(CraftyConfigure {
-                members: vec![NodeId(1)],
                 tick_period: Duration::from_millis(5),
                 ..CraftyConfigure::default()
             }),

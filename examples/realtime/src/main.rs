@@ -187,7 +187,13 @@ fn gateway_routes(app: Arc<CraftyApp>) -> Router {
         .with_state(CraftyGatewayState { app })
 }
 
-fn base_builder() -> CraftyAppBuilder {
+fn server_builder() -> crafty::CraftyAppBuilder {
+    let dir = data_dir(DATA_DIR_NAME);
+    let _ = std::fs::create_dir_all(&dir);
+    let gateway: std::net::SocketAddr = env::var("CRAFTY_GATEWAY")
+        .unwrap_or_else(|_| "127.0.0.1:8294".into())
+        .parse()
+        .expect("gateway");
     CraftyApp::builder()
         .actors::<ChatWorker>("chat", ActorGroupOpts::new(0))
         .configure(CraftyConfigure {
@@ -196,23 +202,12 @@ fn base_builder() -> CraftyAppBuilder {
             directory_publish_period: Duration::from_millis(20),
             ..CraftyConfigure::default()
         })
-        .http_routes(gateway_routes)
-}
-
-fn server_builder() -> crafty::CraftyAppBuilder {
-    let dir = data_dir(DATA_DIR_NAME);
-    let _ = std::fs::create_dir_all(&dir);
-    let gateway: std::net::SocketAddr = env::var("CRAFTY_GATEWAY")
-        .unwrap_or_else(|_| "127.0.0.1:8294".into())
-        .parse()
-        .expect("gateway");
-    base_builder()
         .data_dir(dir)
         .configure(CraftyConfigure {
             admin_addr: Some("127.0.0.1:9380".parse().expect("admin")),
             ..CraftyConfigure::default()
         })
-        .gateway(gateway, GatewayOpts { jobs_api: false, ..Default::default() })
+        .gateway(gateway, GatewayOpts::default().routes(gateway_routes))
 }
 
 #[tokio::main]

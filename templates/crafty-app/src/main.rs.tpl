@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, RunOpts};
+use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, QueueOpts, RunOpts};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         CraftyApp::builder()
             .data_dir("/tmp/{{PROJECT_NAME}}")
-            .queue("jobs", Duration::from_secs(300))
+            .queue([QueueOpts::new("jobs", Duration::from_secs(300))])
             .gateway("127.0.0.1:8090".parse()?, GatewayOpts::default())
             .configure(CraftyConfigure {
                 admin_addr: Some("127.0.0.1:8080".parse()?),

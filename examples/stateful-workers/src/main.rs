@@ -49,11 +49,11 @@ fn apply_actors(builder: CraftyAppBuilder) -> CraftyAppBuilder {
     }
 }
 
-fn apply_routes(builder: CraftyAppBuilder) -> CraftyAppBuilder {
+fn gateway_opts() -> GatewayOpts {
     if migrate_demo_mode() {
-        builder.http_routes(|app| migrate_http::migrate_routes(app))
+        GatewayOpts::default().routes(|app| migrate_http::migrate_routes(app))
     } else {
-        builder
+        GatewayOpts::default().with_actors_api(true)
     }
 }
 
@@ -64,7 +64,7 @@ fn server_builder() -> CraftyAppBuilder {
         .unwrap_or_else(|_| "127.0.0.1:8190".into())
         .parse()
         .expect("gateway");
-    apply_routes(apply_actors(
+    apply_actors(
         CraftyApp::builder()
             .data_dir(dir)
             .configure(CraftyConfigure {
@@ -73,15 +73,8 @@ fn server_builder() -> CraftyAppBuilder {
                 admin_addr: Some("127.0.0.1:9280".parse().expect("admin")),
                 ..CraftyConfigure::default()
             }),
-    ))
-    .gateway(
-        gateway,
-        GatewayOpts {
-            jobs_api: false,
-            actors_api: !migrate_demo_mode(),
-            ..Default::default()
-        },
     )
+    .gateway(gateway, gateway_opts())
 }
 
 async fn run_server() -> Result<(), Box<dyn std::error::Error>> {

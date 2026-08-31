@@ -3,7 +3,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use crafty::{ConsumerOpts, CraftyApp, CraftyConfigure, NodeId, consumer};
+use crafty::{ConsumerOpts, CraftyApp, CraftyConfigure, QueueOpts, consumer};
 use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
 
 static HANDLED: AtomicUsize = AtomicUsize::new(0);
@@ -33,9 +33,8 @@ async fn consumer_macro_spawns_and_processes_job() {
     let app = boot_local_app(
         CraftyApp::builder()
             .data_dir(&base)
-            .queue("jobs", Duration::from_secs(60))
+            .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
             .configure(CraftyConfigure {
-                members: vec![NodeId(1)],
                 tick_period: Duration::from_millis(5),
                 ..CraftyConfigure::default()
             }),

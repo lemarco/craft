@@ -41,6 +41,8 @@ mod app_opts;
 mod actor_group;
 mod builder;
 mod configure;
+mod queue_opts;
+mod cron_opts;
 mod certs;
 mod cluster;
 mod consumer;
@@ -76,6 +78,8 @@ pub use app::{
 };
 pub use actor_group::ActorGroupOpts;
 pub use configure::CraftyConfigure;
+pub use queue_opts::QueueOpts;
+pub use cron_opts::CronOpts;
 pub use app_opts::RunOpts;
 pub use builder::{CraftyClusterBuilder, StartError};
 pub use certs::{CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_for_node, cert_paths_from_env};

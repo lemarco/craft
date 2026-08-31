@@ -9,7 +9,7 @@ use std::env;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use crafty::{ConsumerOpts, CraftyApp, CraftyConfigure, GatewayOpts, RunOpts, consumer};
+use crafty::{ConsumerOpts, CraftyApp, CraftyConfigure, GatewayOpts, QueueOpts, RunOpts, consumer};
 use crafty_showcase_common::{data_dir, display_addr};
 
 static HANDLED: AtomicUsize = AtomicUsize::new(0);
@@ -53,14 +53,14 @@ fn server_builder() -> crafty::CraftyAppBuilder {
         .expect("gateway");
     let mut builder = CraftyApp::builder()
         .data_dir(dir)
-        .queue(STREAM, Duration::from_secs(300))
+        .queue([QueueOpts::new(STREAM, Duration::from_secs(300))])
         .configure(CraftyConfigure {
             tick_period: Duration::from_millis(10),
             reconcile_period: Duration::from_millis(20),
             admin_addr: Some("127.0.0.1:9080".parse().expect("admin")),
             ..CraftyConfigure::default()
         })
-        .gateway(gateway, GatewayOpts::default());
+        .gateway(gateway, GatewayOpts::default().with_jobs_api(true));
     for instance in 0..worker_count() {
         builder = builder.consumer(SendEmailConsumer, consumer_opts(instance));
     }
