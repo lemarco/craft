@@ -67,6 +67,7 @@ pub fn http_message(user: &str, text: &str, cast_ok: bool) {
     );
 }
 
+#[allow(dead_code)] // wired from WS reconnect path when added
 pub fn session_reconnect(user: &str, attempt: u32) {
     tracing::debug!(
         target: "showcase",
