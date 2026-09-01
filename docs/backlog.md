@@ -15,10 +15,10 @@ Product and implementation backlog for crafty **0.4.x → 1.0**. Shipped capabil
 | ------------ | ----- | ------------------------------- |
 | **P0**       | 2     | B-01 ✅, B-02 ✅                  |
 | **P1**       | 4     | B-03 ✅ … B-06 ✅                 |
-| **P2**       | 3     | B-07 ✅ … B-09 ✅                 |
+| **P2**       | 4     | B-07 ✅ … B-09 ✅, B-13 🔲        |
 | **P3**       | 3     | B-10 ✅ … B-12 ✅                 |
-| **Optional** | 4     | O-01 … O-04                     |
-| **Subtasks** | 28    | B-01a … B-12c (see epics below) |
+| **Optional** | 5     | O-01 … O-05                     |
+| **Subtasks** | 38    | B-01a … B-13j (see epics below) |
 
 
 ---
@@ -62,6 +62,9 @@ flowchart TB
         B03a[B-03a enqueue helper]
         B03b[B-03b consumer macro ✅]
         B07a[B-07a queue dashboard]
+        B13[B-13 queue idempotency DX]
+        B13a[B-13a delivery semantics docs]
+        B13g[B-13g background-jobs idempotency demo]
     end
 
     subgraph Workers["Stateful workers"]
@@ -268,6 +271,46 @@ flowchart TB
 
 
 
+### B-13 🔲 Job queue — delivery semantics & idempotency DX
+
+**Scenario:** [background-jobs](scenarios/background-jobs.md)  
+**ADR:** [job-queue](decisions/job-queue.md) — at-least-once is intentional; **exactly-once as a queue toggle is out of scope**.
+
+Document the contract, show effectively-once patterns, and improve consumer ergonomics without promising false delivery guarantees.
+
+**Non-goals:** `QueueOpts { exactly_once: true }`, auto-dedup by payload hash, unbounded processed-key table inside queue redb.
+
+
+| Subtask | Description | Priority slice | Status |
+| ------- | ----------- | -------------- | ------ |
+| B-13a   | [background-jobs.md](scenarios/background-jobs.md): **Delivery semantics** — at-least-once vs effectively-once; table of what crafty guarantees vs what the app must do; three idempotency layers (`dedup_key` enqueue, `ActorStateStore`/SM processing, saga step keys) | MR-1 | 🔲 |
+| B-13b   | **Effectively-once recipe** — short guide (section or `docs/scenarios/` doc): enqueue `dedup_key` + worker CAS in store + ack after durable mark; link [stateful-workers example](../../examples/stateful-workers/) and [`idempotent_worker`](../../crates/crafty-store-redis/examples/idempotent_worker.rs) | MR-1 | 🔲 |
+| B-13c   | [job-queue.md](decisions/job-queue.md): one-line consequence — exactly-once delivery mode not planned; point to B-13 recipe | MR-1 | 🔲 |
+| B-13d   | `QueueOpts` / `JobOpts::default_max_attempts(u32)` — stream default when `EnqueueOptions::max_attempts` is unset (`0` = inherit stream default; explicit `0` on enqueue still means unlimited) | MR-1 | 🔲 |
+| B-13e   | `JobContext` in `#[consumer]` — expose `job_id`, `attempts`, optional `dedup_key` from [`LeasedJob`](../../crates/crafty-actor/src/queue.rs); thread through `run_queue_consumer` → `JobConsumer` | MR-2 | 🔲 |
+| B-13f   | `ConsumerOpts::idempotency(...)` helper — key fn + `ActorStateStore` prefix; CAS `processing` → handler → `done` → ack (effectively-once, not a magic flag) | MR-2 | 🔲 |
+| B-13g   | [background-jobs example](../../examples/background-jobs/): idempotent handler demo — HTTP `?dedup=` retry + simulated redelivery; `trigger.sh` like stateful-workers | MR-1 | 🔲 |
+| B-13h   | Cross-links: background-jobs ↔ [stateful-workers](scenarios/stateful-workers.md) ↔ [workflows](scenarios/workflows.md) (step `dedup_key`) | MR-1 | 🔲 |
+| B-13i   | Prometheus: `crafty_queue_redeliveries_total{stream}` + attempts histogram (optional) | later | 🔲 |
+| B-13j   | Dashboard / `/introspect/queues`: surface jobs with `attempts > 1` as idempotency smell | later | 🔲 |
+
+
+**Suggested MR slices**
+
+| MR | Subtasks | Effort |
+| -- | -------- | ------ |
+| **MR-1** (minimal useful) | B-13a, B-13b, B-13c, B-13d, B-13g, B-13h | ~1–2 days |
+| **MR-2** (consumer DX) | B-13e, B-13f + integration test (redelivery → side effect once) | ~2–3 days |
+| **MR-3** (observability) | B-13i, B-13j | backlog |
+
+
+**Acceptance:** MR-1 docs + example runnable; MR-2 `crafty/tests/` redelivery idempotency regression; no public API promising exactly-once.
+
+
+---
+
+
+
 ## P3 — 1.0 stabilization
 
 
@@ -343,8 +386,9 @@ flowchart TB
 | --------- | ------------------------------------------------------- |
 | **0.2.x** | B-01 (all subtasks), B-02 (all subtasks), B-03, B-08e–f |
 | **0.3.x** | B-04, B-05, B-06, B-07, B-08d                           |
-| **0.5.x** | B-09, B-10                                              |
-| **1.0**   | B-11; evaluate B-12                                     |
+| **0.4.x** | B-13 MR-1 (docs + stream defaults + example)            |
+| **0.5.x** | B-09, B-10, B-13 MR-2 (consumer idempotency helper)     |
+| **1.0**   | B-11; evaluate B-12; B-13 MR-3 (metrics)                |
 
 
 ---
@@ -362,6 +406,8 @@ flowchart TB
 | --------- | ----------------------------------------------------------- |
 | ✅         | `RedbJobQueue`, `ClusterJobQueue`, autoscale, E2E           |
 | ✅         | B-03 HTTP `202`, B-02c jobs on `CraftyApp`, B-07a dashboard |
+| 🔲         | B-13 delivery semantics docs + effectively-once recipe      |
+| 🔲         | B-13g idempotent consumer example; B-13e/f consumer DX      |
 
 
 
