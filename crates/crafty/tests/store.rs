@@ -3,11 +3,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crafty::NodeId;
+use crafty::cluster::CraftyCluster;
 use crafty::core::StateMachine;
 use crafty::net::LocalNetwork;
 use crafty::proto::LogIndex;
-use crafty::cluster::CraftyCluster;
-use crafty::NodeId;
 use crafty_test_support::{advance, await_crafty_leader};
 
 #[derive(Default)]

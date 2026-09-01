@@ -4,9 +4,9 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
-use crafty::cluster::{CertPaths, PeerDirectory, PemSecurity, ReloadOpts};
-use crafty::cluster::CraftyCluster;
 use crafty::NodeId;
+use crafty::cluster::CraftyCluster;
+use crafty::cluster::{CertPaths, PeerDirectory, PemSecurity, ReloadOpts};
 use crafty_test_support::{advance, free_udp};
 
 #[tokio::test(start_paused = true)]

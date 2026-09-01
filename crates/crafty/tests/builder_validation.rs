@@ -183,11 +183,13 @@ impl crafty::actor::UserActor for FixedWorker {
     }
 
     fn encode_config(config: &Self::Config) -> Result<Vec<u8>, crafty::actor::ConfigCodecError> {
-        crafty::proto::encode(config).map_err(|e| crafty::actor::ConfigCodecError::Codec(e.to_string()))
+        crafty::proto::encode(config)
+            .map_err(|e| crafty::actor::ConfigCodecError::Codec(e.to_string()))
     }
 
     fn decode_config(bytes: &[u8]) -> Result<Self::Config, crafty::actor::ConfigCodecError> {
-        crafty::proto::decode(bytes).map_err(|e| crafty::actor::ConfigCodecError::Codec(e.to_string()))
+        crafty::proto::decode(bytes)
+            .map_err(|e| crafty::actor::ConfigCodecError::Codec(e.to_string()))
     }
 }
 
@@ -195,7 +197,9 @@ impl crafty::actor::UserActor for FixedWorker {
 async fn workers_without_config_fails_at_boot() {
     let dir = tempfile::tempdir().expect("tempdir");
     let result = local_builder(dir.path())
-        .workers(workers![WorkerOpts::<FixedWorker>::new("w").scale(WorkerScale::Fixed(1))])
+        .workers(workers![
+            WorkerOpts::<FixedWorker>::new("w").scale(WorkerScale::Fixed(1))
+        ])
         .boot_for_test(RunOpts::local())
         .await;
     match result {

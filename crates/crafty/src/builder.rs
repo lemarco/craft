@@ -1492,8 +1492,11 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             let multi_raft_keepalive = multi_raft.clone();
             let meta_for_facts = meta_handle.clone();
             let mut catalog_events = catalog_event_rx;
-            let mut telemetry =
-                crate::cluster_handle::MembershipTelemetry::new(node_id, events.clone(), metrics.clone());
+            let mut telemetry = crate::cluster_handle::MembershipTelemetry::new(
+                node_id,
+                events.clone(),
+                metrics.clone(),
+            );
             tasks.push(tokio::spawn(async move {
                 let mut interval = tokio::time::interval(period);
                 loop {

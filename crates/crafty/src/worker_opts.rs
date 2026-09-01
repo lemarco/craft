@@ -203,10 +203,10 @@ impl<A: UserActor> WorkerOpts<A> {
                     WorkerScale::Auto { min, max } => {
                         let min = min.max(1);
                         let max = max.max(min);
-                        builder.worker_autoscale_streams.push(autoscale_from.clone());
-                        builder.inner = builder
-                            .inner
-                            .manage::<A>(&name, min, config.clone());
+                        builder
+                            .worker_autoscale_streams
+                            .push(autoscale_from.clone());
+                        builder.inner = builder.inner.manage::<A>(&name, min, config.clone());
                         let policy = AutoscalePolicy {
                             worker_group: name.clone(),
                             target_pending_per_worker: autoscale_target_pending,
@@ -215,9 +215,11 @@ impl<A: UserActor> WorkerOpts<A> {
                             cooldown: autoscale_cooldown,
                             poll_interval: autoscale_poll,
                         };
-                        builder.inner = builder
-                            .inner
-                            .job_queue_autoscale::<A>(&autoscale_from, &policy, config);
+                        builder.inner = builder.inner.job_queue_autoscale::<A>(
+                            &autoscale_from,
+                            &policy,
+                            config,
+                        );
                     }
                 }
                 builder

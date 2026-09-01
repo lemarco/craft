@@ -14,7 +14,9 @@ use crafty::cluster::build_gateway_router;
 use crafty::{
     ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayOpts, SessionHandle,
 };
-use crafty_test_support::{advance, boot_local_app, eventually_default, wait_for_crafty_app_leader};
+use crafty_test_support::{
+    advance, boot_local_app, eventually_default, wait_for_crafty_app_leader,
+};
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 

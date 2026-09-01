@@ -15,7 +15,9 @@ use crafty::{
     ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayOpts,
     OpenActorSessionError,
 };
-use crafty_test_support::{advance, boot_local_app, eventually_default, wait_for_crafty_app_leader};
+use crafty_test_support::{
+    advance, boot_local_app, eventually_default, wait_for_crafty_app_leader,
+};
 use serde::{Deserialize, Serialize};
 use tower::ServiceExt;
 

@@ -190,9 +190,7 @@ impl CraftyAppBuilder {
             }
             self.reg_jobs = true;
             self.queue_streams.insert(reg.stream.clone());
-            self.inner = self
-                .inner
-                .job_queue(&reg.queue.name, reg.queue.lease);
+            self.inner = self.inner.job_queue(&reg.queue.name, reg.queue.lease);
             self.inner = self
                 .inner
                 .job_queue_prefetch(&reg.queue.name, reg.queue.prefetch);

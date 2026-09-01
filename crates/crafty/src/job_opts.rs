@@ -131,7 +131,9 @@ impl JobOpts {
         if C::STREAM != self.name {
             self.config_error = Some(format!(
                 "JobOpts::new({:?}).consumer(): stream mismatch — handler is registered for {:?}, expected {:?}",
-                self.name, C::STREAM, self.name
+                self.name,
+                C::STREAM,
+                self.name
             ));
             return self;
         }

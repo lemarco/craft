@@ -40,7 +40,6 @@ mod env_config;
 mod gateway;
 mod handler;
 mod job_opts;
-mod worker_opts;
 mod multi_raft;
 mod node_id;
 mod observer;
@@ -49,6 +48,7 @@ mod ready;
 mod saga;
 mod security;
 mod two_phase;
+mod worker_opts;
 mod workflow;
 mod workflow_opts;
 
@@ -82,16 +82,16 @@ pub use builder::StartError;
 pub use configure::CraftyConfigure;
 pub use consumer::{ConsumerGroup, ConsumerOpts, JobConsumer};
 pub use cron_opts::CronOpts;
-pub use job_opts::JobOpts;
-pub use worker_opts::{WorkerGroup, WorkerOpts, WorkerScale};
 pub use gateway::{
     ConnectionGuard, ConnectionTracker, CraftyGatewayState, DEFAULT_GATEWAY_DRAIN_TIMEOUT,
     ExtractedIdentity, GatewayHandle, GatewayIdentity, GatewayOpts, GatewayRequest,
     GatewayTlsPaths, GatewayTokenIdentity, IdentityError, IdentityTypeError, NoWorkerError,
     OpenActorSessionError, SessionHandle, SessionKey, spawn_gateway,
 };
+pub use job_opts::JobOpts;
 pub use queue_opts::QueueOpts;
 pub use ready::ReadyOpts;
+pub use worker_opts::{WorkerGroup, WorkerOpts, WorkerScale};
 pub use workflow::{WorkflowBuildError, WorkflowBuilder};
 pub use workflow_opts::WorkflowOpts;
 

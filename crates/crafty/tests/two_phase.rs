@@ -4,11 +4,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crafty::cluster::CraftyCluster;
 use crafty::client::{
     RemoteClient, ResumeTwoPhaseOpts, TwoPhaseClient, propose_cross_shard_2pc,
     resume_cross_shard_2pc,
 };
+use crafty::cluster::CraftyCluster;
 use crafty::core::{RaftGroupId, StableShardRouter, TwoPhasePlan, TwoPhaseStep, place_shard};
 use crafty::net::{LocalNetwork, send_client_request};
 use crafty::proto::{ClientRequest, ClientResponse};

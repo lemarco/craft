@@ -6,11 +6,11 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use crafty::NodeId;
+use crafty::cluster::CraftyCluster;
 use crafty::cluster::{PeerDirectory, Security};
 use crafty::net::tls::ClusterCa;
 use crafty::proto::LogIndex;
-use crafty::cluster::CraftyCluster;
-use crafty::NodeId;
 use crafty_test_support::{
     Cmd, Kv, Qry, Resp, TICK_PERIOD, advance, await_crafty_leader, fast_raft_config, free_udp,
 };

@@ -7,15 +7,15 @@ pub use crate::builder::StartError;
 pub use crate::configure::CraftyConfigure;
 pub use crate::consumer::{ConsumerGroup, ConsumerOpts, JobConsumer};
 pub use crate::cron_opts::CronOpts;
-pub use crate::job_opts::JobOpts;
-pub use crate::worker_opts::{WorkerGroup, WorkerOpts, WorkerScale};
 pub use crate::gateway::{
     CraftyGatewayState, ExtractedIdentity, GatewayIdentity, GatewayOpts, GatewayRequest,
     GatewayTokenIdentity, IdentityError, IdentityTypeError, OpenActorSessionError, SessionHandle,
     SessionKey,
 };
+pub use crate::job_opts::JobOpts;
 pub use crate::queue_opts::QueueOpts;
 pub use crate::ready::ReadyOpts;
+pub use crate::worker_opts::{WorkerGroup, WorkerOpts, WorkerScale};
 pub use crate::workflow::{WorkflowBuildError, WorkflowBuilder};
 pub use crate::workflow_opts::WorkflowOpts;
 pub use crafty_dashboard::init_tracing;
