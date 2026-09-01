@@ -94,7 +94,12 @@ prepare_release() {
     dry_run
 
     if [ "$bumped" = 1 ]; then
-        git add "$ROOT_MANIFEST" Cargo.lock
+        git add "$ROOT_MANIFEST"
+        # Cargo.lock is gitignored for this library workspace; only stage it in
+        # clones where it is actually tracked (`git add` errors on an ignored path).
+        if git ls-files --error-unmatch Cargo.lock >/dev/null 2>&1; then
+            git add Cargo.lock
+        fi
     fi
     if ! git diff --quiet -- CHANGELOG.md 2>/dev/null; then
         git add CHANGELOG.md
