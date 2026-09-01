@@ -12,7 +12,7 @@ if ! command -v rustup >/dev/null 2>&1; then
   exit 0
 fi
 
-if ! rustup toolchain list --installed 2>/dev/null | grep -qE "^${MSRV}(-.*)?\$"; then
+if ! rustup toolchain list 2>/dev/null | grep -qE "^${MSRV}(-.*)?\$"; then
   echo "warn: Rust ${MSRV} toolchain not installed — skipping MSRV check" >&2
   echo "       install: rustup toolchain install ${MSRV}" >&2
   exit 0
