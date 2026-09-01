@@ -9,7 +9,7 @@ The cluster needs a user-defined state machine applied after log entries commit.
 
 ## Decision
 
-Ship a **generic trait + macros** for user-defined state machines. A minimal reference KV lives in [`crafty_core::kv`](../../crates/crafty-core/src/kv.rs) (re-exported as `crafty::kv`); product showcases under [`examples/`](../../examples/README.md) demonstrate tier A/B/C patterns.
+Ship a **generic trait + macros** for user-defined state machines. A minimal reference KV lives in [`crafty_core::kv`](../../crates/crafty-core/src/kv.rs) (re-exported as `crafty::kv`); product showcases under [`examples/`](../../examples/README.md) demonstrate Raft SM, actor mailbox, and job-queue patterns.
 
 ## Design sketch
 

@@ -1,4 +1,4 @@
-//! # Real-time sessions showcase (messaging **tier B** + sticky sessions)
+//! # Real-time sessions showcase (sticky actor sessions + WebSocket gateway)
 //!
 //! WebSocket **and** authenticated HTTP on the same gateway identity.
 

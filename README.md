@@ -24,9 +24,9 @@
 
 | | |
 |---|---|
-| **Version** | `0.4.0` (pre-1.0) |
+| **Version** | `0.4.1` (pre-1.0) |
 | **Maturity** | Advanced prototype — published on [crates.io](https://crates.io/crates/crafty) |
-| **Release** | v0.4.0 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/crafty/0.4.0](https://docs.rs/crafty/0.4.0) |
+| **Release** | v0.4.1 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/crafty/0.4.1](https://docs.rs/crafty/0.4.1) |
 | **Full status** | [docs/status.md](docs/status.md) |
 
 ### Highlights
@@ -84,16 +84,24 @@ See [job-queue](docs/decisions/job-queue.md) and [protocol.md](docs/protocol.md#
 
 ```rust
 use std::time::Duration;
-use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, QueueOpts, RunOpts};
+use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, JobOpts, RunOpts, consumer};
+
+#[consumer("jobs")]
+async fn handle_job(_payload: &[u8]) -> Result<(), ()> {
+    Ok(())
+}
 
 CraftyApp::builder()
     .data_dir("/var/lib/crafty")
-    .queue([QueueOpts::new("jobs", Duration::from_secs(300))])
+    .jobs([JobOpts::new("jobs")
+        .lease(Duration::from_secs(300))
+        .consumer(&HandleJobConsumer)
+        .http_enqueue(true)])
     .configure(CraftyConfigure {
         admin_addr: Some("127.0.0.1:8080".parse()?),
         ..CraftyConfigure::default()
     })
-    .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?).with_jobs_api(true))
+    .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?))
     .run(RunOpts::default().with_wait_queue("jobs"))
     .await?;
 ```
@@ -116,7 +124,7 @@ See [multi-raft](docs/decisions/multi-raft.md), [job-queue](docs/decisions/job-q
 
 ```toml
 [dependencies]
-crafty = "0.3"
+crafty = "0.4"
 ```
 
 Product apps: enable `http-jobs` for HTTP job routes and `dev-certs` for local QUIC without PEM files — see [getting-started](docs/getting-started.md).

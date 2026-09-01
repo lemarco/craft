@@ -23,7 +23,7 @@ pub enum OnboardingOp {
         /// User id from saga id.
         user_id: String,
     },
-    /// Enqueue welcome notification (tier C hook).
+    /// Enqueue welcome notification (job queue step).
     SendWelcome {
         /// User id from saga id.
         user_id: String,

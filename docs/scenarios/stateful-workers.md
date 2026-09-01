@@ -35,23 +35,26 @@ Cross-node paths: [cross-node-actors](../decisions/cross-node-actors.md) — `sp
 
 ## Quick start (current API)
 
-### 1. Register store (dev: in-memory)
+### 1. Register workers on `CraftyApp`
+
+`RedbActorStateStore` is wired automatically with `.data_dir()` — same trait, no extra setup.
 
 ```rust
-use std::sync::Arc;
-use crafty::actor::{ActorStateStore, InMemoryStore, store_get, store_set};
+use crafty::{CraftyApp, RunOpts, WorkerOpts, WorkerScale, workers};
 
-let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
-
-let cluster = CraftyCluster::builder(node_id, machine)
+CraftyApp::builder()
     .data_dir("/var/lib/crafty")
-    .actor_state_store(Arc::clone(&store))
-    .auto_workers([AutoWorkerSpec::new("processors", WorkerConfig::default())])
-    .start_quic(...)
+    .workers(workers![
+        WorkerOpts::<OrderProcessor>::new("orders")
+            .config(processor_cfg())
+            .scale(WorkerScale::Fixed(1))
+            .http_cast(true),
+    ])
+    .run(RunOpts::default())
     .await?;
 ```
 
-Production: `RedbActorStateStore` is wired automatically with `.data_dir()` — same trait, no API change.
+See [`examples/stateful-workers/`](../../examples/stateful-workers/).
 
 ### 2. Stateful worker — write-through
 
@@ -137,18 +140,27 @@ Documented in [actor-routing-tier3](../decisions/actor-routing-tier3.md). For du
 | [`examples/stateful-workers/src/migrate_demo.rs`](../../examples/stateful-workers/src/migrate_demo.rs) | LocalNetwork migration walkthrough |
 | `crafty-sim/tests/actor_scenarios.rs` | `scale_cluster`, migration |
 
-## Future polish
+## Registration API
 
-Attribute-based worker registration remains aspirational. Today use `.actors()`:
+Prefer [`.workers()`](../../crates/crafty/src/worker_opts.rs) with explicit [`WorkerScale`](../../crates/crafty/src/worker_opts.rs):
 
 ```rust
+use crafty::{CraftyApp, GatewayOpts, RunOpts, WorkerOpts, WorkerScale, workers};
+
 CraftyApp::builder()
     .data_dir("/var/lib/crafty")
-    .actors::<OrderProcessor>("orders", ActorGroupOpts::fixed(processor_cfg(), 1))
+    .workers(workers![
+        WorkerOpts::<OrderProcessor>::new("orders")
+            .config(processor_cfg())
+            .scale(WorkerScale::Fixed(1))
+            .http_cast(true),
+    ])
     .gateway(GatewayOpts::new("127.0.0.1:8190".parse()?).with_actors_api(true))
     .run(RunOpts::default())
     .await?;
 ```
+
+Legacy [`.actors()`](../../crates/crafty/src/app.rs) + [`ActorGroupOpts`](../../crates/crafty/src/actor_group.rs) remain supported.
 
 See [examples/stateful-workers/](../../examples/stateful-workers/).
 

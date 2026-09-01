@@ -45,10 +45,9 @@ log ">> showcase common + client"
 cargo check -p crafty-showcase-common -p crafty-showcase-client 2>&1 | maybe_tee
 
 log ">> publish dry-run"
-# Workspace dry-run resolves path deps locally (per-crate dry-run fails when the
-# new workspace version is not yet on crates.io — e.g. crafty-proto 0.2.0 during
-# a 0.1 → 0.2 release).
-cargo publish --workspace --dry-run --allow-dirty 2>&1 | maybe_tee
+# Per-crate dry-run in dependency order (see publish-workspace.sh). When the workspace
+# version is not yet on crates.io, verification uses sibling tarballs from `target/package/`.
+bash scripts/publish-dry-run.sh 2>&1 | maybe_tee
 
 log ">> msrv"
 bash scripts/check-msrv.sh 2>&1 | maybe_tee

@@ -14,7 +14,7 @@ stability promise applies primarily to types re-exported from `crafty`.
 
 | Area | Types | Notes |
 |------|-------|-------|
-| App | `CraftyApp`, `CraftyAppBuilder`, `CraftyConfigure`, `QueueOpts`, `CronOpts`, `ActorGroupOpts`, `GatewayOpts`, `RunOpts` | Primary entry; env via `CRAFTY_*` at boot |
+| App | `CraftyApp`, `CraftyAppBuilder`, `CraftyConfigure`, `JobOpts`, `WorkerOpts`, `WorkerScale`, `QueueOpts`, `CronOpts`, `ActorGroupOpts`, `GatewayOpts`, `RunOpts` | Primary entry; env via `CRAFTY_*` at boot |
 | App runtime | `node_id`, `control`, `registry`, `supervisor`, `enqueue`, `cast`, `ask`, `shutdown_graceful` | Product control plane on `CraftyApp` |
 | Identity | `NodeId`, `Security`, `PeerDirectory`, cert reload helpers | Multi-node wiring |
 | Jobs | `JobQueue`, `EnqueueOptions`, `run_queue_consumer`, `ClusterJobQueue` | Via `CraftyApp::enqueue` |
@@ -33,7 +33,7 @@ stability promise applies primarily to types re-exported from `crafty`.
 | Saga / 2PC journals | `MetaRaftSagaJournal`, `CompositeSagaJournal`, `StoreTwoPhaseJournal` | Ops / recovery |
 | HTTP product | `crafty-http` crate, `CraftyApp::jobs_api` (`http-jobs` feature) | Gateway layer |
 
-**Removed / hidden (0.5.x):** `crafty::advanced` module (renamed to `crafty::cluster`); root `use crafty::CraftyCluster`; `CraftyApp::cluster` / `into_cluster` / `CraftyAppBuilder::inner_mut` (`#[doc(hidden)]`, tests only).
+**Removed / hidden (0.4.1):** `crafty::advanced` module (renamed to `crafty::cluster`, no alias); root `use crafty::CraftyCluster`; `CraftyApp::cluster` / `into_cluster` / `CraftyAppBuilder::inner_mut` (`#[doc(hidden)]`, tests only).
 
 ## Tier 3 — explicit non-guarantees until 1.0
 

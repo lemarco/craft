@@ -59,7 +59,7 @@
 ### Repository
 
 - Public repository (folder `distributive_raft_actor_system`); README with quickstart, examples, and link to `docs/`.
-- `examples/` — four [product showcases](../../examples/README.md) (tier A/B/C); excluded from workspace default-members; CI via `./scripts/check-examples.sh`
+- `examples/` — four [product showcases](../../examples/README.md) plus self-update; excluded from workspace default-members; CI via `./scripts/check-examples.sh`
 - Reference KV StateMachine: `crafty_core::kv` (not a separate example crate)
 
 ## Consequences

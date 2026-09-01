@@ -166,7 +166,7 @@ flowchart TB
 | Subtask | Description                                                     | Status |
 | ------- | --------------------------------------------------------------- | ------ |
 | B-04a   | [`examples/realtime/`](../../examples/realtime/) — axum WS + `ChatWorker` | ✅      |
-| B-04b   | Homogeneous cluster showcases (same binary every node; `CRAFTY_ROLE` advanced only) | ✅      |
+| B-04b   | Homogeneous cluster showcases (same binary every node; `CRAFTY_ROLE=gateway` for edge-only) | ✅      |
 | B-04c   | Auth stub + `ActorSession` open on connect                      | ✅ `GATEWAY_TOKEN` |
 | B-04d   | Reconnect: handle `NoTarget`, session TTL expiry                | ✅ auto reopen in example |
 | B-04e   | Optional: checkpoint last N messages to SM (comment in example) | ✅ comment on `ChatWorker` |

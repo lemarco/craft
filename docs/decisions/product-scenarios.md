@@ -57,19 +57,26 @@ See [job-queue](job-queue.md) for why mailboxes and Raft logs are not misused as
 
 **Non-goals:** Kubernetes as core product, one-container-per-actor microservices, mandatory Redis/PostgreSQL/RabbitMQ.
 
-### Unified product surface (0.3.0)
+### Unified product surface (0.3.0+)
 
 [`CraftyApp`](../../crates/crafty/src/app.rs) wraps the same runtime as `CraftyClusterBuilder`:
 
 ```rust
 use std::time::Duration;
-use crafty::{CraftyApp, GatewayOpts, QueueOpts, RunOpts};
+use crafty::{CraftyApp, GatewayOpts, JobOpts, RunOpts, consumer};
+
+#[consumer("emails")]
+async fn send_email(_payload: &[u8]) -> Result<(), ()> {
+    Ok(())
+}
 
 CraftyApp::builder()
     .data_dir("/var/lib/crafty")
-    .queue([QueueOpts::new("emails", Duration::from_secs(300))])
-    .consumer(SendEmailConsumer, Default::default())
-    .gateway(GatewayOpts::new("0.0.0.0:8090".parse()?).with_jobs_api(true))
+    .jobs([JobOpts::new("emails")
+        .lease(Duration::from_secs(300))
+        .consumer(&SendEmailConsumer)
+        .http_enqueue(true)])
+    .gateway(GatewayOpts::new("0.0.0.0:8090".parse()?))
     .run(RunOpts::default().with_wait_queue("emails"))
     .await?;
 ```
@@ -85,8 +92,8 @@ flowchart TB
     end
 
     subgraph Cluster["crafty cluster"]
-        B[Tier B — ask / ActorSession]
-        C[Tier C — JobQueue enqueue]
+        B[Actor mailbox — ask / ActorSession]
+        C[Job queue — enqueue]
         W[Workflow journal + steps]
         A[Workers — scale_cluster]
     end
@@ -100,9 +107,9 @@ flowchart TB
 
 Typical flows:
 
-- **Async API:** HTTP `202` → `enqueue` (C) → worker `lease`/`ack` (C + W)
-- **Sync API:** HTTP `200` → `ask` or `query` (B or A)
-- **Session:** WebSocket → `ActorSession` → `ask_session` (B + W)
+- **Async API:** HTTP `202` → `enqueue` (job queue) → worker `lease`/`ack`
+- **Sync API:** HTTP `200` → `ask` or `query` (actor mailbox or Raft SM)
+- **Session:** WebSocket → `ActorSession` → `ask_session` (actor mailbox + workers)
 - **Workflow:** `run_workflow` / HTTP `/workflows/*` — journal in Meta-Raft; steps call actors, queue, or external HTTP
 
 ### What is shipped vs polish backlog

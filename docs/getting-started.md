@@ -8,7 +8,7 @@ Quick path for **product teams** using [`CraftyApp`](../../crates/crafty/src/app
 
 ```toml
 [dependencies]
-crafty = "0.3"
+crafty = "0.4"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 ```
 
@@ -67,12 +67,12 @@ Edge-only ingress (no local consumers): `CRAFTY_ROLE=gateway`.
 
 Four standalone projects under [`examples/`](../examples/README.md) — excluded from workspace default-members; each has `Cargo.toml`, README, `trigger.sh`, and QUIC `cluster.sh`:
 
-| Showcase | Tier | Run |
-|----------|------|-----|
-| [background-jobs](../examples/background-jobs/) | C | `./scripts/run-example.sh background-jobs` |
-| [stateful-workers](../examples/stateful-workers/) | B | `./scripts/run-example.sh stateful-workers` |
-| [realtime](../examples/realtime/) | B | `./scripts/run-example.sh realtime` |
-| [workflows](../examples/workflows/) | A | `./scripts/run-example.sh workflows` |
+| Showcase | Pattern | Run |
+|----------|---------|-----|
+| [background-jobs](../examples/background-jobs/) | Durable job queue | `./scripts/run-example.sh background-jobs` |
+| [stateful-workers](../examples/stateful-workers/) | Stateful actors + migration | `./scripts/run-example.sh stateful-workers` |
+| [realtime](../examples/realtime/) | Sticky sessions / WebSocket | `./scripts/run-example.sh realtime` |
+| [workflows](../examples/workflows/) | Saga journal + steps | `./scripts/run-example.sh workflows` |
 
 3-node QUIC cluster (any showcase):
 
@@ -91,16 +91,15 @@ cargo build -p crafty-showcase-client
 ./target/debug/crafty-showcase-client ws 127.0.0.1:8294 alice hello
 ```
 
-Reference tier **A** KV StateMachine (without a full app): [`crafty_core::kv`](../crates/crafty-core/src/kv.rs) (`crafty::kv` on the facade).
+Reference KV [`StateMachine`](../../crates/crafty-core/src/kv.rs) (`crafty::kv` on the facade) for low-level Raft `propose` / `query` without a full product app.
 
 ## 5. Workers (actors)
 
-Register a worker type and let the leader place instances (one per VPS by default):
+Register worker types with [`.workers()`](../../crates/crafty/src/worker_opts.rs) and explicit [`WorkerScale`](../../crates/crafty/src/worker_opts.rs) (`Fixed`, `PerNode`, or queue-driven `Auto`):
 
 ```rust
-use std::time::Duration;
 use crafty::actor::{UserActor, remote_actor};
-use crafty::{ActorGroupOpts, CraftyApp, RunOpts};
+use crafty::{CraftyApp, RunOpts, WorkerOpts, WorkerScale, workers};
 
 struct EmailWorker;
 
@@ -114,16 +113,22 @@ impl UserActor for EmailWorker {
 
 CraftyApp::builder()
     .data_dir("/var/lib/crafty")
-    .actors::<EmailWorker>("email", ActorGroupOpts::default())
+    .workers(workers![
+        WorkerOpts::<EmailWorker>::new("email")
+            .config(())
+            .scale(WorkerScale::PerNode),
+    ])
     .run(RunOpts::default())
     .await?;
 ```
+
+Legacy [`.actors()`](../../crates/crafty/src/app.rs) + [`ActorGroupOpts`](../../crates/crafty/src/actor_group.rs) remain supported.
 
 Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store_set`](../../crates/crafty-actor/src/store_codec.rs) — backed by redb when `data_dir` is set.
 
 ## 6. HTTP job enqueue (optional)
 
-Enable the `http-jobs` feature and mount the Axum router on your gateway VPS:
+Prefer [`.jobs()`](../../crates/crafty/src/job_opts.rs) to register queue + consumer + HTTP enqueue in one call. Enable the `http-jobs` feature (default on the facade):
 
 ```toml
 crafty = { version = "0.4", features = ["http-jobs"] }
@@ -131,19 +136,27 @@ crafty = { version = "0.4", features = ["http-jobs"] }
 
 ```rust
 use std::time::Duration;
-use crafty::{CraftyApp, GatewayOpts, QueueOpts, RunOpts};
+use crafty::{CraftyApp, GatewayOpts, JobOpts, RunOpts, consumer};
+
+#[consumer("jobs")]
+async fn handle_job(_payload: &[u8]) -> Result<(), ()> {
+    Ok(())
+}
 
 CraftyApp::builder()
     .data_dir("/var/lib/crafty")
-    .queue([QueueOpts::new("jobs", Duration::from_secs(300))])
-    .gateway(GatewayOpts::new("0.0.0.0:3000".parse()?).with_jobs_api(true))
+    .jobs([JobOpts::new("jobs")
+        .lease(Duration::from_secs(300))
+        .consumer(&HandleJobConsumer)
+        .http_enqueue(true)])
+    .gateway(GatewayOpts::new("0.0.0.0:3000".parse()?))
     .run(RunOpts::default().with_wait_queue("jobs"))
     .await?;
 
 // POST /jobs/{stream} → 202 { "job_id": … }
 ```
 
-See [crafty-http README](../../crates/crafty-http/README.md) and [background-jobs](scenarios/background-jobs.md).
+Lower-level [`.queue()`](../../crates/crafty/src/app.rs) + [`.consumer()`](../../crates/crafty/src/app.rs) remain available. See [crafty-http README](../../crates/crafty-http/README.md) and [background-jobs](scenarios/background-jobs.md).
 
 ## 7. Workflows (sagas)
 

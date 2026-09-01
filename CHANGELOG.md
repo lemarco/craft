@@ -9,11 +9,13 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-09-01
+
 ### Changed
 
 - **API surface cleanup (breaking on `0.x`)**
   - Removed root re-export of `CraftyCluster` / `CraftyClusterBuilder` — use `crafty::cluster::…`.
-  - Renamed `crafty::advanced` → [`crafty::cluster`](crates/crafty/src/cluster.rs); implementation moved to private `cluster_handle`.
+  - Renamed `crafty::advanced` → [`crafty::cluster`](crates/crafty/src/cluster.rs) (no `advanced` alias); implementation in private `cluster_handle`.
   - **`CraftyApp` delegates** — `node_id`, `control`, `registry`, `supervisor`, `job_queue`, `is_leader`, `shutdown` (product path).
   - **`#[doc(hidden)]`** — `CraftyApp::cluster`, `into_cluster`, `CraftyAppBuilder::inner_mut` (tests / custom SM only).
 
@@ -65,10 +67,10 @@ graceful drain, self-update coordinator, and a narrower public re-export surface
 - **`.workflows([WorkflowOpts::…])`** — vector of workflow configs; optional `WorkflowOpts::named`
   prefix for multi-workflow dispatch.
 - **`crafty::prelude` / `crafty::cluster` / `crafty::env`** — product imports via `prelude`;
-  cluster/journal/queue internals under `advanced`; `CRAFTY_*` helpers under `env`.
+  cluster/journal/queue internals under `cluster` (named `advanced` in 0.4.0, renamed in 0.4.1); `CRAFTY_*` helpers under `env`.
 - **`http-jobs` default feature** — gateway API (`GatewayOpts`, `.gateway()`) always available;
   built-in `/jobs/*`, `/actors/*`, `/workflows/*` routes require `http-jobs` (now default).
-- **Root re-exports narrowed** — advanced types moved to [`advanced`](crates/crafty/src/advanced.rs);
+- **Root re-exports narrowed** — advanced types moved to the `advanced` module (renamed to [`cluster`](crates/crafty/src/cluster.rs) in 0.4.1);
   [`lib.rs`](crates/crafty/src/lib.rs) rustdoc centers on [`CraftyApp`](crates/crafty/src/app.rs).
 
 ## [0.3.0] — 2026-08-31
@@ -285,7 +287,8 @@ tested; APIs are still evolving toward a 1.0 stabilization.
 
 - Bounded `ask` timeout (30s); at-most-once side-effecting `ask` dedup; reply-encode errors surfaced; actor-stream backpressure on QUIC.
 
-[Unreleased]: https://gitlab.com/lemarco/craft/-/compare/v0.4.0...HEAD
+[Unreleased]: https://gitlab.com/lemarco/craft/-/compare/v0.4.1...HEAD
+[0.4.1]: https://gitlab.com/lemarco/craft/-/compare/v0.4.0...v0.4.1
 [0.4.0]: https://gitlab.com/lemarco/craft/-/compare/v0.3.0...v0.4.0
 [0.3.0]: https://gitlab.com/lemarco/craft/-/compare/v0.2.2...v0.3.0
 [0.2.2]: https://gitlab.com/lemarco/craft/-/compare/v0.2.1...v0.2.2

@@ -25,13 +25,13 @@ data_dir/
 └── actor-store.redb       # ActorStateStore (RedbActorStateStore)
 ```
 
-## Three tiers (do not mix)
+## Messaging layers (do not mix)
 
-| Tier | API | When |
-|------|-----|------|
-| **A** | `propose` / `query`, `run_saga` | Authoritative replicated data |
-| **B** | `send` / `ask`, `ActorSession` | Talk to a specific actor now |
-| **C** | `enqueue` / `lease` / `ack` | Shared durable backlog |
+| Layer | API | When |
+|-------|-----|------|
+| **Raft state machine** | `propose` / `query`, `run_saga` | Authoritative replicated domain data |
+| **Actor mailbox** | `send` / `ask`, `ActorSession` | Talk to a specific actor now |
+| **Job queue** | `enqueue` / `lease` / `ack` | Shared durable backlog |
 
 See [job-queue](../decisions/job-queue.md#three-messaging-tiers-explicit-split).
 

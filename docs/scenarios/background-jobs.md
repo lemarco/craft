@@ -28,15 +28,26 @@ Producer (any node)          Leader QueueService          Workers (any node)
 
 ## Quick start (`CraftyApp`)
 
-### 1. Builder — register queue + recurring schedules
+### 1. Builder — register queue + consumer
+
+Prefer [`.jobs()`](../../crates/crafty/src/job_opts.rs) to register stream, lease, consumer, and optional HTTP enqueue together:
 
 ```rust
 use std::time::Duration;
 
-use crafty::{CraftyApp, CronOpts, QueueOpts, RecurringJob, RunOpts};
+use crafty::{CraftyApp, CronOpts, GatewayOpts, JobOpts, RecurringJob, RunOpts, consumer};
+
+#[consumer("emails")]
+async fn send_email(_payload: &[u8]) -> Result<(), ()> {
+    Ok(())
+}
 
 CraftyApp::builder()
-    .queue([QueueOpts::new("emails", Duration::from_secs(300))])
+    .data_dir("/var/lib/crafty")
+    .jobs([JobOpts::new("emails")
+        .lease(Duration::from_secs(300))
+        .consumer(&SendEmailConsumer)
+        .http_enqueue(true)])
     .cron([CronOpts::new(
         "emails",
         RecurringJob {
@@ -48,11 +59,12 @@ CraftyApp::builder()
             enabled: true,
         },
     )])
+    .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?))
     .run(RunOpts::default().with_wait_queue("emails"))
     .await?;
 ```
 
-Cluster-level autoscale, sharded streams, priority, dedup: see [background-jobs showcase](../../examples/background-jobs/) and [job-queue](../decisions/job-queue.md#v2-features).
+Lower-level [`.queue()`](../../crates/crafty/src/app.rs) + [`.consumer()`](../../crates/crafty/src/app.rs) remain available. Cluster-level autoscale, sharded streams, priority, dedup: see [background-jobs showcase](../../examples/background-jobs/) and [job-queue](../decisions/job-queue.md#v2-features).
 
 ### 2. Enqueue (from any node)
 
@@ -154,30 +166,7 @@ Policy can persist in Meta-Raft ([job-queue](../decisions/job-queue.md)).
 | `crafty/tests/consumer.rs` | `#[crafty::consumer]` + `spawn_consumer` |
 | `crafty/tests/http_jobs.rs` | HTTP enqueue, batch, DLQ requeue |
 
-## Future polish
-
-Declarative [`.jobs()`](../../crates/crafty/src/job_opts.rs) is the preferred registration path. Lower-level [`.queue`](../../crates/crafty/src/app.rs) + [`.consumer`](../../crates/crafty/src/app.rs) remain available.
-
-```rust
-use crafty::{CraftyApp, GatewayOpts, JobOpts, RunOpts, consumer};
-
-#[consumer("emails")]
-async fn send_email(_payload: &[u8]) -> Result<(), ()> {
-    Ok(())
-}
-
-CraftyApp::builder()
-    .data_dir("/var/lib/crafty")
-    .jobs([JobOpts::new("emails")
-        .lease(Duration::from_secs(300))
-        .consumer(SendEmailConsumer)
-        .http_enqueue(true)])
-    .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?))
-    .run(RunOpts::default().with_wait_queue("emails"))
-    .await?;
-```
-
-See [examples/background-jobs/](../../examples/background-jobs/).
+See [examples/background-jobs/](../../examples/background-jobs/) for the full [`JobOpts`](../../crates/crafty/src/job_opts.rs) showcase.
 
 ## Related
 
