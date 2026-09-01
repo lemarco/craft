@@ -117,6 +117,7 @@ struct JobStreamSpec {
     path: Option<PathBuf>,
     lease_timeout: Duration,
     prefetch: usize,
+    default_max_attempts: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -667,6 +668,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             path: None,
             lease_timeout,
             prefetch: DEFAULT_QUEUE_PREFETCH,
+            default_max_attempts: 0,
         });
         self
     }
@@ -684,6 +686,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             path: Some(path.into()),
             lease_timeout,
             prefetch: DEFAULT_QUEUE_PREFETCH,
+            default_max_attempts: 0,
         });
         self
     }
@@ -698,6 +701,22 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         for spec in &mut self.job_streams {
             if spec.name == stream {
                 spec.prefetch = prefetch;
+            }
+        }
+        self
+    }
+
+    /// Default delivery-attempt ceiling for `stream` (`0` = unlimited retries).
+    ///
+    /// Applies to every enqueue that leaves
+    /// [`EnqueueOptions::max_attempts`](crafty_actor::EnqueueOptions::max_attempts)
+    /// unset — including HTTP `POST /jobs/{stream}` and cron schedules. An
+    /// explicit per-job ceiling always wins.
+    #[must_use]
+    pub fn job_queue_max_attempts(mut self, stream: &str, max_attempts: u32) -> Self {
+        for spec in &mut self.job_streams {
+            if spec.name == stream {
+                spec.default_max_attempts = max_attempts;
             }
         }
         self
@@ -811,6 +830,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                 path: None,
                 lease_timeout,
                 prefetch: DEFAULT_QUEUE_PREFETCH,
+                default_max_attempts: 0,
             });
         }
         self.job_sharded.push(ShardedJobSpec {
@@ -1379,7 +1399,8 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             };
             let local = Arc::new(
                 RedbJobQueue::open(&path, spec.lease_timeout)
-                    .unwrap_or_else(|e| panic!("open job queue at {}: {e}", path.display())),
+                    .unwrap_or_else(|e| panic!("open job queue at {}: {e}", path.display()))
+                    .default_max_attempts(spec.default_max_attempts),
             );
             local_backends.insert(spec.name.clone(), Arc::clone(&local) as Arc<dyn JobQueue>);
             if let Some(service) = queue_service.as_ref() {
@@ -1391,12 +1412,15 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                     .collect();
                 service.register_redb_stream(&spec.name, &local, &schedules, spec.prefetch);
             }
-            let client: Arc<dyn JobQueue> = Arc::new(ClusterJobQueue::new(
-                &spec.name,
-                node_id,
-                Arc::clone(&facts) as Arc<dyn ClusterState>,
-                Arc::clone(&transport),
-            ));
+            let client: Arc<dyn JobQueue> = Arc::new(
+                ClusterJobQueue::new(
+                    &spec.name,
+                    node_id,
+                    Arc::clone(&facts) as Arc<dyn ClusterState>,
+                    Arc::clone(&transport),
+                )
+                .default_max_attempts(spec.default_max_attempts),
+            );
             job_queues.insert(spec.name.clone(), client);
         }
 

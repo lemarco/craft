@@ -100,6 +100,19 @@ pub(crate) fn expand_consumer(stream: &str, input_fn: &ItemFn) -> TokenStream2 {
         fn_name.span(),
     );
 
+    // A handler may take just the payload, or the payload plus a `JobContext`.
+    let wants_ctx = input_fn.sig.inputs.len() > 1;
+    let call = if wants_ctx {
+        quote! { #fn_name(payload, ctx).await }
+    } else {
+        quote! { #fn_name(payload).await }
+    };
+    let ctx_binding = if wants_ctx {
+        quote! { ctx }
+    } else {
+        quote! { _ctx }
+    };
+
     quote! {
         #input_fn
 
@@ -112,8 +125,11 @@ pub(crate) fn expand_consumer(stream: &str, input_fn: &ItemFn) -> TokenStream2 {
             const STREAM: &'static str = #stream;
             type Error = #err_ty;
 
-            async fn handle(payload: &[u8]) -> ::core::result::Result<(), Self::Error> {
-                #fn_name(payload).await
+            async fn handle(
+                payload: &[u8],
+                #ctx_binding: ::crafty::JobContext<'_>,
+            ) -> ::core::result::Result<(), Self::Error> {
+                #call
             }
         }
     }

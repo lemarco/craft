@@ -5,7 +5,7 @@ pub use crate::app::{CraftyApp, CraftyAppBuilder, ShutdownOpts, journal_workflow
 pub use crate::app_opts::RunOpts;
 pub use crate::builder::StartError;
 pub use crate::configure::CraftyConfigure;
-pub use crate::consumer::{ConsumerGroup, ConsumerOpts, JobConsumer};
+pub use crate::consumer::{ConsumerGroup, ConsumerOpts, IdempotencyOpts, JobConsumer};
 pub use crate::cron_opts::CronOpts;
 pub use crate::gateway::{
     CraftyGatewayState, ExtractedIdentity, GatewayIdentity, GatewayOpts, GatewayRequest,

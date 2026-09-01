@@ -73,7 +73,9 @@ fn enqueue_options_from_request(request: &QueueEnqueueRequest) -> EnqueueOptions
         not_before_ms: (request.not_before_ms != 0).then_some(request.not_before_ms),
         shard_key: request.shard_key.clone(),
         dedup_key: request.dedup_key.clone(),
-        max_attempts: request.max_attempts,
+        // Already resolved by the enqueueing node; explicit so the local queue
+        // default is not applied a second time.
+        max_attempts: Some(request.max_attempts),
     }
 }
 
@@ -83,7 +85,8 @@ fn enqueue_options_from_batch_job(job: &QueueBatchEnqueueJob) -> EnqueueOptions 
         not_before_ms: (job.not_before_ms != 0).then_some(job.not_before_ms),
         shard_key: job.shard_key.clone(),
         dedup_key: job.dedup_key.clone(),
-        max_attempts: job.max_attempts,
+        // Already resolved by the enqueueing node (see enqueue_options_from_request).
+        max_attempts: Some(job.max_attempts),
     }
 }
 
@@ -391,6 +394,7 @@ impl QueueService {
         payload: Vec<u8>,
         priority: u8,
         not_before_ms: u64,
+        dedup_key: Option<Vec<u8>>,
     ) {
         let mut prefetch = self.prefetch.lock().expect("poisoned");
         let Some(cache) = prefetch.get_mut(stream) else {
@@ -406,6 +410,7 @@ impl QueueService {
             payload,
             priority,
             not_before_ms: effective_not_before,
+            dedup_key,
         });
     }
 
@@ -442,6 +447,7 @@ impl QueueService {
         payload: Vec<u8>,
         priority: u8,
         not_before_ms: u64,
+        dedup_key: Option<Vec<u8>>,
     ) {
         let (shard, local) = decode_global_id(global_id);
         self.cache_enqueued(
@@ -450,6 +456,7 @@ impl QueueService {
             payload,
             priority,
             not_before_ms,
+            dedup_key,
         );
     }
 
@@ -527,6 +534,8 @@ impl QueueService {
                         lease_id: LeaseId(encode_global_id(shard, job.lease_id.0)),
                         job_id: JobId(encode_global_id(shard, job.job_id.0)),
                         payload: job.payload,
+                        attempts: job.attempts,
+                        dedup_key: job.dedup_key,
                     }));
                 }
             }
@@ -549,6 +558,8 @@ impl QueueService {
                 lease_id: j.lease_id.0,
                 job_id: j.job_id.0,
                 payload: j.payload,
+                attempts: j.attempts,
+                dedup_key: j.dedup_key,
             })
             .collect()
     }
@@ -574,6 +585,7 @@ impl QueueService {
                             request.payload.clone(),
                             request.priority,
                             request.not_before_ms,
+                            request.dedup_key.clone(),
                         );
                         self.emit_enqueued(&request.stream, id.0);
                         return QueueEnqueueReply {
@@ -613,6 +625,7 @@ impl QueueService {
                                 request.payload.clone(),
                                 request.priority,
                                 request.not_before_ms,
+                                request.dedup_key.clone(),
                             );
                             self.emit_enqueued(&request.stream, id.0);
                             QueueEnqueueReply {
@@ -684,6 +697,7 @@ impl QueueService {
                                 job.payload.clone(),
                                 job.priority,
                                 job.not_before_ms,
+                                job.dedup_key.clone(),
                             );
                             self.emit_enqueued(&request.stream, id.0);
                         }
@@ -726,6 +740,7 @@ impl QueueService {
                                     job.payload.clone(),
                                     job.priority,
                                     job.not_before_ms,
+                                    job.dedup_key.clone(),
                                 );
                                 self.emit_enqueued(&request.stream, id.0);
                             }
@@ -870,6 +885,8 @@ impl QueueService {
                                     lease_id: j.lease_id.0,
                                     job_id: j.job_id.0,
                                     payload: j.payload,
+                                    attempts: j.attempts,
+                                    dedup_key: j.dedup_key,
                                 })
                                 .collect(),
                             error: None,
@@ -1329,6 +1346,7 @@ fn replication_unsupported() -> QueueError {
 pub struct ClusterJobQueue {
     stream: String,
     node_id: NodeId,
+    default_max_attempts: u32,
     state: Arc<dyn ClusterState>,
     transport: Arc<dyn Transport>,
 }
@@ -1345,9 +1363,20 @@ impl ClusterJobQueue {
         Self {
             stream: stream.into(),
             node_id,
+            default_max_attempts: 0,
             state,
             transport,
         }
+    }
+
+    /// Attempt ceiling applied when [`EnqueueOptions::max_attempts`] is `None` (`0` = unlimited).
+    ///
+    /// Resolved here, client-side, so the wire request always carries a concrete
+    /// ceiling and the queue protocol stays unchanged.
+    #[must_use]
+    pub fn default_max_attempts(mut self, max: u32) -> Self {
+        self.default_max_attempts = max;
+        self
     }
 
     fn leader(&self) -> Result<NodeId, QueueError> {
@@ -1418,7 +1447,7 @@ impl JobQueue for ClusterJobQueue {
                     not_before_ms: options.not_before_ms.unwrap_or(0),
                     shard_key: options.shard_key.clone(),
                     dedup_key: options.dedup_key.clone(),
-                    max_attempts: options.max_attempts,
+                    max_attempts: options.max_attempts.unwrap_or(self.default_max_attempts),
                 },
             )
             .await
@@ -1475,7 +1504,7 @@ impl JobQueue for ClusterJobQueue {
                     not_before_ms: options.not_before_ms.unwrap_or(0),
                     shard_key: options.shard_key.clone(),
                     dedup_key: options.dedup_key.clone(),
-                    max_attempts: options.max_attempts,
+                    max_attempts: options.max_attempts.unwrap_or(self.default_max_attempts),
                 })
                 .collect();
             let reply = send_queue_enqueue_batch(
@@ -1524,6 +1553,8 @@ impl JobQueue for ClusterJobQueue {
                     lease_id: LeaseId(j.lease_id),
                     job_id: JobId(j.job_id),
                     payload: j.payload,
+                    attempts: j.attempts,
+                    dedup_key: j.dedup_key,
                 })
                 .collect())
         })

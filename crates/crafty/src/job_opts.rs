@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crafty_actor::DEFAULT_QUEUE_PREFETCH;
 
-use crate::consumer::{ConsumerOpts, ConsumerSpawnFn, JobConsumer};
+use crate::consumer::{ConsumerOpts, ConsumerSpawnFn, IdempotencyOpts, JobConsumer};
 use crate::queue_opts::QueueOpts;
 
 /// One durable job stream with optional handler, scaling, and HTTP enqueue.
@@ -41,6 +41,8 @@ pub struct JobOpts {
     batch: usize,
     idle_sleep: Duration,
     http_enqueue: bool,
+    default_max_attempts: u32,
+    idempotency: Option<IdempotencyOpts>,
     spawners: Vec<ConsumerSpawnFn>,
     config_error: Option<String>,
 }
@@ -55,6 +57,8 @@ impl std::fmt::Debug for JobOpts {
             .field("batch", &self.batch)
             .field("idle_sleep", &self.idle_sleep)
             .field("http_enqueue", &self.http_enqueue)
+            .field("default_max_attempts", &self.default_max_attempts)
+            .field("idempotency", &self.idempotency)
             .field("consumers", &self.spawners.len())
             .field("config_error", &self.config_error)
             .finish()
@@ -73,6 +77,8 @@ impl JobOpts {
             batch: 1,
             idle_sleep: Duration::from_millis(100),
             http_enqueue: false,
+            default_max_attempts: 0,
+            idempotency: None,
             spawners: Vec::new(),
             config_error: None,
         }
@@ -113,10 +119,31 @@ impl JobOpts {
         self
     }
 
+    /// Attempt ceiling for enqueues that leave `max_attempts` unset (`0` = unlimited).
+    ///
+    /// Covers HTTP `POST /jobs/{stream}` and cron ticks, which have no way to pass
+    /// per-job options. A job that sets its own ceiling always wins. After the last
+    /// attempt the job moves to dead letter instead of retrying forever.
+    #[must_use]
+    pub fn default_max_attempts(mut self, max: u32) -> Self {
+        self.default_max_attempts = max;
+        self
+    }
+
     /// Mount `POST /jobs/{stream}` on the product gateway (`with_jobs_api`).
     #[must_use]
     pub fn http_enqueue(mut self, enabled: bool) -> Self {
         self.http_enqueue = enabled;
+        self
+    }
+
+    /// Wrap this stream's consumers in the effectively-once guard.
+    ///
+    /// Must be set **before** [`.consumer`](Self::consumer), which is where the
+    /// per-instance options are captured.
+    #[must_use]
+    pub fn idempotency(mut self, opts: IdempotencyOpts) -> Self {
+        self.idempotency = Some(opts);
         self
     }
 
@@ -140,15 +167,17 @@ impl JobOpts {
         let instances = self.instances;
         let batch = self.batch;
         let idle_sleep = self.idle_sleep;
+        let idempotency = self.idempotency.clone();
         for instance in 0..instances {
             let consumer = consumer.clone();
             let opts = ConsumerOpts {
                 instance,
                 batch,
                 idle_sleep,
+                idempotency: idempotency.clone(),
             };
             self.spawners.push(Box::new(move |app, stop| {
-                app.spawn_consumer(consumer.clone(), opts, stop)
+                app.spawn_consumer(consumer.clone(), opts.clone(), stop)
             }));
         }
         self
@@ -160,6 +189,7 @@ impl JobOpts {
                 name: self.name.clone(),
                 lease: self.lease,
                 prefetch: self.prefetch,
+                default_max_attempts: self.default_max_attempts,
             },
             stream: self.name,
             spawners: self.spawners,

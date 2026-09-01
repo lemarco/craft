@@ -80,7 +80,8 @@ pub use app::{CraftyApp, CraftyAppBuilder, ShutdownOpts, journal_workflow};
 pub use app_opts::RunOpts;
 pub use builder::StartError;
 pub use configure::CraftyConfigure;
-pub use consumer::{ConsumerGroup, ConsumerOpts, JobConsumer};
+pub use consumer::{ConsumerGroup, ConsumerOpts, IdempotencyKeyFn, IdempotencyOpts, JobConsumer};
+pub use crafty_actor::JobContext;
 pub use cron_opts::CronOpts;
 pub use gateway::{
     ConnectionGuard, ConnectionTracker, CraftyGatewayState, DEFAULT_GATEWAY_DRAIN_TIMEOUT,

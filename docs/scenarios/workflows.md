@@ -157,5 +157,6 @@ app.workflow("onboard_user", |w| async move {
 - [multi-raft](../decisions/multi-raft.md#cross-shard-transactions)
 - [job-queue](../decisions/job-queue.md)
 - [background-jobs](background-jobs.md)
+- [background-jobs § Delivery semantics](background-jobs.md#delivery-semantics) — saga step keys as the third idempotency layer
 - [stateful-workers](stateful-workers.md)
 - [backlog.md](../backlog.md) — B-05, B-07

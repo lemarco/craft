@@ -40,6 +40,44 @@ pub struct LeasedJob {
     pub job_id: JobId,
     /// Opaque payload from enqueue.
     pub payload: Vec<u8>,
+    /// Delivery attempts including this one (`1` on first delivery).
+    ///
+    /// Greater than `1` means this job was redelivered — a previous attempt was
+    /// nacked, timed out, or lost its worker. Handlers must assume the earlier
+    /// attempt may have partially applied its side effect.
+    pub attempts: u32,
+    /// Client idempotency token from [`EnqueueOptions::dedup_key`], when set.
+    pub dedup_key: Option<Vec<u8>>,
+}
+
+/// What a consumer knows about the delivery it is currently handling.
+///
+/// Passed to `#[consumer]` handlers that declare a second argument. See
+/// [background-jobs](../../../docs/scenarios/background-jobs.md#delivery-semantics)
+/// for what is and is not guaranteed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JobContext<'a> {
+    /// Job id within the stream.
+    pub job_id: JobId,
+    /// Lease token backing this delivery.
+    pub lease_id: LeaseId,
+    /// Stream the job was leased from.
+    pub stream: &'a str,
+    /// Delivery attempts including this one (`1` on first delivery).
+    pub attempts: u32,
+    /// Client idempotency token from enqueue, when set.
+    pub dedup_key: Option<&'a [u8]>,
+}
+
+impl JobContext<'_> {
+    /// `true` when this is not the first delivery of the job.
+    ///
+    /// A redelivery does not mean the previous attempt did nothing — only that it
+    /// did not ack.
+    #[must_use]
+    pub fn is_redelivery(&self) -> bool {
+        self.attempts > 1
+    }
 }
 
 /// Options for [`JobQueue::enqueue_opts`].
@@ -53,8 +91,13 @@ pub struct EnqueueOptions {
     pub shard_key: Option<Vec<u8>>,
     /// Client-supplied idempotency token; duplicate enqueues return the same [`JobId`].
     pub dedup_key: Option<Vec<u8>>,
-    /// Maximum delivery attempts before dead letter (`0` = unlimited retries).
-    pub max_attempts: u32,
+    /// Maximum delivery attempts before dead letter.
+    ///
+    /// `None` inherits the stream default set via
+    /// [`InMemoryJobQueue::default_max_attempts`] (or `QueueOpts`/`JobOpts` at the
+    /// app layer). `Some(0)` is an explicit request for unlimited retries and
+    /// overrides the stream default.
+    pub max_attempts: Option<u32>,
 }
 
 impl EnqueueOptions {
@@ -94,10 +137,12 @@ impl EnqueueOptions {
     }
 
     /// Cap delivery attempts; after the limit the job moves to dead letter.
+    ///
+    /// Overrides the stream default. `max_attempts(0)` means unlimited retries.
     #[must_use]
     pub fn max_attempts(max: u32) -> Self {
         Self {
-            max_attempts: max,
+            max_attempts: Some(max),
             ..Self::default()
         }
     }
@@ -391,6 +436,7 @@ struct LeaseEntry {
 #[derive(Debug)]
 pub struct InMemoryJobQueue {
     lease_timeout: Duration,
+    default_max_attempts: u32,
     inner: Mutex<Inner>,
 }
 
@@ -410,6 +456,7 @@ impl InMemoryJobQueue {
     pub fn new(lease_timeout: Duration) -> Self {
         Self {
             lease_timeout,
+            default_max_attempts: 0,
             inner: Mutex::new(Inner {
                 next_job_id: 1,
                 next_lease_id: 1,
@@ -419,6 +466,13 @@ impl InMemoryJobQueue {
                 dedup: BTreeMap::new(),
             }),
         }
+    }
+
+    /// Attempt ceiling applied when [`EnqueueOptions::max_attempts`] is `None` (`0` = unlimited).
+    #[must_use]
+    pub fn default_max_attempts(mut self, max: u32) -> Self {
+        self.default_max_attempts = max;
+        self
     }
 
     fn with_inner<R>(&self, f: impl FnOnce(&mut Inner) -> R) -> R {
@@ -649,6 +703,7 @@ impl JobQueue for InMemoryJobQueue {
             )
             .unwrap_or(u64::MAX);
             let not_before_ms = options.not_before_ms.unwrap_or(enqueued_at_ms);
+            let max_attempts = options.max_attempts.unwrap_or(self.default_max_attempts);
             let (job_id, ops) = self.with_inner(|inner| {
                 if let Some(key) = &options.dedup_key
                     && let Some(existing) = inner.dedup_lookup(key)
@@ -667,7 +722,7 @@ impl JobQueue for InMemoryJobQueue {
                         not_before_ms,
                         dedup_key: dedup_key.clone(),
                         attempts: 0,
-                        max_attempts: options.max_attempts,
+                        max_attempts,
                         dead_letter: false,
                     },
                 );
@@ -686,7 +741,7 @@ impl JobQueue for InMemoryJobQueue {
                         not_before_ms,
                         dedup_key: options.dedup_key.clone(),
                         attempts: 0,
-                        max_attempts: options.max_attempts,
+                        max_attempts,
                     }],
                 )
             });
@@ -903,6 +958,10 @@ impl JobQueue for InMemoryJobQueue {
                         lease_id: LeaseId(lease_id),
                         job_id,
                         payload: entry.payload.clone(),
+                        // `entry.attempts` counts attempts that already failed;
+                        // this delivery is the next one.
+                        attempts: entry.attempts + 1,
+                        dedup_key: entry.dedup_key.clone(),
                     });
                 }
                 (out, lease_ops)
@@ -1007,7 +1066,7 @@ impl JobQueue for InMemoryJobQueue {
     }
 }
 
-/// Poll a [`JobQueue`], invoke `handle` on each payload, then ack or nack.
+/// Poll a [`JobQueue`], invoke `handle` on each leased job, then ack or nack.
 ///
 /// Leases up to `batch` jobs per poll and acknowledges successes with
 /// [`JobQueue::ack_batch`] (one leader transaction when using [`crate::ClusterJobQueue`]).
@@ -1022,7 +1081,7 @@ pub async fn run_queue_consumer<Q, F, Fut, E>(
     mut handle: F,
 ) where
     Q: JobQueue + ?Sized,
-    F: FnMut(&[u8]) -> Fut,
+    F: FnMut(&LeasedJob) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     loop {
@@ -1051,7 +1110,7 @@ pub async fn run_queue_consumer<Q, F, Fut, E>(
                 nacks.push(job.lease_id);
                 break;
             }
-            match handle(&job.payload).await {
+            match handle(&job).await {
                 Ok(()) => acks.push(job.lease_id),
                 Err(_) => nacks.push(job.lease_id),
             }
@@ -1245,6 +1304,88 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stream_default_max_attempts_applies_when_job_leaves_it_unset() {
+        let q = InMemoryJobQueue::new(Duration::from_secs(30)).default_max_attempts(2);
+        // Plain enqueue: no per-job options at all.
+        let id = q.enqueue(b"inherits").await.unwrap();
+        assert_eq!(
+            q.job_status(id)
+                .await
+                .unwrap()
+                .expect("status")
+                .max_attempts,
+            2
+        );
+
+        for _ in 0..2 {
+            let leased = q.lease(worker(0), 1).await.unwrap();
+            q.nack(worker(0), leased[0].lease_id).await.unwrap();
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+        assert_eq!(
+            q.job_status(id).await.unwrap().expect("status").lifecycle,
+            JobLifecycle::DeadLetter
+        );
+    }
+
+    #[tokio::test]
+    async fn explicit_max_attempts_overrides_stream_default() {
+        let q = InMemoryJobQueue::new(Duration::from_secs(30)).default_max_attempts(2);
+
+        // Explicit `0` is a request for unlimited retries, not "unset".
+        let unlimited = q
+            .enqueue_opts(b"unlimited", EnqueueOptions::max_attempts(0))
+            .await
+            .unwrap();
+        assert_eq!(
+            q.job_status(unlimited)
+                .await
+                .unwrap()
+                .expect("status")
+                .max_attempts,
+            0
+        );
+
+        // A non-zero explicit ceiling wins over the stream default too.
+        let capped = q
+            .enqueue_opts(b"capped", EnqueueOptions::max_attempts(5))
+            .await
+            .unwrap();
+        assert_eq!(
+            q.job_status(capped)
+                .await
+                .unwrap()
+                .expect("status")
+                .max_attempts,
+            5
+        );
+    }
+
+    #[tokio::test]
+    async fn zero_stream_default_keeps_retries_unlimited() {
+        let q = InMemoryJobQueue::new(Duration::from_secs(30));
+        let id = q.enqueue(b"forever").await.unwrap();
+        assert_eq!(
+            q.job_status(id)
+                .await
+                .unwrap()
+                .expect("status")
+                .max_attempts,
+            0
+        );
+        for _ in 0..3 {
+            let leased = q.lease(worker(0), 1).await.unwrap();
+            q.nack(worker(0), leased[0].lease_id).await.unwrap();
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+        // Still retrying (pending, or delayed by retry backoff) — never dead-lettered.
+        let status = q.job_status(id).await.unwrap().expect("status");
+        assert_ne!(status.lifecycle, JobLifecycle::DeadLetter);
+        assert_eq!(status.attempts, 3);
+        assert_eq!(q.metrics().await.unwrap().dead_letter, 0);
+    }
+
+    #[tokio::test]
     async fn enqueue_batch_and_ack_batch_round_trip() {
         let q = InMemoryJobQueue::new(Duration::from_secs(30));
         let ids = q
@@ -1276,10 +1417,12 @@ mod tests {
                 8,
                 Duration::from_millis(10),
                 stop_rx,
-                |payload| {
-                    let len = payload.len();
+                |job| {
+                    let len = job.payload.len();
+                    let attempts = job.attempts;
                     async move {
                         assert!(len > 0);
+                        assert_eq!(attempts, 1, "first delivery");
                         Ok::<(), ()>(())
                     }
                 },

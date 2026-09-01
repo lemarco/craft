@@ -97,6 +97,10 @@ pub struct QueueLeasedJobWire {
     pub job_id: u64,
     /// Job body copied at enqueue time.
     pub payload: Vec<u8>,
+    /// Delivery attempts including this one (`1` on first delivery).
+    pub attempts: u32,
+    /// Client idempotency token supplied at enqueue, when there was one.
+    pub dedup_key: Option<Vec<u8>>,
 }
 
 /// Response to [`QueueLeaseRequest`].

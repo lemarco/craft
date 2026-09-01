@@ -168,5 +168,6 @@ See [examples/stateful-workers/](../../examples/stateful-workers/).
 
 - [actor-state-store](../decisions/actor-state-store.md) — redb-first ADR
 - [background-jobs](background-jobs.md) — async alternative to long handler
+- [background-jobs § Effectively-once recipe](background-jobs.md#effectively-once-recipe) — this store as the CAS layer that makes a redelivered job safe
 - [realtime-sessions](realtime-sessions.md) — sticky in-memory state
 - [backlog.md](../backlog.md) — polish items

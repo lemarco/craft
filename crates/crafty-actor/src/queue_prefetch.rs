@@ -14,6 +14,7 @@ pub(crate) struct CachedPendingJob {
     pub payload: Vec<u8>,
     pub priority: u8,
     pub not_before_ms: u64,
+    pub dedup_key: Option<Vec<u8>>,
 }
 
 /// Leader-side RAM buffer of recently enqueued jobs (not durable across failover).
@@ -81,12 +82,14 @@ mod tests {
             payload: b"a".to_vec(),
             priority: 0,
             not_before_ms: 0,
+            dedup_key: None,
         });
         cache.insert_enqueued(CachedPendingJob {
             job_id: 2,
             payload: b"b".to_vec(),
             priority: 0,
             not_before_ms: 0,
+            dedup_key: None,
         });
         cache.remove_job(1);
         let leased = cache.select_for_lease(8, 0);
@@ -102,12 +105,14 @@ mod tests {
             payload: b"low".to_vec(),
             priority: 0,
             not_before_ms: 0,
+            dedup_key: None,
         });
         cache.insert_enqueued(CachedPendingJob {
             job_id: 2,
             payload: b"high".to_vec(),
             priority: 9,
             not_before_ms: 0,
+            dedup_key: None,
         });
         let leased = cache.select_for_lease(1, 0);
         assert_eq!(leased[0].job_id, 2);

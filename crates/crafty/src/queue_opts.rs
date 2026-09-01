@@ -13,6 +13,8 @@ pub struct QueueOpts {
     pub lease: Duration,
     /// Leader prefetch depth (`0` = disable). Default: [`DEFAULT_QUEUE_PREFETCH`].
     pub prefetch: usize,
+    /// Default delivery-attempt ceiling for jobs that do not set their own (`0` = unlimited).
+    pub default_max_attempts: u32,
 }
 
 impl QueueOpts {
@@ -23,6 +25,17 @@ impl QueueOpts {
             name: name.into(),
             lease,
             prefetch: DEFAULT_QUEUE_PREFETCH,
+            default_max_attempts: 0,
         }
+    }
+
+    /// Attempt ceiling for enqueues that leave `max_attempts` unset (`0` = unlimited).
+    ///
+    /// A job that sets its own ceiling always wins; this only fills in the gap for
+    /// HTTP enqueues, cron ticks, and plain [`enqueue`](crafty_actor::JobQueue::enqueue).
+    #[must_use]
+    pub fn default_max_attempts(mut self, max: u32) -> Self {
+        self.default_max_attempts = max;
+        self
     }
 }

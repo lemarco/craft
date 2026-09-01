@@ -76,6 +76,7 @@ fn now_ms() -> u64 {
 #[derive(Debug)]
 pub struct RedbJobQueue {
     lease_timeout: Duration,
+    default_max_attempts: u32,
     pub(crate) db: Mutex<Database>,
     acks_since_compact: AtomicU64,
 }
@@ -130,11 +131,19 @@ impl RedbJobQueue {
         let db = Mutex::new(Database::create(path).map_err(backend)?);
         let queue = Self {
             lease_timeout,
+            default_max_attempts: 0,
             db,
             acks_since_compact: AtomicU64::new(0),
         };
         queue.bootstrap()?;
         Ok(queue)
+    }
+
+    /// Attempt ceiling applied when [`EnqueueOptions::max_attempts`] is `None` (`0` = unlimited).
+    #[must_use]
+    pub fn default_max_attempts(mut self, max: u32) -> Self {
+        self.default_max_attempts = max;
+        self
     }
 
     fn bootstrap(&self) -> Result<(), QueueError> {
@@ -611,6 +620,9 @@ impl RedbJobQueue {
                     lease_id: LeaseId(lease_id),
                     job_id: JobId(cached.job_id),
                     payload: cached.payload.clone(),
+                    // Prefetch only ever holds freshly enqueued jobs.
+                    attempts: 1,
+                    dedup_key: cached.dedup_key.clone(),
                 });
             }
 
@@ -674,6 +686,7 @@ impl RedbJobQueue {
                 let job_id = next_job_id;
                 next_job_id += 1;
                 let not_before_ms = options.not_before_ms.unwrap_or(enqueued_at_ms);
+                let max_attempts = options.max_attempts.unwrap_or(self.default_max_attempts);
                 let stored = StoredJob {
                     payload: payload.clone(),
                     enqueued_at_ms,
@@ -681,7 +694,7 @@ impl RedbJobQueue {
                     not_before_ms,
                     dedup_key: options.dedup_key.clone(),
                     attempts: 0,
-                    max_attempts: options.max_attempts,
+                    max_attempts,
                     dead_letter: false,
                 };
                 jobs_table
@@ -700,7 +713,7 @@ impl RedbJobQueue {
                     not_before_ms,
                     dedup_key: options.dedup_key.clone(),
                     attempts: 0,
-                    max_attempts: options.max_attempts,
+                    max_attempts,
                 });
                 assigned.push(JobId(job_id));
             }
@@ -885,6 +898,8 @@ impl JobQueue for RedbJobQueue {
                         lease_id: LeaseId(lease_id),
                         job_id: JobId(job_id),
                         payload: stored.payload,
+                        attempts: stored.attempts + 1,
+                        dedup_key: stored.dedup_key,
                     });
                 }
 
@@ -1153,6 +1168,7 @@ mod tests {
             payload: b"hot".to_vec(),
             priority: 0,
             not_before_ms: 0,
+            dedup_key: None,
         }];
         let (leased, _) = q.lease_prefetched(worker(0), &cached).unwrap();
         assert_eq!(leased.len(), 1);

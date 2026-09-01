@@ -203,6 +203,8 @@ impl ShardedJobQueue {
                 lease_id: LeaseId(encode_id(shard, job.lease_id.0)),
                 job_id: JobId(encode_id(shard, job.job_id.0)),
                 payload: job.payload,
+                attempts: job.attempts,
+                dedup_key: job.dedup_key,
             }));
         }
         Ok((out, replications))
@@ -225,6 +227,8 @@ impl ShardedJobQueue {
                 lease_id: LeaseId(encode_id(shard, job.lease_id.0)),
                 job_id: JobId(encode_id(shard, job.job_id.0)),
                 payload: job.payload,
+                attempts: job.attempts,
+                dedup_key: job.dedup_key,
             })
             .collect();
         Ok((out, ShardedReplication { shard, ops }))
@@ -332,6 +336,8 @@ impl JobQueue for ShardedJobQueue {
                     lease_id: LeaseId(encode_id(shard, job.lease_id.0)),
                     job_id: JobId(encode_id(shard, job.job_id.0)),
                     payload: job.payload,
+                    attempts: job.attempts,
+                    dedup_key: job.dedup_key,
                 }));
             }
             Ok((out, ops))

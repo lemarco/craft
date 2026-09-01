@@ -206,6 +206,9 @@ impl CraftyAppBuilder {
             self.inner = self
                 .inner
                 .job_queue_prefetch(&reg.queue.name, reg.queue.prefetch);
+            self.inner = self
+                .inner
+                .job_queue_max_attempts(&reg.queue.name, reg.queue.default_max_attempts);
             if !reg.spawners.is_empty() {
                 self.consumer_streams.push(reg.stream);
             }
@@ -228,6 +231,9 @@ impl CraftyAppBuilder {
             self.queue_streams.insert(opts.name.clone());
             self.inner = self.inner.job_queue(&opts.name, opts.lease);
             self.inner = self.inner.job_queue_prefetch(&opts.name, opts.prefetch);
+            self.inner = self
+                .inner
+                .job_queue_max_attempts(&opts.name, opts.default_max_attempts);
         }
         self
     }

@@ -74,7 +74,7 @@ impl RecurringJob {
         self
     }
 
-    /// Cap retries for jobs produced by this schedule.
+    /// Cap retries for jobs produced by this schedule (`0` = inherit the stream default).
     #[must_use]
     pub fn max_attempts(mut self, max: u32) -> Self {
         self.max_attempts = max;
@@ -187,7 +187,10 @@ impl RedbJobQueue {
                     EnqueueOptions {
                         priority: schedule.priority,
                         dedup_key: Some(dedup_key),
-                        max_attempts: schedule.max_attempts,
+                        // Schedules persist the ceiling as a plain `u32`, so `0`
+                        // (never configured) inherits the stream default rather
+                        // than forcing unlimited retries.
+                        max_attempts: (schedule.max_attempts != 0).then_some(schedule.max_attempts),
                         ..EnqueueOptions::default()
                     },
                 )

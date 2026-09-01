@@ -5,7 +5,9 @@
 
 mod debug;
 
+use std::collections::HashMap;
 use std::env;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
@@ -13,17 +15,80 @@ use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, JobOpts, RunOpts, consumer
 use crafty_showcase_common::{data_dir, display_addr};
 
 static HANDLED: AtomicUsize = AtomicUsize::new(0);
+/// Times the *real* side effect ran. Stays at one per key even under redelivery.
+static SENT: AtomicUsize = AtomicUsize::new(0);
+
+/// Idempotency markers, keyed by job key.
+///
+/// Process-local on purpose — this is a single-binary showcase. In production
+/// this is an [`ActorStateStore`] (see `examples/stateful-workers/`) or a shared
+/// store (`crates/crafty-store-redis/examples/idempotent_worker.rs`) so the
+/// marker survives a crash and is visible to whichever node redelivers.
+static MARKERS: Mutex<Option<HashMap<String, Marker>>> = Mutex::new(None);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Marker {
+    /// Side effect finished and was durably recorded — safe to ack.
+    Done,
+}
 
 const STREAM: &str = "emails";
 const DATA_DIR_NAME: &str = "crafty-showcase-background-jobs";
 
+/// Business key for the job. Derived from the event, not from the payload bytes.
+fn job_key(payload: &[u8]) -> String {
+    let text = String::from_utf8_lossy(payload);
+    text.trim().to_string()
+}
+
+/// `1` (default) makes the first delivery of each key fail *after* the marker is
+/// written — the crash-before-ack window that at-least-once always leaves open.
+fn simulate_redelivery() -> bool {
+    env::var("CRAFTY_SIMULATE_REDELIVERY").as_deref() != Ok("0")
+}
+
+/// Effectively-once handler — see `docs/scenarios/background-jobs.md`.
+///
+/// Order matters: check marker → side effect → mark done → ack. Marking before
+/// the ack is what makes the redelivery below safe.
 #[consumer("emails")]
 #[allow(clippy::unused_async)]
 async fn send_email(payload: &[u8]) -> Result<(), ()> {
-    let n = HANDLED.fetch_add(1, Ordering::SeqCst) + 1;
-    let preview = String::from_utf8_lossy(payload);
-    debug::worker_job(0, payload.len(), preview.trim());
-    println!("[worker] email #{n} — {preview}");
+    let delivery = HANDLED.fetch_add(1, Ordering::SeqCst) + 1;
+    let key = job_key(payload);
+    debug::worker_job(0, payload.len(), &key);
+
+    // 1. Already finished? This is a redelivery — ack it without repeating work.
+    {
+        let guard = MARKERS.lock().expect("poisoned");
+        if guard
+            .as_ref()
+            .is_some_and(|m| m.get(&key) == Some(&Marker::Done))
+        {
+            println!(
+                "[worker] delivery #{delivery} — {key}: duplicate, side effect already applied (skipping)"
+            );
+            return Ok(());
+        }
+    }
+
+    // 2. The side effect itself.
+    let sent = SENT.fetch_add(1, Ordering::SeqCst) + 1;
+    println!("[worker] delivery #{delivery} — {key}: sending email (side effects so far: {sent})");
+
+    // 3. Record it durably *before* acking.
+    MARKERS
+        .lock()
+        .expect("poisoned")
+        .get_or_insert_with(HashMap::new)
+        .insert(key.clone(), Marker::Done);
+
+    // 4. Crash before the ack lands: the queue redelivers, step 1 catches it.
+    if simulate_redelivery() && delivery == 1 {
+        println!("[worker] delivery #{delivery} — {key}: crashing before ack (expect redelivery)");
+        return Err(());
+    }
+
     Ok(())
 }
 
@@ -50,6 +115,8 @@ fn server_builder() -> crafty::CraftyAppBuilder {
             .instances(worker_count())
             .batch(4)
             .idle_sleep(Duration::from_millis(50))
+            // Applies to HTTP enqueues, which cannot pass per-job options.
+            .default_max_attempts(5)
             .http_enqueue(true)])
         .configure(CraftyConfigure {
             tick_period: Duration::from_millis(10),
@@ -91,6 +158,7 @@ fn print_banner() {
     }
     println!("  cluster  ./cluster.sh setup && ./cluster.sh up");
     println!("  trigger  ./trigger.sh <payload>");
+    println!("  dedup    ./trigger-idempotent.sh <payload>");
     println!("  data_dir {}", data_dir(DATA_DIR_NAME).display());
     println!("press Ctrl-C to stop");
 }

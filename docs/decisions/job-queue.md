@@ -225,6 +225,7 @@ Implementation status: **v2 + production polish landed** — Redis adapter remai
 
 - Leader-hosted queue is a **throughput hotspot** at very large enqueue rates (mitigation: batch append, prefetch, future sharding). Replication adds one RTT to each reachable voter before client ack. Measure with `benchmarks/benches/queue.rs` (criterion) and `soak_queue` (sustained enqueue + follower drain).
 - At-least-once requires **idempotent** handlers and visibility-timeout tuning. Optional **`dedup_key`** on enqueue makes client retries safe while the job exists.
+- **An exactly-once delivery mode is not planned.** `dedup_key` deduplicates *enqueues*, not *deliveries*; effectively-once remains a handler-side property. The recipe (enqueue key → CAS marker in a store → side effect → durable `done` → ack) is in [background-jobs § Effectively-once recipe](../scenarios/background-jobs.md#effectively-once-recipe).
 - Two durability stories (`ActorStateStore` vs `JobQueue`) — docs must keep boundaries explicit ([R4](future-work-and-risks.md)).
 - Extra wire surface and ops metrics for queue lag.
 - Enqueue is unavailable while any **reachable** voter cannot accept replication (strict sync); unreachable departed nodes are excluded via `reachable_nodes()`.
