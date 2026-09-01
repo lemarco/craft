@@ -9,9 +9,12 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-01
+
 ### Changed
 
-- **`remote_actor` → `actor`** — attribute macro renamed; import `use crafty::actor::{UserActor, actor}` and `#[actor]` / `#[actor(migratable)]`.
+- **`remote_actor` → `actor` (breaking on `0.x`)** — attribute macro renamed; use `use crafty::actor::{UserActor, actor}` and `#[actor]` / `#[actor(migratable)]`.
+- **Worker registration examples** — prefer `workers!(…)` call syntax (same macro; parentheses instead of brackets in docs and showcases).
 
 ## [0.4.1] — 2026-09-01
 
@@ -291,7 +294,8 @@ tested; APIs are still evolving toward a 1.0 stabilization.
 
 - Bounded `ask` timeout (30s); at-most-once side-effecting `ask` dedup; reply-encode errors surfaced; actor-stream backpressure on QUIC.
 
-[Unreleased]: https://gitlab.com/lemarco/craft/-/compare/v0.4.1...HEAD
+[Unreleased]: https://gitlab.com/lemarco/craft/-/compare/v0.5.0...HEAD
+[0.5.0]: https://gitlab.com/lemarco/craft/-/compare/v0.4.1...v0.5.0
 [0.4.1]: https://gitlab.com/lemarco/craft/-/compare/v0.4.0...v0.4.1
 [0.4.0]: https://gitlab.com/lemarco/craft/-/compare/v0.3.0...v0.4.0
 [0.3.0]: https://gitlab.com/lemarco/craft/-/compare/v0.2.2...v0.3.0

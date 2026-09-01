@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Version** | `0.4.1` (pre-1.0 — API may change on minor bumps) |
+| **Version** | `0.5.0` (pre-1.0 — API may change on minor bumps) |
 | **MSRV** | 1.90 |
 | **Maturity** | Advanced prototype — full test pyramid, E2E/chaos, published on [crates.io](https://crates.io/crates/crafty) |
 
@@ -91,7 +91,7 @@ Global serializable isolation across shards is **not** a goal — see [cross-sha
 
 ## Release & ops (process, not missing code)
 
-- **crates.io / docs.rs publish** — v0.4.1 live (see [CHANGELOG.md](../CHANGELOG.md))
+- **crates.io / docs.rs publish** — v0.5.0 live (see [CHANGELOG.md](../CHANGELOG.md))
 - **Public API docs** — `missing_docs = "deny"` on published crates; `publish = false` crates exempt via crate lint override. Audit: `./scripts/docs-missing-audit.sh`
 - **Real-world soak** — scenario harness in `benchmarks/` (`soak`, `soak_queue`, `soak_multi_raft`, `soak_actor_store`, `soak_saga`, `soak_session`); scheduled CI `bench` job (60–120s budgets); long-running production soak is operator responsibility
 - **Heavy integration tests** — Redis/docker tests gated `#[ignore]` in fast CI; scheduled heavy lane
