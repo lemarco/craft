@@ -83,12 +83,9 @@ pub fn actor(attr: TokenStream, item: TokenStream) -> TokenStream {
         if arg == "migratable" {
             migratable = true;
         } else {
-            return syn::Error::new_spanned(
-                arg,
-                "unknown `actor` option (expected `migratable`)",
-            )
-            .to_compile_error()
-            .into();
+            return syn::Error::new_spanned(arg, "unknown `actor` option (expected `migratable`)")
+                .to_compile_error()
+                .into();
         }
     }
 
