@@ -2,8 +2,8 @@
 # Rustfmt gate — auto-fix (hooks) or check-only (manual gates).
 #
 # Usage:
-#   ./scripts/gate-fmt.sh          # format workspace (lefthook stage_fixed)
-#   ./scripts/gate-fmt.sh --check  # verify formatting
+#   ./scripts/gate-fmt.sh          # format workspace (fix hook failures)
+#   ./scripts/gate-fmt.sh --check  # verify formatting (pre-commit / CI)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."

@@ -14,26 +14,21 @@ min_version: '1.12.0'
 
 pre-commit:
   jobs:
-    - name: static
-      group:
-        parallel: true
-        jobs:
-          - name: cargo-fmt
-            glob: '*.{rs,toml,lock}'
-            stage_fixed: true
-            fail_text: |
-              rustfmt failed. Fix with:
-                ./scripts/gate-fmt.sh
-            run: bash scripts/gate-fmt.sh
+    - name: cargo-fmt
+      fail_text: |
+        rustfmt check failed — workspace is not formatted. Fix with:
+          ./scripts/gate-fmt.sh
+          git add -u
+      run: bash scripts/gate-fmt.sh --check
 
-          - name: shellcheck
-            glob: '*.sh'
-            fail_text: |
-              shellcheck failed. Fix staged scripts or run:
-                bash scripts/check-shell-scripts.sh
-            run: bash scripts/check-shell-scripts.sh {staged_files}
+    - name: shellcheck
+      glob: '*.sh'
+      fail_text: |
+        shellcheck failed. Fix staged scripts or run:
+          bash scripts/check-shell-scripts.sh
+      run: bash scripts/check-shell-scripts.sh {staged_files}
 
-    - name: rust
+    - name: clippy
       glob: '*.{rs,toml,lock}'
       fail_text: |
         clippy failed. Fix warnings or run:
