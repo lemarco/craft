@@ -9,6 +9,12 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-09-01
+
+**Job queue delivery semantics & idempotency (B-13).** At-least-once is now
+documented as a contract rather than a caveat, consumers can tell a redelivery
+from a first attempt, and redelivery is visible in metrics and the dashboard.
+
 ### Added
 
 - **Stream-level attempt ceilings (B-13d)** — [`JobOpts::default_max_attempts`](crates/crafty/src/job_opts.rs) /
