@@ -1,8 +1,8 @@
-//! `#[remote_actor(bogus)]` must be rejected with a clear macro error.
+//! `#[actor(bogus)]` must be rejected with a clear macro error.
 
 struct Widget;
 
-#[crafty_actor::remote_actor(bogus)]
+#[crafty_actor::actor(bogus)]
 impl crafty_actor::UserActor for Widget {
     type Config = ();
     type Message = ();

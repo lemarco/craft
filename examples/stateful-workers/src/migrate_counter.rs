@@ -1,6 +1,6 @@
 //! Migratable counter actor used by local and QUIC migration demos.
 
-use crafty::actor::{ConfigCodecError, MigrationError, UserActor, remote_actor};
+use crafty::actor::{ConfigCodecError, MigrationError, UserActor, actor};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum CounterMsg {
@@ -21,7 +21,7 @@ impl std::fmt::Display for CounterErr {
 }
 impl std::error::Error for CounterErr {}
 
-#[remote_actor(migratable)]
+#[actor(migratable)]
 impl UserActor for StatefulCounter {
     type Config = u64;
     type Message = CounterMsg;

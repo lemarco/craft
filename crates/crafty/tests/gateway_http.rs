@@ -9,7 +9,7 @@ use axum::body::Body;
 use axum::http::{HeaderMap, Method, Request, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use crafty::actor::{UserActor, remote_actor};
+use crafty::actor::{UserActor, actor};
 use crafty::cluster::build_gateway_router;
 use crafty::{
     ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayOpts,
@@ -67,7 +67,7 @@ impl std::error::Error for EchoErr {}
 
 struct EchoWorker;
 
-#[remote_actor]
+#[actor]
 impl UserActor for EchoWorker {
     type Config = u32;
     type Message = String;

@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use crafty::actor::{UserActor, remote_actor};
+use crafty::actor::{UserActor, actor};
 use crafty::core::{Config, StateMachine};
 use crafty::net::LocalNetwork;
 use crafty::proto::LogIndex;
@@ -30,7 +30,7 @@ impl std::error::Error for WorkerErr {}
 
 struct SessionWorker;
 
-#[remote_actor]
+#[actor]
 impl UserActor for SessionWorker {
     type Config = u32;
     type Message = u64;

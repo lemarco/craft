@@ -9,6 +9,10 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ## [Unreleased]
 
+### Changed
+
+- **`remote_actor` → `actor`** — attribute macro renamed; import `use crafty::actor::{UserActor, actor}` and `#[actor]` / `#[actor(migratable)]`.
+
 ## [0.4.1] — 2026-09-01
 
 ### Changed

@@ -59,9 +59,9 @@ See [`examples/stateful-workers/`](../../examples/stateful-workers/).
 ### 2. Stateful worker — write-through
 
 ```rust
-use crafty::actor::{UserActor, remote_actor, store_get, store_set};
+use crafty::actor::{UserActor, actor, store_get, store_set};
 
-#[remote_actor]
+#[actor]
 impl UserActor for OrderProcessor {
     type Config = Arc<dyn ActorStateStore>;
     type Message = ProcessOrder;

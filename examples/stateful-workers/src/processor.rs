@@ -16,7 +16,7 @@ use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crafty::actor::{MessageDecodeError, UserActor, remote_actor, store_get, store_set};
+use crafty::actor::{MessageDecodeError, UserActor, actor, store_get, store_set};
 use serde::{Deserialize, Serialize};
 
 /// Marker stored under `order:{id}` — presence means "already handled".
@@ -44,7 +44,7 @@ impl std::fmt::Display for ProcessorErr {
 }
 impl std::error::Error for ProcessorErr {}
 
-#[remote_actor]
+#[actor]
 impl UserActor for OrderProcessor {
     type Config = ProcessorCfg;
     type Message = String; // JSON `{"payload":"<order-id>"}` from gateway cast API

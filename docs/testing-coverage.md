@@ -183,7 +183,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 
 | Area | Unit | Integration | Sim | E2E | Status |
 |------|:----:|:-----------:|:---:|:---:|--------|
-| `StateMachine` / `remote_actor` derive | — | ✅ trybuild | — | — | ✅ |
+| `StateMachine` / `actor` attribute | — | ✅ trybuild | — | — | ✅ |
 | Proto roundtrip | ✅ | — | — | — | ✅ |
 | Wire decode fuzz | — | — | — | — | ✅ (nightly) |
 | Join/leave group 1 membership sync | — | ✅ `multi_raft` | — | — | ✅ |

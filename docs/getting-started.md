@@ -98,12 +98,12 @@ Reference KV [`StateMachine`](../../crates/crafty-core/src/kv.rs) (`crafty::kv` 
 Register worker types with [`.workers()`](../../crates/crafty/src/worker_opts.rs) and explicit [`WorkerScale`](../../crates/crafty/src/worker_opts.rs) (`Fixed`, `PerNode`, or queue-driven `Auto`):
 
 ```rust
-use crafty::actor::{UserActor, remote_actor};
+use crafty::actor::{UserActor, actor};
 use crafty::{CraftyApp, RunOpts, WorkerOpts, WorkerScale, workers};
 
 struct EmailWorker;
 
-#[remote_actor]
+#[actor]
 impl UserActor for EmailWorker {
     type Config = ();
     type Message = Vec<u8>;

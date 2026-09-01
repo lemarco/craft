@@ -1,10 +1,10 @@
-//! Tests for the `#[crafty_actor::remote_actor]` attribute (backlog D2): it
+//! Tests for the `#[crafty_actor::actor]` attribute (backlog D2): it
 //! should fill in the `postcard` wire codecs on a `UserActor` impl, honour the
 //! `migratable` flag, and leave any hand-written codec method untouched.
 
 #![allow(clippy::unused_async_trait_impl)] // test mock actors have sync handle bodies
 
-use crafty_actor::{MessageDecodeError, UserActor, remote_actor};
+use crafty_actor::{MessageDecodeError, UserActor, actor};
 use serde::{Deserialize, Serialize};
 
 /// Read `MIGRATABLE` behind a function boundary so the assertions on it are not
@@ -32,7 +32,7 @@ struct Counter {
     n: u64,
 }
 
-#[remote_actor]
+#[actor]
 impl UserActor for Counter {
     type Config = Cfg;
     type Message = Msg;
@@ -90,7 +90,7 @@ struct SessionMsg;
 
 struct Session;
 
-#[remote_actor(migratable)]
+#[actor(migratable)]
 impl UserActor for Session {
     type Config = SessionCfg;
     type Message = SessionMsg;
@@ -118,7 +118,7 @@ struct LocalOnly {
     n: u64,
 }
 
-#[remote_actor]
+#[actor]
 impl UserActor for LocalOnly {
     type Config = Cfg;
     type Message = Msg;

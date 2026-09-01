@@ -1,8 +1,8 @@
-//! `#[remote_actor]` only applies to an `impl UserActor for T` block.
+//! `#[actor]` only applies to an `impl UserActor for T` block.
 
 struct Widget;
 
-#[crafty_actor::remote_actor]
+#[crafty_actor::actor]
 impl Widget {
     fn frob(&self) {}
 }

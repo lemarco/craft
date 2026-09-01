@@ -15,7 +15,7 @@ use axum::extract::State;
 use axum::http::{HeaderMap, Method, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use crafty::actor::{UserActor, remote_actor};
+use crafty::actor::{UserActor, actor};
 use crafty::{
     ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayOpts, ReadyOpts,
     RunOpts,
@@ -39,7 +39,7 @@ struct ChatWorker {
     history: Mutex<Vec<String>>,
 }
 
-#[remote_actor]
+#[actor]
 impl UserActor for ChatWorker {
     type Config = u32;
     type Message = String;

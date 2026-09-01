@@ -45,7 +45,7 @@ derive**: `Command` and `Query` are marker traits with blanket impls over any
 that borrows a lifetime or is not `Clone` fails to satisfy `Command` and will
 not compile. This keeps the public macro surface smaller (a plus for a
 published library, library-and-publishing), so the originally planned `StateMachine` derive is
-not needed. Actor message ergonomics use the `remote_actor` attribute macro in `crafty-macros`.
+not needed. Actor message ergonomics use the `actor` attribute macro in `crafty-macros`.
 
 ## Consequences
 

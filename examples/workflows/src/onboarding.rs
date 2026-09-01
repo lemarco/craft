@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crafty::ActorGroupOpts;
 use crafty::CraftyApp;
-use crafty::actor::{UserActor, remote_actor};
+use crafty::actor::{UserActor, actor};
 use crafty::client::{Client, ClientError, KeyedClient, RemoteClient, SagaOutcome, SagaPlan, SagaError};
 use crafty::proto::{decode, encode};
 use serde::{Deserialize, Serialize};
@@ -49,7 +49,7 @@ struct OnboardingWorker {
     store: std::sync::Mutex<std::collections::BTreeMap<String, String>>,
 }
 
-#[remote_actor]
+#[actor]
 impl UserActor for OnboardingWorker {
     type Config = ();
     type Message = OnboardingOp;
