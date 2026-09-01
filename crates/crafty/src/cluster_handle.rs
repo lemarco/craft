@@ -383,7 +383,7 @@ impl MembershipTelemetry {
 }
 
 /// A running crafty node: the facade's single entry point once
-/// [`start`](crate::CraftyClusterBuilder::start_local) returns.
+/// [`start`](crate::cluster::CraftyClusterBuilder::start_local) returns.
 ///
 /// Clone-free but cheap to pass by reference; drop it (or call
 /// [`shutdown`](Self::shutdown)) to stop the node.
@@ -429,7 +429,7 @@ pub struct CraftyCluster<M: StateMachine> {
 
 impl<M: StateMachine> CraftyCluster<M> {
     /// Start describing a node running `machine`, identified by `node_id`. See
-    /// [`CraftyClusterBuilder`](crate::CraftyClusterBuilder) for the options.
+    /// [`CraftyClusterBuilder`](crate::cluster::CraftyClusterBuilder) for the options.
     #[must_use]
     pub fn builder(node_id: NodeId, machine: M) -> CraftyClusterBuilder<M>
     where
@@ -472,7 +472,7 @@ impl<M: StateMachine> CraftyCluster<M> {
     }
 
     /// The workflow-state store wired by
-    /// [`CraftyClusterBuilder::actor_state_store`](crate::CraftyClusterBuilder::actor_state_store),
+    /// [`CraftyClusterBuilder::actor_state_store`](crate::cluster::CraftyClusterBuilder::actor_state_store),
     /// if any (actor-state-redis). Clone the `Arc` into actor `Config` when spawning
     /// stateful workers.
     #[must_use]
@@ -481,7 +481,7 @@ impl<M: StateMachine> CraftyCluster<M> {
     }
 
     /// Cluster-facing queue client for `stream`, routing through the leader wire
-    /// service ([`CraftyClusterBuilder::job_queue`](crate::CraftyClusterBuilder::job_queue)).
+    /// service ([`CraftyClusterBuilder::job_queue`](crate::cluster::CraftyClusterBuilder::job_queue)).
     #[must_use]
     pub fn job_queue(&self, stream: &str) -> Option<Arc<dyn crafty_actor::JobQueue>> {
         self.job_queues.get(stream).cloned()

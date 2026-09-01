@@ -28,7 +28,7 @@ pub enum WorkerScale {
 /// Combines [`.actors`](super::app::CraftyAppBuilder::actors) with optional
 /// [`job_queue_autoscale`](crate::cluster::CraftyClusterBuilder::job_queue_autoscale).
 ///
-/// Register several heterogeneous worker types via [`WorkerGroup`] or the [`workers!`] macro:
+/// Register several heterogeneous worker types via [`WorkerGroup`] or the [`workers!`](crate::workers) macro:
 ///
 /// ```
 /// # use crafty::{CraftyApp, RunOpts, WorkerGroup, WorkerOpts, WorkerScale, workers};
@@ -243,7 +243,7 @@ pub struct WorkerGroup {
 }
 
 impl WorkerGroup {
-    /// Empty group — chain [`.with_worker`](Self::with_worker) or use the [`workers!`] macro.
+    /// Empty group — chain [`.with_worker`](Self::with_worker) or use the [`workers!`](crate::workers) macro.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
