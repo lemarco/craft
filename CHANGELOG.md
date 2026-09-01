@@ -28,6 +28,11 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
   → ack. `IdempotencyOpts::by_dedup_key` covers the common case; custom key functions and
   marker TTLs are supported. Not an exactly-once mode.
 
+- **Redelivery observability (B-13i/B-13j)** — `crafty_queue_redeliveries_total{stream}` counter,
+  `crafty_queue_job_attempts{stream}` histogram (both recorded once per delivery), and a
+  `crafty_queue_redelivered_jobs{stream}` gauge. The same count is exposed per stream in
+  `/introspect/queues` and highlighted in the admin dashboard's Job queues table.
+
 ### Changed
 
 - **`EnqueueOptions::max_attempts` is now `Option<u32>` (breaking on `0.x`)** — `None` inherits
@@ -41,6 +46,8 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 - **`ConsumerOpts` is `Clone`, no longer `Copy`/`PartialEq`** — it now carries optional
   idempotency configuration.
 - **`LeasedJob` and the queue lease wire format carry `attempts` + `dedup_key`.**
+- **`QueueLifecycleEvent::Leased` carries `attempts`**; `QueueMetrics` and the metrics wire reply
+  carry `redelivered`.
 - **Exactly-once is explicitly not planned** — recorded in the [job-queue ADR](docs/decisions/job-queue.md)
   consequences, pointing at the effectively-once recipe.
 

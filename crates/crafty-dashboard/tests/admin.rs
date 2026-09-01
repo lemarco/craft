@@ -117,6 +117,7 @@ impl Observer for Fake {
                     leased: 2,
                     dead_letter: 1,
                     oldest_pending_age_ms: 1200,
+                    redelivered: 3,
                 }],
             }
         })

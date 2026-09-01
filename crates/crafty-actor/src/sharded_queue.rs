@@ -386,6 +386,7 @@ impl JobQueue for ShardedJobQueue {
                 total.pending += m.pending;
                 total.leased += m.leased;
                 total.dead_letter += m.dead_letter;
+                total.redelivered += m.redelivered;
                 if m.oldest_pending_age > total.oldest_pending_age {
                     total.oldest_pending_age = m.oldest_pending_age;
                 }

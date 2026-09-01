@@ -15,7 +15,7 @@ Product and implementation backlog for crafty **0.4.x → 1.0**. Shipped capabil
 | ------------ | ----- | ------------------------------- |
 | **P0**       | 2     | B-01 ✅, B-02 ✅                  |
 | **P1**       | 4     | B-03 ✅ … B-06 ✅                 |
-| **P2**       | 4     | B-07 ✅ … B-09 ✅, B-13 🚧        |
+| **P2**       | 4     | B-07 ✅ … B-09 ✅, B-13 ✅        |
 | **P3**       | 3     | B-10 ✅ … B-12 ✅                 |
 | **Optional** | 5     | O-01 … O-05                     |
 | **Subtasks** | 38    | B-01a … B-13j (see epics below) |
@@ -271,7 +271,7 @@ flowchart TB
 
 
 
-### B-13 🚧 Job queue — delivery semantics & idempotency DX
+### B-13 ✅ Job queue — delivery semantics & idempotency DX
 
 **Scenario:** [background-jobs](scenarios/background-jobs.md)  
 **ADR:** [job-queue](decisions/job-queue.md) — at-least-once is intentional; **exactly-once as a queue toggle is out of scope**.
@@ -291,8 +291,8 @@ Document the contract, show effectively-once patterns, and improve consumer ergo
 | B-13f   | `ConsumerOpts::idempotency(...)` helper — key fn + `ActorStateStore` prefix; CAS `processing` → handler → `done` → ack (effectively-once, not a magic flag) | MR-2 | ✅ |
 | B-13g   | [background-jobs example](../../examples/background-jobs/): idempotent handler demo — HTTP `?dedup=` retry + simulated redelivery; `trigger.sh` like stateful-workers | MR-1 | ✅ |
 | B-13h   | Cross-links: background-jobs ↔ [stateful-workers](scenarios/stateful-workers.md) ↔ [workflows](scenarios/workflows.md) (step `dedup_key`) | MR-1 | ✅ |
-| B-13i   | Prometheus: `crafty_queue_redeliveries_total{stream}` + attempts histogram (optional) | later | 🔲 |
-| B-13j   | Dashboard / `/introspect/queues`: surface jobs with `attempts > 1` as idempotency smell | later | 🔲 |
+| B-13i   | Prometheus: `crafty_queue_redeliveries_total{stream}` + attempts histogram (optional) | later | ✅ |
+| B-13j   | Dashboard / `/introspect/queues`: surface jobs with `attempts > 1` as idempotency smell | later | ✅ |
 
 
 **Suggested MR slices**
@@ -301,7 +301,7 @@ Document the contract, show effectively-once patterns, and improve consumer ergo
 | -- | -------- | ------ |
 | **MR-1** (minimal useful) ✅ | B-13a, B-13b, B-13c, B-13d, B-13g, B-13h | ~1–2 days |
 | **MR-2** (consumer DX) ✅ | B-13e, B-13f + integration test (redelivery → side effect once) | ~2–3 days |
-| **MR-3** (observability) | B-13i, B-13j | backlog |
+| **MR-3** (observability) ✅ | B-13i, B-13j | backlog |
 
 
 **Acceptance:** MR-1 docs + example runnable; MR-2 `crafty/tests/` redelivery idempotency regression; no public API promising exactly-once.

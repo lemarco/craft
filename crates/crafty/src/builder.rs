@@ -1370,6 +1370,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             None
         } else {
             let events_for_queue = events.clone();
+            let metrics_for_queue = metrics.clone();
             Some(Arc::new(
                 QueueService::new(
                     node_id,
@@ -1377,6 +1378,29 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                     Arc::clone(&transport),
                 )
                 .with_lifecycle_hook(Arc::new(move |ev| {
+                    // Attempts are recorded here, once per delivery — a metrics
+                    // sampler polling queue depth cannot see individual deliveries.
+                    if let crafty_actor::QueueLifecycleEvent::Leased {
+                        ref stream,
+                        attempts,
+                        ..
+                    } = ev
+                    {
+                        metrics_for_queue.observe(
+                            "crafty_queue_job_attempts",
+                            "Delivery attempts per leased job (1 = first delivery).",
+                            &[("stream", stream)],
+                            f64::from(attempts),
+                        );
+                        if attempts > 1 {
+                            metrics_for_queue.incr(
+                                "crafty_queue_redeliveries_total",
+                                "Job deliveries that were not the first attempt.",
+                                &[("stream", stream)],
+                                1.0,
+                            );
+                        }
+                    }
                     let _ = events_for_queue.emit(CraftyEvent::from_queue_lifecycle(ev));
                 })),
             ))

@@ -383,12 +383,19 @@ impl<M: StateMachine> Observer for CraftyObserver<M> {
                         &[("stream", &stream)],
                         metric_u64(oldest_pending_age_ms),
                     );
+                    metrics.set(
+                        "crafty_queue_redelivered_jobs",
+                        "Jobs awaiting redelivery after a failed attempt.",
+                        &[("stream", &stream)],
+                        metric_u64(m.redelivered),
+                    );
                     streams.push(QueueStreamView {
                         stream,
                         pending: m.pending,
                         leased: m.leased,
                         dead_letter: m.dead_letter,
                         oldest_pending_age_ms,
+                        redelivered: m.redelivered,
                     });
                 }
             }

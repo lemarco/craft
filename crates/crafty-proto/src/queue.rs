@@ -191,6 +191,8 @@ pub struct QueueMetricsReply {
     pub dead_letter: u64,
     /// Age in ms of the oldest ready pending job (`0` when empty).
     pub oldest_pending_age_ms: u64,
+    /// Jobs that have already failed at least one attempt (idempotency smell).
+    pub redelivered: u64,
     /// Set when metrics collection failed.
     pub error: Option<String>,
 }

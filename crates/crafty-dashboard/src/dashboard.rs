@@ -35,6 +35,7 @@ pub(crate) const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
   #log li .k { color:var(--accent); }
   #log li .q { color:var(--warn); }
   #log li .r { color:var(--ok); }
+  td.warn { color:var(--warn); }
   .badge { padding:1px 7px; border-radius:10px; font-size:12px; background:#21262d; }
   .badge.leader { color:var(--ok); }
 </style>
@@ -57,7 +58,7 @@ pub(crate) const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
   </section>
   <section>
     <h2>Job queues</h2>
-    <table><thead><tr><th>stream</th><th>pending</th><th>leased</th><th>dead letter</th><th>oldest (ms)</th></tr></thead><tbody id="queues"></tbody></table>
+    <table><thead><tr><th>stream</th><th>pending</th><th>leased</th><th>dead letter</th><th>oldest (ms)</th><th title="Jobs that failed an attempt and will be delivered again — handlers must be idempotent">redelivered</th></tr></thead><tbody id="queues"></tbody></table>
   </section>
   <section>
     <h2>Workflows</h2>
@@ -87,7 +88,7 @@ async function refresh() {
     $('actors').innerHTML = (a||[]).map(x =>
       `<tr><td>${x.id}</td><td>${x.actor_type}</td><td>${x.node}</td><td>${x.mailbox_depth}</td><td>${x.uptime_secs}s</td><td>${(x.messages_per_sec ?? 0).toFixed(1)}</td><td>${x.generation}</td></tr>`).join('');
     $('queues').innerHTML = ((q && q.streams) || []).map(x =>
-      `<tr><td>${x.stream}</td><td>${x.pending}</td><td>${x.leased}</td><td>${x.dead_letter ?? 0}</td><td>${x.oldest_pending_age_ms}</td></tr>`).join('');
+      `<tr><td>${x.stream}</td><td>${x.pending}</td><td>${x.leased}</td><td>${x.dead_letter ?? 0}</td><td>${x.oldest_pending_age_ms}</td><td${(x.redelivered ?? 0) > 0 ? ' class="warn" title="idempotency smell: these jobs are being re-run"' : ''}>${x.redelivered ?? 0}</td></tr>`).join('');
     $('sagas').innerHTML = (s||[]).map(x =>
       `<tr><td>${x.saga_id.slice(0,16)}…</td><td>${x.phase}</td><td>${x.completed_steps}</td><td>${x.failed_step ?? '—'}</td></tr>`).join('');
   } catch (e) { /* transient during elections */ }

@@ -159,6 +159,7 @@ impl CraftyEvent {
                 lease_id,
                 worker_node,
                 worker_instance,
+                attempts: _,
             } => Self::JobLeased {
                 stream,
                 job_id,
@@ -327,6 +328,7 @@ mod tests {
             lease_id: 99,
             worker_node: 4,
             worker_instance: 1,
+            attempts: 1,
         });
         assert_eq!(
             ev,

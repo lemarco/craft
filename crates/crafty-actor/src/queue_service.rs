@@ -167,6 +167,7 @@ impl QueueService {
         lease_id: u64,
         worker_node: u64,
         worker_instance: u32,
+        attempts: u32,
     ) {
         self.emit_lifecycle(QueueLifecycleEvent::Leased {
             stream: stream.to_owned(),
@@ -174,6 +175,7 @@ impl QueueService {
             lease_id,
             worker_node,
             worker_instance,
+            attempts,
         });
     }
 
@@ -876,6 +878,7 @@ impl QueueService {
                                 j.lease_id.0,
                                 request.worker_node,
                                 request.worker_instance,
+                                j.attempts,
                             );
                         }
                         return QueueLeaseReply {
@@ -933,6 +936,7 @@ impl QueueService {
                                     j.lease_id.0,
                                     request.worker_node,
                                     request.worker_instance,
+                                    j.attempts,
                                 );
                             }
                             QueueLeaseReply {
@@ -1107,6 +1111,7 @@ impl QueueService {
                             leased: 0,
                             dead_letter: 0,
                             oldest_pending_age_ms: 0,
+                            redelivered: 0,
                             error: Some(e),
                         };
                     }
@@ -1120,6 +1125,7 @@ impl QueueService {
                     dead_letter: m.dead_letter,
                     oldest_pending_age_ms: u64::try_from(m.oldest_pending_age.as_millis())
                         .unwrap_or(u64::MAX),
+                    redelivered: m.redelivered,
                     error: None,
                 },
                 Err(e) => QueueMetricsReply {
@@ -1127,6 +1133,7 @@ impl QueueService {
                     leased: 0,
                     dead_letter: 0,
                     oldest_pending_age_ms: 0,
+                    redelivered: 0,
                     error: Some(e.to_string()),
                 },
             }
@@ -1147,6 +1154,7 @@ impl QueueService {
                     leased: 0,
                     dead_letter: 0,
                     oldest_pending_age_ms: 0,
+                    redelivered: 0,
                     error: Some(e),
                 },
             }
@@ -1638,6 +1646,7 @@ impl JobQueue for ClusterJobQueue {
                 leased: reply.leased,
                 dead_letter: reply.dead_letter,
                 oldest_pending_age: std::time::Duration::from_millis(reply.oldest_pending_age_ms),
+                redelivered: reply.redelivered,
             })
         })
     }

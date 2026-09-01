@@ -191,6 +191,11 @@ pub struct QueueMetrics {
     pub dead_letter: u64,
     /// Age of the oldest ready pending job.
     pub oldest_pending_age: Duration,
+    /// Jobs still in the queue that have already failed at least one attempt.
+    ///
+    /// An idempotency smell: every one of these will be delivered again, so the
+    /// handler must be safe to re-run ([background-jobs](../../../docs/scenarios/background-jobs.md#delivery-semantics)).
+    pub redelivered: u64,
 }
 
 /// Why a queue operation failed.
@@ -656,6 +661,11 @@ impl Inner {
             leased: self.leases.len() as u64,
             dead_letter: self.jobs.values().filter(|entry| entry.dead_letter).count() as u64,
             oldest_pending_age: oldest,
+            redelivered: self
+                .jobs
+                .values()
+                .filter(|entry| entry.attempts > 0 && !entry.dead_letter)
+                .count() as u64,
         }
     }
 
@@ -1383,6 +1393,34 @@ mod tests {
         assert_ne!(status.lifecycle, JobLifecycle::DeadLetter);
         assert_eq!(status.attempts, 3);
         assert_eq!(q.metrics().await.unwrap().dead_letter, 0);
+    }
+
+    #[tokio::test]
+    async fn redelivered_gauge_counts_jobs_that_failed_an_attempt() {
+        let q = InMemoryJobQueue::new(Duration::from_secs(30));
+        let id = q.enqueue(b"flaky").await.unwrap();
+        assert_eq!(q.metrics().await.unwrap().redelivered, 0, "first delivery");
+
+        let leased = q.lease(worker(0), 1).await.unwrap();
+        assert_eq!(leased[0].attempts, 1, "attempts start at 1");
+        q.nack(worker(0), leased[0].lease_id).await.unwrap();
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        assert_eq!(
+            q.metrics().await.unwrap().redelivered,
+            1,
+            "job awaiting redelivery is an idempotency smell"
+        );
+
+        let again = q.lease(worker(0), 1).await.unwrap();
+        assert_eq!(again[0].attempts, 2, "redelivery reports attempt 2");
+        q.ack(worker(0), again[0].lease_id).await.unwrap();
+        assert_eq!(
+            q.metrics().await.unwrap().redelivered,
+            0,
+            "acked job leaves the queue"
+        );
+        let _ = id;
     }
 
     #[tokio::test]

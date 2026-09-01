@@ -245,6 +245,35 @@ is only as strong as the store and the key you choose:
 Regression coverage: [`crafty/tests/consumer_idempotency.rs`](../../crates/crafty/tests/consumer_idempotency.rs)
 asserts one side effect across a redelivery, with an unguarded control case.
 
+### Spotting duplicates in production
+
+Redelivery is invisible until you measure it. Three signals, all per `stream`:
+
+| Signal | Kind | Means |
+|--------|------|-------|
+| `crafty_queue_redeliveries_total` | counter | Deliveries that were not the first attempt |
+| `crafty_queue_job_attempts` | histogram | Attempt number per delivery (`1` = first) |
+| `crafty_queue_redelivered_jobs` | gauge | Jobs in the queue that already failed an attempt |
+
+The counter and histogram are recorded once per delivery from the queue lifecycle
+hook; the gauge is sampled with the other queue depths.
+
+A non-zero `crafty_queue_redelivered_jobs` is an **idempotency smell**, not
+necessarily a bug: it means handlers on that stream are being re-run, so they had
+better be safe to re-run. A steadily climbing
+`crafty_queue_redeliveries_total` with a flat dead-letter count usually means a
+handler that fails after its side effect — exactly the case the
+[recipe](#effectively-once-recipe) is for.
+
+The same number appears per stream in `/introspect/queues` and in the admin
+dashboard's **Job queues** table, highlighted when non-zero.
+
+```console
+$ curl -s localhost:9080/introspect/queues | jq '.streams[]'
+{ "stream": "emails", "pending": 0, "leased": 1, "dead_letter": 0,
+  "oldest_pending_age_ms": 0, "redelivered": 2 }
+```
+
 ### Attempt ceilings
 
 `max_attempts` bounds redelivery. Per job it is an

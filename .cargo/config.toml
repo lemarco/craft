@@ -1,12 +1,20 @@
 # Local build acceleration (Arch/Linux). See scripts/install-dev-tools.sh for nextest/mold.
 #
-# RUSTFLAGS from hook-prelude / CI (-D warnings) merges with link args below.
+# NOTE: an exported RUSTFLAGS env var REPLACES the target.rustflags below, it does
+# not merge with them -- setting `RUSTFLAGS=-D warnings` silently drops mold and
+# invalidates the whole build cache. Put lints in [target.*.rustflags] instead.
 
 [build]
-# Faster incremental rebuilds in dev; disable only when using sccache as rustc-wrapper.
-incremental = true
-# Uncomment or `export RUSTC_WRAPPER=sccache` for cold-build caching (CI / clean clones).
-# rustc-wrapper = "sccache"
+# Artifacts live on the NVMe, not the project's disk: /home/lemarc/media is a
+# 5400rpm ST4000VX013 and compilation is a small-file/metadata workload it cannot
+# serve. Biggest single local speedup. Override with CARGO_TARGET_DIR if needed.
+target-dir = "/home/lemarc/.cache/cargo-target/craft"
+# Off: incompatible with the sccache rustc-wrapper below, and combined with
+# unpacked split-debuginfo + opt-level=3 deps it grew target/ to 132G.
+incremental = false
+# Cold-build caching (clean clones, feature-flag flips, clippy/rustc fingerprint
+# churn). Cache lives in ~/.cache/sccache -- also on the NVMe.
+rustc-wrapper = "sccache"
 
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"

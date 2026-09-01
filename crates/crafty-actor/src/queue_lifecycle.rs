@@ -22,6 +22,11 @@ pub enum QueueLifecycleEvent {
         worker_node: u64,
         /// Worker instance id on that node.
         worker_instance: u32,
+        /// Delivery attempts including this one (`1` on first delivery).
+        ///
+        /// `> 1` means the job was redelivered — an idempotency smell worth
+        /// surfacing ([background-jobs](../../../docs/scenarios/background-jobs.md#delivery-semantics)).
+        attempts: u32,
     },
     /// A lease was acknowledged (job completed).
     Acked {

@@ -152,6 +152,12 @@ pub struct QueueStreamView {
     pub dead_letter: u64,
     /// Age of the oldest ready pending job in milliseconds.
     pub oldest_pending_age_ms: u64,
+    /// Jobs that have already failed an attempt and will be delivered again.
+    ///
+    /// Non-zero means handlers on this stream are being re-run — they must be
+    /// idempotent ([background-jobs](../../../docs/scenarios/background-jobs.md#delivery-semantics)).
+    #[serde(default)]
+    pub redelivered: u64,
 }
 
 /// All registered job streams on this node.

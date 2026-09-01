@@ -537,6 +537,15 @@ impl RedbJobQueue {
                 decode::<StoredJob>(bytes.value()).is_ok_and(|stored| stored.dead_letter)
             })
             .count() as u64;
+        let redelivered_count = jobs
+            .iter()
+            .map_err(backend)?
+            .filter_map(std::result::Result::ok)
+            .filter(|(_, bytes)| {
+                decode::<StoredJob>(bytes.value())
+                    .is_ok_and(|stored| stored.attempts > 0 && !stored.dead_letter)
+            })
+            .count() as u64;
 
         let oldest_ms = pending
             .iter()
@@ -559,6 +568,7 @@ impl RedbJobQueue {
             leased: leased_count,
             dead_letter: dead_letter_count,
             oldest_pending_age,
+            redelivered: redelivered_count,
         })
     }
 
