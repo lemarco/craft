@@ -1,6 +1,5 @@
 //! Queue consumer helpers ([`JobConsumer`], [`ConsumerOpts`], [`CraftyApp::spawn_consumer`]).
 
-use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -8,7 +7,7 @@ use crafty_actor::{WorkerId, run_queue_consumer};
 
 use crate::CraftyApp;
 
-type ConsumerSpawnFn = Box<
+pub(crate) type ConsumerSpawnFn = Box<
     dyn FnOnce(Arc<CraftyApp>, tokio::sync::watch::Receiver<bool>) -> tokio::task::JoinHandle<()>
         + Send,
 >;

@@ -9,7 +9,7 @@ use std::env;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use crafty::{ConsumerGroup, ConsumerOpts, CraftyApp, CraftyConfigure, GatewayOpts, QueueOpts, RunOpts, consumer};
+use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, JobOpts, RunOpts, consumer};
 use crafty_showcase_common::{data_dir, display_addr};
 
 static HANDLED: AtomicUsize = AtomicUsize::new(0);
@@ -35,15 +35,6 @@ fn worker_count() -> u32 {
         .max(1)
 }
 
-fn consumer_opts(instance: u32) -> ConsumerOpts {
-    ConsumerOpts {
-        instance,
-        batch: 4,
-        idle_sleep: Duration::from_millis(50),
-        ..ConsumerOpts::default()
-    }
-}
-
 fn server_builder() -> crafty::CraftyAppBuilder {
     let dir = data_dir(DATA_DIR_NAME);
     let _ = std::fs::create_dir_all(&dir);
@@ -51,21 +42,22 @@ fn server_builder() -> crafty::CraftyAppBuilder {
         .unwrap_or_else(|_| "127.0.0.1:8090".into())
         .parse()
         .expect("gateway");
-    let mut group = ConsumerGroup::new();
-    for instance in 0..worker_count() {
-        group = group.add(SendEmailConsumer, consumer_opts(instance));
-    }
     CraftyApp::builder()
         .data_dir(dir)
-        .queue([QueueOpts::new(STREAM, Duration::from_secs(300))])
+        .jobs([JobOpts::new(STREAM)
+            .lease(Duration::from_secs(300))
+            .consumer(SendEmailConsumer)
+            .instances(worker_count())
+            .batch(4)
+            .idle_sleep(Duration::from_millis(50))
+            .http_enqueue(true)])
         .configure(CraftyConfigure {
             tick_period: Duration::from_millis(10),
             reconcile_period: Duration::from_millis(20),
             admin_addr: Some("127.0.0.1:9080".parse().expect("admin")),
             ..CraftyConfigure::default()
         })
-        .gateway(GatewayOpts::new(gateway).with_jobs_api(true))
-        .consumers(group)
+        .gateway(GatewayOpts::new(gateway))
 }
 
 #[tokio::main]

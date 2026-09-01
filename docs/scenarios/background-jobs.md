@@ -156,13 +156,23 @@ Policy can persist in Meta-Raft ([job-queue](../decisions/job-queue.md)).
 
 ## Future polish
 
-Declarative `.jobs(...)` / attribute macros for workers remain aspirational. Today:
+Declarative [`.jobs()`](../../crates/crafty/src/job_opts.rs) is the preferred registration path. Lower-level [`.queue`](../../crates/crafty/src/app.rs) + [`.consumer`](../../crates/crafty/src/app.rs) remain available.
 
 ```rust
+use crafty::{CraftyApp, GatewayOpts, JobOpts, RunOpts, consumer};
+
+#[consumer("emails")]
+async fn send_email(_payload: &[u8]) -> Result<(), ()> {
+    Ok(())
+}
+
 CraftyApp::builder()
-    .queue([QueueOpts::new("emails", Duration::from_secs(300))])
-    .consumer(SendEmailConsumer, ConsumerOpts::default())
-    .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?).with_jobs_api(true))
+    .data_dir("/var/lib/crafty")
+    .jobs([JobOpts::new("emails")
+        .lease(Duration::from_secs(300))
+        .consumer(SendEmailConsumer)
+        .http_enqueue(true)])
+    .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?))
     .run(RunOpts::default().with_wait_queue("emails"))
     .await?;
 ```

@@ -25,15 +25,15 @@ use crate::app_opts::RunOpts;
 use crate::builder::{CraftyClusterBuilder, StartError};
 use crate::cluster_handle::{ClusterFacts, CraftyCluster};
 use crate::configure::CraftyConfigure;
+use crate::consumer::ConsumerSpawnFn;
 use crate::cron_opts::CronOpts;
 use crate::env_config::{AppConfig, app_config_from_env};
 use crate::gateway::spawn_gateway as spawn_gateway_task;
 use crate::gateway::{GatewayConfig, GatewayHandle, GatewayOpts};
+use crate::job_opts::JobOpts;
 use crate::queue_opts::QueueOpts;
+use crate::worker_opts::{WorkerGroup, WorkerOpts};
 use crate::workflow_opts::{WorkflowOpts, WorkflowRegistration, resolve_workflow};
-
-type ConsumerSpawnFn =
-    Box<dyn FnOnce(Arc<CraftyApp>, tokio::sync::watch::Receiver<bool>) -> JoinHandle<()> + Send>;
 
 /// Run a workflow using the default keyed client and Meta-Raft journal.
 ///
@@ -100,15 +100,19 @@ impl StateMachine for EmptyStateMachine {
 
 /// Fluent builder for [`CraftyApp`].
 pub struct CraftyAppBuilder {
-    inner: CraftyClusterBuilder<EmptyStateMachine>,
+    pub(crate) inner: CraftyClusterBuilder<EmptyStateMachine>,
     workflows: Vec<WorkflowRegistration>,
     reg_jobs: bool,
-    reg_actors: bool,
+    pub(crate) reg_actors: bool,
     queue_streams: HashSet<String>,
     cron_streams: Vec<String>,
     consumer_streams: Vec<String>,
     pending_consumers: Vec<ConsumerSpawnFn>,
-    gateway: Option<GatewayConfig>,
+    pub(crate) gateway: Option<GatewayConfig>,
+    pub(crate) config_errors: Vec<String>,
+    want_jobs_api: bool,
+    pub(crate) want_actors_api: bool,
+    pub(crate) worker_autoscale_streams: Vec<String>,
 }
 
 impl CraftyAppBuilder {
@@ -175,6 +179,37 @@ impl CraftyAppBuilder {
         self
     }
 
+    /// Register durable job streams with handlers via [`JobOpts`] (queue + consumer + optional HTTP enqueue).
+    #[must_use]
+    pub fn jobs(mut self, jobs: impl IntoIterator<Item = JobOpts>) -> Self {
+        for job in jobs {
+            let reg = job.into_registration();
+            if let Some(err) = reg.config_error {
+                self.config_errors.push(err);
+                continue;
+            }
+            self.reg_jobs = true;
+            self.queue_streams.insert(reg.stream.clone());
+            self.inner = self
+                .inner
+                .job_queue(&reg.queue.name, reg.queue.lease);
+            self.inner = self
+                .inner
+                .job_queue_prefetch(&reg.queue.name, reg.queue.prefetch);
+            if !reg.spawners.is_empty() {
+                self.consumer_streams.push(reg.stream);
+            }
+            self.pending_consumers.extend(reg.spawners);
+            if reg.http_enqueue {
+                self.want_jobs_api = true;
+                if let Some(gateway) = self.gateway.as_mut() {
+                    gateway.jobs_api = true;
+                }
+            }
+        }
+        self
+    }
+
     /// Register durable job streams (requires [`Self::data_dir`]).
     #[must_use]
     pub fn queue(mut self, queues: impl IntoIterator<Item = QueueOpts>) -> Self {
@@ -203,6 +238,8 @@ impl CraftyAppBuilder {
 
     /// Register an actor group — [`ActorGroupOpts::default`] / [`ActorGroupOpts::new`] = one worker per live node;
     /// [`ActorGroupOpts::fixed`] = fixed pool size cluster-wide.
+    ///
+    /// Prefer [`.workers`](Self::workers) with [`WorkerOpts`] for explicit scale.
     #[must_use]
     pub fn actors<A: UserActor>(mut self, name: &str, opts: ActorGroupOpts<A::Config>) -> Self
     where
@@ -214,6 +251,28 @@ impl CraftyAppBuilder {
             None => self.inner.manage_auto::<A>(name, opts.config),
         };
         self
+    }
+
+    /// Register one managed worker actor group via [`WorkerOpts`].
+    #[must_use]
+    pub fn worker<A: UserActor>(self, opts: WorkerOpts<A>) -> Self
+    where
+        A::Config: Clone + Send + Sync + 'static,
+    {
+        self.apply_worker_entry(opts.into_entry())
+    }
+
+    /// Register several worker actor groups via [`WorkerGroup`] or [`workers!`](crate::workers).
+    #[must_use]
+    pub fn workers(mut self, group: WorkerGroup) -> Self {
+        for entry in group.into_entries() {
+            self = self.apply_worker_entry(entry);
+        }
+        self
+    }
+
+    fn apply_worker_entry(self, entry: crate::worker_opts::WorkerEntry) -> Self {
+        (entry.apply)(self)
     }
 
     /// Register workflow plans and runners for HTTP `/workflows/*` and [`CraftyApp::run_workflow_id`].
@@ -233,11 +292,21 @@ impl CraftyAppBuilder {
     /// Public HTTP gateway — custom routes and optional built-in APIs ([`GatewayOpts`]).
     #[must_use]
     pub fn gateway(mut self, opts: GatewayOpts) -> Self {
-        self.gateway = Some(opts.into_config());
+        let mut config = opts.into_config();
+        if self.want_jobs_api {
+            config.jobs_api = true;
+        }
+        if self.want_actors_api {
+            config.actors_api = true;
+        }
+        self.gateway = Some(config);
         self
     }
 
     fn validate(&self) -> Result<(), StartError> {
+        if let Some(err) = self.config_errors.first() {
+            return Err(StartError::Config(err.clone()));
+        }
         for stream in &self.cron_streams {
             if !self.queue_streams.contains(stream) {
                 return Err(StartError::Config(format!(
@@ -249,6 +318,13 @@ impl CraftyAppBuilder {
             if !self.queue_streams.contains(stream) {
                 return Err(StartError::Config(format!(
                     "`.consumer()` stream {stream:?} has no matching `.queue()` registration"
+                )));
+            }
+        }
+        for stream in &self.worker_autoscale_streams {
+            if !self.queue_streams.contains(stream) {
+                return Err(StartError::Config(format!(
+                    "`.workers()` autoscale stream {stream:?} has no matching `.queue()` or `.jobs()` registration"
                 )));
             }
         }
@@ -410,6 +486,10 @@ impl CraftyApp {
             consumer_streams: Vec::new(),
             pending_consumers: Vec::new(),
             gateway: None,
+            config_errors: Vec::new(),
+            want_jobs_api: false,
+            want_actors_api: false,
+            worker_autoscale_streams: Vec::new(),
         }
     }
 

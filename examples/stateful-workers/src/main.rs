@@ -23,7 +23,8 @@ use std::env;
 use std::time::Duration;
 
 use crafty::{
-    ActorGroupOpts, CraftyApp, CraftyAppBuilder, CraftyConfigure, GatewayOpts, ReadyOpts, RunOpts,
+    CraftyApp, CraftyAppBuilder, CraftyConfigure, GatewayOpts, ReadyOpts, RunOpts, WorkerOpts,
+    WorkerScale, workers,
 };
 use crafty_showcase_common::gateway_auth::ShowcaseGatewayIdentity;
 use crafty_showcase_common::{data_dir, display_addr, env_flag};
@@ -45,9 +46,18 @@ fn processor_cfg() -> ProcessorCfg {
 
 fn apply_actors(builder: CraftyAppBuilder) -> CraftyAppBuilder {
     if migrate_demo_mode() {
-        builder.actors::<StatefulCounter>("counter", ActorGroupOpts::fixed(0, 1))
+        builder.workers(workers![
+            WorkerOpts::<StatefulCounter>::new("counter")
+                .config(0)
+                .scale(WorkerScale::Fixed(1)),
+        ])
     } else {
-        builder.actors::<OrderProcessor>("orders", ActorGroupOpts::fixed(processor_cfg(), 1))
+        builder.workers(workers![
+            WorkerOpts::<OrderProcessor>::new("orders")
+                .config(processor_cfg())
+                .scale(WorkerScale::Fixed(1))
+                .http_cast(true),
+        ])
     }
 }
 

@@ -23,9 +23,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crafty::cluster::PemSecurity;
+use crafty::cluster::{CraftyCluster, PemSecurity};
 use crafty::upgrade::{UpgradeMachine, UpgradeOpts, spawn_upgrade_runtime, upgrade_api};
-use crafty::cluster::{CraftyCluster, ReadyOpts};
+use crafty::ReadyOpts;
 use crafty_showcase_common::{data_dir, display_addr, env_flag};
 
 const DATA_DIR_NAME: &str = "crafty-showcase-self-update";

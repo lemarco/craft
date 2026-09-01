@@ -105,6 +105,7 @@ pub(crate) fn expand_consumer(stream: &str, input_fn: &ItemFn) -> TokenStream2 {
 
         #[doc(hidden)]
         #[allow(non_camel_case_types, missing_docs)]
+        #[derive(Clone, Copy)]
         pub struct #consumer_name;
 
         impl ::crafty::JobConsumer for #consumer_name {

@@ -19,6 +19,8 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ### Added
 
+- **`JobOpts` + `CraftyAppBuilder::jobs`** — declarative queue + handler + HTTP enqueue in one call.
+- **`WorkerOpts` + `WorkerScale` + `CraftyAppBuilder::workers`** — declarative actor groups (`Fixed` / `PerNode` / queue `Auto`) via [`workers!`](crates/crafty/src/worker_opts.rs) macro.
 - `crafty_test_support::wait_for_crafty_app_leader` — poll leader election on a running `CraftyApp`.
 
 ## [0.4.0] — 2026-08-31

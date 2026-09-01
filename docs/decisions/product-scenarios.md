@@ -74,7 +74,7 @@ CraftyApp::builder()
     .await?;
 ```
 
-Declarative `.jobs(...)` / `.workers(..., scale: Auto)` registration remains aspirational — use `.queue`, `.consumer`, and `.actors(name, ActorGroupOpts::…)` today ([examples/](../../examples/README.md)).
+Declarative [`.jobs()`](../../crates/crafty/src/job_opts.rs) registers queue + consumer (+ optional HTTP enqueue). [`.workers()`](../../crates/crafty/src/worker_opts.rs) registers actor groups with explicit [`WorkerScale`](../../crates/crafty/src/worker_opts.rs) (`Fixed` / `PerNode` / queue `Auto`). Legacy [`.actors()`](../../crates/crafty/src/app.rs) + [`ActorGroupOpts`](../../crates/crafty/src/actor_group.rs) remain supported ([examples/](../../examples/README.md)).
 
 ### Scenario composition
 
@@ -136,7 +136,7 @@ Full epic list: [backlog.md](../backlog.md) (P0–P3 ✅).
 
 **Negative**
 
-- Declarative `.jobs()` / `.workers()` builder sugar still aspirational — use `.queue`, `.consumer`, and `.actors(name, ActorGroupOpts::…)` today
+- Declarative `.jobs()` / `.workers()` builder sugar shipped — legacy `.queue`, `.consumer`, and `.actors(name, ActorGroupOpts::…)` remain supported
 - WebSocket gateway auth remains a thin stub (`GATEWAY_TOKEN`) — production apps add their own layer
 - Stateful workers need `RedbActorStateStore` + SM discipline — keys without SM still require explicit design
 

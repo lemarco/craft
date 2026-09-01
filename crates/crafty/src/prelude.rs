@@ -7,6 +7,8 @@ pub use crate::builder::StartError;
 pub use crate::configure::CraftyConfigure;
 pub use crate::consumer::{ConsumerGroup, ConsumerOpts, JobConsumer};
 pub use crate::cron_opts::CronOpts;
+pub use crate::job_opts::JobOpts;
+pub use crate::worker_opts::{WorkerGroup, WorkerOpts, WorkerScale};
 pub use crate::gateway::{
     CraftyGatewayState, ExtractedIdentity, GatewayIdentity, GatewayOpts, GatewayRequest,
     GatewayTokenIdentity, IdentityError, IdentityTypeError, OpenActorSessionError, SessionHandle,
