@@ -98,20 +98,32 @@ impl StateMachine for EmptyStateMachine {
     }
 }
 
+/// Job/actor registration toggles on [`CraftyAppBuilder`].
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CraftyAppRegistrationFlags {
+    pub(crate) jobs: bool,
+    pub(crate) actors: bool,
+}
+
+/// Gateway built-in API toggles on [`CraftyAppBuilder`].
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CraftyAppGatewayApiFlags {
+    pub(crate) jobs: bool,
+    pub(crate) actors: bool,
+}
+
 /// Fluent builder for [`CraftyApp`].
 pub struct CraftyAppBuilder {
     pub(crate) inner: CraftyClusterBuilder<EmptyStateMachine>,
     workflows: Vec<WorkflowRegistration>,
-    reg_jobs: bool,
-    pub(crate) reg_actors: bool,
+    pub(crate) registration: CraftyAppRegistrationFlags,
     queue_streams: HashSet<String>,
     cron_streams: Vec<String>,
     consumer_streams: Vec<String>,
     pending_consumers: Vec<ConsumerSpawnFn>,
     pub(crate) gateway: Option<GatewayConfig>,
     pub(crate) config_errors: Vec<String>,
-    want_jobs_api: bool,
-    pub(crate) want_actors_api: bool,
+    pub(crate) gateway_api: CraftyAppGatewayApiFlags,
     pub(crate) worker_autoscale_streams: Vec<String>,
 }
 
@@ -120,9 +132,9 @@ impl CraftyAppBuilder {
     fn apply_env_config(mut self, cfg: &AppConfig) -> Self {
         self.inner = self.inner.merge_app_config(cfg);
         if let Some(stream) = cfg.job_queue_stream.clone()
-            && !self.reg_jobs
+            && !self.registration.jobs
         {
-            self.reg_jobs = true;
+            self.registration.jobs = true;
             self.queue_streams.insert(stream.clone());
             self = self.queue([QueueOpts::new(stream, cfg.job_queue_lease)]);
         }
@@ -188,7 +200,7 @@ impl CraftyAppBuilder {
                 self.config_errors.push(err);
                 continue;
             }
-            self.reg_jobs = true;
+            self.registration.jobs = true;
             self.queue_streams.insert(reg.stream.clone());
             self.inner = self.inner.job_queue(&reg.queue.name, reg.queue.lease);
             self.inner = self
@@ -199,7 +211,7 @@ impl CraftyAppBuilder {
             }
             self.pending_consumers.extend(reg.spawners);
             if reg.http_enqueue {
-                self.want_jobs_api = true;
+                self.gateway_api.jobs = true;
                 if let Some(gateway) = self.gateway.as_mut() {
                     gateway.jobs_api = true;
                 }
@@ -212,7 +224,7 @@ impl CraftyAppBuilder {
     #[must_use]
     pub fn queue(mut self, queues: impl IntoIterator<Item = QueueOpts>) -> Self {
         for opts in queues {
-            self.reg_jobs = true;
+            self.registration.jobs = true;
             self.queue_streams.insert(opts.name.clone());
             self.inner = self.inner.job_queue(&opts.name, opts.lease);
             self.inner = self.inner.job_queue_prefetch(&opts.name, opts.prefetch);
@@ -243,7 +255,7 @@ impl CraftyAppBuilder {
     where
         A::Config: Clone + Send + Sync + 'static,
     {
-        self.reg_actors = true;
+        self.registration.actors = true;
         self.inner = match opts.total {
             Some(total) => self.inner.manage::<A>(name, total, opts.config),
             None => self.inner.manage_auto::<A>(name, opts.config),
@@ -291,10 +303,10 @@ impl CraftyAppBuilder {
     #[must_use]
     pub fn gateway(mut self, opts: GatewayOpts) -> Self {
         let mut config = opts.into_config();
-        if self.want_jobs_api {
+        if self.gateway_api.jobs {
             config.jobs_api = true;
         }
-        if self.want_actors_api {
+        if self.gateway_api.actors {
             config.actors_api = true;
         }
         self.gateway = Some(config);
@@ -477,16 +489,14 @@ impl CraftyApp {
         CraftyAppBuilder {
             inner: CraftyClusterBuilder::new(NodeId(1), EmptyStateMachine),
             workflows: Vec::new(),
-            reg_jobs: false,
-            reg_actors: false,
+            registration: CraftyAppRegistrationFlags::default(),
             queue_streams: HashSet::new(),
             cron_streams: Vec::new(),
             consumer_streams: Vec::new(),
             pending_consumers: Vec::new(),
             gateway: None,
             config_errors: Vec::new(),
-            want_jobs_api: false,
-            want_actors_api: false,
+            gateway_api: CraftyAppGatewayApiFlags::default(),
             worker_autoscale_streams: Vec::new(),
         }
     }

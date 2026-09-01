@@ -46,7 +46,7 @@ fn server_builder() -> crafty::CraftyAppBuilder {
         .data_dir(dir)
         .jobs([JobOpts::new(STREAM)
             .lease(Duration::from_secs(300))
-            .consumer(SendEmailConsumer)
+            .consumer(&SendEmailConsumer)
             .instances(worker_count())
             .batch(4)
             .idle_sleep(Duration::from_millis(50))

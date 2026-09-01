@@ -24,7 +24,7 @@ use crate::queue_opts::QueueOpts;
 ///     .data_dir("/tmp/app")
 ///     .jobs([JobOpts::new("emails")
 ///         .lease(Duration::from_secs(300))
-///         .consumer(SendEmailConsumer)
+///         .consumer(&SendEmailConsumer)
 ///         .instances(2)
 ///         .batch(4)
 ///         .http_enqueue(true)])
@@ -124,7 +124,7 @@ impl JobOpts {
     ///
     /// Pass the generated unit type (e.g. `SendEmailConsumer`), not the async fn.
     #[must_use]
-    pub fn consumer<C>(mut self, consumer: C) -> Self
+    pub fn consumer<C>(mut self, consumer: &C) -> Self
     where
         C: JobConsumer + Clone + 'static,
     {

@@ -78,6 +78,8 @@ impl<A: UserActor> std::fmt::Debug for WorkerOpts<A> {
             .field("scale", &self.scale)
             .field("autoscale_from", &self.autoscale_from)
             .field("autoscale_target_pending", &self.autoscale_target_pending)
+            .field("autoscale_cooldown", &self.autoscale_cooldown)
+            .field("autoscale_poll", &self.autoscale_poll)
             .field("http_cast", &self.http_cast)
             .field("config_error", &self.config_error)
             .finish()
@@ -186,9 +188,9 @@ impl<A: UserActor> WorkerOpts<A> {
 
         WorkerEntry {
             apply: Box::new(move |mut builder: CraftyAppBuilder| {
-                builder.reg_actors = true;
+                builder.registration.actors = true;
                 if http_cast {
-                    builder.want_actors_api = true;
+                    builder.gateway_api.actors = true;
                     if let Some(gateway) = builder.gateway.as_mut() {
                         gateway.actors_api = true;
                     }

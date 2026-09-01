@@ -138,7 +138,7 @@ mod workflows {
 async fn jobs_consumer_stream_mismatch_fails_at_boot() {
     let dir = tempfile::tempdir().expect("tempdir");
     let result = local_builder(dir.path())
-        .jobs([JobOpts::new("other").consumer(EmailWorkerConsumer)])
+        .jobs([JobOpts::new("other").consumer(&EmailWorkerConsumer)])
         .boot_for_test(RunOpts::local())
         .await;
     match result {
@@ -152,7 +152,7 @@ async fn jobs_registers_queue_handler_and_jobs_api() {
     let dir = tempfile::tempdir().expect("tempdir");
     let app = local_builder(dir.path())
         .jobs([JobOpts::new("emails")
-            .consumer(EmailWorkerConsumer)
+            .consumer(&EmailWorkerConsumer)
             .http_enqueue(true)])
         .gateway(GatewayOpts::new("127.0.0.1:0".parse().unwrap()))
         .boot_for_test(RunOpts::local())
