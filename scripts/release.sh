@@ -35,9 +35,13 @@ current_version() {
 
 # `cargo publish --workspace --dry-run` packages every crate and resolves the
 # intra-workspace path deps locally, in dependency order — the release gate.
+#
+# `--allow-dirty` because prepare_release bumps Cargo.toml *before* gating and
+# only commits afterwards, so the tree is intentionally dirty here (same flag as
+# scripts/publish-dry-run.sh). Nothing is uploaded by a dry run.
 dry_run() {
     echo ">> publish dry-run (all crates, dependency order)…"
-    cargo publish --workspace --dry-run
+    cargo publish --workspace --dry-run --allow-dirty
 }
 
 do_publish() {
