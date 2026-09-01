@@ -1,11 +1,11 @@
 //! `crafty-macros` — derive/attribute macros for the crafty framework (backlog
 //! Track D).
 //!
-//! Public entry points are the [`macro@remote_actor`] and [`macro@consumer`] attributes.
-//! [`remote_actor`] fills in wire codecs on a `UserActor` impl;
+//! Public entry points are the [`macro@actor`] and [`macro@consumer`] attributes.
+//! [`actor`] fills in wire codecs on a `UserActor` impl;
 //! [`consumer`] generates a `JobConsumer` adapter for queue workers (re-exported by the `crafty` crate).
 //!
-//! The [`macro@remote_actor`] attribute fills in the boilerplate `postcard` wire codecs on a
+//! The [`macro@actor`] attribute fills in the boilerplate `postcard` wire codecs on a
 //! `UserActor` implementation so an actor can be spawned on and messaged from remote nodes
 //! (cross-node-actors). The state-machine "derive" of state-machine is instead served by serde
 //! blanket impls in `crafty-core` (see backlog D0/D1), so no `StateMachine` derive is exported.
@@ -48,7 +48,7 @@ pub fn consumer(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// `crafty_proto::encode`/`decode` glue, annotate the impl:
 ///
 /// ```ignore
-/// #[crafty_actor::remote_actor]
+/// #[crafty_actor::actor]
 /// impl crafty_actor::UserActor for Counter {
 ///     type Config = CounterConfig;   // : Serialize + DeserializeOwned
 ///     type Message = CounterMessage; // : DeserializeOwned
@@ -70,11 +70,11 @@ pub fn consumer(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// state, not a mechanical codec):
 ///
 /// ```ignore
-/// #[crafty_actor::remote_actor(migratable)]
+/// #[crafty_actor::actor(migratable)]
 /// impl crafty_actor::UserActor for Session { /* .. */ }
 /// ```
 #[proc_macro_attribute]
-pub fn remote_actor(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn actor(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr with Punctuated::<Ident, Token![,]>::parse_terminated);
     let mut input = parse_macro_input!(item as ItemImpl);
 
@@ -85,7 +85,7 @@ pub fn remote_actor(attr: TokenStream, item: TokenStream) -> TokenStream {
         } else {
             return syn::Error::new_spanned(
                 arg,
-                "unknown `remote_actor` option (expected `migratable`)",
+                "unknown `actor` option (expected `migratable`)",
             )
             .to_compile_error()
             .into();
@@ -101,7 +101,7 @@ pub fn remote_actor(attr: TokenStream, item: TokenStream) -> TokenStream {
     if !is_user_actor {
         return syn::Error::new_spanned(
             &input.self_ty,
-            "`#[remote_actor]` must be applied to an `impl crafty_actor::UserActor for T` block",
+            "`#[actor]` must be applied to an `impl crafty_actor::UserActor for T` block",
         )
         .to_compile_error()
         .into();

@@ -28,7 +28,8 @@ pub enum WorkerScale {
 /// Combines [`.actors`](super::app::CraftyAppBuilder::actors) with optional
 /// [`job_queue_autoscale`](crate::cluster::CraftyClusterBuilder::job_queue_autoscale).
 ///
-/// Register several heterogeneous worker types via [`WorkerGroup`] or the [`workers!`](crate::workers) macro:
+/// Register several heterogeneous worker types via [`WorkerGroup`] or the [`workers!`](crate::workers) macro
+/// (call as `workers!(…)`):
 ///
 /// ```
 /// # use crafty::{CraftyApp, RunOpts, WorkerGroup, WorkerOpts, WorkerScale, workers};
@@ -47,11 +48,11 @@ pub enum WorkerScale {
 /// # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
 /// CraftyApp::builder()
 ///     .data_dir("/tmp/app")
-///     .workers(workers![
+///     .workers(workers!(
 ///         WorkerOpts::<OrderProcessor>::new("orders")
 ///             .config(())
 ///             .scale(WorkerScale::Fixed(1)),
-///     ])
+///     ))
 ///     .run(RunOpts::default())
 ///     .await?;
 /// # Ok(())
@@ -279,7 +280,7 @@ impl WorkerGroup {
 /// #         std::future::ready(Ok(()))
 /// #     }
 /// # }
-/// let group: WorkerGroup = workers![WorkerOpts::<A>::new("a").config(()).scale(WorkerScale::PerNode)];
+/// let group: WorkerGroup = workers!(WorkerOpts::<A>::new("a").config(()).scale(WorkerScale::PerNode));
 /// let _ = group;
 /// ```
 #[macro_export]

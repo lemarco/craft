@@ -46,18 +46,18 @@ fn processor_cfg() -> ProcessorCfg {
 
 fn apply_actors(builder: CraftyAppBuilder) -> CraftyAppBuilder {
     if migrate_demo_mode() {
-        builder.workers(workers![
+        builder.workers(workers!(
             WorkerOpts::<StatefulCounter>::new("counter")
                 .config(0)
                 .scale(WorkerScale::Fixed(1)),
-        ])
+        ))
     } else {
-        builder.workers(workers![
+        builder.workers(workers!(
             WorkerOpts::<OrderProcessor>::new("orders")
                 .config(processor_cfg())
                 .scale(WorkerScale::Fixed(1))
                 .http_cast(true),
-        ])
+        ))
     }
 }
 

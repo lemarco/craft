@@ -44,12 +44,12 @@ use crafty::{CraftyApp, RunOpts, WorkerOpts, WorkerScale, workers};
 
 CraftyApp::builder()
     .data_dir("/var/lib/crafty")
-    .workers(workers![
+    .workers(workers!(
         WorkerOpts::<OrderProcessor>::new("orders")
             .config(processor_cfg())
             .scale(WorkerScale::Fixed(1))
             .http_cast(true),
-    ])
+    ))
     .run(RunOpts::default())
     .await?;
 ```
@@ -149,12 +149,12 @@ use crafty::{CraftyApp, GatewayOpts, RunOpts, WorkerOpts, WorkerScale, workers};
 
 CraftyApp::builder()
     .data_dir("/var/lib/crafty")
-    .workers(workers![
+    .workers(workers!(
         WorkerOpts::<OrderProcessor>::new("orders")
             .config(processor_cfg())
             .scale(WorkerScale::Fixed(1))
             .http_cast(true),
-    ])
+    ))
     .gateway(GatewayOpts::new("127.0.0.1:8190".parse()?).with_actors_api(true))
     .run(RunOpts::default())
     .await?;

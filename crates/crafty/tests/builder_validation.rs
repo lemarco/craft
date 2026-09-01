@@ -197,9 +197,9 @@ impl crafty::actor::UserActor for FixedWorker {
 async fn workers_without_config_fails_at_boot() {
     let dir = tempfile::tempdir().expect("tempdir");
     let result = local_builder(dir.path())
-        .workers(workers![
+        .workers(workers!(
             WorkerOpts::<FixedWorker>::new("w").scale(WorkerScale::Fixed(1))
-        ])
+        ))
         .boot_for_test(RunOpts::local())
         .await;
     match result {
@@ -212,11 +212,11 @@ async fn workers_without_config_fails_at_boot() {
 async fn workers_autoscale_without_queue_fails_at_boot() {
     let dir = tempfile::tempdir().expect("tempdir");
     let result = local_builder(dir.path())
-        .workers(workers![
+        .workers(workers!(
             WorkerOpts::<FixedWorker>::new("w")
                 .config(0)
                 .scale(WorkerScale::Auto { min: 1, max: 2 })
-        ])
+        ))
         .boot_for_test(RunOpts::local())
         .await;
     match result {
@@ -229,11 +229,11 @@ async fn workers_autoscale_without_queue_fails_at_boot() {
 async fn workers_fixed_registers_actor_group() {
     let dir = tempfile::tempdir().expect("tempdir");
     let app = local_builder(dir.path())
-        .workers(workers![
+        .workers(workers!(
             WorkerOpts::<FixedWorker>::new("w")
                 .config(7)
                 .scale(WorkerScale::Fixed(1))
-        ])
+        ))
         .configure(CraftyConfigure {
             raft_config: fast_raft_config_with_seed(44),
             tick_period: TICK_PERIOD,

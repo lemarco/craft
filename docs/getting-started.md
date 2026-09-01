@@ -113,11 +113,11 @@ impl UserActor for EmailWorker {
 
 CraftyApp::builder()
     .data_dir("/var/lib/crafty")
-    .workers(workers![
+    .workers(workers!(
         WorkerOpts::<EmailWorker>::new("email")
             .config(())
             .scale(WorkerScale::PerNode),
-    ])
+    ))
     .run(RunOpts::default())
     .await?;
 ```

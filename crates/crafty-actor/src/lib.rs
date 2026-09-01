@@ -10,8 +10,8 @@ pub use {crafty_core, crafty_net, crafty_proto, crafty_storage};
 
 /// Attribute macro that fills in the `postcard` wire codecs on a [`UserActor`]
 /// `impl` so the actor is remotely spawnable and addressable (cross-node-actors). See the
-/// [macro docs](macro@remote_actor) for usage.
-pub use crafty_macros::remote_actor;
+/// [macro docs](macro@actor) for usage.
+pub use crafty_macros::actor;
 
 mod directory;
 mod directory_policy;
