@@ -1,12 +1,12 @@
-//! Idempotent [`OrderProcessor`] — tier **B** actor with [`ActorStateStore`].
+//! Idempotent [`OrderProcessor`] — stateful actor with [`ActorStateStore`].
 //!
-//! ## Why not tier A (Raft propose)?
+//! ## Why not Raft propose?
 //!
 //! Order-processing progress keys change often; stuffing them into the StateMachine
 //! log would replicate every retry. `ActorStateStore` gives **per-actor durable
 //! keys** in `actor-store.redb` without consensus on each idempotency check.
 //!
-//! ## Why not tier C (job queue)?
+//! ## Why not the job queue?
 //!
 //! We need to address **this specific actor** (or a sticky session to it). Casts
 //! route to the supervisor-placed `orders` instance; duplicate casts with the same

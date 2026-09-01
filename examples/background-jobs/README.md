@@ -1,4 +1,4 @@
-# Background jobs (tier C)
+# Background jobs (background jobs)
 
 Sidekiq-style async work on crafty: clients get **HTTP 202**, jobs survive restarts in redb, workers lease/ack through the replicated queue.
 

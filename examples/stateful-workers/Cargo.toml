@@ -1,4 +1,4 @@
-# Stateful workers showcase — tier B: ActorStateStore + migration.
+# Stateful workers showcase — actors: ActorStateStore + migration.
 #
 #   cargo run --release              # HTTP server + idempotent orders
 #   cargo run --release migrate-demo # two-node migration walkthrough

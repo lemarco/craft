@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Real-time sessions — 3-node QUIC cluster (tier B WebSocket showcase)
+# Real-time sessions — 3-node QUIC cluster (WebSocket showcase)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"

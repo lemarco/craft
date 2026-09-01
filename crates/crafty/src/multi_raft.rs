@@ -16,7 +16,7 @@ use crafty_net::{Transport, send_group_migrate};
 use crafty_proto::{CatalogCommand, GroupMigrateReply, GroupMigrateRequest, NodeId};
 use crafty_storage::StorageError;
 
-use crate::cluster::ClusterFacts;
+use crate::cluster_handle::ClusterFacts;
 
 /// Apply a committed catalog command to `catalog`, returning newly added groups.
 pub(crate) fn merge_catalog_command(

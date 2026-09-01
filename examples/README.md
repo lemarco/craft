@@ -6,20 +6,20 @@ Shared helpers: [`crafty-showcase-common`](../crates/crafty-showcase-common/) (e
 
 Excluded from the root workspace `cargo check` (like `benchmarks/`). CI runs `./scripts/check-examples.sh` on pre-push.
 
-| Folder | Tier | Pattern | Local | Cluster |
-|--------|------|---------|-------|---------|
-| [`background-jobs/`](background-jobs/) | C | HTTP `202` → queue → `#[consumer]` | `cargo run --release` | `./cluster.sh up` |
-| [`realtime/`](realtime/) | B | WebSocket + HTTP → sticky `ActorSession` | `cargo run --release` | `./cluster.sh up` |
-| [`stateful-workers/`](stateful-workers/) | B | `ActorStateStore` + idempotent cast + auth HTTP | `cargo run --release` | `./cluster.sh up` |
-| [`workflows/`](workflows/) | coordination | Saga journal + actor/queue steps | `cargo run --release` | `./cluster.sh up` |
-| [`self-update/`](self-update/) | ops | Leader-coordinated rolling self-update | `cargo run --release` | `./cluster.sh up` |
+| Folder | Pattern | Local | Cluster |
+|--------|---------|-------|---------|
+| [`background-jobs/`](background-jobs/) | HTTP `202` → queue → `#[consumer]` | `cargo run --release` | `./cluster.sh up` |
+| [`realtime/`](realtime/) | WebSocket + HTTP → sticky `ActorSession` | `cargo run --release` | `./cluster.sh up` |
+| [`stateful-workers/`](stateful-workers/) | `ActorStateStore` + idempotent cast + auth HTTP | `cargo run --release` | `./cluster.sh up` |
+| [`workflows/`](workflows/) | Saga journal + actor/queue steps | `cargo run --release` | `./cluster.sh up` |
+| [`self-update/`](self-update/) | Leader-coordinated rolling self-update | `cargo run --release` | `./cluster.sh up` |
 
 ## Reading the code
 
 Each showcase `src/main.rs` is heavily commented:
 
-- **What** tier (A/B/C) and data flow diagram in the module doc
-- **Why** that tier vs the others (jobs vs actors vs saga)
+- **What** scenario and data flow diagram in the module doc
+- **Why** jobs vs actors vs saga (when to use each mechanism)
 - **How** solo vs multi-node (`CRAFTY_JOIN_SEEDS` on nodes 2+; node 1 seed with `CRAFTY_ALLOW_JOIN`)
 - **`cluster.sh`** header explains env vars and port layout
 
@@ -30,7 +30,7 @@ Start with [`background-jobs/src/main.rs`](background-jobs/src/main.rs) — the 
 Every showcase runs the **same binary on every node** — gateway + workers/consumers on each VPS. The cluster routes work (Raft leader, queue lease, actor directory); you do not split ingress vs worker roles in the happy path.
 
 - Readiness: `RunOpts::default().with_wait_queue("emails")` (or `.with_wait_ready(...)`)
-- **Advanced:** the library still supports `CRAFTY_ROLE=gateway|worker|both` for production edge-only nodes — not used by default in these showcases
+- Optional: `CRAFTY_ROLE=gateway|worker|both` for edge-only nodes — not used by default in these showcases
 
 ### Internal HTTP/WS client (`crafty-showcase-client`, not on crates.io)
 
@@ -81,46 +81,20 @@ Or:
 ./scripts/run-example.sh stateful-workers
 ./scripts/run-example.sh realtime
 ./scripts/run-example.sh workflows
+./scripts/run-example.sh self-update
 ```
 
-## Quick start (3-node cluster)
+3-node QUIC cluster (any showcase):
 
 ```bash
-cd examples/<showcase>
-./cluster.sh setup
-./cluster.sh up          # background all 3 nodes
-./cluster.sh health
-./trigger.sh             # or trigger-batch.sh where provided
-./cluster.sh logs 2      # optional: tail node 2
-./cluster.sh stop
+cd examples/background-jobs
+./cluster.sh setup && ./cluster.sh up && ./trigger.sh hello
 ```
 
-Manual terminals still work: `./cluster.sh 1`, `./cluster.sh 2`, `./cluster.sh 3`.
+Shared infra: [`dev/`](../dev/README.md) (`cluster-common.sh`, `certs/generate.sh`). Docker Compose per showcase: `dev/compose/<name>/`.
 
-Certs and shared dev infra: [`dev/`](../dev/) (`dev/certs/`, `dev/cluster-common.sh`).
+## Related
 
-### Ports (defaults, no overlap between showcases)
-
-| Showcase | Gateway / WS / Trigger | Admin (node 1) |
-|----------|------------------------|----------------|
-| background-jobs | HTTP `:8090–8092` | `:9180` |
-| stateful-workers | HTTP `:8190–8192` | `:9280` |
-| realtime | HTTP + WS `:8294–8296` | `:9380` |
-| workflows | HTTP trigger `:8490–8492` | `:9480` |
-
-Forward gateway/WS/trigger + admin in Cursor/SSH when developing remotely.
-
-## Debug logging
-
-All showcases emit structured **`tracing`** events on target `showcase`:
-
-```bash
-# local
-RUST_LOG=showcase=debug cargo run --release
-
-# cluster (default filter already includes showcase=debug)
-./cluster.sh up
-```
-
-Key events: startup config, cluster readiness polls, worker/saga/ws handling, shutdown.
-Set `RUST_LOG=showcase=trace` for maximum verbosity.
+- [docs/scenarios/README.md](../docs/scenarios/README.md) — product scenario guides
+- [docs/getting-started.md](../docs/getting-started.md) — `CraftyApp` tutorial
+- [docs/status.md](../docs/status.md) — capabilities and limits

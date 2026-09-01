@@ -1,7 +1,6 @@
 //! # crafty
 //!
-//! Distributed Raft + actor framework for product apps ([`CraftyApp`]) and advanced
-//! cluster programming ([`advanced`]).
+//! Distributed Raft + actor framework — product apps via [`CraftyApp`], cluster APIs via [`cluster`].
 //!
 //! ## Product path
 //!
@@ -21,10 +20,9 @@
 //! }
 //! ```
 //!
-//! ## Advanced path
+//! ## Cluster APIs
 //!
-//! [`CraftyCluster`] + [`CraftyClusterBuilder`]
-//! for custom state machines, journals, and queue tuning — see [`advanced`].
+//! Custom state machines and low-level control: [`cluster`] (`CraftyCluster`, `CraftyClusterBuilder`, queues, journals).
 //!
 //! Environment variables: [`mod@env`]. Architecture: `docs/` in the repository.
 
@@ -33,7 +31,7 @@ mod app;
 mod app_opts;
 mod builder;
 mod certs;
-mod cluster;
+mod cluster_handle;
 mod configure;
 mod consumer;
 mod cron_opts;
@@ -52,8 +50,8 @@ mod two_phase;
 mod workflow;
 mod workflow_opts;
 
-/// Advanced cluster / journal / queue APIs.
-pub mod advanced;
+/// Cluster builder, runtime handle, queues, journals.
+pub mod cluster;
 /// `CRAFTY_*` boot configuration.
 pub mod env;
 /// Typical product imports (`CraftyApp`, opts structs, `consumer!`, …).
@@ -92,8 +90,6 @@ pub use queue_opts::QueueOpts;
 pub use ready::ReadyOpts;
 pub use workflow::{WorkflowBuildError, WorkflowBuilder};
 pub use workflow_opts::WorkflowOpts;
-
-pub use advanced::{CraftyCluster, CraftyClusterBuilder};
 
 #[cfg(feature = "http-jobs")]
 pub use upgrade::upgrade_api;

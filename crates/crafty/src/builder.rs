@@ -45,7 +45,7 @@ use crafty_actor::{
 };
 
 use crate::certs::{CertReloadHandle, PemSecurity, cert_paths_for_node};
-use crate::cluster::{ClusterFacts, CraftyCluster};
+use crate::cluster_handle::{ClusterFacts, CraftyCluster};
 use crate::discovery::Seed;
 use crate::handler::{NoPeers, NodeRouter, PeerSource, QuicPeers};
 use crate::multi_raft::{ArcGroupMigrate, GroupMigratePort, MultiRaftState};
@@ -141,7 +141,7 @@ type MembershipAutoscaleTask = Box<
 >;
 
 /// A fluent builder for a single crafty node (deployment-model). Create it with
-/// [`CraftyCluster::builder`](crate::CraftyCluster::builder).
+/// [`CraftyCluster::builder`](crate::cluster::CraftyCluster::builder).
 pub struct CraftyClusterBuilder<M: StateMachine> {
     node_id: NodeId,
     machine: M,
@@ -1338,7 +1338,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         // per-message traces as metrics + events (E14 → Track H, observability): the
         // registry stays telemetry-agnostic. Installed *before* any spawn so
         // every instance task binds the observer at launch.
-        let telemetry = Arc::new(crate::cluster::ActorTelemetry::new(
+        let telemetry = Arc::new(crate::cluster_handle::ActorTelemetry::new(
             node_id,
             events.clone(),
             metrics.clone(),
@@ -1493,7 +1493,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             let meta_for_facts = meta_handle.clone();
             let mut catalog_events = catalog_event_rx;
             let mut telemetry =
-                crate::cluster::MembershipTelemetry::new(node_id, events.clone(), metrics.clone());
+                crate::cluster_handle::MembershipTelemetry::new(node_id, events.clone(), metrics.clone());
             tasks.push(tokio::spawn(async move {
                 let mut interval = tokio::time::interval(period);
                 loop {

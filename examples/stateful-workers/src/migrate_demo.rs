@@ -10,7 +10,8 @@ use std::time::Duration;
 use crafty::core::{Config, StateMachine};
 use crafty::net::LocalNetwork;
 use crafty::proto::{ActorId, LogIndex};
-use crafty::{CraftyCluster, NodeId};
+use crafty::cluster::CraftyCluster;
+use crafty::NodeId;
 
 use crate::migrate_counter::{CounterMsg, StatefulCounter};
 

@@ -9,6 +9,7 @@ Infrastructure for local QUIC clusters, certificates, and CA demos. Product scen
 | [`3node/README.md`](3node/README.md) | Live 3-node `crafty-node` cluster — `./scripts/dev-3node.sh` |
 | [`cluster-common.sh`](cluster-common.sh) | Shared `cluster.sh` helpers (certs, build, `./cluster.sh up`) |
 | [`compose/`](compose/) | One-command Docker Compose clusters per showcase |
+| [`gitlab-runner/`](gitlab-runner/) | Self-hosted GitLab CI runner (Docker on local PC) |
 
 ## Docker Compose showcases
 

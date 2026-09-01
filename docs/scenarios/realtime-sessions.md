@@ -28,7 +28,7 @@
          session state  session state  session state
 ```
 
-- **Gateway:** accepts connections, holds `ActorSession`, forwards messages (tier B)
+- **Gateway:** accepts connections, holds `ActorSession`, forwards messages to pinned workers
 - **Workers:** `UserActor` instances; state in memory for session lifetime
 - **Durability:** optional checkpoint to `StateMachine` or `ActorStateStore` (redb) if reconnect must restore history
 

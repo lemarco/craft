@@ -37,48 +37,9 @@ CraftyApp::builder()
 
 See [getting-started.md](../../docs/getting-started.md) and runnable [examples/](../../examples/README.md).
 
-## Advanced (`CraftyCluster`)
+## Cluster APIs (`crafty::cluster`)
 
-`CraftyCluster::builder` assembles a whole node with your own `StateMachine`. Use
-`start_local` for in-process clusters (tests) and `start_quic` for production QUIC/mTLS.
-
-```rust,no_run
-use std::time::Duration;
-use crafty::{CraftyCluster, NodeId};
-use crafty::net::LocalNetwork;
-use crafty::core::StateMachine;
-use crafty::proto::LogIndex;
-
-#[derive(Default)]
-struct Counter(u64);
-
-impl StateMachine for Counter {
-    type Command = u64;
-    type Query = ();
-    type Response = u64;
-    type Error = std::convert::Infallible;
-    fn apply(&mut self, _: LogIndex, c: &u64) -> Result<u64, Self::Error> {
-        self.0 += *c;
-        Ok(self.0)
-    }
-    fn query(&self, _: &()) -> Result<u64, Self::Error> { Ok(self.0) }
-    fn snapshot(&self) -> Result<Vec<u8>, Self::Error> { Ok(self.0.to_le_bytes().to_vec()) }
-    fn restore(&mut self, b: &[u8]) -> Result<(), Self::Error> {
-        self.0 = u64::from_le_bytes(b.try_into().unwrap());
-        Ok(())
-    }
-}
-
-# async fn run() {
-let net = LocalNetwork::new();
-let cluster = CraftyCluster::builder(NodeId(1), Counter::default())
-    .members([NodeId(1), NodeId(2), NodeId(3)])
-    .tick_period(Duration::from_millis(10))
-    .start_local(&net)
-    .await;
-# let _ = cluster;
-# }
-```
+Custom [`StateMachine`](https://docs.rs/crafty-core/latest/crafty_core/trait.StateMachine.html) wiring, tests, and low-level control: [`crafty::cluster`](src/cluster.rs) (`CraftyCluster`, `CraftyClusterBuilder`, queues, journals). Product apps use [`CraftyApp`](#product-quickstart-craftyapp) above.
 
 ## Features
 

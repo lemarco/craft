@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crafty::NodeId;
-use crafty::advanced::{CertPaths, PeerDirectory, PemSecurity, Security, cert_paths_from_env};
+use crafty::cluster::{CertPaths, PeerDirectory, PemSecurity, Security, cert_paths_from_env};
 use crafty::discovery::Seed;
 use crafty_actor::DEFAULT_DRAIN_TIMEOUT;
 
@@ -33,7 +33,7 @@ pub struct NodeConfig {
     pub allow_join: bool,
     /// Accept cluster leave RPC on this node.
     pub allow_leave: bool,
-    /// On shutdown, remove this node from the cluster via [`crafty::CraftyCluster::leave`]
+    /// On shutdown, remove this node from the cluster via [`crafty::cluster::CraftyCluster::leave`]
     /// before stopping (requires at least one other live member).
     pub graceful_leave: bool,
     /// On-disk PEM paths when production TLS material is configured.

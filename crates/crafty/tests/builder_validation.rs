@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crafty::advanced::RecurringJob;
+use crafty::cluster::RecurringJob;
 use crafty::{
     ConsumerOpts, CraftyApp, CraftyConfigure, CronOpts, GatewayOpts, QueueOpts, RunOpts,
     StartError, WorkflowBuilder, WorkflowOpts, consumer, journal_workflow,
@@ -98,7 +98,7 @@ async fn cron_and_consumer_succeed_when_queue_matches() {
         .boot_for_test(RunOpts::local())
         .await
         .expect("valid builder");
-    app.cluster().shutdown();
+    app.shutdown();
 }
 
 #[cfg(feature = "http-jobs")]

@@ -13,7 +13,7 @@ type ConsumerSpawnFn = Box<
         + Send,
 >;
 
-/// Spawn one or more tier-C [`JobConsumer`] loops with a shared stop channel.
+/// Spawn one or more [`JobConsumer`] loops with a shared stop channel.
 #[derive(Default)]
 pub struct ConsumerGroup {
     streams: Vec<String>,
@@ -115,11 +115,10 @@ impl CraftyApp {
         let app = Arc::clone(self);
         tokio::spawn(async move {
             let queue = app
-                .cluster()
                 .job_queue(C::STREAM)
                 .expect("consumer stream must be registered via .queue");
             let worker = WorkerId {
-                node: app.cluster().node_id(),
+                node: app.node_id(),
                 instance: opts.instance,
             };
             run_queue_consumer(

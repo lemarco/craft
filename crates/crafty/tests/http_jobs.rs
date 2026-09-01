@@ -6,10 +6,10 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use crafty::actor::WorkerId;
-use crafty::advanced::EnqueueOptions;
+use crafty::cluster::EnqueueOptions;
 use crafty::{CraftyApp, CraftyConfigure, QueueOpts};
 use crafty_actor::JobLifecycle;
-use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
+use crafty_test_support::{advance, boot_local_app, wait_for_crafty_app_leader};
 use tower::ServiceExt;
 
 #[tokio::test(start_paused = true)]
@@ -36,7 +36,7 @@ async fn http_post_job_returns_202_and_enqueues() {
     )
     .await;
 
-    wait_for_crafty_leader(app.cluster()).await;
+    wait_for_crafty_app_leader(&app).await;
     advance(Duration::from_millis(200)).await;
 
     let api = CraftyApp::jobs_api(Arc::clone(&app));
@@ -76,9 +76,9 @@ async fn http_post_job_returns_202_and_enqueues() {
         .enqueue_opts("jobs", b"poison", EnqueueOptions::max_attempts(1))
         .await
         .expect("enqueue poison");
-    let queue = app.cluster().job_queue("jobs").expect("queue");
+    let queue = app.job_queue("jobs").expect("queue");
     let worker = WorkerId {
-        node: app.cluster().node_id(),
+        node: app.node_id(),
         instance: 0,
     };
     let leased = loop {
@@ -123,6 +123,6 @@ async fn http_post_job_returns_202_and_enqueues() {
         .expect("row");
     assert_eq!(pending.lifecycle, JobLifecycle::Pending);
 
-    app.cluster().shutdown();
+    app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }

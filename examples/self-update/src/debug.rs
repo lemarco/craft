@@ -5,7 +5,7 @@ use std::error::Error;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
 
-use crafty::advanced::{
+use crafty::cluster::{
     CertPaths, PemSecurity, Security, cert_paths_from_env,
 };
 use crafty::discovery::Seed;
@@ -60,7 +60,7 @@ pub fn startup() {
     );
 }
 
-pub fn ready(cluster: &crafty::CraftyCluster<crafty::UpgradeMachine>) {
+pub fn ready(cluster: &crafty::cluster::CraftyCluster<crafty::UpgradeMachine>) {
     eprintln!(
         "node {:?} ready — members {:?}",
         cluster.node_id(),

@@ -1,4 +1,4 @@
-# Background jobs showcase — tier C: HTTP 202 → durable queue → worker.
+# Background jobs showcase — jobs: HTTP 202 → durable queue → worker.
 #
 #   cargo run --release          # terminal 1 — gateway + consumer
 #   ./trigger.sh welcome-user-42 # terminal 2

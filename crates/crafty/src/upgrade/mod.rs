@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 use crafty_core::UpgradeMachine as UpgradeStateMachineAlias;
 
-use crate::cluster::CraftyCluster;
+use crate::cluster_handle::CraftyCluster;
 
 use self::client::{propose_upgrade, query_upgrade_view};
 

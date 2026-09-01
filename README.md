@@ -98,26 +98,11 @@ CraftyApp::builder()
     .await?;
 ```
 
-## Advanced (`CraftyCluster`)
+## Cluster APIs (`crafty::cluster`)
 
-```rust
-use std::time::Duration;
-use crafty::{CraftyCluster, NodeId};
-use crafty::net::LocalNetwork;
+Custom [`StateMachine`](crates/crafty-core/src/lib.rs) wiring, multi-Raft, keyed client, and direct queue access live in [`crafty::cluster`](crates/crafty/src/cluster.rs). Product apps use [`CraftyApp`](docs/getting-started.md) instead.
 
-let net = LocalNetwork::new();
-let cluster = CraftyCluster::builder(NodeId(1), Counter::default())
-    .members([NodeId(1), NodeId(2), NodeId(3)])
-    .tick_period(Duration::from_millis(10))
-    .start_local(&net)
-    .await;
-```
-
-Multi-Raft: `.raft_groups(n)`, `.stable_shards()`, `.data_dir(path)`. With `raft_groups > 1`, cluster metadata (join/leave, catalog, saga journal) lives on a dedicated **Meta-Raft** group (`group-meta.redb`); group 0 is user data only — [multi-raft](docs/decisions/multi-raft.md). Keyed client: `propose_keyed` / `query_keyed`. Cross-shard: `run_keyed_saga` / `resume_keyed_saga`.
-
-Job queue (tier C): `.data_dir(path).job_queue("jobs", lease_timeout)` → `cluster.job_queue("jobs")` for enqueue/lease/ack; workers use `run_queue_consumer`. Wire routes under `/raft/v1/queue/*` — [job-queue](docs/decisions/job-queue.md).
-
-Durable mailbox (tier B spool): `.data_dir(path).durable_mailbox(true)` — write-ahead outbox/inbox for cross-node casts/asks; `{data_dir}/mailbox-spool.redb`.
+See [multi-raft](docs/decisions/multi-raft.md), [job-queue](docs/decisions/job-queue.md), and [getting-started](docs/getting-started.md).
 
 ## Design principles
 
@@ -134,13 +119,13 @@ Durable mailbox (tier B spool): `.data_dir(path).durable_mailbox(true)` — writ
 crafty = "0.3"
 ```
 
-Product apps: enable `http-jobs` for tier C HTTP routes and `dev-certs` for local QUIC without PEM files — see [getting-started](docs/getting-started.md).
+Product apps: enable `http-jobs` for HTTP job routes and `dev-certs` for local QUIC without PEM files — see [getting-started](docs/getting-started.md).
 
 ## Workspace crates
 
 | Crate | Purpose |
 |-------|---------|
-| [`crafty`](crates/crafty) | Facade + `CraftyCluster` builder |
+| [`crafty`](crates/crafty) | Facade — `CraftyApp` + `crafty::cluster` |
 | [`crafty-http`](crates/crafty-http) | Product HTTP (`POST /jobs/{stream}` → 202) |
 | [`crafty-core`](crates/crafty-core) | Pure Raft FSM + shard planners + reference [`kv`](crates/crafty-core/src/kv.rs) StateMachine |
 | [`crafty-proto`](crates/crafty-proto) | Wire types + codec |

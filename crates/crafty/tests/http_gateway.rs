@@ -5,9 +5,9 @@ use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
-use crafty::advanced::build_gateway_router;
+use crafty::cluster::build_gateway_router;
 use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, QueueOpts};
-use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
+use crafty_test_support::{advance, boot_local_app, wait_for_crafty_app_leader};
 use tower::ServiceExt;
 
 #[tokio::test(start_paused = true)]
@@ -35,7 +35,7 @@ async fn gateway_serves_jobs_api_on_configured_addr() {
     )
     .await;
 
-    wait_for_crafty_leader(app.cluster()).await;
+    wait_for_crafty_app_leader(&app).await;
     advance(Duration::from_millis(200)).await;
 
     let router = build_gateway_router(
@@ -56,6 +56,6 @@ async fn gateway_serves_jobs_api_on_configured_addr() {
     let resp = router.oneshot(req).await.expect("route");
     assert_eq!(resp.status(), StatusCode::ACCEPTED);
 
-    app.cluster().shutdown();
+    app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }

@@ -169,7 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn print_banner() {
-    println!("crafty showcase · real-time sessions (tier B)");
+    println!("crafty showcase · real-time sessions (stateful actors)");
     println!("  listen   {}", env::var("CRAFTY_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
     if env::var("CRAFTY_GATEWAY").is_ok_and(|g| g != "-") {
         let gw = env::var("CRAFTY_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8294".into());

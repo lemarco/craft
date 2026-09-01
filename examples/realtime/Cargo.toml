@@ -1,4 +1,4 @@
-# Real-time sessions showcase — tier B: WebSocket gateway + sticky `ActorSession`.
+# Real-time sessions showcase — actors: WebSocket gateway + sticky `ActorSession`.
 #
 #   cargo run --release          # gateway + chat workers (local demo)
 #   ./trigger.sh alice hello     # send one WS message (needs websocat)

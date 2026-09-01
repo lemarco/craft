@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crafty::actor::{ConfigCodecError, UserActor, WorkerId};
-use crafty::advanced::{
+use crafty::cluster::{
     AutoscalePolicy, CraftyCluster, EnqueueOptions, JobQueue, MembershipAutoscalePolicy,
     RedbJobQueue,
 };

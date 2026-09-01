@@ -9,6 +9,18 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ## [Unreleased]
 
+### Changed
+
+- **API surface cleanup (breaking on `0.x`)**
+  - Removed root re-export of `CraftyCluster` / `CraftyClusterBuilder` — use `crafty::cluster::…`.
+  - Renamed `crafty::advanced` → [`crafty::cluster`](crates/crafty/src/cluster.rs); implementation moved to private `cluster_handle`.
+  - **`CraftyApp` delegates** — `node_id`, `control`, `registry`, `supervisor`, `job_queue`, `is_leader`, `shutdown` (product path).
+  - **`#[doc(hidden)]`** — `CraftyApp::cluster`, `into_cluster`, `CraftyAppBuilder::inner_mut` (tests / custom SM only).
+
+### Added
+
+- `crafty_test_support::wait_for_crafty_app_leader` — poll leader election on a running `CraftyApp`.
+
 ## [0.4.0] — 2026-08-31
 
 **Gateway + ops release.** Sticky gateway sessions (HTTP/WS), optional gateway TLS,
@@ -50,7 +62,7 @@ graceful drain, self-update coordinator, and a narrower public re-export surface
   looping `.consumer()`).
 - **`.workflows([WorkflowOpts::…])`** — vector of workflow configs; optional `WorkflowOpts::named`
   prefix for multi-workflow dispatch.
-- **`crafty::prelude` / `crafty::advanced` / `crafty::env`** — product imports via `prelude`;
+- **`crafty::prelude` / `crafty::cluster` / `crafty::env`** — product imports via `prelude`;
   cluster/journal/queue internals under `advanced`; `CRAFTY_*` helpers under `env`.
 - **`http-jobs` default feature** — gateway API (`GatewayOpts`, `.gateway()`) always available;
   built-in `/jobs/*`, `/actors/*`, `/workflows/*` routes require `http-jobs` (now default).

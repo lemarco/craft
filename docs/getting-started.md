@@ -61,7 +61,7 @@ Same code as above. [`cluster.sh`](../examples/background-jobs/cluster.sh) sets 
 
 Node id is **not** configured — seed gets `1`, joiners are assigned by the leader and persisted under `CRAFTY_DATA_DIR`.
 
-Edge-only ingress (no local consumers): `CRAFTY_ROLE=gateway` (advanced).
+Edge-only ingress (no local consumers): `CRAFTY_ROLE=gateway`.
 
 ## 4. Try the showcases
 
@@ -221,9 +221,9 @@ Generates a `CraftyApp` stub, docker-compose for 3-node local dev, and links to 
 | Prometheus | Scrape `GET /metrics` (includes `crafty_queue_*`, `crafty_saga_*`) |
 | Production checklist | [ops/production-runbook.md](ops/production-runbook.md) |
 
-## 11. Advanced APIs
+## 11. Cluster APIs
 
-Use `app.cluster()` for full [`CraftyCluster`](../../crates/crafty/src/cluster.rs) access (saga, multi-Raft, supervisor). Product scenarios:
+Most apps stay on `CraftyApp`. For custom state machines, multi-Raft, or direct supervisor/queue access, use [`crafty::cluster`](../crates/crafty/src/cluster.rs) or the [`CraftyApp`](../../crates/crafty/src/app.rs) methods (`control`, `registry`, `supervisor`, …).
 
 | Need | Doc |
 |------|-----|

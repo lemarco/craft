@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-/// Options for [`CraftyCluster::wait_until_ready`](crate::CraftyCluster::wait_until_ready).
+/// Options for [`CraftyCluster::wait_until_ready`](crate::cluster::CraftyCluster::wait_until_ready).
 #[derive(Debug, Clone)]
 pub struct ReadyOpts {
     /// Maximum time to wait before returning `false`.

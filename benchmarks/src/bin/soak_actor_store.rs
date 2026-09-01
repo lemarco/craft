@@ -9,7 +9,8 @@ use std::time::{Duration, Instant};
 use crafty::core::{Config, StateMachine};
 use crafty::net::LocalNetwork;
 use crafty::proto::LogIndex;
-use crafty::{CraftyCluster, NodeId};
+use crafty::cluster::CraftyCluster;
+use crafty::NodeId;
 use crafty_benchmarks::env_u64;
 
 #[derive(Default)]

@@ -1,4 +1,4 @@
-# Stateful workers (tier B)
+# Stateful workers (stateful actors)
 
 Idempotent order processing with [`ActorStateStore`](../../crates/crafty-actor/src/store.rs) and a two-node migration walkthrough.
 

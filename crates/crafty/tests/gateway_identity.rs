@@ -8,7 +8,7 @@ use crafty::{
     CraftyGatewayState, GatewayIdentity, GatewayOpts, GatewayRequest, GatewayTokenIdentity,
     IdentityError, IdentityTypeError, SessionHandle, SessionKey,
 };
-use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
+use crafty_test_support::{advance, boot_local_app, wait_for_crafty_app_leader};
 
 struct FixedToken;
 
@@ -68,7 +68,7 @@ async fn gateway_state_extracts_identity_session_key() {
 
     let app = boot_local_app(crafty::CraftyApp::builder().data_dir(&base), None).await;
 
-    wait_for_crafty_leader(app.cluster()).await;
+    wait_for_crafty_app_leader(&app).await;
     advance(Duration::from_millis(50)).await;
 
     let state = CraftyGatewayState::with_identity(Arc::clone(&app), FixedToken);
@@ -80,7 +80,7 @@ async fn gateway_state_extracts_identity_session_key() {
     assert_eq!(extracted.session_key(), "alice");
     assert_eq!(extracted.require::<String>().unwrap(), "alice");
 
-    app.cluster().shutdown();
+    app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }
 
@@ -112,7 +112,7 @@ async fn identity_mapped_uses_custom_session_key() {
     assert_eq!(user.user_id, "alice");
     assert_eq!(extracted.require::<String>(), Err(IdentityTypeError));
 
-    app.cluster().shutdown();
+    app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }
 
@@ -129,11 +129,11 @@ async fn session_handle_none_without_workers() {
     std::fs::create_dir_all(&base).unwrap();
 
     let app = Arc::new(boot_local_app(crafty::CraftyApp::builder().data_dir(&base), None).await);
-    wait_for_crafty_leader(app.cluster()).await;
+    wait_for_crafty_app_leader(&app).await;
 
     assert!(SessionHandle::open(&app, "missing", "user-1", None).is_none());
 
-    app.cluster().shutdown();
+    app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }
 

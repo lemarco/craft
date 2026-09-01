@@ -35,18 +35,16 @@ async fn run_demo(State(app): State<Arc<CraftyApp>>) -> impl IntoResponse {
 }
 
 async fn run_demo_inner(app: &CraftyApp) -> Result<String, String> {
-    let local = app.cluster().node_id();
+    let local = app.node_id();
     let target = migrate_target();
     tracing::debug!(target: "showcase", local = local.0, to = target.0, "migration demo start");
 
-    app.cluster()
-        .control()
+    app.control()
         .spawn_remote::<StatefulCounter>(local, "counter", 0)
         .await
         .map_err(|e| format!("spawn: {e}"))?;
 
     let counter = app
-        .cluster()
         .registry()
         .get::<StatefulCounter>("counter")
         .ok_or_else(|| "counter not registered".to_string())?;
@@ -63,14 +61,12 @@ async fn run_demo_inner(app: &CraftyApp) -> Result<String, String> {
     };
 
     let migrated = app
-        .cluster()
         .control()
         .migrate::<StatefulCounter>(source, target, 0, Duration::from_secs(10))
         .await
         .map_err(|e| format!("migrate: {e}"))?;
 
-    app.cluster()
-        .registry()
+    app.registry()
         .get::<StatefulCounter>("counter")
         .ok_or_else(|| "counter missing after migrate".to_string())?
         .send(CounterMsg::Inc)

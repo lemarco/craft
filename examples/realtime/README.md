@@ -1,4 +1,4 @@
-# Real-time sessions (tier B)
+# Real-time sessions (stateful actors)
 
 WebSocket **and authenticated HTTP** on one gateway → sticky [`ActorSession`](../../crates/crafty-actor/src/session.rs) → in-memory chat workers.
 

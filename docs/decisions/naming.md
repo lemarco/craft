@@ -15,7 +15,7 @@ Repository: `distributive_raft_actor_system`. Crates need a unique, memorable na
 | Name | Role |
 |------|------|
 | **crafty** | Product / project name |
-| **`crafty`** | Primary dependency — re-exports `CraftyCluster`, `ClientHandle`, `ActorRegistry`, macros |
+| **`crafty`** | Primary dependency — `CraftyApp` for product apps; `crafty::cluster` for custom SM / low-level control |
 | **`crafty-*`** | Internal workspace crates |
 | **`distributive_raft_actor_system`** | Git repo folder (unchanged) |
 
@@ -44,7 +44,8 @@ crafty-macros = { path = "../crafty-macros" }
 ```
 
 ```rust
-use crafty::{CraftyCluster, ResourceProfile, ClientHandle};
+use crafty::{CraftyApp, RunOpts};
+use crafty::cluster::{CraftyCluster, ResourceProfile};
 use crafty_macros::{UserActor, StateMachine};
 ```
 

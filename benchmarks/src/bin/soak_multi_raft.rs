@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crafty::CraftyCluster;
+use crafty::cluster::CraftyCluster;
 use crafty::core::{Config, RaftGroupId, StableShardRouter, StateMachine, place_shard};
 use crafty::net::{LocalNetwork, Transport, send_client_request};
 use crafty::proto::{ClientRequest, ClientResponse, LogIndex, NodeId};

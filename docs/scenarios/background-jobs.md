@@ -57,7 +57,7 @@ Cluster-level autoscale, sharded streams, priority, dedup: see [background-jobs 
 ### 2. Enqueue (from any node)
 
 ```rust
-use crafty::advanced::EnqueueOptions;
+use crafty::cluster::EnqueueOptions;
 
 let job_id = app.enqueue("emails", br#"{"to":"user@example.com"}"#).await?;
 
@@ -148,7 +148,7 @@ Policy can persist in Meta-Raft ([job-queue](../decisions/job-queue.md)).
 
 | Asset | Purpose |
 |-------|---------|
-| [`examples/background-jobs/`](../../examples/background-jobs/) | Tier C showcase — HTTP `202`, `#[consumer]` |
+| [`examples/background-jobs/`](../../examples/background-jobs/) | Background jobs showcase — HTTP `202`, `#[consumer]` |
 | `e2e/queue.sh` | Real QUIC/mTLS, follower worker + leader failover |
 | `crafty/tests/queue.rs` | Integration |
 | `crafty/tests/consumer.rs` | `#[crafty::consumer]` + `spawn_consumer` |

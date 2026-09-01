@@ -1,4 +1,4 @@
-//! [`CraftyApp`] — product-facing entry point over [`CraftyCluster`](super::cluster::CraftyCluster)
+//! [`CraftyApp`] — product-facing entry point over [`CraftyCluster`](crate::cluster_handle::CraftyCluster)
 //! ([product-scenarios](../../../docs/decisions/product-scenarios.md)).
 
 use std::collections::HashSet;
@@ -10,8 +10,8 @@ use std::time::Duration;
 use crafty_actor::ClientError;
 use crafty_actor::NodeHandle;
 use crafty_actor::{
-    ActorSession, CastError, ClusterAskError, ClusterRef, EnqueueOptions, JobId, JobStatus,
-    LeaseId, UserActor, WorkerId,
+    ActorRegistry, ActorSession, CastError, ClusterAskError, ClusterControl, ClusterRef,
+    ClusterSupervisor, EnqueueOptions, JobId, JobQueue, JobStatus, LeaseId, UserActor, WorkerId,
 };
 use crafty_client::{SagaError, SagaOutcome, SagaPlan};
 use crafty_core::StateMachine;
@@ -23,7 +23,7 @@ use crate::NodeId;
 use crate::actor_group::ActorGroupOpts;
 use crate::app_opts::RunOpts;
 use crate::builder::{CraftyClusterBuilder, StartError};
-use crate::cluster::CraftyCluster;
+use crate::cluster_handle::{ClusterFacts, CraftyCluster};
 use crate::configure::CraftyConfigure;
 use crate::cron_opts::CronOpts;
 use crate::env_config::{AppConfig, app_config_from_env};
@@ -52,11 +52,11 @@ pub async fn journal_workflow(
 /// Options for [`CraftyApp::shutdown_graceful`] and [`CraftyAppBuilder::run`].
 #[derive(Debug, Default)]
 pub struct ShutdownOpts {
-    /// Call [`CraftyCluster::leave`] when the node is in a multi-node cluster.
+    /// Call [`CraftyCluster::leave`](crate::cluster::CraftyCluster::leave) when the node is in a multi-node cluster.
     pub graceful_leave: bool,
     /// Drain local actor groups before stopping the runtime.
     pub drain_actors: bool,
-    /// Stop tier-C consumers: send on the watch sender, then await these handles.
+    /// Stop job consumers: send on the watch sender, then await these handles.
     pub consumers: Option<(tokio::sync::watch::Sender<bool>, Vec<JoinHandle<()>>)>,
     /// Drain the product HTTP gateway (WebSocket / long-lived HTTP) before shutdown.
     pub drain_gateway: bool,
@@ -143,7 +143,7 @@ impl CraftyAppBuilder {
         self
     }
 
-    /// Register tier-C [`crate::JobConsumer`] loops (started in [`Self::run`]).
+    /// Register [`crate::JobConsumer`] loops (started in [`Self::run`]).
     ///
     /// Prefer [`.consumers`](Self::consumers) when registering several workers at once.
     ///
@@ -380,7 +380,8 @@ impl CraftyAppBuilder {
         self
     }
 
-    /// Access the underlying cluster builder for advanced options.
+    /// Test / framework hook — prefer [`CraftyAppBuilder`] methods.
+    #[doc(hidden)]
     #[must_use]
     pub fn inner_mut(&mut self) -> &mut CraftyClusterBuilder<EmptyStateMachine> {
         &mut self.inner
@@ -422,13 +423,55 @@ impl CraftyApp {
         Ok(())
     }
 
-    /// Underlying cluster handle for advanced APIs.
+    /// This node's cluster id.
+    #[must_use]
+    pub fn node_id(&self) -> NodeId {
+        self.cluster.node_id()
+    }
+
+    /// Actor spawn / migrate control plane.
+    #[must_use]
+    pub fn control(&self) -> &Arc<ClusterControl> {
+        self.cluster.control()
+    }
+
+    /// Local actor registry (handles for registered worker types).
+    #[must_use]
+    pub fn registry(&self) -> &ActorRegistry {
+        self.cluster.registry()
+    }
+
+    /// Leader-only worker placement reconciler.
+    #[must_use]
+    pub fn supervisor(&self) -> &Arc<ClusterSupervisor<Arc<ClusterFacts>>> {
+        self.cluster.supervisor()
+    }
+
+    /// Registered job stream handle (`None` when unknown or not mounted yet).
+    #[must_use]
+    pub fn job_queue(&self, stream: &str) -> Option<Arc<dyn JobQueue>> {
+        self.cluster.job_queue(stream)
+    }
+
+    /// Whether this node is the Raft leader on the default group.
+    pub async fn is_leader(&self) -> bool {
+        self.cluster.is_leader().await
+    }
+
+    /// Stop background tasks (does not drain actors — use [`Self::shutdown_graceful`] in production).
+    pub fn shutdown(&self) {
+        self.cluster.shutdown();
+    }
+
+    /// Low-level cluster handle — tests and custom state machines only.
+    #[doc(hidden)]
     #[must_use]
     pub fn cluster(&self) -> &CraftyCluster<EmptyStateMachine> {
         &self.cluster
     }
 
-    /// Consume and return the inner [`CraftyCluster`].
+    /// Consume the inner cluster handle — tests and custom state machines only.
+    #[doc(hidden)]
     #[must_use]
     pub fn into_cluster(self) -> CraftyCluster<EmptyStateMachine> {
         self.cluster
@@ -448,7 +491,7 @@ impl CraftyApp {
         self.handle().propose(command).await
     }
 
-    /// Workflow store when [`CraftyClusterBuilder::data_dir`] / auto durable store is enabled.
+    /// Workflow store when [`CraftyClusterBuilder::data_dir`](crate::cluster::CraftyClusterBuilder::data_dir) / auto durable store is enabled.
     #[must_use]
     pub fn actor_state_store(&self) -> Option<Arc<dyn crafty_actor::ActorStateStore>> {
         self.cluster.actor_state_store()
@@ -485,9 +528,9 @@ impl CraftyApp {
         queue.enqueue_opts(payload, options).await
     }
 
-    /// Enqueue many jobs in one leader transaction (tier C batch path).
+    /// Enqueue many jobs in one leader transaction (batch path).
     ///
-    /// Batches are capped at [`crate::advanced::DEFAULT_QUEUE_BATCH_MAX`] jobs per RPC.
+    /// Batches are capped at [`crate::cluster::DEFAULT_QUEUE_BATCH_MAX`] jobs per RPC.
     ///
     /// # Errors
     /// Returns an error when the stream is unknown or enqueue fails.
@@ -511,7 +554,7 @@ impl CraftyApp {
         self.cluster.enqueue_batch_opts(stream, jobs).await
     }
 
-    /// Acknowledge many leased jobs in one leader transaction (tier C batch path).
+    /// Acknowledge many leased jobs in one leader transaction (batch path).
     ///
     /// # Errors
     /// Returns an error when the stream is unknown or ack fails.
@@ -857,7 +900,7 @@ impl CraftyApp {
     /// Run a cross-shard workflow using the node's default saga journal.
     ///
     /// # Errors
-    /// Same as [`CraftyCluster::run_keyed_saga`](crate::CraftyCluster::run_keyed_saga).
+    /// Same as [`CraftyCluster::run_keyed_saga`](crate::cluster::CraftyCluster::run_keyed_saga).
     pub async fn run_workflow<C: crafty_client::KeyedClient>(
         &self,
         client: &C,
@@ -872,7 +915,7 @@ impl CraftyApp {
     /// Resume a workflow from the durable journal after crash or partial progress.
     ///
     /// # Errors
-    /// Same as [`CraftyCluster::resume_keyed_saga`](crate::CraftyCluster::resume_keyed_saga).
+    /// Same as [`CraftyCluster::resume_keyed_saga`](crate::cluster::CraftyCluster::resume_keyed_saga).
     pub async fn resume_workflow<C: crafty_client::KeyedClient>(
         &self,
         client: &C,

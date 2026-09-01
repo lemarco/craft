@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use crafty::{CraftyApp, CraftyConfigure, QueueOpts};
-use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
+use crafty_test_support::{advance, boot_local_app, wait_for_crafty_app_leader};
 
 #[tokio::test(start_paused = true)]
 async fn crafty_app_start_local_with_data_dir_and_queue() {
@@ -29,7 +29,7 @@ async fn crafty_app_start_local_with_data_dir_and_queue() {
     )
     .await;
 
-    wait_for_crafty_leader(app.cluster()).await;
+    wait_for_crafty_app_leader(&app).await;
     // Let the keepalive loop refresh [`ClusterFacts`] before queue RPC routing.
     advance(Duration::from_millis(200)).await;
 
@@ -37,14 +37,14 @@ async fn crafty_app_start_local_with_data_dir_and_queue() {
     let id = app.enqueue("jobs", b"hello").await.expect("enqueue");
     assert!(id.0 >= 1);
 
-    app.cluster().shutdown();
+    app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }
 
 #[tokio::test(start_paused = true)]
 async fn crafty_app_requeue_dead_letter() {
     use crafty::actor::WorkerId;
-    use crafty::advanced::EnqueueOptions;
+    use crafty::cluster::EnqueueOptions;
     use crafty_actor::JobLifecycle;
 
     let base = std::env::temp_dir().join(format!(
@@ -69,16 +69,16 @@ async fn crafty_app_requeue_dead_letter() {
     )
     .await;
 
-    wait_for_crafty_leader(app.cluster()).await;
+    wait_for_crafty_app_leader(&app).await;
     advance(Duration::from_millis(200)).await;
 
     let id = app
         .enqueue_opts("jobs", b"poison", EnqueueOptions::max_attempts(1))
         .await
         .expect("enqueue");
-    let queue = app.cluster().job_queue("jobs").expect("queue");
+    let queue = app.job_queue("jobs").expect("queue");
     let worker = WorkerId {
-        node: app.cluster().node_id(),
+        node: app.node_id(),
         instance: 0,
     };
     let leased = queue.lease(worker, 1).await.expect("lease");
@@ -100,6 +100,6 @@ async fn crafty_app_requeue_dead_letter() {
         .expect("row");
     assert_eq!(pending.lifecycle, JobLifecycle::Pending);
 
-    app.cluster().shutdown();
+    app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }

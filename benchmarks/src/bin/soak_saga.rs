@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crafty::CraftyCluster;
+use crafty::cluster::CraftyCluster;
 use crafty::actor::{ActorStateStore, InMemoryStore};
 use crafty::client::{KeyedClient, RemoteClient, SagaOutcome, SagaPlan, SagaStep};
 use crafty::core::{RaftGroupId, Role};

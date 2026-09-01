@@ -1,4 +1,4 @@
-//! Helpers for [`crafty::CraftyCluster`] and [`crafty::CraftyApp`] integration tests.
+//! Helpers for [`crafty::cluster::CraftyCluster`] and [`crafty::CraftyApp`] integration tests.
 
 use std::sync::Arc;
 
@@ -6,7 +6,7 @@ use crafty::CraftyApp;
 use crafty::CraftyAppBuilder;
 use crafty::ReadyOpts;
 use crafty::RunOpts;
-use crafty::advanced::CraftyCluster;
+use crafty::cluster::CraftyCluster;
 use crafty::core::{Role, StateMachine};
 
 use crate::clock::{POLL_STEP, advance};
@@ -41,6 +41,20 @@ where
         advance(POLL_STEP).await;
     }
     panic!("no leader elected");
+}
+
+/// Poll until `app` reports leader on the default Raft group, or panic after ~5s.
+///
+/// # Panics
+/// If the app fails to elect a leader within the poll budget.
+pub async fn wait_for_crafty_app_leader(app: &CraftyApp) {
+    for _ in 0..500 {
+        if app.is_leader().await {
+            return;
+        }
+        advance(POLL_STEP).await;
+    }
+    panic!("app failed to elect a leader");
 }
 
 /// Poll until `cluster` reports leader, or panic after ~5s.

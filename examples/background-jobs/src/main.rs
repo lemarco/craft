@@ -1,4 +1,4 @@
-//! # Background jobs showcase (messaging **tier C**)
+//! # Background jobs showcase (durable job queue)
 //!
 //! Every run mode is a QUIC cluster member: solo `cargo run` is a one-node seed
 //! (`CRAFTY_ALLOW_JOIN=1`); `./cluster.sh` adds nodes via dynamic join.
@@ -81,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn print_banner() {
-    println!("crafty showcase · background jobs (tier C)");
+    println!("crafty showcase · background jobs (background jobs)");
     println!("  listen   {}", env::var("CRAFTY_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
     if env::var("CRAFTY_GATEWAY").is_ok_and(|g| g != "-") {
         let gw = env::var("CRAFTY_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8090".into());

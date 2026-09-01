@@ -5,7 +5,7 @@ use crafty_core::UpgradeMachine;
 use crafty_core::upgrade::{UpgradeCommand, UpgradeQuery, UpgradeResponse, UpgradeView};
 
 use super::coordinator::UpgradeRunError;
-use crate::cluster::CraftyCluster;
+use crate::cluster_handle::CraftyCluster;
 
 fn typed_client(
     cluster: &CraftyCluster<UpgradeMachine>,

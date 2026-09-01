@@ -1,4 +1,4 @@
-//! # Stateful workers showcase (messaging **tier B**)
+//! # Stateful workers showcase (sticky actor sessions)
 //!
 //! Cast body: JSON `{"payload":"<order-id>"}`.
 //!
@@ -109,7 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn print_banner() {
-    println!("crafty showcase · stateful workers (tier B)");
+    println!("crafty showcase · stateful workers (stateful actors)");
     if migrate_demo_mode() {
         println!("  mode     migration demo (counter actor)");
         println!("  migrate  ./cluster.sh migrate-run  (POST /demo/migrate/run)");

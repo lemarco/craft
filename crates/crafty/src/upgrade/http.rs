@@ -1,4 +1,4 @@
-//! HTTP [`UpgradeApi`](crafty_http::UpgradeApi) wired to a [`CraftyCluster`](crate::cluster::CraftyCluster).
+//! HTTP [`UpgradeApi`](crafty_http::UpgradeApi) wired to a [`CraftyCluster`](crate::cluster_handle::CraftyCluster).
 
 use std::sync::Arc;
 
@@ -7,7 +7,7 @@ use crafty_core::UpgradeMachine;
 use crafty_http::{UpgradeApi, UpgradeApiError};
 
 use super::client::{propose_upgrade, query_upgrade_view};
-use crate::cluster::CraftyCluster;
+use crate::cluster_handle::CraftyCluster;
 
 /// Build cluster upgrade routes backed by Raft propose/query on `cluster`.
 #[must_use]

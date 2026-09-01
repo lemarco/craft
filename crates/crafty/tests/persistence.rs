@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crafty::CraftyCluster;
+use crafty::cluster::CraftyCluster;
 use crafty::net::LocalNetwork;
 use crafty::proto::NodeId;
 use crafty::storage::{GroupRedbLayout, LogStore, SnapshotStore};

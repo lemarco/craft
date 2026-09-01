@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use crafty::NodeId;
 use crafty::actor::{ConfigCodecError, UserActor};
-use crafty::advanced::CraftyCluster;
+use crafty::cluster::CraftyCluster;
 use crafty::core::{Config, FailureDetectorKind, ReachabilityConfig};
 use crafty::net::LocalNetwork;
 use crafty::proto;
@@ -528,7 +528,7 @@ async fn builder_wires_actor_state_store() {
 
 #[tokio::test(start_paused = true)]
 async fn builder_wires_resource_profile() {
-    use crafty::advanced::{ResourceProfile, VpsResources};
+    use crafty::cluster::{ResourceProfile, VpsResources};
 
     let net = LocalNetwork::new();
     let cluster = CraftyCluster::builder(NodeId(1), Kv::default())

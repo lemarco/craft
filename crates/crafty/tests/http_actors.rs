@@ -6,7 +6,7 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use crafty::{CraftyApp, CraftyConfigure};
-use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
+use crafty_test_support::{advance, boot_local_app, wait_for_crafty_app_leader};
 use tower::ServiceExt;
 
 #[tokio::test(start_paused = true)]
@@ -20,7 +20,7 @@ async fn http_ask_returns_503_when_group_has_no_workers() {
     )
     .await;
 
-    wait_for_crafty_leader(app.cluster()).await;
+    wait_for_crafty_app_leader(&app).await;
     advance(Duration::from_millis(200)).await;
 
     let api = CraftyApp::actors_api(Arc::clone(&app));
@@ -36,5 +36,5 @@ async fn http_ask_returns_503_when_group_has_no_workers() {
     let resp = router.oneshot(req).await.expect("route");
     assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
 
-    app.cluster().shutdown();
+    app.shutdown();
 }

@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crafty::CraftyCluster;
+use crafty::cluster::CraftyCluster;
 use crafty::NodeId;
 use crafty::core::{RaftGroupId, StableShardRouter, place_shard};
 use crafty::net::LocalNetwork;

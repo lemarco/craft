@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use crafty::{ConsumerOpts, CraftyApp, CraftyConfigure, QueueOpts, consumer};
-use crafty_test_support::{advance, boot_local_app, wait_for_crafty_leader};
+use crafty_test_support::{advance, boot_local_app, wait_for_crafty_app_leader};
 
 static HANDLED: AtomicUsize = AtomicUsize::new(0);
 
@@ -42,7 +42,7 @@ async fn consumer_macro_spawns_and_processes_job() {
     )
     .await;
 
-    wait_for_crafty_leader(app.cluster()).await;
+    wait_for_crafty_app_leader(&app).await;
     advance(Duration::from_millis(200)).await;
 
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
@@ -61,6 +61,6 @@ async fn consumer_macro_spawns_and_processes_job() {
     stop_tx.send(true).unwrap();
     consumer.await.unwrap();
 
-    app.cluster().shutdown();
+    app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }

@@ -1,6 +1,6 @@
 //! Automatic Raft log compaction via [`CraftyClusterBuilder::auto_compaction`].
 
-use crafty::CraftyCluster;
+use crafty::cluster::CraftyCluster;
 use crafty::core::CompactionPolicy;
 use crafty::net::LocalNetwork;
 use crafty::proto::NodeId;

@@ -1,10 +1,10 @@
 //! `crafty-node` — reference runner for a single crafty cluster node (backlog
 //! J3). It reads its configuration from the environment, builds the mTLS
-//! [`crafty::advanced::Security`], and starts a node over the live QUIC transport with a built-in
+//! [`crafty::cluster::Security`], and starts a node over the live QUIC transport with a built-in
 //! demo state machine, then runs until `SIGINT`/Ctrl-C.
 //!
 //! It exists to smoke-test deployments and to serve as a copyable template —
-//! real applications embed [`crafty::CraftyCluster`] in their own binary with
+//! real applications embed [`crafty::cluster::CraftyCluster`] in their own binary with
 //! their own [`StateMachine`] and actors.
 //!
 //! ## Environment
@@ -40,8 +40,8 @@ mod config;
 
 use std::error::Error;
 
-use crafty::CraftyCluster;
-use crafty::advanced::PemSecurity;
+use crafty::cluster::CraftyCluster;
+use crafty::cluster::PemSecurity;
 use crafty::core::StateMachine;
 use crafty::discovery::resolve_dns_seeds;
 use crafty::proto::LogIndex;

@@ -5,8 +5,8 @@
 pub struct ActorGroupOpts<C> {
     /// Actor constructor config passed to [`UserActor`](crafty_actor::UserActor).
     pub config: C,
-    /// `None` — one instance per live cluster node ([`manage_auto`](crate::CraftyClusterBuilder::manage_auto)).
-    /// `Some(n)` — fixed pool of `n` instances cluster-wide ([`manage`](crate::CraftyClusterBuilder::manage)).
+    /// `None` — one instance per live cluster node ([`manage_auto`](crate::cluster::CraftyClusterBuilder::manage_auto)).
+    /// `Some(n)` — fixed pool of `n` instances cluster-wide ([`manage`](crate::cluster::CraftyClusterBuilder::manage)).
     pub total: Option<usize>,
 }
 

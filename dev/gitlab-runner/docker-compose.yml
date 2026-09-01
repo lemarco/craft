@@ -1,0 +1,14 @@
+# Self-hosted GitLab Runner for crafty CI (docker executor, host Docker socket).
+#
+#   cp .env.example .env   # set GITLAB_RUNNER_TOKEN
+#   ./register.sh
+#   docker compose up -d
+
+services:
+  gitlab-runner:
+    image: gitlab/gitlab-runner:latest
+    container_name: crafty-gitlab-runner
+    restart: unless-stopped
+    volumes:
+      - ./config:/etc/gitlab-runner
+      - /var/run/docker.sock:/var/run/docker.sock

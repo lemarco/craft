@@ -14,23 +14,26 @@ stability promise applies primarily to types re-exported from `crafty`.
 
 | Area | Types | Notes |
 |------|-------|-------|
-| App | `CraftyApp`, `CraftyAppBuilder`, `CraftyConfigure`, `QueueOpts`, `CronOpts`, `ActorGroupOpts`, `GatewayOpts`, `RunOpts` | Preferred product path; env via `CRAFTY_*` at boot |
-| Cluster | `CraftyCluster`, `CraftyClusterBuilder`, `StartError` | Full control / examples |
+| App | `CraftyApp`, `CraftyAppBuilder`, `CraftyConfigure`, `QueueOpts`, `CronOpts`, `ActorGroupOpts`, `GatewayOpts`, `RunOpts` | Primary entry; env via `CRAFTY_*` at boot |
+| App runtime | `node_id`, `control`, `registry`, `supervisor`, `enqueue`, `cast`, `ask`, `shutdown_graceful` | Product control plane on `CraftyApp` |
 | Identity | `NodeId`, `Security`, `PeerDirectory`, cert reload helpers | Multi-node wiring |
-| Jobs (tier C) | `JobQueue`, `EnqueueOptions`, `run_queue_consumer`, `ClusterJobQueue` | Via `CraftyApp::enqueue` |
+| Jobs | `JobQueue`, `EnqueueOptions`, `run_queue_consumer`, `ClusterJobQueue` | Via `CraftyApp::enqueue` |
 | Workflows | `WorkflowBuilder`, `run_workflow` / `resume_workflow` on app | Saga journal durable |
 | Actor store | `RedbActorStateStore`, `ClusterActorStateStore`, `store_get` / `store_set` | Auto via `data_dir` |
 | Sessions | `ActorSession`, `CraftyApp::session_keyed` | Sticky routing |
 | Observability | `init_tracing`, `Metrics`, `CraftyEvent` | Admin port separate |
 
-## Tier 2 — advanced (stable semantics, may move modules)
+## Tier 2 — `crafty::cluster` and client (stable semantics)
 
 | Area | Types | Notes |
 |------|-------|-------|
+| Cluster | `crafty::cluster::{CraftyCluster, CraftyClusterBuilder, StartError}` | Custom SM, integration tests; not re-exported at crate root |
 | Client | `RemoteClient`, `run_saga`, `run_keyed_saga`, `KeyedClient` | Re-exported `crafty::client` |
 | Multi-Raft | `propose_keyed`, `add_raft_groups`, `RaftGroupsView` | Builder flags |
 | Saga / 2PC journals | `MetaRaftSagaJournal`, `CompositeSagaJournal`, `StoreTwoPhaseJournal` | Ops / recovery |
 | HTTP product | `crafty-http` crate, `CraftyApp::jobs_api` (`http-jobs` feature) | Gateway layer |
+
+**Removed / hidden (0.5.x):** `crafty::advanced` module (renamed to `crafty::cluster`); root `use crafty::CraftyCluster`; `CraftyApp::cluster` / `into_cluster` / `CraftyAppBuilder::inner_mut` (`#[doc(hidden)]`, tests only).
 
 ## Tier 3 — explicit non-guarantees until 1.0
 
@@ -52,7 +55,7 @@ stability promise applies primarily to types re-exported from `crafty`.
 
 ## 1.0 checklist
 
-- [ ] CHANGELOG documents any breaking diff from this audit
+- [x] CHANGELOG documents breaking API surface cleanup (`advanced` → `cluster`, `CraftyApp` delegates)
 - [x] `missing_docs = deny` on published crates (see [missing-docs-1.0.md](missing-docs-1.0.md)) — shipped 2026-08-29
 - [ ] `./scripts/docs-missing-audit.sh --workspace` → 0 warnings
 - [ ] Scenario soak harness green in scheduled CI (B-10)

@@ -14,7 +14,7 @@ use crafty::{
     ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayOpts, SessionHandle,
     spawn_gateway,
 };
-use crafty_test_support::{advance, boot_local_app, eventually_default, wait_for_crafty_leader};
+use crafty_test_support::{advance, boot_local_app, eventually_default, wait_for_crafty_app_leader};
 use futures_util::{SinkExt, StreamExt};
 use rustls::pki_types::CertificateDer;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -214,7 +214,7 @@ async fn boot_echo_app(base: &std::path::Path) -> Arc<CraftyApp> {
         None,
     )
     .await;
-    wait_for_crafty_leader(app.cluster()).await;
+    wait_for_crafty_app_leader(&app).await;
     advance(Duration::from_millis(500)).await;
     eventually_default("echo worker in directory", || {
         !app.cluster_ref("echo").is_empty()
@@ -255,7 +255,7 @@ async fn gateway_serves_https_when_tls_configured() {
     let (status, _body) = https_get(addr, "/ping", &trust).await;
     assert_eq!(status, 200);
 
-    app.cluster().shutdown();
+    app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }
 
@@ -293,6 +293,6 @@ async fn websocket_gateway_wss_casts_to_worker() {
     let reply = ws.next().await.expect("frame").expect("ok");
     assert_eq!(reply.into_text().unwrap(), "ok: hello");
 
-    app.cluster().shutdown();
+    app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }

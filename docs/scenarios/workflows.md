@@ -19,8 +19,8 @@ Client / API
      │
      └── run_saga(plan, journal) ──► step 1 ──► step 2 ──► step 3
               │                         │          │
-              │                         │          └── enqueue (tier C)
-              │                         └── propose (tier A)
+              │                         │          └── enqueue (job queue)
+              │                         └── propose (Raft state machine)
               │
               └── journal: MetaRaftSagaJournal / CompositeSagaJournal
                         (group-meta.redb)
@@ -44,7 +44,7 @@ Product path: **Meta-Raft** — no external DB.
 ### 1. Obtain journal from cluster
 
 ```rust
-use crafty::{CraftyCluster, CompositeSagaJournal, MetaRaftSagaJournal};
+use crafty::cluster::{CraftyCluster, CompositeSagaJournal, MetaRaftSagaJournal};
 use crafty_client::{run_saga, resume_saga, SagaPlan, SagaStep, RunSagaOpts};
 
 let journal = cluster.saga_journal();  // CompositeSagaJournal in multi-Raft mode

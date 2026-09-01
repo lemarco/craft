@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use crafty::advanced::CraftyCluster;
+use crafty::cluster::CraftyCluster;
 use crafty::core::RaftGroupId;
 use crafty::net::{LocalNetwork, send_client_request, send_group_migrate, send_join_request};
 use crafty::proto::{

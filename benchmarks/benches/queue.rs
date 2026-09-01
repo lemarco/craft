@@ -11,7 +11,7 @@ use std::time::Duration;
 use crafty::core::{Config, StateMachine};
 use crafty::net::LocalNetwork;
 use crafty::proto::LogIndex;
-use crafty::advanced::{CraftyCluster, JobQueue};
+use crafty::cluster::{CraftyCluster, JobQueue};
 use crafty::NodeId;
 use crafty_actor::{InMemoryJobQueue, RedbJobQueue, WorkerId};
 use crafty_benchmarks::{env_u64, queue_payload};

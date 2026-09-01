@@ -6,7 +6,8 @@ use std::time::Duration;
 use crafty::core::StateMachine;
 use crafty::net::LocalNetwork;
 use crafty::proto::LogIndex;
-use crafty::{CraftyCluster, NodeId};
+use crafty::cluster::CraftyCluster;
+use crafty::NodeId;
 use crafty_test_support::{advance, await_crafty_leader};
 
 #[derive(Default)]

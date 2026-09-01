@@ -12,7 +12,7 @@ use crafty_net::{
 use crafty_proto::NodeId;
 use tokio::task::JoinHandle;
 
-use crate::cluster::ClusterFacts;
+use crate::cluster_handle::ClusterFacts;
 use crate::security::Security;
 
 /// PEM-backed security: identity loaded from disk plus the paths to re-read on rotation.

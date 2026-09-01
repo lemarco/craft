@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Background jobs — 3-node QUIC cluster (tier C showcase)
+# Background jobs — 3-node QUIC cluster (queue showcase)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"

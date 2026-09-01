@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use crafty::NodeId;
 use crafty::actor::{ActorStateStore, ConfigCodecError, InMemoryStore, UserActor};
-use crafty::advanced::CraftyCluster;
+use crafty::cluster::CraftyCluster;
 use crafty::core::{Config, StateMachine};
 use crafty::net::LocalNetwork;
 use crafty::proto::{self, LogIndex};

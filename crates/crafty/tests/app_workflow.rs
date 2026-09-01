@@ -64,7 +64,7 @@ async fn crafty_app_workflows_api_on_gateway() {
 
 #[cfg(feature = "http-jobs")]
 mod gateway_merge {
-    use crafty::advanced::build_gateway_router;
+    use crafty::cluster::build_gateway_router;
     use crafty::{
         CraftyApp, CraftyConfigure, GatewayOpts, ReadyOpts, WorkflowOpts, journal_workflow,
     };

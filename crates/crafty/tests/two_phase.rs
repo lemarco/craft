@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crafty::CraftyCluster;
+use crafty::cluster::CraftyCluster;
 use crafty::client::{
     RemoteClient, ResumeTwoPhaseOpts, TwoPhaseClient, propose_cross_shard_2pc,
     resume_cross_shard_2pc,

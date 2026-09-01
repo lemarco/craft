@@ -10,11 +10,11 @@ use axum::http::{HeaderMap, Method, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use crafty::actor::{UserActor, remote_actor};
-use crafty::advanced::build_gateway_router;
+use crafty::cluster::build_gateway_router;
 use crafty::{
     ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayOpts, SessionHandle,
 };
-use crafty_test_support::{advance, boot_local_app, eventually_default, wait_for_crafty_leader};
+use crafty_test_support::{advance, boot_local_app, eventually_default, wait_for_crafty_app_leader};
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
@@ -149,7 +149,7 @@ async fn websocket_gateway_casts_to_worker() {
     )
     .await;
 
-    wait_for_crafty_leader(app.cluster()).await;
+    wait_for_crafty_app_leader(&app).await;
     advance(Duration::from_millis(500)).await;
 
     eventually_default("echo worker in directory", || {
@@ -177,6 +177,6 @@ async fn websocket_gateway_casts_to_worker() {
     let reply = ws.next().await.expect("frame").expect("ok");
     assert_eq!(reply.into_text().unwrap(), "ok: hello");
 
-    app.cluster().shutdown();
+    app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }

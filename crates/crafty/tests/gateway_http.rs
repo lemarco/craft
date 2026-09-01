@@ -10,12 +10,12 @@ use axum::http::{HeaderMap, Method, Request, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use crafty::actor::{UserActor, remote_actor};
-use crafty::advanced::build_gateway_router;
+use crafty::cluster::build_gateway_router;
 use crafty::{
     ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayOpts,
     OpenActorSessionError,
 };
-use crafty_test_support::{advance, boot_local_app, eventually_default, wait_for_crafty_leader};
+use crafty_test_support::{advance, boot_local_app, eventually_default, wait_for_crafty_app_leader};
 use serde::{Deserialize, Serialize};
 use tower::ServiceExt;
 
@@ -157,7 +157,7 @@ async fn boot_with_workers(base: &std::path::Path) -> Arc<CraftyApp> {
         None,
     )
     .await;
-    wait_for_crafty_leader(app.cluster()).await;
+    wait_for_crafty_app_leader(&app).await;
     advance(Duration::from_millis(500)).await;
     eventually_default("echo worker in directory", || {
         !app.cluster_ref("echo").is_empty()
@@ -197,7 +197,7 @@ async fn http_post_chat_with_query_auth() {
     let resp = router.oneshot(req).await.expect("route");
     assert_eq!(resp.status(), StatusCode::OK);
 
-    app.cluster().shutdown();
+    app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }
 
@@ -224,7 +224,7 @@ async fn extract_session_from_on_http_request() {
     let extracted = state.extract_session_from(&req).await.expect("auth");
     assert_eq!(extracted.session_key(), "bob");
 
-    app.cluster().shutdown();
+    app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }
 
@@ -258,7 +258,7 @@ async fn http_get_me_route() {
     let resp = router.oneshot(req).await.expect("route");
     assert_eq!(resp.status(), StatusCode::OK);
 
-    app.cluster().shutdown();
+    app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }
 
@@ -295,7 +295,7 @@ async fn http_post_chat_with_bearer_auth() {
     let resp = router.oneshot(req).await.expect("route");
     assert_eq!(resp.status(), StatusCode::OK);
 
-    app.cluster().shutdown();
+    app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }
 
@@ -330,6 +330,6 @@ async fn http_post_without_auth_returns_401() {
     let resp = router.oneshot(req).await.expect("route");
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
-    app.cluster().shutdown();
+    app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }

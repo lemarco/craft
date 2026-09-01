@@ -13,7 +13,8 @@ use crafty::actor::{UserActor, remote_actor};
 use crafty::core::{Config, StateMachine};
 use crafty::net::LocalNetwork;
 use crafty::proto::LogIndex;
-use crafty::{CraftyCluster, NodeId};
+use crafty::cluster::CraftyCluster;
+use crafty::NodeId;
 use crafty_benchmarks::env_u64;
 
 static HANDLED: AtomicU64 = AtomicU64::new(0);

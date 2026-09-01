@@ -19,7 +19,7 @@ use super::fetch::{UpgradeFetchError, fetch_artifact};
 use super::install::{
     UpgradeInstallError, atomic_symlink_install, running_app_version, verify_sha256_hex,
 };
-use crate::cluster::CraftyCluster;
+use crate::cluster_handle::CraftyCluster;
 
 /// Options for [`spawn_upgrade_coordinator`].
 #[derive(Clone, Debug)]
