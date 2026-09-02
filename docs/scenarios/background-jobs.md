@@ -187,7 +187,7 @@ JobOpts::new("imports")
     .consumer(&ImportConsumer)
 ```
 
-crafty runs **`claim` on the leader only**, tops the in-flight queue window to `pending_target × consumer_instances`, enqueues with `dedup_key = item.key`, **`settle`s** on ack/nack/reclaim via a durable outbox (`backlog-settle-outbox.redb` + leader drainer), and feeds **`depth()`** to autoscale. Adapter: [`crafty-backlog-postgres`](../../crates/crafty-backlog-postgres/). ADR: [external-backlog](../decisions/external-backlog.md).
+crafty runs **`claim` on the leader only**, tops the in-flight queue window to `pending_target × consumer_instances` (live by default: `reachable_nodes × instances`), enqueues with `dedup_key = item.key`, **`settle`s** on ack/nack/reclaim via a durable outbox (`backlog-settle-outbox.redb` + leader drainer), and feeds **`depth()`** to autoscale. Adapter: [`crafty-backlog-postgres`](../../crates/crafty-backlog-postgres/). ADR: [external-backlog](../decisions/external-backlog.md).
 
 ### 4. HTTP mapping (recommended)
 

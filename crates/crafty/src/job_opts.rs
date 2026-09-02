@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crafty_actor::{BacklogFeedOpts, DEFAULT_QUEUE_PREFETCH, ExternalBacklog};
+use crafty_actor::{BacklogFeedOpts, ConsumerCount, DEFAULT_QUEUE_PREFETCH, ExternalBacklog};
 
 use crate::consumer::{ConsumerOpts, ConsumerSpawnFn, IdempotencyOpts, JobConsumer};
 use crate::queue_opts::QueueOpts;
@@ -201,7 +201,9 @@ impl JobOpts {
     pub(crate) fn into_registration(self) -> JobRegistration {
         let instances = self.instances;
         let backlog = self.backlog.map(|(backlog, mut opts)| {
-            opts.consumer_instances = u64::from(instances.max(1));
+            if let ConsumerCount::Live { ref mut per_node } = opts.consumer_instances {
+                *per_node = u64::from(instances.max(1));
+            }
             (backlog, opts)
         });
         JobRegistration {

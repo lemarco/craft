@@ -31,7 +31,7 @@ pub use crate::upgrade::{
 pub use crate::workflow::{WorkflowBuildError, WorkflowBuilder};
 pub use crafty_actor::{
     ActorSession, AutoscalePolicy, BacklogError, BacklogFeedOpts, BacklogItem, BacklogRegistry,
-    ClusterActorStateStore, ClusterJobQueue, DEFAULT_DRAIN_TIMEOUT, DEFAULT_QUEUE_BATCH_MAX,
+    ClusterActorStateStore, ClusterJobQueue, ConsumerCount, DEFAULT_DRAIN_TIMEOUT, DEFAULT_QUEUE_BATCH_MAX,
     DEFAULT_QUEUE_PREFETCH, DirectoryPolicy, DirectoryRetry, EnqueueOptions, ExternalBacklog,
     InMemoryExternalBacklog, InMemoryJobQueue, InMemoryMailboxSpool, JobId, JobQueue, LeaseId,
     LeasedJob, MailboxSpool, MembershipAutoscalePolicy, QueueConsumerWorkload, QueueError,

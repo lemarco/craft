@@ -34,7 +34,7 @@ JobOpts::new("imports")
 Runtime behaviour ([`run_backlog_feeder`](../../crates/crafty-actor/src/external_backlog.rs)):
 
 - **Leader only** — same gate as cron schedules and queue mutations
-- Target in-flight: `pending_target_per_consumer × consumer_instances`
+- Target in-flight: `pending_target_per_consumer × consumer_instances` (recomputed each poll)
 - Top-up: `claim(need)` → `enqueue_opts(dedup_key = item.key)`
 - **Settle** on ack, nack, and lease-timeout **reclaim** when a dedup key is present — durable **outbox** at `{data_dir}/backlog-settle-outbox.redb` + leader [`run_backlog_settle_drainer`](../../crates/crafty-actor/src/external_backlog.rs)
 - **Autoscale** reads `depth()` when a backlog is registered for the stream; otherwise falls back to queue `pending + leased`
@@ -46,7 +46,7 @@ Optional adapter: [`crafty-backlog-postgres`](../../crates/crafty-backlog-postgr
 - crafty fits teams with an existing work table without moving backlog into redb
 - HTTP `POST /jobs/*` and external backlog can coexist (direct enqueue bypasses feeder)
 - Settlement is **at-least-once** via the settle outbox; `ExternalBacklog::settle` should be idempotent for repeated `Done` / terminal outcomes
-- `consumer_instances` in [`BacklogFeedOpts`](../../crates/crafty-actor/src/external_backlog.rs) is static at registration — multi-node apps should set it to total consumer loops cluster-wide
+- `consumer_instances` defaults to [`ConsumerCount::Live`](../../crates/crafty-actor/src/external_backlog.rs) — `reachable_nodes × per_node`, where `per_node` comes from `JobOpts::instances()` at registration. Use `ConsumerCount::Fixed(n)` to pin a static cluster-wide count
 
 ## Alternatives considered
 

@@ -9,6 +9,12 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ## [Unreleased]
 
+### Changed
+
+- **`BacklogFeedOpts::consumer_instances`** — defaults to `ConsumerCount::Live`
+  (`reachable_nodes × per_node` each poll); use `ConsumerCount::Fixed(n)` to opt out of
+  elastic window sizing.
+
 ## [0.6.1] — 2026-09-02
 
 **Rustdoc fixes for docs.rs 0.6.0 builds.**

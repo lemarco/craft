@@ -53,6 +53,43 @@ pub struct BacklogItem {
     pub priority: u8,
 }
 
+/// How the backlog feeder sizes the in-flight window against consumer capacity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConsumerCount {
+    /// `reachable_nodes × per_node` — recomputed each poll from [`ClusterState`].
+    ///
+    /// When registered via `JobOpts::backlog`, `per_node` is taken from local
+    /// `.instances()` at boot.
+    Live {
+        /// Consumer loops registered on each node for this stream.
+        per_node: u64,
+    },
+    /// Fixed cluster-wide consumer count (explicit opt-out of live sizing).
+    Fixed(u64),
+}
+
+impl Default for ConsumerCount {
+    fn default() -> Self {
+        Self::Live { per_node: 1 }
+    }
+}
+
+impl ConsumerCount {
+    /// Resolve the effective cluster-wide consumer count for window sizing.
+    #[must_use]
+    pub fn resolve(self, state: &dyn ClusterState) -> u64 {
+        match self {
+            Self::Live { per_node } => {
+                let nodes = u64::try_from(state.reachable_nodes().len())
+                    .unwrap_or(u64::MAX)
+                    .max(1);
+                nodes.saturating_mul(per_node.max(1))
+            }
+            Self::Fixed(n) => n.max(1),
+        }
+    }
+}
+
 /// Tunables for [`run_backlog_feeder`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BacklogFeedOpts {
@@ -62,8 +99,8 @@ pub struct BacklogFeedOpts {
     pub poll_interval: Duration,
     /// Upper bound on items claimed per poll.
     pub max_claim_batch: usize,
-    /// Registered consumer instances cluster-wide (sum of `JobOpts::instances` on every node).
-    pub consumer_instances: u64,
+    /// Consumer capacity for window sizing — live by default.
+    pub consumer_instances: ConsumerCount,
 }
 
 impl Default for BacklogFeedOpts {
@@ -72,7 +109,7 @@ impl Default for BacklogFeedOpts {
             pending_target_per_consumer: 2,
             poll_interval: Duration::from_secs(1),
             max_claim_batch: 64,
-            consumer_instances: 1,
+            consumer_instances: ConsumerCount::default(),
         }
     }
 }
@@ -99,10 +136,10 @@ impl BacklogFeedOpts {
         self
     }
 
-    /// Total consumer instances across the cluster (for window sizing).
+    /// Consumer capacity for in-flight window sizing.
     #[must_use]
-    pub fn consumer_instances(mut self, n: u64) -> Self {
-        self.consumer_instances = n.max(1);
+    pub fn consumer_instances(mut self, count: ConsumerCount) -> Self {
+        self.consumer_instances = count;
         self
     }
 }
@@ -237,9 +274,6 @@ pub async fn run_backlog_feeder(
     settle_outbox: Option<Arc<dyn BacklogSettleOutbox>>,
     mut stop: tokio::sync::watch::Receiver<bool>,
 ) {
-    let target_in_flight = opts
-        .pending_target_per_consumer
-        .saturating_mul(opts.consumer_instances);
     let mut interval = tokio::time::interval(opts.poll_interval);
     loop {
         tokio::select! {
@@ -253,6 +287,10 @@ pub async fn run_backlog_feeder(
         if *stop.borrow() || !state.is_leader() {
             continue;
         }
+        let consumer_instances = opts.consumer_instances.resolve(state.as_ref());
+        let target_in_flight = opts
+            .pending_target_per_consumer
+            .saturating_mul(consumer_instances);
         let Ok(metrics) = queue.metrics().await else {
             continue;
         };
@@ -471,6 +509,7 @@ mod tests {
 
     struct MockState {
         leader: bool,
+        reachable: Vec<NodeId>,
     }
 
     impl ClusterState for MockState {
@@ -479,7 +518,7 @@ mod tests {
         }
 
         fn live_nodes(&self) -> Vec<NodeId> {
-            vec![NodeId(1)]
+            self.reachable.clone()
         }
 
         fn leader_id(&self) -> Option<NodeId> {
@@ -487,7 +526,7 @@ mod tests {
         }
 
         fn reachable_nodes(&self) -> Vec<NodeId> {
-            vec![NodeId(1)]
+            self.reachable.clone()
         }
     }
 
@@ -502,7 +541,10 @@ mod tests {
             });
         }
         let queue = Arc::new(InMemoryJobQueue::new(Duration::from_secs(30)));
-        let state = Arc::new(MockState { leader: true });
+        let state = Arc::new(MockState {
+            leader: true,
+            reachable: vec![NodeId(1)],
+        });
         let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
         let feeder = tokio::spawn(run_backlog_feeder(
             "jobs".into(),
@@ -511,7 +553,7 @@ mod tests {
             state,
             BacklogFeedOpts::default()
                 .pending_target_per_consumer(2)
-                .consumer_instances(1)
+                .consumer_instances(ConsumerCount::Fixed(1))
                 .poll(Duration::from_millis(20)),
             None,
             stop_rx,
@@ -522,6 +564,43 @@ mod tests {
         let metrics = queue.metrics().await.unwrap();
         assert!(metrics.pending + metrics.leased <= 2);
         assert!(metrics.pending + metrics.leased >= 1);
+    }
+
+    #[tokio::test]
+    async fn feeder_live_consumer_count_tracks_reachable_nodes() {
+        let backlog = Arc::new(InMemoryExternalBacklog::new());
+        for i in 0..12 {
+            backlog.push(BacklogItem {
+                key: format!("k{i}").into_bytes(),
+                payload: format!("p{i}").into_bytes(),
+                priority: 0,
+            });
+        }
+        let queue = Arc::new(InMemoryJobQueue::new(Duration::from_secs(30)));
+        let state = Arc::new(MockState {
+            leader: true,
+            reachable: vec![NodeId(1), NodeId(2), NodeId(3)],
+        });
+        let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+        let feeder = tokio::spawn(run_backlog_feeder(
+            "jobs".into(),
+            Arc::clone(&queue) as Arc<dyn JobQueue>,
+            backlog.clone(),
+            state,
+            BacklogFeedOpts::default()
+                .pending_target_per_consumer(2)
+                .consumer_instances(ConsumerCount::Live { per_node: 2 })
+                .poll(Duration::from_millis(20)),
+            None,
+            stop_rx,
+        ));
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        stop_tx.send(true).unwrap();
+        feeder.await.unwrap();
+        let metrics = queue.metrics().await.unwrap();
+        // 3 reachable nodes × 2 instances × 2 pending target = 12
+        assert!(metrics.pending + metrics.leased <= 12);
+        assert!(metrics.pending + metrics.leased >= 6);
     }
 
     #[tokio::test]
@@ -569,7 +648,10 @@ mod tests {
         let registry = Arc::new(BacklogRegistry::new());
         registry.register("imports", backlog.clone());
         let outbox: Arc<dyn BacklogSettleOutbox> = Arc::new(InMemoryBacklogSettleOutbox::new());
-        let state = Arc::new(MockState { leader: true });
+        let state = Arc::new(MockState {
+            leader: true,
+            reachable: vec![NodeId(1)],
+        });
         let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
         let drainer = tokio::spawn(run_backlog_settle_drainer(
             registry,
@@ -652,7 +734,10 @@ mod tests {
             .unwrap();
         assert_eq!(outbox.pending_count().unwrap(), 1);
 
-        let state = Arc::new(MockState { leader: true });
+        let state = Arc::new(MockState {
+            leader: true,
+            reachable: vec![NodeId(1)],
+        });
         let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
         let drainer = tokio::spawn(run_backlog_settle_drainer(
             registry,

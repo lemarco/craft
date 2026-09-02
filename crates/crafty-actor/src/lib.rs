@@ -62,7 +62,7 @@ pub use directory_policy::{DirectoryPolicy, DirectoryRetry};
 pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
 pub use external_backlog::{
     BacklogError, BacklogFeedOpts, BacklogItem, BacklogRegistry, BacklogSettleEvent,
-    BacklogSettleOutcome, ExternalBacklog, InMemoryExternalBacklog, Settlement,
+    BacklogSettleOutcome, ConsumerCount, ExternalBacklog, InMemoryExternalBacklog, Settlement,
     effective_queue_depth, emit_backlog_settle_for_terminal_ops, run_backlog_feeder,
     run_backlog_settle_drainer, terminal_backlog_outcome,
 };
