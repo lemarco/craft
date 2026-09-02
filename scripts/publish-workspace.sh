@@ -52,6 +52,7 @@ PUBLISH_ORDER=(
     crafty-http
     crafty-sim
     crafty-store-redis
+    crafty-backlog-postgres
     crafty
     crafty-node
 )

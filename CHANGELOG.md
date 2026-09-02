@@ -9,6 +9,10 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-09-02
+
+**Event topics, external backlog, workload governor, and dynamic schedules.**
+
 ### Added
 
 - **Durable event topics** — [`EventTopic`](crates/crafty-actor/src/topic.rs) pub/sub with named
@@ -40,6 +44,11 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 - **`CRAFTY_ROLE`**, **`CRAFTY_GATEWAY_ONLY`**, **`CRAFTY_NO_CONSUMER`** — use homogeneous nodes +
   `.workload()` and deployment choice (register consumers or not) instead.
+
+### Changed
+
+- **Documentation** — contributor guide, doc link checker, descriptive messaging layer
+  names (dropped Tier labels); `actor-routing` ADR rename.
 
 ## [0.5.2] — 2026-09-02
 
