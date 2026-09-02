@@ -10,6 +10,16 @@
 
 min_version: '1.12.0'
 
+# Plain streaming output — no spinner that hides cargo progress for minutes.
+no_tty: true
+
+output:
+  - execution
+  - execution_out
+  - execution_info
+  - failure
+  - summary
+
 pre-commit:
   jobs:
     - name: gate-commit
@@ -28,23 +38,47 @@ pre-commit:
       run: bash scripts/check-shell-scripts.sh {staged_files}
 
 pre-push:
+  piped: true
   jobs:
-    - name: quality-full
-      fail_text: |
-        Pre-push gate failed. Re-run:
-          ./scripts/gate.sh --tier push
-        With autofix commit disabled:
-          CRAFTY_NO_AUTOFIX_COMMIT=1 git push
-        With log:
-          CRAFTY_HOOK_LOG=1 git push
-      run: CRAFTY_GATE_AUTOFIX=1 CRAFTY_AUTOFIX_COMMIT=1 bash scripts/gate.sh --tier push
+    - name: autofix
+      run: CRAFTY_GATE_AUTOFIX=1 CRAFTY_AUTOFIX_COMMIT=1 bash scripts/gate-step.sh autofix
+
+    - name: fmt
+      run: bash scripts/gate-step.sh fmt
+
+    - name: clippy
+      run: bash scripts/gate-step.sh clippy
+
+    - name: tests
+      run: bash scripts/gate-step.sh tests
+
+    - name: doctests
+      run: bash scripts/gate-step.sh doctests
+
+    - name: doc
+      run: bash scripts/gate-step.sh doc
+
+    - name: shellcheck
+      run: bash scripts/gate-step.sh shellcheck
+
+    - name: doc-links
+      run: bash scripts/gate-step.sh doc-links
+
+    - name: publish-dry-run
+      run: bash scripts/gate-step.sh publish-dry-run
+
+    - name: examples
+      run: bash scripts/gate-step.sh examples
+
+    - name: showcase
+      run: bash scripts/gate-step.sh showcase
+
+    - name: msrv
+      run: bash scripts/gate-step.sh msrv
 
     - name: release-build
       tags: [release]
-      fail_text: |
-        Release build failed. Run:
-          bash scripts/gate.sh --tier push --release-build
-      run: bash scripts/gate.sh --tier push --release-build
+      run: bash scripts/gate-step.sh release-build
 
 commit-msg:
   jobs:
