@@ -14,6 +14,9 @@ use super::{EnqueueOptions, JobQueue, QueueError, QueueReplicationOps};
 
 const SCHEDULES: TableDefinition<&str, &[u8]> = TableDefinition::new("queue_schedules");
 
+/// Redb table name for recurring schedules (shared with [`crate::schedule_source`]).
+pub(crate) const SCHEDULES_TABLE: TableDefinition<&str, &[u8]> = SCHEDULES;
+
 fn backend(e: impl std::fmt::Display) -> QueueError {
     QueueError::Backend(e.to_string())
 }
@@ -219,7 +222,7 @@ impl RedbJobQueue {
     }
 }
 
-/// Leader-only loop: fire due cron schedules with voter replication.
+/// Leader-only loop: reconcile [`ScheduleSource`]s and fire due cron schedules.
 pub async fn run_queue_schedule_ticker(
     service: Arc<crate::queue_service::QueueService>,
     poll_interval: Duration,
@@ -229,6 +232,7 @@ pub async fn run_queue_schedule_ticker(
         if *stop.borrow() {
             break;
         }
+        let _ = service.poll_schedule_sources().await;
         let _ = service.tick_schedules().await;
         tokio::select! {
             () = tokio::time::sleep(poll_interval) => {}

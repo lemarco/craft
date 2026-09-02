@@ -66,6 +66,35 @@ CraftyApp::builder()
 
 Lower-level [`.queue()`](../../crates/crafty/src/app.rs) + [`.consumer()`](../../crates/crafty/src/app.rs) remain available. Cluster-level autoscale, sharded streams, priority, dedup: see [background-jobs showcase](../../examples/background-jobs/) and [job-queue](../decisions/job-queue.md).
 
+#### Dynamic schedules (`ScheduleSource`)
+
+When schedules live in **your** database (admin UI toggles), poll them instead of
+redeploying for every change ([schedule-source](../decisions/schedule-source.md)):
+
+```rust
+use std::sync::Arc;
+use std::time::Duration;
+
+use crafty::{CraftyApp, QueueOpts, SchedulePoll, ScheduleSource};
+use crafty_actor::RecurringJob;
+
+CraftyApp::builder()
+    .data_dir("/var/lib/crafty")
+    .queue([QueueOpts::new("emails", Duration::from_secs(300))])
+    .schedule_source(
+        "emails",
+        Arc::new(my_pg_schedule_source),
+        SchedulePoll::secs(10),
+    )
+    // `.cron([…])` still works — merged into the same reconcile path
+    .run(/* … */)
+    .await?;
+```
+
+Implement [`ScheduleSource`](../../crates/crafty-actor/src/schedule_source.rs) in your
+crate; return `Err` on backend failure (crafty keeps the last good set). An initial
+`Ok([])` before any successful poll does not wipe schedules already in redb.
+
 ### 2. Enqueue (from any node)
 
 ```rust
@@ -145,6 +174,21 @@ Patterns:
 
 See [state placement cheat sheet](state-placement.md) for where queue backlog vs actor state vs saga journal live.
 
+### External backlog (Postgres / existing work table)
+
+When the **authoritative backlog** lives outside crafty (Postgres `pending` rows, legacy job table), use [`ExternalBacklog`](../../crates/crafty-actor/src/external_backlog.rs) instead of reimplementing a leader feeder:
+
+```rust
+JobOpts::new("imports")
+    .backlog(
+        Arc::new(PgBacklog::connect(&database_url, "crafty_jobs").await?),
+        BacklogFeedOpts::default().pending_target_per_consumer(2),
+    )
+    .consumer(&ImportConsumer)
+```
+
+crafty runs **`claim` on the leader only**, tops tier C to `pending_target × consumer_instances`, enqueues with `dedup_key = item.key`, **`settle`s** on ack/nack/reclaim via a durable outbox (`backlog-settle-outbox.redb` + leader drainer), and feeds **`depth()`** to autoscale. Adapter: [`crafty-backlog-postgres`](../../crates/crafty-backlog-postgres/). ADR: [external-backlog](../decisions/external-backlog.md).
+
 ### 4. HTTP mapping (recommended)
 
 Wire the gateway (`http-jobs` feature) with [`GatewayOpts`](../../crates/crafty/src/gateway.rs) — built-in `/jobs/*` routes are **opt-in** (`.with_jobs_api(true)` or `CRAFTY_GATEWAY_JOBS=1`). Request bodies: raw bytes or JSON `{ "payload": "…" }` / `{ "payload_b64": "…" }` ([`crafty-http` README](../../crates/crafty-http/README.md)).
@@ -155,7 +199,9 @@ Wire the gateway (`http-jobs` feature) with [`GatewayOpts`](../../crates/crafty/
 | Batch accept | `202` + `job_ids` | `POST /jobs/{stream}/batch` · `app.enqueue_batch` |
 | Batch ack (workers) | `200 OK` | `POST /jobs/{stream}/ack-batch` · `app.ack_batch` |
 | Job metadata | `200 OK` | `GET /jobs/{stream}/{id}` · `app.job_status` |
+| List jobs (filters) | `200 OK` | `GET /jobs/{stream}?state=dead_letter&limit=50` · `app.list_jobs` |
 | Requeue dead letter | `200 OK` | `POST /jobs/{stream}/{id}/requeue` · `app.requeue_dead_letter` |
+| Requeue many dead letters | `200 OK` | `POST /jobs/{stream}/requeue-batch` · `app.requeue_dead_letter_batch` |
 | Sync read / RPC | `200 OK` | `POST /actors/{group}/ask` · `app.ask` |
 | Fire-and-forget to workers | `202 Accepted` | `POST /actors/{group}/cast` · `app.cast` |
 | Raft-linearizable read | `200 OK` | `app.propose` / SM `query` (not HTTP yet) |
@@ -236,6 +282,30 @@ async fn send_email(payload: &[u8], ctx: JobContext<'_>) -> Result<(), ()> {
 
 It carries `job_id`, `lease_id`, `stream`, `attempts` (`1` on first delivery), and
 the enqueue-time `dedup_key`. Single-argument handlers keep working unchanged.
+
+### Long handlers — extend the lease
+
+Set a **short** stream lease (e.g. 60s via [`JobOpts::lease`](../../crates/crafty/src/job_opts.rs))
+and call [`JobContext::keep_alive`](../../crates/crafty-actor/src/queue.rs) periodically from
+inside the handler. Each call resets visibility to the full stream lease duration, so
+another worker cannot reclaim the job while you are still working:
+
+```rust
+#[consumer("reports")]
+async fn build_report(payload: &[u8], ctx: JobContext<'_>) -> Result<(), ()> {
+    let mut interval = tokio::time::interval(Duration::from_secs(30));
+    loop {
+        tokio::select! {
+            _ = do_chunk(payload) => break,
+            _ = interval.tick() => ctx.keep_alive().await?,
+        }
+    }
+    Ok(())
+}
+```
+
+Without `keep_alive`, a lease shorter than your worst-case runtime causes reclaim and
+redelivery mid-job.
 
 `attempts > 1` tells you a previous attempt did not ack — **not** that it did
 nothing. Treat it as a signal to log or to check your marker, never as permission

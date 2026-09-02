@@ -173,6 +173,26 @@ pub struct QueueNackReply {
     pub error: Option<String>,
 }
 
+/// Extend a live lease visibility timeout (`POST /raft/v1/queue/extend-lease`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueExtendLeaseRequest {
+    /// Queue stream the lease belongs to.
+    pub stream: String,
+    /// Leasing worker node id.
+    pub worker_node: u64,
+    /// Leasing worker instance id.
+    pub worker_instance: u32,
+    /// Lease token to extend.
+    pub lease_id: u64,
+}
+
+/// Response to [`QueueExtendLeaseRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueExtendLeaseReply {
+    /// Set when extend failed.
+    pub error: Option<String>,
+}
+
 /// Read queue depth gauges (`POST /raft/v1/queue/metrics`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueMetricsRequest {
@@ -359,6 +379,17 @@ pub enum QueueReplicateOp {
         /// Earliest re-lease time (unix ms) when requeued.
         not_before_ms: u64,
     },
+    /// Worker heartbeat — push lease expiry forward without completing the job.
+    ExtendLease {
+        /// Live lease token.
+        lease_id: u64,
+        /// Leasing worker node id.
+        worker_node: u64,
+        /// Leasing worker instance id.
+        worker_instance: u32,
+        /// New lease expiry (unix ms).
+        expires_at_ms: u64,
+    },
     /// Operator moved a dead-letter job back to pending.
     RequeueDeadLetter {
         /// Job id to retry.
@@ -378,6 +409,11 @@ pub enum QueueReplicateOp {
         name: String,
         /// Next fire time (unix ms).
         next_run_ms: u64,
+    },
+    /// Remove a recurring schedule no longer present in the desired set.
+    RemoveSchedule {
+        /// Schedule name within the stream.
+        name: String,
     },
 }
 
@@ -413,5 +449,93 @@ pub struct QueueRequeueDeadLetterRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueRequeueDeadLetterReply {
     /// Set when requeue failed.
+    pub error: Option<String>,
+}
+
+/// List jobs in a stream with optional filters (`POST /raft/v1/queue/list-jobs`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueListJobsRequest {
+    /// Queue stream.
+    pub stream: String,
+    /// When set, only jobs in this lifecycle phase.
+    pub lifecycle: Option<QueueJobLifecycleWire>,
+    /// When set, only jobs with `attempts >= min_attempts`.
+    pub min_attempts: Option<u32>,
+    /// When set, only jobs with this exact dedup key.
+    #[serde(default)]
+    pub dedup_key: Option<Vec<u8>>,
+    /// Maximum rows to return (capped server-side).
+    #[serde(default = "default_list_jobs_limit")]
+    pub limit: u32,
+    /// Pagination cursor — return jobs with id strictly greater than this.
+    #[serde(default)]
+    pub after_job_id: u64,
+}
+
+const fn default_list_jobs_limit() -> u32 {
+    50
+}
+
+/// One row in [`QueueListJobsReply::jobs`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueJobListEntryWire {
+    /// Job id within the stream (global id when sharded).
+    pub job_id: u64,
+    /// Current lifecycle phase.
+    pub lifecycle: QueueJobLifecycleWire,
+    /// Byte length of stored payload.
+    pub payload_len: u64,
+    /// Enqueue priority.
+    pub priority: u8,
+    /// Worker node when leased.
+    pub leased_worker_node: Option<u64>,
+    /// Worker instance when leased.
+    pub leased_worker_instance: Option<u32>,
+    /// Delivery attempts so far.
+    pub attempts: u32,
+    /// Configured retry ceiling (`0` = unlimited).
+    pub max_attempts: u32,
+    /// Client idempotency token from enqueue, when set.
+    #[serde(default)]
+    pub dedup_key: Option<Vec<u8>>,
+}
+
+/// Response to [`QueueListJobsRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueListJobsReply {
+    /// Matching jobs in ascending job-id order.
+    pub jobs: Vec<QueueJobListEntryWire>,
+    /// `true` when more rows exist beyond this page.
+    pub has_more: bool,
+    /// Set when listing failed.
+    pub error: Option<String>,
+}
+
+/// Requeue many dead-letter jobs (`POST /raft/v1/queue/requeue-dead-letter-batch`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueRequeueDeadLetterBatchRequest {
+    /// Queue stream.
+    pub stream: String,
+    /// Dead-letter job ids to move back to pending.
+    pub job_ids: Vec<u64>,
+}
+
+/// Per-job failure in a batch requeue response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueRequeueFailureWire {
+    /// Job id that could not be requeued.
+    pub job_id: u64,
+    /// Why requeue failed for this id.
+    pub error: String,
+}
+
+/// Response to [`QueueRequeueDeadLetterBatchRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueRequeueDeadLetterBatchReply {
+    /// Job ids successfully moved back to pending.
+    pub requeued: Vec<u64>,
+    /// Per-id failures (not dead letter, unknown id, …).
+    pub failures: Vec<QueueRequeueFailureWire>,
+    /// Set when the whole request failed before per-id processing.
     pub error: Option<String>,
 }
