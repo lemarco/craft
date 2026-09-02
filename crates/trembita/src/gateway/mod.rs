@@ -436,7 +436,7 @@ fn build_gateway_router_with_tracker(
         None
     };
 
-    let state = TrembitaGatewayState::from_parts(Arc::clone(&app), identity, connections);
+    let state = TrembitaGatewayState::from_parts(Arc::clone(&app), identity, connections.clone());
     let mut router = routes.map_or_else(Router::new, |f| f(state));
 
     #[cfg(feature = "http-jobs")]

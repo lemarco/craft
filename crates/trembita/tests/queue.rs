@@ -457,6 +457,109 @@ async fn dedup_key_survives_leader_failover() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn lease_id_monotonic_across_leader_failover() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let ids = [NodeId(1), NodeId(2), NodeId(3), NodeId(4), NodeId(5)];
+    let (net, clusters) = spawn_queue_cluster_n(&dir, &ids, false).await;
+    let leader = await_trembita_leader(&clusters).await;
+    advance(Duration::from_millis(300)).await;
+
+    let queue = leader.job_queue("jobs").expect("queue");
+    queue.enqueue(b"in-flight").await.expect("enqueue");
+    let worker = WorkerId {
+        node: leader.node_id(),
+        instance: 1,
+    };
+    let leased = queue.lease(worker, 1).await.expect("lease");
+    let first_lease_id = leased[0].lease_id;
+
+    let old_leader_id = leader.node_id();
+    wait_for_trembita_stopped(leader.as_ref()).await;
+    drop(leader);
+    drop(queue);
+    let _ = net.detach(old_leader_id);
+
+    let survivors: Vec<_> = clusters
+        .into_iter()
+        .filter(|c| c.node_id() != old_leader_id)
+        .collect();
+    let new_leader = await_trembita_leader(&survivors).await;
+    advance(Duration::from_millis(300)).await;
+
+    let queue = new_leader.job_queue("jobs").expect("queue");
+    queue.enqueue(b"after-failover").await.expect("enqueue");
+    let worker = WorkerId {
+        node: new_leader.node_id(),
+        instance: 1,
+    };
+    let leased = queue.lease(worker, 1).await.expect("lease");
+    assert_eq!(leased.len(), 1);
+    assert_eq!(leased[0].payload, b"after-failover");
+    assert!(leased[0].lease_id > first_lease_id);
+}
+
+#[tokio::test(start_paused = true)]
+async fn dedup_key_released_after_ack() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (_net, clusters) = spawn_queue_cluster(&dir, false).await;
+    let leader = await_trembita_leader(&clusters).await;
+    advance(Duration::from_millis(200)).await;
+
+    let queue = leader.job_queue("jobs").expect("queue");
+    let id1 = queue
+        .enqueue_opts(b"v1", EnqueueOptions::dedup_key("order-1"))
+        .await
+        .expect("enqueue");
+    let worker = WorkerId {
+        node: leader.node_id(),
+        instance: 1,
+    };
+    let leased = queue.lease(worker, 1).await.expect("lease");
+    queue.ack(worker, leased[0].lease_id).await.expect("ack");
+
+    let id2 = queue
+        .enqueue_opts(b"v2", EnqueueOptions::dedup_key("order-1"))
+        .await
+        .expect("re-enqueue");
+    assert_ne!(id1, id2);
+}
+
+#[tokio::test(start_paused = true)]
+async fn dedup_key_held_on_dead_letter() {
+    use trembita_actor::JobLifecycle;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (_net, clusters) = spawn_queue_cluster(&dir, false).await;
+    let leader = await_trembita_leader(&clusters).await;
+    advance(Duration::from_millis(200)).await;
+
+    let queue = leader.job_queue("jobs").expect("queue");
+    let id = queue
+        .enqueue_opts(
+            b"poison",
+            EnqueueOptions::dedup_key("row-99").max_attempts(1),
+        )
+        .await
+        .expect("enqueue");
+    let worker = WorkerId {
+        node: leader.node_id(),
+        instance: 1,
+    };
+    let leased = queue.lease(worker, 1).await.expect("lease");
+    queue.nack(worker, leased[0].lease_id).await.expect("nack");
+    advance(Duration::from_millis(200)).await;
+
+    let status = queue.job_status(id).await.expect("status").expect("row");
+    assert_eq!(status.lifecycle, JobLifecycle::DeadLetter);
+
+    let id_retry = queue
+        .enqueue_opts(b"v2", EnqueueOptions::dedup_key("row-99"))
+        .await
+        .expect("dedup retry");
+    assert_eq!(id, id_retry);
+}
+
+#[tokio::test(start_paused = true)]
 async fn enqueue_dedup_key_is_idempotent_over_wire() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (_net, clusters) = spawn_queue_cluster(&dir, false).await;

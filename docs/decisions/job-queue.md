@@ -228,7 +228,8 @@ Implementation status: **v2 + production polish landed** — Redis adapter remai
 **Negative**
 
 - Leader-hosted queue is a **throughput hotspot** at very large enqueue rates (mitigation: batch append, prefetch, future sharding). Replication adds one RTT to each reachable voter before client ack. Measure with `benchmarks/benches/queue.rs` (criterion) and `soak_queue` (sustained enqueue + follower drain).
-- At-least-once requires **idempotent** handlers and visibility-timeout tuning. Optional **`dedup_key`** on enqueue makes client retries safe while the job exists.
+- At-least-once requires **idempotent** handlers and visibility-timeout tuning. Optional **`dedup_key`** on enqueue makes client retries safe while the job exists; the key is **released on ack** (job removed) and **held on dead letter** until `requeue_dead_letter` — see [background-jobs § `dedup_key` lifecycle](../scenarios/background-jobs.md#dedup_key-lifecycle).
+- **`LeaseId` is monotonic per stream** (replicated `next_lease_id` with `max()` on failover). Redelivery issues a new id; stale tokens return `InvalidLease`. It is **not** documented as an external fencing token — side-effect guards belong in the handler ([effectively-once recipe](../scenarios/background-jobs.md#effectively-once-recipe)).
 - **An exactly-once delivery mode is not planned.** `dedup_key` deduplicates *enqueues*, not *deliveries*; effectively-once remains a handler-side property. The recipe (enqueue key → CAS marker in a store → side effect → durable `done` → ack) is in [background-jobs § Effectively-once recipe](../scenarios/background-jobs.md#effectively-once-recipe).
 - Two durability stories (`ActorStateStore` vs `JobQueue`) — docs must keep boundaries explicit ([R4](future-work-and-risks.md)).
 - Extra wire surface and ops metrics for queue lag.

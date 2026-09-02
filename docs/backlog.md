@@ -315,6 +315,7 @@ Document the contract, show effectively-once patterns, and improve consumer ergo
 | B-13h   | Cross-links: background-jobs ↔ [stateful-workers](scenarios/stateful-workers.md) ↔ [workflows](scenarios/workflows.md) (step `dedup_key`) | MR-1 | ✅ |
 | B-13i   | Prometheus: `trembita_queue_redeliveries_total{stream}` + attempts histogram (optional) | later | ✅ |
 | B-13j   | Dashboard / `/introspect/queues`: surface jobs with `attempts > 1` as idempotency smell | later | ✅ |
+| B-13k   | **Queue token semantics** — `lease_id` monotonicity + stale-token invalidation; `dedup_key` lifecycle (ack release, dead-letter hold); external-backlog note; rustdoc on `LeaseId`; regression tests in [`queue.rs`](../crates/trembita/tests/queue.rs) | MR-1 | ✅ |
 
 
 **Suggested MR slices**
@@ -518,6 +519,7 @@ Moved to [Open work](#open-work). **O-05** (self-update coordinator) shipped —
 | ✅         | `RedbJobQueue`, `ClusterJobQueue`, autoscale, E2E           |
 | ✅         | B-03 HTTP `202`, B-02c jobs on `TrembitaApp`, B-07a dashboard |
 | ✅         | B-13 delivery semantics docs + effectively-once recipe      |
+| ✅         | B-13k queue token semantics (`lease_id`, `dedup_key` lifecycle) |
 | ✅         | B-13g idempotent consumer example; B-13e/f consumer DX      |
 | ✅         | B-14d/e/g/h queue lifecycle + HTTP parity + failover E2E    |
 | ✅         | B-14k queue → actor orchestration example                   |

@@ -19,7 +19,16 @@ pub use crate::store::BoxFuture;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct JobId(pub u64);
 
-/// Opaque lease token returned by [`JobQueue::lease`].
+/// Lease token returned by [`JobQueue::lease`], required for ack/nack/extend.
+///
+/// Within a stream, ids are **monotonically increasing** and the counter survives
+/// leader failover (replicated via [`QueueReplicateOp::Lease`] with a `max()` bump).
+/// Redelivery (nack, timeout, worker loss) issues a **new** id; ack/nack with a
+/// stale token returns [`QueueError::InvalidLease`].
+///
+/// This is a queue ownership token, not an application fencing token for external
+/// side effects — see [background-jobs § Delivery
+/// semantics](../../../docs/scenarios/background-jobs.md#delivery-semantics).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LeaseId(pub u64);
 

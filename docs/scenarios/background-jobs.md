@@ -222,20 +222,61 @@ What that splits into:
 | A job is never silently lost once `enqueue` returns | Tolerate seeing the same job **more than once** |
 | A job is delivered to one worker at a time (lease) | Tolerate a **partially applied** previous attempt |
 | Redelivery after lease expiry, `nack`, or worker crash | Make the side effect **idempotent or CAS-guarded** |
+| `lease_id` increases monotonically **per stream** and survives leader failover | Not use `lease_id` as a fencing token for external side effects — use a CAS marker or provider idempotency key ([effectively-once recipe](#effectively-once-recipe)) |
+| Stale `lease_id` after reclaim/nack/ack → `InvalidLease` on ack/nack | Not assume a zombie worker can still complete the job |
 | `dedup_key` collapses duplicate *enqueues* into one job | Not assume `dedup_key` protects *processing* |
+| `dedup_key` is released when the job is **removed** (ack); held while the job exists (including dead letter) | Not assume the key is free until ack or explicit dead-letter handling |
 | Attempt ceiling → dead letter instead of infinite retry | Decide what a dead-lettered job means for your data |
 
 The redelivery window is real: a handler that charges a card and then loses its
 node before the ack will charge again on redelivery unless you guard it.
+
+### Lease tokens (`lease_id`)
+
+Each [`lease`](../../crates/trembita-actor/src/queue.rs) assigns an opaque
+[`LeaseId`](../../crates/trembita-actor/src/queue.rs) required for ack/nack/extend.
+Within a stream the counter is **monotonic**: every new lease gets a strictly
+larger id, including after **leader failover** (the counter replicates via
+`QueueReplicateOp::Lease` with a `max()` bump on followers).
+
+On redelivery (nack, lease timeout, worker loss) the job receives a **new**
+`lease_id`; the previous token is removed and ack/nack with it returns
+`InvalidLease`.
+
+`lease_id` is **not** an application fencing token. It proves ownership to the
+queue for ack/nack, but it does not guard external side effects — a zombie worker
+can still write to your database after reclaim. Use the [effectively-once
+recipe](#effectively-once-recipe) (CAS marker keyed by `dedup_key` or business id)
+for that. Monotonicity is **per stream**, not global across streams or shards.
+
+### `dedup_key` lifecycle
+
+`dedup_key` maps to at most one live job in a stream:
+
+| Job state | `dedup_key` in queue |
+|-----------|----------------------|
+| pending, leased, delayed | **held** — duplicate enqueue returns the same `JobId` |
+| ack (success) | **released** — job row removed; same key can enqueue a new job |
+| nack / reclaim (retries left) | **held** — same job, same `JobId` |
+| dead letter | **held** — duplicate enqueue still returns the dead-letter `JobId`; use [`requeue_dead_letter`](../../crates/trembita-actor/src/queue.rs) or operator cleanup before re-submitting |
+
+For [external backlog](#external-backlog-postgres--existing-work-table) the
+feeder enqueues with `dedup_key = item.key`. On successful ack the queue releases
+the key and the settle outbox calls `ExternalBacklog::settle(Done)` — the source
+row can be claimed again. On dead letter the external source is settled, but the
+queue **still holds** the dedup slot until the dead-letter job is requeued or
+removed; a new claim from Postgres will not create a second in-flight job until
+then.
 
 ### Three layers of idempotency
 
 Each layer stops duplicates at a different point. They compose; none is sufficient alone.
 
 1. **Enqueue** — `EnqueueOptions::dedup_key` (HTTP: `?dedup=`). Two enqueues with
-   the same key produce one job and return the same `JobId`. Stops *duplicate
-   submissions* (client retries, double-clicked buttons). Does nothing about
-   redelivery of an already-accepted job.
+   the same key produce one job and return the same `JobId` **while that job
+   exists** in the queue. After ack the key is free for a new submission. Stops
+   *duplicate submissions* (client retries, double-clicked buttons). Does nothing
+   about redelivery of an already-accepted job.
 2. **Processing** — a CAS in an [`ActorStateStore`](stateful-workers.md) or your
    own state machine, keyed by something stable about the job. Stops *duplicate
    side effects* from redelivery. This is the layer that gives you effectively-once.
