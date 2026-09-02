@@ -110,7 +110,7 @@ pub type RequeueDeadLetterFn = Arc<
         + Sync,
 >;
 
-/// Optional async auth hook for product gateway routes ([`JobsApiState::auth`]).
+/// Optional async auth hook for product gateway routes.
 pub type AuthFn = Arc<
     dyn Fn(Method, Uri, HeaderMap) -> Pin<Box<dyn Future<Output = Result<(), JobsApiError>> + Send>>
         + Send

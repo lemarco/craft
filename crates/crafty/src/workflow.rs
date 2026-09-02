@@ -103,7 +103,7 @@ impl WorkflowBuilder {
         })
     }
 
-    /// Derive a stable [`EnqueueOptions::dedup_key`] for a saga step enqueue.
+    /// Derive a stable `EnqueueOptions::dedup_key` for a saga step enqueue.
     #[must_use]
     pub fn step_dedup_key(saga_id: impl AsRef<[u8]>, step_id: &str) -> String {
         format!(
