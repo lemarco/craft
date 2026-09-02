@@ -24,9 +24,9 @@
 
 | | |
 |---|---|
-| **Version** | `0.5.0` (pre-1.0) |
+| **Version** | `0.5.1` (pre-1.0) |
 | **Maturity** | Advanced prototype — published on [crates.io](https://crates.io/crates/crafty) |
-| **Release** | v0.5.0 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/crafty/0.5.0](https://docs.rs/crafty/0.5.0) |
+| **Release** | v0.5.1 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/crafty/0.5.1](https://docs.rs/crafty/0.5.1) |
 | **Full status** | [docs/status.md](docs/status.md) |
 
 ### Highlights

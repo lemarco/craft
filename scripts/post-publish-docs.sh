@@ -52,5 +52,19 @@ if grep -q 'release-ready' "$STATUS"; then
     echo ">> updated $STATUS for v$VERSION"
 fi
 
+# Refresh the version strings themselves. The blocks above only fire on the
+# first publish (they match pre-publish wording that is gone afterwards), so
+# without this the README and status.md keep advertising the previous release.
+# Written as substitutions on the version pattern, so re-running is a no-op.
+for f in "$README" "$STATUS"; do
+    sed -i -E \
+        -e "s/(\\| \\*\\*Version\\*\\* \\| \`)[0-9]+\\.[0-9]+\\.[0-9]+(\`)/\\1$VERSION\\2/" \
+        -e "s#(\\| \\*\\*Release\\*\\* \\| v)[0-9]+\\.[0-9]+\\.[0-9]+#\\1$VERSION#" \
+        -e "s#docs\\.rs/crafty/[0-9]+\\.[0-9]+\\.[0-9]+#docs.rs/crafty/$VERSION#g" \
+        -e "s#(crates\\.io / docs\\.rs publish\\*\\* . v)[0-9]+\\.[0-9]+\\.[0-9]+#\\1$VERSION#" \
+        "$f"
+done
+echo ">> refreshed version references to v$VERSION in $README and $STATUS"
+
 echo "OK: post-publish docs refreshed for v$VERSION."
 echo "tip: commit with: git commit -am \"docs: mark crafty v$VERSION published on crates.io\""
