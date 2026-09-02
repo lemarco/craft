@@ -45,6 +45,7 @@ fn job_status_to_reply(job_id: u64, status: Option<JobStatus>) -> QueueJobStatus
             leased_worker_instance: None,
             attempts: 0,
             max_attempts: 0,
+            dedup_key: None,
             error: None,
         },
         Some(s) => QueueJobStatusReply {
@@ -62,6 +63,7 @@ fn job_status_to_reply(job_id: u64, status: Option<JobStatus>) -> QueueJobStatus
             leased_worker_instance: s.leased_by.map(|w| w.instance),
             attempts: s.attempts,
             max_attempts: s.max_attempts,
+            dedup_key: s.dedup_key.clone(),
             error: None,
         },
     }
@@ -1178,6 +1180,7 @@ impl QueueService {
                             leased_worker_instance: None,
                             attempts: 0,
                             max_attempts: 0,
+                            dedup_key: None,
                             error: Some(e),
                         };
                     }
@@ -1196,6 +1199,7 @@ impl QueueService {
                     leased_worker_instance: None,
                     attempts: 0,
                     max_attempts: 0,
+                    dedup_key: None,
                     error: Some(e.to_string()),
                 },
             }
@@ -1222,6 +1226,7 @@ impl QueueService {
                     leased_worker_instance: None,
                     attempts: 0,
                     max_attempts: 0,
+                    dedup_key: None,
                     error: Some(e),
                 },
             }
@@ -1692,6 +1697,7 @@ impl JobQueue for ClusterJobQueue {
                 },
                 attempts: reply.attempts,
                 max_attempts: reply.max_attempts,
+                dedup_key: reply.dedup_key.clone(),
             }))
         })
     }

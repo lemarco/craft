@@ -270,9 +270,75 @@ impl GatewayIdentity for GatewayTokenIdentity {
     #[allow(clippy::unused_async_trait_impl)]
     async fn extract(&self, req: &GatewayRequest<'_>) -> Result<String, IdentityError> {
         let user = req.query("user").ok_or(IdentityError::Unauthorized)?;
-        let token = req.query("token").ok_or(IdentityError::Unauthorized)?;
         let expected = std::env::var(&self.env_var).unwrap_or_default();
-        if expected.is_empty() || token == expected {
+        if expected.is_empty() {
+            return Ok(user);
+        }
+        let token = req.query("token").ok_or(IdentityError::Unauthorized)?;
+        if token == expected {
+            Ok(user)
+        } else {
+            Err(IdentityError::Unauthorized)
+        }
+    }
+}
+
+/// Production-friendly extractor: `Authorization: Bearer` + `X-Crafty-User` or `?user=`.
+///
+/// When `env_var` is unset or empty, Bearer is accepted without a token check (dev only).
+/// When set, the Bearer token must match the environment value.
+#[derive(Debug, Clone)]
+pub struct GatewayBearerIdentity {
+    token_env: String,
+}
+
+impl GatewayBearerIdentity {
+    /// Read expected Bearer token from `GATEWAY_TOKEN`.
+    #[must_use]
+    pub fn from_env() -> Self {
+        Self::new("GATEWAY_TOKEN")
+    }
+
+    /// Read expected Bearer token from a custom environment variable.
+    #[must_use]
+    pub fn new(token_env: impl Into<String>) -> Self {
+        Self {
+            token_env: token_env.into(),
+        }
+    }
+
+    fn user_from_parts(req: &GatewayRequest<'_>) -> Result<String, IdentityError> {
+        if let Some(user) = req.query("user") {
+            return Ok(user);
+        }
+        req.headers
+            .get("x-crafty-user")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+            .ok_or(IdentityError::Unauthorized)
+    }
+}
+
+impl GatewayIdentity for GatewayBearerIdentity {
+    type Identity = String;
+
+    #[allow(clippy::unused_async_trait_impl)]
+    async fn extract(&self, req: &GatewayRequest<'_>) -> Result<String, IdentityError> {
+        let expected = std::env::var(&self.token_env).unwrap_or_default();
+
+        if let Some(bearer) = req.bearer_token() {
+            if !expected.is_empty() && bearer != expected {
+                return Err(IdentityError::Unauthorized);
+            }
+            return Self::user_from_parts(req);
+        }
+
+        let user = req.query("user").ok_or(IdentityError::Unauthorized)?;
+        if expected.is_empty() {
+            return Ok(user);
+        }
+        let token = req.query("token").ok_or(IdentityError::Unauthorized)?;
+        if token == expected {
             Ok(user)
         } else {
             Err(IdentityError::Unauthorized)

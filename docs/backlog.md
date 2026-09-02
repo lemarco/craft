@@ -14,11 +14,11 @@ Product and implementation backlog for crafty **0.4.x → 1.0**. Shipped capabil
 | Priority     | Count | Items                           |
 | ------------ | ----- | ------------------------------- |
 | **P0**       | 2     | B-01 ✅, B-02 ✅                  |
-| **P1**       | 4     | B-03 ✅ … B-06 ✅                 |
+| **P1**       | 5     | B-03 ✅ … B-06 ✅, B-14 ✅        |
 | **P2**       | 4     | B-07 ✅ … B-09 ✅, B-13 ✅        |
 | **P3**       | 3     | B-10 ✅ … B-12 ✅                 |
 | **Optional** | 5     | O-01 … O-05                     |
-| **Subtasks** | 38    | B-01a … B-13j (see epics below) |
+| **Subtasks** | 49    | B-01a … B-14k (see epics below) |
 
 
 ---
@@ -62,9 +62,10 @@ flowchart TB
         B03a[B-03a enqueue helper]
         B03b[B-03b consumer macro ✅]
         B07a[B-07a queue dashboard]
-        B13[B-13 queue idempotency DX]
-        B13a[B-13a delivery semantics docs]
-        B13g[B-13g background-jobs idempotency demo]
+        B13[B-13 queue idempotency DX ✅]
+        B14[B-14 product polish & composition]
+        B14a[B-14a gateway auth]
+        B14b[B-14b crafty init v2]
     end
 
     subgraph Workers["Stateful workers"]
@@ -73,6 +74,7 @@ flowchart TB
         B01b[B-01b replicate RPC]
         B01c[B-01c default store wiring]
         B10a[B-10a worker failover soak]
+        B14k[B-14k queue → actor bridge]
     end
 
     subgraph Sessions["Real-time / session"]
@@ -80,6 +82,7 @@ flowchart TB
         B04a[B-04a WS gateway example]
         B04b[B-04b session helpers]
         B10b[B-10b session migration soak]
+        B14a
     end
 
     subgraph Workflows["Workflows"]
@@ -88,6 +91,7 @@ flowchart TB
         B05b[B-05b resume CLI]
         B07b[B-07b saga dashboard]
         B10c[B-10c saga resume soak]
+        B14i[B-14i saga step idempotency]
     end
 
     B02 --> Jobs
@@ -311,6 +315,46 @@ Document the contract, show effectively-once patterns, and improve consumer ergo
 
 
 
+### B-14 ✅ Product polish & cross-scenario composition
+
+**Scenarios:** [background-jobs](scenarios/background-jobs.md), [realtime-sessions](scenarios/realtime-sessions.md), [workflows](scenarios/workflows.md), [stateful-workers](scenarios/stateful-workers.md)  
+**Follows:** B-13 ✅ (delivery semantics + consumer idempotency DX)
+
+Gateway production readiness, queue lifecycle polish, and glue between the four product scenarios — without new delivery guarantees or mandatory external infra.
+
+
+| Subtask | Tier | Description | Status |
+| ------- | ---- | ----------- | ------ |
+| B-14a   | 1 | **Gateway auth hook** — middleware slot on [`GatewayOpts`](../../crates/crafty/src/gateway_opts.rs) (JWT / API key / custom Axum layer); document pattern; extend [`examples/realtime/`](../../examples/realtime/) beyond `GATEWAY_TOKEN` query stub ([product-scenarios](decisions/product-scenarios.md)) | ✅ |
+| B-14b   | 1 | **`crafty init` v2** — [`templates/crafty-app/`](../../templates/crafty-app/): `JobOpts` + `#[consumer]` + `IdempotencyOpts::by_dedup_key` + `default_max_attempts(5)`; remove bare `TODO` stub ([B-06](backlog.md#b-06--crafty-init-project-template)) | ✅ |
+| B-14c   | 1 | **E2E HTTP jobs via gateway (docker)** — `POST /jobs/{stream}/batch` through product gateway in `e2e/` (QUIC queue E2E exists; HTTP gateway path does not) | ✅ |
+| B-14d   | 2 | **`IdempotencyOpts` TTL** — optional `retain_for` / `with_ttl` on done markers in `ActorStateStore`; default forever for payment-style keys; doc high-volume cleanup | ✅ |
+| B-14e   | 2 | **Graceful consumer drain** — on shutdown: stop leasing, wait for in-flight handlers (timeout), then ack/nack; `RunOpts` or `ConsumerOpts` hook to avoid noisy redelivery metrics | ✅ |
+| B-14f   | 2 | **Typed job payloads** — optional serde envelope for `#[consumer]` (e.g. `#[consumer_json("emails", WelcomeEmail)]` or generic `JobConsumer` payload decode); keep raw `&[u8]` as default | ✅ |
+| B-14g   | 2 | **HTTP queue parity** — stream `default_max_attempts` as query/body on enqueue; expose `attempts`, `dedup_key`, redelivery hints on `GET /jobs/{stream}/{id}` where metadata exists | ✅ |
+| B-14h   | 2 | **E2E idempotency + failover** — extend `./e2e/queue.sh` (or sibling): redelivery under leader kill with `IdempotencyOpts` → one side effect | ✅ |
+| B-14i   | 3 | **Saga step idempotency helper** — `WorkflowBuilder` sugar wrapping enqueue + `dedup_key(step_key)` (parallel to B-13f for consumers); aligns with [workflows § Future polish](scenarios/workflows.md#future-polish) | ✅ |
+| B-14j   | 3 | **State placement cheat sheet** — one doc (`docs/scenarios/state-placement.md` or scenarios README section): SM vs `JobQueue` vs `ActorStateStore` vs saga journal — when to use which | ✅ |
+| B-14k   | 3 | **Queue → actor bridge** — example + doc pattern: job consumer delegates side effects via `CraftyApp::cast` / `ask` to stateful worker group (orchestration without duplicating handler logic) | ✅ |
+
+
+**Suggested MR slices**
+
+| MR | Subtasks | Tier | Effort |
+| -- | -------- | ---- | ------ |
+| **MR-1** (gateway + onboarding) | B-14a, B-14b, B-14c | 1 | ~3–4 days |
+| **MR-2** (queue lifecycle) | B-14d, B-14e, B-14g, B-14h | 2 | ~3–4 days |
+| **MR-3** (composition) | B-14i, B-14j, B-14k | 3 | ~2–3 days |
+| **MR-4** (typed jobs, optional) | B-14f | 2 | ~2 days — can ship independently |
+
+
+**Acceptance:** MR-1 gateway auth documented + init template runnable; MR-2 no unbounded idempotency key growth for TTL users + clean shutdown story; MR-3 one cross-scenario doc + one bridge example.
+
+
+---
+
+
+
 ## P3 — 1.0 stabilization
 
 
@@ -388,7 +432,9 @@ Document the contract, show effectively-once patterns, and improve consumer ergo
 | **0.3.x** | B-04, B-05, B-06, B-07, B-08d                           |
 | **0.4.x** | B-13 MR-1 (docs + stream defaults + example)            |
 | **0.5.x** | B-09, B-10, B-13 MR-2 (consumer idempotency helper)     |
-| **1.0**   | B-11; evaluate B-12; B-13 MR-3 (metrics)                |
+| **0.6.x** | B-14 MR-1 (gateway auth + init + HTTP E2E)                |
+| **0.7.x** | B-14 MR-2–3 (queue lifecycle + cross-scenario composition)|
+| **1.0**   | B-11; evaluate B-12; B-14 MR-4 (typed jobs, optional)     |
 
 
 ---
@@ -408,6 +454,8 @@ Document the contract, show effectively-once patterns, and improve consumer ergo
 | ✅         | B-03 HTTP `202`, B-02c jobs on `CraftyApp`, B-07a dashboard |
 | ✅         | B-13 delivery semantics docs + effectively-once recipe      |
 | ✅         | B-13g idempotent consumer example; B-13e/f consumer DX      |
+| ✅         | B-14d/e/g/h queue lifecycle + HTTP parity + failover E2E    |
+| ✅         | B-14k queue → actor orchestration example                   |
 
 
 
@@ -420,6 +468,7 @@ Document the contract, show effectively-once patterns, and improve consumer ergo
 | ✅         | Migration, supervisor, `RedbActorStateStore`, SM path |
 | ✅         | B-02d `worker_groups`, `workers`, `cast`, `ask` on `CraftyApp` |
 | ✅         | B-10a soak                                            |
+| ✅         | B-14k consumer delegates to actor group               |
 
 
 
@@ -432,6 +481,7 @@ Document the contract, show effectively-once patterns, and improve consumer ergo
 | ✅         | `ActorSession`, consistent-hash, cross-node ask, B-04 example |
 | ✅         | B-02g `app.session` + `cast_session`                          |
 | ✅         | B-10b soak                                                    |
+| ✅         | B-14a gateway auth beyond `GATEWAY_TOKEN` stub                |
 
 
 
@@ -443,6 +493,8 @@ Document the contract, show effectively-once patterns, and improve consumer ergo
 | --------- | ---------------------------------------------------------------- |
 | ✅         | `run_saga`, Meta-Raft journal, cross-shard saga, B-05 fluent API |
 | ✅         | B-05d example, B-07b dashboard, B-10c soak                       |
+| ✅         | B-14i saga step idempotency helper                             |
+| ✅         | B-14j state placement cheat sheet (cross-scenario)               |
 
 
 ---

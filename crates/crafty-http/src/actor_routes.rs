@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::{Path, State};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{HeaderMap, Method, StatusCode, Uri, header};
 use axum::response::IntoResponse;
 use axum::routing::post;
 use base64::Engine;
@@ -23,12 +23,32 @@ pub fn actors_router() -> Router<Arc<ActorsApiState>> {
         .route("/actors/{group}/cast", post(post_cast))
 }
 
+async fn authorize(
+    state: &ActorsApiState,
+    method: &Method,
+    uri: &Uri,
+    headers: &HeaderMap,
+) -> Result<(), ActorsApiError> {
+    if let Some(auth) = &state.auth {
+        auth(method.clone(), uri.clone(), headers.clone())
+            .await
+            .map_err(|e| match e {
+                JobsApiError::Unauthorized(m) => ActorsApiError::Unauthorized(m),
+                other => ActorsApiError::BadRequest(other.to_string()),
+            })?;
+    }
+    Ok(())
+}
+
 async fn post_ask(
     State(state): State<Arc<ActorsApiState>>,
     Path(group): Path<String>,
+    method: Method,
+    uri: Uri,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<axum::response::Response, ActorsApiError> {
+    authorize(&state, &method, &uri, &headers).await?;
     let payload = parse_enqueue_body(&headers, &body).map_err(map_body_error)?;
     let reply = (state.ask)(group, payload).await.map_err(map_ask_error)?;
     let ct = headers
@@ -50,9 +70,12 @@ async fn post_ask(
 async fn post_cast(
     State(state): State<Arc<ActorsApiState>>,
     Path(group): Path<String>,
+    method: Method,
+    uri: Uri,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<impl IntoResponse, ActorsApiError> {
+    authorize(&state, &method, &uri, &headers).await?;
     let payload = parse_enqueue_body(&headers, &body).map_err(map_body_error)?;
     (state.cast)(group, payload).await.map_err(map_cast_error)?;
     Ok(StatusCode::ACCEPTED)
@@ -62,6 +85,7 @@ fn map_body_error(err: JobsApiError) -> ActorsApiError {
     match err {
         JobsApiError::NotFound => ActorsApiError::BadRequest("not found".into()),
         JobsApiError::BadRequest(m) | JobsApiError::Queue(m) => ActorsApiError::BadRequest(m),
+        JobsApiError::Unauthorized(m) => ActorsApiError::Unauthorized(m),
     }
 }
 
@@ -93,7 +117,11 @@ mod tests {
     use tower::ServiceExt;
 
     fn test_state(ask: crate::AskFn, cast: crate::CastFn) -> Arc<ActorsApiState> {
-        Arc::new(ActorsApiState { ask, cast })
+        Arc::new(ActorsApiState {
+            ask,
+            cast,
+            auth: None,
+        })
     }
 
     #[tokio::test]

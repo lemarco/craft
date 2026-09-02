@@ -178,6 +178,8 @@ pub struct JobStatus {
     pub attempts: u32,
     /// Configured retry ceiling (`0` = unlimited).
     pub max_attempts: u32,
+    /// Client idempotency token from enqueue, when set.
+    pub dedup_key: Option<Vec<u8>>,
 }
 
 /// Depth gauges returned by [`JobQueue::metrics`].
@@ -632,6 +634,7 @@ impl Inner {
             leased_by,
             attempts: entry.attempts,
             max_attempts: entry.max_attempts,
+            dedup_key: entry.dedup_key.clone(),
         })
     }
 
@@ -1116,10 +1119,6 @@ pub async fn run_queue_consumer<Q, F, Fut, E>(
         let mut acks = Vec::with_capacity(jobs.len());
         let mut nacks = Vec::new();
         for job in jobs {
-            if *stop.borrow() {
-                nacks.push(job.lease_id);
-                break;
-            }
             match handle(&job).await {
                 Ok(()) => acks.push(job.lease_id),
                 Err(_) => nacks.push(job.lease_id),
@@ -1132,7 +1131,7 @@ pub async fn run_queue_consumer<Q, F, Fut, E>(
             let _ = queue.nack(worker, lease_id).await;
         }
         if *stop.borrow() {
-            return;
+            break;
         }
     }
 }
@@ -1470,6 +1469,46 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(50)).await;
         stop_tx.send(true).unwrap();
         consumer.await.unwrap();
+        assert_eq!(q.metrics().await.unwrap().pending, 0);
+    }
+
+    #[tokio::test]
+    async fn run_queue_consumer_finishes_in_flight_batch_on_stop() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let q = Arc::new(InMemoryJobQueue::new(Duration::from_secs(30)));
+        q.enqueue_batch(&[b"a".as_slice(), b"b"]).await.unwrap();
+        let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+        let processed = Arc::new(AtomicUsize::new(0));
+        let worker = worker(0);
+        let queue = Arc::clone(&q);
+        let processed_in_task = Arc::clone(&processed);
+        let consumer = tokio::spawn(async move {
+            run_queue_consumer(
+                queue,
+                worker,
+                8,
+                Duration::from_millis(10),
+                stop_rx,
+                move |_job| {
+                    let processed = Arc::clone(&processed_in_task);
+                    async move {
+                        processed.fetch_add(1, Ordering::SeqCst);
+                        Ok::<(), ()>(())
+                    }
+                },
+            )
+            .await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        stop_tx.send(true).unwrap();
+        consumer.await.unwrap();
+        assert_eq!(
+            processed.load(Ordering::SeqCst),
+            2,
+            "both leased jobs must finish"
+        );
         assert_eq!(q.metrics().await.unwrap().pending, 0);
     }
 }

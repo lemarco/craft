@@ -511,6 +511,7 @@ impl RedbJobQueue {
             leased_by,
             attempts: stored.attempts,
             max_attempts: stored.max_attempts,
+            dedup_key: stored.dedup_key.clone(),
         }))
     }
 

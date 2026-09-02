@@ -46,6 +46,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use axum::Router;
+use axum::http::{HeaderMap, Method, Uri};
 use crafty_actor::{
     CastError, ClusterAskError, EnqueueOptions, JobId, JobStatus, LeaseId, QueueError, WorkerId,
 };
@@ -109,6 +110,13 @@ pub type RequeueDeadLetterFn = Arc<
         + Sync,
 >;
 
+/// Optional async auth hook for product gateway routes ([`JobsApiState::auth`]).
+pub type AuthFn = Arc<
+    dyn Fn(Method, Uri, HeaderMap) -> Pin<Box<dyn Future<Output = Result<(), JobsApiError>> + Send>>
+        + Send
+        + Sync,
+>;
+
 /// Shared Axum state for job routes.
 pub struct JobsApiState {
     pub(crate) enqueue: EnqueueFn,
@@ -116,6 +124,7 @@ pub struct JobsApiState {
     pub(crate) ack_batch: AckBatchFn,
     pub(crate) job_status: JobStatusFn,
     pub(crate) requeue_dead_letter: RequeueDeadLetterFn,
+    pub(crate) auth: Option<AuthFn>,
 }
 
 /// HTTP job enqueue + lookup API.
@@ -155,12 +164,19 @@ impl JobsApi {
     /// State handle for [`Self::router`].
     #[must_use]
     pub fn into_state(self) -> JobsApiState {
+        self.into_state_with_auth(None)
+    }
+
+    /// State handle with an optional gateway auth hook.
+    #[must_use]
+    pub fn into_state_with_auth(self, auth: Option<AuthFn>) -> JobsApiState {
         JobsApiState {
             enqueue: self.enqueue,
             enqueue_batch: self.enqueue_batch,
             ack_batch: self.ack_batch,
             job_status: self.job_status,
             requeue_dead_letter: self.requeue_dead_letter,
+            auth,
         }
     }
 }
@@ -186,6 +202,7 @@ pub type CastFn = Arc<
 pub struct ActorsApiState {
     pub(crate) ask: AskFn,
     pub(crate) cast: CastFn,
+    pub(crate) auth: Option<AuthFn>,
 }
 
 /// HTTP actor cast / ask API.
@@ -210,9 +227,16 @@ impl ActorsApi {
     /// State handle for [`Self::router`].
     #[must_use]
     pub fn into_state(self) -> ActorsApiState {
+        self.into_state_with_auth(None)
+    }
+
+    /// State handle with an optional gateway auth hook.
+    #[must_use]
+    pub fn into_state_with_auth(self, auth: Option<AuthFn>) -> ActorsApiState {
         ActorsApiState {
             ask: self.ask,
             cast: self.cast,
+            auth,
         }
     }
 }
@@ -243,6 +267,7 @@ pub type ResumeWorkflowFn = Arc<
 pub struct WorkflowsApiState {
     pub(crate) run: RunWorkflowFn,
     pub(crate) resume: ResumeWorkflowFn,
+    pub(crate) auth: Option<AuthFn>,
 }
 
 /// HTTP keyed-saga trigger API.
@@ -267,9 +292,16 @@ impl WorkflowsApi {
     /// State handle for [`Self::router`].
     #[must_use]
     pub fn into_state(self) -> WorkflowsApiState {
+        self.into_state_with_auth(None)
+    }
+
+    /// State handle with an optional gateway auth hook.
+    #[must_use]
+    pub fn into_state_with_auth(self, auth: Option<AuthFn>) -> WorkflowsApiState {
         WorkflowsApiState {
             run: self.run,
             resume: self.resume,
+            auth,
         }
     }
 }

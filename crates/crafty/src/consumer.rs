@@ -121,6 +121,12 @@ impl IdempotencyOpts {
         self
     }
 
+    /// Alias for [`Self::ttl`] — retain idempotency markers for `duration`.
+    #[must_use]
+    pub fn retain_for(self, duration: Duration) -> Self {
+        self.ttl(duration)
+    }
+
     /// Key a delivery by [`JobContext::dedup_key`], falling back to the job id.
     ///
     /// Convenience for the common case where the enqueue side already set a

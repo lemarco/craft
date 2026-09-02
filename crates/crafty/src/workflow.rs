@@ -102,6 +102,15 @@ impl WorkflowBuilder {
             steps: plan_steps,
         })
     }
+
+    /// Derive a stable [`EnqueueOptions::dedup_key`] for a saga step enqueue.
+    #[must_use]
+    pub fn step_dedup_key(saga_id: impl AsRef<[u8]>, step_id: &str) -> String {
+        format!(
+            "saga:{}:{step_id}",
+            String::from_utf8_lossy(saga_id.as_ref())
+        )
+    }
 }
 
 #[cfg(test)]
@@ -120,5 +129,13 @@ mod tests {
         assert_eq!(plan.saga_id, b"wf-1");
         assert_eq!(plan.steps.len(), 2);
         assert_eq!(plan.steps[0].compensate, b"undo1");
+    }
+
+    #[test]
+    fn step_dedup_key_is_stable() {
+        assert_eq!(
+            WorkflowBuilder::step_dedup_key("onboard-1", "send_welcome"),
+            "saga:onboard-1:send_welcome"
+        );
     }
 }

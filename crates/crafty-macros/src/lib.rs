@@ -11,12 +11,14 @@
 //! blanket impls in `crafty-core` (see backlog D0/D1), so no `StateMachine` derive is exported.
 
 mod consumer;
+mod consumer_json;
 
 use proc_macro::TokenStream;
 use quote::quote;
 use std::collections::HashSet;
+use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{Ident, ImplItem, ItemFn, ItemImpl, Token, parse_macro_input};
+use syn::{Ident, ImplItem, ItemFn, ItemImpl, LitStr, Path, Token, parse_macro_input};
 
 /// Register an async job handler and generate a `JobConsumer` adapter.
 ///
@@ -37,6 +39,40 @@ pub fn consumer(attr: TokenStream, item: TokenStream) -> TokenStream {
     let stream = stream_lit.value();
     let input_fn = parse_macro_input!(item as ItemFn);
     consumer::expand_consumer(&stream, &input_fn).into()
+}
+
+struct ConsumerJsonArgs {
+    stream: String,
+    payload: Path,
+}
+
+impl Parse for ConsumerJsonArgs {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let stream: LitStr = input.parse()?;
+        input.parse::<Token![,]>()?;
+        let payload: Path = input.parse()?;
+        Ok(Self {
+            stream: stream.value(),
+            payload,
+        })
+    }
+}
+
+/// Register a JSON job handler and generate a [`JobConsumer`] adapter.
+///
+/// Apply to `async fn` taking a `serde::Deserialize` payload (and optional [`JobContext`]):
+///
+/// ```ignore
+/// #[crafty::consumer_json("emails", EmailJob)]
+/// async fn send_email(job: EmailJob) -> Result<(), String> { Ok(()) }
+/// ```
+///
+/// The error type must implement `From<String>` (decode failures).
+#[proc_macro_attribute]
+pub fn consumer_json(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(attr as ConsumerJsonArgs);
+    let input_fn = parse_macro_input!(item as ItemFn);
+    consumer_json::expand_consumer_json(&args.stream, &args.payload, &input_fn).into()
 }
 
 /// Fill in the `postcard` wire codecs on a `UserActor` `impl` so the actor is

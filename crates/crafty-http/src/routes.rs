@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{HeaderMap, Method, StatusCode, Uri, header};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use bytes::Bytes;
@@ -24,6 +24,8 @@ pub struct EnqueueQuery {
     pub priority: Option<u8>,
     /// Client dedup / idempotency key.
     pub dedup: Option<String>,
+    /// Maximum delivery attempts before dead letter (`0` = unlimited).
+    pub max_attempts: Option<u32>,
 }
 
 /// Axum sub-router for tier C job routes.
@@ -36,13 +38,28 @@ pub fn jobs_router() -> Router<Arc<JobsApiState>> {
         .route("/jobs/{stream}/{job_id}", get(get_job))
 }
 
+async fn authorize(
+    state: &JobsApiState,
+    method: &Method,
+    uri: &Uri,
+    headers: &HeaderMap,
+) -> Result<(), JobsApiError> {
+    if let Some(auth) = &state.auth {
+        auth(method.clone(), uri.clone(), headers.clone()).await?;
+    }
+    Ok(())
+}
+
 async fn post_job(
     State(state): State<Arc<JobsApiState>>,
     Path(stream): Path<String>,
     Query(query): Query<EnqueueQuery>,
+    method: Method,
+    uri: Uri,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<impl IntoResponse, JobsApiError> {
+    authorize(&state, &method, &uri, &headers).await?;
     let payload = parse_enqueue_body(&headers, &body)?;
     let opts = enqueue_options_from_query(&query);
     let job_id = (state.enqueue)(stream, payload, opts)
@@ -57,8 +74,12 @@ async fn post_job(
 async fn post_job_batch(
     State(state): State<Arc<JobsApiState>>,
     Path(stream): Path<String>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
     body: Bytes,
 ) -> Result<impl IntoResponse, JobsApiError> {
+    authorize(&state, &method, &uri, &headers).await?;
     let batch: EnqueueBatchBody = serde_json::from_slice(&body)
         .map_err(|e| JobsApiError::BadRequest(format!("invalid json body: {e}")))?;
     if batch.jobs.is_empty() {
@@ -89,8 +110,12 @@ async fn post_job_batch(
 async fn post_ack_batch(
     State(state): State<Arc<JobsApiState>>,
     Path(stream): Path<String>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
     body: Bytes,
 ) -> Result<impl IntoResponse, JobsApiError> {
+    authorize(&state, &method, &uri, &headers).await?;
     let req: AckBatchBody = serde_json::from_slice(&body)
         .map_err(|e| JobsApiError::BadRequest(format!("invalid json body: {e}")))?;
     if req.lease_ids.is_empty() {
@@ -119,7 +144,11 @@ async fn post_ack_batch(
 async fn get_job(
     State(state): State<Arc<JobsApiState>>,
     Path((stream, job_id)): Path<(String, u64)>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, JobsApiError> {
+    authorize(&state, &method, &uri, &headers).await?;
     let status = (state.job_status)(stream, job_id)
         .await
         .map_err(|e| JobsApiError::Queue(e.to_string()))?;
@@ -131,6 +160,13 @@ async fn get_job(
         state: lifecycle_name(status.lifecycle),
         payload_len: status.payload_len,
         priority: status.priority,
+        attempts: status.attempts,
+        max_attempts: status.max_attempts,
+        is_redelivery: status.attempts > 1,
+        dedup: status
+            .dedup_key
+            .as_ref()
+            .map(|k| String::from_utf8_lossy(k).into_owned()),
         leased_by: status.leased_by.map(|w| LeasedByResponse {
             node: w.node.0,
             instance: w.instance,
@@ -141,7 +177,11 @@ async fn get_job(
 async fn post_requeue(
     State(state): State<Arc<JobsApiState>>,
     Path((stream, job_id)): Path<(String, u64)>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, JobsApiError> {
+    authorize(&state, &method, &uri, &headers).await?;
     (state.requeue_dead_letter)(stream, job_id)
         .await
         .map_err(|e| JobsApiError::Queue(e.to_string()))?;
@@ -165,6 +205,9 @@ fn enqueue_options_from_query(query: &EnqueueQuery) -> EnqueueOptions {
     if let Some(key) = &query.dedup {
         opts.dedup_key = Some(key.as_bytes().to_vec());
     }
+    if let Some(max) = query.max_attempts {
+        opts.max_attempts = Some(max);
+    }
     opts
 }
 
@@ -187,6 +230,7 @@ fn parse_batch_job(job: EnqueueBatchJobBody) -> Result<(Vec<u8>, EnqueueOptions)
     let opts = EnqueueOptions {
         priority: job.priority,
         dedup_key: job.dedup.map(String::into_bytes),
+        max_attempts: job.max_attempts,
         ..Default::default()
     };
     Ok((payload, opts))
@@ -245,6 +289,7 @@ mod tests {
             ack_batch,
             job_status,
             requeue_dead_letter,
+            auth: None,
         })
     }
 
@@ -353,6 +398,7 @@ mod tests {
                     leased_by: None,
                     attempts: 0,
                     max_attempts: 0,
+                    dedup_key: None,
                 }))))
             }),
             noop_requeue(),

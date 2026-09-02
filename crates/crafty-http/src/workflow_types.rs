@@ -29,6 +29,9 @@ pub enum WorkflowsApiError {
     /// Saga coordination failed.
     #[error("{0}")]
     Failed(String),
+    /// Gateway identity check failed.
+    #[error("{0}")]
+    Unauthorized(String),
 }
 
 impl IntoResponse for WorkflowsApiError {
@@ -36,6 +39,7 @@ impl IntoResponse for WorkflowsApiError {
         let (status, msg) = match &self {
             Self::BadRequest(m) => (StatusCode::BAD_REQUEST, m.clone()),
             Self::Failed(m) => (StatusCode::INTERNAL_SERVER_ERROR, m.clone()),
+            Self::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m.clone()),
         };
         (status, msg).into_response()
     }

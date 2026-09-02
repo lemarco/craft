@@ -11,8 +11,9 @@ Guides for building on crafty **without mandatory Redis or Kubernetes**. Each sc
 |---------|-------|---------------|----------------|
 | Async work, retries, many workers | [Background jobs](background-jobs.md) | ✅ `RedbJobQueue`, E2E, HTTP `202` | Dashboard queue view |
 | Actor state survives VPS crash | [Stateful workers](stateful-workers.md) | ✅ `RedbActorStateStore`, migration | — |
-| WebSocket / live session to one worker | [Real-time sessions](realtime-sessions.md) | ✅ `ActorSession`, gateway showcase | Auth beyond token stub |
+| WebSocket / live session to one worker | [Real-time sessions](realtime-sessions.md) | ✅ `ActorSession`, gateway showcase | `GatewayBearerIdentity` + `protect_product_apis` |
 | Multi-step process with compensation | [Workflows](workflows.md) | ✅ `WorkflowBuilder`, Meta-Raft journal | Dashboard saga view |
+| Where to put state (queue vs SM vs store) | [State placement](state-placement.md) | ✅ cheat sheet | — |
 
 ## Shared persistence model
 

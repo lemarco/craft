@@ -26,6 +26,9 @@ pub enum ActorsApiError {
     /// Delivery or reply failed at the actor layer.
     #[error("{0}")]
     Actor(String),
+    /// Gateway identity check failed.
+    #[error("{0}")]
+    Unauthorized(String),
 }
 
 impl IntoResponse for ActorsApiError {
@@ -35,6 +38,7 @@ impl IntoResponse for ActorsApiError {
             Self::NoTarget(m) => (StatusCode::SERVICE_UNAVAILABLE, m.clone()),
             Self::Timeout => (StatusCode::GATEWAY_TIMEOUT, self.to_string()),
             Self::Actor(m) => (StatusCode::BAD_GATEWAY, m.clone()),
+            Self::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m.clone()),
         };
         (status, msg).into_response()
     }

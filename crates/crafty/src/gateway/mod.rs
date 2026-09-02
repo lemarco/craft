@@ -21,13 +21,16 @@ pub type GatewayTlsPaths = AdminTlsPaths;
 
 pub use drain::{ConnectionGuard, ConnectionTracker, GatewayHandle};
 pub use identity::{
-    ExtractedIdentity, GatewayIdentity, GatewayRequest, GatewayTokenIdentity, IdentityError,
-    IdentityTypeError, SessionKey,
+    ExtractedIdentity, GatewayBearerIdentity, GatewayIdentity, GatewayRequest,
+    GatewayTokenIdentity, IdentityError, IdentityTypeError, SessionKey,
 };
 pub use session::{NoWorkerError, OpenActorSessionError, SessionHandle};
 
 /// Default gateway drain when [`GatewayOpts::drain_timeout`] is omitted.
 pub const DEFAULT_GATEWAY_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Default wait for tier-C consumers to finish in-flight work during shutdown.
+pub const DEFAULT_CONSUMER_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Product HTTP gateway: listen address, custom Axum routes, optional built-in APIs.
 pub struct GatewayOpts {
@@ -39,6 +42,7 @@ pub struct GatewayOpts {
     routes: Option<GatewayRoutesFn>,
     drain_timeout: Duration,
     tls: Option<GatewayTlsPaths>,
+    protect_apis: bool,
 }
 
 impl fmt::Debug for GatewayOpts {
@@ -52,6 +56,7 @@ impl fmt::Debug for GatewayOpts {
             .field("routes", &self.routes.as_ref().map(|_| "<router>"))
             .field("drain_timeout", &self.drain_timeout)
             .field("tls", &self.tls.as_ref().map(|_| "<pem>"))
+            .field("protect_apis", &self.protect_apis)
             .finish()
     }
 }
@@ -69,6 +74,7 @@ impl GatewayOpts {
             routes: None,
             drain_timeout: DEFAULT_GATEWAY_DRAIN_TIMEOUT,
             tls: None,
+            protect_apis: false,
         }
     }
 
@@ -141,6 +147,15 @@ impl GatewayOpts {
         self
     }
 
+    /// Require [`Self::identity`] on built-in `/jobs/*`, `/actors/*`, and `/workflows/*` routes.
+    ///
+    /// Custom routes from [`.routes`](Self::routes) are unchanged — attach auth there explicitly.
+    #[must_use]
+    pub fn protect_product_apis(mut self, enabled: bool) -> Self {
+        self.protect_apis = enabled;
+        self
+    }
+
     /// Custom Axum routes (WebSocket, authenticated HTTP, …).
     #[must_use]
     pub fn routes<F>(mut self, routes: F) -> Self
@@ -178,6 +193,7 @@ impl GatewayOpts {
             routes: self.routes,
             drain_timeout: self.drain_timeout,
             tls: self.tls,
+            protect_apis: self.protect_apis,
         }
     }
 }
@@ -371,6 +387,8 @@ pub struct GatewayConfig {
     pub drain_timeout: Duration,
     /// Optional server-only TLS (`CRAFTY_GATEWAY_TLS_*` / [`GatewayOpts::tls`]).
     pub tls: Option<GatewayTlsPaths>,
+    /// When `true`, built-in product APIs require [`GatewayOpts::identity`].
+    pub protect_apis: bool,
 }
 
 /// Build the gateway router: custom routes first, then optional product APIs.
@@ -392,7 +410,14 @@ fn build_gateway_router_with_tracker(
         routes,
         drain_timeout: _,
         tls: _,
+        protect_apis,
     } = config;
+
+    let auth = if protect_apis {
+        identity.clone().map(identity_auth_fn)
+    } else {
+        None
+    };
 
     let state = CraftyGatewayState::from_parts(Arc::clone(&app), identity, connections);
     let mut router = routes.map_or_else(Router::new, |f| f(state));
@@ -401,17 +426,26 @@ fn build_gateway_router_with_tracker(
     {
         if workflows_api {
             let api = CraftyApp::workflows_api(Arc::clone(&app));
-            router = router.merge(api.router().with_state(Arc::new(api.into_state())));
+            router = router.merge(
+                api.router()
+                    .with_state(Arc::new(api.into_state_with_auth(auth.clone()))),
+            );
         }
 
         if actors_api {
             let api = CraftyApp::actors_api(Arc::clone(&app));
-            router = router.merge(api.router().with_state(Arc::new(api.into_state())));
+            router = router.merge(
+                api.router()
+                    .with_state(Arc::new(api.into_state_with_auth(auth.clone()))),
+            );
         }
 
         if jobs_api {
             let api = CraftyApp::jobs_api(app);
-            router = router.merge(api.router().with_state(Arc::new(api.into_state())));
+            router = router.merge(
+                api.router()
+                    .with_state(Arc::new(api.into_state_with_auth(auth.clone()))),
+            );
         }
     }
     #[cfg(not(feature = "http-jobs"))]
@@ -452,4 +486,19 @@ pub async fn spawn_gateway(
         drain_timeout,
         tls,
     ))
+}
+
+#[cfg(feature = "http-jobs")]
+fn identity_auth_fn(extractor: Arc<dyn identity::DynGatewayIdentity>) -> crafty_http::AuthFn {
+    Arc::new(move |method, uri, headers| {
+        let extractor = Arc::clone(&extractor);
+        Box::pin(async move {
+            let req = GatewayRequest::from_parts(&method, &uri, &headers);
+            extractor
+                .extract_dyn(&req)
+                .await
+                .map_err(|e| crafty_http::JobsApiError::Unauthorized(e.to_string()))?;
+            Ok(())
+        })
+    })
 }

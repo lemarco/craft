@@ -4,7 +4,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{GenericArgument, Ident, ItemFn, PathArguments, ReturnType, Type};
 
-fn to_pascal_case(s: &str) -> String {
+pub(crate) fn to_pascal_case(s: &str) -> String {
     s.split('_')
         .filter(|part| !part.is_empty())
         .map(|part| {
@@ -26,7 +26,7 @@ fn is_byte_slice(ty: &Type) -> bool {
     }
 }
 
-fn result_err_type(ty: &Type) -> Option<Type> {
+pub(crate) fn result_err_type(ty: &Type) -> Option<Type> {
     let Type::Path(type_path) = ty else {
         return None;
     };

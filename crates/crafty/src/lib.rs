@@ -85,9 +85,9 @@ pub use crafty_actor::JobContext;
 pub use cron_opts::CronOpts;
 pub use gateway::{
     ConnectionGuard, ConnectionTracker, CraftyGatewayState, DEFAULT_GATEWAY_DRAIN_TIMEOUT,
-    ExtractedIdentity, GatewayHandle, GatewayIdentity, GatewayOpts, GatewayRequest,
-    GatewayTlsPaths, GatewayTokenIdentity, IdentityError, IdentityTypeError, NoWorkerError,
-    OpenActorSessionError, SessionHandle, SessionKey, spawn_gateway,
+    ExtractedIdentity, GatewayBearerIdentity, GatewayHandle, GatewayIdentity, GatewayOpts,
+    GatewayRequest, GatewayTlsPaths, GatewayTokenIdentity, IdentityError, IdentityTypeError,
+    NoWorkerError, OpenActorSessionError, SessionHandle, SessionKey, spawn_gateway,
 };
 pub use job_opts::JobOpts;
 pub use queue_opts::QueueOpts;
@@ -105,7 +105,7 @@ pub use upgrade::{
     spawn_upgrade_runtime, upgrade_view, verify_sha256_hex,
 };
 
-pub use crafty_macros::consumer;
+pub use crafty_macros::{consumer, consumer_json};
 
 pub use crafty_dashboard::{
     CraftyEvent, EventBus, EventSubscription, Metrics, StopReason, TraceOpts, init_tracing,

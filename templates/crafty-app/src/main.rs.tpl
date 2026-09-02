@@ -2,36 +2,40 @@
 
 use std::time::Duration;
 
-use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, QueueOpts, RunOpts};
+use crafty::{CraftyApp, CraftyConfigure, GatewayBearerIdentity, GatewayOpts, JobOpts, RunOpts, consumer};
+
+const STREAM: &str = "jobs";
+
+#[consumer("jobs")]
+async fn handle_job(payload: &[u8]) -> Result<(), String> {
+    let preview = String::from_utf8_lossy(payload);
+    tracing::info!(target: "app", "job: {preview}");
+    Ok(())
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     crafty::init_tracing();
 
-    // TODO: register workers / consumers before `.run`
-
-    #[cfg(feature = "http-jobs")]
-    {
-        CraftyApp::builder()
-            .data_dir("/tmp/{{PROJECT_NAME}}")
-            .queue([QueueOpts::new("jobs", Duration::from_secs(300))])
-            .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?))
-            .configure(CraftyConfigure {
-                admin_addr: Some("127.0.0.1:8080".parse()?),
-                ..CraftyConfigure::default()
-            })
-            .run(RunOpts::default())
-            .await?;
-        return Ok(());
-    }
-
-    #[cfg(not(feature = "http-jobs"))]
-    {
-        CraftyApp::builder()
-            .data_dir("/tmp/{{PROJECT_NAME}}")
-            .run(RunOpts::default())
-            .await?;
-    }
+    CraftyApp::builder()
+        .data_dir("/tmp/{{PROJECT_NAME}}")
+        .jobs([JobOpts::new(STREAM)
+            .lease(Duration::from_secs(300))
+            .default_max_attempts(5)
+            .consumer(&HandleJobConsumer)
+            .http_enqueue(true)])
+        .gateway(
+            GatewayOpts::new("127.0.0.1:8090".parse()?)
+                .with_jobs_api(true)
+                .identity(GatewayBearerIdentity::from_env())
+                .protect_product_apis(true),
+        )
+        .configure(CraftyConfigure {
+            admin_addr: Some("127.0.0.1:8080".parse()?),
+            ..CraftyConfigure::default()
+        })
+        .run(RunOpts::default().with_wait_queue(STREAM))
+        .await?;
 
     Ok(())
 }

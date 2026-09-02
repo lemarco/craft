@@ -241,6 +241,9 @@ pub struct QueueJobStatusReply {
     pub attempts: u32,
     /// Configured retry ceiling (`0` = unlimited).
     pub max_attempts: u32,
+    /// Client idempotency token from enqueue, when set.
+    #[serde(default)]
+    pub dedup_key: Option<Vec<u8>>,
     /// Set when lookup failed.
     pub error: Option<String>,
 }

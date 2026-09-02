@@ -5,11 +5,12 @@ use std::sync::Arc;
 use axum::Json;
 use axum::Router;
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 
 use crate::WorkflowsApiState;
+use crate::types::JobsApiError;
 use crate::workflow_types::{SagaBody, WorkflowAccepted, WorkflowsApiError};
 
 /// Axum sub-router for workflow trigger routes.
@@ -24,18 +25,43 @@ async fn get_health() -> impl IntoResponse {
     (StatusCode::OK, "ok")
 }
 
+async fn authorize(
+    state: &WorkflowsApiState,
+    method: &Method,
+    uri: &Uri,
+    headers: &HeaderMap,
+) -> Result<(), WorkflowsApiError> {
+    if let Some(auth) = &state.auth {
+        auth(method.clone(), uri.clone(), headers.clone())
+            .await
+            .map_err(|e| match e {
+                JobsApiError::Unauthorized(m) => WorkflowsApiError::Unauthorized(m),
+                other => WorkflowsApiError::BadRequest(other.to_string()),
+            })?;
+    }
+    Ok(())
+}
+
 async fn post_run(
     State(state): State<Arc<WorkflowsApiState>>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
     Json(body): Json<SagaBody>,
 ) -> Result<Json<WorkflowAccepted>, WorkflowsApiError> {
+    authorize(&state, &method, &uri, &headers).await?;
     let result = (state.run)(body.saga_id.clone()).await?;
     Ok(Json(result))
 }
 
 async fn post_resume(
     State(state): State<Arc<WorkflowsApiState>>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
     Json(body): Json<SagaBody>,
 ) -> Result<Json<WorkflowAccepted>, WorkflowsApiError> {
+    authorize(&state, &method, &uri, &headers).await?;
     let result = (state.resume)(body.saga_id.clone()).await?;
     Ok(Json(result))
 }
@@ -52,7 +78,11 @@ mod tests {
         run: crate::RunWorkflowFn,
         resume: crate::ResumeWorkflowFn,
     ) -> Arc<WorkflowsApiState> {
-        Arc::new(WorkflowsApiState { run, resume })
+        Arc::new(WorkflowsApiState {
+            run,
+            resume,
+            auth: None,
+        })
     }
 
     #[tokio::test]

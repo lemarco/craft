@@ -31,6 +31,9 @@ pub struct EnqueueBatchJobBody {
     /// Client dedup / idempotency key.
     #[serde(default)]
     pub dedup: Option<String>,
+    /// Maximum delivery attempts before dead letter (`0` = unlimited).
+    #[serde(default)]
+    pub max_attempts: Option<u32>,
 }
 
 /// JSON body for `POST /jobs/{stream}/batch`.
@@ -70,12 +73,21 @@ pub struct RequeueAccepted {
 pub struct JobStatusResponse {
     /// Job id within the stream.
     pub job_id: u64,
-    /// `pending`, `leased`, or `delayed`.
+    /// `pending`, `leased`, `delayed`, or `dead_letter`.
     pub state: &'static str,
     /// Byte length of stored payload.
     pub payload_len: u64,
     /// Enqueue priority.
     pub priority: u8,
+    /// Delivery attempts recorded so far.
+    pub attempts: u32,
+    /// Configured retry ceiling (`0` = unlimited).
+    pub max_attempts: u32,
+    /// `true` when `attempts > 1` — handler must be idempotent.
+    pub is_redelivery: bool,
+    /// Client dedup key from enqueue, when set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dedup: Option<String>,
     /// Present when `state` is `leased`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub leased_by: Option<LeasedByResponse>,
@@ -113,6 +125,9 @@ pub enum JobsApiError {
     /// Job id was not found in the stream.
     #[error("job not found")]
     NotFound,
+    /// Gateway identity check failed.
+    #[error("{0}")]
+    Unauthorized(String),
 }
 
 impl IntoResponse for JobsApiError {
@@ -121,6 +136,7 @@ impl IntoResponse for JobsApiError {
             Self::BadRequest(m) => (StatusCode::BAD_REQUEST, m.clone()),
             Self::Queue(m) => (StatusCode::SERVICE_UNAVAILABLE, m.clone()),
             Self::NotFound => (StatusCode::NOT_FOUND, self.to_string()),
+            Self::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m.clone()),
         };
         (status, msg).into_response()
     }

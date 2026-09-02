@@ -120,6 +120,31 @@ let worker = app.spawn_consumer(
 
 **Idempotency:** use `EnqueueOptions::dedup_key` and/or store processed ids in your `StateMachine` or `ActorStateStore`.
 
+### Queue → actor bridge
+
+Use the queue for **durability and retry**; delegate **stateful side effects** to a worker group via `cast` / `ask` so you do not duplicate handler logic in the consumer:
+
+```rust
+#[consumer("orders")]
+async fn fulfill_order(payload: &[u8], ctx: JobContext<'_>) -> Result<(), MyError> {
+    let order_id = std::str::from_utf8(payload)?;
+    // Idempotent enqueue key already guards duplicate jobs; cast is fire-and-forget.
+    app.cast("inventory", format!("reserve:{order_id}").into_bytes()).await?;
+    app.ask("billing", format!("charge:{order_id}").into_bytes()).await?;
+    Ok(())
+}
+```
+
+Patterns:
+
+| Need | Use |
+|------|-----|
+| Fire-and-forget to a stateful worker | `app.cast(group, bytes)` |
+| Read-modify-write with reply | `app.ask(group, bytes)` |
+| Cross-shard saga step | `app.enqueue_workflow_step` + [`WorkflowBuilder::step_dedup_key`](../../crates/crafty/src/workflow.rs) |
+
+See [state placement cheat sheet](state-placement.md) for where queue backlog vs actor state vs saga journal live.
+
 ### 4. HTTP mapping (recommended)
 
 Wire the gateway (`http-jobs` feature) with [`GatewayOpts`](../../crates/crafty/src/gateway.rs) — built-in `/jobs/*` routes are **opt-in** (`.with_jobs_api(true)` or `CRAFTY_GATEWAY_JOBS=1`). Request bodies: raw bytes or JSON `{ "payload": "…" }` / `{ "payload_b64": "…" }` ([`crafty-http` README](../../crates/crafty-http/README.md)).

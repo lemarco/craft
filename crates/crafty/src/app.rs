@@ -33,6 +33,7 @@ use crate::gateway::{GatewayConfig, GatewayHandle, GatewayOpts};
 use crate::job_opts::JobOpts;
 use crate::queue_opts::QueueOpts;
 use crate::worker_opts::{WorkerGroup, WorkerOpts};
+use crate::workflow::WorkflowBuilder;
 use crate::workflow_opts::{WorkflowOpts, WorkflowRegistration, resolve_workflow};
 
 /// Run a workflow using the default keyed client and Meta-Raft journal.
@@ -50,7 +51,7 @@ pub async fn journal_workflow(
 }
 
 /// Options for [`CraftyApp::shutdown_graceful`] and [`CraftyAppBuilder::run`].
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ShutdownOpts {
     /// Call [`CraftyCluster::leave`](crate::cluster::CraftyCluster::leave) when the node is in a multi-node cluster.
     pub graceful_leave: bool,
@@ -60,6 +61,20 @@ pub struct ShutdownOpts {
     pub consumers: Option<(tokio::sync::watch::Sender<bool>, Vec<JoinHandle<()>>)>,
     /// Drain the product HTTP gateway (WebSocket / long-lived HTTP) before shutdown.
     pub drain_gateway: bool,
+    /// Max wait for tier-C consumer tasks after the stop signal.
+    pub consumer_drain_timeout: Duration,
+}
+
+impl Default for ShutdownOpts {
+    fn default() -> Self {
+        Self {
+            graceful_leave: true,
+            drain_actors: true,
+            consumers: None,
+            drain_gateway: true,
+            consumer_drain_timeout: crate::gateway::DEFAULT_CONSUMER_DRAIN_TIMEOUT,
+        }
+    }
 }
 
 /// A worker instance registered in the cluster directory.
@@ -622,6 +637,25 @@ impl CraftyApp {
         queue.enqueue_opts(payload, options).await
     }
 
+    /// Enqueue a workflow step with a saga-scoped dedup key ([`WorkflowBuilder::step_dedup_key`]).
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or enqueue fails.
+    pub async fn enqueue_workflow_step(
+        &self,
+        saga_id: &str,
+        step_id: &str,
+        stream: &str,
+        payload: &[u8],
+    ) -> Result<JobId, crafty_actor::QueueError> {
+        self.enqueue_opts(
+            stream,
+            payload,
+            EnqueueOptions::dedup_key(WorkflowBuilder::step_dedup_key(saga_id, step_id)),
+        )
+        .await
+    }
+
     /// Enqueue many jobs in one leader transaction (batch path).
     ///
     /// Batches are capped at [`crate::cluster::DEFAULT_QUEUE_BATCH_MAX`] jobs per RPC.
@@ -806,8 +840,15 @@ impl CraftyApp {
     pub async fn shutdown_graceful(&self, opts: ShutdownOpts) {
         if let Some((stop_tx, handles)) = opts.consumers {
             let _ = stop_tx.send(true);
-            for handle in handles {
-                let _ = handle.await;
+            let drain = async {
+                for handle in handles {
+                    let _ = handle.await;
+                }
+            };
+            if opts.consumer_drain_timeout.is_zero() {
+                drain.await;
+            } else {
+                let _ = tokio::time::timeout(opts.consumer_drain_timeout, drain).await;
             }
         }
         if opts.drain_gateway
@@ -835,6 +876,7 @@ impl CraftyApp {
             drain_actors: true,
             consumers: None,
             drain_gateway: true,
+            consumer_drain_timeout: crate::gateway::DEFAULT_CONSUMER_DRAIN_TIMEOUT,
         }
     }
 

@@ -8,9 +8,9 @@ pub use crate::configure::CraftyConfigure;
 pub use crate::consumer::{ConsumerGroup, ConsumerOpts, IdempotencyOpts, JobConsumer};
 pub use crate::cron_opts::CronOpts;
 pub use crate::gateway::{
-    CraftyGatewayState, ExtractedIdentity, GatewayIdentity, GatewayOpts, GatewayRequest,
-    GatewayTokenIdentity, IdentityError, IdentityTypeError, OpenActorSessionError, SessionHandle,
-    SessionKey,
+    CraftyGatewayState, ExtractedIdentity, GatewayBearerIdentity, GatewayIdentity, GatewayOpts,
+    GatewayRequest, GatewayTokenIdentity, IdentityError, IdentityTypeError, OpenActorSessionError,
+    SessionHandle, SessionKey,
 };
 pub use crate::job_opts::JobOpts;
 pub use crate::queue_opts::QueueOpts;
