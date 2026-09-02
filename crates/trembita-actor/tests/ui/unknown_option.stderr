@@ -1,5 +1,5 @@
 error: unknown `actor` option (expected `migratable`)
- --> tests/ui/unknown_option.rs:5:23
+ --> tests/ui/unknown_option.rs:5:25
   |
 5 | #[trembita_actor::actor(bogus)]
-  |                       ^^^^^
+  |                         ^^^^^
