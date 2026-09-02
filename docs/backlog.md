@@ -8,7 +8,22 @@ Product and implementation backlog for crafty. Shipped capabilities stay in [sta
 
 ---
 
-## Summary
+## Open work
+
+Epics **B-01 … B-16** are **shipped** (see [Shipped epics](#shipped-epics-archive) below). Remaining items are optional integrations and maintenance — not blockers for product scenarios.
+
+| Id | Item | Status | Notes |
+|----|------|--------|-------|
+| O-01 | `crafty-store-redis` maintenance | ongoing | Keep as optional adapter |
+| O-02 | PostgreSQL `ActorStateStore` | deferred | Only if external integration demand |
+
+
+
+For new feature epics, use the next **B-NN** id and link the scenario + ADR.
+
+---
+
+## Summary (shipped epics)
 
 
 | Priority     | Count | Items                           |
@@ -17,13 +32,15 @@ Product and implementation backlog for crafty. Shipped capabilities stay in [sta
 | **P1**       | 6     | B-03 ✅ … B-06 ✅, B-14 ✅, B-16 ✅ |
 | **P2**       | 4     | B-07 ✅ … B-09 ✅, B-13 ✅        |
 | **P3**       | 3     | B-10 ✅ … B-12 ✅                 |
-| **Optional** | 5     | O-01 … O-05                     |
-| **Subtasks** | 58    | B-01a … B-16i (see epics below) |
+| **Optional** | 4 open | O-01 … O-04 (O-05 ✅ shipped) |
+| **Subtasks** | 58 | B-01a … B-16i — all shipped (see archive) |
 
 
 ---
 
+## Shipped epics (archive)
 
+Historical record of product epics B-01 … B-16. Current capabilities: [status.md](status.md).
 
 ## Priority legend
 
@@ -168,12 +185,12 @@ flowchart TB
 
 ### B-04 ✅ Real-time — WebSocket gateway
 
-**Shipped:** 2026-08-28 — [`examples/realtime/`](../../examples/realtime/).
+**Shipped:** 2026-08-28 — [`examples/realtime/`](../examples/realtime/).
 
 
 | Subtask | Description                                                     | Status |
 | ------- | --------------------------------------------------------------- | ------ |
-| B-04a   | [`examples/realtime/`](../../examples/realtime/) — axum WS + `ChatWorker` | ✅      |
+| B-04a   | [`examples/realtime/`](../examples/realtime/) — axum WS + `ChatWorker` | ✅      |
 | B-04b   | Homogeneous cluster showcases (same binary every node; no role env) | ✅ (superseded role docs → B-16) |
 | B-04c   | Auth stub + `ActorSession` open on connect                      | ✅ `GATEWAY_TOKEN` |
 | B-04d   | Reconnect: handle `NoTarget`, session TTL expiry                | ✅ auto reopen in example |
@@ -195,7 +212,7 @@ flowchart TB
 | B-05a   | `WorkflowBuilder` — named `.step(id, fn)`, `.compensate(id, fn)`            | ✅                |
 | B-05b   | Builds `SagaPlan`; runs via `run_saga` / `CompositeSagaJournal`             | ✅                |
 | B-05c   | `CraftyApp::workflow(name, builder_fn)` registration                        | ✅ `run_workflow` |
-| B-05d   | Example: [`examples/workflows/`](../../examples/workflows/) — saga + enqueue + propose steps | ✅                |
+| B-05d   | Example: [`examples/workflows/`](../examples/workflows/) — saga + enqueue + propose steps | ✅                |
 | B-05e   | `crafty workflow resume <id>` CLI stub (optional, via `crafty-node` or ops) | ✅ `scripts/crafty-workflow.sh` |
 
 
@@ -289,12 +306,12 @@ Document the contract, show effectively-once patterns, and improve consumer ergo
 | Subtask | Description | Priority slice | Status |
 | ------- | ----------- | -------------- | ------ |
 | B-13a   | [background-jobs.md](scenarios/background-jobs.md): **Delivery semantics** — at-least-once vs effectively-once; table of what crafty guarantees vs what the app must do; three idempotency layers (`dedup_key` enqueue, `ActorStateStore`/SM processing, saga step keys) | MR-1 | ✅ |
-| B-13b   | **Effectively-once recipe** — short guide (section or `docs/scenarios/` doc): enqueue `dedup_key` + worker CAS in store + ack after durable mark; link [stateful-workers example](../../examples/stateful-workers/) and [`idempotent_worker`](../../crates/crafty-store-redis/examples/idempotent_worker.rs) | MR-1 | ✅ |
+| B-13b   | **Effectively-once recipe** — short guide (section or `docs/scenarios/` doc): enqueue `dedup_key` + worker CAS in store + ack after durable mark; link [stateful-workers example](../examples/stateful-workers/) and [`idempotent_worker`](../crates/crafty-store-redis/examples/idempotent_worker.rs) | MR-1 | ✅ |
 | B-13c   | [job-queue.md](decisions/job-queue.md): one-line consequence — exactly-once delivery mode not planned; point to B-13 recipe | MR-1 | ✅ |
 | B-13d   | `QueueOpts` / `JobOpts::default_max_attempts(u32)` — stream default when `EnqueueOptions::max_attempts` is unset (`0` = inherit stream default; explicit `0` on enqueue still means unlimited) | MR-1 | ✅ |
-| B-13e   | `JobContext` in `#[consumer]` — expose `job_id`, `attempts`, optional `dedup_key` from [`LeasedJob`](../../crates/crafty-actor/src/queue.rs); thread through `run_queue_consumer` → `JobConsumer` | MR-2 | ✅ |
+| B-13e   | `JobContext` in `#[consumer]` — expose `job_id`, `attempts`, optional `dedup_key` from [`LeasedJob`](../crates/crafty-actor/src/queue.rs); thread through `run_queue_consumer` → `JobConsumer` | MR-2 | ✅ |
 | B-13f   | `ConsumerOpts::idempotency(...)` helper — key fn + `ActorStateStore` prefix; CAS `processing` → handler → `done` → ack (effectively-once, not a magic flag) | MR-2 | ✅ |
-| B-13g   | [background-jobs example](../../examples/background-jobs/): idempotent handler demo — HTTP `?dedup=` retry + simulated redelivery; `trigger.sh` like stateful-workers | MR-1 | ✅ |
+| B-13g   | [background-jobs example](../examples/background-jobs/): idempotent handler demo — HTTP `?dedup=` retry + simulated redelivery; `trigger.sh` like stateful-workers | MR-1 | ✅ |
 | B-13h   | Cross-links: background-jobs ↔ [stateful-workers](scenarios/stateful-workers.md) ↔ [workflows](scenarios/workflows.md) (step `dedup_key`) | MR-1 | ✅ |
 | B-13i   | Prometheus: `crafty_queue_redeliveries_total{stream}` + attempts histogram (optional) | later | ✅ |
 | B-13j   | Dashboard / `/introspect/queues`: surface jobs with `attempts > 1` as idempotency smell | later | ✅ |
@@ -324,10 +341,10 @@ Document the contract, show effectively-once patterns, and improve consumer ergo
 Gateway production readiness, queue lifecycle polish, and glue between product scenarios — without new delivery guarantees or mandatory external infra.
 
 
-| Subtask | Tier | Description | Status |
+| Subtask | Wave | Description | Status |
 | ------- | ---- | ----------- | ------ |
-| B-14a   | 1 | **Gateway auth hook** — middleware slot on [`GatewayOpts`](../../crates/crafty/src/gateway_opts.rs) (JWT / API key / custom Axum layer); document pattern; extend [`examples/realtime/`](../../examples/realtime/) beyond `GATEWAY_TOKEN` query stub ([product-scenarios](decisions/product-scenarios.md)) | ✅ |
-| B-14b   | 1 | **`crafty init` v2** — [`templates/crafty-app/`](../../templates/crafty-app/): `JobOpts` + `#[consumer]` + `IdempotencyOpts::by_dedup_key` + `default_max_attempts(5)`; remove bare `TODO` stub ([B-06](backlog.md#b-06--crafty-init-project-template)) | ✅ |
+| B-14a   | 1 | **Gateway auth hook** — middleware slot on [`GatewayOpts`](../crates/crafty/src/gateway/mod.rs) (JWT / API key / custom Axum layer); document pattern; extend [`examples/realtime/`](../examples/realtime/) beyond `GATEWAY_TOKEN` query stub ([product-scenarios](decisions/product-scenarios.md)) | ✅ |
+| B-14b   | 1 | **`crafty init` v2** — [`templates/crafty-app/`](../templates/crafty-app/): `JobOpts` + `#[consumer]` + `IdempotencyOpts::by_dedup_key` + `default_max_attempts(5)`; remove bare `TODO` stub ([B-06](backlog.md#b-06--crafty-init-project-template)) | ✅ |
 | B-14c   | 1 | **E2E HTTP jobs via gateway (docker)** — `POST /jobs/{stream}/batch` through product gateway in `e2e/` (QUIC queue E2E exists; HTTP gateway path does not) | ✅ |
 | B-14d   | 2 | **`IdempotencyOpts` TTL** — optional `retain_for` / `with_ttl` on done markers in `ActorStateStore`; default forever for payment-style keys; doc high-volume cleanup | ✅ |
 | B-14e   | 2 | **Graceful consumer drain** — on shutdown: stop leasing, wait for in-flight handlers (timeout), then ack/nack; `RunOpts` or `ConsumerOpts` hook to avoid noisy redelivery metrics | ✅ |
@@ -341,7 +358,7 @@ Gateway production readiness, queue lifecycle polish, and glue between product s
 
 **Suggested MR slices**
 
-| MR | Subtasks | Tier | Effort |
+| MR | Subtasks | Wave | Effort |
 | -- | -------- | ---- | ------ |
 | **MR-1** (gateway + onboarding) | B-14a, B-14b, B-14c | 1 | ~3–4 days |
 | **MR-2** (queue lifecycle) | B-14d, B-14e, B-14g, B-14h | 2 | ~3–4 days |
@@ -360,10 +377,10 @@ Gateway production readiness, queue lifecycle polish, and glue between product s
 **Scenario:** [background-jobs](scenarios/background-jobs.md)  
 **ADR:** [external-backlog](decisions/external-backlog.md)
 
-Teams with backlog in Postgres/MySQL get leader-fed tier-C windows, dedup on re-enqueue, settlement, and honest autoscale depth — without reimplementing the feeder loop.
+Teams with backlog in Postgres/MySQL get leader-fed queue windows, dedup on re-enqueue, settlement, and honest autoscale depth — without reimplementing the feeder loop.
 
 
-| Subtask | Tier | Description | Status |
+| Subtask | Wave | Description | Status |
 | ------- | ---- | ----------- | ------ |
 | B-15a   | 1 | **`ExternalBacklog` trait** — `depth`, `claim`, `settle`; `InMemoryExternalBacklog` for tests | ✅ |
 | B-15b   | 1 | **`run_backlog_feeder`** — leader-only top-up to `pending_target × consumers` | ✅ |
@@ -388,7 +405,7 @@ Teams with backlog in Postgres/MySQL get leader-fed tier-C windows, dedup on re-
 Every VPS runs the same binary. **Compute tokens** arbitrate gateway ingress vs job/actor work on one node: API protected when hot; spare capacity goes to jobs when ingress is quiet (e.g. overnight) — **without** cluster rescale or `CRAFTY_ROLE`.
 
 
-| Subtask | Tier | Description | Status |
+| Subtask | Wave | Description | Status |
 | ------- | ---- | ----------- | ------ |
 | B-16a   | 1 | **ADR + scenario notes** — compute token model, signal/action table, deprecate roles | ✅ |
 | B-16b   | 1 | **`ComputeTokenPool`** — process-wide semaphore, RAII `ComputeGuard`, configurable `max_tokens` | ✅ |
@@ -462,15 +479,7 @@ Every VPS runs the same binary. **Compute tokens** arbitrate gateway ingress vs 
 
 ## Optional integrations (explicitly not P0)
 
-
-| Id   | Item                             | Notes                                                                |
-| ---- | -------------------------------- | -------------------------------------------------------------------- |
-| O-01 | `crafty-store-redis` maintenance | Keep as optional adapter                                             |
-| O-02 | PostgreSQL `ActorStateStore`     | Only if external integration demand                                  |
-| O-03 | Redis Cluster auto-discovery     | Deferred in [actor-state-redis](decisions/actor-state-redis.md)      |
-| O-04 | Kubernetes operator              | **Non-goal** per [product-scenarios](decisions/product-scenarios.md) |
-| O-05 | Self-update coordinator          | ✅ [upgrade-coordinator](decisions/upgrade-coordinator.md) — `crafty_core::upgrade`, facade coordinator, `crafty-http` API, `examples/self-update` |
-
+Moved to [Open work](#open-work). **O-05** (self-update coordinator) shipped — see [upgrade-coordinator](decisions/upgrade-coordinator.md).
 
 ---
 

@@ -1,7 +1,7 @@
 //! Durable job backlog port ([job-queue](../../../docs/decisions/job-queue.md)).
 //!
-//! [`JobQueue`] is tier C messaging: shared async work with `lease` / `ack`,
-//! distinct from actor mailboxes (tier B) and Raft (tier A). [`InMemoryJobQueue`]
+//! [`JobQueue`] is the job queue layer: shared async work with `lease` / `ack`,
+//! distinct from actor mailboxes and Raft consensus. [`InMemoryJobQueue`]
 //! backs tests and single-node dev; production uses [`RedbJobQueue`](super::redb_queue::RedbJobQueue).
 
 use std::collections::{BTreeMap, VecDeque};

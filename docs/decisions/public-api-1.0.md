@@ -1,16 +1,15 @@
-# Public API freeze (1.0)
+# Public API scope
 
-**Status:** Accepted (pre-freeze audit)  
+**Status:** Accepted  
 **Date:** 2026-08-28  
 **Backlog:** B-11a
 
 ## Scope
 
 The **`crafty` facade** is the semver surface for product teams. Internal crates
-(`crafty-core`, `crafty-net`, …) are published for advanced users but the 1.0
-stability promise applies primarily to types re-exported from `crafty`.
+(`crafty-core`, `crafty-net`, …) are published for advanced users; semver guarantees apply primarily to types re-exported from `crafty`.
 
-## Tier 1 — product entry (stable at 1.0)
+## Product surface (`CraftyApp`)
 
 | Area | Types | Notes |
 |------|-------|-------|
@@ -23,7 +22,7 @@ stability promise applies primarily to types re-exported from `crafty`.
 | Sessions | `ActorSession`, `CraftyApp::session_keyed` | Sticky routing |
 | Observability | `init_tracing`, `Metrics`, `CraftyEvent` | Admin port separate |
 
-## Tier 2 — `crafty::cluster` and client (stable semantics)
+## Cluster & client API (`crafty::cluster`)
 
 | Area | Types | Notes |
 |------|-------|-------|
@@ -35,7 +34,7 @@ stability promise applies primarily to types re-exported from `crafty`.
 
 **Removed / hidden (0.4.1):** `crafty::advanced` module (renamed to `crafty::cluster`, no alias); root `use crafty::CraftyCluster`; `CraftyApp::cluster` / `into_cluster` / `CraftyAppBuilder::inner_mut` (`#[doc(hidden)]`, tests only).
 
-## Tier 3 — explicit non-guarantees until 1.0
+## Out of semver scope
 
 | Item | Policy |
 |------|--------|
@@ -43,7 +42,7 @@ stability promise applies primarily to types re-exported from `crafty`.
 | `pub(crate)` facade internals | Not public API |
 | `#[doc(hidden)]` re-exports | Do not use |
 | Sim / test crates | Unstable |
-| Pre-1.0 minors | Breaking changes allowed on `0.x` with CHANGELOG entry |
+| SemVer `0.x` minors | Breaking changes allowed on minor bumps with CHANGELOG entry ([library-and-publishing](library-and-publishing.md)) |
 
 ## Facade re-export audit (`crates/crafty/src/lib.rs`)
 
@@ -53,7 +52,7 @@ stability promise applies primarily to types re-exported from `crafty`.
 **Not re-exported (use sub-crates deliberately):** `crafty-sim`, `crafty-ops`,
 `crafty-store-redis`, `crafty-http` (separate dependency for product HTTP).
 
-## 1.0 checklist
+## Maintenance checklist
 
 - [x] CHANGELOG documents breaking API surface cleanup (`advanced` → `cluster`, `CraftyApp` delegates)
 - [x] `missing_docs = deny` on published crates (see [missing-docs-1.0.md](missing-docs-1.0.md)) — shipped 2026-08-29

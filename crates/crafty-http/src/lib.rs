@@ -349,7 +349,7 @@ impl WorkflowsApi {
 
 /// Bind and serve workflow routes on `addr` (background task).
 ///
-/// Used by tier A showcases when saga coordination must stay in-process on node 1
+/// Used by workflows showcases when saga coordination must stay in-process on node 1
 /// (`CRAFTY_TRIGGER` listener).
 ///
 /// # Errors

@@ -214,7 +214,7 @@ pub async fn send_leave_request<T: Transport + ?Sized>(
 }
 
 /// Send a [`CatalogAddRequest`] and decode the [`CatalogAddResponse`]
-/// (`/cluster/catalog/add`, Tier 2).
+/// (`/cluster/catalog/add`, dynamic catalog).
 ///
 /// # Errors
 /// Returns [`TransportError`] on a framing failure or if the peer is

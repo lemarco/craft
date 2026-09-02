@@ -1,7 +1,7 @@
 # crafty-backlog-postgres
 
 PostgreSQL [`ExternalBacklog`](https://docs.rs/crafty-actor/latest/crafty_actor/trait.ExternalBacklog.html)
-adapter for crafty tier-C job streams.
+adapter for crafty job queue streams.
 
 ## Expected schema (default)
 

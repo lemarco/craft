@@ -61,7 +61,7 @@ pub struct ShutdownOpts {
     pub consumers: Option<(tokio::sync::watch::Sender<bool>, Vec<JoinHandle<()>>)>,
     /// Drain the product HTTP gateway (WebSocket / long-lived HTTP) before shutdown.
     pub drain_gateway: bool,
-    /// Max wait for tier-C consumer tasks after the stop signal.
+    /// Max wait for job queue consumer tasks after the stop signal.
     pub consumer_drain_timeout: Duration,
 }
 

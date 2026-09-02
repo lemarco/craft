@@ -4,7 +4,7 @@
 
 ## Context
 
-Tier C ([`JobQueue`](../../crates/crafty-actor/src/queue.rs)) is an **in-flight window**: durable lease/ack semantics, leader replication, autoscale hooks. Many teams already store the **authoritative backlog** in Postgres or MySQL (`status = pending`, business columns, operator dashboards).
+The job queue ([`JobQueue`](../../crates/crafty-actor/src/queue.rs)) is an **in-flight window**: durable lease/ack semantics, leader replication, autoscale hooks. Many teams already store the **authoritative backlog** in Postgres or MySQL (`status = pending`, business columns, operator dashboards).
 
 Today each such team reimplements the same glue:
 
@@ -21,7 +21,7 @@ Add an [`ExternalBacklog`](../../crates/crafty-actor/src/external_backlog.rs) po
 |--------|------|
 | `depth()` | Outstanding demand in the source of truth → worker/membership autoscale |
 | `claim(max)` | Leader claims up to `max` items (impl owns `SKIP LOCKED` / CAS) |
-| `settle(key, outcome)` | Terminal callback after tier-C ack or dead-letter |
+| `settle(key, outcome)` | Terminal callback after queue ack or dead-letter |
 
 Product wiring:
 
@@ -37,7 +37,7 @@ Runtime behaviour ([`run_backlog_feeder`](../../crates/crafty-actor/src/external
 - Target in-flight: `pending_target_per_consumer × consumer_instances`
 - Top-up: `claim(need)` → `enqueue_opts(dedup_key = item.key)`
 - **Settle** on ack, nack, and lease-timeout **reclaim** when a dedup key is present — durable **outbox** at `{data_dir}/backlog-settle-outbox.redb` + leader [`run_backlog_settle_drainer`](../../crates/crafty-actor/src/external_backlog.rs)
-- **Autoscale** reads `depth()` when a backlog is registered for the stream; otherwise falls back to tier-C `pending + leased`
+- **Autoscale** reads `depth()` when a backlog is registered for the stream; otherwise falls back to queue `pending + leased`
 
 Optional adapter: [`crafty-backlog-postgres`](../../crates/crafty-backlog-postgres/) (`FOR UPDATE SKIP LOCKED`).
 
@@ -52,6 +52,6 @@ Optional adapter: [`crafty-backlog-postgres`](../../crates/crafty-backlog-postgr
 
 | Option | Verdict |
 |--------|---------|
-| Require all backlog in tier C | Rejected — poor fit for existing Postgres/MySQL deployments |
+| Require all backlog in the job queue | Rejected — poor fit for existing Postgres/MySQL deployments |
 | User-written feeder only | Rejected — duplicates leader election, dedup, autoscale wiring |
 | Put backlog rows in Raft log | Rejected — R1 write ceiling ([future-work-and-risks](future-work-and-risks.md)) |

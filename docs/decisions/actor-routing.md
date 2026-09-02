@@ -1,14 +1,13 @@
-# Actor / routing UX — Tier 3
+# Actor / routing UX
 
 **Status:** Accepted  
 **Date:** 2026-08-27
 
 ## Context
 
-Wave 2 shipped cross-node actors with modulo keyed routing, a fixed default drain timeout, eventual directory convergence (R3), and a clear split between linearizable Raft `query` and fast/local actor `ask`.
+Cross-node actors shipped with modulo keyed routing, a fixed default drain timeout, eventual directory convergence (R3), and a clear split between linearizable Raft `query` and fast/local actor `ask`.
 
-Tier 3 closes the remaining operator and application UX gaps without changing
-consensus semantics.
+This record covers operator and application UX for sticky sessions, smoother scale events, and optional directory visibility — without changing consensus semantics.
 
 ## Decision
 

@@ -54,7 +54,7 @@ pub struct AppConfig {
     pub job_queue_lease: Duration,
     /// Optional product gateway listen address (`None` when disabled).
     pub gateway: Option<SocketAddr>,
-    /// Mount tier C `/jobs/*` on the gateway when `gateway` is set (`CRAFTY_GATEWAY_JOBS=1`).
+    /// Mount job queue `/jobs/*` on the gateway when `gateway` is set (`CRAFTY_GATEWAY_JOBS=1`).
     pub gateway_jobs_api: bool,
     /// Mount `/actors/*` cast + ask on the gateway when `gateway` is set (`CRAFTY_GATEWAY_ACTORS=1`).
     pub gateway_actors_api: bool,

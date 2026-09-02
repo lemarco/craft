@@ -1,4 +1,4 @@
-//! Saga journal metadata entries (Tier 2 v2) — not applied to the user SM.
+//! Saga journal metadata entries (Meta-Raft saga journal) — not applied to the user SM.
 
 use crafty_core::{CatalogProposeError, Config, Output, RaftNode};
 use crafty_proto::{

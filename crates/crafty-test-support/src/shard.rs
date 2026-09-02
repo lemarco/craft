@@ -12,7 +12,7 @@ pub fn find_keys_for_two_groups(active_count: u32, groups: &[RaftGroupId]) -> (V
     find_keys_for_two_groups_with_routing(active_count, groups, ShardRoutingKind::StableVirtual)
 }
 
-/// Find two routing keys under Tier 1 modulus routing.
+/// Find two routing keys under modulus routing routing.
 #[must_use]
 pub fn find_keys_for_two_groups_modulus(
     active_count: u32,

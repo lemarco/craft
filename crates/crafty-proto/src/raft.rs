@@ -35,15 +35,15 @@ pub enum EntryPayload {
     Command(Vec<u8>),
     /// Cluster membership change entry (joint consensus, membership-early).
     Membership(Membership),
-    /// Multi-Raft catalog metadata (Tier 2; applied by crafty, not the user SM).
+    /// Multi-Raft catalog metadata (dynamic catalog; applied by crafty, not the user SM).
     Catalog(CatalogCommand),
-    /// Cross-shard saga journal metadata (Tier 2 v2; applied by crafty, not the user SM).
+    /// Cross-shard saga journal metadata (Meta-Raft saga journal; applied by crafty, not the user SM).
     SagaJournal(SagaJournalCommand),
     /// Cross-shard 2PC prepare staging (durable 2PC; applied by crafty, not the user SM).
     TwoPhasePrepare(TwoPhasePrepareCommand),
     /// Cross-shard 2PC abort tombstone (durable 2PC; applied by crafty, not the user SM).
     TwoPhaseAbort(TwoPhaseAbortCommand),
-    /// Cross-shard 2PC client journal metadata (Tier 2; applied by crafty, not the user SM).
+    /// Cross-shard 2PC client journal metadata (Meta-Raft; applied by crafty, not the user SM).
     TwoPhaseJournal(TwoPhaseJournalCommand),
     /// Job queue autoscale policy (Meta-Raft; applied by crafty, not the user SM).
     QueueAutoscalePolicy(QueueAutoscalePolicyCommand),

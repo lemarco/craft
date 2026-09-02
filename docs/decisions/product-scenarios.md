@@ -36,14 +36,14 @@ All five compose on the same runtime. No separate job server, workflow server, o
 
 Advanced teams may embed a custom [`StateMachine`](../../crates/crafty-core/src/lib.rs) via [`CraftyCluster`](../../crates/crafty/src/cluster.rs) — that is **not** the default [`CraftyApp`](../../crates/crafty/src/app.rs) product path.
 
-### Three messaging tiers (product view)
+### Three messaging layers (product view)
 
-| Tier | Mechanism | Product use |
-|------|-----------|-------------|
-| **B — Actor mailbox** | `send` / `ask` / `ActorSession` | RPC, sync HTTP, real-time session to a pinned worker |
-| **C — Job queue** | `JobQueue` → `RedbJobQueue` | Async backlog, many workers, autoscale |
-| **D — Event topic** | `EventTopic` → `RedbEventTopic` | Fan-out domain events; per-subscription cursors ([event-topics](event-topics.md)) |
-| **Workflow machinery** | Meta-Raft saga journal + steps | Multi-step processes with compensators; steps call B/C/D or external APIs |
+| Layer | Mechanism | Product use |
+|-------|-----------|-------------|
+| **Actor mailbox** | `send` / `ask` / `ActorSession` | RPC, sync HTTP, real-time session to a pinned worker |
+| **Job queue** | `JobQueue` → `RedbJobQueue` | Async backlog, many workers, autoscale |
+| **Event topic** | `EventTopic` → `RedbEventTopic` | Fan-out domain events; per-subscription cursors ([event-topics](event-topics.md)) |
+| **Workflow machinery** | Meta-Raft saga journal + steps | Multi-step processes with compensators; steps call mailbox/queue/topic or external APIs |
 
 Actor **workflow keys** (idempotency, step progress outside SM) use [`ActorStateStore`](actor-state-store.md) — default path **`redb`**, not Redis.
 
@@ -133,7 +133,7 @@ Typical flows:
 | `RedbActorStateStore` + voter replication + TTL/GC | **shipped** | B-01 ✅ |
 | `CraftyApp` product facade + gateway | **shipped** | B-02 ✅ |
 | HTTP jobs API (`202`, batch, DLQ requeue) | **shipped** | B-03 ✅ |
-| Real-time showcase + `ActorsApi` on gateway | **shipped** | B-04 ✅ — [examples/realtime/](../examples/realtime/) |
+| Real-time showcase + `ActorsApi` on gateway | **shipped** | B-04 ✅ — [examples/realtime/](../../examples/realtime/) |
 | `WorkflowBuilder` + resume CLI | **shipped** | B-05 ✅ |
 | `crafty init` template | **shipped** | B-06 ✅ — polish: richer worker stubs |
 | Dashboard: queue depth + saga status | **shipped** | B-07 ✅ |
@@ -164,7 +164,7 @@ Full epic list: [backlog.md](../backlog.md) (P0–P3 ✅).
 - [actor-state-store](actor-state-store.md)
 - [job-queue](job-queue.md)
 - [cross-node-actors](cross-node-actors.md)
-- [actor-routing-tier3](actor-routing-tier3.md)
+- [actor-routing](actor-routing.md)
 - [multi-raft](multi-raft.md#cross-shard-transactions)
 - [scenarios/README.md](../scenarios/README.md)
 - [backlog.md](../backlog.md)

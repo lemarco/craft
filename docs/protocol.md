@@ -111,7 +111,7 @@ POST /raft/v1/cluster/catalog/add
 Content-Type: application/x-postcard
 ```
 
-**Multi-Raft only.** The Meta-Raft leader appends a [`CatalogCommand::AddGroups`](../../crates/crafty-proto/src/catalog.rs) entry to the Meta-Raft log (not the user state machine). All nodes replay the entry, update the in-memory catalog, extend keyed routing, and rebalance to adopt new groups ([multi-raft](decisions/multi-raft.md)).
+**Multi-Raft only.** The Meta-Raft leader appends a [`CatalogCommand::AddGroups`](../crates/crafty-proto/src/catalog.rs) entry to the Meta-Raft log (not the user state machine). All nodes replay the entry, update the in-memory catalog, extend keyed routing, and rebalance to adopt new groups ([multi-raft](decisions/multi-raft.md)).
 
 Request/response types: `CatalogAddRequest` / `CatalogAddResponse` in `crafty-proto`. Facade: `CraftyCluster::add_raft_groups(count)`.
 
@@ -128,7 +128,7 @@ Request/response types: `CatalogAddRequest` / `CatalogAddResponse` in `crafty-pr
 
 See [cross-node-actors](decisions/cross-node-actors.md).
 
-### Job queue (cross-node, tier C)
+### Job queue (cross-node)
 
 Leader-gated durable backlog ([job-queue](decisions/job-queue.md)). Mutations run on the **Raft leader**; followers **forward** client routes to the leader. After each leader mutation, `QueueReplicateOp` batches replicate to every other **reachable voter** in parallel; the client receives success only once all peers ack.
 
@@ -158,7 +158,7 @@ Content-Type: application/x-postcard
 | `.../metrics` | `QueueMetricsRequest` | `QueueMetricsReply` | `pending`, `leased`, `oldest_pending_age_ms` for autoscale |
 | `.../replicate` | `QueueReplicateRequest` | `QueueReplicateReply { error }` | Idempotent `QueueReplicateOp` batch; leader-authenticated |
 
-### Actor workflow store (tier — workflow keys)
+### Actor workflow store (workflow keys)
 
 Leader-gated durable KV for stateful actors ([actor-state-store](decisions/actor-state-store.md)). Same leader-forward + voter-replicate pattern as the job queue. Default file: `{data_dir}/actor-store.redb`.
 
@@ -179,9 +179,9 @@ Content-Type: application/x-postcard
 
 Local reads use `ClusterActorStateStore::get` on the voter's redb file (no RPC).
 
-Types live in `crafty-proto` (`queue.rs`). Facade client: [`ClusterJobQueue`](../../crates/crafty-actor/src/queue_service.rs) via [`CraftyCluster::job_queue`](../../crates/crafty/src/cluster.rs).
+Types live in `crafty-proto` (`queue.rs`). Facade client: [`ClusterJobQueue`](../crates/crafty-actor/src/queue_service.rs) via [`CraftyCluster::job_queue`](../crates/crafty/src/cluster.rs).
 
-### Actor mailbox spool (tier B durability)
+### Actor mailbox spool (durable delivery)
 
 Optional write-ahead **`MailboxSpool`** (`RedbMailboxSpool` at `{data_dir}/mailbox-spool.redb`) for cross-node [`/actor/deliver`](decisions/cross-node-actors.md):
 
@@ -191,7 +191,7 @@ Optional write-ahead **`MailboxSpool`** (`RedbMailboxSpool` at `{data_dir}/mailb
 | **Inbox** | Envelope persisted before local mailbox enqueue; removed after accept |
 | **Recovery** | Background drainer + startup replay of pending rows |
 
-Enable via [`CraftyClusterBuilder::durable_mailbox`](../../crates/crafty/src/builder.rs)(`true`) with [`data_dir`](../../crates/crafty/src/builder.rs).
+Enable via [`CraftyClusterBuilder::durable_mailbox`](../crates/crafty/src/builder.rs)(`true`) with [`data_dir`](../crates/crafty/src/builder.rs).
 
 ## Connections
 

@@ -1,4 +1,4 @@
-# One-command 3-node stateful-workers cluster (tier B showcase).
+# One-command 3-node stateful-workers cluster (stateful actor showcase).
 #
 #   cd dev/compose/stateful-workers
 #   docker compose up --build

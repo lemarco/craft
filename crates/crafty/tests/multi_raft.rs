@@ -492,7 +492,7 @@ async fn multi_raft_survives_follower_partition() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn tier1_shard_expansion_and_keyed_batch() {
+async fn modulus_shard_expansion_and_keyed_batch() {
     use crafty_client::{KeyedBatchStep, RemoteClient, propose_keyed_batch};
 
     let net = LocalNetwork::new();

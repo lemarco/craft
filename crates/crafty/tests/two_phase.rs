@@ -1,4 +1,4 @@
-//! Cross-shard two-phase commit integration (optional Tier 2 increment).
+//! Cross-shard two-phase commit integration (optional cross-shard 2PC increment).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

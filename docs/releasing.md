@@ -69,8 +69,7 @@ git push && git push origin v0.1.0
 
 ## Versioning policy
 
-- **SemVer.** Pre-1.0 (`0.x`), breaking changes may land on minor bumps and are
-  recorded in `CHANGELOG.md`.
+- **SemVer.** Under `0.x`, breaking changes may land on minor bumps and are recorded in `CHANGELOG.md`.
 - **MSRV** bumps (`rust-version`) are a minor-version event, noted in the
   changelog.
 - **Wire/protocol** compatibility is tracked separately via

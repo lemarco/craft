@@ -56,7 +56,7 @@ pub struct Config {
     pub heartbeat_interval: u64,
     /// Seed mixed with the node id for deterministic timeout jitter.
     pub seed: u64,
-    /// Leader-side reachability tuning (liveness-vs-membership Tier 2).
+    /// Leader-side reachability tuning (reachability tuning).
     pub reachability: ReachabilityConfig,
 }
 
@@ -118,14 +118,14 @@ pub enum Output {
         /// Opaque application snapshot bytes.
         data: Vec<u8>,
     },
-    /// A committed catalog metadata entry (Tier 2; not applied to the user SM).
+    /// A committed catalog metadata entry (dynamic catalog; not applied to the user SM).
     CatalogApplied {
         /// Log index of the catalog entry.
         index: LogIndex,
         /// Catalog command committed at `index`.
         command: CatalogCommand,
     },
-    /// A committed saga journal entry (Tier 2 v2; not applied to the user SM).
+    /// A committed saga journal entry (Meta-Raft saga journal; not applied to the user SM).
     SagaJournalApplied {
         /// Log index of the saga journal entry.
         index: LogIndex,
@@ -853,7 +853,7 @@ impl RaftNode {
         Ok(idx)
     }
 
-    /// Append a catalog metadata entry to the log (group 0 only, Tier 2).
+    /// Append a catalog metadata entry to the log (group 0 only, dynamic catalog).
     ///
     /// # Errors
     /// Returns [`CatalogProposeError::NotLeader`] when this node is not leader.
@@ -872,7 +872,7 @@ impl RaftNode {
         Ok(idx)
     }
 
-    /// Append a saga journal metadata entry to the log (group 0 only, Tier 2 v2).
+    /// Append a saga journal metadata entry to the log (group 0 only, Meta-Raft saga journal).
     ///
     /// # Errors
     /// Returns [`CatalogProposeError::NotLeader`] when this node is not leader.
@@ -1573,7 +1573,7 @@ impl RaftNode {
     }
 
     /// [`reachable`](Self::reachable) with configured window, hysteresis, or
-    /// phi-accrual (liveness-vs-membership Tier 2). Updated every leader
+    /// phi-accrual (reachability tuning). Updated every leader
     /// [`tick`](Self::tick).
     #[must_use]
     pub fn reachable_now(&self) -> Vec<NodeId> {

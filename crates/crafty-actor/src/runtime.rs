@@ -516,7 +516,7 @@ impl<M: StateMachine> NodeHandle<M> {
         rx.await.map_err(|_| ClientError::Stopped)
     }
 
-    /// Replicate a saga journal upsert on group 0 (Tier 2 v2).
+    /// Replicate a saga journal upsert on group 0 (Meta-Raft saga journal).
     ///
     /// # Errors
     /// [`ClientError::NotLeader`] when this node is not the group 0 leader.

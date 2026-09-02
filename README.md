@@ -24,8 +24,8 @@
 
 | | |
 |---|---|
-| **Version** | `0.5.2` (pre-1.0) |
-| **Maturity** | Advanced prototype — published on [crates.io](https://crates.io/crates/crafty) |
+| **Version** | `0.5.2` |
+| **Distribution** | Published on [crates.io](https://crates.io/crates/crafty) — E2E/chaos, product showcases |
 | **Release** | v0.5.2 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/crafty/0.5.2](https://docs.rs/crafty/0.5.2) |
 | **Full status** | [docs/status.md](docs/status.md) |
 
@@ -40,7 +40,9 @@
 - **Self-update coordinator** — leader reconcile + local executor ([upgrade-coordinator](docs/decisions/upgrade-coordinator.md))
 - Design decision records — [docs/decisions/](docs/decisions/)
 
-### Not yet (by design or process)
+### Scope boundaries
+
+These are explicit non-goals, not gaps in quality:
 
 - Linearizable actor `ask`, global cross-shard serializable isolation
 - See [docs/status.md](docs/status.md) for the full deferred list and known limits (R1–R6)
@@ -76,7 +78,7 @@ lefthook install
 | `CRAFTY_JOB_QUEUE` | Enable durable queue stream name (e.g. `jobs`) |
 | `CRAFTY_JOB_QUEUE_LEASE_SECS` | Lease visibility timeout (default `60`) |
 
-See [job-queue](docs/decisions/job-queue.md) and [protocol.md](docs/protocol.md#job-queue-cross-node-tier-c).
+See [job-queue](docs/decisions/job-queue.md) and [protocol.md](docs/protocol.md#job-queue).
 
 ---
 
@@ -155,6 +157,7 @@ Product apps: enable `http-jobs` for HTTP job routes and `dev-certs` for local Q
 | [docs/getting-started.md](docs/getting-started.md) | **Product app tutorial** (CraftyApp, no Redis) |
 | [docs/scenarios/README.md](docs/scenarios/README.md) | **Four product scenarios** |
 | [docs/status.md](docs/status.md) | **Current capabilities and limits** |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | **How to contribute** (humans) |
 | [docs/architecture.md](docs/architecture.md) | Crate graph, data flows |
 | [docs/decisions/](docs/decisions/) | Design rationale (multi-Raft, membership, actors, …) |
 | [docs/testing-coverage.md](docs/testing-coverage.md) | Test inventory |

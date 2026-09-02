@@ -1,4 +1,4 @@
-//! Cross-shard keyed propose helpers (Tier 1 — best-effort batch, not atomic).
+//! Cross-shard keyed propose helpers (best-effort keyed batch, not atomic).
 
 use crate::{ClientError, KeyedClient};
 

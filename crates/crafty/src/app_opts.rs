@@ -43,7 +43,7 @@ impl RunOpts {
         self
     }
 
-    /// Wire tier-C consumer stop handles into graceful shutdown.
+    /// Wire job queue consumer stop handles into graceful shutdown.
     #[must_use]
     pub fn with_consumers(
         mut self,

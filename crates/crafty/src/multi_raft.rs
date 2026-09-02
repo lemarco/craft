@@ -53,7 +53,7 @@ pub(crate) struct MultiRaftState<M: StateMachine> {
     pub node_id: NodeId,
     /// Per-group voter replication factor (per-group-raft-membership).
     pub replication_factor: u32,
-    /// Non-voting learners per group beyond voters (Tier 1).
+    /// Non-voting learners per group beyond voters.
     pub learner_factor: u32,
 }
 

@@ -1,4 +1,4 @@
-//! Durable outbox/inbox for cross-node `/actor/deliver` (tier B spool).
+//! Durable outbox/inbox for cross-node `/actor/deliver` (mailbox spool).
 //!
 //! When enabled, outbound envelopes are write-ahead logged before send and
 //! removed only after the peer acks delivery; inbound envelopes are persisted

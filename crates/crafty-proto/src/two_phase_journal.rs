@@ -1,4 +1,4 @@
-//! Cross-shard 2PC client journal metadata replicated through Meta-Raft (Tier 2).
+//! Cross-shard 2PC client journal metadata replicated through Meta-Raft (dynamic catalog / stable shards).
 
 use serde::{Deserialize, Serialize};
 

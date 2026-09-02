@@ -162,7 +162,7 @@ pub async fn submit_order_auth(
     post_json(gateway, &path, &body).await
 }
 
-/// Enqueue a tier C job (`POST /jobs/{stream}` → 202).
+/// Enqueue a job queue (`POST /jobs/{stream}` → 202).
 ///
 /// # Errors
 /// Returns [`ClientError`] when the gateway request fails.

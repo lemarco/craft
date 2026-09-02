@@ -1,4 +1,4 @@
-//! [`CraftyApp`] workflow integration (coordination machinery, not tier-A SM).
+//! [`CraftyApp`] workflow integration (coordination machinery, not Raft state machine).
 
 use crafty::client::SagaOutcome;
 use crafty::{

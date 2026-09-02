@@ -1,4 +1,4 @@
-//! External backlog port — claim from a source of truth, top up the tier-C queue,
+//! External backlog port — claim from a source of truth, top up the job queue,
 //! settle outcomes back ([external-backlog](../../../docs/decisions/external-backlog.md)).
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
@@ -21,7 +21,7 @@ pub enum BacklogError {
     Backend(String),
 }
 
-/// Terminal outcome reported to the external source after tier-C processing.
+/// Terminal outcome reported to the external source after job queue processing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Settlement {
     /// Handler acked successfully.
@@ -42,7 +42,7 @@ pub enum Settlement {
     },
 }
 
-/// One item claimed from an external backlog for enqueue into tier C.
+/// One item claimed from an external backlog for enqueue into the job queue.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BacklogItem {
     /// Stable idempotency key — becomes [`EnqueueOptions::dedup_key`].
@@ -107,7 +107,7 @@ impl BacklogFeedOpts {
     }
 }
 
-/// Source-of-truth backlog outside tier C (Postgres table, existing job store, …).
+/// Source-of-truth backlog outside the job queue (Postgres table, existing job store, …).
 pub trait ExternalBacklog: Send + Sync {
     /// Outstanding demand in the external store — feeds autoscaling when wired.
     fn depth(&self) -> BoxFuture<'_, Result<u64, BacklogError>>;
@@ -115,7 +115,7 @@ pub trait ExternalBacklog: Send + Sync {
     /// Claim up to `max` items. The implementation owns exclusion (`SKIP LOCKED`, CAS, …).
     fn claim(&self, max: usize) -> BoxFuture<'_, Result<Vec<BacklogItem>, BacklogError>>;
 
-    /// Terminal outcome — called after ack or dead-letter before the tier-C row is dropped.
+    /// Terminal outcome — called after ack or dead-letter before the job queue row is dropped.
     fn settle(&self, key: &[u8], outcome: Settlement) -> BoxFuture<'_, Result<(), BacklogError>>;
 }
 
@@ -153,7 +153,7 @@ impl BacklogRegistry {
     }
 }
 
-/// Effective queue depth for autoscaling: external `depth()` when registered, else tier-C metrics.
+/// Effective queue depth for autoscaling: external `depth()` when registered, else job queue metrics.
 pub async fn effective_queue_depth(
     queue: &dyn JobQueue,
     backlog: Option<&dyn ExternalBacklog>,
@@ -167,7 +167,7 @@ pub async fn effective_queue_depth(
         .map_or(0, |m| m.pending.saturating_add(m.leased))
 }
 
-/// Map tier-C terminal attempt metadata to an external settle outcome.
+/// Map job queue terminal attempt metadata to an external settle outcome.
 #[must_use]
 pub fn terminal_backlog_outcome(
     attempts: u32,
@@ -226,7 +226,7 @@ pub async fn emit_backlog_settle_for_terminal_ops(
     }
 }
 
-/// Leader-only loop: keep tier-C `(pending + leased)` near `target × consumers` by claiming
+/// Leader-only loop: keep job queue `(pending + leased)` near `target × consumers` by claiming
 /// from [`ExternalBacklog`] and enqueueing with `dedup_key = item.key`.
 pub async fn run_backlog_feeder(
     stream: String,
@@ -343,7 +343,7 @@ pub async fn run_backlog_settle_drainer(
     }
 }
 
-/// Terminal tier-C outcome forwarded to [`ExternalBacklog::settle`].
+/// Terminal job queue outcome forwarded to [`ExternalBacklog::settle`].
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BacklogSettleOutcome {
     /// Successful ack.

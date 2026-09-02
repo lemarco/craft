@@ -1,4 +1,4 @@
-//! Wire protocol version checks (rolling upgrade Tier 2).
+//! Wire protocol version checks (rolling upgrade).
 
 use crafty_net::wire::check_protocol_version;
 use crafty_proto::{MIN_COMPATIBLE_PROTOCOL_VERSION, PROTOCOL_VERSION};

@@ -2,7 +2,7 @@
 
 Operational guide for snapshotting a crafty node's on-disk Raft layout and
 restoring it after failure or migration. Uses the [`crafty-ops`](../../crates/crafty-ops/)
-CLI (Tier 2 production reliability).
+CLI for snapshot backup/restore ([multi-raft](../decisions/multi-raft.md#production-reliability)).
 
 ## When to use
 

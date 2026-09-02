@@ -1,4 +1,4 @@
-//! Dynamic multi-Raft catalog replication over group 0 (Tier 2).
+//! Dynamic multi-Raft catalog replication over group 0 (dynamic catalog / stable shards).
 
 use serde::{Deserialize, Serialize};
 

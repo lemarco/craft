@@ -1,4 +1,4 @@
-//! Server-only TLS for the admin HTTP port (health-admin-port Tier 2).
+//! Server-only TLS for the admin HTTP port (admin TLS).
 //!
 //! Distinct from the mTLS crafty wire: admin TLS terminates HTTPS for probes and
 //! dashboards without requiring client certificates.

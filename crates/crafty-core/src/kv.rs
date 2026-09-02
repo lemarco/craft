@@ -1,6 +1,6 @@
 //! Reference key/value [`StateMachine`] for tutorials, tests, and showcases.
 //!
-//! A minimal tier **A** machine: in-memory map, snapshot via [`proto::encode`](crate::proto::encode).
+//! A minimal reference consensus machine: in-memory map, snapshot via [`proto::encode`](crate::proto::encode).
 //! Use with any crafty cluster builder when you need a working SM without writing your own.
 
 use std::collections::BTreeMap;

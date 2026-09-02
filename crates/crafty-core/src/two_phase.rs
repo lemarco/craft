@@ -1,4 +1,4 @@
-//! Cross-shard two-phase commit plan validation (optional Tier 2 increment).
+//! Cross-shard two-phase commit plan validation (optional cross-shard 2PC increment).
 
 use std::collections::BTreeSet;
 

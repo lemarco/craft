@@ -42,7 +42,7 @@ CraftyCluster::builder()
 
 - Applies per **actor instance** being migrated/stopped.
 - Cluster-wide default via builder / `CRAFTY_DRAIN_TIMEOUT`.
-- Per-group override via `ActorRegistry::set_group_drain_timeout` ([actor-routing-tier3](actor-routing-tier3.md)).
+- Per-group override via `ActorRegistry::set_group_drain_timeout` ([actor-routing](actor-routing.md)).
 
 ## Consequences
 

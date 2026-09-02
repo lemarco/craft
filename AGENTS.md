@@ -2,6 +2,8 @@
 
 Distributed Raft + actor framework in Rust. Read before making changes.
 
+**Human contributors:** [CONTRIBUTING.md](CONTRIBUTING.md)
+
 ## Start here
 
 1. [docs/status.md](docs/status.md) — current capabilities and limits

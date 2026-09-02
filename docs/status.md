@@ -4,13 +4,34 @@
 
 | | |
 |---|---|
-| **Version** | `0.5.2` (pre-1.0 — API may change on minor bumps) |
+| **Version** | `0.5.2` |
 | **MSRV** | 1.90 |
-| **Maturity** | Advanced prototype — full test pyramid, E2E/chaos, published on [crates.io](https://crates.io/crates/crafty) |
+| **Distribution** | Published on [crates.io](https://crates.io/crates/crafty) — full test pyramid, E2E/chaos |
 
 ---
 
-## Shipped capabilities
+## At a glance
+
+**Product scenarios** (no mandatory Redis or Kubernetes):
+
+| Scenario | Guide | Status |
+|----------|-------|--------|
+| Background jobs | [scenarios/background-jobs.md](scenarios/background-jobs.md) | ✅ queue, DLQ, cron, external backlog |
+| Event topics | [scenarios/event-topics.md](scenarios/event-topics.md) | ✅ pub/sub, named subscriptions |
+| Stateful workers | [scenarios/stateful-workers.md](scenarios/stateful-workers.md) | ✅ `RedbActorStateStore`, migration |
+| Real-time / session | [scenarios/realtime-sessions.md](scenarios/realtime-sessions.md) | ✅ `ActorSession`, gateway WS |
+| Workflows | [scenarios/workflows.md](scenarios/workflows.md) | ✅ Meta-Raft saga journal |
+| Product API | [getting-started.md](getting-started.md) | ✅ `CraftyApp` + gateway |
+
+**Platform core:** pure Raft FSM, HTTP/3/mTLS, redb persistence, cross-node actors, multi-Raft sharding, cross-shard saga/2PC, self-update coordinator, E2E/chaos.
+
+**Not goals:** linearizable actor `ask`, global cross-shard serializable isolation. **Optional work:** [backlog.md](backlog.md#open-work).
+
+Details below ↓
+
+---
+
+## Shipped capabilities (detail)
 
 ### Consensus & storage
 
@@ -42,17 +63,21 @@
 - Optional `DirectoryPolicy::ReadYourWrites` and `ask_linearizable` (directory visibility, not Raft-linearizable actor state)
 - **Durable mailbox spool** — redb outbox/inbox for cross-node `/actor/deliver` (`.durable_mailbox(true)` + `data_dir`)
 - **Durable actor workflow store** — `RedbActorStateStore` + voter replication; auto with `.data_dir()` ([actor-state-store](decisions/actor-state-store.md))
-- **Actor store TTL + GC** — per-key TTL on `set`/`set_with_ttl`; periodic leader GC ticker replicates expired-key deletes to voters (`DEFAULT_ACTOR_STORE_GC_PERIOD`, `DEFAULT_ACTOR_STORE_GC_MAX_KEYS`)
+- **Actor store TTL + GC** — per-key TTL on `set`/`set_with_ttl`; periodic leader GC ticker replicates expired-key deletes to voters
 - **Product API** — [`CraftyApp`](../crates/crafty/src/app.rs), [getting-started.md](getting-started.md)
 - Redis-backed `ActorStateStore` (`crafty-store-redis`); actor migration RPC
-- **`JobQueue`** — `InMemoryJobQueue`, `RedbJobQueue`, sharded streams, priority/delayed enqueue, **batch enqueue/ack** (single redb txn + one replicate RTT), **leader prefetch cache** (`job_queue_prefetch`, default 256), dead-letter lifecycle + **`requeue_dead_letter`**, **recurring/cron jobs** (`RecurringJob`, `queue_schedule` ticker), leader `QueueService` with parallel sync voter replication + replicate auth, `ClusterJobQueue`, `run_queue_consumer` + **`#[crafty::consumer]`** macro, worker + membership autoscale, Meta-Raft autoscale policy ([job-queue](decisions/job-queue.md)); **`ExternalBacklog`** port + leader feeder + settle on ack ([external-backlog](decisions/external-backlog.md), [`crafty-backlog-postgres`](../../crates/crafty-backlog-postgres/)); **`ScheduleSource`** port + leader diff reconcile for dynamic cron ([schedule-source](decisions/schedule-source.md))
-- **`EventTopic`** — durable pub/sub with named subscriptions, independent cursors, min-cursor compaction, retention, voter replication ([event-topics](decisions/event-topics.md)); [`TopicOpts`](../../crates/crafty/src/topic_opts.rs), [`.topics()`](../../crates/crafty/src/app.rs), [`CraftyApp::publish`](../../crates/crafty/src/app.rs), `#[consumer(..., subscription = "...")]`
-- **`WorkloadGovernor`** — per-node compute token pool + consumer tuning from gateway load and queue depth ([workload-governor](decisions/workload-governor.md)); [`WorkloadOpts`](../../crates/crafty/src/workload.rs), [`.workload()`](../../crates/crafty/src/app.rs)
-- **`crafty-http` jobs API** — `POST /jobs/{stream}/batch`, `POST /jobs/{stream}/ack-batch`, `POST /jobs/{stream}/{id}/requeue`; per-job `max_attempts` on enqueue; status exposes `dedup`, `attempts`, `is_redelivery`; mounted on admin or **`CraftyApp` gateway**
-- **`CraftyApp` gateway** — separate HTTP listener (`.gateway(GatewayOpts::new(addr))`); optional HTTPS/WSS via `.tls()` / `CRAFTY_GATEWAY_TLS_*`; built-in `/jobs/*`, `/actors/*`, `/workflows/*` **opt-in** via `GatewayOpts::with_*_api(true)` or `CRAFTY_GATEWAY_*=1`; **`GatewayBearerIdentity`** + **`.protect_product_apis(true)`** for bearer auth on product routes; custom Axum/WebSocket via `.routes(|app| …)`; optional **`HostRouter`** virtual-host dispatch ([`crafty-http`](../crates/crafty-http/README.md)); boot with `RunOpts::default()` + `CRAFTY_*` env
-- **Consumer DX** — `#[consumer_json]`, **`ConsumerOpts::on_app`**, **`IdempotencyOpts::retain_for`**, graceful drain via **`ShutdownOpts::consumer_drain_timeout`**, **`CraftyApp::enqueue_workflow_step`** + **`WorkflowBuilder::step_dedup_key`**
-- **Job queue E2E** — `./e2e/queue.sh` (QUIC/mTLS, enqueue → follower worker → leader failover); `./e2e/gateway_jobs.sh`, `./e2e/queue_idempotency.sh`; `crafty-node` env `CRAFTY_DATA_DIR` + `CRAFTY_JOB_QUEUE`
-- **Product showcases** — `examples/background-jobs`, `stateful-workers`, `realtime`, `workflows`
+
+**Job queue** ([job-queue](decisions/job-queue.md)): `RedbJobQueue`, batch enqueue/ack, prefetch, DLQ, cron, `ClusterJobQueue`, `#[crafty::consumer]`, autoscale; **`ExternalBacklog`** ([external-backlog](decisions/external-backlog.md), [`crafty-backlog-postgres`](../crates/crafty-backlog-postgres/)); **`ScheduleSource`** ([schedule-source](decisions/schedule-source.md)).
+
+**Event topics** ([event-topics](decisions/event-topics.md)): durable pub/sub, named subscriptions, voter replication; [`TopicOpts`](../crates/crafty/src/topic_opts.rs), [`.topics()`](../crates/crafty/src/app.rs).
+
+**Gateway & HTTP** ([`crafty-http`](../crates/crafty-http/README.md), [gateway-identity](decisions/gateway-identity.md)): separate listener, opt-in `/jobs/*`, `/actors/*`, `/workflows/*`, bearer auth, custom Axum/WebSocket, `HostRouter`.
+
+**Workload governor** ([workload-governor](decisions/workload-governor.md)): per-node compute tokens + consumer tuning from gateway load and queue depth.
+
+**Consumer DX** — `#[consumer_json]`, `ConsumerOpts::on_app`, `IdempotencyOpts::retain_for`, graceful drain, workflow step helpers.
+
+**E2E & showcases** — `./e2e/queue.sh`, gateway/idempotency scripts; `examples/background-jobs`, `stateful-workers`, `realtime`, `workflows`.
 
 ### Multi-Raft write scaling
 
@@ -60,8 +85,8 @@
 |-------|-----------------|
 | Routing | `ShardRouter`, `StableShardRouter` (default), rendezvous `place_shard` / `place_group` |
 | Runtime | `ShardedNodeService`, `spawn_multi_raft_node`, Meta-Raft coordinator, keyed `ProposeKeyed` / `QueryKeyed` |
-| Tier 1 | Per-group learners, `expand_shard_count`, `propose_keyed_batch`, `/introspect/raft-groups` |
-| Tier 2 | Dynamic catalog (`add_raft_groups`), stable shard activation (`activate_shards`, `switch_to_stable_shards`), `catalog_version` |
+| Modulus routing | Per-group learners, `expand_shard_count`, `propose_keyed_batch`, `/introspect/raft-groups` |
+| Stable shards & catalog | Dynamic catalog (`add_raft_groups`), stable shard activation (`activate_shards`, `switch_to_stable_shards`), `catalog_version` |
 | Meta-Raft | Dedicated coordinator group for join/leave, catalog, saga journal (multi-Raft only) |
 | Rebalance | `RaftGroupReconciler`, cross-node group migration RPC (`/cluster/group/migrate`) |
 | Membership | Per-group voter sets (`group_replication_factor`, `sync_group_membership`) |
@@ -76,18 +101,20 @@
 | `durable_cross_shard_2pc(true)` | Same as 2PC; prepare/abort persisted in each group's Raft log (survives leader restart) |
 | `resume_cross_shard_2pc` | Client coordinator: journal resume + commit-first probe for durable server prepares |
 
-Global serializable isolation across shards is **not** a goal — see [cross-shard-transactions](decisions/cross-shard-transactions.md).
+Global serializable isolation across shards is **not** a goal — see [multi-raft § cross-shard transactions](decisions/multi-raft.md#cross-shard-transactions).
 
 ---
 
-## Intentionally not shipped
+## Scope boundaries
+
+Capabilities we deliberately do **not** provide — not missing work:
 
 | Item | Notes | ADR |
 |------|-------|-----|
-| **Linearizable actor `ask`** | Use Raft `query` for SM data; `ask` stays fast/local | [read-consistency](decisions/read-consistency.md) |
+| **Linearizable actor `ask`** | Use Raft `query` for SM data; `ask` stays fast/local | [client-and-routing § read consistency](decisions/client-and-routing.md#read-consistency) |
 | **PostgreSQL `ActorStateStore`** | redb is the product default; Redis optional | [actor-state-store](decisions/actor-state-store.md) |
 | **Redis Cluster auto-discovery** | Single Redis URL per node | [actor-state-redis](decisions/actor-state-redis.md) |
-| **Jepsen / Antithesis validation** | Aspirational before 1.0 stability claim | [testing-strategy](decisions/testing-strategy.md) |
+| **Jepsen / Antithesis validation** | Optional external validation; in-tree sim + E2E cover correctness today | [testing-strategy](decisions/testing-strategy.md) |
 | **`loom` concurrency tests** | On-demand only | [testing-strategy](decisions/testing-strategy.md) |
 
 ---
@@ -116,32 +143,14 @@ Documented in [future-work-and-risks](decisions/future-work-and-risks.md):
 
 ---
 
-## Product scenarios (guides + backlog)
-
-Five application patterns on one runtime — **no mandatory Redis or Kubernetes**:
-
-| Scenario | Guide | Runtime |
-|----------|-------|---------|
-| Background jobs | [scenarios/background-jobs.md](scenarios/background-jobs.md) | ✅ batch/prefetch, DLQ, cron, `ScheduleSource`, external backlog, queue→actor bridge |
-| Event topics | [scenarios/event-topics.md](scenarios/event-topics.md) | ✅ `EventTopic`, voter replication, named subscriptions |
-| State placement | [scenarios/state-placement.md](scenarios/state-placement.md) | ✅ SM vs queue vs store vs saga |
-| Stateful workers | [scenarios/stateful-workers.md](scenarios/stateful-workers.md) | ✅ `RedbActorStateStore` + TTL/GC |
-| Real-time / session | [scenarios/realtime-sessions.md](scenarios/realtime-sessions.md) | ✅ `ActorSession` + gateway WS |
-| Workflows | [scenarios/workflows.md](scenarios/workflows.md) | ✅ Meta-Raft saga journal |
-| Product API | [getting-started.md](getting-started.md) | ✅ `CraftyApp` + gateway + `HostRouter` |
-| Homogeneous workload | [decisions/workload-governor.md](decisions/workload-governor.md) | ✅ compute tokens + consumer tune |
-
-Decision: [decisions/product-scenarios.md](decisions/product-scenarios.md) · Backlog: [backlog.md](backlog.md)
-
----
-
 ## Where to read next
 
 | Doc | Purpose |
 |-----|---------|
 | [examples/README.md](../examples/README.md) | Product showcases (local + QUIC cluster) |
 | [scenarios/README.md](scenarios/README.md) | Product scenario index |
-| [backlog.md](backlog.md) | Planned work and open epics |
+| [backlog.md](backlog.md) | Open work + shipped epic archive |
+| [../CONTRIBUTING.md](../CONTRIBUTING.md) | Contributor guide (humans) |
 | [architecture.md](architecture.md) | Crate graph, data flows |
 | [decisions/](decisions/) | Design decision records |
 | [testing-coverage.md](testing-coverage.md) | Test inventory |

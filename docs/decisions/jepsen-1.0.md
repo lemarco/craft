@@ -23,7 +23,7 @@ isolation, real clock skew, OS-level partitions, and long-run state exploration.
 |-----------|------------|-------|
 | Raft consensus (group 0) | **High** | Linearizable register SM maps cleanly to Jepsen models |
 | Multi-Raft catalog / keyed routing | **Medium** | Multiple independent groups + migration; model complexity |
-| Job queue (tier C) | **Medium** | At-least-once + lease; needs queue-specific checker |
+| Job queue | **Medium** | At-least-once + lease; needs queue-specific checker |
 | Saga journal + resume | **Medium** | Depends on multi-group history; resume after kill is key |
 | Actor directory / sessions | **Low–Medium** | Liveness-heavy; harder invariant spec |
 | Actor workflow store | **Medium** | Voter-replicated KV; overlap with Raft tests |

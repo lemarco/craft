@@ -27,7 +27,7 @@ Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** sch
 | E2E | Real processes, QUIC, mTLS, chaos | `e2e/run.sh`, `e2e/leave.sh`, `e2e/queue.sh`, `e2e/chaos.sh`, `e2e/cert_renew.sh`, `e2e/linearizability.sh` | 6 scenarios | 🔒 nightly |
 | Fuzz | Wire decode never panics | `crafty-fuzz` | 1 target | 🔒 nightly |
 | Bench / soak | Throughput, long-run sim | `benchmarks/` | — | 🔒 nightly |
-| Examples | Product showcases (standalone crates) | [`examples/`](../../examples/README.md) | 4 apps | `./scripts/check-examples.sh` |
+| Examples | Product showcases (standalone crates) | [`examples/`](../examples/README.md) | 4 apps | `./scripts/check-examples.sh` |
 
 ---
 
@@ -73,8 +73,8 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Auto-compaction policy (`CompactionPolicy`, runtime) | ✅ | ✅ `runtime`, `auto_compaction` | — | — | ✅ |
 | `take_persist` / `restore` (core) | ✅ | ✅ | — | — | ✅ |
 | Write sharding / multi-Raft routing | ✅ | ✅ `multi_raft` | ✅ | — | ✅ |
-| Tier 2 catalog expansion (pure planner) | ✅ `shard` | — | — | — | ✅ |
-| Tier 2 stable virtual shards (pure planner) | ✅ `shard` | — | — | — | ✅ |
+| Dynamic catalog expansion (pure planner) | ✅ `shard` | — | — | — | ✅ |
+| Stable virtual shards (pure planner) | ✅ `shard` | — | — | — | ✅ |
 | Dynamic catalog expansion (runtime) | — | ✅ `multi_raft` | — | — | ✅ |
 | Stable shard routing (runtime) | — | ✅ `multi_raft`, `sharded` | — | — | ✅ |
 | Cross-shard atomic transactions | — | ✅ `saga`, `two_phase`, `crafty-client` | ✅ `two_phase_journal`, `two_phase_client_journal` | ✅ `crafty-sim/tests/two_phase` | ✅ |
@@ -85,8 +85,8 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Per-group membership planner (`group_voters`, join/leave affects) | ✅ | ✅ | — | — | ✅ |
 | Per-group membership runtime sync on cluster join | — | ✅ | — | — | ✅ |
 | Per-group learners (`group_learners`, membership sync, rebalance hosting) | ✅ | ✅ `group_rebalance` | ✅ `learners` | — | ✅ |
-| Operator shard expansion (`expand_shard_count`, Tier 1 modulus) | ✅ | ✅ `multi_raft` | — | — | ✅ |
-| Stable shard activation (`activate_shards`, Tier 2) | ✅ | ✅ `multi_raft`, `sharded` | — | — | ✅ |
+| Operator shard expansion (`expand_shard_count`, modulus routing) | ✅ | ✅ `multi_raft` | — | — | ✅ |
+| Stable shard activation (`activate_shards`) | ✅ | ✅ `multi_raft`, `sharded` | — | — | ✅ |
 | Cluster leave RPC (`/cluster/leave`, `CraftyCluster::leave`) | — | ✅ `runtime`, `multi_raft` | — | — | ✅ |
 | Leader-side reachability / hysteresis / phi-accrual | ✅ | ✅ | — | — | ✅ |
 | Wire protocol N/N−1 compat band | ✅ | ✅ | — | — | ✅ |
@@ -245,11 +245,11 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-08 | Linearizability E2E phase 2 (QUIC `crafty-e2e-client` + external checker) | `crates/crafty-e2e-client`, `e2e/linearizability.sh`, `e2e/docker-compose.yml` |
 | 2026-08 | Hardening: graceful leave integration, admin HTTPS E2E | `crafty/tests/graceful_leave.rs`, `crafty/tests/facade.rs`, `crafty-dashboard/tests/admin.rs` |
 | 2026-08 | Wire decode fuzz (`cargo-fuzz` wire_decode, scheduled CI) | `crates/crafty-fuzz/`, `.gitlab-ci.yml` `fuzz` job |
-| 2026-08 | Tier 1 multi-Raft: learners planner, shard expansion, keyed batch, `/introspect/raft-groups` | `crafty-core`, `crafty-client`, `crafty-dashboard`, `crafty/tests/multi_raft.rs`, `docs/decisions/multi-raft.md#tier-1-advances-landed` |
+| 2026-08 | Multi-Raft modulus routing: learners planner, shard expansion, keyed batch, `/introspect/raft-groups` | `crafty-core`, `crafty-client`, `crafty-dashboard`, `crafty/tests/multi_raft.rs`, `docs/decisions/multi-raft.md#modulus-routing--keyed-batch` |
 | 2026-08 | Client retry edge cases (`NoTargets`, timeout, `NotLeader`, unreachable) | `crafty-client/tests/retry.rs` |
 | 2026-08 | Keyed client routing (multi-Raft propose/query) | `crafty/tests/client_keyed.rs` |
-| 2026-08 | Tier 2 tails: `catalog_version`, `switch_to_stable_shards`, saga hardening | `crafty-core/shard.rs`, `crafty/src/cluster.rs`, `crafty-client/src/saga.rs`, `crafty/tests/{multi_raft,saga}.rs` |
-| 2026-08 | Tier 2 Phase 4: cross-shard saga coordinator (`run_saga`, `StoreSagaJournal`) | `crafty-client/src/saga.rs`, `crafty/src/saga.rs`, `crafty/tests/saga.rs`, `docs/decisions/multi-raft.md#cross-shard-transactions` |
+| 2026-08 | Stable shards & catalog: `catalog_version`, `switch_to_stable_shards`, saga hardening | `crafty-core/shard.rs`, `crafty/src/cluster.rs`, `crafty-client/src/saga.rs`, `crafty/tests/{multi_raft,saga}.rs` |
+| 2026-08 | Cross-shard saga coordinator (`run_saga`, `StoreSagaJournal`) | `crafty-client/src/saga.rs`, `crafty/src/saga.rs`, `crafty/tests/saga.rs`, `docs/decisions/multi-raft.md#cross-shard-transactions` |
 | 2026-08 | Saga hardening v2: group 0 journal fallback + coordinator restart resume | `crafty-proto/saga_journal`, `crafty-core/node`, `crafty-actor/runtime`, `crafty/src/saga.rs`, `crafty/tests/saga.rs` |
 | 2026-08 | Saga journal layered tests (proto/core/driver/runtime/facade) | `crafty-proto`, `crafty-core/tests/saga_journal.rs`, `crafty-actor/tests/{driver,runtime}.rs`, `crafty/tests/saga.rs` |
 | 2026-08 | Durable 2PC prepare timeout GC + `resume_cross_shard_2pc` | `crafty-actor/runtime`, `crafty-client/two_phase`, `crafty/tests/two_phase.rs` |
@@ -257,9 +257,9 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-08 | Product showcases (4 standalone examples + cluster scripts) | `examples/{background-jobs,stateful-workers,realtime,workflows}/`, `dev/cluster-common.sh`, `./scripts/check-examples.sh` |
 | 2026-08 | Reference KV in `crafty_core::kv` (single source, re-exported by facade) | `crafty-core/src/kv.rs`, `crafty-test-support` `TrackedKv` only |
 | 2026-08 | Durable cross-shard 2PC (`durable_cross_shard_2pc`, `EntryPayload::TwoPhasePrepare/Abort`) | `crafty-proto/src/two_phase.rs`, `crafty-core/tests/two_phase_journal.rs`, `crafty/tests/two_phase.rs` |
-| 2026-08 | Tier 2 Phase 2: dynamic catalog runtime (`add_raft_groups`, `/cluster/catalog/add`) | `crafty-proto/catalog`, `crafty-actor/runtime`, `crafty/tests/multi_raft.rs`, `docs/decisions/multi-raft.md` |
-| 2026-08 | Tier 2 multi-Raft architecture ADR + Phase 1 pure planners | `crafty-core/src/shard.rs`, `docs/decisions/multi-raft.md` |
-| 2026-08 | Actor routing Tier 3: ring, session, drain override, `ask_linearizable`, directory RYW | `crafty-actor` (`ring`, `session`, `directory_policy`), `crafty-actor/tests/{messaging,migration}.rs`, `docs/decisions/actor-routing-tier3.md` |
+| 2026-08 | Dynamic catalog runtime (`add_raft_groups`, `/cluster/catalog/add`) | `crafty-proto/catalog`, `crafty-actor/runtime`, `crafty/tests/multi_raft.rs`, `docs/decisions/multi-raft.md` |
+| 2026-08 | Multi-Raft architecture ADR + pure planners | `crafty-core/src/shard.rs`, `docs/decisions/multi-raft.md` |
+| 2026-08 | Actor routing: ring, session, drain override, `ask_linearizable`, directory RYW | `crafty-actor` (`ring`, `session`, `directory_policy`), `crafty-actor/tests/{messaging,migration}.rs`, `docs/decisions/actor-routing.md` |
 | 2026-08 | `crafty-node` env parsing unit tests | `crafty-node/src/config.rs` (`#[cfg(test)]`) |
 | 2026-08 | Actor store resume + idempotency after unreachable node | `crafty/tests/actor_store_resume.rs` |
 | 2026-08 | Redis dual connection, idempotent worker, reconnect | `crafty-store-redis/tests/redis.rs` |

@@ -33,7 +33,7 @@ Peer, client, and actor traffic share one port ([wire-protocol](wire-protocol.md
 
 Actor directory ([cross-node-actors](cross-node-actors.md)) is eventually consistent; brief stale entries after node changes.
 
-- **Mitigation:** TTL + liveness; `DirectoryPolicy::ReadYourWrites`; `ClusterRef` retries after directory update ([actor-routing-tier3](actor-routing-tier3.md)).
+- **Mitigation:** TTL + liveness; `DirectoryPolicy::ReadYourWrites`; `ClusterRef` retries after directory update ([actor-routing](actor-routing.md)).
 
 ### R4 — Stateful actor durability depends on external store
 

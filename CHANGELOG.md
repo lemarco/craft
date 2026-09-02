@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format is based on
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with all
 `crafty-*` crates sharing a synchronized version ([library-and-publishing](docs/decisions/library-and-publishing.md)).
 
-Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
+Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases may include breaking changes on minor bumps; each is noted here.
 
 ## [Unreleased]
 
@@ -23,7 +23,7 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
   [`StaticScheduleSource`](crates/crafty-actor/src/schedule_source.rs). Source errors and
   bootstrap empty polls never wipe persisted schedules; diff reconcile replicates
   `UpsertSchedule` / `RemoveSchedule`.
-- **`ExternalBacklog` port** — leader feeder + settle outbox for tier-C windows over an
+- **`ExternalBacklog` port** — leader feeder + settle outbox for in-flight queue windows over an
   external source of truth ([`external-backlog`](docs/decisions/external-backlog.md));
   [`JobOpts::backlog`](crates/crafty/src/job_opts.rs), honest autoscale depth via
   `effective_queue_depth`.
@@ -200,7 +200,7 @@ graceful drain, self-update coordinator, and a narrower public re-export surface
 - **`CraftyAppBuilder` validation** — boot fails fast when `.cron()` or `.consumer()` reference
   a stream missing from `.queue()`, or when `.workflows([…])` is set without
   `.gateway(…).with_workflows_api(true)`.
-- **`.consumers(ConsumerGroup)`** — register multiple tier-C workers in one call (replaces
+- **`.consumers(ConsumerGroup)`** — register multiple queue workers in one call (replaces
   looping `.consumer()`).
 - **`.workflows([WorkflowOpts::…])`** — vector of workflow configs; optional `WorkflowOpts::named`
   prefix for multi-workflow dispatch.
@@ -284,7 +284,7 @@ cron scheduling, actor-store TTL/GC, and a dedicated **`CraftyApp` HTTP gateway*
   `run_actor_store_gc_ticker` with `data_dir`.
 - **`CraftyApp` gateway** — `gateway` module: separate public HTTP listener
   (`.gateway_addr`, `CRAFTY_GATEWAY`, `CRAFTY_GATEWAY_NO_JOBS` /
-  `CRAFTY_GATEWAY_NO_ACTORS`); optional mount of tier C jobs + actors APIs;
+  `CRAFTY_GATEWAY_NO_ACTORS`); optional mount of job-queue + actors APIs;
   `.gateway_routes` for custom Axum/WebSocket handlers; integration test
   `http_gateway`.
 - **`#[crafty::consumer]` macro** — generates a `JobConsumer` adapter over
@@ -310,8 +310,7 @@ cron scheduling, actor-store TTL/GC, and a dedicated **`CraftyApp` HTTP gateway*
 ## [0.2.0] — 2026-08-29
 
 Product layer release: **`CraftyApp`** facade, four scenario guides, HTTP jobs API,
-WebSocket gateway example, workflow builder, and observability polish — still
-pre-1.0 (`0.x`); facade API may change on minor bumps until 1.0 RC.
+WebSocket gateway example, workflow builder, and observability polish.
 
 ### Added
 
@@ -400,16 +399,16 @@ tested; APIs are still evolving toward a 1.0 stabilization.
 - **`tracing` + `pretty_assertions`** — `crafty::init_tracing()`, rebalance/role `tracing` events; `crafty_test_support` helpers.
 - **Multi-Raft runtime** ([write-sharding-multi-raft](docs/decisions/multi-raft.md)) — `ShardedNodeService`, keyed `ProposeKeyed`/`QueryKeyed`, per-group redb (`data_dir`), rebalance + cross-node group migration RPC.
 - **Per-group membership** ([per-group-raft-membership](docs/decisions/cluster-membership.md#per-group-membership-multi-raft)) — `group_replication_factor`, `sync_group_membership`.
-- **Tier 1 multi-Raft** ([tier1-multi-raft-advances](docs/decisions/multi-raft.md#tier-1-advances-landed)) — learners, `expand_shard_count`, `propose_keyed_batch`, `/introspect/raft-groups`.
-- **Tier 2 multi-Raft** ([tier2-multi-raft-architecture](docs/decisions/multi-raft.md)) — dynamic catalog (`add_raft_groups`), stable shards (default), `catalog_version`, `switch_to_stable_shards`.
+- **Multi-Raft modulus routing** ([multi-raft § modulus routing](docs/decisions/multi-raft.md#modulus-routing--keyed-batch)) — learners, `expand_shard_count`, `propose_keyed_batch`, `/introspect/raft-groups`.
+- **Stable shards & dynamic catalog** ([multi-raft](docs/decisions/multi-raft.md)) — dynamic catalog (`add_raft_groups`), stable shards (default), `catalog_version`, `switch_to_stable_shards`.
 - **Meta-Raft coordinator** ([meta-raft](docs/decisions/multi-raft.md#meta-raft-coordinator)) — dedicated `group-meta.redb` for join/leave, catalog, and saga journal in multi-Raft mode; group 0 is user data only.
 - **Cross-shard saga** ([cross-shard-transactions](docs/decisions/multi-raft.md#cross-shard-transactions)) — `run_saga`, `resume_saga`, `StoreSagaJournal`, `MetaRaftSagaJournal`/`CompositeSagaJournal` (alias `Group0SagaJournal`), metrics; optional 2PC (`cross_shard_2pc`); durable 2PC (`durable_cross_shard_2pc`) with per-group Raft log entries, prepare timeout GC, client journal (`StoreTwoPhaseJournal`/`CompositeTwoPhaseJournal`), facade `run_keyed_2pc`/`resume_cross_shard_2pc`, metrics (`crafty_2pc_*`), and `examples/cross_shard_2pc.rs`.
-- **Actor routing Tier 3** ([actor-routing-tier3](docs/decisions/actor-routing-tier3.md)) — consistent-hash ring, `ActorSession`, per-group drain, `DirectoryPolicy::ReadYourWrites`.
+- **Actor routing** ([actor-routing](docs/decisions/actor-routing.md)) — consistent-hash ring, `ActorSession`, per-group drain, `DirectoryPolicy::ReadYourWrites`.
 - **Follower + lease reads** ([read-consistency](docs/decisions/client-and-routing.md#read-consistency)) — `ReadIndexConfirm` path, `RaftNode::lease_read` fast path.
 - **Liveness vs membership** ([liveness-vs-membership](docs/decisions/cluster-membership.md#liveness-vs-membership)) — `reachable_nodes()`, crash-driven supervisor reconcile.
 - **Discovery & ops** — seed-set + DNS discovery; cluster leave RPC; mTLS hot reload; `TrafficPolicy`; `crafty-ops` backup/restore; admin HTTPS; linearizability E2E.
 - **Dev JSON wire** — `crafty/json-wire` feature.
-- **Durable job queue (tier C)** ([job-queue](docs/decisions/job-queue.md)) — `JobQueue` port, `RedbJobQueue`, leader `QueueService`, sync voter replication, `ClusterJobQueue`, worker autoscale.
+- **Durable job queue** ([job-queue](docs/decisions/job-queue.md)) — `JobQueue` port, `RedbJobQueue`, leader `QueueService`, sync voter replication, `ClusterJobQueue`, worker autoscale.
 - **Job queue v2** — sharded streams (`job_queue_sharded`), priority/delayed enqueue (`EnqueueOptions`), enqueue dedup keys, membership autoscale hook (`job_queue_membership_autoscale`); examples in `job_queue_cluster`.
 - **Job queue production polish** — parallel voter replicate (`JoinSet`), replicate auth (caller must be Raft leader via `LocalTransport` / QUIC peer id), Meta-Raft persisted autoscale policy (`QueueAutoscalePolicyCommand`, `job_queue_autoscale` / `job_queue_membership_autoscale`), periodic `redb` compaction after acks.
 - **Job queue docs + examples + E2E** — `/queue/*` routes in `docs/protocol.md`; `job_queue_worker` cluster follower worker + failover; `crafty-e2e-queue-client` + `e2e/queue.sh` (QUIC, 3-node).

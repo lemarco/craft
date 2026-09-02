@@ -21,7 +21,7 @@ impl Default for ReadyOpts {
 }
 
 impl ReadyOpts {
-    /// Wait until this job stream is registered (tier C gateways).
+    /// Wait until this job stream is registered (job queue gateways).
     #[must_use]
     pub fn with_queue(mut self, stream: impl Into<String>) -> Self {
         self.job_streams.push(stream.into());

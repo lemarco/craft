@@ -19,7 +19,7 @@ use crafty_storage::{GroupRedbLayout, RaftStorage, StorageError};
 
 use crate::RuntimeConfig;
 
-/// Internal keyed-router state (Tier 1 modulus vs Tier 2 stable virtual prefix).
+/// Internal keyed-router state (modulus vs stable virtual prefix routing).
 #[derive(Debug, Clone, Copy)]
 enum KeyedRouter {
     Modulus(ShardRouter),
@@ -127,7 +127,7 @@ impl ShardedNodeService {
             .active_count()
     }
 
-    /// Expand the active shard keyspace (Tier 1 modulus). Keys remap — drain clients first.
+    /// Expand the active shard keyspace (modulus routing). Keys remap — drain clients first.
     ///
     /// # Errors
     /// Returns [`ShardExpansionError`] when `new_count` is invalid or stable routing is active.
@@ -144,7 +144,7 @@ impl ShardedNodeService {
             .expand_shard_count(new_count)
     }
 
-    /// Grow the active virtual shard prefix (Tier 2 stable). Existing keys keep their shard id.
+    /// Grow the active virtual shard prefix (stable virtual routing). Existing keys keep their shard id.
     ///
     /// # Errors
     /// Returns [`StableShardActivationError`] when `new_active` is invalid or modulus routing is active.
@@ -161,7 +161,7 @@ impl ShardedNodeService {
             .activate_shards(new_active)
     }
 
-    /// Switch keyed routing from Tier 1 modulus to Tier 2 stable virtual.
+    /// Switch keyed routing from modulus to stable virtual.
     ///
     /// Keys **remap** — drain clients before calling.
     ///
@@ -241,7 +241,7 @@ impl ShardedNodeService {
             .remove(&group)
     }
 
-    /// Extend the routing catalog without requiring hosted handlers (Tier 2).
+    /// Extend the routing catalog without requiring hosted handlers (dynamic catalog / stable shards).
     ///
     /// # Panics
     /// If the `group_ids` lock is poisoned.

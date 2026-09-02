@@ -106,7 +106,7 @@ Default plain HTTP / WS. Optional server-only TLS via [`.tls()`](../../crates/cr
 
 **Positive:** Single transport story; compact binary codec; standard LB probes on admin port; debuggable HTTP semantics.
 
-**Negative:** UDP/QUIC may be blocked on some networks; heavier than raw TCP; extra admin port + firewall rule; `h3` ecosystem pre-1.0.
+**Negative:** UDP/QUIC may be blocked on some networks; heavier than raw TCP; extra admin port + firewall rule; `h3` ecosystem still maturing.
 
 ## Related
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stateful workers — 3-node QUIC cluster (tier B actor showcase)
+# Stateful workers — 3-node QUIC cluster (stateful actor showcase)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"
@@ -40,8 +40,8 @@ status() {
 }
 
 health() {
-    local gw=000 adm=000 i
-    for i in 1 2 3 4 5 6 7 8 9 10; do
+    local gw=000 adm=000
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
         gw=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8190/actors/orders/cast \
             -H 'content-type: application/json' -d '{"payload":"health"}' 2>/dev/null || echo 000)
         adm=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9280/health 2>/dev/null || echo 000)

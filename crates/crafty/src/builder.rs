@@ -310,7 +310,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         self
     }
 
-    /// Use stable virtual shard routing (Tier 2 default). Keys outside the active
+    /// Use stable virtual shard routing (stable virtual default). Keys outside the active
     /// prefix are rejected; use [`CraftyCluster::activate_shards`] to grow capacity
     /// without remapping existing keys.
     #[must_use]
@@ -323,7 +323,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         self
     }
 
-    /// Tier 1 modulus routing (`hash(key) % count`). Keys **remap** when the count
+    /// modulus routing routing (`hash(key) % count`). Keys **remap** when the count
     /// grows — prefer the default stable virtual routing for new clusters.
     #[must_use]
     pub fn modulus_shards(mut self) -> Self {
@@ -378,7 +378,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
     }
 
     /// Non-voting learner replicas per Raft group beyond
-    /// [`group_replication_factor`](Self::group_replication_factor) voters (Tier 1).
+    /// [`group_replication_factor`](Self::group_replication_factor) voters plus optional learners.
     /// `0` disables learners (default).
     #[must_use]
     pub fn group_learner_factor(mut self, factor: u32) -> Self {
@@ -443,7 +443,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         self
     }
 
-    /// Write-ahead outbox/inbox for cross-node actor delivery (tier B spool).
+    /// Write-ahead outbox/inbox for cross-node actor delivery (mailbox spool).
     /// Requires [`data_dir`](Self::data_dir); stores `{data_dir}/mailbox-spool.redb`.
     #[must_use]
     pub fn durable_mailbox(mut self, enabled: bool) -> Self {
@@ -645,7 +645,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
     }
 
     /// Serve admin over **TLS** (server-only) using PEM `cert` and `key`
-    /// (health-admin-port Tier 2). Plain HTTP is used when unset.
+    /// (admin TLS). Plain HTTP is used when unset.
     #[must_use]
     pub fn admin_tls(mut self, cert: impl Into<PathBuf>, key: impl Into<PathBuf>) -> Self {
         self.admin_tls = Some(AdminTlsPaths {
@@ -655,7 +655,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         self
     }
 
-    /// Tune leader-side reachability detection (liveness-vs-membership Tier 2).
+    /// Tune leader-side reachability detection (reachability tuning).
     #[must_use]
     pub fn reachability(mut self, config: ReachabilityConfig) -> Self {
         self.raft.reachability = config;
@@ -824,7 +824,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
     /// Leader-fed stream backed by an [`ExternalBacklog`] ([external-backlog](../../docs/decisions/external-backlog.md)).
     ///
     /// Requires [`job_queue`](Self::job_queue) on the same `stream`. The leader claims from
-    /// `backlog`, enqueues into tier C with `dedup_key = item.key`, and calls
+    /// `backlog`, enqueues into the job queue with `dedup_key = item.key`, and calls
     /// [`ExternalBacklog::settle`] on terminal ack/dead-letter outcomes.
     #[must_use]
     pub fn job_queue_external_backlog(

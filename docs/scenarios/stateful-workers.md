@@ -122,7 +122,7 @@ let session = directory.session_keyed(&user_id, Some(Duration::from_secs(3600)))
 messaging.ask_session(&session, msg).await?;
 ```
 
-Documented in [actor-routing-tier3](../decisions/actor-routing-tier3.md). For durability across reconnect, persist session id client-side and/or store checkpoint in SM/redb.
+Documented in [actor-routing](../decisions/actor-routing.md). For durability across reconnect, persist session id client-side and/or store checkpoint in SM/redb.
 
 ## Operations
 

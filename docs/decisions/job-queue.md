@@ -12,7 +12,7 @@ Many applications also need a **durable, shared work buffer**:
 - Producers enqueue work without waiting for a free worker.
 - **Many** actor instances of the **same type** consume from **one** logical queue (`lease` / `ack`).
 - Backlog survives process crash; at-least-once delivery with idempotent handlers.
-- **Queue depth** drives **worker pool size** via the existing leader supervisor ([supervisor-leader](supervisor-leader.md), [cluster-elasticity](cluster-elasticity.md)).
+- **Queue depth** drives **worker pool size** via the existing leader supervisor ([cluster-elasticity](cluster-elasticity.md)).
 
 Options considered:
 
@@ -22,21 +22,21 @@ Options considered:
 | Put every job in the Raft log | Rejected — R1 write ceiling; wrong abstraction ([future-work-and-risks](future-work-and-risks.md)) |
 | Reuse [`ActorStateStore`](actor-state-redis.md) as a queue | Rejected — KV get/set/CAS, not FIFO lease/ack |
 | **Dedicated `JobQueue` port** + embedded disk + optional Redis adapter | **Accepted** |
-| Replace all mailboxes with a durable queue | Rejected — local `ask`/control paths must stay fast; tiered model instead |
+| Replace all mailboxes with a durable queue | Rejected — local `ask`/control paths must stay fast; layered model instead |
 
 Relationship to [actor-state-redis](actor-state-redis.md): Redis remains an **optional** adapter for workflow keys and, if desired, a remote queue backend. The **default embedded path** is **`redb` on local disk** — no mandatory external dependency.
 
 ## Decision
 
-### Three messaging tiers (explicit split)
+### Three messaging layers (explicit split)
 
-| Tier | Mechanism | Purpose | Durability |
-|------|-----------|---------|------------|
-| **A — Consensus** | Raft `propose` / `query` → `StateMachine` | Authoritative replicated state | Raft log |
-| **B — Actor mailbox** | `send` / `ask` → serial instance mailbox | RPC, control, coordination, “talk to this actor now” | In-memory (cross-node best-effort + `ask` dedup) |
-| **C — Job queue** | `enqueue` / `lease` / `ack` / `nack` | Shared async backlog, worker pool consumption | Disk (`redb`) by default |
+| Layer | Mechanism | Purpose | Durability |
+|-------|-----------|---------|------------|
+| **Consensus** | Raft `propose` / `query` → `StateMachine` | Authoritative replicated state | Raft log |
+| **Actor mailbox** | `send` / `ask` → serial instance mailbox | RPC, control, coordination, “talk to this actor now” | In-memory (cross-node best-effort + `ask` dedup) |
+| **Job queue** | `enqueue` / `lease` / `ack` / `nack` | Shared async backlog, worker pool consumption | Disk (`redb`) by default |
 
-**Do not** route routine job payloads through tier B or tier A.
+**Do not** route routine job payloads through the mailbox or consensus layers.
 
 **Event topics** are a separate fan-out layer (one publish, many named subscriptions with
 independent cursors) — see [event-topics](event-topics.md). Do not model pub/sub as multiple
@@ -46,9 +46,9 @@ Typical HTTP mapping:
 
 | User intent | Path |
 |-------------|------|
-| Synchronous API (`200` + body) | HTTP → **`ask`** (tier B) or **`query`** (tier A) |
-| Async work (`202` + job id) | HTTP → **`enqueue`** (tier C) |
-| Authoritative mutation | HTTP → **`propose`** (tier A) |
+| Synchronous API (`200` + body) | HTTP → **`ask`** (mailbox) or **`query`** (consensus) |
+| Async work (`202` + job id) | HTTP → **`enqueue`** (job queue) |
+| Authoritative mutation | HTTP → **`propose`** (consensus) |
 
 ### `JobQueue` port
 
@@ -113,7 +113,7 @@ A **shared logical queue** does not require a shared filesystem or Redis:
 
 - **`QueueService`** runs on the **Raft leader** node (leader-only, like [`ClusterSupervisor`](../../crates/crafty-actor/src/supervisor.rs)).
 - Workers on **any** VPS call queue RPCs over mTLS (same transport class as `/actor/deliver`).
-- Followers **forward** queue mutations to the leader ([client-routing](client-routing.md) forward pattern).
+- Followers **forward** queue mutations to the leader ([client-and-routing](client-and-routing.md) forward pattern).
 - After each leader mutation, **`QueueReplicateOp`** batches are pushed **in parallel** to every other **reachable voter** (`POST /raft/v1/queue/replicate`); the client only receives success once all peers ack — so a newly elected leader serves the same backlog from its local `redb`.
 - **`/queue/replicate` is leader-authenticated**: the transport must tag the caller (`LocalTransport`, QUIC mTLS peer id); followers reject replicate unless `from == current Raft leader`.
 
@@ -171,11 +171,11 @@ Use [`job_queue_at`](../../crates/crafty/src/builder.rs) when the redb path is n
 
 ### Queue-driven autoscale (leader)
 
-Extend leader reconciliation ([supervisor-leader](supervisor-leader.md)) with **`QueueAutoscaler`**:
+Extend leader reconciliation ([cluster-elasticity](cluster-elasticity.md)) with **`QueueAutoscaler`**:
 
 1. Poll `QueueMetrics` on a interval (with **cooldown** and **hysteresis**).
 2. Compute `desired_workers = f(pending, leased, policy)`.
-3. Clamp to `[min, min(max, live_node_count)]` — production still obeys [one worker per VPS](one-worker-per-vps.md).
+3. Clamp to `[min, min(max, live_node_count)]` — production still obeys [one worker per VPS](cluster-elasticity.md).
 4. Call existing **`scale_cluster(name, desired)`** when `desired ≠ directory_count`.
 
 **Autoscale policy** (thresholds, min/max, cooldown) is stored in **Meta-Raft** (`QueueAutoscalePolicyCommand`) and applied via `QueueAutoscaleRegistry` on every node — failover-safe without re-reading builder config. **Queue depth** is read live from the queue service, not replicated per job.
@@ -186,7 +186,7 @@ Scaling **out beyond node count** in production still means **add VPS + join** (
 
 - **Not** a replacement for actor mailboxes or Raft.
 - **Not** linearizable with SM state unless the application designs commit ordering.
-- **Not** a global serializable transaction log across shards (see [cross-shard-transactions](cross-shard-transactions.md)).
+- **Not** a global serializable transaction log across shards (see [multi-raft § cross-shard transactions](multi-raft.md#cross-shard-transactions)).
 
 ## v1 implementation scope
 
@@ -223,7 +223,7 @@ Implementation status: **v2 + production polish landed** — Redis adapter remai
 - Clear separation: RPC (mailbox), authority (Raft), backlog (queue).
 - Embedded default — no Redis required; fits library-first VPS deploys.
 - Reuses leader supervisor and `scale_cluster` instead of a new placement system.
-- Worker pool + shared queue matches BEAM-style “many consumers, one backlog” without conflating tiers.
+- Worker pool + shared queue matches BEAM-style “many consumers, one backlog” without conflating messaging layers.
 
 **Negative**
 
@@ -238,7 +238,7 @@ Implementation status: **v2 + production polish landed** — Redis adapter remai
 
 - [cross-node-actors.md](cross-node-actors.md) — mailbox, `scale_cluster`, migration
 - [cluster-elasticity.md](cluster-elasticity.md) — one worker/VPS, auto-spawn, scale targets
-- [supervisor-leader.md](supervisor-leader.md) — leader-only reconcile
+- [cluster-elasticity.md](cluster-elasticity.md) — leader-only reconcile, one worker per VPS
 - [actor-state-redis.md](actor-state-redis.md) — workflow KV (complementary, not queue)
 - [architecture-style.md](architecture-style.md) — ports & adapters
 - [future-work-and-risks.md](future-work-and-risks.md) — R1 (do not put jobs in Raft log)

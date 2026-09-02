@@ -2,7 +2,7 @@
 
 **Status:** Accepted (landed)  
 **Date:** 2026-07-06  
-**Updated:** 2026-08-28 — merged write-sharding, tier 1/2, meta-Raft, cross-shard transactions, production reliability
+**Updated:** 2026-08-28 — merged write-sharding, modulus/stable routing, meta-Raft, cross-shard transactions, production reliability
 
 ## Context
 
@@ -53,7 +53,7 @@ When `raft_groups > 1`, a dedicated **Meta-Raft** group isolates coordinator tra
 - Not in user catalog or keyed shard routing; hosted on every live node.
 - Single-group clusters (`raft_groups == 1`): unchanged — group 0 remains coordinator + user SM.
 
-## Tier 1 advances (landed)
+## Modulus routing & keyed batch
 
 | Feature | API |
 |---------|-----|
@@ -62,7 +62,7 @@ When `raft_groups > 1`, a dedicated **Meta-Raft** group isolates coordinator tra
 | Non-atomic keyed batch | `propose_keyed_batch` — sequential; `BatchError::Partial` on failure |
 | Observability | `GET /introspect/raft-groups` |
 
-## Tier 2 architecture (landed)
+## Stable shards & dynamic catalog
 
 | Phase | Item | Status |
 |-------|------|--------|

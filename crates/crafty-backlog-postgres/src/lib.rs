@@ -27,7 +27,7 @@ pub struct PgBacklogSchema {
     pub attempts_column: String,
     /// Status value for claimable rows.
     pub pending_status: String,
-    /// Status after successful tier-C ack.
+    /// Status after successful job queue ack.
     pub done_status: String,
     /// Status after terminal failure / dead letter.
     pub failed_status: String,

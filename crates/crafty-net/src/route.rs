@@ -33,7 +33,7 @@ pub const ACTOR_STOP_PATH: &str = "/raft/v1/actor/stop";
 pub const ACTOR_REGISTER_PATH: &str = "/raft/v1/actor/register";
 /// Cross-node Raft group migration (write-sharding-multi-raft).
 pub const CLUSTER_GROUP_MIGRATE_PATH: &str = "/raft/v1/cluster/group/migrate";
-/// Dynamic multi-Raft catalog expansion (Tier 2).
+/// Dynamic multi-Raft catalog expansion (dynamic catalog / stable shards).
 pub const CLUSTER_CATALOG_ADD_PATH: &str = "/raft/v1/cluster/catalog/add";
 /// Enqueue a job on the leader queue service ([job-queue](../../../docs/decisions/job-queue.md)).
 pub const QUEUE_ENQUEUE_PATH: &str = "/raft/v1/queue/enqueue";

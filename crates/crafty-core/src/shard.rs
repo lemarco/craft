@@ -48,18 +48,18 @@ pub const fn is_meta_raft_group(group: u32) -> bool {
 /// Default replication factor for per-group voter sets (per-group-raft-membership).
 pub const DEFAULT_GROUP_REPLICATION_FACTOR: u32 = 3;
 
-/// Default non-voting learner replicas per group beyond voters (Tier 1). `0` disables.
+/// Default non-voting learner replicas per group beyond voters. `0` disables.
 pub const DEFAULT_GROUP_LEARNER_FACTOR: u32 = 0;
 
-/// Upper bound for [`ShardRouter`] active shard counts (Tier 1 expansion).
+/// Upper bound for [`ShardRouter`] active shard counts (modulus shard expansion).
 pub const MAX_VIRTUAL_SHARDS: u32 = 4096;
 
-/// How keyed traffic maps into the virtual shard space (Tier 1 vs Tier 2).
+/// How keyed traffic maps into the virtual shard space (modulus vs stable virtual routing).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShardRoutingKind {
-    /// Tier 1: `hash(key) % active_count` — keys remap when the count grows.
+    /// Modulus: `hash(key) % active_count` — keys remap when the count grows.
     Modulus,
-    /// Tier 2: fixed virtual id `hash(key) % MAX_VIRTUAL_SHARDS` with an active prefix.
+    /// Stable virtual: fixed virtual id `hash(key) % MAX_VIRTUAL_SHARDS` with an active prefix.
     StableVirtual,
 }
 
@@ -185,7 +185,7 @@ impl std::fmt::Display for ShardExpansionError {
 
 impl std::error::Error for ShardExpansionError {}
 
-/// Plan for expanding the active shard keyspace (Tier 1).
+/// Plan for expanding the active shard keyspace (modulus routing).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShardCountExpansionPlan {
     /// Previous active shard count.
@@ -312,7 +312,7 @@ pub fn group_voters(
 }
 
 /// Desired learner set for one Raft group: live nodes ranked after the voter
-/// set, up to `learner_factor` nodes (Tier 1 per-group-raft-membership).
+/// set, up to `learner_factor` nodes (per-group learner factor).
 #[must_use]
 pub fn group_learners(
     group: RaftGroupId,
@@ -535,12 +535,12 @@ pub fn plan_node_group_rebalance(
 }
 
 // ---------------------------------------------------------------------------
-// Tier 2 — stable virtual shards + dynamic catalog (pure planners)
+// Stable virtual shards + dynamic catalog (pure planners)
 // ---------------------------------------------------------------------------
 
 /// Map `key` to a **fixed** virtual shard in `[0, [``MAX_VIRTUAL_SHARDS``])`.
 /// Unlike [`ShardRouter::shard_for`], this id never changes when the active
-/// prefix grows ([tier2-multi-raft-architecture]).
+/// prefix grows ([multi-raft ADR]).
 ///
 /// [multi-raft]: ../../../docs/decisions/multi-raft.md
 #[must_use]
@@ -570,7 +570,7 @@ pub enum StableShardActivationError {
         /// Requested active count.
         requested: u32,
     },
-    /// Tier 1 modulus routing is active — use [`ShardRouter::expand_shard_count`].
+    /// Modulus routing is active — use [`ShardRouter::expand_shard_count`].
     ModulusRoutingActive,
     /// Activation requires multi-Raft (`raft_groups > 1`).
     NotMultiRaft,
@@ -610,7 +610,7 @@ pub struct StableShardActivationPlan {
     pub newly_active: Vec<ShardId>,
 }
 
-/// Plan increasing the active virtual shard prefix (Tier 2 stable expansion).
+/// Plan increasing the active virtual shard prefix (stable virtual prefix expansion).
 ///
 /// # Errors
 /// Returns [`StableShardActivationError`] when `to` is not a strict increase
@@ -636,7 +636,7 @@ pub fn plan_stable_shard_activation(
     })
 }
 
-/// Why a Tier 1 → Tier 2 routing switch was rejected.
+/// Why a modulus → stable virtual routing switch was rejected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShardRoutingSwitchError {
     /// Stable virtual routing is already active.
@@ -676,7 +676,7 @@ pub struct ShardRoutingSwitchPlan {
     pub active_count: u32,
 }
 
-/// Validate switching from Tier 1 modulus to Tier 2 stable virtual routing.
+/// Validate switching from modulus to stable virtual routing.
 ///
 /// Keys **remap** to the stable formula — drain keyed clients before applying
 /// ([multi-raft](../../docs/decisions/multi-raft.md)).
@@ -700,7 +700,7 @@ pub fn plan_switch_to_stable_routing(
     })
 }
 
-/// Router over a fixed virtual space with a tunable active prefix (Tier 2).
+/// Router over a fixed virtual space with a tunable active prefix (dynamic catalog / stable shards).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StableShardRouter {
     active_count: u32,
@@ -787,7 +787,7 @@ impl std::fmt::Display for CatalogError {
 
 impl std::error::Error for CatalogError {}
 
-/// Plan for appending contiguous Raft groups to the catalog (Tier 2).
+/// Plan for appending contiguous Raft groups to the catalog (dynamic catalog / stable shards).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatalogExpansionPlan {
     /// Previous catalog length.
@@ -1226,14 +1226,17 @@ mod tests {
         let samples: Vec<Vec<u8>> = (0..200u16).map(|n| n.to_le_bytes().to_vec()).collect();
         let sample_refs: Vec<&[u8]> = samples.iter().map(std::vec::Vec::as_slice).collect();
 
-        // Tier 1 modulus router remaps most keys when count doubles.
-        let mut tier1 = ShardRouter::new(256);
-        let before: Vec<_> = sample_refs.iter().map(|k| tier1.shard_for(k)).collect();
-        tier1.expand_shard_count(512).expect("expand");
+        // modulus routing router remaps most keys when count doubles.
+        let mut modulus_router = ShardRouter::new(256);
+        let before: Vec<_> = sample_refs
+            .iter()
+            .map(|k| modulus_router.shard_for(k))
+            .collect();
+        modulus_router.expand_shard_count(512).expect("expand");
         let remapped = before
             .iter()
             .zip(sample_refs.iter())
-            .filter(|(old, key)| **old != tier1.shard_for(key))
+            .filter(|(old, key)| **old != modulus_router.shard_for(key))
             .count();
         assert!(
             remapped > sample_refs.len() / 4,

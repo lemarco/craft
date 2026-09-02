@@ -46,7 +46,7 @@ pub struct ListJobsQuery {
     pub after: Option<u64>,
 }
 
-/// Axum sub-router for tier C job routes.
+/// Axum sub-router for job queue routes.
 pub fn jobs_router() -> Router<Arc<JobsApiState>> {
     Router::new()
         .route("/jobs/{stream}", post(post_job).get(list_jobs))

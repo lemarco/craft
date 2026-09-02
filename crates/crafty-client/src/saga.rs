@@ -1,4 +1,4 @@
-//! Cross-shard saga coordinator (Tier 2 Phase 4 — framework compensation).
+//! Cross-shard saga coordinator (cross-shard saga — framework compensation).
 
 use std::future::Future;
 use std::pin::Pin;

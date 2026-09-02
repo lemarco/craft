@@ -1,4 +1,4 @@
-# One-command 3-node background-jobs cluster (tier C showcase).
+# One-command 3-node background-jobs cluster (job queue showcase).
 #
 #   cd dev/compose/background-jobs
 #   docker compose up --build

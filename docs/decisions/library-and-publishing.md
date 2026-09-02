@@ -28,7 +28,7 @@
 ### Versioning
 
 - **SemVer** across the workspace; all `crafty-*` crates share a synchronized version.
-- Pre-1.0 (`0.x`): breaking changes allowed on minor bumps, documented in CHANGELOG.
+- Pre-1.0 (`0.x`): breaking changes may land on minor bumps, documented in CHANGELOG.
 - Wire/protocol compatibility tracked separately via `Raft-Protocol-Version` ([protocol.md](../protocol.md)); protocol changes are breaking and gated by [cluster-membership](cluster-membership.md#version-skew--hard-reject).
 
 ### MSRV
@@ -44,7 +44,7 @@
 ### Quality gates for publish
 
 - `#![forbid(unsafe_code)]` where feasible; justify any `unsafe` in module docs.
-- `#![deny(missing_docs)]` on public crates before 1.0 stabilization (warn pre-1.0).
+- `#![deny(missing_docs)]` on published crates (see [missing-docs-1.0.md](missing-docs-1.0.md)).
 - `cargo doc` clean; docs.rs metadata configured (features, all-features build).
 - CI: `fmt`, `clippy -D warnings`, tests, MSRV check, `cargo publish --dry-run`.
 - Keywords/categories set (`concurrency`, `network-programming`, `asynchronous`).

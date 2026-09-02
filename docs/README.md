@@ -4,7 +4,9 @@ Architecture and decision records for the distributive Raft actor system.
 
 **Start here:** [status.md](status.md) (current capabilities and limits) · [architecture.md](architecture.md) (crate graph)
 
-**Product teams:** [scenarios/](scenarios/README.md) (jobs, event topics, workers, sessions, workflows — no mandatory Redis) · [examples/](../examples/README.md) (runnable showcases) · [backlog.md](backlog.md)
+**Product teams:** [scenarios/](scenarios/README.md) (jobs, event topics, workers, sessions, workflows — no mandatory Redis) · [examples/](../examples/README.md) (runnable showcases) · [backlog.md](backlog.md#open-work) (open work)
+
+**Contributors:** [../CONTRIBUTING.md](../CONTRIBUTING.md) · [../AGENTS.md](../AGENTS.md) (AI agents)
 
 ## Decision records
 
@@ -49,7 +51,8 @@ Architecture and decision records for the distributive Raft actor system.
 | Dynamic schedule source (leader cron reconcile) | [schedule-source](decisions/schedule-source.md) |
 | Homogeneous nodes — compute tokens / workload governor | [workload-governor](decisions/workload-governor.md) |
 | Drain timeout (default 60s, configurable) | [drain-timeout](decisions/drain-timeout.md) |
-| Actor / routing UX — Tier 3 | [actor-routing-tier3](decisions/actor-routing-tier3.md) |
+| Actor / routing UX (ring, sessions, drain) | [actor-routing](decisions/actor-routing.md) |
+| Gateway identity & sticky sessions | [gateway-identity](decisions/gateway-identity.md) |
 
 ### Multi-Raft & write scaling
 
@@ -64,6 +67,9 @@ Architecture and decision records for the distributive Raft actor system.
 | Testing strategy (sim-first, containers, E2E) | [testing-strategy](decisions/testing-strategy.md) |
 | Observability & monitoring | [observability](decisions/observability.md) |
 | Known risks & structural limits | [future-work-and-risks](decisions/future-work-and-risks.md) |
+| Public API freeze (1.0 scope) | [public-api-1.0](decisions/public-api-1.0.md) |
+| `missing_docs` policy at 1.0 | [missing-docs-1.0](decisions/missing-docs-1.0.md) |
+| External validation (Jepsen / Antithesis) | [jepsen-1.0](decisions/jepsen-1.0.md) |
 
 ## Operations runbooks
 
@@ -75,6 +81,7 @@ Architecture and decision records for the distributive Raft actor system.
 | Doc | Purpose |
 |-----|---------|
 | [../AGENTS.md](../AGENTS.md) | Agent/AI entry (rules, skills, quality gates) |
+| [../CONTRIBUTING.md](../CONTRIBUTING.md) | **Human contributor guide** |
 | [architecture.md](architecture.md) | System design |
 | [protocol.md](protocol.md) | HTTP/3 routes and wire format |
 | [certs.md](certs.md) | mTLS provisioning |

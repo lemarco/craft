@@ -38,7 +38,7 @@ data_dir/
 | **Job queue** | `enqueue` / `lease` / `ack` | Shared durable backlog |
 | **Event topic** | `publish` / `lease` / `ack` (per subscription) | Fan-out domain events |
 
-See [job-queue](../decisions/job-queue.md#three-messaging-tiers-explicit-split) and [event-topics](../decisions/event-topics.md).
+See [job-queue](../decisions/job-queue.md#three-messaging-layers-explicit-split) and [event-topics](../decisions/event-topics.md).
 
 ## Compose scenarios
 
@@ -70,9 +70,9 @@ flowchart LR
 | Real-time / session | `./scripts/run-example.sh realtime` |
 | Workflows | `./scripts/run-example.sh workflows` |
 
-Full index: [examples/README.md](../examples/README.md).
+Full index: [examples/README.md](../../examples/README.md).
 
-E2E: `./e2e/queue.sh` (QUIC/mTLS, failover). Product HTTP/WS: [`examples/`](../examples/README.md) + `./scripts/check-examples.sh`.
+E2E: `./e2e/queue.sh` (QUIC/mTLS, failover). Product HTTP/WS: [`examples/`](../../examples/README.md) + `./scripts/check-examples.sh`.
 
 ## Related
 

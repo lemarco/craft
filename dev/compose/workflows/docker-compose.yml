@@ -1,4 +1,4 @@
-# One-command 3-node workflows cluster (tier A showcase).
+# One-command 3-node workflows cluster (workflows showcase).
 #
 #   cd dev/compose/workflows
 #   docker compose up --build

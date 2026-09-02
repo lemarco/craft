@@ -7,7 +7,7 @@ use crafty_proto::{EntryPayload, LogEntry, LogIndex};
 
 use crate::RaftNode;
 
-/// Default retained applied entries before auto-compaction (Tier 1 ops).
+/// Default retained applied entries before auto-compaction (compaction default).
 pub const DEFAULT_COMPACT_ENTRIES: u64 = 1024;
 
 /// Default retained applied log bytes before auto-compaction (~4 MiB).

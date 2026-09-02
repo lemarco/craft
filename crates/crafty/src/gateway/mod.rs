@@ -34,7 +34,7 @@ pub use session::{NoWorkerError, OpenActorSessionError, SessionHandle};
 /// Default gateway drain when [`GatewayOpts::drain_timeout`] is omitted.
 pub const DEFAULT_GATEWAY_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Default wait for tier-C consumers to finish in-flight work during shutdown.
+/// Default wait for job queue consumers to finish in-flight work during shutdown.
 pub const DEFAULT_CONSUMER_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Product HTTP gateway: listen address, custom Axum routes, optional built-in APIs.
@@ -132,7 +132,7 @@ impl GatewayOpts {
         self
     }
 
-    /// Enable or disable tier C `/jobs/*` routes.
+    /// Enable or disable job queue `/jobs/*` routes.
     #[must_use]
     pub fn with_jobs_api(mut self, enabled: bool) -> Self {
         self.jobs_api = enabled;
@@ -383,7 +383,7 @@ pub type GatewayRoutesFn = Box<dyn FnOnce(CraftyGatewayState) -> Router + Send>;
 pub struct GatewayConfig {
     /// Public HTTP bind address.
     pub addr: SocketAddr,
-    /// Mount tier C `/jobs/*` routes (requires `http-jobs` feature).
+    /// Mount job queue `/jobs/*` routes (requires `http-jobs` feature).
     pub jobs_api: bool,
     /// Mount `/actors/*` cast + ask routes (requires `http-jobs` feature).
     pub actors_api: bool,

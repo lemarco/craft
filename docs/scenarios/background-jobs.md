@@ -187,11 +187,11 @@ JobOpts::new("imports")
     .consumer(&ImportConsumer)
 ```
 
-crafty runs **`claim` on the leader only**, tops tier C to `pending_target × consumer_instances`, enqueues with `dedup_key = item.key`, **`settle`s** on ack/nack/reclaim via a durable outbox (`backlog-settle-outbox.redb` + leader drainer), and feeds **`depth()`** to autoscale. Adapter: [`crafty-backlog-postgres`](../../crates/crafty-backlog-postgres/). ADR: [external-backlog](../decisions/external-backlog.md).
+crafty runs **`claim` on the leader only**, tops the in-flight queue window to `pending_target × consumer_instances`, enqueues with `dedup_key = item.key`, **`settle`s** on ack/nack/reclaim via a durable outbox (`backlog-settle-outbox.redb` + leader drainer), and feeds **`depth()`** to autoscale. Adapter: [`crafty-backlog-postgres`](../../crates/crafty-backlog-postgres/). ADR: [external-backlog](../decisions/external-backlog.md).
 
 ### 4. HTTP mapping (recommended)
 
-Wire the gateway (`http-jobs` feature) with [`GatewayOpts`](../../crates/crafty/src/gateway.rs) — built-in `/jobs/*` routes are **opt-in** (`.with_jobs_api(true)` or `CRAFTY_GATEWAY_JOBS=1`). Request bodies: raw bytes or JSON `{ "payload": "…" }` / `{ "payload_b64": "…" }` ([`crafty-http` README](../../crates/crafty-http/README.md)).
+Wire the gateway (`http-jobs` feature) with [`GatewayOpts`](../../crates/crafty/src/gateway/mod.rs) — built-in `/jobs/*` routes are **opt-in** (`.with_jobs_api(true)` or `CRAFTY_GATEWAY_JOBS=1`). Request bodies: raw bytes or JSON `{ "payload": "…" }` / `{ "payload_b64": "…" }` ([`crafty-http` README](../../crates/crafty-http/README.md)).
 
 | Intent | Response | Route / API |
 |--------|----------|-------------|

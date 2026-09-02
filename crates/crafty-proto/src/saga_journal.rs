@@ -1,4 +1,4 @@
-//! Cross-shard saga journal metadata replicated through group 0 (Tier 2 v2).
+//! Cross-shard saga journal metadata replicated through group 0 (Meta-Raft saga journal).
 
 use serde::{Deserialize, Serialize};
 

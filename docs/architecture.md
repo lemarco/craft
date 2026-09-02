@@ -53,7 +53,7 @@ examples/                # product showcases (standalone Cargo.toml each; not wo
 dev/                     # certs, cluster-common.sh, compose/, 3-node crafty-node demo
 ```
 
-Reference tier **A** KV: [`crafty_core::kv`](../crates/crafty-core/src/kv.rs) (re-exported as `crafty::kv`).
+Reference KV state machine: [`crafty_core::kv`](../crates/crafty-core/src/kv.rs) (re-exported as `crafty::kv`).
 
 See [naming](decisions/naming.md) and [examples/README.md](../examples/README.md).
 

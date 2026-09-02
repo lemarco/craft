@@ -9,5 +9,6 @@ cd "$(dirname "$0")/.."
 
 bash scripts/gate-fmt.sh --check
 bash scripts/check-shell-scripts.sh
+bash scripts/check-doc-links.sh
 bash scripts/gate-clippy.sh
 echo ">> pre-commit gate ok"

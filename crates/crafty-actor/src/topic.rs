@@ -1,6 +1,6 @@
 //! Durable event topic port ([event-topics](../../../docs/decisions/event-topics.md)).
 //!
-//! [`EventTopic`] is tier C pub/sub: one publish, many named subscriptions with
+//! [`EventTopic`] is durable pub/sub: one publish, many named subscriptions with
 //! independent cursors and lease/ack. Distinct from [`JobQueue`](super::queue::JobQueue)
 //! (point-to-point). [`InMemoryEventTopic`] backs tests; production uses
 //! [`RedbEventTopic`](super::redb_topic::RedbEventTopic).

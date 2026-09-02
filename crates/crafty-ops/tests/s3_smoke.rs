@@ -1,4 +1,4 @@
-//! Optional S3-compatible object-store smoke (Tier 2 ops follow-up).
+//! Optional S3-compatible object-store smoke (production ops follow-up).
 //!
 //! ```bash
 //! AWS_ENDPOINT_URL=http://127.0.0.1:9000 \

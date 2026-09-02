@@ -126,9 +126,9 @@ pub struct Step<M: StateMachine> {
     pub reads: Vec<ReadOutcome<M::Response>>,
     /// Role transitions observed this step (for observability).
     pub role_changes: Vec<Role>,
-    /// Committed catalog metadata entries (Tier 2; not applied to the user SM).
+    /// Committed catalog metadata entries (dynamic catalog; not applied to the user SM).
     pub catalog_applied: Vec<(LogIndex, CatalogCommand)>,
-    /// Committed saga journal entries (Tier 2 v2; not applied to the user SM).
+    /// Committed saga journal entries (Meta-Raft saga journal; not applied to the user SM).
     pub saga_journal_applied: Vec<(LogIndex, SagaJournalCommand)>,
     /// Committed durable 2PC prepare entries (not applied to the user SM).
     pub two_phase_prepare_applied: Vec<(LogIndex, TwoPhasePrepareCommand)>,
@@ -564,7 +564,7 @@ impl<M: StateMachine> RaftDriver<M> {
         }
     }
 
-    /// Append a catalog metadata entry (group 0 leader only, Tier 2).
+    /// Append a catalog metadata entry (group 0 leader only, dynamic catalog).
     ///
     /// # Errors
     /// Returns [`DriverError`] only if draining a resulting committed catalog
@@ -579,7 +579,7 @@ impl<M: StateMachine> RaftDriver<M> {
         }
     }
 
-    /// Append a saga journal metadata entry (group 0 leader only, Tier 2 v2).
+    /// Append a saga journal metadata entry (group 0 leader only, Meta-Raft saga journal).
     ///
     /// # Errors
     /// Returns [`DriverError`] only if draining a resulting committed saga journal

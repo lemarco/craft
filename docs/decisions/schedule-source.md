@@ -4,7 +4,7 @@
 
 ## Context
 
-Recurring jobs ([`RecurringJob`](../../crates/crafty-actor/src/queue_schedule.rs)) were registered only at build time via [`.cron()`](../../crates/crafty/src/app.rs). Operators who store schedules in Postgres (admin UI toggles) had to reimplement the leader-only ticker, replication, and restart survival crafty already provides for tier-C queues.
+Recurring jobs ([`RecurringJob`](../../crates/crafty-actor/src/queue_schedule.rs)) were registered only at build time via [`.cron()`](../../crates/crafty/src/app.rs). Operators who store schedules in Postgres (admin UI toggles) had to reimplement the leader-only ticker, replication, and restart survival crafty already provides for job queues.
 
 This mirrors the gap [`ExternalBacklog`](external-backlog.md) closed for job backlogs: **data assumed static config** instead of a port.
 

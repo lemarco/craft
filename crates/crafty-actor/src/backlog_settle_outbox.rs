@@ -1,5 +1,5 @@
 //! Durable outbox for [`ExternalBacklog::settle`](super::external_backlog::ExternalBacklog)
-//! — at-least-once delivery after tier-C ack/nack/reclaim
+//! — at-least-once delivery after job queue ack/nack/reclaim
 //! ([external-backlog](../../../docs/decisions/external-backlog.md)).
 
 use std::collections::HashMap;

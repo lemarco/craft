@@ -2,13 +2,13 @@
 
 Multi-step onboarding with compensators; journal in `group-meta.redb`.
 
-Uses [`CraftyKvApp`](../../crates/crafty/src/kv_app.rs) — same onboarding path as the other product showcases.
+Uses [`CraftyApp`](../../crates/crafty/src/app.rs) — same onboarding path as the other product showcases.
 
 ## What you run
 
 | Piece | Role |
 |-------|------|
-| This binary | `CraftyKvApp` + gateway `/workflows/*` |
+| This binary | `CraftyApp` + gateway `/workflows/*` |
 | [`trigger.sh`](trigger.sh) | Run / resume saga via gateway HTTP |
 | Admin | Dashboard **Sagas** panel |
 

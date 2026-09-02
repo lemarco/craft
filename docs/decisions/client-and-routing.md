@@ -80,7 +80,7 @@ impl ClusterRef {
 }
 ```
 
-Default hash: consistent hash ring (64 virtual nodes per member); see [actor-routing-tier3](actor-routing-tier3.md). Production: 1 worker per VPS — round-robin spreads across nodes; `send_keyed` pins work to a specific node's worker.
+Default hash: consistent hash ring (64 virtual nodes per member); see [actor-routing](actor-routing.md). Production: 1 worker per VPS — round-robin spreads across nodes; `send_keyed` pins work to a specific node's worker.
 
 ## Read consistency
 

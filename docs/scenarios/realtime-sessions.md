@@ -10,7 +10,7 @@
 - Client must hit the **same actor instance** for a period (in-memory state)
 - Gateway can sit behind a load balancer; workers run anywhere in cluster
 
-**Do not** require Redis for session stickiness — use [`ActorSession`](../../crates/crafty-actor/src/session.rs) ([actor-routing-tier3](../decisions/actor-routing-tier3.md)).
+**Do not** require Redis for session stickiness — use [`ActorSession`](../../crates/crafty-actor/src/session.rs) ([actor-routing](../decisions/actor-routing.md)).
 
 ## Architecture
 
@@ -37,7 +37,7 @@
 1. **Open:** keyed pick → `ActorSession` with TTL
 2. **Traffic:** all messages via `ask_session` / `cast_session` to pinned `ActorId`
 3. **Expire / migrate:** session invalid → return `NoTarget`; client re-opens session (may land on new instance)
-4. **Scale:** consistent-hash ring remaps ~`1/N` keys ([actor-routing-tier3](../decisions/actor-routing-tier3.md))
+4. **Scale:** consistent-hash ring remaps ~`1/N` keys ([actor-routing](../decisions/actor-routing.md))
 
 ## Quick start (current API)
 
@@ -249,7 +249,7 @@ Gateway auth: [`GatewayBearerIdentity`](../../crates/crafty/src/gateway/identity
 
 ## Related
 
-- [actor-routing-tier3](../decisions/actor-routing-tier3.md)
+- [actor-routing](../decisions/actor-routing.md)
 - [cross-node-actors](../decisions/cross-node-actors.md)
 - [stateful-workers](stateful-workers.md) — durable history
 - [backlog.md](../backlog.md) — B-04

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# admin_tls.sh — smoke-test admin HTTPS on node1 (Tier 2 production follow-up).
+# admin_tls.sh — smoke-test admin HTTPS on node1 (production ops follow-up).
 #
 # Requires the docker-compose cluster from linearizability.sh / run.sh.
 # node1 publishes TLS admin on host port 18443.

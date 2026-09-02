@@ -503,7 +503,7 @@ impl<M: StateMachine> CraftyCluster<M> {
         self.event_topics.get(name).cloned()
     }
 
-    /// Enqueue many jobs in one leader transaction (tier C batch path).
+    /// Enqueue many jobs in one leader transaction (job queue batch path).
     ///
     /// Batches are capped at [`crafty_actor::DEFAULT_QUEUE_BATCH_MAX`] jobs per RPC.
     ///
@@ -535,7 +535,7 @@ impl<M: StateMachine> CraftyCluster<M> {
         queue.enqueue_batch_opts(jobs).await
     }
 
-    /// Acknowledge many leased jobs in one leader transaction (tier C batch path).
+    /// Acknowledge many leased jobs in one leader transaction (job queue batch path).
     ///
     /// # Errors
     /// Returns an error when the stream is unknown or ack fails.
@@ -743,7 +743,7 @@ impl<M: StateMachine> CraftyCluster<M> {
         }
     }
 
-    /// Expand the virtual shard keyspace (Tier 1 modulus only). Keys **remap** when
+    /// Expand the virtual shard keyspace (modulus routing only). Keys **remap** when
     /// the modulus changes — drain keyed clients before calling.
     ///
     /// # Errors
@@ -761,7 +761,7 @@ impl<M: StateMachine> CraftyCluster<M> {
         mr.sharded.expand_shard_count(new_count)
     }
 
-    /// Grow the active virtual shard prefix (Tier 2 stable routing). Existing keyed
+    /// Grow the active virtual shard prefix (stable virtual routing). Existing keyed
     /// traffic keeps the same virtual shard id.
     ///
     /// # Errors
@@ -780,7 +780,7 @@ impl<M: StateMachine> CraftyCluster<M> {
         mr.sharded.activate_shards(new_active)
     }
 
-    /// Switch keyed routing from Tier 1 modulus to Tier 2 stable virtual.
+    /// Switch keyed routing from modulus to stable virtual.
     ///
     /// Keys **remap** — drain keyed clients before calling.
     ///
@@ -1152,7 +1152,7 @@ impl<M: StateMachine> CraftyCluster<M> {
         }
     }
 
-    /// Grow the multi-Raft group catalog without restarting nodes (Tier 2).
+    /// Grow the multi-Raft group catalog without restarting nodes (dynamic catalog / stable shards).
     ///
     /// # Errors
     /// Returns [`AddRaftGroupsError`] when multi-Raft is disabled, `count` is

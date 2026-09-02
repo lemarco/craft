@@ -31,7 +31,7 @@ pub enum ClientRequest {
         /// Shard routing key for multi-Raft; `None` targets group 0.
         route_key: Option<Vec<u8>>,
     },
-    /// Stage a command in leader memory for cross-shard 2PC (optional Tier 2).
+    /// Stage a command in leader memory for cross-shard 2PC (optional).
     TwoPhasePrepare {
         /// Shared transaction id.
         tx_id: Vec<u8>,

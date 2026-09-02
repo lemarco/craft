@@ -1,4 +1,4 @@
-//! Reachability hysteresis via [`RaftNode::reachable_now`] (liveness Tier 2).
+//! Reachability hysteresis via [`RaftNode::reachable_now`] (reachability tuning).
 
 use crafty_core::{Config, FailureDetectorKind, ReachabilityConfig, Role};
 use crafty_proto::{AppendEntriesReply, NodeId, RaftRpcReply, RequestVoteReply, Round, Term};

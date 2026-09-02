@@ -1,6 +1,6 @@
 # Getting started — product apps (no Redis)
 
-Quick path for **product teams** using [`CraftyApp`](../../crates/crafty/src/app.rs) — actors, jobs, and durable workflow keys on **embedded redb**, no Kubernetes, no mandatory Redis.
+Quick path for **product teams** using [`CraftyApp`](../crates/crafty/src/app.rs) — actors, jobs, and durable workflow keys on **embedded redb**, no Kubernetes, no mandatory Redis.
 
 **Scenarios:** [scenarios/README.md](scenarios/README.md) · **Showcases:** [examples/README.md](../examples/README.md) · **Backlog:** [backlog.md](backlog.md)
 
@@ -61,7 +61,7 @@ Same code as above. [`cluster.sh`](../examples/background-jobs/cluster.sh) sets 
 
 Node id is **not** configured — seed gets `1`, joiners are assigned by the leader and persisted under `CRAFTY_DATA_DIR`.
 
-**Homogeneous nodes:** every VPS runs the same binary (gateway + consumers when configured). Local **API vs jobs** fairness uses [`.workload()`](../../crates/crafty/src/workload.rs) compute tokens ([workload governor](decisions/workload-governor.md)) — not static node roles. Edge-only ingress without local consumers: omit `.jobs()` / `.workers()` on those nodes (deployment choice), not a role env var.
+**Homogeneous nodes:** every VPS runs the same binary (gateway + consumers when configured). Local **API vs jobs** fairness uses [`.workload()`](../crates/crafty/src/workload.rs) compute tokens ([workload governor](decisions/workload-governor.md)) — not static node roles. Edge-only ingress without local consumers: omit `.jobs()` / `.workers()` on those nodes (deployment choice), not a role env var.
 
 ## 4. Try the showcases
 
@@ -91,11 +91,11 @@ cargo build -p crafty-showcase-client
 ./target/debug/crafty-showcase-client ws 127.0.0.1:8294 alice hello
 ```
 
-Reference KV [`StateMachine`](../../crates/crafty-core/src/kv.rs) (`crafty::kv` on the facade) for low-level Raft `propose` / `query` without a full product app.
+Reference KV [`StateMachine`](../crates/crafty-core/src/kv.rs) (`crafty::kv` on the facade) for low-level Raft `propose` / `query` without a full product app.
 
 ## 5. Workers (actors)
 
-Register worker types with [`.workers()`](../../crates/crafty/src/worker_opts.rs) and explicit [`WorkerScale`](../../crates/crafty/src/worker_opts.rs) (`Fixed`, `PerNode`, or queue-driven `Auto`):
+Register worker types with [`.workers()`](../crates/crafty/src/worker_opts.rs) and explicit [`WorkerScale`](../crates/crafty/src/worker_opts.rs) (`Fixed`, `PerNode`, or queue-driven `Auto`):
 
 ```rust
 use crafty::actor::{UserActor, actor};
@@ -122,13 +122,13 @@ CraftyApp::builder()
     .await?;
 ```
 
-Legacy [`.actors()`](../../crates/crafty/src/app.rs) + [`ActorGroupOpts`](../../crates/crafty/src/actor_group.rs) remain supported.
+Legacy [`.actors()`](../crates/crafty/src/app.rs) + [`ActorGroupOpts`](../crates/crafty/src/actor_group.rs) remain supported.
 
-Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store_set`](../../crates/crafty-actor/src/store_codec.rs) — backed by redb when `data_dir` is set.
+Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store_set`](../crates/crafty-actor/src/store_codec.rs) — backed by redb when `data_dir` is set.
 
 ## 6. HTTP job enqueue (optional)
 
-Prefer [`.jobs()`](../../crates/crafty/src/job_opts.rs) to register queue + consumer + HTTP enqueue in one call. Enable the `http-jobs` feature (default on the facade):
+Prefer [`.jobs()`](../crates/crafty/src/job_opts.rs) to register queue + consumer + HTTP enqueue in one call. Enable the `http-jobs` feature (default on the facade):
 
 ```toml
 crafty = { version = "0.5", features = ["http-jobs"] }
@@ -156,11 +156,11 @@ CraftyApp::builder()
 // POST /jobs/{stream} → 202 { "job_id": … }
 ```
 
-Lower-level [`.queue()`](../../crates/crafty/src/app.rs) + [`.consumer()`](../../crates/crafty/src/app.rs) remain available. See [crafty-http README](../../crates/crafty-http/README.md) and [background-jobs](scenarios/background-jobs.md).
+Lower-level [`.queue()`](../crates/crafty/src/app.rs) + [`.consumer()`](../crates/crafty/src/app.rs) remain available. See [crafty-http README](../crates/crafty-http/README.md) and [background-jobs](scenarios/background-jobs.md).
 
 ## 7. Workflows (sagas)
 
-Build a named plan with [`WorkflowBuilder`](../../crates/crafty/src/workflow.rs) and run it on the cluster journal:
+Build a named plan with [`WorkflowBuilder`](../crates/crafty/src/workflow.rs) and run it on the cluster journal:
 
 ```rust
 use crafty::{WorkflowBuilder, CraftyApp};
@@ -236,7 +236,7 @@ Generates a `CraftyApp` stub, docker-compose for 3-node local dev, and links to 
 
 ## 11. Cluster APIs
 
-Most apps stay on `CraftyApp`. For custom state machines, multi-Raft, or direct supervisor/queue access, use [`crafty::cluster`](../crates/crafty/src/cluster.rs) or the [`CraftyApp`](../../crates/crafty/src/app.rs) methods (`control`, `registry`, `supervisor`, …).
+Most apps stay on `CraftyApp`. For custom state machines, multi-Raft, or direct supervisor/queue access, use [`crafty::cluster`](../crates/crafty/src/cluster.rs) or the [`CraftyApp`](../crates/crafty/src/app.rs) methods (`control`, `registry`, `supervisor`, …).
 
 | Need | Doc |
 |------|-----|

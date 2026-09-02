@@ -1,4 +1,4 @@
-# One-command 3-node realtime cluster (tier B showcase).
+# One-command 3-node realtime cluster (stateful actor showcase).
 #
 #   cd dev/compose/realtime
 #   docker compose up --build

@@ -31,7 +31,7 @@ Job delivery is **at-least-once**. Use three layers together for effectively-onc
 
 1. **Enqueue** — `EnqueueOptions::dedup_key` / HTTP `?dedup=` (safe client retry)
 2. **Processing** — `ConsumerOpts::idempotency` or CAS in `ActorStateStore` ([background-jobs § Effectively-once recipe](background-jobs.md#effectively-once-recipe))
-3. **Workflow steps** — `CraftyApp::enqueue_workflow_step` / [`WorkflowBuilder::step_dedup_key`](../crates/crafty/src/workflow.rs)
+3. **Workflow steps** — `CraftyApp::enqueue_workflow_step` / [`WorkflowBuilder::step_dedup_key`](../../crates/crafty/src/workflow.rs)
 
 ## Anti-patterns
 
