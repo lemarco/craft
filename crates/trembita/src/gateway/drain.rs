@@ -27,8 +27,8 @@ pub struct ConnectionTracker {
 impl ConnectionTracker {
     /// Increment active connection count; decrements when the guard drops.
     ///
-    /// Short HTTP handlers are tracked automatically by gateway middleware
-    /// ([`track_connection`]); call this for long-lived work (WebSocket, SSE, …).
+    /// Short HTTP handlers are tracked automatically by gateway middleware;
+    /// call this for long-lived work (WebSocket, SSE, …).
     #[must_use]
     pub fn track(&self) -> ConnectionGuard<'_> {
         self.active.fetch_add(1, Ordering::SeqCst);
