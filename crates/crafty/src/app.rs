@@ -294,7 +294,7 @@ impl CraftyAppBuilder {
         self
     }
 
-    /// Poll a [`ScheduleSource`] on the queue leader and reconcile recurring jobs
+    /// Poll a [`crate::ScheduleSource`] on the queue leader and reconcile recurring jobs
     /// ([schedule-source](../../docs/decisions/schedule-source.md)).
     ///
     /// Requires a matching [`.queue`](Self::queue) stream. Pairs with [`.cron`](Self::cron).

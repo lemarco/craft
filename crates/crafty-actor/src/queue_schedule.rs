@@ -222,7 +222,7 @@ impl RedbJobQueue {
     }
 }
 
-/// Leader-only loop: reconcile [`ScheduleSource`]s and fire due cron schedules.
+/// Leader-only loop: reconcile [`crate::ScheduleSource`]s and fire due cron schedules.
 pub async fn run_queue_schedule_ticker(
     service: Arc<crate::queue_service::QueueService>,
     poll_interval: Duration,

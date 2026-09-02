@@ -40,7 +40,7 @@ fn codec(e: impl std::fmt::Display) -> BacklogSettleOutboxError {
     BacklogSettleOutboxError::Codec(e.to_string())
 }
 
-/// Tunables for [`run_backlog_settle_drainer`].
+/// Tunables for [`crate::run_backlog_settle_drainer`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BacklogSettleOutboxOpts {
     /// Leader poll interval.
