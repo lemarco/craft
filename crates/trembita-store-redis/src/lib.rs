@@ -4,7 +4,7 @@
 //! Optional crate for externalizing stateful-actor data (backlog Track G) so it
 //! survives a VPS crash: when the leader respawns a worker on another node it
 //! reloads its keys from Redis (cross-node-actors, supervisor-leader). Consensus data stays in the
-//! Raft [`StateMachine`](trembita_runtime::trembita_core::StateMachine) — Redis holds
+//! Raft [`StateMachine`](trembita_core::StateMachine) — Redis holds
 //! only workflow/session/idempotency state.
 //!
 //! ```no_run
