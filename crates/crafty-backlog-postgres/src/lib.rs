@@ -1,4 +1,4 @@
-//! PostgreSQL [`ExternalBacklog`](crafty_actor::ExternalBacklog) using `FOR UPDATE SKIP LOCKED`.
+//! PostgreSQL [`ExternalBacklog`] using `FOR UPDATE SKIP LOCKED`.
 //!
 //! Default table layout is documented in the crate README.
 
@@ -237,5 +237,5 @@ impl ExternalBacklog for PgBacklog {
     }
 }
 
-/// Shared handle for [`JobOpts::backlog`](crafty::JobOpts::backlog).
+/// Shared handle for [`JobOpts::backlog`](https://docs.rs/crafty/latest/crafty/struct.JobOpts.html#method.backlog).
 pub type SharedPgBacklog = Arc<PgBacklog>;
