@@ -106,8 +106,8 @@ async fn a_new_node_dynamically_joins_over_quic() {
         .expect("seed proposal");
 
     // Bring up node 4 knowing only node 1's address as a seed — no static entry
-    // for nodes 2 and 3. `members` is the *current* voter set (without node 4),
-    // so it starts as a non-voting follower and never disrupts the election.
+    // for nodes 2 and 3. Default join role is learner (non-voting); it must not
+    // disrupt the election while catching up.
     let joiner_id = NodeId(4);
     let joiner_addr = free_udp();
     let seed_only: PeerDirectory = [(NodeId(1), addrs[0])].into_iter().collect();
@@ -131,7 +131,7 @@ async fn a_new_node_dynamically_joins_over_quic() {
     let mut join_complete = false;
     for _ in 0..1000 {
         if let Some(status) = joiner.status().await
-            && status.voters.contains(&joiner_id)
+            && (status.voters.contains(&joiner_id) || status.learners.contains(&joiner_id))
             && status.last_applied >= LogIndex(1)
         {
             join_complete = true;
@@ -139,7 +139,7 @@ async fn a_new_node_dynamically_joins_over_quic() {
         }
         advance(TICK_PERIOD).await;
     }
-    assert!(join_complete, "node 4 did not become a voter and catch up");
+    assert!(join_complete, "node 4 did not join and catch up");
 
     // A fresh proposal now replicates to the enlarged cluster, node 4 included.
     let leader = await_trembita_leader(&clusters).await;
