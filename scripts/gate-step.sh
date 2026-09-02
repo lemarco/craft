@@ -37,7 +37,9 @@ maybe_disk_prune() {
 
 export NEXTEST_PROFILE="${NEXTEST_PROFILE:-ci}"
 export CARGO_TERM_COLOR="${CARGO_TERM_COLOR:-always}"
-export CARGO_TERM_PROGRESS_WHEN="${CARGO_TERM_PROGRESS_WHEN:-always}"
+if [[ -t 2 ]]; then
+  export CARGO_TERM_PROGRESS_WHEN="${CARGO_TERM_PROGRESS_WHEN:-auto}"
+fi
 
 case "$STEP" in
   autofix)

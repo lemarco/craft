@@ -9,6 +9,20 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-09-02
+
+**Rustdoc fixes for docs.rs 0.6.0 builds.**
+
+### Fixed
+
+- Intra-doc links in `crafty`, `crafty-actor`, and `crafty-backlog-postgres` that failed
+  `cargo doc` / docs.rs for 0.6.0 (`crate::…` paths, redundant cross-crate links).
+
+### Changed
+
+- Release and CI gates unified (`ci-fast-lane.sh`, `gate.sh` tiers, lefthook per-step output);
+  `crafty-node` explicitly `publish = false`.
+
 ## [0.6.0] — 2026-09-02
 
 **Event topics, external backlog, workload governor, and dynamic schedules.**
