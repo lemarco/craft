@@ -472,7 +472,8 @@ async fn telemetry_publishes_consensus_and_actor_metrics() {
 async fn metrics_sink_receives_runtime_samples() {
     use std::sync::Arc;
 
-    use trembita::{RecordedMetric, RecordingMetricsSink, TrembitaCluster};
+    use trembita::cluster::TrembitaCluster;
+    use trembita::{RecordedMetric, RecordingMetricsSink};
 
     let recorder = Arc::new(RecordingMetricsSink::new());
     let net = LocalNetwork::new();

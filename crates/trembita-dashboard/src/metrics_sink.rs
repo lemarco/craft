@@ -135,21 +135,27 @@ impl RecordingMetricsSink {
 
 impl MetricsSink for RecordingMetricsSink {
     fn incr(&self, name: &str, help: &str, labels: &[(&str, &str)], by: f64) {
-        self.samples.lock().expect("poisoned").push(RecordedMetric::Incr {
-            name: name.to_owned(),
-            help: help.to_owned(),
-            labels: labels_owned(labels),
-            by,
-        });
+        self.samples
+            .lock()
+            .expect("poisoned")
+            .push(RecordedMetric::Incr {
+                name: name.to_owned(),
+                help: help.to_owned(),
+                labels: labels_owned(labels),
+                by,
+            });
     }
 
     fn set(&self, name: &str, help: &str, labels: &[(&str, &str)], value: f64) {
-        self.samples.lock().expect("poisoned").push(RecordedMetric::Set {
-            name: name.to_owned(),
-            help: help.to_owned(),
-            labels: labels_owned(labels),
-            value,
-        });
+        self.samples
+            .lock()
+            .expect("poisoned")
+            .push(RecordedMetric::Set {
+                name: name.to_owned(),
+                help: help.to_owned(),
+                labels: labels_owned(labels),
+                value,
+            });
     }
 
     fn observe(&self, name: &str, help: &str, labels: &[(&str, &str)], value: f64) {

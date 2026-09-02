@@ -44,7 +44,7 @@ Always-on and cheap (counters/gauges/histograms).
 #### Metrics export port
 
 Pull via `GET /metrics` remains the default path (Prometheus scrape). For push
-backends, implement [`MetricsSink`](../crates/trembita-dashboard/src/metrics_sink.rs)
+backends, implement [`MetricsSink`](../../crates/trembita-dashboard/src/metrics_sink.rs)
 and wire it on the cluster/app builder:
 
 ```rust

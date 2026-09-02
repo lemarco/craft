@@ -20,7 +20,6 @@ use trembita_core::StateMachine;
 use trembita_proto::LogIndex;
 
 use crate::NodeId;
-use trembita_dashboard::MetricsSink;
 use crate::actor_group::ActorGroupOpts;
 use crate::app_opts::RunOpts;
 use crate::builder::{StartError, TrembitaClusterBuilder};
@@ -36,6 +35,7 @@ use crate::queue_opts::QueueOpts;
 use crate::worker_opts::{WorkerGroup, WorkerOpts};
 use crate::workflow::WorkflowBuilder;
 use crate::workflow_opts::{WorkflowOpts, WorkflowRegistration, resolve_workflow};
+use trembita_dashboard::MetricsSink;
 
 /// Run a workflow using the default keyed client and Meta-Raft journal.
 ///
