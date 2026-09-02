@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-05  
-**Updated:** 2026-08-28 — merged membership-early, discovery, join/leave RPC, version skew, liveness, per-group membership
+**Updated:** 2026-09-02 — learner join default, voter replacement, placement_nodes
 
 ## Context
 
@@ -55,15 +55,11 @@ Full cloud-metadata auto-discovery beyond a seed set remains out of scope.
 
 ```rust
 pub struct JoinRequest {
-    pub node_id: NodeId,
-    pub listen_addr: SocketAddr,
-    pub protocol_version: u16,
-    pub app_version: String,
-}
-
-pub enum JoinResponse {
-    Ok { cluster_id: Uuid },
-    Error { code: u16, message: String },
+    pub protocol_version: u32,
+    pub node_id: Option<NodeId>,
+    pub advertise_addr: String,
+    /// `Learner` (default) for elastic scale-out; `Voter` requires `allow_voter_join`.
+    pub role: JoinRole,
 }
 ```
 
@@ -74,7 +70,7 @@ pub enum JoinResponse {
 | `409` | Duplicate `NODE_ID`, version mismatch, or invalid cert |
 | `503` | No leader / election in progress |
 
-**Flow:** joiner → target (forward to leader if needed) → leader validates → joint-consensus ConfChange → all nodes update config → auto workers spawned ([cluster-elasticity](cluster-elasticity.md)).
+**Flow:** joiner → target (forward to leader if needed) → leader validates role → joint-consensus ConfChange (voters or learners) → all nodes update config → auto workers spawned ([cluster-elasticity](cluster-elasticity.md#voters-vs-learners-elastic-scale-out)).
 
 ## Leave RPC
 
@@ -97,7 +93,7 @@ pub enum LeaveResponse {
 |-----------|------|
 | `VersionSkew` | `protocol_version` mismatch |
 | `LeavesDisabled` | `--allow-leave` not set |
-| `NotMember` | `node_id` not in committed voters |
+| `NotMember` | `node_id` not in committed voters or learners |
 | `LastMember` | Would empty the voter set |
 
 **Facade:** `CraftyClusterBuilder::allow_leave`, `CraftyCluster::request_leave`, `CraftyCluster::leave()`. Actor migration before leave is the caller's job ([cross-node-actors](cross-node-actors.md), [drain-timeout](drain-timeout.md)). `crafty-node` with `CRAFTY_GRACEFUL_LEAVE=1` calls `leave()` on `SIGINT`.
@@ -121,16 +117,21 @@ Two distinct signals:
 
 | Signal | Meaning | Changes via |
 |--------|---------|-------------|
-| **Membership** | Committed Raft voters | `ConfChange` only |
+| **Membership** | Committed voters + learners | `ConfChange` only |
 | **Liveness** | Who acks heartbeats now | Crash/partition (no log entry) |
 
 Leader records per-peer `last_ack_clock` from `AppendEntries` responses:
 
-- `reachable(window)` — self plus voters that acked within window.
-- `reachable_now()` — default `2 × election_timeout_max`.
+- `reachable(window)` — self plus **voters** that acked within window (queue replication fan-out).
+- `reachable_members_now()` — reachable voters **and** reachable learners (worker placement).
+- `reachable_now()` — default `2 × election_timeout_max` (voters only).
 - Tunable via `ReachabilityConfig` / phi-accrual ([multi-raft](multi-raft.md#production-reliability)).
 
-`ClusterSupervisor` plans against `reachable_nodes()`; `live_nodes()` remains the committed voter set. Advisory only — never affects commit/quorum.
+`ClusterSupervisor` plans against `placement_nodes()`; `live_nodes()` is the committed voter set. Queue replication uses `reachable_nodes()` (voters only). Advisory only — never affects commit/quorum.
+
+## Voter replacement
+
+When a committed voter stays unreachable beyond `6 ×` the reachability window and at least one learner is caught up, the leader proposes: remove the dead voter, promote the lowest-id eligible learner. Keeps voter count stable without operator action. Disable: `voter_replacement(false)`.
 
 ## Per-group membership (multi-Raft)
 

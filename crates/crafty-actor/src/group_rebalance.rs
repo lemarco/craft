@@ -53,7 +53,7 @@ impl<S: ClusterState> RaftGroupReconciler<S> {
     /// (per-group-raft-membership).
     #[must_use]
     pub fn reconcile_local(&self, currently_hosted: &[RaftGroupId]) -> GroupRebalanceReport {
-        let live = self.state.live_nodes();
+        let live = self.state.cluster_nodes();
         let assignment = group_host_assignment(&self.catalog, &live);
         let plan = plan_node_group_rebalance(
             self.node_id,

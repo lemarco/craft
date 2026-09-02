@@ -68,7 +68,7 @@ impl<M: StateMachine + Default + 'static> MultiRaftState<M> {
         &self,
         facts: Arc<ClusterFacts>,
     ) -> GroupMembershipSyncReport {
-        let live = ClusterState::live_nodes(facts.as_ref());
+        let live = ClusterState::cluster_nodes(facts.as_ref());
         let hosted: Vec<_> = {
             let handles = self.handles.lock().unwrap();
             handles
@@ -166,7 +166,7 @@ impl<M: StateMachine + Default + 'static> MultiRaftState<M> {
         }
 
         let mut handles = self.handles.lock().unwrap();
-        let live = ClusterState::live_nodes(facts.as_ref());
+        let live = ClusterState::cluster_nodes(facts.as_ref());
         for group in &report.plan.retire {
             let id = group.0;
             crafty_actor::rebalance_log::line(format!("node={} retire group={id}", self.node_id.0));

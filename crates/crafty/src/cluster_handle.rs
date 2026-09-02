@@ -53,7 +53,9 @@ pub struct ClusterFacts {
     leader: AtomicBool,
     leader_id: Mutex<Option<NodeId>>,
     voters: Mutex<Vec<NodeId>>,
+    learners: Mutex<Vec<NodeId>>,
     reachable: Mutex<Vec<NodeId>>,
+    reachable_members: Mutex<Vec<NodeId>>,
 }
 
 impl ClusterFacts {
@@ -64,7 +66,12 @@ impl ClusterFacts {
         );
         *self.leader_id.lock().unwrap() = status.leader;
         self.voters.lock().unwrap().clone_from(&status.voters);
+        self.learners.lock().unwrap().clone_from(&status.learners);
         self.reachable.lock().unwrap().clone_from(&status.reachable);
+        self.reachable_members
+            .lock()
+            .unwrap()
+            .clone_from(&status.reachable_members);
     }
 
     /// Current Raft leader hint (refreshed with consensus status).
@@ -86,8 +93,22 @@ impl ClusterState for ClusterFacts {
         self.voters.lock().unwrap().clone()
     }
 
+    fn cluster_nodes(&self) -> Vec<NodeId> {
+        let voters = self.voters.lock().unwrap();
+        let learners = self.learners.lock().unwrap();
+        let mut nodes = voters.clone();
+        nodes.extend(learners.iter().copied());
+        nodes.sort();
+        nodes.dedup();
+        nodes
+    }
+
     fn reachable_nodes(&self) -> Vec<NodeId> {
         self.reachable.lock().unwrap().clone()
+    }
+
+    fn placement_nodes(&self) -> Vec<NodeId> {
+        self.reachable_members.lock().unwrap().clone()
     }
 
     fn leader_id(&self) -> Option<NodeId> {
@@ -1534,6 +1555,7 @@ mod tests {
             voters: voters.iter().copied().map(NodeId).collect(),
             learners: vec![],
             reachable: reachable.iter().copied().map(NodeId).collect(),
+            reachable_members: reachable.iter().copied().map(NodeId).collect(),
         }
     }
 

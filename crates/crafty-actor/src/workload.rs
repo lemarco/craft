@@ -186,10 +186,7 @@ pub async fn run_workload_governor(
         }
 
         let active_connections = connections();
-        let external_load_units = opts
-            .external_load
-            .as_ref()
-            .map_or(0, |load| load.units());
+        let external_load_units = opts.external_load.as_ref().map_or(0, |load| load.units());
         let mut queue_depth = 0u64;
         for queue in &queues {
             if let Ok(m) = queue.metrics().await {
@@ -232,8 +229,7 @@ fn decide(
     tokens_in_use: usize,
     external_units: usize,
 ) -> (usize, ConsumerTune) {
-    let external_pressure = external_units
-        .saturating_mul(opts.api_protect_connections)
+    let external_pressure = external_units.saturating_mul(opts.api_protect_connections)
         / opts.max_compute_tokens.max(1);
     let effective_connections = connections.saturating_add(external_pressure);
     if effective_connections >= opts.api_protect_connections {

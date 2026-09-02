@@ -11,6 +11,8 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ### Added
 
+- **Learner join (elastic scale-out)** — `/cluster/join` defaults to [`JoinRole::Learner`](crates/crafty-proto/src/join.rs); voters only with `allow_voter_join`. Full peer for workers/ingress; queue replication fan-out stays O(voters). See [cluster-elasticity § voters vs learners](docs/decisions/cluster-elasticity.md#voters-vs-learners-elastic-scale-out).
+- **Automatic voter replacement** — leader promotes the lowest-id caught-up learner when a voter is permanently unreachable (`voter_replacement`, default on). Pure planner in `crafty-core::membership_repair`.
 - **External compute load** — [`JobOpts::compute_cost`](crates/crafty/src/job_opts.rs) reserves
   weighted units from [`ComputeTokenPool`](crates/crafty-actor/src/compute_token.rs) for
   subprocess-heavy handlers; optional [`ExternalLoad`](crates/crafty-actor/src/external_load.rs)
@@ -19,6 +21,7 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ### Changed
 
+- **`crafty-node`** — removed from crates.io; `publish = false` (repo/e2e binary only).
 - **`BacklogFeedOpts::consumer_instances`** — defaults to `ConsumerCount::Live`
   (`reachable_nodes × per_node` each poll); use `ConsumerCount::Fixed(n)` to opt out of
   elastic window sizing.

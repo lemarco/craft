@@ -25,6 +25,7 @@ Producer (any node)          Leader QueueService          Workers (any node)
 - **Default backend:** `RedbJobQueue` — no Redis
 - **Cross-node consume:** `ClusterJobQueue` on followers
 - **Failover:** voter replication; new leader serves same backlog from local redb
+- **Elastic join:** scale-out VPS nodes join as **learners** (default) — full peers for workers/ingress, not voters; queue fan-out stays O(voters)
 
 ## Quick start (`CraftyApp`)
 

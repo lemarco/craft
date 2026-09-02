@@ -15,6 +15,7 @@ mod config;
 mod failure_detector;
 pub mod kv;
 mod log;
+mod membership_repair;
 mod node;
 mod rng;
 mod shard;
@@ -31,6 +32,10 @@ pub use failure_detector::{
     ReachabilityConfig,
 };
 pub use kv::{Kv, KvCommand, KvError, KvMachine, KvQuery, KvResponse};
+pub use membership_repair::{
+    DEFAULT_VOTER_REPLACEMENT_GRACE_MULTIPLIER, occupied_node_ids, pick_promotion_candidate,
+    plan_voter_replacement, voter_replacement_grace_ticks,
+};
 pub use node::{
     CatalogProposeError, Committed, Config, MembershipError, NotLeader, Output, Persist, RaftNode,
     ReadId, Role, SnapshotState,

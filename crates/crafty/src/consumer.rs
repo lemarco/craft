@@ -152,7 +152,7 @@ pub struct ConsumerOpts {
     /// Maximum jobs leased per poll ([`run_queue_consumer`] batch size).
     pub batch: usize,
     /// Sleep between polls when the queue is empty.
-    pub     idle_sleep: Duration,
+    pub idle_sleep: Duration,
     /// Token units reserved per handler when a workload pool is wired (default 1).
     pub compute_cost: usize,
     /// Optional effectively-once guard around the handler.

@@ -81,9 +81,7 @@ pub struct ComputeGuard {
 
 impl Drop for ComputeGuard {
     fn drop(&mut self) {
-        self.pool
-            .in_use
-            .fetch_sub(self.weight, Ordering::AcqRel);
+        self.pool.in_use.fetch_sub(self.weight, Ordering::AcqRel);
         self.pool.notify.notify_waiters();
     }
 }

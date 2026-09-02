@@ -26,8 +26,8 @@ use crafty_net::{
     server_config,
 };
 use crafty_proto::{
-    CatalogCommand, JoinRejection, JoinRequest, JoinResponse, Membership, NodeId, PROTOCOL_VERSION,
-    QueueAutoscalePolicyCommand,
+    CatalogCommand, JoinRejection, JoinRequest, JoinResponse, JoinRole, Membership, NodeId,
+    PROTOCOL_VERSION, QueueAutoscalePolicyCommand,
 };
 use crafty_storage::GroupRedbLayout;
 use tokio::net::TcpListener;
@@ -494,6 +494,30 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
     #[must_use]
     pub fn allow_join(mut self, allow: bool) -> Self {
         self.runtime.allow_join = allow;
+        self
+    }
+
+    /// Accept [`JoinRole::Voter`] on `/cluster/join`. Default is learner-only
+    /// elastic join; enable for rare control-plane expansion.
+    #[must_use]
+    pub fn allow_voter_join(mut self, allow: bool) -> Self {
+        self.runtime.allow_voter_join = allow;
+        self
+    }
+
+    /// When `true` (default), the leader replaces a permanently unreachable
+    /// voter by promoting the lowest-id caught-up learner.
+    #[must_use]
+    pub fn voter_replacement(mut self, enabled: bool) -> Self {
+        self.runtime.voter_replacement = enabled;
+        self
+    }
+
+    /// Override the logical-tick grace period before an unreachable voter is
+    /// replaced (tests / tuning). Default: `6 ×` reachability window.
+    #[must_use]
+    pub fn voter_replacement_grace_ticks(mut self, ticks: u64) -> Self {
+        self.runtime.voter_replacement_grace_ticks = Some(ticks);
         self
     }
 
@@ -2365,6 +2389,7 @@ async fn join_cluster(
         protocol_version: PROTOCOL_VERSION,
         node_id: Some(node_id),
         advertise_addr: advertise.to_string(),
+        role: JoinRole::Learner,
     };
     for attempt in 0..JOIN_ATTEMPTS {
         let last = attempt + 1 == JOIN_ATTEMPTS;
@@ -2445,6 +2470,7 @@ async fn join_cluster_auto(
         protocol_version: PROTOCOL_VERSION,
         node_id: None,
         advertise_addr: advertise.to_string(),
+        role: JoinRole::Learner,
     };
     for attempt in 0..JOIN_ATTEMPTS {
         let last = attempt + 1 == JOIN_ATTEMPTS;

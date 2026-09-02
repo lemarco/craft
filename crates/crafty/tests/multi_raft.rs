@@ -6,8 +6,8 @@ use crafty::cluster::CraftyCluster;
 use crafty::core::RaftGroupId;
 use crafty::net::{LocalNetwork, send_client_request, send_group_migrate, send_join_request};
 use crafty::proto::{
-    ClientRequest, ClientResponse, GroupMigrateRequest, JoinRequest, JoinResponse, NodeId,
-    PROTOCOL_VERSION,
+    ClientRequest, ClientResponse, GroupMigrateRequest, JoinRequest, JoinResponse, JoinRole,
+    NodeId, PROTOCOL_VERSION,
 };
 use crafty::storage::LogStore;
 use crafty_test_support::{
@@ -359,6 +359,7 @@ async fn join_fourth_node(
         protocol_version: PROTOCOL_VERSION,
         node_id: Some(joiner_id),
         advertise_addr: "node4.local:7443".to_string(),
+        role: JoinRole::Learner,
     };
     let response = send_join_request(net, leader.node_id(), &request)
         .await

@@ -9,7 +9,7 @@ use crate::{Membership, NodeId};
 pub struct LeaveRequest {
     /// Wire/protocol version (join-version-skew).
     pub protocol_version: u32,
-    /// Node id to remove from the committed voter set.
+    /// Node id to remove from committed voters or learners.
     pub node_id: NodeId,
 }
 
@@ -47,7 +47,7 @@ pub enum LeaveRejection {
     },
     /// The cluster is not currently accepting leaves (`--allow-leave` off).
     LeavesDisabled,
-    /// `node_id` is not in the committed voter set.
+    /// `node_id` is not in the committed voter or learner set.
     NotMember,
     /// Removing `node_id` would leave an empty voter set.
     LastMember,

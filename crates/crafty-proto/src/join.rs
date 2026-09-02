@@ -4,6 +4,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Membership, NodeId};
 
+/// Whether a joining node enters the committed voter set or the learner set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum JoinRole {
+    /// Non-voting cluster member — full peer for traffic and workers; default
+    /// for elastic scale-out.
+    #[default]
+    Learner,
+    /// Voting member — increases quorum size and queue replication fan-out.
+    /// Requires explicit opt-in on the leader (`allow_voter_join`).
+    Voter,
+}
+
 /// A request from a new node asking to join the cluster.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JoinRequest {
@@ -14,6 +27,9 @@ pub struct JoinRequest {
     pub node_id: Option<NodeId>,
     /// Address peers should use to reach the joining node.
     pub advertise_addr: String,
+    /// Voter (rare, seed expansion) or learner (default elastic join).
+    #[serde(default)]
+    pub role: JoinRole,
 }
 
 /// The response to a [`JoinRequest`].
@@ -74,6 +90,8 @@ pub enum JoinRejection {
     JoinsDisabled,
     /// A node with this id is already a member.
     Duplicate,
+    /// Voter join requested but the cluster rejects voter expansion.
+    VoterJoinDisabled,
     /// Any other refusal, human-readable.
     Other(String),
 }

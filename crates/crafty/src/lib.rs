@@ -90,8 +90,8 @@ pub use crafty_actor::WorkloadOpts;
 pub use crafty_actor::{
     BacklogFeedOpts, BacklogItem, BacklogRegistry, BacklogSettleOutbox, BacklogSettleOutboxOpts,
     CompositeScheduleSource, ConsumerCount, ExternalBacklog, ExternalLoad,
-    InMemoryBacklogSettleOutbox, InMemoryExternalBacklog, ManualExternalLoad, ScheduleError, SchedulePoll, ScheduleSource, Settlement,
-    StaticScheduleSource,
+    InMemoryBacklogSettleOutbox, InMemoryExternalBacklog, ManualExternalLoad, ScheduleError,
+    SchedulePoll, ScheduleSource, Settlement, StaticScheduleSource,
 };
 pub use cron_opts::CronOpts;
 pub use gateway::{

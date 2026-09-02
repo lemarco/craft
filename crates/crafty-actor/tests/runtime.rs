@@ -18,7 +18,7 @@ use crafty_actor::crafty_net::{
 };
 use crafty_actor::crafty_proto::{
     AppendEntries, ClientRequest, ClientResponse, JoinRejection, JoinRequest, JoinResponse,
-    LeaveRejection, LeaveRequest, LeaveResponse, LogEntry, LogId, LogIndex, NodeId,
+    JoinRole, LeaveRejection, LeaveRequest, LeaveResponse, LogEntry, LogId, LogIndex, NodeId,
     PROTOCOL_VERSION, RaftRpc, Round, SagaJournalCommand, Term,
 };
 use crafty_actor::crafty_storage::{
@@ -55,19 +55,28 @@ impl Cluster {
     /// Spawn a node runtime for `id` (initial membership `members`) and attach
     /// its request handler to the shared network. Does not add it to `ids`.
     fn spawn_one(&mut self, id: NodeId, members: impl IntoIterator<Item = NodeId>) {
-        let node = RaftNode::new(id, members, fast_raft_config_with_seed(7));
-        let driver = RaftDriver::new(node, Kv::default());
-        let transport: Arc<dyn Transport> = Arc::new(self.net.clone());
-        let handle = spawn_node(
-            driver,
-            Arc::clone(&transport),
-            &RuntimeConfig {
+        self.spawn_one_with_config(
+            id,
+            members,
+            RuntimeConfig {
                 tick_period: TICK_PERIOD,
                 allow_join: true,
                 allow_leave: true,
                 ..RuntimeConfig::default()
             },
         );
+    }
+
+    fn spawn_one_with_config(
+        &mut self,
+        id: NodeId,
+        members: impl IntoIterator<Item = NodeId>,
+        config: RuntimeConfig,
+    ) {
+        let node = RaftNode::new(id, members, fast_raft_config_with_seed(7));
+        let driver = RaftDriver::new(node, Kv::default());
+        let transport: Arc<dyn Transport> = Arc::new(self.net.clone());
+        let handle = spawn_node(driver, Arc::clone(&transport), &config);
         let service: Arc<dyn RequestHandler> =
             Arc::new(NodeService::new(handle.clone(), Arc::clone(&transport)));
         self.net.attach(id, service);
@@ -340,15 +349,12 @@ async fn client_wire_propose_and_query_round_trip() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_new_node_joins_a_running_cluster() {
-    // E5 (membership-early, join-rpc): a fourth node joins a live 3-node cluster via
-    // /cluster/join, the leader runs a joint-consensus membership change, and
-    // the joiner catches up as a follower.
+async fn a_new_node_joins_a_running_cluster_as_learner() {
+    // Elastic join: default role is learner — full peer, not a voter.
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let mut cluster = Cluster::start(&ids);
     let leader = cluster.wait_for_leader().await;
 
-    // Seed some state the joiner must replicate.
     cluster.handles[&leader]
         .propose(KvCommand::Set {
             key: "seed".into(),
@@ -357,20 +363,17 @@ async fn a_new_node_joins_a_running_cluster() {
         .await
         .expect("seed propose");
 
-    // Bring up node 4. It knows the post-join member set but starts with an
-    // empty log; pre-vote keeps it from disrupting the existing leader.
     let joiner = NodeId(4);
     let full = [NodeId(1), NodeId(2), NodeId(3), NodeId(4)];
     cluster.spawn_one(joiner, full.iter().copied());
     cluster.ids.push(joiner);
 
-    // Ask to join by contacting a *follower* — it should transparently forward
-    // to the leader, which commits the membership change.
     let entry = ids.into_iter().find(|id| *id != leader).unwrap();
     let request = JoinRequest {
         protocol_version: PROTOCOL_VERSION,
         node_id: Some(joiner),
         advertise_addr: "node4.local:7443".to_string(),
+        role: JoinRole::Learner,
     };
     let response = send_join_request(&cluster.net, entry, &request)
         .await
@@ -379,15 +382,17 @@ async fn a_new_node_joins_a_running_cluster() {
     match response {
         JoinResponse::Accepted { membership, .. } => {
             assert!(
-                membership.voters.contains(&joiner),
-                "new node must be a voter in the committed membership: {membership:?}"
+                membership.learners.contains(&joiner),
+                "new node must join as learner: {membership:?}"
+            );
+            assert!(
+                !membership.voters.contains(&joiner),
+                "learner join must not add a voter: {membership:?}"
             );
         }
         other => panic!("expected Accepted, got {other:?}"),
-    }
+    };
 
-    // The joiner should converge to a follower that has caught up to the
-    // cluster's committed state (including the seed command).
     let converged = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             let leader_commit = cluster.handles[&leader]
@@ -408,7 +413,6 @@ async fn a_new_node_joins_a_running_cluster() {
     .await;
     assert!(converged.is_ok(), "joiner failed to catch up in time");
 
-    // A duplicate join is rejected.
     let dup = send_join_request(&cluster.net, leader, &request)
         .await
         .expect("duplicate join request");
@@ -422,11 +426,11 @@ async fn a_new_node_joins_a_running_cluster() {
         "expected Duplicate, got {dup:?}"
     );
 
-    // A version-skewed join is hard-rejected (join-version-skew).
     let skew = JoinRequest {
         protocol_version: PROTOCOL_VERSION + 1,
         node_id: Some(NodeId(5)),
         advertise_addr: "node5.local:7443".to_string(),
+        role: JoinRole::Learner,
     };
     let skew_resp = send_join_request(&cluster.net, leader, &skew)
         .await
@@ -445,6 +449,101 @@ async fn a_new_node_joins_a_running_cluster() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn voter_join_requires_explicit_opt_in() {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let cluster = Cluster::start(&ids);
+    let leader = cluster.wait_for_leader().await;
+
+    let request = JoinRequest {
+        protocol_version: PROTOCOL_VERSION,
+        node_id: Some(NodeId(4)),
+        advertise_addr: "node4.local:7443".to_string(),
+        role: JoinRole::Voter,
+    };
+    let response = send_join_request(&cluster.net, leader, &request)
+        .await
+        .expect("voter join request");
+    assert!(
+        matches!(
+            response,
+            JoinResponse::Rejected {
+                reason: JoinRejection::VoterJoinDisabled
+            }
+        ),
+        "expected VoterJoinDisabled, got {response:?}"
+    );
+
+    cluster.shutdown();
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_new_node_joins_as_voter_when_enabled() {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let config = RuntimeConfig {
+        tick_period: TICK_PERIOD,
+        allow_join: true,
+        allow_leave: true,
+        allow_voter_join: true,
+        ..RuntimeConfig::default()
+    };
+    let mut cluster = Cluster {
+        handles: HashMap::new(),
+        ids: Vec::new(),
+        net: LocalNetwork::new(),
+    };
+    for &id in &ids {
+        cluster.spawn_one_with_config(id, ids, config.clone());
+        cluster.ids.push(id);
+    }
+    let leader = cluster.wait_for_leader().await;
+
+    cluster.handles[&leader]
+        .propose(KvCommand::Set {
+            key: "seed".into(),
+            value: "state".into(),
+        })
+        .await
+        .expect("seed propose");
+
+    let joiner = NodeId(4);
+    let full = [NodeId(1), NodeId(2), NodeId(3), NodeId(4)];
+    cluster.spawn_one_with_config(
+        joiner,
+        full.iter().copied(),
+        RuntimeConfig {
+            tick_period: TICK_PERIOD,
+            allow_join: true,
+            allow_leave: true,
+            allow_voter_join: true,
+            ..RuntimeConfig::default()
+        },
+    );
+    cluster.ids.push(joiner);
+
+    let request = JoinRequest {
+        protocol_version: PROTOCOL_VERSION,
+        node_id: Some(joiner),
+        advertise_addr: "node4.local:7443".to_string(),
+        role: JoinRole::Voter,
+    };
+    let response = send_join_request(&cluster.net, leader, &request)
+        .await
+        .expect("join request");
+
+    match response {
+        JoinResponse::Accepted { membership, .. } => {
+            assert!(
+                membership.voters.contains(&joiner),
+                "voter join must add to voters: {membership:?}"
+            );
+        }
+        other => panic!("expected Accepted, got {other:?}"),
+    };
+
+    cluster.shutdown();
+}
+
+#[tokio::test(start_paused = true)]
 async fn leader_assigns_node_id_when_join_request_omits_it() {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let cluster = Cluster::start(&ids);
@@ -454,6 +553,7 @@ async fn leader_assigns_node_id_when_join_request_omits_it() {
         protocol_version: PROTOCOL_VERSION,
         node_id: None,
         advertise_addr: "auto.local:7443".to_string(),
+        role: JoinRole::Learner,
     };
     let response = send_join_request(&cluster.net, leader, &request)
         .await
@@ -466,7 +566,7 @@ async fn leader_assigns_node_id_when_join_request_omits_it() {
             ..
         } => {
             assert_eq!(node_id, NodeId(4));
-            assert!(membership.voters.contains(&NodeId(4)));
+            assert!(membership.learners.contains(&NodeId(4)));
         }
         other => panic!("expected Accepted, got {other:?}"),
     }
@@ -487,6 +587,7 @@ async fn a_node_leaves_a_running_cluster() {
         protocol_version: PROTOCOL_VERSION,
         node_id: Some(joiner),
         advertise_addr: "node4.local:7443".to_string(),
+        role: JoinRole::Learner,
     };
     let join_resp = send_join_request(&cluster.net, leader, &join_request)
         .await
@@ -502,7 +603,7 @@ async fn a_node_leaves_a_running_cluster() {
         .expect("leave");
     match leave_resp {
         LeaveResponse::Accepted { membership, .. } => {
-            assert!(!membership.voters.contains(&joiner));
+            assert!(!membership.learners.contains(&joiner));
         }
         other => panic!("expected Accepted, got {other:?}"),
     }
@@ -518,6 +619,96 @@ async fn a_node_leaves_a_running_cluster() {
             }
         ),
         "expected NotMember, got {dup:?}"
+    );
+
+    cluster.shutdown();
+}
+
+#[tokio::test(start_paused = true)]
+async fn unreachable_voter_is_replaced_by_caught_up_learner() {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let config = RuntimeConfig {
+        tick_period: TICK_PERIOD,
+        allow_join: true,
+        allow_leave: true,
+        voter_replacement: true,
+        voter_replacement_grace_ticks: Some(3),
+        ..RuntimeConfig::default()
+    };
+    let mut cluster = Cluster {
+        handles: HashMap::new(),
+        ids: Vec::new(),
+        net: LocalNetwork::new(),
+    };
+    for &id in &ids {
+        cluster.spawn_one_with_config(id, ids, config.clone());
+        cluster.ids.push(id);
+    }
+    let leader = cluster.wait_for_leader().await;
+
+    cluster.handles[&leader]
+        .propose(KvCommand::Set {
+            key: "seed".into(),
+            value: "state".into(),
+        })
+        .await
+        .expect("seed propose");
+
+    let victim = ids
+        .into_iter()
+        .find(|id| *id != leader)
+        .expect("follower to partition");
+    let joiner = NodeId(4);
+    let full = [NodeId(1), NodeId(2), NodeId(3), NodeId(4)];
+    cluster.spawn_one_with_config(joiner, full.iter().copied(), config.clone());
+    cluster.ids.push(joiner);
+
+    let join_request = JoinRequest {
+        protocol_version: PROTOCOL_VERSION,
+        node_id: Some(joiner),
+        advertise_addr: "node4.local:7443".to_string(),
+        role: JoinRole::Learner,
+    };
+    let join_resp = send_join_request(&cluster.net, leader, &join_request)
+        .await
+        .expect("learner join");
+    assert!(matches!(join_resp, JoinResponse::Accepted { .. }));
+
+    let caught_up = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let target = cluster.handles[&leader]
+                .status()
+                .await
+                .unwrap()
+                .commit_index;
+            if let Some(s) = cluster.handles[&joiner].status().await
+                && s.commit_index >= target
+                && target.0 > 0
+            {
+                break;
+            }
+            advance(TICK_PERIOD).await;
+        }
+    })
+    .await;
+    assert!(caught_up.is_ok(), "learner failed to catch up");
+
+    assert!(cluster.net.detach(victim), "partition victim");
+
+    let replaced = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if let Some(status) = cluster.handles[&leader].status().await {
+                if status.voters.contains(&joiner) && !status.voters.contains(&victim) {
+                    return status;
+                }
+            }
+            advance(TICK_PERIOD).await;
+        }
+    })
+    .await;
+    assert!(
+        replaced.is_ok(),
+        "leader did not replace unreachable voter with learner"
     );
 
     cluster.shutdown();

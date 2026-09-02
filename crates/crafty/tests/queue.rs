@@ -12,7 +12,7 @@ use crafty::cluster::{
 use crafty::net::LocalNetwork;
 use crafty::net::send_join_request;
 use crafty::proto::{self, NodeId};
-use crafty::proto::{JoinRequest, JoinResponse, PROTOCOL_VERSION};
+use crafty::proto::{JoinRequest, JoinResponse, JoinRole, PROTOCOL_VERSION};
 use crafty_test_support::{
     KvMachine, TICK_PERIOD, advance, assert_eq, await_crafty_leader, eventually_async_default,
     eventually_default, fast_raft_config_with_seed, wait_for_crafty_stopped,
@@ -536,6 +536,7 @@ async fn membership_autoscale_invokes_join_hook() {
                         protocol_version: PROTOCOL_VERSION,
                         node_id: Some(joiner_id),
                         advertise_addr: "node4.local:7443".to_string(),
+                        role: JoinRole::Learner,
                     },
                 )
                 .await

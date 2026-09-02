@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-05  
-**Updated:** 2026-08-28 — merged elastic-cluster, one-worker-per-vps, auto-spawn-on-join, scale-targets, supervisor-leader
+**Updated:** 2026-09-02 — learner join default, voter replacement
 
 ## Context
 
@@ -25,7 +25,7 @@ NODE_ID=2 JOIN_ADDR=vps1:7443 cargo run   # framework spawns workers when joined
 
 | User intent | Production |
 |-------------|------------|
-| Add VPS | Deploy with `JOIN_ADDR` → auto worker on new node |
+| Add VPS | Deploy with `JOIN_ADDR` → joins as **learner** → auto worker on new node |
 | Match N VPSes | `scale_cluster(N)` or rely on auto workers = 1 per node |
 | Message workers | `registry.cluster("workers")?.send(...)` |
 
@@ -92,7 +92,20 @@ Disable: `.auto_workers([])` and manage manually.
 | Write throughput | moderate per group; scale via multi-Raft ([multi-raft](multi-raft.md)) |
 | HTTP/3 | one QUIC conn per peer; batch append 256 |
 
-`scale_cluster(10)` requires **10 live nodes** in production. More VPSes = more worker compute and fault tolerance, not linear write multiplication on one log.
+`scale_cluster(10)` requires **10 live nodes** in production. More VPSes = more worker compute and ingress capacity, not growth of the Meta-Raft voter set.
+
+## Voters vs learners (elastic scale-out)
+
+**Elastic VPS nodes must not become Raft voters by default.** Each machine is a full peer (mTLS, ingress, workers, actors), but only a **small, stable voter set** (typically the 3–5 seed nodes) participates in quorum and queue replication fan-out. Adding workers through `JOIN_ADDR` joins as a **learner**: same traffic and compute role, no vote, not counted in queue `replicate_ops` fan-out.
+
+| Role | Quorum / queue replication | Workers / ingress | When |
+|------|---------------------------|-------------------|------|
+| **Voter** | yes | yes | Bootstrap seeds; rare expansion via `JoinRole::Voter` + `allow_voter_join` |
+| **Learner** | no (receives log) | yes | Default for every elastic `JOIN_ADDR` deploy |
+
+When a voter is permanently unreachable, the leader **replaces** it: remove the dead voter, promote the **lowest-id caught-up learner** (deterministic). Brief reboots do not trigger replacement — grace is `6 ×` the reachability silence window.
+
+Builder: `allow_voter_join(false)` (default), `voter_replacement(true)` (default). Wire: `JoinRole::Learner` (default on `/cluster/join`).
 
 ## Supervisor — leader-only reconciliation
 
@@ -108,7 +121,7 @@ Disable: `.auto_workers([])` and manage manually.
 
 Non-leaders forward `scale_cluster` and post-join callbacks to leader ([client-and-routing](client-and-routing.md) forward pattern). During election: `503` / retry.
 
-Leader reconciliation is **declarative**: desired state = N auto workers on N nodes; diff vs directory; idempotent spawns. Uses `reachable_nodes()` for liveness-aware planning ([cluster-membership](cluster-membership.md#liveness-vs-membership)).
+Leader reconciliation is **declarative**: desired state = N auto workers on N nodes; diff vs directory; idempotent spawns. Uses `placement_nodes()` (reachable voters + reachable learners) for liveness-aware planning ([cluster-membership](cluster-membership.md#liveness-vs-membership)).
 
 **Rejected:** every node supervises cluster-wide (split-brain placement risk).
 

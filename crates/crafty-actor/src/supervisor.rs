@@ -35,9 +35,13 @@ use crate::registry::UserActor;
 pub trait ClusterState: Send + Sync {
     /// Whether this node is currently the Raft leader.
     fn is_leader(&self) -> bool;
-    /// The current committed voter set (Raft membership). Used as the placement
-    /// target: instances are only ever spawned onto committed voters.
+    /// The current committed voter set (Raft membership). Queue replication
+    /// fan-out follows [`reachable_nodes`](Self::reachable_nodes).
     fn live_nodes(&self) -> Vec<NodeId>;
+    /// All committed cluster members (voters ∪ learners) — elastic peers included.
+    fn cluster_nodes(&self) -> Vec<NodeId> {
+        self.live_nodes()
+    }
     /// The voters currently believed **reachable** — a liveness signal distinct
     /// from membership (liveness-vs-membership). Defaults to [`live_nodes`](Self::live_nodes)
     /// so an implementation with no failure detector behaves as before (every
@@ -46,6 +50,10 @@ pub trait ClusterState: Send + Sync {
     /// waiting for a `ConfChange`.
     fn reachable_nodes(&self) -> Vec<NodeId> {
         self.live_nodes()
+    }
+    /// Nodes eligible for worker placement (reachable voters + reachable learners).
+    fn placement_nodes(&self) -> Vec<NodeId> {
+        self.reachable_nodes()
     }
     /// The current Raft leader hint for forwarding (queue wire, client routing).
     fn leader_id(&self) -> Option<NodeId> {
@@ -60,8 +68,14 @@ impl<T: ClusterState + ?Sized> ClusterState for Arc<T> {
     fn live_nodes(&self) -> Vec<NodeId> {
         (**self).live_nodes()
     }
+    fn cluster_nodes(&self) -> Vec<NodeId> {
+        (**self).cluster_nodes()
+    }
     fn reachable_nodes(&self) -> Vec<NodeId> {
         (**self).reachable_nodes()
+    }
+    fn placement_nodes(&self) -> Vec<NodeId> {
+        (**self).placement_nodes()
     }
     fn leader_id(&self) -> Option<NodeId> {
         (**self).leader_id()
@@ -246,8 +260,9 @@ impl<S: ClusterState> ClusterSupervisor<S> {
             };
         }
         // Placement follows liveness, not just committed membership (liveness-vs-membership):
-        // a crashed-but-still-voter host is excluded until it acks again.
-        let reachable = self.state.reachable_nodes();
+        // a crashed-but-still-voter host is excluded until it acks again; learners
+        // join the reachable set when they ack heartbeats.
+        let reachable = self.state.placement_nodes();
         let specs = self.managed.lock().unwrap().clone();
         let mut groups = Vec::with_capacity(specs.len());
         for spec in specs {

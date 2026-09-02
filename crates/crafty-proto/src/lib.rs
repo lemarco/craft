@@ -39,7 +39,7 @@ pub use group_migrate::{
     GroupMigrateReply, GroupMigrateRequest, GroupMigrationBundle, GroupMigrationHardState,
     GroupMigrationSnapshot, GroupMigrationSnapshotMeta,
 };
-pub use join::{JoinRejection, JoinRequest, JoinResponse, PeerBook, PeerEntry};
+pub use join::{JoinRejection, JoinRequest, JoinResponse, JoinRole, PeerBook, PeerEntry};
 pub use leave::{LeaveRejection, LeaveRequest, LeaveResponse};
 pub use queue::{
     QueueAckBatchReply, QueueAckBatchRequest, QueueAckReply, QueueAckRequest, QueueBatchEnqueueJob,

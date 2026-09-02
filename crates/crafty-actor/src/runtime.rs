@@ -34,13 +34,14 @@
 //! * **Fatal errors are silent**: a corrupt-log / state-machine failure stops
 //!   the loop with no diagnostic until `tracing` lands (Track H).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::Duration;
 
 use crafty_core::{
     CatalogProposeError, Command as _, MembershipError, Query as _, ReadId, Role, StateMachine,
-    plan_catalog_expansion,
+    occupied_node_ids, pick_promotion_candidate, plan_catalog_expansion, plan_voter_replacement,
+    voter_replacement_grace_ticks,
 };
 use crafty_net::transport::{Body, BoxFuture};
 use crafty_net::{
@@ -50,9 +51,10 @@ use crafty_net::{
 };
 use crafty_proto::{
     CatalogAddRequest, CatalogAddResponse, CatalogCommand, CatalogRejection, ClientRequest,
-    ClientResponse, JoinRejection, JoinRequest, JoinResponse, LeaveRejection, LeaveRequest,
-    LeaveResponse, LogIndex, NodeId, PROTOCOL_VERSION, QueueAutoscalePolicyCommand, RaftRpc,
-    RaftRpcReply, SagaJournalCommand, Term, TwoPhaseJournalCommand, protocol_version_compatible,
+    ClientResponse, JoinRejection, JoinRequest, JoinResponse, JoinRole, LeaveRejection,
+    LeaveRequest, LeaveResponse, LogIndex, NodeId, PROTOCOL_VERSION, QueueAutoscalePolicyCommand,
+    RaftRpc, RaftRpcReply, SagaJournalCommand, Term, TwoPhaseJournalCommand,
+    protocol_version_compatible,
 };
 use tokio::sync::{mpsc, oneshot};
 
@@ -101,6 +103,8 @@ pub struct NodeStatus {
     /// drops voters that have stopped acking heartbeats (crashed / partitioned)
     /// even though they remain committed voters; a follower reports all voters.
     pub reachable: Vec<NodeId>,
+    /// Voters plus learners believed reachable (worker placement / auto-spawn).
+    pub reachable_members: Vec<NodeId>,
 }
 
 /// Internal mailbox messages processed by the runtime loop.
@@ -217,6 +221,16 @@ pub struct RuntimeConfig {
     /// `false`, `/cluster/join` requests are rejected with
     /// [`JoinRejection::JoinsDisabled`].
     pub allow_join: bool,
+    /// Whether join requests with [`JoinRole::Voter`] are accepted. Elastic
+    /// scale-out uses [`JoinRole::Learner`] (default); voter joins are for rare
+    /// control-plane expansion only.
+    pub allow_voter_join: bool,
+    /// When `true`, the leader replaces a voter unreachable beyond the grace
+    /// window by promoting the lowest-id caught-up learner.
+    pub voter_replacement: bool,
+    /// Override grace window in logical ticks before voter replacement. `None`
+    /// uses `6 ×` the reachability silence window.
+    pub voter_replacement_grace_ticks: Option<u64>,
     /// Whether this node accepts cluster leaves (`--allow-leave`). When `false`,
     /// `/cluster/leave` requests are rejected with
     /// [`LeaveRejection::LeavesDisabled`].
@@ -249,6 +263,9 @@ impl Default for RuntimeConfig {
         Self {
             tick_period: Duration::from_millis(50),
             allow_join: false,
+            allow_voter_join: false,
+            voter_replacement: true,
+            voter_replacement_grace_ticks: None,
             allow_leave: false,
             catalog_snapshot: None,
             on_catalog_applied: None,
@@ -269,6 +286,12 @@ impl std::fmt::Debug for RuntimeConfig {
         f.debug_struct("RuntimeConfig")
             .field("tick_period", &self.tick_period)
             .field("allow_join", &self.allow_join)
+            .field("allow_voter_join", &self.allow_voter_join)
+            .field("voter_replacement", &self.voter_replacement)
+            .field(
+                "voter_replacement_grace_ticks",
+                &self.voter_replacement_grace_ticks,
+            )
             .field("allow_leave", &self.allow_leave)
             .field(
                 "catalog_snapshot",
@@ -711,6 +734,11 @@ struct Runtime<M: StateMachine> {
     transport: Arc<dyn Transport>,
     self_tx: mpsc::UnboundedSender<Envelope<M>>,
     allow_join: bool,
+    allow_voter_join: bool,
+    voter_replacement: bool,
+    voter_replacement_grace_ticks: u64,
+    voter_unreachable_since: BTreeMap<NodeId, u64>,
+    replacement_tick: u64,
     allow_leave: bool,
     pending_proposals: HashMap<LogIndex, oneshot::Sender<Result<M::Response, ClientError>>>,
     pending_queries: HashMap<ReadId, oneshot::Sender<Result<M::Response, ClientError>>>,
@@ -1114,6 +1142,7 @@ impl<M: StateMachine> Runtime<M> {
                     voters: node.voters(),
                     learners: node.committed_membership().learners,
                     reachable: node.reachable_now(),
+                    reachable_members: node.reachable_members_now(),
                 });
             }
             Envelope::ExportMigration { respond } => {
@@ -1345,7 +1374,8 @@ impl<M: StateMachine> Runtime<M> {
         Ok(())
     }
 
-    fn next_free_node_id(occupied: &[NodeId]) -> NodeId {
+    fn next_free_node_id(voters: &[NodeId], learners: &[NodeId]) -> NodeId {
+        let occupied = occupied_node_ids(voters, learners);
         let mut n = 1u64;
         loop {
             let candidate = NodeId(n);
@@ -1386,20 +1416,35 @@ impl<M: StateMachine> Runtime<M> {
             });
             return Ok(());
         }
-        let mut voters = self.driver.node().voters();
+        let membership = self.driver.node().committed_membership();
+        let mut voters = membership.voters;
+        let mut learners = membership.learners;
         let assigned = match request.node_id {
             Some(id) => id,
-            None => Self::next_free_node_id(&voters),
+            None => Self::next_free_node_id(&voters, &learners),
         };
-        if voters.contains(&assigned) {
+        if voters.contains(&assigned) || learners.contains(&assigned) {
             let _ = respond.send(JoinResponse::Rejected {
                 reason: JoinRejection::Duplicate,
             });
             return Ok(());
         }
-        voters.push(assigned);
+        match request.role {
+            JoinRole::Learner => learners.push(assigned),
+            JoinRole::Voter => {
+                if !self.allow_voter_join {
+                    let _ = respond.send(JoinResponse::Rejected {
+                        reason: JoinRejection::VoterJoinDisabled,
+                    });
+                    return Ok(());
+                }
+                voters.push(assigned);
+            }
+        }
+        learners.sort();
+        learners.dedup();
 
-        match self.driver.propose_membership(voters, Vec::new())? {
+        match self.driver.propose_membership(voters, learners)? {
             Ok((index, step)) => {
                 self.pending_joins.insert(index, (respond, assigned));
                 let _ = self.settle(step);
@@ -1452,22 +1497,27 @@ impl<M: StateMachine> Runtime<M> {
             });
             return Ok(());
         }
-        let mut voters = self.driver.node().voters();
-        if !voters.contains(&request.node_id) {
+        let membership = self.driver.node().committed_membership();
+        let mut voters = membership.voters;
+        let mut learners = membership.learners;
+        if voters.contains(&request.node_id) {
+            if voters.len() <= 1 {
+                let _ = respond.send(LeaveResponse::Rejected {
+                    reason: LeaveRejection::LastMember,
+                });
+                return Ok(());
+            }
+            voters.retain(|id| *id != request.node_id);
+        } else if learners.contains(&request.node_id) {
+            learners.retain(|id| *id != request.node_id);
+        } else {
             let _ = respond.send(LeaveResponse::Rejected {
                 reason: LeaveRejection::NotMember,
             });
             return Ok(());
         }
-        if voters.len() <= 1 {
-            let _ = respond.send(LeaveResponse::Rejected {
-                reason: LeaveRejection::LastMember,
-            });
-            return Ok(());
-        }
-        voters.retain(|id| *id != request.node_id);
 
-        match self.driver.propose_membership(voters, Vec::new())? {
+        match self.driver.propose_membership(voters, learners)? {
             Ok((index, step)) => {
                 self.pending_leaves.insert(index, respond);
                 let _ = self.settle(step);
@@ -1616,6 +1666,55 @@ impl<M: StateMachine> Runtime<M> {
         Ok(())
     }
 
+    /// Leader-only: when a voter stays unreachable beyond the grace window,
+    /// remove it and promote the lowest-id caught-up learner (voter elasticity).
+    fn maybe_replace_unreachable_voter(&mut self) {
+        if !self.voter_replacement || !self.driver.is_leader() {
+            return;
+        }
+        let node = self.driver.node();
+        if node.is_joint() || !self.pending_joins.is_empty() || !self.pending_leaves.is_empty() {
+            return;
+        }
+        let membership = node.committed_membership();
+        if membership.learners.is_empty() {
+            return;
+        }
+        let reachable = node.reachable_now();
+        let now = self.replacement_tick;
+        let grace = self.voter_replacement_grace_ticks;
+        let match_index = node.peer_match_indices();
+        let commit_index = node.commit_index();
+        let self_id = node.id();
+
+        let mut to_replace: Option<NodeId> = None;
+        for voter in &membership.voters {
+            if *voter == self_id || reachable.contains(voter) {
+                self.voter_unreachable_since.remove(voter);
+                continue;
+            }
+            let since = self.voter_unreachable_since.entry(*voter).or_insert(now);
+            if now.saturating_sub(*since) >= grace {
+                to_replace = Some(*voter);
+                break;
+            }
+        }
+        let Some(dead) = to_replace else {
+            return;
+        };
+        let Some(promote) =
+            pick_promotion_candidate(&membership.learners, &match_index, commit_index)
+        else {
+            return;
+        };
+        let (voters, learners) =
+            plan_voter_replacement(dead, membership.voters, membership.learners, promote);
+        self.voter_unreachable_since.remove(&dead);
+        if let Ok(Ok((_, step))) = self.driver.propose_membership(voters, learners) {
+            let _ = self.settle(step);
+        }
+    }
+
     fn on_propose_membership(
         &mut self,
         voters: Vec<NodeId>,
@@ -1661,12 +1760,20 @@ where
     M: StateMachine,
 {
     let id = driver.node().id();
+    let voter_replacement_grace_ticks = config.voter_replacement_grace_ticks.unwrap_or_else(|| {
+        voter_replacement_grace_ticks(driver.node().reachability_window_ticks())
+    });
     let (tx, mut rx) = mpsc::unbounded_channel::<Envelope<M>>();
     let mut runtime = Runtime {
         driver,
         transport,
         self_tx: tx.clone(),
         allow_join: config.allow_join,
+        allow_voter_join: config.allow_voter_join,
+        voter_replacement: config.voter_replacement,
+        voter_replacement_grace_ticks,
+        voter_unreachable_since: BTreeMap::new(),
+        replacement_tick: 0,
         allow_leave: config.allow_leave,
         pending_proposals: HashMap::new(),
         pending_queries: HashMap::new(),
@@ -1704,10 +1811,12 @@ where
             tokio::select! {
                 _ = interval.tick() => {
                     runtime.two_phase_tick = runtime.two_phase_tick.saturating_add(1);
+                    runtime.replacement_tick = runtime.replacement_tick.saturating_add(1);
                     match runtime.driver.tick() {
                         Ok(step) => { let _ = runtime.settle(step); }
                         Err(_) => break,
                     }
+                    runtime.maybe_replace_unreachable_voter();
                     if runtime.maybe_gc_two_phase_prepares().is_err() {
                         break;
                     }

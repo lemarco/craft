@@ -1,7 +1,7 @@
 //! Workload governor: ingress signals tune consumers and token ceiling.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use crafty::{ConsumerOpts, CraftyApp, CraftyConfigure, JobOpts, WorkloadOpts, consumer};

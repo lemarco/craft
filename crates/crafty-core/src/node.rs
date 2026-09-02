@@ -571,10 +571,44 @@ impl RaftNode {
     pub fn voters(&self) -> Vec<NodeId> {
         self.configuration().voters()
     }
+
+    /// Non-voting learners in the committed configuration (sorted).
+    #[must_use]
+    pub fn learners(&self) -> Vec<NodeId> {
+        self.configuration().to_membership().learners
+    }
+
+    /// Highest replicated index reported by `peer` on this leader (zero if unknown).
+    #[must_use]
+    pub fn peer_match_index(&self, peer: NodeId) -> LogIndex {
+        self.match_index
+            .get(&peer)
+            .copied()
+            .unwrap_or(LogIndex::ZERO)
+    }
+
+    /// Collect `(peer, match_index)` for every configured peer except self.
+    #[must_use]
+    pub fn peer_match_indices(&self) -> BTreeMap<NodeId, LogIndex> {
+        self.configuration()
+            .members()
+            .into_iter()
+            .filter(|id| *id != self.id)
+            .map(|id| (id, self.peer_match_index(id)))
+            .collect()
+    }
     /// Whether the active configuration is a joint (transitional) config.
     #[must_use]
     pub fn is_joint(&self) -> bool {
         self.configuration().is_joint()
+    }
+
+    /// Resolved reachability silence window in logical ticks.
+    #[must_use]
+    pub fn reachability_window_ticks(&self) -> u64 {
+        self.config
+            .reachability
+            .window(self.config.election_timeout_max)
     }
 
     /// Drain accumulated effects. The runtime calls this after every event.
@@ -1591,6 +1625,49 @@ impl RaftNode {
                 }
             })
             .collect()
+    }
+
+    /// Voters plus learners that acked recently — used for worker placement and
+    /// auto-spawn on elastic joiners. Queue replication still uses
+    /// [`reachable_now`](Self::reachable_now) (voters only).
+    #[must_use]
+    pub fn reachable_members_now(&self) -> Vec<NodeId> {
+        let membership = self.configuration().to_membership();
+        let mut members = membership.voters;
+        members.extend(membership.learners);
+        members.sort();
+        members.dedup();
+        if self.role != Role::Leader {
+            return members;
+        }
+        let now = self.logical_clock;
+        members
+            .into_iter()
+            .filter(|&id| self.is_member_reachable(id, now))
+            .collect()
+    }
+
+    fn is_member_reachable(&self, peer: NodeId, now: u64) -> bool {
+        if peer == self.id {
+            return true;
+        }
+        let conf = self.configuration();
+        match self.config.reachability.detector {
+            FailureDetectorKind::AckWindow => {
+                if conf.is_voter(peer) {
+                    self.ack_liveness.is_reachable(peer)
+                } else {
+                    let window = self
+                        .config
+                        .reachability
+                        .window(self.config.election_timeout_max);
+                    self.last_ack_clock
+                        .get(&peer)
+                        .is_some_and(|&acked| now.saturating_sub(acked) <= window)
+                }
+            }
+            FailureDetectorKind::PhiAccrual => self.phi_liveness.is_reachable(peer, now),
+        }
     }
 
     fn update_liveness(&mut self) {
