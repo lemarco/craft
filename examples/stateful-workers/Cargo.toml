@@ -14,8 +14,7 @@ publish = false
 [dependencies]
 trembita = { path = "../../crates/trembita", features = ["http-jobs"] }
 trembita-runtime = { path = "../../crates/trembita-runtime" }
-trembita-showcase-client = { path = "../../crates/trembita-showcase-client" }
-trembita-showcase-common = { path = "../../crates/trembita-showcase-common" }
+trembita-tools = { path = "../../crates/trembita-tools" }
 axum = { version = "0.8", features = ["json"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net", "io-util"] }
 serde = { version = "1", features = ["derive"] }

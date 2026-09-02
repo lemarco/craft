@@ -15,12 +15,12 @@ use axum::extract::State;
 use axum::http::{HeaderMap, Method, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use trembita::actor::{UserActor, actor};
+use trembita::runtime::{UserActor, actor};
 use trembita::{
     ActorGroupOpts, TrembitaApp, TrembitaConfigure, TrembitaGatewayState, GatewayBearerIdentity,
     GatewayOpts, ReadyOpts, RunOpts,
 };
-use trembita_showcase_common::{data_dir, display_addr};
+use trembita_tools::showcase_common::{data_dir, display_addr};
 
 const DATA_DIR_NAME: &str = "trembita-showcase-realtime";
 const SESSION_TTL: Duration = Duration::from_secs(3600);

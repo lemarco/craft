@@ -98,7 +98,7 @@ Reference KV [`StateMachine`](../crates/trembita-core/src/kv.rs) (`trembita::kv`
 Register worker types with [`.workers()`](../crates/trembita/src/worker_opts.rs) and explicit [`WorkerScale`](../crates/trembita/src/worker_opts.rs) (`Fixed`, `PerNode`, or queue-driven `Auto`):
 
 ```rust
-use trembita::actor::{UserActor, actor};
+use trembita::runtime::{UserActor, actor};
 use trembita::{TrembitaApp, RunOpts, WorkerOpts, WorkerScale, workers};
 
 struct EmailWorker;

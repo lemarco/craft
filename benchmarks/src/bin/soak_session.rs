@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use trembita::actor::{UserActor, actor};
+use trembita::runtime::{UserActor, actor};
 use trembita::core::{Config, StateMachine};
 use trembita::net::LocalNetwork;
 use trembita::proto::LogIndex;
@@ -95,7 +95,7 @@ async fn await_workers(clusters: &[Arc<TrembitaCluster<Empty>>], count: usize) {
     panic!("soak_session: workers not ready (need {count} in directory + local registry)");
 }
 
-use trembita::actor::CastError;
+use trembita::runtime::CastError;
 
 fn cast_error_retryable(err: &CastError) -> bool {
     match err {

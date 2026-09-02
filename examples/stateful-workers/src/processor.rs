@@ -16,7 +16,8 @@ use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use trembita::actor::{MessageDecodeError, UserActor, actor, store_get, store_set};
+use trembita::actor_store::{store_get, store_set};
+use trembita::runtime::{MessageDecodeError, UserActor, actor};
 use serde::{Deserialize, Serialize};
 
 /// Marker stored under `order:{id}` — presence means "already handled".
@@ -32,7 +33,7 @@ pub struct ProcessorCfg {
 }
 
 pub struct OrderProcessor {
-    store: Arc<dyn trembita::actor::ActorStateStore>,
+    store: Arc<dyn trembita::actor_store::ActorStateStore>,
 }
 
 #[derive(Debug)]
@@ -61,7 +62,7 @@ impl UserActor for OrderProcessor {
     fn start(cfg: Self::Config) -> Result<Self, Self::Error> {
         std::fs::create_dir_all(&cfg.data_dir).map_err(|_| ProcessorErr)?;
         // redb file colocated with node's TREMBITA_DATA_DIR — survives process restart.
-        let store = trembita_actor_store::RedbActorStateStore::open(&cfg.data_dir.join("actor-store.redb"))
+        let store = trembita::actor_store::RedbActorStateStore::open(&cfg.data_dir.join("actor-store.redb"))
             .map_err(|_| ProcessorErr)?;
         Ok(Self {
             store: Arc::new(store),

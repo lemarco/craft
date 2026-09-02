@@ -11,7 +11,7 @@ use trembita::cluster::{
 use trembita::discovery::Seed;
 use trembita::net::PeerDirectory;
 use trembita::NodeId;
-use trembita_showcase_common::data_dir;
+use trembita_tools::showcase_common::data_dir;
 
 const DATA_DIR_NAME: &str = "trembita-showcase-self-update";
 

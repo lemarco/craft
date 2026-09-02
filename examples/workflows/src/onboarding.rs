@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use trembita::ActorGroupOpts;
 use trembita::TrembitaApp;
-use trembita::actor::{UserActor, actor};
+use trembita::runtime::{UserActor, actor};
 use trembita::client::{Client, ClientError, KeyedClient, RemoteClient, SagaOutcome, SagaPlan, SagaError};
 use trembita::proto::{decode, encode};
 use serde::{Deserialize, Serialize};

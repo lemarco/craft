@@ -13,6 +13,6 @@ publish = false
 [dependencies]
 trembita = { path = "../../crates/trembita", features = ["http-jobs"] }
 trembita-runtime = { path = "../../crates/trembita-runtime" }
-trembita-showcase-common = { path = "../../crates/trembita-showcase-common" }
+trembita-tools = { path = "../../crates/trembita-tools" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
 tracing = "0.1"

@@ -26,8 +26,8 @@ use trembita::{
     TrembitaApp, TrembitaAppBuilder, TrembitaConfigure, GatewayOpts, ReadyOpts, RunOpts, WorkerOpts,
     WorkerScale, workers,
 };
-use trembita_showcase_common::gateway_auth::ShowcaseGatewayIdentity;
-use trembita_showcase_common::{data_dir, display_addr, env_flag};
+use trembita_tools::gateway_auth::ShowcaseGatewayIdentity;
+use trembita_tools::showcase_common::{data_dir, display_addr, env_flag};
 
 use crate::migrate_counter::StatefulCounter;
 use crate::processor::{OrderProcessor, ProcessorCfg};
@@ -151,7 +151,7 @@ fn print_banner() {
 async fn cast_order(order_id: u64) -> Result<(), Box<dyn std::error::Error>> {
     let gateway = env::var("TREMBITA_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8190".into());
     debug::order_cast(order_id, &gateway);
-    let resp = trembita_showcase_client::cast_actor(&gateway, "orders", &order_id.to_string()).await?;
+    let resp = trembita_tools::showcase_client::cast_actor(&gateway, "orders", &order_id.to_string()).await?;
     if resp.is_success() {
         println!("cast order {order_id} → HTTP {}", resp.status);
         Ok(())

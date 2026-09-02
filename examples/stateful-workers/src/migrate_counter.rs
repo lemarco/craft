@@ -1,6 +1,6 @@
 //! Migratable counter actor used by local and QUIC migration demos.
 
-use trembita::actor::{ConfigCodecError, MigrationError, UserActor, actor};
+use trembita::runtime::{ConfigCodecError, MigrationError, UserActor, actor};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum CounterMsg {

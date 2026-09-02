@@ -59,7 +59,8 @@ See [`examples/stateful-workers/`](../../examples/stateful-workers/).
 ### 2. Stateful worker — write-through
 
 ```rust
-use trembita::actor::{UserActor, actor, store_get, store_set};
+use trembita::runtime::{UserActor, actor};
+use trembita::actor_store::{store_get, store_set};
 
 #[actor]
 impl UserActor for OrderProcessor {

@@ -97,8 +97,8 @@ case "$STEP" in
     run_cmd bash scripts/check-examples.sh
     ;;
   showcase)
-    log "showcase common + client"
-    run_cmd cargo check -p trembita-showcase-common -p trembita-showcase-client
+    log "trembita-tools lib + showcase client bin"
+    run_cmd cargo check -p trembita-tools --bin trembita-showcase-client
     ;;
   msrv)
     log "msrv"

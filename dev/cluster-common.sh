@@ -122,7 +122,7 @@ cluster_build_showcase() {
 
 cluster_build_client() {
     echo ">> building trembita-showcase-client"
-    cargo build -p trembita-showcase-client --manifest-path "$CRAFT_ROOT/Cargo.toml"
+    cargo build -p trembita-tools --bin trembita-showcase-client --manifest-path "$CRAFT_ROOT/Cargo.toml"
 }
 
 cluster_setup_all() {

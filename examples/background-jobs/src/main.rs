@@ -17,7 +17,7 @@ use trembita::{
     ActorGroupOpts, ConsumerOpts, TrembitaApp, TrembitaConfigure, GatewayBearerIdentity, GatewayOpts,
     JobOpts, RunOpts, consumer,
 };
-use trembita_showcase_common::{data_dir, display_addr};
+use trembita_tools::showcase_common::{data_dir, display_addr};
 
 use crate::bridge::register as register_bridge;
 use crate::ledger::LedgerWorker;

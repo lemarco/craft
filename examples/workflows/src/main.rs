@@ -7,7 +7,7 @@ use std::env;
 use std::time::Duration;
 
 use trembita::{TrembitaApp, TrembitaConfigure, GatewayOpts, ReadyOpts, RunOpts, WorkflowOpts};
-use trembita_showcase_common::{data_dir, display_addr};
+use trembita_tools::showcase_common::{data_dir, display_addr};
 
 use crate::onboarding::{apply_workers, build_plan, run_onboarding_plan};
 

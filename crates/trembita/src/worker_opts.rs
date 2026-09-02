@@ -36,7 +36,7 @@ pub enum WorkerScale {
 /// # use trembita::{TrembitaApp, RunOpts, WorkerGroup, WorkerOpts, WorkerScale, workers};
 /// #
 /// # struct OrderProcessor;
-/// # impl trembita::actor::UserActor for OrderProcessor {
+/// # impl trembita::runtime::UserActor for OrderProcessor {
 /// #     type Config = ();
 /// #     type Message = ();
 /// #     type Error = std::convert::Infallible;
@@ -272,7 +272,7 @@ impl WorkerGroup {
 /// ```
 /// # use trembita::{WorkerGroup, WorkerOpts, WorkerScale, workers};
 /// # struct A;
-/// # impl trembita::actor::UserActor for A {
+/// # impl trembita::runtime::UserActor for A {
 /// #     type Config = ();
 /// #     type Message = ();
 /// #     type Error = std::convert::Infallible;

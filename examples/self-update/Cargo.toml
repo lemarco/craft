@@ -13,7 +13,7 @@ publish = false
 
 [dependencies]
 trembita = { path = "../../crates/trembita", features = ["http-jobs", "dev-certs"] }
-trembita-showcase-common = { path = "../../crates/trembita-showcase-common" }
+trembita-tools = { path = "../../crates/trembita-tools" }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }
 tracing = "0.1"

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use trembita::cluster::TrembitaCluster;
-use trembita::actor::{ActorStateStore, InMemoryStore};
+use trembita::actor_store::{ActorStateStore, InMemoryStore};
 use trembita::client::{KeyedClient, RemoteClient, SagaOutcome, SagaPlan, SagaStep};
 use trembita::core::{RaftGroupId, Role};
 use trembita::net::LocalNetwork;

@@ -26,7 +26,7 @@ use std::time::Duration;
 use trembita::cluster::{TrembitaCluster, PemSecurity};
 use trembita::upgrade::{UpgradeMachine, UpgradeOpts, spawn_upgrade_runtime, upgrade_api};
 use trembita::ReadyOpts;
-use trembita_showcase_common::{data_dir, display_addr, env_flag};
+use trembita_tools::showcase_common::{data_dir, display_addr, env_flag};
 
 const DATA_DIR_NAME: &str = "trembita-showcase-self-update";
 
