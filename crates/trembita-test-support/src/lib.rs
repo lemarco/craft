@@ -36,5 +36,5 @@ pub use pretty_assertions::{assert_eq, assert_ne, assert_str_eq};
 
 /// Install the workspace `tracing` subscriber (respects `RUST_LOG` / `TREMBITA_LOG`).
 pub fn init_tracing() {
-    trembita_actor::init_tracing();
+    trembita_runtime::init_tracing();
 }

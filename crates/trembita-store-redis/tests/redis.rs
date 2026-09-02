@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use testcontainers_modules::redis::{REDIS_PORT, Redis};
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
-use trembita_actor::ActorStateStore;
+use trembita_actor_store::ActorStateStore;
 use trembita_store_redis::RedisStore;
 
 async fn redis_url() -> (
@@ -44,7 +44,7 @@ async fn process_order(
     store: &Arc<dyn ActorStateStore>,
     order_id: u64,
     side_effects: &AtomicU32,
-) -> Result<(), trembita_actor::StoreError> {
+) -> Result<(), trembita_actor_store::StoreError> {
     let key = format!("order:{order_id}");
     let claimed = store
         .compare_and_set(&key, None, b"processing", None)

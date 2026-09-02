@@ -43,8 +43,8 @@ No cluster topology change. No leader election for this loop. No `TREMBITA_ROLE`
 
 | Action | Mechanism |
 |--------|-----------|
-| **Hard cap** | Acquire token before running gateway handler body / consumer handler / actor ask (cluster + typed [`ActorRef`](../../crates/trembita-actor/src/registry.rs)) |
-| **Soft throttle** | Governor publishes `ConsumerTune { batch, idle_sleep, max_in_flight }` via `watch` channel — [`run_queue_consumer`](../../crates/trembita-actor/src/queue.rs) already uses `watch` for stop |
+| **Hard cap** | Acquire token before running gateway handler body / consumer handler / actor ask (cluster + typed [`ActorRef`](../../crates/trembita-runtime/src/registry.rs)) |
+| **Soft throttle** | Governor publishes `ConsumerTune { batch, idle_sleep, max_in_flight }` via `watch` channel — [`run_queue_consumer`](../../crates/trembita-jobs/src/queue.rs) already uses `watch` for stop |
 | **Preset expansion** | When `connections.active == 0` and depth > 0 → raise token ceiling toward `WorkloadOpts::max_tokens` |
 
 Default preset **`Balanced`**: protect API when hot; jobs consume slack automatically.
@@ -82,7 +82,7 @@ flowchart LR
 **Night:** few connections → governor raises job throughput (more tokens to consumers, larger batch).  
 **Day:** many connections → governor tightens consumers; API keeps tokens.
 
-Cluster-wide autoscale ([`AutoscalePolicy`](../../crates/trembita-actor/src/queue_autoscale.rs)) remains for **worker actor count across VPSes**. The governor is **local fairness** between ingress and compute on one machine.
+Cluster-wide autoscale ([`AutoscalePolicy`](../../crates/trembita-jobs/src/queue_autoscale.rs)) remains for **worker actor count across VPSes**. The governor is **local fairness** between ingress and compute on one machine.
 
 ## Removed: `TREMBITA_ROLE`
 
@@ -115,5 +115,5 @@ Edge-only ingress without local consumers is achieved by **not registering** `.j
 ## References
 
 - [cluster-elasticity](cluster-elasticity.md) — one worker/VPS; parallelism inside actor
-- [resources.rs](../../crates/trembita-actor/src/resources.rs) — `ResourceProfile` sizes worker internals, not ingress/compute split
+- [resources.rs](../../crates/trembita-runtime/src/resources.rs) — `ResourceProfile` sizes worker internals, not ingress/compute split
 - [background-jobs](../scenarios/background-jobs.md) — consumer tuning knobs today

@@ -19,7 +19,8 @@ all-features = true
 workspace = true
 
 [dependencies]
-trembita-actor.workspace = true
+trembita-jobs.workspace = true
+trembita-actor-store.workspace = true
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"] }
 thiserror.workspace = true
 

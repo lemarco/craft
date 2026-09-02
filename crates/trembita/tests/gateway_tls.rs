@@ -16,11 +16,11 @@ use tokio::net::TcpStream;
 use tokio_tungstenite::Connector;
 use tokio_tungstenite::connect_async_tls_with_config;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
-use trembita::actor::{UserActor, actor};
 use trembita::{
     ActorGroupOpts, GatewayOpts, SessionHandle, TrembitaApp, TrembitaConfigure,
     TrembitaGatewayState, spawn_gateway,
 };
+use trembita_runtime::{UserActor, actor};
 use trembita_test_support::{
     advance, boot_local_app, eventually_default, wait_for_trembita_app_leader,
 };

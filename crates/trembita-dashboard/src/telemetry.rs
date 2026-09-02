@@ -148,12 +148,12 @@ pub enum TrembitaEvent {
 impl TrembitaEvent {
     /// Map a queue wire lifecycle hook into a dashboard telemetry event.
     #[must_use]
-    pub fn from_queue_lifecycle(ev: trembita_actor::QueueLifecycleEvent) -> Self {
+    pub fn from_queue_lifecycle(ev: trembita_jobs::QueueLifecycleEvent) -> Self {
         match ev {
-            trembita_actor::QueueLifecycleEvent::Enqueued { stream, job_id } => {
+            trembita_jobs::QueueLifecycleEvent::Enqueued { stream, job_id } => {
                 Self::JobEnqueued { stream, job_id }
             }
-            trembita_actor::QueueLifecycleEvent::Leased {
+            trembita_jobs::QueueLifecycleEvent::Leased {
                 stream,
                 job_id,
                 lease_id,
@@ -167,7 +167,7 @@ impl TrembitaEvent {
                 worker_node,
                 worker_instance,
             },
-            trembita_actor::QueueLifecycleEvent::Acked {
+            trembita_jobs::QueueLifecycleEvent::Acked {
                 stream,
                 lease_id,
                 worker_node,
@@ -322,7 +322,7 @@ mod tests {
 
     #[test]
     fn queue_lifecycle_maps_to_trembita_event() {
-        let ev = TrembitaEvent::from_queue_lifecycle(trembita_actor::QueueLifecycleEvent::Leased {
+        let ev = TrembitaEvent::from_queue_lifecycle(trembita_jobs::QueueLifecycleEvent::Leased {
             stream: "jobs".into(),
             job_id: 3,
             lease_id: 99,

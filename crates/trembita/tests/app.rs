@@ -45,9 +45,9 @@ async fn trembita_app_start_local_with_data_dir_and_queue() {
 
 #[tokio::test(start_paused = true)]
 async fn trembita_app_requeue_dead_letter() {
-    use trembita::actor::WorkerId;
     use trembita::cluster::EnqueueOptions;
-    use trembita_actor::JobLifecycle;
+    use trembita_jobs::JobLifecycle;
+    use trembita_jobs::WorkerId;
 
     let base = std::env::temp_dir().join(format!(
         "trembita-app-requeue-{}",

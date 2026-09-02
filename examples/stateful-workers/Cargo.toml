@@ -13,7 +13,7 @@ publish = false
 
 [dependencies]
 trembita = { path = "../../crates/trembita", features = ["http-jobs"] }
-trembita-actor = { path = "../../crates/trembita-actor" }
+trembita-runtime = { path = "../../crates/trembita-runtime" }
 trembita-showcase-client = { path = "../../crates/trembita-showcase-client" }
 trembita-showcase-common = { path = "../../crates/trembita-showcase-common" }
 axum = { version = "0.8", features = ["json"] }

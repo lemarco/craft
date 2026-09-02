@@ -15,7 +15,7 @@ publish = false
 [dependencies]
 trembita-core = { path = "../crates/trembita-core" }
 trembita-storage = { path = "../crates/trembita-storage" }
-trembita-actor = { path = "../crates/trembita-actor" }
+trembita-runtime = { path = "../crates/trembita-runtime" }
 trembita-proto = { path = "../crates/trembita-proto" }
 trembita-sim = { path = "../crates/trembita-sim" }
 trembita = { path = "../crates/trembita" }

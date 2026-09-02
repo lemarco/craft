@@ -3,7 +3,8 @@
 use std::sync::Arc;
 
 use tokio::sync::watch;
-use trembita_actor::{ComputeTokenPool, ConsumerTune};
+use trembita_jobs::ConsumerTune;
+use trembita_runtime::ComputeTokenPool;
 
 use crate::gateway::ConnectionTracker;
 
@@ -49,8 +50,8 @@ impl WorkloadRuntime {
         Arc::clone(&self.connections)
     }
 
-    pub(crate) fn queue_consumer_workload(&self) -> trembita_actor::QueueConsumerWorkload {
-        trembita_actor::QueueConsumerWorkload {
+    pub(crate) fn queue_consumer_workload(&self) -> trembita_jobs::QueueConsumerWorkload {
+        trembita_jobs::QueueConsumerWorkload {
             tokens: self.pool(),
             tune: self.tune(),
         }

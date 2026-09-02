@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use trembita::{QueueOpts, SchedulePoll, TrembitaApp, TrembitaConfigure};
-use trembita_actor::{RecurringJob, StaticScheduleSource};
+use trembita_jobs::{RecurringJob, StaticScheduleSource};
 use trembita_test_support::boot_local_app;
 
 #[tokio::test]

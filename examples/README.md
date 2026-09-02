@@ -2,7 +2,7 @@
 
 Five standalone projects — four [product scenarios](../docs/scenarios/README.md) plus a self-update ops showcase. Each has its own `Cargo.toml`, README, `cluster.sh` (QUIC/mTLS), and `trigger.sh`.
 
-Shared helpers: [`trembita-showcase-common`](../crates/trembita-showcase-common/) (env/cluster utilities). HTTP/WS client: [`trembita-showcase-client`](../crates/trembita-showcase-client/) (built by `./cluster.sh setup`).
+Shared helpers: [`trembita-showcase-common`](../crates/trembita-tools/) (env/cluster utilities). HTTP/WS client: [`trembita-showcase-client`](../crates/trembita-tools/) (built by `./cluster.sh setup`).
 
 Excluded from the root workspace `cargo check` (like `benchmarks/`). CI runs `./scripts/check-examples.sh` on pre-push.
 

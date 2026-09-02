@@ -9,11 +9,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita_actor::trembita_core::RaftNode;
-use trembita_actor::trembita_proto::NodeId;
-use trembita_actor::{NodeHandle, NodeService, RaftDriver, RuntimeConfig, spawn_node};
 use trembita_client::{Client, RemoteClient, RetryPolicy, TypedClient};
 use trembita_net::LocalNetwork;
+use trembita_runtime::trembita_core::RaftNode;
+use trembita_runtime::trembita_proto::NodeId;
+use trembita_runtime::{NodeHandle, NodeService, RaftDriver, RuntimeConfig, spawn_node};
 use trembita_test_support::{Cmd, Kv, Qry, Resp, TICK_PERIOD, await_node_leader, fast_raft_config};
 
 fn spawn_cluster() -> (LocalNetwork, Vec<(NodeId, NodeHandle<Kv>)>) {
@@ -117,13 +117,13 @@ async fn client_fails_over_when_the_first_target_is_unreachable() {
             backoff: Duration::ZERO,
         });
 
-    let payload = trembita_actor::trembita_proto::encode(&Cmd::Set {
+    let payload = trembita_runtime::trembita_proto::encode(&Cmd::Set {
         key: "x".into(),
         value: "y".into(),
     })
     .unwrap();
     let bytes = remote.propose(payload).await.expect("failover write");
-    let resp: Resp = trembita_actor::trembita_proto::decode(&bytes).unwrap();
+    let resp: Resp = trembita_runtime::trembita_proto::decode(&bytes).unwrap();
     assert_eq!(resp, Resp::Set { previous: None });
 
     for (_, h) in &handles {

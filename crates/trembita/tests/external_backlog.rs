@@ -8,7 +8,7 @@ use trembita::{
     BacklogFeedOpts, ConsumerOpts, ExternalBacklog, JobOpts, TrembitaApp, TrembitaConfigure,
     consumer,
 };
-use trembita_actor::{BacklogItem, EnqueueOptions, InMemoryExternalBacklog, Settlement};
+use trembita_jobs::{BacklogItem, EnqueueOptions, InMemoryExternalBacklog, Settlement};
 use trembita_test_support::boot_local_app;
 
 static PROCESSED: AtomicUsize = AtomicUsize::new(0);

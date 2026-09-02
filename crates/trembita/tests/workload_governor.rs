@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use trembita::{ConsumerOpts, JobOpts, TrembitaApp, TrembitaConfigure, WorkloadOpts, consumer};
-use trembita_actor::ManualExternalLoad;
+use trembita_runtime::ManualExternalLoad;
 use trembita_test_support::boot_local_app;
 
 static HANDLED: AtomicUsize = AtomicUsize::new(0);

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Fast local test path — default workspace members (skips trembita-ops / e2e / redis),
+# Fast local test path — default workspace members (skips trembita-tools / redis),
 # nextest when available, no redundant cargo check phase.
 #
 # Usage:
 #   ./scripts/test-fast.sh                           # default-members, nextest profile=fast
 #   ./scripts/test-heavy.sh                          # all tests + 250-case proptest
 #   TREMBITA_ALL_FEATURES=1 ./scripts/test-fast.sh      # enable json-wire etc.
-#   ./scripts/test-fast.sh -p trembita-actor group_rebalance
+#   ./scripts/test-fast.sh -p trembita-runtime group_rebalance
 #   ./scripts/test-fast.sh --workspace               # full workspace (same as test-with-log)
 #   TREMBITA_FORCE_CHECK=1 ./scripts/test-fast.sh -p trembita
 #

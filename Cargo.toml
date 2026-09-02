@@ -1,15 +1,18 @@
 [workspace]
 resolver = "3"
 # Plain `cargo check` / `cargo test` (no --workspace) skips heavy optional crates
-# (trembita-ops/opendal, trembita-e2e-client, trembita-store-redis). CI always uses
-# `--workspace`. Local fast path: ./scripts/test-fast.sh
+# (trembita-tools/opendal, trembita-store-redis). CI always uses `--workspace`.
+# Local fast path: ./scripts/test-fast.sh
 default-members = [
     "crates/trembita-proto",
     "crates/trembita-core",
     "crates/trembita-storage",
     "crates/trembita-net",
     "crates/trembita-macros",
-    "crates/trembita-actor",
+    "crates/trembita-runtime",
+    "crates/trembita-jobs",
+    "crates/trembita-events",
+    "crates/trembita-actor-store",
     "crates/trembita-client",
     "crates/trembita-sim",
     "crates/trembita",
@@ -21,21 +24,18 @@ members = [
     "crates/trembita-storage",
     "crates/trembita-net",
     "crates/trembita-macros",
-    "crates/trembita-actor",
+    "crates/trembita-runtime",
+    "crates/trembita-jobs",
+    "crates/trembita-events",
+    "crates/trembita-actor-store",
     "crates/trembita-client",
     "crates/trembita-store-redis",
     "crates/trembita-dashboard",
     "crates/trembita-http",
     "crates/trembita-sim",
     "crates/trembita",
-    "crates/trembita-node",
     "crates/trembita-test-support",
-    "crates/trembita-ops",
-    "crates/trembita-e2e-client",
-    "crates/trembita-e2e-queue-client",
-    "crates/trembita-dev-client",
-    "crates/trembita-showcase-client",
-    "crates/trembita-showcase-common",
+    "crates/trembita-tools",
     "crates/trembita-backlog-postgres",
 ]
 # `benchmarks/` and `examples/` are standalone crates (own workspace tables) so
@@ -77,7 +77,10 @@ trembita-core = { path = "crates/trembita-core", version = "0.1.0" }
 trembita-storage = { path = "crates/trembita-storage", version = "0.1.0" }
 trembita-net = { path = "crates/trembita-net", version = "0.1.0" }
 trembita-macros = { path = "crates/trembita-macros", version = "0.1.0" }
-trembita-actor = { path = "crates/trembita-actor", version = "0.1.0" }
+trembita-runtime = { path = "crates/trembita-runtime", version = "0.1.0" }
+trembita-jobs = { path = "crates/trembita-jobs", version = "0.1.0" }
+trembita-events = { path = "crates/trembita-events", version = "0.1.0" }
+trembita-actor-store = { path = "crates/trembita-actor-store", version = "0.1.0" }
 trembita-client = { path = "crates/trembita-client", version = "0.1.0" }
 trembita-store-redis = { path = "crates/trembita-store-redis", version = "0.1.0" }
 trembita-dashboard = { path = "crates/trembita-dashboard", version = "0.1.0" }
@@ -85,10 +88,6 @@ trembita-http = { path = "crates/trembita-http", version = "0.1.0" }
 trembita-sim = { path = "crates/trembita-sim", version = "0.1.0" }
 trembita = { path = "crates/trembita", version = "0.1.0" }
 trembita-test-support = { path = "crates/trembita-test-support", version = "0.1.0" }
-trembita-ops = { path = "crates/trembita-ops", version = "0.1.0" }
-trembita-e2e-client = { path = "crates/trembita-e2e-client", version = "0.1.0" }
-trembita-e2e-queue-client = { path = "crates/trembita-e2e-queue-client", version = "0.1.0" }
-trembita-dev-client = { path = "crates/trembita-dev-client", version = "0.1.0" }
 trembita-backlog-postgres = { path = "crates/trembita-backlog-postgres", version = "0.1.0" }
 
 # Lints applied across the workspace (library-and-publishing).

@@ -6,7 +6,7 @@
 
 ## Context
 
-[`ComputeTokenPool`](../../crates/trembita-actor/src/compute_token.rs) is **cooperative and in-process** — the ADR states this honestly. That breaks down for the workloads teams colocate with API for night-time utilisation:
+[`ComputeTokenPool`](../../crates/trembita-runtime/src/compute_token.rs) is **cooperative and in-process** — the ADR states this honestly. That breaks down for the workloads teams colocate with API for night-time utilisation:
 
 - Browser automation (Chromium via CDP)
 - ffmpeg / image pipelines
@@ -31,7 +31,7 @@ JobOpts::new("google-parser")
     .consumer(&ParseConsumer)
 ```
 
-[`ComputeTokenPool::acquire_weighted`](../../crates/trembita-actor/src/compute_token.rs) decrements `in_use` by `n` on drop. Gateway and actor ask remain at weight `1`.
+[`ComputeTokenPool::acquire_weighted`](../../crates/trembita-runtime/src/compute_token.rs) decrements `in_use` by `n` on drop. Gateway and actor ask remain at weight `1`.
 
 On an 8-token pool, at most two `compute_cost(4)` handlers run concurrently — even if each handler spends most of its time awaiting CDP IO.
 
@@ -48,13 +48,13 @@ pub trait ExternalLoad: Send + Sync {
 }
 ```
 
-[`run_workload_governor`](../../crates/trembita-actor/src/workload.rs) maps `units()` into **effective connection pressure**:
+[`run_workload_governor`](../../crates/trembita-jobs/src/workload.rs) maps `units()` into **effective connection pressure**:
 
 `effective_connections = gateway_connections + external_units × api_protect_connections / max_compute_tokens`
 
 When external load is high, the governor publishes protective consumer tune and lowers the token ceiling — same path as hot ingress.
 
-Optional test helper: [`ManualExternalLoad`](../../crates/trembita-actor/src/external_load.rs).
+Optional test helper: [`ManualExternalLoad`](../../crates/trembita-runtime/src/external_load.rs).
 
 ## Consequences
 

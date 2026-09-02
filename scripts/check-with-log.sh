@@ -3,7 +3,7 @@
 #
 # Usage:
 #   ./scripts/check-with-log.sh                    # full workspace
-#   ./scripts/check-with-log.sh -p trembita-actor
+#   ./scripts/check-with-log.sh -p trembita-runtime
 
 set -euo pipefail
 cd "$(dirname "$0")/.."

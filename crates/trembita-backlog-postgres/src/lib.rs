@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
-use trembita_actor::{BacklogError, BacklogItem, BoxFuture, ExternalBacklog, Settlement};
+use trembita_actor_store::BoxFuture;
+use trembita_jobs::{BacklogError, BacklogItem, ExternalBacklog, Settlement};
 
 /// Column mapping for a Postgres work table.
 #[derive(Debug, Clone)]

@@ -6,10 +6,10 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use tower::ServiceExt;
-use trembita::actor::WorkerId;
 use trembita::cluster::EnqueueOptions;
 use trembita::{QueueOpts, TrembitaApp, TrembitaConfigure};
-use trembita_actor::JobLifecycle;
+use trembita_jobs::JobLifecycle;
+use trembita_jobs::WorkerId;
 use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};
 
 #[tokio::test(start_paused = true)]

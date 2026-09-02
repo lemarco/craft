@@ -10,11 +10,12 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use trembita::NodeId;
-use trembita::actor::{ActorStateStore, ConfigCodecError, InMemoryStore, UserActor};
+use trembita::actor_store::{ActorStateStore, InMemoryStore};
 use trembita::cluster::TrembitaCluster;
 use trembita::core::{Config, StateMachine};
 use trembita::net::LocalNetwork;
 use trembita::proto::{self, LogIndex};
+use trembita_runtime::{ConfigCodecError, UserActor};
 use trembita_test_support::{await_trembita_leader, eventually_async_default};
 
 // --- Minimal KV state machine (cluster consensus only) ----------------------

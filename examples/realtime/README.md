@@ -1,6 +1,6 @@
 # Real-time sessions (stateful actors)
 
-WebSocket **and authenticated HTTP** on one gateway → sticky [`ActorSession`](../../crates/trembita-actor/src/session.rs) → in-memory chat workers.
+WebSocket **and authenticated HTTP** on one gateway → sticky [`ActorSession`](../../crates/trembita-runtime/src/session.rs) → in-memory chat workers.
 
 ## What you run
 

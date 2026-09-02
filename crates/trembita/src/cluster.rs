@@ -29,20 +29,8 @@ pub use crate::upgrade::{
     spawn_upgrade_runtime, verify_sha256_hex,
 };
 pub use crate::workflow::{WorkflowBuildError, WorkflowBuilder};
-pub use trembita_actor::{
-    ActorSession, AutoscalePolicy, BacklogError, BacklogFeedOpts, BacklogItem, BacklogRegistry,
-    ClusterActorStateStore, ClusterJobQueue, ConsumerCount, DEFAULT_DRAIN_TIMEOUT,
-    DEFAULT_QUEUE_BATCH_MAX, DEFAULT_QUEUE_PREFETCH, DirectoryPolicy, DirectoryRetry,
-    EnqueueOptions, ExternalBacklog, InMemoryExternalBacklog, InMemoryJobQueue,
-    InMemoryMailboxSpool, JobId, JobQueue, LeaseId, LeasedJob, MailboxSpool,
-    MembershipAutoscalePolicy, QueueConsumerWorkload, QueueError, QueueMetrics, QueueService,
-    RecurringJob, RedbActorStateStore, RedbJobQueue, RedbMailboxSpool, Settlement, ShardedJobQueue,
-    StoreService, WorkerId, WorkloadOpts, effective_queue_depth, run_backlog_feeder,
-    run_queue_autoscaler, run_queue_consumer, run_queue_membership_autoscaler,
-    run_queue_schedule_ticker, run_workload_governor,
-};
-pub use trembita_actor::{
-    ComputeTokenPool, ExternalLoad, ManualExternalLoad, ResourceProfile, VpsResources,
+pub use trembita_actor_store::{
+    ClusterActorStateStore, RedbActorStateStore, StoreService, run_actor_store_gc_ticker,
 };
 pub use trembita_core::ReachabilityConfig;
 pub use trembita_core::kv;
@@ -57,5 +45,19 @@ pub use trembita_http::{
     HostRouter, SagaBody, WorkflowAccepted, WorkflowsApi, WorkflowsApiError, is_local_dev_host,
     normalize_host, spawn_workflows_server,
 };
+pub use trembita_jobs::{
+    AutoscalePolicy, BacklogError, BacklogFeedOpts, BacklogItem, BacklogRegistry, ClusterJobQueue,
+    ConsumerCount, DEFAULT_QUEUE_BATCH_MAX, DEFAULT_QUEUE_PREFETCH, EnqueueOptions,
+    ExternalBacklog, InMemoryExternalBacklog, InMemoryJobQueue, JobId, JobQueue, LeaseId,
+    LeasedJob, MembershipAutoscalePolicy, QueueConsumerWorkload, QueueError, QueueMetrics,
+    QueueService, RecurringJob, RedbJobQueue, Settlement, ShardedJobQueue, WorkerId, WorkloadOpts,
+    effective_queue_depth, run_backlog_feeder, run_queue_autoscaler, run_queue_consumer,
+    run_queue_membership_autoscaler, run_queue_schedule_ticker, run_workload_governor,
+};
 pub use trembita_net::PeerDirectory;
 pub use trembita_net::{CertPaths, load_pem_material};
+pub use trembita_runtime::{
+    ActorSession, ComputeTokenPool, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy, DirectoryRetry,
+    ExternalLoad, InMemoryMailboxSpool, MailboxSpool, ManualExternalLoad, RedbMailboxSpool,
+    ResourceProfile, VpsResources,
+};

@@ -3,10 +3,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita_actor::{
-    ActorStateStore, JobContext, StoreError, TopicContext, WorkerId, run_queue_consumer,
-    run_topic_subscriber,
-};
+use trembita_actor_store::{ActorStateStore, StoreError};
+use trembita_events::TopicContext;
+use trembita_events::run_topic_subscriber;
+use trembita_jobs::{JobContext, WorkerId, run_queue_consumer};
 
 use crate::TrembitaApp;
 

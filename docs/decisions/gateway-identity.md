@@ -6,7 +6,7 @@
 ## Context
 
 Product apps expose HTTP / WebSocket on a **stateless gateway** while sticky
-[`ActorSession`](../../crates/trembita-actor/src/session.rs) traffic routes to
+[`ActorSession`](../../crates/trembita-runtime/src/session.rs) traffic routes to
 pinned workers ([realtime-sessions](../scenarios/realtime-sessions.md)).
 
 Teams need:

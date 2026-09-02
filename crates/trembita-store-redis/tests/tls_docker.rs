@@ -10,7 +10,7 @@ use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa, Issuer, KeyPair};
 use testcontainers_modules::testcontainers::{
     GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner,
 };
-use trembita_actor::ActorStateStore;
+use trembita_actor_store::ActorStateStore;
 use trembita_store_redis::{RedisStore, RedisTlsConfig};
 
 const REDIS_TLS_PORT: u16 = 6379;

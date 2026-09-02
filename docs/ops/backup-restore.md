@@ -1,7 +1,7 @@
 # Backup and restore runbook
 
 Operational guide for snapshotting a trembita node's on-disk Raft layout and
-restoring it after failure or migration. Uses the [`trembita-ops`](../../crates/trembita-ops/)
+restoring it after failure or migration. Uses the [`trembita-ops`](../../crates/trembita-tools/)
 CLI for snapshot backup/restore ([multi-raft](../decisions/multi-raft.md#production-reliability)).
 
 ## When to use

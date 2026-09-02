@@ -19,7 +19,9 @@ workspace = true
 axum = { version = "0.8", features = ["json"] }
 base64 = "0.22"
 bytes = "1"
-trembita-actor.workspace = true
+trembita-runtime.workspace = true
+trembita-jobs.workspace = true
+trembita-actor-store.workspace = true
 trembita-core.workspace = true
 trembita-proto.workspace = true
 http = "1"

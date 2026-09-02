@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 trembita = { path = "../../crates/trembita", features = ["http-jobs"] }
-trembita-actor = { path = "../../crates/trembita-actor" }
+trembita-runtime = { path = "../../crates/trembita-runtime" }
 trembita-showcase-common = { path = "../../crates/trembita-showcase-common" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net"] }
 serde = { version = "1", features = ["derive"] }

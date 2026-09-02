@@ -1,6 +1,6 @@
 //! Cron schedule registration for [`TrembitaAppBuilder`](super::app::TrembitaAppBuilder).
 
-use trembita_actor::RecurringJob;
+use trembita_jobs::RecurringJob;
 
 /// One cron-driven enqueue schedule for [`.cron`](super::app::TrembitaAppBuilder::cron).
 ///

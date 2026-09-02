@@ -10,7 +10,7 @@
 - Client must hit the **same actor instance** for a period (in-memory state)
 - Gateway can sit behind a load balancer; workers run anywhere in cluster
 
-**Do not** require Redis for session stickiness — use [`ActorSession`](../../crates/trembita-actor/src/session.rs) ([actor-routing](../decisions/actor-routing.md)).
+**Do not** require Redis for session stickiness — use [`ActorSession`](../../crates/trembita-runtime/src/session.rs) ([actor-routing](../decisions/actor-routing.md)).
 
 ## Architecture
 
@@ -59,7 +59,7 @@ cluster.scale_cluster::<ChatWorker>("chat", node_count, config).await?;
 
 ### 2. Open sticky session
 
-From messaging / directory ([`ClusterMessaging`](../../crates/trembita-actor/src/messaging.rs)):
+From messaging / directory ([`ClusterMessaging`](../../crates/trembita-runtime/src/messaging.rs)):
 
 ```rust
 use std::time::Duration;

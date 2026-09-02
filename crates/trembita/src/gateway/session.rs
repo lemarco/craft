@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita_actor::{ActorSession, CastError, ClusterAskError};
+use trembita_runtime::{ActorSession, CastError, ClusterAskError};
 
 use super::identity::{ExtractedIdentity, IdentityError};
 use crate::app::TrembitaApp;

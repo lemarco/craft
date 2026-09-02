@@ -16,7 +16,7 @@
 //! * [`AdminServer`] — the hyper HTTP/1.1 server tying it together: `/health`,
 //!   `/ready`, `/metrics`, `/introspect/*`, `/dashboard`, `/dashboard/events`.
 
-pub use {trembita_actor, trembita_net};
+pub use {trembita_net, trembita_runtime};
 
 mod admin_tls;
 mod dashboard;
@@ -33,7 +33,7 @@ pub use metrics_sink::{
 };
 pub use server::AdminServer;
 pub use telemetry::{EventBus, EventSubscription, StopReason, TraceOpts, TrembitaEvent};
-pub use trembita_actor::init_tracing;
+pub use trembita_runtime::init_tracing;
 pub use views::{
     ActorView, BoxFuture, ClusterView, NodeSummary, NodeView, Observer, QueueStreamView,
     QueuesView, RaftGroupSummary, RaftGroupsView, Readiness, SagaRecordView,

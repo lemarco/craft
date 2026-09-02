@@ -33,20 +33,23 @@ Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `trembita-core`,
 
 ```
 crates/
-├── trembita/              # facade — primary user dependency (TrembitaCluster builder)
-├── trembita-core/         # pure Raft FSM + shard planners + reference `kv` StateMachine
+├── trembita/              # facade — primary user dependency (TrembitaApp, TrembitaCluster)
 ├── trembita-proto/        # IDs, log, wire types, encode/decode
+├── trembita-core/         # pure Raft FSM + shard planners + reference `kv` StateMachine
 ├── trembita-storage/      # LogStore, HardState, Snapshot (+ redb)
 ├── trembita-net/          # HTTP/3 server, QUIC transport, PeerDirectory
-├── trembita-actor/        # NodeService, ShardedNodeService, registry, supervisor
+├── trembita-runtime/      # RaftDriver, NodeService, actors, supervisor, multi-Raft
+├── trembita-jobs/         # JobQueue port, redb adapter, QueueService
+├── trembita-events/       # EventTopic port, redb adapter, TopicService
+├── trembita-actor-store/  # ActorStateStore port, redb adapter, StoreService
 ├── trembita-client/       # ClientHandle, RemoteClient, saga, keyed/batch APIs
 ├── trembita-macros/       # StateMachine + UserActor derives
-├── trembita-node/         # reference binary
+├── trembita-tools/        # reference binaries (node, ops, e2e clients)
 ├── trembita-sim/          # deterministic sim harness + linearizability checker
 ├── trembita-store-redis/  # optional ActorStateStore (Redis)
 ├── trembita-backlog-postgres/  # optional ExternalBacklog (Postgres SKIP LOCKED)
 ├── trembita-dashboard/    # admin HTTP + observability views
-├── trembita-ops/          # backup/restore CLI
+├── trembita-http/         # product HTTP gateway routes
 └── trembita-test-support/ # shared test harness helpers
 
 examples/                # product showcases (standalone Cargo.toml each; not workspace members)

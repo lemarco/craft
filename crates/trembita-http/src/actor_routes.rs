@@ -9,7 +9,7 @@ use axum::response::IntoResponse;
 use axum::routing::post;
 use base64::Engine;
 use bytes::Bytes;
-use trembita_actor::{CastError, ClusterAskError};
+use trembita_runtime::{CastError, ClusterAskError};
 
 use crate::ActorsApiState;
 use crate::actor_types::{ActorsApiError, AskAccepted};

@@ -5,12 +5,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::task::JoinHandle;
-use trembita_actor::ClusterState;
 use trembita_net::{
     CertFingerprint, CertPaths, PemMaterial, QuicServer, QuicTransport, TlsError, client_config,
     load_pem_material, server_config,
 };
 use trembita_proto::NodeId;
+use trembita_runtime::ClusterState;
 
 use crate::cluster_handle::ClusterFacts;
 use crate::security::Security;

@@ -310,7 +310,7 @@ Document the contract, show effectively-once patterns, and improve consumer ergo
 | B-13b   | **Effectively-once recipe** — short guide (section or `docs/scenarios/` doc): enqueue `dedup_key` + worker CAS in store + ack after durable mark; link [stateful-workers example](../examples/stateful-workers/) and [`idempotent_worker`](../crates/trembita-store-redis/examples/idempotent_worker.rs) | MR-1 | ✅ |
 | B-13c   | [job-queue.md](decisions/job-queue.md): one-line consequence — exactly-once delivery mode not planned; point to B-13 recipe | MR-1 | ✅ |
 | B-13d   | `QueueOpts` / `JobOpts::default_max_attempts(u32)` — stream default when `EnqueueOptions::max_attempts` is unset (`0` = inherit stream default; explicit `0` on enqueue still means unlimited) | MR-1 | ✅ |
-| B-13e   | `JobContext` in `#[consumer]` — expose `job_id`, `attempts`, optional `dedup_key` from [`LeasedJob`](../crates/trembita-actor/src/queue.rs); thread through `run_queue_consumer` → `JobConsumer` | MR-2 | ✅ |
+| B-13e   | `JobContext` in `#[consumer]` — expose `job_id`, `attempts`, optional `dedup_key` from [`LeasedJob`](../crates/trembita-jobs/src/queue.rs); thread through `run_queue_consumer` → `JobConsumer` | MR-2 | ✅ |
 | B-13f   | `ConsumerOpts::idempotency(...)` helper — key fn + `ActorStateStore` prefix; CAS `processing` → handler → `done` → ack (effectively-once, not a magic flag) | MR-2 | ✅ |
 | B-13g   | [background-jobs example](../examples/background-jobs/): idempotent handler demo — HTTP `?dedup=` retry + simulated redelivery; `trigger.sh` like stateful-workers | MR-1 | ✅ |
 | B-13h   | Cross-links: background-jobs ↔ [stateful-workers](scenarios/stateful-workers.md) ↔ [workflows](scenarios/workflows.md) (step `dedup_key`) | MR-1 | ✅ |

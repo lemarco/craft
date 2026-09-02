@@ -24,5 +24,5 @@ trembita-core.workspace = true
 
 [dev-dependencies]
 proptest = "1"
-trembita-actor.workspace = true
+trembita-runtime.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

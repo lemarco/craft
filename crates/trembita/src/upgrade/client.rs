@@ -40,7 +40,7 @@ pub async fn query_upgrade_view(
     match response {
         UpgradeResponse::View(view) => Ok(view),
         UpgradeResponse::Ok => Err(UpgradeRunError::Client(
-            trembita_actor::ClientError::Driver("unexpected upgrade query response".into()),
+            trembita_runtime::ClientError::Driver("unexpected upgrade query response".into()),
         )),
     }
 }

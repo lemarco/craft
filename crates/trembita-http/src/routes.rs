@@ -8,7 +8,7 @@ use axum::http::{HeaderMap, Method, StatusCode, Uri, header};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use bytes::Bytes;
-use trembita_actor::{
+use trembita_jobs::{
     DEFAULT_QUEUE_BATCH_MAX, EnqueueOptions, JobLifecycle, JobListFilter, LeaseId, WorkerId,
 };
 
@@ -276,7 +276,7 @@ fn enqueue_options_from_query(query: &EnqueueQuery) -> EnqueueOptions {
     opts
 }
 
-fn status_to_response(status: &trembita_actor::JobStatus) -> JobStatusResponse {
+fn status_to_response(status: &trembita_jobs::JobStatus) -> JobStatusResponse {
     JobStatusResponse {
         job_id: status.job_id.0,
         state: lifecycle_name(status.lifecycle),
@@ -318,7 +318,7 @@ fn list_filter_from_query(query: &ListJobsQuery) -> Result<JobListFilter, JobsAp
             .map(String::as_bytes)
             .map(<[u8]>::to_vec),
         limit: query.limit.map(|n| n as usize),
-        after_job_id: query.after.map(trembita_actor::JobId),
+        after_job_id: query.after.map(trembita_jobs::JobId),
     })
 }
 
@@ -385,7 +385,7 @@ mod tests {
     use axum::http::Request;
     use std::future;
     use tower::ServiceExt;
-    use trembita_actor::{JobId, JobLifecycle, JobStatus};
+    use trembita_jobs::{JobId, JobLifecycle, JobStatus};
 
     fn test_state(
         enqueue: crate::EnqueueFn,
@@ -409,13 +409,13 @@ mod tests {
     }
 
     fn noop_list() -> crate::ListJobsFn {
-        Arc::new(|_, _| Box::pin(future::ready(Ok(trembita_actor::JobListPage::default()))))
+        Arc::new(|_, _| Box::pin(future::ready(Ok(trembita_jobs::JobListPage::default()))))
     }
 
     fn noop_requeue_batch() -> crate::RequeueDeadLetterBatchFn {
         Arc::new(|_, _| {
             Box::pin(future::ready(Ok(
-                trembita_actor::BatchRequeueResult::default(),
+                trembita_jobs::BatchRequeueResult::default(),
             )))
         })
     }

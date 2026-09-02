@@ -8,8 +8,8 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use trembita_actor::trembita_proto;
-use trembita_actor::{ActorRegistry, MessageDecodeError, UserActor};
+use trembita_runtime::trembita_proto;
+use trembita_runtime::{ActorRegistry, MessageDecodeError, UserActor};
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use serde::{Deserialize, Serialize};
 use std::hint::black_box;

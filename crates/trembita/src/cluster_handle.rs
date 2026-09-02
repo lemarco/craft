@@ -23,7 +23,7 @@ use trembita_proto::{
     LeaveResponse, Membership, NodeId, PROTOCOL_VERSION, ScaleRequest,
 };
 
-use trembita_actor::{
+use trembita_runtime::{
     ActorDirectory, ActorObserver, ActorRegistry, ClusterControl, ClusterMessaging,
     ClusterScaleError, ClusterState, ClusterSupervisor, DirectorySync, NOT_LEADER_REASON,
     NodeHandle, NodeStatus, ResourceProfile, UserActor, VpsResources,
@@ -413,7 +413,8 @@ pub struct TrembitaCluster<M: StateMachine> {
     pub(crate) handle: NodeHandle<M>,
     pub(crate) group_handles: Vec<NodeHandle<M>>,
     /// Meta-Raft coordinator handle when `raft_groups > 1`.
-    pub(crate) meta_handle: Option<trembita_actor::NodeHandle<trembita_actor::MetaStateMachine>>,
+    pub(crate) meta_handle:
+        Option<trembita_runtime::NodeHandle<trembita_runtime::MetaStateMachine>>,
     pub(crate) raft_groups: u32,
     pub(crate) shard_count: u32,
     pub(crate) shard_routing: trembita_core::ShardRoutingKind,
@@ -428,16 +429,16 @@ pub struct TrembitaCluster<M: StateMachine> {
     pub(crate) catalog_version: Arc<AtomicU32>,
     pub(crate) saga_registry: crate::saga::SagaRegistry,
     pub(crate) two_phase_registry: crate::two_phase::TwoPhaseRegistry,
-    pub(crate) queue_autoscale_registry: Arc<trembita_actor::QueueAutoscaleRegistry>,
+    pub(crate) queue_autoscale_registry: Arc<trembita_jobs::QueueAutoscaleRegistry>,
     pub(crate) telemetry: Arc<ActorTelemetry>,
     pub(crate) members: Vec<NodeId>,
     pub(crate) resource_profile: ResourceProfile,
     pub(crate) vps_resources: VpsResources,
-    pub(crate) actor_state_store: Option<Arc<dyn trembita_actor::ActorStateStore>>,
+    pub(crate) actor_state_store: Option<Arc<dyn trembita_actor_store::ActorStateStore>>,
     /// Cluster-facing queue clients keyed by stream name.
-    pub(crate) job_queues: HashMap<String, Arc<dyn trembita_actor::JobQueue>>,
+    pub(crate) job_queues: HashMap<String, Arc<dyn trembita_jobs::JobQueue>>,
     /// Cluster-facing topic clients keyed by topic name.
-    pub(crate) event_topics: HashMap<String, Arc<dyn trembita_actor::EventTopic>>,
+    pub(crate) event_topics: HashMap<String, Arc<dyn trembita_events::EventTopic>>,
     /// Full `/raft/v1/*` handler attached to the transport (stored so tests can
     /// re-attach a node after simulating partition on [`LocalNetwork`]).
     pub(crate) wire_handler: Arc<dyn RequestHandler>,
@@ -506,27 +507,27 @@ impl<M: StateMachine> TrembitaCluster<M> {
     /// if any (actor-state-redis). Clone the `Arc` into actor `Config` when spawning
     /// stateful workers.
     #[must_use]
-    pub fn actor_state_store(&self) -> Option<Arc<dyn trembita_actor::ActorStateStore>> {
+    pub fn actor_state_store(&self) -> Option<Arc<dyn trembita_actor_store::ActorStateStore>> {
         self.actor_state_store.clone()
     }
 
     /// Cluster-facing queue client for `stream`, routing through the leader wire
     /// service ([`TrembitaClusterBuilder::job_queue`](crate::cluster::TrembitaClusterBuilder::job_queue)).
     #[must_use]
-    pub fn job_queue(&self, stream: &str) -> Option<Arc<dyn trembita_actor::JobQueue>> {
+    pub fn job_queue(&self, stream: &str) -> Option<Arc<dyn trembita_jobs::JobQueue>> {
         self.job_queues.get(stream).cloned()
     }
 
     /// Cluster-facing topic client for `name`
     /// ([`TrembitaClusterBuilder::event_topic`](crate::cluster::TrembitaClusterBuilder::event_topic)).
     #[must_use]
-    pub fn event_topic(&self, name: &str) -> Option<Arc<dyn trembita_actor::EventTopic>> {
+    pub fn event_topic(&self, name: &str) -> Option<Arc<dyn trembita_events::EventTopic>> {
         self.event_topics.get(name).cloned()
     }
 
     /// Enqueue many jobs in one leader transaction (job queue batch path).
     ///
-    /// Batches are capped at [`trembita_actor::DEFAULT_QUEUE_BATCH_MAX`] jobs per RPC.
+    /// Batches are capped at [`trembita_jobs::DEFAULT_QUEUE_BATCH_MAX`] jobs per RPC.
     ///
     /// # Errors
     /// Returns an error when the stream is unknown or enqueue fails.
@@ -534,9 +535,9 @@ impl<M: StateMachine> TrembitaCluster<M> {
         &self,
         stream: &str,
         payloads: &[&[u8]],
-    ) -> Result<Vec<trembita_actor::JobId>, trembita_actor::QueueError> {
+    ) -> Result<Vec<trembita_jobs::JobId>, trembita_jobs::QueueError> {
         let queue = self.job_queue(stream).ok_or_else(|| {
-            trembita_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
+            trembita_jobs::QueueError::Backend(format!("unknown stream {stream:?}"))
         })?;
         queue.enqueue_batch(payloads).await
     }
@@ -548,10 +549,10 @@ impl<M: StateMachine> TrembitaCluster<M> {
     pub async fn enqueue_batch_opts(
         &self,
         stream: &str,
-        jobs: &[(Vec<u8>, trembita_actor::EnqueueOptions)],
-    ) -> Result<Vec<trembita_actor::JobId>, trembita_actor::QueueError> {
+        jobs: &[(Vec<u8>, trembita_jobs::EnqueueOptions)],
+    ) -> Result<Vec<trembita_jobs::JobId>, trembita_jobs::QueueError> {
         let queue = self.job_queue(stream).ok_or_else(|| {
-            trembita_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
+            trembita_jobs::QueueError::Backend(format!("unknown stream {stream:?}"))
         })?;
         queue.enqueue_batch_opts(jobs).await
     }
@@ -563,11 +564,11 @@ impl<M: StateMachine> TrembitaCluster<M> {
     pub async fn ack_batch(
         &self,
         stream: &str,
-        worker: trembita_actor::WorkerId,
-        lease_ids: &[trembita_actor::LeaseId],
-    ) -> Result<(), trembita_actor::QueueError> {
+        worker: trembita_jobs::WorkerId,
+        lease_ids: &[trembita_jobs::LeaseId],
+    ) -> Result<(), trembita_jobs::QueueError> {
         let queue = self.job_queue(stream).ok_or_else(|| {
-            trembita_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
+            trembita_jobs::QueueError::Backend(format!("unknown stream {stream:?}"))
         })?;
         queue.ack_batch(worker, lease_ids).await
     }
@@ -579,10 +580,10 @@ impl<M: StateMachine> TrembitaCluster<M> {
     pub async fn requeue_dead_letter(
         &self,
         stream: &str,
-        job_id: trembita_actor::JobId,
-    ) -> Result<(), trembita_actor::QueueError> {
+        job_id: trembita_jobs::JobId,
+    ) -> Result<(), trembita_jobs::QueueError> {
         let queue = self.job_queue(stream).ok_or_else(|| {
-            trembita_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
+            trembita_jobs::QueueError::Backend(format!("unknown stream {stream:?}"))
         })?;
         queue.requeue_dead_letter(job_id).await
     }
@@ -594,10 +595,10 @@ impl<M: StateMachine> TrembitaCluster<M> {
     pub async fn list_jobs(
         &self,
         stream: &str,
-        filter: trembita_actor::JobListFilter,
-    ) -> Result<trembita_actor::JobListPage, trembita_actor::QueueError> {
+        filter: trembita_jobs::JobListFilter,
+    ) -> Result<trembita_jobs::JobListPage, trembita_jobs::QueueError> {
         let queue = self.job_queue(stream).ok_or_else(|| {
-            trembita_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
+            trembita_jobs::QueueError::Backend(format!("unknown stream {stream:?}"))
         })?;
         queue.list_jobs(filter).await
     }
@@ -609,17 +610,17 @@ impl<M: StateMachine> TrembitaCluster<M> {
     pub async fn requeue_dead_letter_batch(
         &self,
         stream: &str,
-        job_ids: &[trembita_actor::JobId],
-    ) -> Result<trembita_actor::BatchRequeueResult, trembita_actor::QueueError> {
+        job_ids: &[trembita_jobs::JobId],
+    ) -> Result<trembita_jobs::BatchRequeueResult, trembita_jobs::QueueError> {
         let queue = self.job_queue(stream).ok_or_else(|| {
-            trembita_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
+            trembita_jobs::QueueError::Backend(format!("unknown stream {stream:?}"))
         })?;
         queue.requeue_dead_letter_batch(job_ids).await
     }
 
     /// Registry of queue autoscale policies replicated via Meta-Raft / group 0.
     #[must_use]
-    pub fn queue_autoscale_registry(&self) -> Arc<trembita_actor::QueueAutoscaleRegistry> {
+    pub fn queue_autoscale_registry(&self) -> Arc<trembita_jobs::QueueAutoscaleRegistry> {
         Arc::clone(&self.queue_autoscale_registry)
     }
 
@@ -1341,7 +1342,7 @@ impl<M: StateMachine> TrembitaCluster<M> {
 
     /// Publish and wait until group `name` is visible locally (read-your-writes).
     /// Useful immediately after spawn/scale when
-    /// [`DirectoryPolicy::ReadYourWrites`](trembita_actor::DirectoryPolicy::ReadYourWrites) is enabled.
+    /// [`DirectoryPolicy::ReadYourWrites`](trembita_runtime::DirectoryPolicy::ReadYourWrites) is enabled.
     pub async fn publish_directory_visible(
         &self,
         group: &str,
@@ -1365,23 +1366,23 @@ impl<M: StateMachine> TrembitaCluster<M> {
     /// Per-group drain override on the local registry.
     ///
     /// # Errors
-    /// Propagates [`trembita_actor::StopError`] when the group is unknown.
+    /// Propagates [`trembita_runtime::StopError`] when the group is unknown.
     pub fn set_group_drain_timeout(
         &self,
         name: &str,
         timeout: Option<Duration>,
-    ) -> Result<(), trembita_actor::StopError> {
+    ) -> Result<(), trembita_runtime::StopError> {
         self.registry.set_group_drain_timeout(name, timeout)
     }
 
     /// Gracefully stop a local actor group using the cluster drain default.
     ///
     /// # Errors
-    /// Propagates [`trembita_actor::StopError`] when the group is unknown or drain fails.
+    /// Propagates [`trembita_runtime::StopError`] when the group is unknown or drain fails.
     pub async fn stop_group_graceful(
         &self,
         name: &str,
-    ) -> Result<trembita_actor::DrainOutcome, trembita_actor::StopError> {
+    ) -> Result<trembita_runtime::DrainOutcome, trembita_runtime::StopError> {
         self.registry.stop_graceful(name, self.drain_timeout).await
     }
 
@@ -1537,10 +1538,10 @@ enum CatalogAddLocalError {
 
 #[cfg(test)]
 mod tests {
-    use trembita_actor::NodeStatus;
     use trembita_core::Role;
     use trembita_dashboard::{EventBus, Metrics};
     use trembita_proto::{LogIndex, NodeId, Term};
+    use trembita_runtime::NodeStatus;
 
     use super::MembershipTelemetry;
 

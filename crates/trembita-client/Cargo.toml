@@ -27,7 +27,7 @@ thiserror.workspace = true
 tokio = { version = "1", features = ["time"] }
 
 [dev-dependencies]
-trembita-actor.workspace = true
+trembita-runtime.workspace = true
 trembita-test-support = { path = "../trembita-test-support" }
 serde = { workspace = true, features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "test-util"] }

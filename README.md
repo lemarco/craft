@@ -147,8 +147,8 @@ Product apps: enable `http-jobs` for HTTP job routes and `dev-certs` for local Q
 | [`trembita-store-redis`](crates/trembita-store-redis) | Redis `ActorStateStore` |
 | [`trembita-dashboard`](crates/trembita-dashboard) | Admin + observability |
 | [`trembita-sim`](crates/trembita-sim) | Deterministic sim harness |
-| [`trembita-ops`](crates/trembita-ops) | Backup/restore CLI |
-| [`trembita-node`](crates/trembita-node) | Reference binary (repo/e2e only) |
+| [`trembita-ops`](crates/trembita-tools) | Backup/restore CLI |
+| [`trembita-node`](crates/trembita-tools) | Reference binary (repo/e2e only) |
 
 ## Documentation map
 

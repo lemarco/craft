@@ -1,8 +1,8 @@
-//! Helpers for [`trembita_actor::NodeHandle`] integration tests.
+//! Helpers for [`trembita_runtime::NodeHandle`] integration tests.
 
-use trembita_actor::NodeHandle;
-use trembita_actor::trembita_core::{Role, StateMachine};
-use trembita_actor::trembita_proto::NodeId;
+use trembita_runtime::NodeHandle;
+use trembita_runtime::trembita_core::{Role, StateMachine};
+use trembita_runtime::trembita_proto::NodeId;
 
 use crate::clock::{POLL_STEP, advance};
 

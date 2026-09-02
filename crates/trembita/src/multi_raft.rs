@@ -4,16 +4,16 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use trembita_actor::{
-    ClusterState, GroupMembershipSyncReport, GroupRebalanceReport, NodeHandle, RaftGroupReconciler,
-    RuntimeConfig, ShardedNodeService, spawn_raft_group, spawn_raft_group_from_bundle,
-    sync_hosted_group_membership,
-};
 use trembita_core::{Config, StateMachine};
 use trembita_core::{RaftGroupId, group_voters};
 use trembita_dashboard::TrembitaEvent;
 use trembita_net::{Transport, send_group_migrate};
 use trembita_proto::{CatalogCommand, GroupMigrateReply, GroupMigrateRequest, NodeId};
+use trembita_runtime::{
+    ClusterState, GroupMembershipSyncReport, GroupRebalanceReport, NodeHandle, RaftGroupReconciler,
+    RuntimeConfig, ShardedNodeService, spawn_raft_group, spawn_raft_group_from_bundle,
+    sync_hosted_group_membership,
+};
 use trembita_storage::StorageError;
 
 use crate::cluster_handle::ClusterFacts;
@@ -119,7 +119,7 @@ impl<M: StateMachine + Default + 'static> MultiRaftState<M> {
             return Ok(report);
         }
 
-        trembita_actor::rebalance_log::line(format!(
+        trembita_runtime::rebalance_log::line(format!(
             "node={} applying adopt={:?} retire={:?}",
             self.node_id.0,
             report.plan.adopt.iter().map(|g| g.0).collect::<Vec<_>>(),
@@ -138,7 +138,7 @@ impl<M: StateMachine + Default + 'static> MultiRaftState<M> {
             let Some(handle) = handle else {
                 continue;
             };
-            trembita_actor::rebalance_log::line(format!(
+            trembita_runtime::rebalance_log::line(format!(
                 "node={} migrate group={id} -> {}",
                 self.node_id.0, target.0
             ));
@@ -170,7 +170,7 @@ impl<M: StateMachine + Default + 'static> MultiRaftState<M> {
         let live = ClusterState::cluster_nodes(facts.as_ref());
         for group in &report.plan.retire {
             let id = group.0;
-            trembita_actor::rebalance_log::line(format!(
+            trembita_runtime::rebalance_log::line(format!(
                 "node={} retire group={id}",
                 self.node_id.0
             ));
@@ -183,13 +183,13 @@ impl<M: StateMachine + Default + 'static> MultiRaftState<M> {
         for group in &report.plan.adopt {
             let id = group.0;
             if handles.contains_key(&id) {
-                trembita_actor::rebalance_log::line(format!(
+                trembita_runtime::rebalance_log::line(format!(
                     "node={} adopt group={id} skipped (already hosted)",
                     self.node_id.0
                 ));
                 continue;
             }
-            trembita_actor::rebalance_log::line(format!(
+            trembita_runtime::rebalance_log::line(format!(
                 "node={} adopt group={id}",
                 self.node_id.0
             ));
@@ -234,7 +234,7 @@ impl<M: StateMachine + Default + 'static> MultiRaftState<M> {
             });
         }
 
-        trembita_actor::rebalance_log::line(format!(
+        trembita_runtime::rebalance_log::line(format!(
             "node={} adopt migrated group={id} from {}",
             self.node_id.0, request.from.0
         ));

@@ -166,7 +166,7 @@ async fn jobs_registers_queue_handler_and_jobs_api() {
 #[derive(Debug)]
 struct FixedWorker;
 
-impl trembita::actor::UserActor for FixedWorker {
+impl trembita_runtime::UserActor for FixedWorker {
     type Config = u32;
     type Message = ();
     type Error = std::convert::Infallible;
@@ -182,14 +182,14 @@ impl trembita::actor::UserActor for FixedWorker {
         std::future::ready(Ok(()))
     }
 
-    fn encode_config(config: &Self::Config) -> Result<Vec<u8>, trembita::actor::ConfigCodecError> {
+    fn encode_config(config: &Self::Config) -> Result<Vec<u8>, trembita_runtime::ConfigCodecError> {
         trembita::proto::encode(config)
-            .map_err(|e| trembita::actor::ConfigCodecError::Codec(e.to_string()))
+            .map_err(|e| trembita_runtime::ConfigCodecError::Codec(e.to_string()))
     }
 
-    fn decode_config(bytes: &[u8]) -> Result<Self::Config, trembita::actor::ConfigCodecError> {
+    fn decode_config(bytes: &[u8]) -> Result<Self::Config, trembita_runtime::ConfigCodecError> {
         trembita::proto::decode(bytes)
-            .map_err(|e| trembita::actor::ConfigCodecError::Codec(e.to_string()))
+            .map_err(|e| trembita_runtime::ConfigCodecError::Codec(e.to_string()))
     }
 }
 

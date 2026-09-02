@@ -19,7 +19,8 @@ use std::time::Duration;
 use trembita::{
     ConsumerOpts, IdempotencyOpts, JobContext, QueueOpts, TrembitaApp, TrembitaConfigure, consumer,
 };
-use trembita_actor::{ActorStateStore, EnqueueOptions, InMemoryStore};
+use trembita_actor_store::{ActorStateStore, InMemoryStore};
+use trembita_jobs::EnqueueOptions;
 use trembita_test_support::boot_local_app;
 
 static GUARDED_SIDE_EFFECTS: AtomicUsize = AtomicUsize::new(0);

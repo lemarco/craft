@@ -5,7 +5,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
-use trembita_actor::{ActorStateStore, NodeHandle};
+use trembita_actor_store::ActorStateStore;
 use trembita_client::{
     SagaEvent, SagaJournal, SagaJournalError, SagaJournalPhase, SagaJournalRecord,
     decode_journal_record, encode_journal_record,
@@ -13,6 +13,7 @@ use trembita_client::{
 use trembita_core::StateMachine;
 use trembita_dashboard::Metrics;
 use trembita_proto::SagaJournalCommand;
+use trembita_runtime::NodeHandle;
 
 fn fresh_record(saga_id: &[u8]) -> SagaJournalRecord {
     SagaJournalRecord {

@@ -20,7 +20,7 @@ facade = ["dep:trembita"]
 [dependencies]
 trembita-proto.workspace = true
 trembita-core.workspace = true
-trembita-actor.workspace = true
+trembita-runtime.workspace = true
 trembita = { workspace = true, optional = true }
 serde.workspace = true
 thiserror.workspace = true

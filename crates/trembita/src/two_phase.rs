@@ -5,7 +5,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
-use trembita_actor::{ActorStateStore, NodeHandle};
+use trembita_actor_store::ActorStateStore;
 use trembita_client::{
     TwoPhaseEvent, TwoPhaseJournal, TwoPhaseJournalError, TwoPhaseJournalRecord,
     decode_two_phase_journal_record, encode_two_phase_journal_record,
@@ -13,6 +13,7 @@ use trembita_client::{
 use trembita_core::StateMachine;
 use trembita_dashboard::Metrics;
 use trembita_proto::TwoPhaseJournalCommand;
+use trembita_runtime::NodeHandle;
 
 fn fresh_record(tx_id: &[u8]) -> TwoPhaseJournalRecord {
     TwoPhaseJournalRecord {

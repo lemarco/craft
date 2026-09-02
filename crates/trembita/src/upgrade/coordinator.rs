@@ -64,7 +64,7 @@ impl UpgradeOpts {
 pub enum UpgradeRunError {
     /// Raft client error.
     #[error("{0}")]
-    Client(#[from] trembita_actor::ClientError),
+    Client(#[from] trembita_runtime::ClientError),
     /// Remote client error (leader forwarding).
     #[error("{0}")]
     Remote(#[from] trembita_client::ClientError),

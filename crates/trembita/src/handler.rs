@@ -14,9 +14,10 @@ use trembita_net::transport::{Body, BoxFuture, RequestHandler};
 use trembita_net::{QuicTransport, Route, TransportError, decode_body, encode_body};
 use trembita_proto::{JoinRequest, NodeId, PeerBook, PeerEntry, ScaleRequest};
 
-use trembita_actor::{
-    ClusterControl, ClusterMessaging, DirectorySync, QueueService, StoreService, TopicService,
-};
+use trembita_actor_store::StoreService;
+use trembita_events::TopicService;
+use trembita_jobs::QueueService;
+use trembita_runtime::{ClusterControl, ClusterMessaging, DirectorySync};
 
 use crate::multi_raft::GroupMigratePort;
 

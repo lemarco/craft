@@ -179,7 +179,7 @@ Content-Type: application/x-postcard
 
 Local reads use `ClusterActorStateStore::get` on the voter's redb file (no RPC).
 
-Types live in `trembita-proto` (`queue.rs`). Facade client: [`ClusterJobQueue`](../crates/trembita-actor/src/queue_service.rs) via [`TrembitaCluster::job_queue`](../crates/trembita/src/cluster.rs).
+Types live in `trembita-proto` (`queue.rs`). Facade client: [`ClusterJobQueue`](../crates/trembita-jobs/src/queue_service.rs) via [`TrembitaCluster::job_queue`](../crates/trembita/src/cluster.rs).
 
 ### Actor mailbox spool (durable delivery)
 

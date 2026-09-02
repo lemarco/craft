@@ -61,7 +61,7 @@ impl UserActor for OrderProcessor {
     fn start(cfg: Self::Config) -> Result<Self, Self::Error> {
         std::fs::create_dir_all(&cfg.data_dir).map_err(|_| ProcessorErr)?;
         // redb file colocated with node's TREMBITA_DATA_DIR — survives process restart.
-        let store = trembita_actor::RedbActorStateStore::open(&cfg.data_dir.join("actor-store.redb"))
+        let store = trembita_actor_store::RedbActorStateStore::open(&cfg.data_dir.join("actor-store.redb"))
             .map_err(|_| ProcessorErr)?;
         Ok(Self {
             store: Arc::new(store),

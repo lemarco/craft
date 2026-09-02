@@ -92,7 +92,7 @@ TrembitaApp::builder()
     .await?;
 ```
 
-Implement [`ScheduleSource`](../../crates/trembita-actor/src/schedule_source.rs) in your
+Implement [`ScheduleSource`](../../crates/trembita-jobs/src/schedule_source.rs) in your
 crate; return `Err` on backend failure (trembita keeps the last good set). An initial
 `Ok([])` before any successful poll does not wipe schedules already in redb.
 
@@ -146,7 +146,7 @@ let worker = app.spawn_consumer(
 // … later: stop_tx.send(true)?; worker.await?;
 ```
 
-**Lower level:** [`run_queue_consumer`](../../crates/trembita-actor/src/queue.rs) on `cluster.job_queue("stream")` when you need a custom loop. See [background-jobs showcase](../../examples/background-jobs/) or `./e2e/queue.sh` for QUIC failover.
+**Lower level:** [`run_queue_consumer`](../../crates/trembita-jobs/src/queue.rs) on `cluster.job_queue("stream")` when you need a custom loop. See [background-jobs showcase](../../examples/background-jobs/) or `./e2e/queue.sh` for QUIC failover.
 
 **Idempotency:** use `EnqueueOptions::dedup_key` and/or store processed ids in your `StateMachine` or `ActorStateStore`.
 
@@ -177,7 +177,7 @@ See [state placement cheat sheet](state-placement.md) for where queue backlog vs
 
 ### External backlog (Postgres / existing work table)
 
-When the **authoritative backlog** lives outside trembita (Postgres `pending` rows, legacy job table), use [`ExternalBacklog`](../../crates/trembita-actor/src/external_backlog.rs) instead of reimplementing a leader feeder:
+When the **authoritative backlog** lives outside trembita (Postgres `pending` rows, legacy job table), use [`ExternalBacklog`](../../crates/trembita-jobs/src/external_backlog.rs) instead of reimplementing a leader feeder:
 
 ```rust
 JobOpts::new("imports")
@@ -233,8 +233,8 @@ node before the ack will charge again on redelivery unless you guard it.
 
 ### Lease tokens (`lease_id`)
 
-Each [`lease`](../../crates/trembita-actor/src/queue.rs) assigns an opaque
-[`LeaseId`](../../crates/trembita-actor/src/queue.rs) required for ack/nack/extend.
+Each [`lease`](../../crates/trembita-jobs/src/queue.rs) assigns an opaque
+[`LeaseId`](../../crates/trembita-jobs/src/queue.rs) required for ack/nack/extend.
 Within a stream the counter is **monotonic**: every new lease gets a strictly
 larger id, including after **leader failover** (the counter replicates via
 `QueueReplicateOp::Lease` with a `max()` bump on followers).
@@ -258,7 +258,7 @@ for that. Monotonicity is **per stream**, not global across streams or shards.
 | pending, leased, delayed | **held** — duplicate enqueue returns the same `JobId` |
 | ack (success) | **released** — job row removed; same key can enqueue a new job |
 | nack / reclaim (retries left) | **held** — same job, same `JobId` |
-| dead letter | **held** — duplicate enqueue still returns the dead-letter `JobId`; use [`requeue_dead_letter`](../../crates/trembita-actor/src/queue.rs) or operator cleanup before re-submitting |
+| dead letter | **held** — duplicate enqueue still returns the dead-letter `JobId`; use [`requeue_dead_letter`](../../crates/trembita-jobs/src/queue.rs) or operator cleanup before re-submitting |
 
 For [external backlog](#external-backlog-postgres--existing-work-table) the
 feeder enqueues with `dedup_key = item.key`. On successful ack the queue releases
@@ -310,7 +310,7 @@ Worked implementations:
 
 ### Knowing you are a redelivery
 
-A handler can take a second argument to receive [`JobContext`](../../crates/trembita-actor/src/queue.rs):
+A handler can take a second argument to receive [`JobContext`](../../crates/trembita-jobs/src/queue.rs):
 
 ```rust
 #[consumer("emails")]
@@ -328,7 +328,7 @@ the enqueue-time `dedup_key`. Single-argument handlers keep working unchanged.
 ### Long handlers — extend the lease
 
 Set a **short** stream lease (e.g. 60s via [`JobOpts::lease`](../../crates/trembita/src/job_opts.rs))
-and call [`JobContext::keep_alive`](../../crates/trembita-actor/src/queue.rs) periodically from
+and call [`JobContext::keep_alive`](../../crates/trembita-jobs/src/queue.rs) periodically from
 inside the handler. Each call resets visibility to the full stream lease duration, so
 another worker cannot reclaim the job while you are still working:
 
@@ -414,7 +414,7 @@ $ curl -s localhost:9080/introspect/queues | jq '.streams[]'
 ### Attempt ceilings
 
 `max_attempts` bounds redelivery. Per job it is an
-[`EnqueueOptions`](../../crates/trembita-actor/src/queue.rs) field; per stream it is
+[`EnqueueOptions`](../../crates/trembita-jobs/src/queue.rs) field; per stream it is
 a default, which is what HTTP enqueues and cron ticks get since they cannot pass
 per-job options:
 

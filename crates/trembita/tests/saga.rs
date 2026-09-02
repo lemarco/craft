@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use trembita::actor::{ActorStateStore, InMemoryStore};
+use trembita::actor_store::{ActorStateStore, InMemoryStore};
 use trembita::client::{
     KeyedClient, RemoteClient, RetryPolicy, RunSagaOpts, SagaJournal, SagaJournalPhase,
     SagaOutcome, SagaPlan, SagaStep, run_saga,

@@ -106,6 +106,6 @@ TREMBITA_E2E_QUEUE_PHASE=after_failover ./scripts/dev-3node.sh queue-smoke
 
 ## See also
 
-- [`trembita-node` README](../../crates/trembita-node/README.md)
+- [`trembita-node` README](../../crates/trembita-tools/README.md)
 - [`docs/scenarios/background-jobs.md`](../../docs/scenarios/background-jobs.md) — product HTTP (`TrembitaApp`)
 - [`examples/README.md`](../../examples/README.md) — product showcases (in-process)

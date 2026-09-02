@@ -67,7 +67,10 @@ pub mod upgrade;
 pub use trembita_proto::{self as proto, NodeId, PROTOCOL_VERSION, Term};
 
 #[doc(inline)]
-pub use {trembita_actor as actor, trembita_client as client, trembita_core as core};
+pub use {
+    trembita_actor_store as actor_store, trembita_client as client, trembita_core as core,
+    trembita_events as events, trembita_jobs as jobs, trembita_runtime as runtime,
+};
 
 #[doc(inline)]
 pub use {trembita_dashboard as dashboard, trembita_macros as macros, trembita_net as net};
@@ -94,16 +97,17 @@ pub use job_opts::JobOpts;
 pub use queue_opts::QueueOpts;
 pub use ready::ReadyOpts;
 pub use topic_opts::TopicOpts;
-pub use trembita_actor::InMemoryStore;
-pub use trembita_actor::JobContext;
-pub use trembita_actor::TopicContext;
-pub use trembita_actor::WorkloadOpts;
-pub use trembita_actor::{
+pub use trembita_actor_store::InMemoryStore;
+pub use trembita_events::TopicContext;
+pub use trembita_jobs::JobContext;
+pub use trembita_jobs::WorkloadOpts;
+pub use trembita_jobs::{
     BacklogFeedOpts, BacklogItem, BacklogRegistry, BacklogSettleOutbox, BacklogSettleOutboxOpts,
-    CompositeScheduleSource, ConsumerCount, ExternalBacklog, ExternalLoad,
-    InMemoryBacklogSettleOutbox, InMemoryExternalBacklog, ManualExternalLoad, ScheduleError,
-    SchedulePoll, ScheduleSource, Settlement, StaticScheduleSource,
+    CompositeScheduleSource, ConsumerCount, ExternalBacklog, InMemoryBacklogSettleOutbox,
+    InMemoryExternalBacklog, ScheduleError, SchedulePoll, ScheduleSource, Settlement,
+    StaticScheduleSource,
 };
+pub use trembita_runtime::{ExternalLoad, ManualExternalLoad};
 pub use worker_opts::{WorkerGroup, WorkerOpts, WorkerScale};
 pub use workflow::{WorkflowBuildError, WorkflowBuilder};
 pub use workflow_opts::WorkflowOpts;

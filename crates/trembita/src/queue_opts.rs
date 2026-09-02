@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use trembita_actor::DEFAULT_QUEUE_PREFETCH;
+use trembita_jobs::DEFAULT_QUEUE_PREFETCH;
 
 /// One durable job stream for [`.queue`](super::app::TrembitaAppBuilder::queue).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,7 +32,7 @@ impl QueueOpts {
     /// Attempt ceiling for enqueues that leave `max_attempts` unset (`0` = unlimited).
     ///
     /// A job that sets its own ceiling always wins; this only fills in the gap for
-    /// HTTP enqueues, cron ticks, and plain [`enqueue`](trembita_actor::JobQueue::enqueue).
+    /// HTTP enqueues, cron ticks, and plain [`enqueue`](trembita_jobs::JobQueue::enqueue).
     #[must_use]
     pub fn default_max_attempts(mut self, max: u32) -> Self {
         self.default_max_attempts = max;

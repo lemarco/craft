@@ -11,7 +11,7 @@ use trembita::{
     ConsumerOpts, GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError, QueueOpts,
     TrembitaApp, TrembitaConfigure, consumer,
 };
-use trembita_actor::JobLifecycle;
+use trembita_jobs::JobLifecycle;
 use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};
 
 static SIDE_EFFECTS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);

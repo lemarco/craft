@@ -1,7 +1,7 @@
 //! B-14f: `#[consumer_json]` deserializes JSON payloads before the handler runs.
 
 use trembita::{JobConsumer, JobContext, consumer_json};
-use trembita_actor::{JobId, LeaseId};
+use trembita_jobs::{JobId, LeaseId};
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
 struct WelcomeEmail {

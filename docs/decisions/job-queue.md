@@ -52,7 +52,7 @@ Typical HTTP mapping:
 
 ### `JobQueue` port
 
-New trait in **`trembita-actor`** (object-safe, boxed futures — same pattern as [`ActorStateStore`](../../crates/trembita-actor/src/store.rs)):
+New trait in **`trembita-actor`** (object-safe, boxed futures — same pattern as [`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs)):
 
 ```rust
 pub struct JobId(u64);
@@ -111,7 +111,7 @@ Compaction trims acknowledged jobs (analogous to log purge), preventing unbounde
 
 A **shared logical queue** does not require a shared filesystem or Redis:
 
-- **`QueueService`** runs on the **Raft leader** node (leader-only, like [`ClusterSupervisor`](../../crates/trembita-actor/src/supervisor.rs)).
+- **`QueueService`** runs on the **Raft leader** node (leader-only, like [`ClusterSupervisor`](../../crates/trembita-runtime/src/supervisor.rs)).
 - Workers on **any** VPS call queue RPCs over mTLS (same transport class as `/actor/deliver`).
 - Followers **forward** queue mutations to the leader ([client-and-routing](client-and-routing.md) forward pattern).
 - After each leader mutation, **`QueueReplicateOp`** batches are pushed **in parallel** to every other **reachable voter** (`POST /raft/v1/queue/replicate`); the client only receives success once all peers ack — so a newly elected leader serves the same backlog from its local `redb`.
@@ -131,19 +131,19 @@ Wire routes (under `/raft/v1/queue/`):
 
 ### Sharded streams (v2)
 
-- **`job_queue_sharded(name, shard_count, lease_timeout)`** — `{name}~0` … `{name}~{N-1}` independent redb files; logical [`ShardedJobQueue`](../../crates/trembita-actor/src/sharded_queue.rs) federates enqueue/lease/ack.
+- **`job_queue_sharded(name, shard_count, lease_timeout)`** — `{name}~0` … `{name}~{N-1}` independent redb files; logical [`ShardedJobQueue`](../../crates/trembita-jobs/src/sharded_queue.rs) federates enqueue/lease/ack.
 - Enqueue routes by hash of `shard_key` (or payload); replication runs per shard stream.
 - Spreads leader write + replicate load without putting jobs in the Raft log.
 
 ### Priority and delayed jobs (v2)
 
-- [`EnqueueOptions`](../../crates/trembita-actor/src/queue.rs): `priority` (higher first), `not_before_ms` / `EnqueueOptions::delayed`.
+- [`EnqueueOptions`](../../crates/trembita-jobs/src/queue.rs): `priority` (higher first), `not_before_ms` / `EnqueueOptions::delayed`.
 - Wire: optional fields on `QueueEnqueueRequest`; replicated in `QueueReplicateOp::Enqueue`.
 
 ### Membership autoscale (v2)
 
-- [`MembershipAutoscalePolicy`](../../crates/trembita-actor/src/queue_autoscale.rs) + [`job_queue_membership_autoscale`](../../crates/trembita/src/builder.rs): when `(pending + leased) / live_nodes` exceeds threshold and `live_nodes < max_nodes`, invoke user `join` hook (deploy VPS + dynamic join).
-- Complements worker [`AutoscalePolicy`](../../crates/trembita-actor/src/queue_autoscale.rs) capped at `reachable_nodes`.
+- [`MembershipAutoscalePolicy`](../../crates/trembita-jobs/src/queue_autoscale.rs) + [`job_queue_membership_autoscale`](../../crates/trembita/src/builder.rs): when `(pending + leased) / live_nodes` exceeds threshold and `live_nodes < max_nodes`, invoke user `join` hook (deploy VPS + dynamic join).
+- Complements worker [`AutoscalePolicy`](../../crates/trembita-jobs/src/queue_autoscale.rs) capped at `reachable_nodes`.
 
 ### Worker consumption model
 

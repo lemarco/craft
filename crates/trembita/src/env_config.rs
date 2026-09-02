@@ -11,9 +11,9 @@ use crate::certs::{PemSecurity, cert_paths_for_node, cert_paths_from_env};
 use crate::discovery::Seed;
 use crate::node_id;
 use crate::security::Security;
-use trembita_actor::DEFAULT_DRAIN_TIMEOUT;
 use trembita_net::CertPaths;
 use trembita_net::PeerDirectory;
+use trembita_runtime::DEFAULT_DRAIN_TIMEOUT;
 
 /// Parsed product-app configuration from the environment.
 #[allow(clippy::struct_excessive_bools)] // env toggles map 1:1 to optional features.

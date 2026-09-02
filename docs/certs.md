@@ -180,7 +180,7 @@ CN is free-form.
    The joiner fetches the peer-address book from the seed over `/cluster/peers`,
    the leader commits a membership change adding it, and addresses propagate both
    ways so every node can reach the newcomer.    See [`dev/3node/README.md`](../dev/3node/README.md) and dynamic `join` on
-[`trembita-node`](../crates/trembita-node/README.md).
+[`trembita-node`](../crates/trembita-tools/README.md).
 
 > **Static membership still works** for fixed clusters: bootstrap the full member
 > set up front via matching `TREMBITA_PEERS` + `.members(...)`. Dynamic `join` is the

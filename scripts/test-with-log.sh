@@ -3,11 +3,11 @@
 #
 # Usage:
 #   ./scripts/test-with-log.sh                          # full workspace
-#   ./scripts/test-with-log.sh -p trembita-actor group_rebalance
+#   ./scripts/test-with-log.sh -p trembita-runtime group_rebalance
 #   TREMBITA_LOG_REBALANCE=1 ./scripts/test-with-log.sh -p trembita
 #
 # Local iteration (faster — default-members, no check phase):
-#   ./scripts/test-fast.sh -p trembita-actor
+#   ./scripts/test-fast.sh -p trembita-runtime
 #
 # Env:
 #   CARGO_LOG         — cargo internals (default: cargo::core=info for this script)

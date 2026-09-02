@@ -16,8 +16,8 @@
 
 | Level | Mechanism | Survives crash? |
 |-------|-----------|-----------------|
-| **Hot** | Fields on actor struct + [`ActorSession`](../../crates/trembita-actor/src/session.rs) | ❌ (OK for live session) |
-| **Workflow keys** | [`ActorStateStore`](../../crates/trembita-actor/src/store.rs) → `RedbActorStateStore` | ✅ |
+| **Hot** | Fields on actor struct + [`ActorSession`](../../crates/trembita-runtime/src/session.rs) | ❌ (OK for live session) |
+| **Workflow keys** | [`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs) → `RedbActorStateStore` | ✅ |
 | **Domain data** | `StateMachine` via `propose` | ✅ (Raft replicated) |
 
 ## Architecture
@@ -111,7 +111,7 @@ Add VPS → increase `total_nodes` (or rely on auto-spawn-on-join).
 |-------|----------------|
 | **Process crash** | Leader respawns worker elsewhere; reload from store / SM |
 | **`cluster.leave()`** | Drain ([drain-timeout](../decisions/drain-timeout.md)); migration RPC optional |
-| **Stale session** | [`ActorSession`](../../crates/trembita-actor/src/session.rs) expires → client re-opens or handles `NoTarget` |
+| **Stale session** | [`ActorSession`](../../crates/trembita-runtime/src/session.rs) expires → client re-opens or handles `NoTarget` |
 
 ## Sticky session without external store
 

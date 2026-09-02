@@ -13,7 +13,7 @@ use trembita::net::LocalNetwork;
 use trembita::proto::LogIndex;
 use trembita::cluster::{TrembitaCluster, JobQueue};
 use trembita::NodeId;
-use trembita_actor::{InMemoryJobQueue, RedbJobQueue, WorkerId};
+use trembita_runtime::{InMemoryJobQueue, RedbJobQueue, WorkerId};
 use trembita_benchmarks::{env_u64, queue_payload};
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 

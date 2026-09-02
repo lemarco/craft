@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use trembita_actor::trembita_net::{LocalNetwork, Transport};
-use trembita_actor::trembita_proto::{ActorId, ActorRegistration, ActorTypeId, NodeId};
-use trembita_actor::{
+use trembita_runtime::trembita_net::{LocalNetwork, Transport};
+use trembita_runtime::trembita_proto::{ActorId, ActorRegistration, ActorTypeId, NodeId};
+use trembita_runtime::{
     ActorDirectory, ActorRegistry, ClusterControl, ClusterState, ClusterSupervisor,
     ConfigCodecError, UserActor,
 };
@@ -36,12 +36,12 @@ impl UserActor for Worker {
     }
 
     fn encode_config(config: &Self::Config) -> Result<Vec<u8>, ConfigCodecError> {
-        trembita_actor::trembita_proto::encode(config)
+        trembita_runtime::trembita_proto::encode(config)
             .map_err(|e| ConfigCodecError::Codec(e.to_string()))
     }
 
     fn decode_config(bytes: &[u8]) -> Result<Self::Config, ConfigCodecError> {
-        trembita_actor::trembita_proto::decode(bytes)
+        trembita_runtime::trembita_proto::decode(bytes)
             .map_err(|e| ConfigCodecError::Codec(e.to_string()))
     }
 }

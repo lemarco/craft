@@ -124,7 +124,7 @@ TrembitaApp::builder()
 
 Legacy [`.actors()`](../crates/trembita/src/app.rs) + [`ActorGroupOpts`](../crates/trembita/src/actor_group.rs) remain supported.
 
-Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store_set`](../crates/trembita-actor/src/store_codec.rs) — backed by redb when `data_dir` is set.
+Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store_set`](../crates/trembita-actor-store/src/store_codec.rs) — backed by redb when `data_dir` is set.
 
 ## 6. HTTP job enqueue (optional)
 

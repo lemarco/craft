@@ -10,11 +10,11 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita_actor::trembita_net::{LocalNetwork, Transport};
-use trembita_actor::trembita_proto::{
+use trembita_runtime::trembita_net::{LocalNetwork, Transport};
+use trembita_runtime::trembita_proto::{
     self, ActorId, ActorRegistration, ActorTypeId, DirectoryUpdate, NodeId,
 };
-use trembita_actor::{
+use trembita_runtime::{
     ActorDirectory, ActorRegistry, ClusterControl, ConfigCodecError, MigrationError, RpcReplyPort,
     UserActor,
 };

@@ -33,21 +33,29 @@ use trembita_proto::{
 };
 use trembita_storage::GroupRedbLayout;
 
-use trembita_actor::{
-    ActorDirectory, ActorRegistry, AutoscalePolicy, BacklogFeedOpts, BacklogRegistry,
-    BacklogSettleOutbox, BacklogSettleOutboxOpts, ClusterActorStateStore, ClusterControl,
-    ClusterEventTopic, ClusterJobQueue, ClusterMessaging, ClusterState, ClusterSupervisor,
-    CompositeScheduleSource, ComputeTokenPool, DEFAULT_ACTOR_STORE_GC_MAX_KEYS,
-    DEFAULT_ACTOR_STORE_GC_PERIOD, DEFAULT_DRAIN_TIMEOUT, DEFAULT_QUEUE_PREFETCH, DirectoryPolicy,
-    DirectoryRetry, DirectorySync, EventTopic, ExternalBacklog, InMemoryBacklogSettleOutbox,
-    JobQueue, MailboxSpool, MembershipAutoscalePolicy, NodeService, QueueAutoscaleRegistry,
-    QueueService, RaftDriver, RecurringJob, RedbActorStateStore, RedbBacklogSettleOutbox,
-    RedbEventTopic, RedbJobQueue, RedbMailboxSpool, ResourceProfile, RuntimeConfig, SchedulePoll,
-    ScheduleSource, ShardedJobQueue, StaticScheduleSource, StoreService, TopicRetentionOpts,
-    TopicService, TopicSubscriptionDef, UserActor, VpsResources, WorkloadMetricsSnapshot,
-    WorkloadOpts, run_actor_store_gc_ticker, run_backlog_feeder, run_backlog_settle_drainer,
-    run_mailbox_spool_drainer, run_queue_autoscaler, run_queue_membership_autoscaler,
-    run_queue_schedule_ticker, run_workload_governor, spawn_multi_raft_node, spawn_node,
+use trembita_actor_store::{
+    ClusterActorStateStore, DEFAULT_ACTOR_STORE_GC_MAX_KEYS, DEFAULT_ACTOR_STORE_GC_PERIOD,
+    RedbActorStateStore, StoreService, run_actor_store_gc_ticker,
+};
+use trembita_events::{
+    ClusterEventTopic, EventTopic, RedbEventTopic, TopicRetentionOpts, TopicService,
+    TopicSubscriptionDef,
+};
+use trembita_jobs::{
+    AutoscalePolicy, BacklogFeedOpts, BacklogRegistry, BacklogSettleOutbox,
+    BacklogSettleOutboxOpts, ClusterJobQueue, CompositeScheduleSource, DEFAULT_QUEUE_PREFETCH,
+    ExternalBacklog, InMemoryBacklogSettleOutbox, JobQueue, MembershipAutoscalePolicy,
+    QueueAutoscaleRegistry, QueueService, RecurringJob, RedbBacklogSettleOutbox, RedbJobQueue,
+    SchedulePoll, ScheduleSource, ShardedJobQueue, StaticScheduleSource, WorkloadMetricsSnapshot,
+    WorkloadOpts, run_backlog_feeder, run_backlog_settle_drainer, run_queue_autoscaler,
+    run_queue_membership_autoscaler, run_queue_schedule_ticker, run_workload_governor,
+};
+use trembita_runtime::{
+    ActorDirectory, ActorRegistry, ClusterControl, ClusterMessaging, ClusterState,
+    ClusterSupervisor, ComputeTokenPool, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy, DirectoryRetry,
+    DirectorySync, MailboxSpool, NodeService, RaftDriver, RedbMailboxSpool, ResourceProfile,
+    RuntimeConfig, UserActor, VpsResources, run_mailbox_spool_drainer, spawn_multi_raft_node,
+    spawn_node,
 };
 
 use crate::certs::{CertReloadHandle, PemSecurity, cert_paths_for_node};
@@ -201,7 +209,7 @@ pub struct TrembitaClusterBuilder<M: StateMachine> {
     group_learner_factor: u32,
     raft_machines: Option<Vec<M>>,
     data_dir: Option<PathBuf>,
-    actor_state_store: Option<Arc<dyn trembita_actor::ActorStateStore>>,
+    actor_state_store: Option<Arc<dyn trembita_actor_store::ActorStateStore>>,
     /// Open `{data_dir}/actor-store.redb` with voter replication when no explicit store is set.
     auto_durable_actor_store: bool,
     drain_timeout: Duration,
@@ -454,10 +462,13 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
         self
     }
 
-    /// External store for **stateful actor workflow data** ([`RedbActorStateStore`](trembita_actor::RedbActorStateStore)
+    /// External store for **stateful actor workflow data** ([`RedbActorStateStore`](trembita_actor_store::RedbActorStateStore)
     /// when [`data_dir`](Self::data_dir) is set). Override with an explicit store when needed.
     #[must_use]
-    pub fn actor_state_store(mut self, store: Arc<dyn trembita_actor::ActorStateStore>) -> Self {
+    pub fn actor_state_store(
+        mut self,
+        store: Arc<dyn trembita_actor_store::ActorStateStore>,
+    ) -> Self {
         self.actor_state_store = Some(store);
         self
     }
@@ -486,7 +497,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
         self
     }
 
-    /// Disable automatic log compaction (use [`trembita_actor::NodeHandle::compact`] manually).
+    /// Disable automatic log compaction (use [`trembita_runtime::NodeHandle::compact`] manually).
     #[must_use]
     pub fn auto_compaction_disabled(mut self) -> Self {
         self.runtime.compaction = trembita_core::CompactionPolicy::disabled();
@@ -770,7 +781,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     /// Tune leader prefetch depth for `stream` (default [`DEFAULT_QUEUE_PREFETCH`]).
     ///
     /// Prefetch keeps recently enqueued payloads in RAM on the queue leader so
-    /// [`lease`](trembita_actor::JobQueue::lease) skips re-reading from `redb`.
+    /// [`lease`](trembita_jobs::JobQueue::lease) skips re-reading from `redb`.
     /// Set `prefetch` to `0` to disable.
     #[must_use]
     pub fn job_queue_prefetch(mut self, stream: &str, prefetch: usize) -> Self {
@@ -785,7 +796,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     /// Default delivery-attempt ceiling for `stream` (`0` = unlimited retries).
     ///
     /// Applies to every enqueue that leaves
-    /// [`EnqueueOptions::max_attempts`](trembita_actor::EnqueueOptions::max_attempts)
+    /// [`EnqueueOptions::max_attempts`](trembita_jobs::EnqueueOptions::max_attempts)
     /// unset — including HTTP `POST /jobs/{stream}` and cron schedules. An
     /// explicit per-job ceiling always wins.
     #[must_use]
@@ -1036,9 +1047,9 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
         mut self,
         stream: &str,
         policy: &MembershipAutoscalePolicy,
-        join: impl Fn() -> trembita_actor::BoxFuture<
+        join: impl Fn() -> trembita_actor_store::BoxFuture<
             'static,
-            Result<(), trembita_actor::ClusterScaleError>,
+            Result<(), trembita_runtime::ClusterScaleError>,
         > + Send
         + Sync
         + 'static,
@@ -1337,7 +1348,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             Some(sink) => Metrics::with_extra_sinks(vec![sink]),
             None => Metrics::new(),
         };
-        let on_two_phase_gc_aborted: trembita_actor::TwoPhaseGcAbortedFn = Arc::new({
+        let on_two_phase_gc_aborted: trembita_runtime::TwoPhaseGcAbortedFn = Arc::new({
             let metrics = metrics.clone();
             move || crate::two_phase::record_two_phase_gc_aborted(&metrics, node_id.0)
         });
@@ -1345,25 +1356,26 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
 
         let saga_registry = Arc::new(Mutex::new(BTreeMap::new()));
         let saga_hook_reg = Arc::clone(&saga_registry);
-        let on_saga_journal_applied: trembita_actor::SagaJournalAppliedFn = Arc::new(move |cmd| {
-            if let Ok(record) = trembita_client::decode_journal_record(&cmd.record) {
-                saga_hook_reg
-                    .lock()
-                    .expect("lock")
-                    .insert(cmd.saga_id, record);
-            }
-        });
+        let on_saga_journal_applied: trembita_runtime::SagaJournalAppliedFn =
+            Arc::new(move |cmd| {
+                if let Ok(record) = trembita_client::decode_journal_record(&cmd.record) {
+                    saga_hook_reg
+                        .lock()
+                        .expect("lock")
+                        .insert(cmd.saga_id, record);
+                }
+            });
 
         let queue_autoscale_registry = Arc::new(QueueAutoscaleRegistry::new());
         let queue_autoscale_hook_reg = Arc::clone(&queue_autoscale_registry);
-        let on_queue_autoscale_policy_applied: trembita_actor::QueueAutoscalePolicyAppliedFn =
+        let on_queue_autoscale_policy_applied: trembita_runtime::QueueAutoscalePolicyAppliedFn =
             Arc::new(move |cmd| {
                 queue_autoscale_hook_reg.apply(&cmd);
             });
 
         let two_phase_registry = Arc::new(Mutex::new(BTreeMap::new()));
         let two_phase_hook_reg = Arc::clone(&two_phase_registry);
-        let on_two_phase_journal_applied: trembita_actor::TwoPhaseJournalAppliedFn =
+        let on_two_phase_journal_applied: trembita_runtime::TwoPhaseJournalAppliedFn =
             Arc::new(move |cmd| {
                 if let Ok(record) = trembita_client::decode_two_phase_journal_record(&cmd.record) {
                     two_phase_hook_reg
@@ -1606,7 +1618,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             .with_lifecycle_hook(Arc::new(move |ev| {
                 // Attempts are recorded here, once per delivery — a metrics
                 // sampler polling queue depth cannot see individual deliveries.
-                if let trembita_actor::QueueLifecycleEvent::Leased {
+                if let trembita_jobs::QueueLifecycleEvent::Leased {
                     ref stream,
                     attempts,
                     ..
@@ -2174,7 +2186,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
                             1.0,
                         );
                     }
-                }) as trembita_actor::WorkloadMetricsHook)
+                }) as trembita_jobs::WorkloadMetricsHook)
             };
             let pool_for_governor = Arc::clone(&pool);
             tasks.push(tokio::spawn(async move {
@@ -2297,7 +2309,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
 }
 
 async fn propose_queue_autoscale_policies<M: StateMachine>(
-    meta: trembita_actor::NodeHandle<M>,
+    meta: trembita_runtime::NodeHandle<M>,
     state: Arc<dyn ClusterState>,
     proposals: Vec<QueueAutoscalePolicyCommand>,
 ) {

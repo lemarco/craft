@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use trembita::actor::{ConfigCodecError, UserActor, WorkerId};
 use trembita::cluster::{
     AutoscalePolicy, EnqueueOptions, JobQueue, MembershipAutoscalePolicy, RedbJobQueue,
     TrembitaCluster,
@@ -14,6 +13,8 @@ use trembita::net::LocalNetwork;
 use trembita::net::send_join_request;
 use trembita::proto::{self, NodeId};
 use trembita::proto::{JoinRequest, JoinResponse, JoinRole, PROTOCOL_VERSION};
+use trembita_jobs::WorkerId;
+use trembita_runtime::{ConfigCodecError, UserActor};
 use trembita_test_support::{
     KvMachine, TICK_PERIOD, advance, assert_eq, await_trembita_leader, eventually_async_default,
     eventually_default, fast_raft_config_with_seed, wait_for_trembita_stopped,
@@ -526,7 +527,7 @@ async fn dedup_key_released_after_ack() {
 
 #[tokio::test(start_paused = true)]
 async fn dedup_key_held_on_dead_letter() {
-    use trembita_actor::JobLifecycle;
+    use trembita_jobs::JobLifecycle;
 
     let dir = tempfile::tempdir().expect("tempdir");
     let (_net, clusters) = spawn_queue_cluster(&dir, false).await;
@@ -655,9 +656,9 @@ async fn membership_autoscale_invokes_join_hook() {
                 );
                 Ok(())
             })
-                as trembita::actor::BoxFuture<
+                as trembita_actor_store::BoxFuture<
                     'static,
-                    Result<(), trembita::actor::ClusterScaleError>,
+                    Result<(), trembita_runtime::ClusterScaleError>,
                 >
         };
         let data_dir = dir.join(format!("node-{}", id.0));

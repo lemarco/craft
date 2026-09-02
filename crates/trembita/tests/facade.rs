@@ -8,11 +8,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use trembita::NodeId;
-use trembita::actor::{ConfigCodecError, UserActor};
 use trembita::cluster::TrembitaCluster;
 use trembita::core::{Config, FailureDetectorKind, ReachabilityConfig};
 use trembita::net::LocalNetwork;
 use trembita::proto;
+use trembita_runtime::{ConfigCodecError, UserActor};
 use trembita_test_support::{
     Cmd, Kv, Qry, Resp, TICK_PERIOD, advance, await_trembita_leader, eventually_async_default,
     eventually_default, fast_raft_config,
@@ -549,7 +549,7 @@ async fn opt_in_tracing_emits_message_handled_events() {
 
 #[tokio::test(start_paused = true)]
 async fn builder_wires_actor_state_store() {
-    use trembita::actor::{ActorStateStore, InMemoryStore};
+    use trembita::actor_store::{ActorStateStore, InMemoryStore};
 
     let net = LocalNetwork::new();
     let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());

@@ -16,7 +16,7 @@ use trembita::net::LocalNetwork;
 use trembita::proto::LogIndex;
 use trembita::cluster::TrembitaCluster;
 use trembita::NodeId;
-use trembita_actor::{WorkerId};
+use trembita_runtime::{WorkerId};
 use trembita_benchmarks::{env_u64, queue_payload};
 
 const STREAM: &str = "soak-jobs";

@@ -11,12 +11,12 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
-use trembita::actor::{UserActor, actor};
 use trembita::cluster::build_gateway_router;
 use trembita::{
     ActorGroupOpts, GatewayOpts, SessionHandle, TrembitaApp, TrembitaConfigure,
     TrembitaGatewayState,
 };
+use trembita_runtime::{UserActor, actor};
 use trembita_test_support::{
     advance, boot_local_app, eventually_default, wait_for_trembita_app_leader,
 };

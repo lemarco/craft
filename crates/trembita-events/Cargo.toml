@@ -1,0 +1,39 @@
+[package]
+name = "trembita-events"
+description = "Durable event topic port, redb adapter, and leader TopicService for trembita."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+readme = "README.md"
+homepage.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints]
+workspace = true
+
+[dependencies]
+trembita-proto.workspace = true
+trembita-core.workspace = true
+trembita-runtime.workspace = true
+trembita-jobs.workspace = true
+trembita-actor-store.workspace = true
+trembita-net.workspace = true
+serde = { workspace = true, features = ["derive"] }
+postcard.workspace = true
+redb = "4.2.0"
+thiserror.workspace = true
+tracing.workspace = true
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
+
+[dev-dependencies]
+trembita-test-support = { path = "../trembita-test-support" }
+trembita-net.workspace = true
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "test-util"] }

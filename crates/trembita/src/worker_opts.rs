@@ -3,7 +3,8 @@
 use std::marker::PhantomData;
 use std::time::Duration;
 
-use trembita_actor::{AutoscalePolicy, UserActor};
+use trembita_jobs::AutoscalePolicy;
+use trembita_runtime::UserActor;
 
 use crate::app::TrembitaAppBuilder;
 

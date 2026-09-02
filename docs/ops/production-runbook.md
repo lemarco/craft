@@ -33,7 +33,7 @@ Operational checklist for running trembita on **N identical VPS or bare-metal no
 | Snapshot / restore `data_dir` | [backup-restore.md](backup-restore.md) |
 | Rolling wire vs app semver upgrades | [rolling-upgrade.md](rolling-upgrade.md) |
 | PKI generation and SAN naming | [certs.md](../certs.md) |
-| `trembita-ops` CLI | [trembita-ops README](../../crates/trembita-ops/README.md) |
+| `trembita-ops` CLI | [trembita-ops README](../../crates/trembita-tools/README.md) |
 
 **Pre-upgrade:** export a backup before risky app semver bumps or catalog expansion.
 

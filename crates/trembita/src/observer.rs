@@ -15,8 +15,9 @@ use trembita_dashboard::{
 };
 use trembita_proto::NodeId;
 
-use trembita_actor::{ActorDirectory, ActorRegistry, JobQueue, NodeHandle};
 use trembita_client::SagaJournalPhase;
+use trembita_jobs::JobQueue;
+use trembita_runtime::{ActorDirectory, ActorRegistry, NodeHandle};
 
 use crate::multi_raft::MultiRaftState;
 use crate::saga::SagaRegistry;

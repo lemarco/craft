@@ -39,7 +39,7 @@ pub struct EnqueueBatchJobBody {
 /// JSON body for `POST /jobs/{stream}/batch`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct EnqueueBatchBody {
-    /// Jobs to enqueue (capped at [`trembita_actor::DEFAULT_QUEUE_BATCH_MAX`]).
+    /// Jobs to enqueue (capped at [`trembita_jobs::DEFAULT_QUEUE_BATCH_MAX`]).
     pub jobs: Vec<EnqueueBatchJobBody>,
 }
 

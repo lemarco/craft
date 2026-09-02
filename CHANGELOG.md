@@ -14,9 +14,9 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 - **Learner join (elastic scale-out)** — `/cluster/join` defaults to [`JoinRole::Learner`](crates/trembita-proto/src/join.rs); voters only with `allow_voter_join`. Full peer for workers/ingress; queue replication fan-out stays O(voters). See [cluster-elasticity § voters vs learners](docs/decisions/cluster-elasticity.md#voters-vs-learners-elastic-scale-out).
 - **Automatic voter replacement** — leader promotes the lowest-id caught-up learner when a voter is permanently unreachable (`voter_replacement`, default on). Pure planner in `trembita-core::membership_repair`.
 - **External compute load** — [`JobOpts::compute_cost`](crates/trembita/src/job_opts.rs) reserves
-  weighted units from [`ComputeTokenPool`](crates/trembita-actor/src/compute_token.rs) for
-  subprocess-heavy handlers; optional [`ExternalLoad`](crates/trembita-actor/src/external_load.rs)
-  port on [`WorkloadOpts`](crates/trembita-actor/src/workload.rs) feeds the governor when child
+  weighted units from [`ComputeTokenPool`](crates/trembita-runtime/src/compute_token.rs) for
+  subprocess-heavy handlers; optional [`ExternalLoad`](crates/trembita-runtime/src/external_load.rs)
+  port on [`WorkloadOpts`](crates/trembita-jobs/src/workload.rs) feeds the governor when child
   processes compete with the gateway ([`external-load`](docs/decisions/external-load.md)).
 
 ### Changed
@@ -46,7 +46,7 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ### Added
 
-- **Durable event topics** — [`EventTopic`](crates/trembita-actor/src/topic.rs) pub/sub with named
+- **Durable event topics** — [`EventTopic`](crates/trembita-events/src/topic.rs) pub/sub with named
   subscriptions, independent cursors, compaction by `min(cursor)`, retention thresholds, and
   voter replication ([`event-topics`](docs/decisions/event-topics.md)); [`TopicOpts`](crates/trembita/src/topic_opts.rs),
   [`.topics()`](crates/trembita/src/app.rs), [`TrembitaApp::publish`](crates/trembita/src/app.rs),
@@ -55,7 +55,7 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 - **`ScheduleSource` port** — dynamic recurring-job schedules polled on the queue
   leader ([`schedule-source`](docs/decisions/schedule-source.md)); [`.schedule_source()`](crates/trembita/src/app.rs)
   on `TrembitaAppBuilder`; [`.cron()`](crates/trembita/src/app.rs) reimplemented via
-  [`StaticScheduleSource`](crates/trembita-actor/src/schedule_source.rs). Source errors and
+  [`StaticScheduleSource`](crates/trembita-jobs/src/schedule_source.rs). Source errors and
   bootstrap empty polls never wipe persisted schedules; diff reconcile replicates
   `UpsertSchedule` / `RemoveSchedule`.
 - **`ExternalBacklog` port** — leader feeder + settle outbox for in-flight queue windows over an
@@ -64,8 +64,8 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
   `effective_queue_depth`.
 - **`trembita-backlog-postgres`** — optional published crate with [`PgBacklog`](crates/trembita-backlog-postgres/src/lib.rs)
   (`SKIP LOCKED` claim + idempotent settle).
-- **Workload governor** — per-node [`ComputeTokenPool`](crates/trembita-actor/src/compute_token.rs) +
-  [`WorkloadGovernor`](crates/trembita-actor/src/workload.rs) consumer tuning from gateway load
+- **Workload governor** — per-node [`ComputeTokenPool`](crates/trembita-runtime/src/compute_token.rs) +
+  [`WorkloadGovernor`](crates/trembita-jobs/src/workload.rs) consumer tuning from gateway load
   ([`workload-governor`](docs/decisions/workload-governor.md)); [`WorkloadOpts`](crates/trembita/src/workload.rs),
   [`.workload()`](crates/trembita/src/app.rs). Removed static role env vars (`TREMBITA_ROLE`, etc.).
 - **`HostRouter`** — virtual-host dispatch for product gateway HTTP ([`trembita-http`](crates/trembita-http/src/host_router.rs));

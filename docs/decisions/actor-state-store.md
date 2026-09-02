@@ -17,7 +17,7 @@ The original ADR recommended **Redis** as the primary example. Product direction
 | Layer | Store | Purpose |
 |-------|--------|---------|
 | **Authoritative / consensus** | Raft → `StateMachine` | Orders, balances, config — linearizable and replicated |
-| **Actor workflow** | [`ActorStateStore`](../../crates/trembita-actor/src/store.rs) | Session progress, idempotency keys, locks, handler caches — survives crash when backed by durable store |
+| **Actor workflow** | [`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs) | Session progress, idempotency keys, locks, handler caches — survives crash when backed by durable store |
 
 **Do not** put routine actor workflow bytes in the Raft log — avoids R1 write ceiling and wrong abstraction ([future-work-and-risks](future-work-and-risks.md)).
 
@@ -37,7 +37,7 @@ Product getting started and [scenario guides](../scenarios/README.md) use **redb
 |------|-----------|
 | Business entity the product audits | `StateMachine` via `propose` |
 | Job payload / retry | `JobQueue` via `enqueue` |
-| Hot state for one session (loss on crash OK) | Actor struct fields + [`ActorSession`](../../crates/trembita-actor/src/session.rs) |
+| Hot state for one session (loss on crash OK) | Actor struct fields + [`ActorSession`](../../crates/trembita-runtime/src/session.rs) |
 | Idempotency / step counter across crash | `ActorStateStore` (`RedbActorStateStore` with `.data_dir()`) |
 | Saga coordinator progress (multi-step workflow) | `MetaRaftSagaJournal` / `CompositeSagaJournal` ([workflows](../scenarios/workflows.md)) |
 

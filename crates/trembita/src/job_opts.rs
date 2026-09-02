@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita_actor::{BacklogFeedOpts, ConsumerCount, DEFAULT_QUEUE_PREFETCH, ExternalBacklog};
+use trembita_jobs::{BacklogFeedOpts, ConsumerCount, DEFAULT_QUEUE_PREFETCH, ExternalBacklog};
 
 use crate::consumer::{ConsumerOpts, ConsumerSpawnFn, IdempotencyOpts, JobConsumer};
 use crate::queue_opts::QueueOpts;
@@ -165,7 +165,7 @@ impl JobOpts {
         self
     }
 
-    /// Wire an external source-of-truth backlog ([`ExternalBacklog`](trembita_actor::ExternalBacklog)).
+    /// Wire an external source-of-truth backlog ([`ExternalBacklog`](trembita_jobs::ExternalBacklog)).
     ///
     /// The leader claims items, enqueues with `dedup_key = item.key`, and settles outcomes
     /// back to the source after ack or dead-letter.

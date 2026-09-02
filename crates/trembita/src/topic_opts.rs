@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use trembita_actor::{SubscriptionStart, TopicRetentionOpts, TopicSubscriptionDef};
+use trembita_events::{SubscriptionStart, TopicRetentionOpts, TopicSubscriptionDef};
 use trembita_proto::{DEFAULT_TOPIC_MAX_EVENT_AGE_MS, DEFAULT_TOPIC_MAX_RETAINED_EVENTS};
 
 /// One durable topic with named subscriptions ([event-topics](../../docs/decisions/event-topics.md)).

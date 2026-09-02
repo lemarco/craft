@@ -9,15 +9,14 @@ use std::time::Duration;
 
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use trembita_actor::ClientError;
-use trembita_actor::NodeHandle;
-use trembita_actor::{
-    ActorRegistry, ActorSession, CastError, ClusterAskError, ClusterControl, ClusterRef,
-    ClusterSupervisor, EnqueueOptions, JobId, JobQueue, JobStatus, LeaseId, UserActor, WorkerId,
-};
 use trembita_client::{SagaError, SagaOutcome, SagaPlan};
 use trembita_core::StateMachine;
+use trembita_jobs::{EnqueueOptions, JobId, JobQueue, JobStatus, LeaseId, WorkerId};
 use trembita_proto::LogIndex;
+use trembita_runtime::{
+    ActorRegistry, ActorSession, CastError, ClientError, ClusterAskError, ClusterControl,
+    ClusterRef, ClusterSupervisor, NodeHandle, UserActor,
+};
 
 use crate::NodeId;
 use crate::actor_group::ActorGroupOpts;
@@ -280,7 +279,7 @@ impl TrembitaAppBuilder {
 
     /// Register cron-driven recurring enqueues (requires matching [`.queue`](Self::queue) streams).
     ///
-    /// Implemented as a [`StaticScheduleSource`](trembita_actor::StaticScheduleSource) —
+    /// Implemented as a [`StaticScheduleSource`](trembita_jobs::StaticScheduleSource) —
     /// same reconcile path as [`.schedule_source`](Self::schedule_source).
     ///
     /// # Errors
@@ -303,8 +302,8 @@ impl TrembitaAppBuilder {
     pub fn schedule_source(
         mut self,
         stream: impl Into<String>,
-        source: Arc<dyn trembita_actor::ScheduleSource>,
-        poll: trembita_actor::SchedulePoll,
+        source: Arc<dyn trembita_jobs::ScheduleSource>,
+        poll: trembita_jobs::SchedulePoll,
     ) -> Self {
         let stream = stream.into();
         self.schedule_streams.push(stream.clone());
@@ -382,7 +381,7 @@ impl TrembitaAppBuilder {
     /// Per-node workload governor — compute tokens arbitrate gateway vs job handlers
     /// ([workload governor](../../docs/decisions/workload-governor.md)).
     #[must_use]
-    pub fn workload(mut self, opts: trembita_actor::WorkloadOpts) -> Self {
+    pub fn workload(mut self, opts: trembita_jobs::WorkloadOpts) -> Self {
         self.inner = self.inner.workload(opts);
         self
     }
@@ -632,7 +631,7 @@ impl TrembitaApp {
 
     /// Look up a registered durable topic by name.
     #[must_use]
-    pub fn event_topic(&self, name: &str) -> Option<Arc<dyn trembita_actor::EventTopic>> {
+    pub fn event_topic(&self, name: &str) -> Option<Arc<dyn trembita_events::EventTopic>> {
         self.cluster.event_topic(name)
     }
 
@@ -644,9 +643,9 @@ impl TrembitaApp {
         &self,
         topic: &str,
         payload: &[u8],
-    ) -> Result<trembita_actor::EventId, trembita_actor::TopicError> {
+    ) -> Result<trembita_events::EventId, trembita_events::TopicError> {
         let t = self.event_topic(topic).ok_or_else(|| {
-            trembita_actor::TopicError::NotFound(format!("unknown topic {topic:?}"))
+            trembita_events::TopicError::NotFound(format!("unknown topic {topic:?}"))
         })?;
         t.publish(payload).await
     }
@@ -691,7 +690,7 @@ impl TrembitaApp {
 
     /// Workflow store when [`TrembitaClusterBuilder::data_dir`](crate::cluster::TrembitaClusterBuilder::data_dir) / auto durable store is enabled.
     #[must_use]
-    pub fn actor_state_store(&self) -> Option<Arc<dyn trembita_actor::ActorStateStore>> {
+    pub fn actor_state_store(&self) -> Option<Arc<dyn trembita_actor_store::ActorStateStore>> {
         self.cluster.actor_state_store()
     }
 
@@ -703,9 +702,9 @@ impl TrembitaApp {
         &self,
         stream: &str,
         payload: &[u8],
-    ) -> Result<JobId, trembita_actor::QueueError> {
+    ) -> Result<JobId, trembita_jobs::QueueError> {
         let queue = self.cluster.job_queue(stream).ok_or_else(|| {
-            trembita_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
+            trembita_jobs::QueueError::Backend(format!("unknown stream {stream:?}"))
         })?;
         queue.enqueue(payload).await
     }
@@ -719,9 +718,9 @@ impl TrembitaApp {
         stream: &str,
         payload: &[u8],
         options: EnqueueOptions,
-    ) -> Result<JobId, trembita_actor::QueueError> {
+    ) -> Result<JobId, trembita_jobs::QueueError> {
         let queue = self.cluster.job_queue(stream).ok_or_else(|| {
-            trembita_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
+            trembita_jobs::QueueError::Backend(format!("unknown stream {stream:?}"))
         })?;
         queue.enqueue_opts(payload, options).await
     }
@@ -736,7 +735,7 @@ impl TrembitaApp {
         step_id: &str,
         stream: &str,
         payload: &[u8],
-    ) -> Result<JobId, trembita_actor::QueueError> {
+    ) -> Result<JobId, trembita_jobs::QueueError> {
         self.enqueue_opts(
             stream,
             payload,
@@ -755,7 +754,7 @@ impl TrembitaApp {
         &self,
         stream: &str,
         payloads: &[&[u8]],
-    ) -> Result<Vec<JobId>, trembita_actor::QueueError> {
+    ) -> Result<Vec<JobId>, trembita_jobs::QueueError> {
         self.cluster.enqueue_batch(stream, payloads).await
     }
 
@@ -767,7 +766,7 @@ impl TrembitaApp {
         &self,
         stream: &str,
         jobs: &[(Vec<u8>, EnqueueOptions)],
-    ) -> Result<Vec<JobId>, trembita_actor::QueueError> {
+    ) -> Result<Vec<JobId>, trembita_jobs::QueueError> {
         self.cluster.enqueue_batch_opts(stream, jobs).await
     }
 
@@ -780,7 +779,7 @@ impl TrembitaApp {
         stream: &str,
         worker: WorkerId,
         lease_ids: &[LeaseId],
-    ) -> Result<(), trembita_actor::QueueError> {
+    ) -> Result<(), trembita_jobs::QueueError> {
         self.cluster.ack_batch(stream, worker, lease_ids).await
     }
 
@@ -792,9 +791,9 @@ impl TrembitaApp {
         &self,
         stream: &str,
         job_id: JobId,
-    ) -> Result<Option<JobStatus>, trembita_actor::QueueError> {
+    ) -> Result<Option<JobStatus>, trembita_jobs::QueueError> {
         let queue = self.cluster.job_queue(stream).ok_or_else(|| {
-            trembita_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
+            trembita_jobs::QueueError::Backend(format!("unknown stream {stream:?}"))
         })?;
         queue.job_status(job_id).await
     }
@@ -807,7 +806,7 @@ impl TrembitaApp {
         &self,
         stream: &str,
         job_id: JobId,
-    ) -> Result<(), trembita_actor::QueueError> {
+    ) -> Result<(), trembita_jobs::QueueError> {
         self.cluster.requeue_dead_letter(stream, job_id).await
     }
 
@@ -818,8 +817,8 @@ impl TrembitaApp {
     pub async fn list_jobs(
         &self,
         stream: &str,
-        filter: trembita_actor::JobListFilter,
-    ) -> Result<trembita_actor::JobListPage, trembita_actor::QueueError> {
+        filter: trembita_jobs::JobListFilter,
+    ) -> Result<trembita_jobs::JobListPage, trembita_jobs::QueueError> {
         self.cluster.list_jobs(stream, filter).await
     }
 
@@ -831,7 +830,7 @@ impl TrembitaApp {
         &self,
         stream: &str,
         job_ids: &[JobId],
-    ) -> Result<trembita_actor::BatchRequeueResult, trembita_actor::QueueError> {
+    ) -> Result<trembita_jobs::BatchRequeueResult, trembita_jobs::QueueError> {
         self.cluster
             .requeue_dead_letter_batch(stream, job_ids)
             .await

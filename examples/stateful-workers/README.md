@@ -1,6 +1,6 @@
 # Stateful workers (stateful actors)
 
-Idempotent order processing with [`ActorStateStore`](../../crates/trembita-actor/src/store.rs) and a two-node migration walkthrough.
+Idempotent order processing with [`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs) and a two-node migration walkthrough.
 
 ## What you run
 

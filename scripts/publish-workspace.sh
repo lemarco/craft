@@ -46,7 +46,7 @@ PUBLISH_ORDER=(
     trembita-core
     trembita-storage
     trembita-net
-    trembita-actor
+    trembita-runtime
     trembita-client
     trembita-dashboard
     trembita-http

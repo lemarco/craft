@@ -4,12 +4,12 @@
 //! Optional crate for externalizing stateful-actor data (backlog Track G) so it
 //! survives a VPS crash: when the leader respawns a worker on another node it
 //! reloads its keys from Redis (cross-node-actors, supervisor-leader). Consensus data stays in the
-//! Raft [`StateMachine`](trembita_actor::trembita_core::StateMachine) — Redis holds
+//! Raft [`StateMachine`](trembita_runtime::trembita_core::StateMachine) — Redis holds
 //! only workflow/session/idempotency state.
 //!
 //! ```no_run
 //! use std::sync::Arc;
-//! use trembita_actor::ActorStateStore;
+//! use trembita_actor_store::ActorStateStore;
 //! use trembita_store_redis::RedisStore;
 //!
 //! # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
@@ -41,13 +41,11 @@ mod tls;
 
 pub use tls::RedisTlsConfig;
 
-pub use trembita_actor;
-
 use std::time::Duration;
 
 use redis::AsyncCommands;
 use redis::aio::ConnectionManager;
-use trembita_actor::{ActorStateStore, BoxFuture, StoreError};
+use trembita_actor_store::{ActorStateStore, BoxFuture, StoreError};
 
 /// Atomic compare-and-set. `KEYS[1]` = key; `ARGV[1]` = `"1"`/`"0"` whether an
 /// expected value was supplied; `ARGV[2]` = expected bytes; `ARGV[3]` = new

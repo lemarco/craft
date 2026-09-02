@@ -2,7 +2,7 @@
 //!
 //! Two layers over a shared [`trembita_proto`] wire contract (client-api):
 //!
-//! * **In-process (L1):** embed a node and use its `trembita_actor::NodeHandle`
+//! * **In-process (L1):** embed a node and use its `trembita_runtime::NodeHandle`
 //!   directly (`propose`/`query`) — no serialization, no network.
 //! * **Remote (L2):** [`RemoteClient`] speaks `postcard` over any
 //!   [`trembita_net`] transport (live QUIC/HTTP/3 with client mTLS, or the

@@ -76,7 +76,7 @@ setup() {
         echo ">> reusing certs in $CERTS"
     fi
     echo ">> building trembita-node (release)"
-    cargo build -p trembita-node --release
+    cargo build -p trembita-tools --release --bin trembita-node
     echo "OK: ready. Open three terminals and run:"
     echo "  ./scripts/dev-3node.sh 1"
     echo "  ./scripts/dev-3node.sh 2"
@@ -94,7 +94,7 @@ run_node() {
 
 queue_smoke() {
     [ -f "$CERTS/ca.pem" ] || die "run ./scripts/dev-3node.sh setup first"
-    cargo build -p trembita-e2e-queue-client --release
+    cargo build -p trembita-tools --release --bin trembita-e2e-queue-client
     client_env
     export TREMBITA_QUEUE_SUBMIT_NODE=1
     export TREMBITA_QUEUE_WORKER_PEER=2

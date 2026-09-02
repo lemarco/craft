@@ -123,14 +123,14 @@ pub fn consumer_json(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// Fill in the `postcard` wire codecs on a `UserActor` `impl` so the actor is
 /// remotely spawnable and addressable (cross-node-actors, backlog D2).
 ///
-/// A bare `impl trembita_actor::UserActor for MyActor { .. }` is **local-only**:
+/// A bare `impl trembita_runtime::UserActor for MyActor { .. }` is **local-only**:
 /// the trait's `encode_config` / `decode_config` / `decode_message` default to
 /// rejecting (`NotSpawnable` / `NotAddressable`). Rather than hand-writing the
 /// `trembita_proto::encode`/`decode` glue, annotate the impl:
 ///
 /// ```ignore
-/// #[trembita_actor::actor]
-/// impl trembita_actor::UserActor for Counter {
+/// #[trembita_runtime::actor]
+/// impl trembita_runtime::UserActor for Counter {
 ///     type Config = CounterConfig;   // : Serialize + DeserializeOwned
 ///     type Message = CounterMessage; // : DeserializeOwned
 ///     type Error = CounterError;
@@ -151,8 +151,8 @@ pub fn consumer_json(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// state, not a mechanical codec):
 ///
 /// ```ignore
-/// #[trembita_actor::actor(migratable)]
-/// impl trembita_actor::UserActor for Session { /* .. */ }
+/// #[trembita_runtime::actor(migratable)]
+/// impl trembita_runtime::UserActor for Session { /* .. */ }
 /// ```
 #[proc_macro_attribute]
 pub fn actor(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -179,7 +179,7 @@ pub fn actor(attr: TokenStream, item: TokenStream) -> TokenStream {
     if !is_user_actor {
         return syn::Error::new_spanned(
             &input.self_ty,
-            "`#[actor]` must be applied to an `impl trembita_actor::UserActor for T` block",
+            "`#[actor]` must be applied to an `impl trembita_runtime::UserActor for T` block",
         )
         .to_compile_error()
         .into();
@@ -201,9 +201,9 @@ pub fn actor(attr: TokenStream, item: TokenStream) -> TokenStream {
         input.items.push(syn::parse_quote! {
             fn encode_config(
                 config: &Self::Config,
-            ) -> ::core::result::Result<::std::vec::Vec<u8>, ::trembita_actor::ConfigCodecError> {
-                ::trembita_actor::trembita_proto::encode(config)
-                    .map_err(|e| ::trembita_actor::ConfigCodecError::Codec(
+            ) -> ::core::result::Result<::std::vec::Vec<u8>, ::trembita_runtime::ConfigCodecError> {
+                ::trembita_runtime::trembita_proto::encode(config)
+                    .map_err(|e| ::trembita_runtime::ConfigCodecError::Codec(
                         ::std::string::ToString::to_string(&e),
                     ))
             }
@@ -213,9 +213,9 @@ pub fn actor(attr: TokenStream, item: TokenStream) -> TokenStream {
         input.items.push(syn::parse_quote! {
             fn decode_config(
                 bytes: &[u8],
-            ) -> ::core::result::Result<Self::Config, ::trembita_actor::ConfigCodecError> {
-                ::trembita_actor::trembita_proto::decode(bytes)
-                    .map_err(|e| ::trembita_actor::ConfigCodecError::Codec(
+            ) -> ::core::result::Result<Self::Config, ::trembita_runtime::ConfigCodecError> {
+                ::trembita_runtime::trembita_proto::decode(bytes)
+                    .map_err(|e| ::trembita_runtime::ConfigCodecError::Codec(
                         ::std::string::ToString::to_string(&e),
                     ))
             }
@@ -225,9 +225,9 @@ pub fn actor(attr: TokenStream, item: TokenStream) -> TokenStream {
         input.items.push(syn::parse_quote! {
             fn decode_message(
                 payload: &[u8],
-            ) -> ::core::result::Result<Self::Message, ::trembita_actor::MessageDecodeError> {
-                ::trembita_actor::trembita_proto::decode(payload)
-                    .map_err(|e| ::trembita_actor::MessageDecodeError::Decode(
+            ) -> ::core::result::Result<Self::Message, ::trembita_runtime::MessageDecodeError> {
+                ::trembita_runtime::trembita_proto::decode(payload)
+                    .map_err(|e| ::trembita_runtime::MessageDecodeError::Decode(
                         ::std::string::ToString::to_string(&e),
                     ))
             }

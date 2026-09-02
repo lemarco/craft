@@ -18,7 +18,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use trembita_actor::{ActorStateStore, InMemoryStore};
+use trembita_actor_store::{ActorStateStore, InMemoryStore};
 
 /// Process `order_id` exactly once, even if the message is redelivered (retry,
 /// migration, at-least-once cluster delivery). `side_effects` counts how many

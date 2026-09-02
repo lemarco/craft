@@ -1,0 +1,5 @@
+error: `#[actor]` must be applied to an `impl trembita_runtime::UserActor for T` block
+ --> tests/ui/wrong_target.rs:6:6
+  |
+6 | impl Widget {
+  |      ^^^^^^

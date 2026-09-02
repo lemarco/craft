@@ -3,7 +3,7 @@
 /// Scale and config for [`.actors`](super::app::TrembitaAppBuilder::actors).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActorGroupOpts<C> {
-    /// Actor constructor config passed to [`UserActor`](trembita_actor::UserActor).
+    /// Actor constructor config passed to [`UserActor`](trembita_runtime::UserActor).
     pub config: C,
     /// `None` — one instance per live cluster node ([`manage_auto`](crate::cluster::TrembitaClusterBuilder::manage_auto)).
     /// `Some(n)` — fixed pool of `n` instances cluster-wide ([`manage`](crate::cluster::TrembitaClusterBuilder::manage)).
