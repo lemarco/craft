@@ -411,9 +411,7 @@ pub struct GatewayConfig {
 pub fn build_gateway_router(app: Arc<TrembitaApp>, config: GatewayConfig) -> Router {
     let connections = app
         .cluster()
-        .workload_runtime()
-        .map(|w| w.connections())
-        .unwrap_or_else(|| Arc::new(ConnectionTracker::default()));
+        .workload_runtime().map_or_else(|| Arc::new(ConnectionTracker::default()), |w| w.connections());
     build_gateway_router_with_tracker(app, config, Some(connections))
 }
 
