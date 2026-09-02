@@ -486,9 +486,9 @@ async fn metrics_sink_receives_runtime_samples() {
         .start_local(&net)
         .await;
 
+    let metrics = cluster.metrics();
     eventually_default("prometheus actor spawn counter", move || {
-        cluster
-            .metrics()
+        metrics
             .render()
             .contains("trembita_actor_spawns_total")
     })

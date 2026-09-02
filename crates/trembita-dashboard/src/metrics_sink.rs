@@ -2,7 +2,7 @@
 //!
 //! [`Metrics`] always maintains an in-process Prometheus registry for
 //! `GET /metrics`. Implement [`MetricsSink`] to fan out the same samples to an
-//! external backend (StatsD, OTLP adapter crate, custom logging, etc.) without
+//! external backend (`StatsD`, OTLP adapter crate, custom logging, etc.) without
 //! pulling OpenTelemetry into the default dependency tree.
 
 use std::sync::{Arc, Mutex};
