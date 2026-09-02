@@ -59,3 +59,23 @@ Returns **`200 OK`** with `{ "reply_b64": "…" }`, or raw bytes when `Accept: a
 Fire-and-forget message to a worker group. Same body rules as above.
 
 Returns **`202 Accepted`**.
+
+## Virtual hosts (`HostRouter`)
+
+Several hostnames on one port — strict by default (unknown host → **404**):
+
+```rust
+use crafty_http::HostRouter;
+
+let api = axum::Router::new().route("/health", get(|| async { "ok" }));
+let ws = axum::Router::new().route("/ws", get(ws_upgrade));
+
+let app = HostRouter::new()
+    .host("api.example.com", api)
+    .host("ws.example.com", ws)
+    .local_dev_fallback(single_host_router_for_local_dev) // localhost only
+    .build();
+```
+
+Do **not** use a catch-all dev router in production — register every production
+hostname explicitly, or opt in to [`HostRouter::unmatched_fallback`] deliberately.

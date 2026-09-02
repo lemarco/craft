@@ -68,6 +68,40 @@ pub struct RequeueAccepted {
     pub job_id: u64,
 }
 
+/// JSON body for `POST /jobs/{stream}/requeue-batch`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct RequeueBatchBody {
+    /// Dead-letter job ids to move back to pending.
+    pub job_ids: Vec<u64>,
+}
+
+/// Per-job failure in a batch requeue response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RequeueFailureResponse {
+    /// Job id that could not be requeued.
+    pub job_id: u64,
+    /// Why requeue failed for this id.
+    pub error: String,
+}
+
+/// Successful batch requeue response (`200 OK`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RequeueBatchAccepted {
+    /// Job ids successfully moved back to pending.
+    pub requeued: Vec<u64>,
+    /// Per-id failures (not dead letter, unknown id, …).
+    pub failures: Vec<RequeueFailureResponse>,
+}
+
+/// Job list response (`200 OK`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct JobListResponse {
+    /// Matching jobs in ascending job-id order.
+    pub jobs: Vec<JobStatusResponse>,
+    /// `true` when more rows exist beyond this page.
+    pub has_more: bool,
+}
+
 /// Job lookup response (`200 OK`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct JobStatusResponse {
