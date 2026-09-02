@@ -184,18 +184,27 @@ mod tests {
         multi.set("trembita_test_gauge", "test", &[], 3.0);
         multi.observe("trembita_test_latency_seconds", "test", &[], 0.25);
 
-        let expected_incr = vec![RecordedMetric::Incr {
-            name: "trembita_test_total".into(),
-            help: "test".into(),
-            labels: vec![("node".into(), "1".into())],
-            by: 2.0,
-        }];
-        assert_eq!(a.take_samples(), expected_incr);
-        assert_eq!(b.take_samples(), expected_incr);
-
-        let a_rest = a.take_samples();
-        let b_rest = b.take_samples();
-        assert_eq!(a_rest, b_rest);
-        assert_eq!(a_rest.len(), 2);
+        let expected = vec![
+            RecordedMetric::Incr {
+                name: "trembita_test_total".into(),
+                help: "test".into(),
+                labels: vec![("node".into(), "1".into())],
+                by: 2.0,
+            },
+            RecordedMetric::Set {
+                name: "trembita_test_gauge".into(),
+                help: "test".into(),
+                labels: vec![],
+                value: 3.0,
+            },
+            RecordedMetric::Observe {
+                name: "trembita_test_latency_seconds".into(),
+                help: "test".into(),
+                labels: vec![],
+                value: 0.25,
+            },
+        ];
+        assert_eq!(a.take_samples(), expected);
+        assert_eq!(b.take_samples(), expected);
     }
 }
