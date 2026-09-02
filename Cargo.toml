@@ -36,6 +36,7 @@ members = [
     "crates/crafty-dev-client",
     "crates/crafty-showcase-client",
     "crates/crafty-showcase-common",
+    "crates/crafty-backlog-postgres",
 ]
 # `benchmarks/` and `examples/` are standalone crates (own workspace tables) so
 # criterion and demo binaries never compile in the fast lane. See backlog T10.
@@ -88,6 +89,7 @@ crafty-ops = { path = "crates/crafty-ops", version = "0.5.2" }
 crafty-e2e-client = { path = "crates/crafty-e2e-client", version = "0.5.2" }
 crafty-e2e-queue-client = { path = "crates/crafty-e2e-queue-client", version = "0.5.2" }
 crafty-dev-client = { path = "crates/crafty-dev-client", version = "0.5.2" }
+crafty-backlog-postgres = { path = "crates/crafty-backlog-postgres", version = "0.5.2" }
 
 # Lints applied across the workspace (library-and-publishing).
 [workspace.lints.rust]

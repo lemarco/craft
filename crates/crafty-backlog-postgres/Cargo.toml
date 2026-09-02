@@ -1,0 +1,27 @@
+[package]
+name = "crafty-backlog-postgres"
+description = "PostgreSQL ExternalBacklog adapter for crafty job streams."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+readme = "README.md"
+homepage.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints]
+workspace = true
+
+[dependencies]
+crafty-actor.workspace = true
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"] }
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
