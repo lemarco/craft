@@ -1,55 +1,55 @@
 [workspace]
 resolver = "3"
 # Plain `cargo check` / `cargo test` (no --workspace) skips heavy optional crates
-# (crafty-ops/opendal, crafty-e2e-client, crafty-store-redis). CI always uses
+# (trembita-ops/opendal, trembita-e2e-client, trembita-store-redis). CI always uses
 # `--workspace`. Local fast path: ./scripts/test-fast.sh
 default-members = [
-    "crates/crafty-proto",
-    "crates/crafty-core",
-    "crates/crafty-storage",
-    "crates/crafty-net",
-    "crates/crafty-macros",
-    "crates/crafty-actor",
-    "crates/crafty-client",
-    "crates/crafty-sim",
-    "crates/crafty",
-    "crates/crafty-test-support",
+    "crates/trembita-proto",
+    "crates/trembita-core",
+    "crates/trembita-storage",
+    "crates/trembita-net",
+    "crates/trembita-macros",
+    "crates/trembita-actor",
+    "crates/trembita-client",
+    "crates/trembita-sim",
+    "crates/trembita",
+    "crates/trembita-test-support",
 ]
 members = [
-    "crates/crafty-proto",
-    "crates/crafty-core",
-    "crates/crafty-storage",
-    "crates/crafty-net",
-    "crates/crafty-macros",
-    "crates/crafty-actor",
-    "crates/crafty-client",
-    "crates/crafty-store-redis",
-    "crates/crafty-dashboard",
-    "crates/crafty-http",
-    "crates/crafty-sim",
-    "crates/crafty",
-    "crates/crafty-node",
-    "crates/crafty-test-support",
-    "crates/crafty-ops",
-    "crates/crafty-e2e-client",
-    "crates/crafty-e2e-queue-client",
-    "crates/crafty-dev-client",
-    "crates/crafty-showcase-client",
-    "crates/crafty-showcase-common",
-    "crates/crafty-backlog-postgres",
+    "crates/trembita-proto",
+    "crates/trembita-core",
+    "crates/trembita-storage",
+    "crates/trembita-net",
+    "crates/trembita-macros",
+    "crates/trembita-actor",
+    "crates/trembita-client",
+    "crates/trembita-store-redis",
+    "crates/trembita-dashboard",
+    "crates/trembita-http",
+    "crates/trembita-sim",
+    "crates/trembita",
+    "crates/trembita-node",
+    "crates/trembita-test-support",
+    "crates/trembita-ops",
+    "crates/trembita-e2e-client",
+    "crates/trembita-e2e-queue-client",
+    "crates/trembita-dev-client",
+    "crates/trembita-showcase-client",
+    "crates/trembita-showcase-common",
+    "crates/trembita-backlog-postgres",
 ]
 # `benchmarks/` and `examples/` are standalone crates (own workspace tables) so
 # criterion and demo binaries never compile in the fast lane. See backlog T10.
-exclude = ["benchmarks", "examples", "crates/crafty-fuzz"]
+exclude = ["benchmarks", "examples", "crates/trembita-fuzz"]
 
 [workspace.package]
-version = "0.6.1"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.90"
 license = "MIT OR Apache-2.0"
-repository = "https://gitlab.com/lemarco/craft"
-homepage = "https://gitlab.com/lemarco/craft"
-authors = ["crafty contributors"]
+repository = "https://gitlab.com/lemarco/trembita"
+homepage = "https://gitlab.com/lemarco/trembita"
+authors = ["trembita contributors"]
 categories = ["concurrency", "network-programming", "asynchronous"]
 keywords = ["raft", "actor", "distributed", "consensus", "cluster"]
 readme = "README.md"
@@ -72,24 +72,24 @@ quote = "1"
 proc-macro2 = "1"
 
 # Internal crates referenced by path within the workspace.
-crafty-proto = { path = "crates/crafty-proto", version = "0.6.1" }
-crafty-core = { path = "crates/crafty-core", version = "0.6.1" }
-crafty-storage = { path = "crates/crafty-storage", version = "0.6.1" }
-crafty-net = { path = "crates/crafty-net", version = "0.6.1" }
-crafty-macros = { path = "crates/crafty-macros", version = "0.6.1" }
-crafty-actor = { path = "crates/crafty-actor", version = "0.6.1" }
-crafty-client = { path = "crates/crafty-client", version = "0.6.1" }
-crafty-store-redis = { path = "crates/crafty-store-redis", version = "0.6.1" }
-crafty-dashboard = { path = "crates/crafty-dashboard", version = "0.6.1" }
-crafty-http = { path = "crates/crafty-http", version = "0.6.1" }
-crafty-sim = { path = "crates/crafty-sim", version = "0.6.1" }
-crafty = { path = "crates/crafty", version = "0.6.1" }
-crafty-test-support = { path = "crates/crafty-test-support", version = "0.6.1" }
-crafty-ops = { path = "crates/crafty-ops", version = "0.6.1" }
-crafty-e2e-client = { path = "crates/crafty-e2e-client", version = "0.6.1" }
-crafty-e2e-queue-client = { path = "crates/crafty-e2e-queue-client", version = "0.6.1" }
-crafty-dev-client = { path = "crates/crafty-dev-client", version = "0.6.1" }
-crafty-backlog-postgres = { path = "crates/crafty-backlog-postgres", version = "0.6.1" }
+trembita-proto = { path = "crates/trembita-proto", version = "0.1.0" }
+trembita-core = { path = "crates/trembita-core", version = "0.1.0" }
+trembita-storage = { path = "crates/trembita-storage", version = "0.1.0" }
+trembita-net = { path = "crates/trembita-net", version = "0.1.0" }
+trembita-macros = { path = "crates/trembita-macros", version = "0.1.0" }
+trembita-actor = { path = "crates/trembita-actor", version = "0.1.0" }
+trembita-client = { path = "crates/trembita-client", version = "0.1.0" }
+trembita-store-redis = { path = "crates/trembita-store-redis", version = "0.1.0" }
+trembita-dashboard = { path = "crates/trembita-dashboard", version = "0.1.0" }
+trembita-http = { path = "crates/trembita-http", version = "0.1.0" }
+trembita-sim = { path = "crates/trembita-sim", version = "0.1.0" }
+trembita = { path = "crates/trembita", version = "0.1.0" }
+trembita-test-support = { path = "crates/trembita-test-support", version = "0.1.0" }
+trembita-ops = { path = "crates/trembita-ops", version = "0.1.0" }
+trembita-e2e-client = { path = "crates/trembita-e2e-client", version = "0.1.0" }
+trembita-e2e-queue-client = { path = "crates/trembita-e2e-queue-client", version = "0.1.0" }
+trembita-dev-client = { path = "crates/trembita-dev-client", version = "0.1.0" }
+trembita-backlog-postgres = { path = "crates/trembita-backlog-postgres", version = "0.1.0" }
 
 # Lints applied across the workspace (library-and-publishing).
 [workspace.lints.rust]

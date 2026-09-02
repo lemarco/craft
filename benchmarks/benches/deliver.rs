@@ -8,8 +8,8 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crafty_actor::crafty_proto;
-use crafty_actor::{ActorRegistry, MessageDecodeError, UserActor};
+use trembita_actor::trembita_proto;
+use trembita_actor::{ActorRegistry, MessageDecodeError, UserActor};
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use serde::{Deserialize, Serialize};
 use std::hint::black_box;
@@ -51,7 +51,7 @@ impl UserActor for Worker {
     }
 
     fn decode_message(payload: &[u8]) -> Result<Self::Message, MessageDecodeError> {
-        crafty_proto::decode(payload).map_err(|e| MessageDecodeError::Decode(e.to_string()))
+        trembita_proto::decode(payload).map_err(|e| MessageDecodeError::Decode(e.to_string()))
     }
 }
 
@@ -68,7 +68,7 @@ fn bench_deliver(c: &mut Criterion) {
             .expect("spawn worker");
         registry
     };
-    let payload = crafty_proto::encode(&Work::Add(1)).unwrap();
+    let payload = trembita_proto::encode(&Work::Add(1)).unwrap();
 
     let mut group = c.benchmark_group("deliver");
     group.throughput(Throughput::Elements(1));

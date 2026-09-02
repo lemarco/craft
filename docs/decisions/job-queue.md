@@ -5,7 +5,7 @@
 
 ## Context
 
-crafty ships **cross-node actor mailboxes** ([cross-node-actors](cross-node-actors.md)): `send` / `ask` deliver messages to a **specific** actor instance over HTTP/3. Mailboxes are **in-memory**, serial per instance, and optimized for **low-latency point-to-point** work — especially **`ask`** (request/reply), which maps naturally to HTTP handlers that must respond before the connection closes.
+trembita ships **cross-node actor mailboxes** ([cross-node-actors](cross-node-actors.md)): `send` / `ask` deliver messages to a **specific** actor instance over HTTP/3. Mailboxes are **in-memory**, serial per instance, and optimized for **low-latency point-to-point** work — especially **`ask`** (request/reply), which maps naturally to HTTP handlers that must respond before the connection closes.
 
 Many applications also need a **durable, shared work buffer**:
 
@@ -52,7 +52,7 @@ Typical HTTP mapping:
 
 ### `JobQueue` port
 
-New trait in **`crafty-actor`** (object-safe, boxed futures — same pattern as [`ActorStateStore`](../../crates/crafty-actor/src/store.rs)):
+New trait in **`trembita-actor`** (object-safe, boxed futures — same pattern as [`ActorStateStore`](../../crates/trembita-actor/src/store.rs)):
 
 ```rust
 pub struct JobId(u64);
@@ -90,9 +90,9 @@ Semantics:
 
 | Adapter | Crate | Role |
 |---------|-------|------|
-| **`InMemoryJobQueue`** | `crafty-actor` | Tests, sim, single-node dev |
-| **`RedbJobQueue`** | `crafty-actor` | Default production backend (embedded `redb`) |
-| **`RedisJobQueue`** (optional) | `crafty-store-redis` or sibling | Remote/shared queue when user already runs Redis |
+| **`InMemoryJobQueue`** | `trembita-actor` | Tests, sim, single-node dev |
+| **`RedbJobQueue`** | `trembita-actor` | Default production backend (embedded `redb`) |
+| **`RedisJobQueue`** (optional) | `trembita-store-redis` or sibling | Remote/shared queue when user already runs Redis |
 
 **Default:** `RedbJobQueue` — `{data_dir}/queue-{stream}.redb`, separate from `group-*.redb` Raft files.
 
@@ -102,7 +102,7 @@ Semantics:
 - **`pending`** index: ready `job_id`s (FIFO by id)
 - **`leased`** index: `lease_id → job_id` + expiry
 - **`meta`**: `next_id`, compaction `head`
-- Mutations commit in **one `redb` write transaction** each (same durability model as [`RedbStorage`](../../crates/crafty-storage/src/redb_store.rs)).
+- Mutations commit in **one `redb` write transaction** each (same durability model as [`RedbStorage`](../../crates/trembita-storage/src/redb_store.rs)).
 - Optional **in-memory prefetch** batch in the queue service — hot `lease` reads from RAM, flushes acks to disk.
 
 Compaction trims acknowledged jobs (analogous to log purge), preventing unbounded file growth. **`RedbJobQueue`** runs `Database::compact()` every 64 acks on the dedicated queue file.
@@ -111,7 +111,7 @@ Compaction trims acknowledged jobs (analogous to log purge), preventing unbounde
 
 A **shared logical queue** does not require a shared filesystem or Redis:
 
-- **`QueueService`** runs on the **Raft leader** node (leader-only, like [`ClusterSupervisor`](../../crates/crafty-actor/src/supervisor.rs)).
+- **`QueueService`** runs on the **Raft leader** node (leader-only, like [`ClusterSupervisor`](../../crates/trembita-actor/src/supervisor.rs)).
 - Workers on **any** VPS call queue RPCs over mTLS (same transport class as `/actor/deliver`).
 - Followers **forward** queue mutations to the leader ([client-and-routing](client-and-routing.md) forward pattern).
 - After each leader mutation, **`QueueReplicateOp`** batches are pushed **in parallel** to every other **reachable voter** (`POST /raft/v1/queue/replicate`); the client only receives success once all peers ack — so a newly elected leader serves the same backlog from its local `redb`.
@@ -131,19 +131,19 @@ Wire routes (under `/raft/v1/queue/`):
 
 ### Sharded streams (v2)
 
-- **`job_queue_sharded(name, shard_count, lease_timeout)`** — `{name}~0` … `{name}~{N-1}` independent redb files; logical [`ShardedJobQueue`](../../crates/crafty-actor/src/sharded_queue.rs) federates enqueue/lease/ack.
+- **`job_queue_sharded(name, shard_count, lease_timeout)`** — `{name}~0` … `{name}~{N-1}` independent redb files; logical [`ShardedJobQueue`](../../crates/trembita-actor/src/sharded_queue.rs) federates enqueue/lease/ack.
 - Enqueue routes by hash of `shard_key` (or payload); replication runs per shard stream.
 - Spreads leader write + replicate load without putting jobs in the Raft log.
 
 ### Priority and delayed jobs (v2)
 
-- [`EnqueueOptions`](../../crates/crafty-actor/src/queue.rs): `priority` (higher first), `not_before_ms` / `EnqueueOptions::delayed`.
+- [`EnqueueOptions`](../../crates/trembita-actor/src/queue.rs): `priority` (higher first), `not_before_ms` / `EnqueueOptions::delayed`.
 - Wire: optional fields on `QueueEnqueueRequest`; replicated in `QueueReplicateOp::Enqueue`.
 
 ### Membership autoscale (v2)
 
-- [`MembershipAutoscalePolicy`](../../crates/crafty-actor/src/queue_autoscale.rs) + [`job_queue_membership_autoscale`](../../crates/crafty/src/builder.rs): when `(pending + leased) / live_nodes` exceeds threshold and `live_nodes < max_nodes`, invoke user `join` hook (deploy VPS + dynamic join).
-- Complements worker [`AutoscalePolicy`](../../crates/crafty-actor/src/queue_autoscale.rs) capped at `reachable_nodes`.
+- [`MembershipAutoscalePolicy`](../../crates/trembita-actor/src/queue_autoscale.rs) + [`job_queue_membership_autoscale`](../../crates/trembita/src/builder.rs): when `(pending + leased) / live_nodes` exceeds threshold and `live_nodes < max_nodes`, invoke user `join` hook (deploy VPS + dynamic join).
+- Complements worker [`AutoscalePolicy`](../../crates/trembita-actor/src/queue_autoscale.rs) capped at `reachable_nodes`.
 
 ### Worker consumption model
 
@@ -153,8 +153,8 @@ Queue-backed workers are still **`UserActor`** instances, but **jobs are not pus
 - The **mailbox** handles **control** messages only: drain, health, migration snapshot ([cross-node-actors](cross-node-actors.md)).
 
 ```rust
-CraftyCluster::builder(node_id, machine)
-    .data_dir("/var/crafty")
+TrembitaCluster::builder(node_id, machine)
+    .data_dir("/var/trembita")
     .job_queue("workers", Duration::from_secs(60))
     .manage::<Worker>("workers", 1, WorkerConfig { .. })
     .job_queue_autoscale::<Worker>("workers", AutoscalePolicy {
@@ -167,7 +167,7 @@ CraftyCluster::builder(node_id, machine)
     }, WorkerConfig { .. })
 ```
 
-Use [`job_queue_at`](../../crates/crafty/src/builder.rs) when the redb path is not under `data_dir`.
+Use [`job_queue_at`](../../crates/trembita/src/builder.rs) when the redb path is not under `data_dir`.
 
 ### Queue-driven autoscale (leader)
 

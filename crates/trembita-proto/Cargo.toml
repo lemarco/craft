@@ -1,0 +1,32 @@
+[package]
+name = "trembita-proto"
+description = "Wire types and postcard codec shared across the trembita framework."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+readme = "README.md"
+homepage.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace = true
+postcard.workspace = true
+serde_json = { workspace = true, optional = true }
+thiserror.workspace = true
+
+[features]
+# Dev-only: encode every wire body as human-readable JSON instead of the
+# compact `postcard` binary format (future-work-and-risks item 4). Lets non-Rust tools and
+# packet captures read the wire during debugging. Never enable in production —
+# JSON is larger and slower, and maps with non-string keys are unsupported.
+json-wire = ["dep:serde_json"]

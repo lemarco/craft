@@ -5,8 +5,8 @@
 #   source "$CRAFT_ROOT/dev/cluster-common.sh"
 #   cluster_common_init "$ROOT" "$BIN_NAME" "$DEV_DIR" "$CERTS_DIR" "$SEED"
 #
-# Multi-node layout uses dynamic join — only node 1 needs `CRAFTY_ALLOW_JOIN=1`;
-# nodes 2+ set `CRAFTY_JOIN_SEEDS` to the seed address (no static `CRAFTY_PEERS` mesh).
+# Multi-node layout uses dynamic join — only node 1 needs `TREMBITA_ALLOW_JOIN=1`;
+# nodes 2+ set `TREMBITA_JOIN_SEEDS` to the seed address (no static `TREMBITA_PEERS` mesh).
 set -euo pipefail
 
 cluster_common_init() {
@@ -15,7 +15,7 @@ cluster_common_init() {
     CLUSTER_DEV="${3:?dev dir}"
     CLUSTER_CERTS="${4:?certs dir}"
     CLUSTER_SEED="${5:?seed id@host:port for node 1}"
-    CLUSTER_ADMIN_BIND="${CRAFTY_DEV_ADMIN_BIND:-0.0.0.0}"
+    export CLUSTER_ADMIN_BIND="${TREMBITA_DEV_ADMIN_BIND:-0.0.0.0}"
     CRAFT_ROOT="$(cd "$CLUSTER_ROOT/../.." && pwd)"
 }
 
@@ -54,23 +54,23 @@ cluster_display_addr() {
 
 cluster_node_env_base() {
     local listen=$1 admin=$2 gateway=$3
-    export CRAFTY_LISTEN="$listen"
-    export CRAFTY_ADMIN="$admin"
-    export CRAFTY_GATEWAY="$gateway"
-    export CRAFTY_DATA_DIR="$CLUSTER_DEV/data/p${listen##*:}"
-    export CRAFTY_CERT_DIR="$CLUSTER_CERTS"
-    unset CRAFTY_NODE_ID CRAFTY_NODE_CERT CRAFTY_NODE_KEY
-    export CRAFTY_CA_CERT="$CLUSTER_CERTS/ca.pem"
-    export CRAFTY_ALLOW_LEAVE=1
-    export CRAFTY_GRACEFUL_LEAVE=1
-    unset CRAFTY_PEERS
-    if [ -z "${CRAFTY_JOIN_SEEDS:-}" ]; then
-        export CRAFTY_ALLOW_JOIN=1
-        unset CRAFTY_JOIN_SEEDS
+    export TREMBITA_LISTEN="$listen"
+    export TREMBITA_ADMIN="$admin"
+    export TREMBITA_GATEWAY="$gateway"
+    export TREMBITA_DATA_DIR="$CLUSTER_DEV/data/p${listen##*:}"
+    export TREMBITA_CERT_DIR="$CLUSTER_CERTS"
+    unset TREMBITA_NODE_ID TREMBITA_NODE_CERT TREMBITA_NODE_KEY
+    export TREMBITA_CA_CERT="$CLUSTER_CERTS/ca.pem"
+    export TREMBITA_ALLOW_LEAVE=1
+    export TREMBITA_GRACEFUL_LEAVE=1
+    unset TREMBITA_PEERS
+    if [ -z "${TREMBITA_JOIN_SEEDS:-}" ]; then
+        export TREMBITA_ALLOW_JOIN=1
+        unset TREMBITA_JOIN_SEEDS
     else
-        unset CRAFTY_ALLOW_JOIN
+        unset TREMBITA_ALLOW_JOIN
     fi
-    export RUST_LOG="${RUST_LOG:-info,showcase=debug,crafty=info,crafty_net=warn}"
+    export RUST_LOG="${RUST_LOG:-info,showcase=debug,trembita=info,trembita_net=warn}"
 }
 
 cluster_setup_certs() {
@@ -91,9 +91,9 @@ cluster_setup_certs() {
 cluster_prepare_node() {
     local id=$1 listen=$2 admin=$3 gateway=$4
     if [ "$id" = "1" ]; then
-        unset CRAFTY_JOIN_SEEDS
+        unset TREMBITA_JOIN_SEEDS
     else
-        export CRAFTY_JOIN_SEEDS="$CLUSTER_SEED"
+        export TREMBITA_JOIN_SEEDS="$CLUSTER_SEED"
     fi
     cluster_node_env_base "$listen" "$admin" "$gateway"
 }
@@ -105,12 +105,12 @@ cluster_run_node() {
     [ "$gateway" != "-" ] && cluster_require_port_free gateway "${gateway##*:}"
     [ "$admin" != "-" ] && cluster_require_port_free admin "${admin##*:}"
     cluster_prepare_node "$id" "$listen" "$admin" "$gateway"
-    mkdir -p "$CRAFTY_DATA_DIR"
-    echo ">> node $id  QUIC=$listen  admin=$admin  gateway=$gateway  data=$CRAFTY_DATA_DIR"
+    mkdir -p "$TREMBITA_DATA_DIR"
+    echo ">> node $id  QUIC=$listen  admin=$admin  gateway=$gateway  data=$TREMBITA_DATA_DIR"
     if [ "$id" = "1" ]; then
-        echo ">> seed node (CRAFTY_ALLOW_JOIN=1)"
+        echo ">> seed node (TREMBITA_ALLOW_JOIN=1)"
     else
-        echo ">> join via CRAFTY_JOIN_SEEDS=$CLUSTER_SEED"
+        echo ">> join via TREMBITA_JOIN_SEEDS=$CLUSTER_SEED"
     fi
     exec "$CLUSTER_ROOT/target/release/$CLUSTER_BIN"
 }
@@ -121,8 +121,8 @@ cluster_build_showcase() {
 }
 
 cluster_build_client() {
-    echo ">> building crafty-showcase-client"
-    cargo build -p crafty-showcase-client --manifest-path "$CRAFT_ROOT/Cargo.toml"
+    echo ">> building trembita-showcase-client"
+    cargo build -p trembita-showcase-client --manifest-path "$CRAFT_ROOT/Cargo.toml"
 }
 
 cluster_setup_all() {
@@ -135,7 +135,7 @@ cluster_run_node_bg() {
     local id=$1 listen=$2 admin=$3 gateway=$4
     cluster_prepare_node "$id" "$listen" "$admin" "$gateway"
     local log="$CLUSTER_DEV/logs/node-$id.log"
-    mkdir -p "$CLUSTER_DEV/logs" "$CRAFTY_DATA_DIR"
+    mkdir -p "$CLUSTER_DEV/logs" "$TREMBITA_DATA_DIR"
     nohup "$CLUSTER_ROOT/target/release/$CLUSTER_BIN" >>"$log" 2>&1 &
     echo ">> node $id pid=$! log=$log"
 }

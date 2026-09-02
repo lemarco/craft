@@ -8,13 +8,13 @@ use std::hint::black_box;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crafty::core::{Config, StateMachine};
-use crafty::net::LocalNetwork;
-use crafty::proto::LogIndex;
-use crafty::cluster::{CraftyCluster, JobQueue};
-use crafty::NodeId;
-use crafty_actor::{InMemoryJobQueue, RedbJobQueue, WorkerId};
-use crafty_benchmarks::{env_u64, queue_payload};
+use trembita::core::{Config, StateMachine};
+use trembita::net::LocalNetwork;
+use trembita::proto::LogIndex;
+use trembita::cluster::{TrembitaCluster, JobQueue};
+use trembita::NodeId;
+use trembita_actor::{InMemoryJobQueue, RedbJobQueue, WorkerId};
+use trembita_benchmarks::{env_u64, queue_payload};
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 
 const STREAM: &str = "bench-jobs";
@@ -56,13 +56,13 @@ fn raft_config(seed: u64) -> Config {
 struct ClusterBench {
     _base: tempfile::TempDir,
     #[allow(dead_code)]
-    clusters: Vec<Arc<CraftyCluster<Empty>>>,
+    clusters: Vec<Arc<TrembitaCluster<Empty>>>,
     submit: Arc<dyn JobQueue>,
     drain: Arc<dyn JobQueue>,
     worker: WorkerId,
 }
 
-async fn await_leader(clusters: &[Arc<CraftyCluster<Empty>>]) {
+async fn await_leader(clusters: &[Arc<TrembitaCluster<Empty>>]) {
     for _ in 0..500 {
         for c in clusters {
             if c.is_leader().await {
@@ -83,7 +83,7 @@ async fn setup_cluster() -> ClusterBench {
     for &id in &ids {
         let data_dir = base.path().join(format!("node-{}", id.0));
         std::fs::create_dir_all(&data_dir).expect("mkdir data_dir");
-        let cluster = CraftyCluster::builder(id, Empty)
+        let cluster = TrembitaCluster::builder(id, Empty)
             .members(ids)
             .raft_config(raft_config(0x51_0AD ^ id.0))
             .tick_period(Duration::from_millis(10))

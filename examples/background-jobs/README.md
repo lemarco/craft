@@ -1,12 +1,12 @@
 # Background jobs (background jobs)
 
-Sidekiq-style async work on crafty: clients get **HTTP 202**, jobs survive restarts in redb, workers lease/ack through the replicated queue.
+Sidekiq-style async work on trembita: clients get **HTTP 202**, jobs survive restarts in redb, workers lease/ack through the replicated queue.
 
 ## What you run
 
 | Piece | Role |
 |-------|------|
-| This binary | `CraftyApp` + gateway + `#[consumer]` email worker + `LedgerWorker` (queue → actor) |
+| This binary | `TrembitaApp` + gateway + `#[consumer]` email worker + `LedgerWorker` (queue → actor) |
 | [`trigger.sh`](trigger.sh) | Enqueue via HTTP (product gateway, not admin) |
 | [`trigger-idempotent.sh`](trigger-idempotent.sh) | Same job twice with one `?dedup=` key — duplicate enqueue + redelivery |
 | Admin (local) | `:9080` — dashboard in single-process mode |
@@ -98,7 +98,7 @@ The handler marks the job done **before** returning `Ok`, which is why the
 simulated crash between side effect and ack is safe. Markers here are process-local
 (single-binary showcase); in production they belong in an `ActorStateStore`
 ([stateful-workers](../stateful-workers/)) or a shared store
-([`idempotent_worker.rs`](../../crates/crafty-store-redis/examples/idempotent_worker.rs))
+([`idempotent_worker.rs`](../../crates/trembita-store-redis/examples/idempotent_worker.rs))
 so they survive the crash and are visible to whichever node redelivers.
 
 The stream also sets `.default_max_attempts(5)`, so an HTTP-enqueued job that keeps
@@ -107,7 +107,7 @@ failing lands in the dead letter queue instead of retrying forever.
 ## Queue → actor bridge
 
 After the email side effect, the consumer **casts** to `LedgerWorker` via
-[`src/bridge.rs`](src/bridge.rs) (`ConsumerOpts::on_app` registers `Arc<CraftyApp>`).
+[`src/bridge.rs`](src/bridge.rs) (`ConsumerOpts::on_app` registers `Arc<TrembitaApp>`).
 Watch for `[ledger] recorded …` alongside `[worker] … sending email`.
 
 Guide: [background-jobs § Queue → actor bridge](../../docs/scenarios/background-jobs.md#queue--actor-bridge).
@@ -116,12 +116,12 @@ Guide: [background-jobs § Queue → actor bridge](../../docs/scenarios/backgrou
 
 | Var | Default | Meaning |
 |-----|---------|---------|
-| `CRAFTY_GATEWAY` | `127.0.0.1:8090` (local) | Product HTTP bind (`-` disables gateway on a node) |
-| `CRAFTY_WORKERS` | `1` | Consumer instances **on this node only** (local dev) |
-| `CRAFTY_PEERS` | unset | When set → QUIC cluster mode (`cluster.sh`) |
-| `CRAFTY_DATA_DIR` | `/tmp/crafty-showcase-background-jobs` | redb queue + actor store |
+| `TREMBITA_GATEWAY` | `127.0.0.1:8090` (local) | Product HTTP bind (`-` disables gateway on a node) |
+| `TREMBITA_WORKERS` | `1` | Consumer instances **on this node only** (local dev) |
+| `TREMBITA_PEERS` | unset | When set → QUIC cluster mode (`cluster.sh`) |
+| `TREMBITA_DATA_DIR` | `/tmp/trembita-showcase-background-jobs` | redb queue + actor store |
 | `GATEWAY_TOKEN` | unset | When set, product `/jobs/*` routes require Bearer auth |
-| `CRAFTY_SIMULATE_REDELIVERY` | `1` | First delivery of each key fails after the marker is written; `0` disables |
+| `TREMBITA_SIMULATE_REDELIVERY` | `1` | First delivery of each key fails after the marker is written; `0` disables |
 
 ## Troubleshooting
 
@@ -129,7 +129,7 @@ Guide: [background-jobs § Queue → actor bridge](../../docs/scenarios/backgrou
 
 1. **Same machine** — run `curl` / `./trigger.sh` in a terminal on the host where `cargo run` is running, not only in a browser on another machine.
 2. **SSH / remote dev** — forward ports: `ssh -L 8090:127.0.0.1:8090 -L 9180:127.0.0.1:9180 user@host`
-3. **Port busy** — startup now prints `crafty: gateway listening on http://…` or panics; try `CRAFTY_GATEWAY=127.0.0.1:8091 cargo run`
+3. **Port busy** — startup now prints `trembita: gateway listening on http://…` or panics; try `TREMBITA_GATEWAY=127.0.0.1:8091 cargo run`
 4. **Wrong URL** — `/jobs/emails` is **POST only** (enqueue). For monitoring use [dashboard](http://127.0.0.1:9180/dashboard) in cluster mode (or `:9080` in local mode); a GET in the browser returns `405`, not a HTML page.
 
 Verify:

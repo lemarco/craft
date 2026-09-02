@@ -6,14 +6,14 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crafty::cluster::CraftyCluster;
-use crafty::actor::{ActorStateStore, InMemoryStore};
-use crafty::client::{KeyedClient, RemoteClient, SagaOutcome, SagaPlan, SagaStep};
-use crafty::core::{RaftGroupId, Role};
-use crafty::net::LocalNetwork;
-use crafty::proto::NodeId;
-use crafty_benchmarks::env_u64;
-use crafty_test_support::{
+use trembita::cluster::TrembitaCluster;
+use trembita::actor::{ActorStateStore, InMemoryStore};
+use trembita::client::{KeyedClient, RemoteClient, SagaOutcome, SagaPlan, SagaStep};
+use trembita::core::{RaftGroupId, Role};
+use trembita::net::LocalNetwork;
+use trembita::proto::NodeId;
+use trembita_benchmarks::env_u64;
+use trembita_test_support::{
     KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, fast_raft_config_with_seed,
     find_keys_for_two_groups,
 };
@@ -26,11 +26,11 @@ async fn spawn_cluster(
     net: &LocalNetwork,
     ids: [NodeId; 3],
     base: &Path,
-) -> Vec<Arc<CraftyCluster<KvMachine>>> {
+) -> Vec<Arc<TrembitaCluster<KvMachine>>> {
     let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = CraftyCluster::builder(id, KvMachine::default())
+        let cluster = TrembitaCluster::builder(id, KvMachine::default())
             .members(ids)
             .raft_config(fast_raft_config_with_seed(11))
             .tick_period(TICK_PERIOD)
@@ -45,7 +45,7 @@ async fn spawn_cluster(
     clusters
 }
 
-async fn await_meta_leader(clusters: &[Arc<CraftyCluster<KvMachine>>]) -> Arc<CraftyCluster<KvMachine>> {
+async fn await_meta_leader(clusters: &[Arc<TrembitaCluster<KvMachine>>]) -> Arc<TrembitaCluster<KvMachine>> {
     for _ in 0..1000 {
         for c in clusters {
             if c.is_leader().await {
@@ -57,7 +57,7 @@ async fn await_meta_leader(clusters: &[Arc<CraftyCluster<KvMachine>>]) -> Arc<Cr
     panic!("soak_saga: no meta leader elected");
 }
 
-async fn await_group_leaders(clusters: &[Arc<CraftyCluster<KvMachine>>], group_count: u32) {
+async fn await_group_leaders(clusters: &[Arc<TrembitaCluster<KvMachine>>], group_count: u32) {
     for _ in 0..1000 {
         let mut ready = true;
         'groups: for g in 0..group_count {
@@ -82,7 +82,7 @@ async fn await_group_leaders(clusters: &[Arc<CraftyCluster<KvMachine>>], group_c
     panic!("soak_saga: not all raft groups elected a leader");
 }
 
-async fn stop_all(clusters: Vec<Arc<CraftyCluster<KvMachine>>>) {
+async fn stop_all(clusters: Vec<Arc<TrembitaCluster<KvMachine>>>) {
     for c in clusters {
         c.shutdown_and_wait().await;
     }
@@ -95,22 +95,22 @@ fn plan_for_round(round: u64, key_a: &[u8], key_b: &[u8]) -> SagaPlan {
         steps: vec![
             SagaStep {
                 key: key_a.to_vec(),
-                command: crafty::proto::encode(&KvCommand::Set {
+                command: trembita::proto::encode(&KvCommand::Set {
                     key: "from".into(),
                     value: format!("{round}-a"),
                 })
                 .unwrap(),
-                compensate: crafty::proto::encode(&KvCommand::Delete { key: "from".into() })
+                compensate: trembita::proto::encode(&KvCommand::Delete { key: "from".into() })
                     .unwrap(),
             },
             SagaStep {
                 key: key_b.to_vec(),
-                command: crafty::proto::encode(&KvCommand::Set {
+                command: trembita::proto::encode(&KvCommand::Set {
                     key: "to".into(),
                     value: format!("{round}-b"),
                 })
                 .unwrap(),
-                compensate: crafty::proto::encode(&KvCommand::Delete { key: "to".into() }).unwrap(),
+                compensate: trembita::proto::encode(&KvCommand::Delete { key: "to".into() }).unwrap(),
             },
         ],
     }
@@ -191,12 +191,12 @@ async fn main() {
         );
         resumes += 1;
 
-        let qry = crafty::proto::encode(&KvQuery::Get { key: "to".into() }).unwrap();
+        let qry = trembita::proto::encode(&KvQuery::Get { key: "to".into() }).unwrap();
         let got = client
             .query_keyed(key_b.clone(), qry)
             .await
             .expect("query to");
-        let val: KvResponse = crafty::proto::decode(&got).unwrap();
+        let val: KvResponse = trembita::proto::decode(&got).unwrap();
         assert_eq!(
             val,
             KvResponse::Value(Some(format!("{}-b", rounds ^ base_seed))),

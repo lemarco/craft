@@ -2,7 +2,7 @@
 
 Five standalone projects — four [product scenarios](../docs/scenarios/README.md) plus a self-update ops showcase. Each has its own `Cargo.toml`, README, `cluster.sh` (QUIC/mTLS), and `trigger.sh`.
 
-Shared helpers: [`crafty-showcase-common`](../crates/crafty-showcase-common/) (env/cluster utilities). HTTP/WS client: [`crafty-showcase-client`](../crates/crafty-showcase-client/) (built by `./cluster.sh setup`).
+Shared helpers: [`trembita-showcase-common`](../crates/trembita-showcase-common/) (env/cluster utilities). HTTP/WS client: [`trembita-showcase-client`](../crates/trembita-showcase-client/) (built by `./cluster.sh setup`).
 
 Excluded from the root workspace `cargo check` (like `benchmarks/`). CI runs `./scripts/check-examples.sh` on pre-push.
 
@@ -20,7 +20,7 @@ Each showcase `src/main.rs` is heavily commented:
 
 - **What** scenario and data flow diagram in the module doc
 - **Why** jobs vs actors vs saga (when to use each mechanism)
-- **How** solo vs multi-node (`CRAFTY_JOIN_SEEDS` on nodes 2+; node 1 seed with `CRAFTY_ALLOW_JOIN`)
+- **How** solo vs multi-node (`TREMBITA_JOIN_SEEDS` on nodes 2+; node 1 seed with `TREMBITA_ALLOW_JOIN`)
 - **`cluster.sh`** header explains env vars and port layout
 
 Start with [`background-jobs/src/main.rs`](background-jobs/src/main.rs) — the other showcases follow the same pattern.
@@ -32,17 +32,17 @@ Every showcase runs the **same binary on every node** — gateway + workers/cons
 - Readiness: `RunOpts::default().with_wait_queue("emails")` (or `.with_wait_ready(...)`)
 - Optional: homogeneous cluster — same env on every node; see [workload governor](../docs/decisions/workload-governor.md) (`.workload()` compute tokens).
 
-### Internal HTTP/WS client (`crafty-showcase-client`, not on crates.io)
+### Internal HTTP/WS client (`trembita-showcase-client`, not on crates.io)
 
 Built automatically by `./cluster.sh setup`:
 
 ```bash
-./target/debug/crafty-showcase-client job 127.0.0.1:8090 emails hello
-./target/debug/crafty-showcase-client cast 127.0.0.1:8190 orders 1001
-./target/debug/crafty-showcase-client submit 127.0.0.1:8190 tenant-1 1001
-./target/debug/crafty-showcase-client chat 127.0.0.1:8294 alice hello
-./target/debug/crafty-showcase-client ws 127.0.0.1:8294 alice hello
-./target/debug/crafty-showcase-client workflow run 127.0.0.1:8490 onboard-42
+./target/debug/trembita-showcase-client job 127.0.0.1:8090 emails hello
+./target/debug/trembita-showcase-client cast 127.0.0.1:8190 orders 1001
+./target/debug/trembita-showcase-client submit 127.0.0.1:8190 tenant-1 1001
+./target/debug/trembita-showcase-client chat 127.0.0.1:8294 alice hello
+./target/debug/trembita-showcase-client ws 127.0.0.1:8294 alice hello
+./target/debug/trembita-showcase-client workflow run 127.0.0.1:8490 onboard-42
 ```
 
 `trigger.sh` scripts use this binary when present, otherwise fall back to `curl` / `websocat`.
@@ -96,5 +96,5 @@ Shared infra: [`dev/`](../dev/README.md) (`cluster-common.sh`, `certs/generate.s
 ## Related
 
 - [docs/scenarios/README.md](../docs/scenarios/README.md) — product scenario guides
-- [docs/getting-started.md](../docs/getting-started.md) — `CraftyApp` tutorial
+- [docs/getting-started.md](../docs/getting-started.md) — `TrembitaApp` tutorial
 - [docs/status.md](../docs/status.md) — capabilities and limits

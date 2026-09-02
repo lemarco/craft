@@ -1,0 +1,44 @@
+---
+description: crates.io workspace publish workflow — rate limits, resume, tag release, never cargo publish --workspace for real uploads
+alwaysApply: false
+---
+
+# trembita publishing (library-and-publishing)
+
+See [docs/process.md](../../docs/process.md) and [docs/releasing.md](../../docs/releasing.md).
+
+## Never do this on a real release
+
+```bash
+cargo publish --workspace   # ❌ bursts new crates → HTTP 429
+```
+
+Use **`./scripts/publish-workspace.sh`**.
+
+## Release flow
+
+```bash
+# CHANGELOG: move [Unreleased] → new version section
+./scripts/release.sh 0.2.0 --publish              # gate + tag + publish + push (default)
+./scripts/release.sh 0.2.0 --publish --no-push    # crates.io only
+./scripts/release.sh --dry-run                    # release gate only
+```
+
+`release.sh --publish` runs release gate (autofix, ci-fast-lane, MSRV strict, release build), pushes git by default.
+
+## crates.io rate limits
+
+Use `publish-workspace.sh` — dependency order, skip indexed, retry 429. Default **30s** between uploads.
+
+## Prerequisites
+
+- `CARGO_REGISTRY_TOKEN` or `cargo login`
+- Clean tree for prepare
+- MSRV toolchain for release gate
+
+## CI
+
+- Tag `publish-dry-run`: full `ci-fast-lane.sh`
+- Tag manual `publish`: `publish-workspace.sh` + `post-publish-docs.sh`
+
+Skill: `.cursor/skills/trembita-publishing/`

@@ -17,7 +17,7 @@ Architecture and decision records for the distributive Raft actor system.
 | State machine API (trait + macros) | [state-machine](decisions/state-machine.md) |
 | Client API, routing & read consistency | [client-and-routing](decisions/client-and-routing.md) |
 | Architecture style (ports & adapters) | [architecture-style](decisions/architecture-style.md) |
-| Naming (`crafty-*` + facade `crafty`) | [naming](decisions/naming.md) |
+| Naming (`trembita-*` + facade `trembita`) | [naming](decisions/naming.md) |
 | Library distribution & publishing | [library-and-publishing](decisions/library-and-publishing.md) |
 
 ### Wire, transport & security
@@ -73,7 +73,7 @@ Architecture and decision records for the distributive Raft actor system.
 
 ## Operations runbooks
 
-- [ops/backup-restore.md](ops/backup-restore.md) — `crafty-ops` snapshot export/import
+- [ops/backup-restore.md](ops/backup-restore.md) — `trembita-ops` snapshot export/import
 - [ops/rolling-upgrade.md](ops/rolling-upgrade.md) — wire N/N−1 vs app semver; links [upgrade-coordinator](decisions/upgrade-coordinator.md) for automated rolling
 
 ## Reference
@@ -85,7 +85,7 @@ Architecture and decision records for the distributive Raft actor system.
 | [architecture.md](architecture.md) | System design |
 | [protocol.md](protocol.md) | HTTP/3 routes and wire format |
 | [certs.md](certs.md) | mTLS provisioning |
-| [getting-started.md](getting-started.md) | **CraftyApp** quick start |
+| [getting-started.md](getting-started.md) | **TrembitaApp** quick start |
 | [status.md](status.md) | **Current capabilities and limits** |
 | [scenarios/](scenarios/README.md) | **Product scenario guides** (jobs, topics, workers, sessions, workflows) |
 | [backlog.md](backlog.md) | Implementation backlog |

@@ -3,12 +3,12 @@
 #
 # Usage:
 #   ./scripts/check-with-log.sh                    # full workspace
-#   ./scripts/check-with-log.sh -p crafty-actor
+#   ./scripts/check-with-log.sh -p trembita-actor
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-LOG="${CRAFTY_TEST_LOG:-target/test-run.log}"
+LOG="${TREMBITA_TEST_LOG:-target/test-run.log}"
 mkdir -p target
 
 log() {

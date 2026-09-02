@@ -14,7 +14,7 @@ source .env
 
 : "${GITLAB_URL:?GITLAB_URL required in .env}"
 : "${GITLAB_RUNNER_TOKEN:?GITLAB_RUNNER_TOKEN required in .env}"
-RUNNER_NAME="${RUNNER_NAME:-crafty-local-$(uname -n)}"
+RUNNER_NAME="${RUNNER_NAME:-trembita-local-$(uname -n)}"
 
 mkdir -p config
 

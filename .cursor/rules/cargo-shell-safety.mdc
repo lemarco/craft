@@ -3,7 +3,7 @@ description: Avoid cargo lock deadlocks and silent agent-shell hangs when buildi
 alwaysApply: true
 ---
 
-# Cargo & agent-shell safety (crafty)
+# Cargo & agent-shell safety (trembita)
 
 ## Why it looked "stuck"
 
@@ -16,16 +16,16 @@ a hang but is a lock queue.
 Prefer the fast wrapper while iterating; use check when you only need compile errors:
 
 ```bash
-./scripts/test-fast.sh -p crafty-actor --test group_rebalance   # fastest (nextest, no duplicate check)
-./scripts/check-with-log.sh -p crafty-actor                     # compile-only
+./scripts/test-fast.sh -p trembita-actor --test group_rebalance   # fastest (nextest, no duplicate check)
+./scripts/check-with-log.sh -p trembita-actor                     # compile-only
 ./scripts/test-with-log.sh --workspace --all-features          # CI parity
 ```
 
 Install nextest once: `./scripts/install-dev-tools.sh`
 
 `test-with-log.sh` skips `cargo check` when `cargo-nextest` is installed (set
-`CRAFTY_FORCE_CHECK=1` to restore). `test-fast.sh` uses **default-members**
-(skips crafty-ops / e2e / redis) unless you pass `--workspace`.
+`TREMBITA_FORCE_CHECK=1` to restore). `test-fast.sh` uses **default-members**
+(skips trembita-ops / e2e / redis) unless you pass `--workspace`.
 
 ## One cargo at a time
 
@@ -39,7 +39,7 @@ Prefer project scripts over raw `cargo test`:
 
 ```bash
 ./scripts/cargo-status.sh
-./scripts/test-fast.sh -p crafty-actor --test group_rebalance
+./scripts/test-fast.sh -p trembita-actor --test group_rebalance
 ./scripts/test-with-log.sh --workspace --all-features
 ```
 
@@ -61,4 +61,4 @@ Progress is written to **`target/test-run.log`** with timestamps and `CARGO_LOG=
 
 ## Debug env vars
 
-- `CRAFTY_LOG_REBALANCE=1` — rebalance planner/executor lines on stderr (multi-Raft).
+- `TREMBITA_LOG_REBALANCE=1` — rebalance planner/executor lines on stderr (multi-Raft).

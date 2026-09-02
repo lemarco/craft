@@ -5,11 +5,11 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"
 source "$CRAFT_ROOT/dev/cluster-common.sh"
 
-DEV="${CRAFTY_BG_JOBS_CLUSTER_DIR:-$CRAFT_ROOT/target/crafty-bg-jobs-cluster}"
+DEV="${TREMBITA_BG_JOBS_CLUSTER_DIR:-$CRAFT_ROOT/target/trembita-bg-jobs-cluster}"
 CERTS="$DEV/certs"
 PEERS="1@127.0.0.1:7543"
 SEED="$PEERS"
-BIN="crafty-showcase-background-jobs"
+BIN="trembita-showcase-background-jobs"
 CLUSTER_PORTS=(7543 7553 7563 7573 8090 8091 8092 9180 9181 9182 9183)
 
 cluster_common_init "$ROOT" "$BIN" "$DEV" "$CERTS" "$SEED"
@@ -41,8 +41,8 @@ status() {
 }
 
 health() {
-    local gw=000 adm=000 i
-    for i in 1 2 3 4 5 6 7 8 9 10; do
+    local gw=000 adm=000
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
         gw=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8090/jobs/emails \
             -H 'content-type: application/json' -d '{"payload":"health"}' 2>/dev/null || echo 000)
         adm=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9180/health 2>/dev/null || echo 000)
@@ -57,8 +57,8 @@ health() {
 node_env() {
     local id=$1 listen=$2 admin=$3 gateway=$4
     cluster_prepare_node "$id" "$listen" "$admin" "$gateway"
-    export CRAFTY_JOB_QUEUE=emails
-    export CRAFTY_JOB_QUEUE_LEASE_SECS=300
+    export TREMBITA_JOB_QUEUE=emails
+    export TREMBITA_JOB_QUEUE_LEASE_SECS=300
 }
 
 reset() {

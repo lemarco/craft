@@ -15,14 +15,14 @@ use axum::extract::State;
 use axum::http::{HeaderMap, Method, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use crafty::actor::{UserActor, actor};
-use crafty::{
-    ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayBearerIdentity,
+use trembita::actor::{UserActor, actor};
+use trembita::{
+    ActorGroupOpts, TrembitaApp, TrembitaConfigure, TrembitaGatewayState, GatewayBearerIdentity,
     GatewayOpts, ReadyOpts, RunOpts,
 };
-use crafty_showcase_common::{data_dir, display_addr};
+use trembita_showcase_common::{data_dir, display_addr};
 
-const DATA_DIR_NAME: &str = "crafty-showcase-realtime";
+const DATA_DIR_NAME: &str = "trembita-showcase-realtime";
 const SESSION_TTL: Duration = Duration::from_secs(3600);
 
 #[derive(Debug)]
@@ -54,7 +54,7 @@ impl UserActor for ChatWorker {
         &mut self,
         msg: Self::Message,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
-        let node = env::var("CRAFTY_NODE_ID").unwrap_or_else(|_| "?".into());
+        let node = env::var("TREMBITA_NODE_ID").unwrap_or_else(|_| "?".into());
         self.history.lock().unwrap().push(msg.clone());
         crate::debug::chat_message(&msg);
         println!("[chat node {node}] {msg}");
@@ -64,7 +64,7 @@ impl UserActor for ChatWorker {
 
 async fn ws_handler(
     ws: WebSocketUpgrade,
-    State(state): State<CraftyGatewayState>,
+    State(state): State<TrembitaGatewayState>,
     method: Method,
     uri: Uri,
     headers: HeaderMap,
@@ -87,9 +87,9 @@ async fn ws_handler(
 
 async fn handle_socket(
     mut socket: WebSocket,
-    state: CraftyGatewayState,
+    state: TrembitaGatewayState,
     session_key: String,
-    mut handle: crafty::SessionHandle,
+    mut handle: trembita::SessionHandle,
 ) {
     let _conn = state.track_connection();
     debug::session_open(&session_key, true);
@@ -100,7 +100,7 @@ async fn handle_socket(
     while let Some(Ok(msg)) = socket.recv().await {
         if let Message::Text(text) = msg {
             let text = text.to_string();
-            let payload = crafty::proto::encode(&text).expect("encode chat msg");
+            let payload = trembita::proto::encode(&text).expect("encode chat msg");
             match handle.cast(payload).await {
                 Ok(()) => {
                     debug::ws_message(&session_key, &text, true);
@@ -120,7 +120,7 @@ async fn handle_socket(
     let _ = state;
 }
 
-fn gateway_routes(state: CraftyGatewayState) -> Router {
+fn gateway_routes(state: TrembitaGatewayState) -> Router {
     Router::new()
         .route("/ws", get(ws_handler))
         .route("/chat", post(gateway_http::post_chat))
@@ -128,25 +128,25 @@ fn gateway_routes(state: CraftyGatewayState) -> Router {
         .with_state(state)
 }
 
-fn server_builder() -> crafty::CraftyAppBuilder {
+fn server_builder() -> trembita::TrembitaAppBuilder {
     let dir = data_dir(DATA_DIR_NAME);
     let _ = std::fs::create_dir_all(&dir);
-    let gateway: std::net::SocketAddr = env::var("CRAFTY_GATEWAY")
+    let gateway: std::net::SocketAddr = env::var("TREMBITA_GATEWAY")
         .unwrap_or_else(|_| "127.0.0.1:8294".into())
         .parse()
         .expect("gateway");
-    CraftyApp::builder()
+    TrembitaApp::builder()
         .actors::<ChatWorker>("chat", ActorGroupOpts::new(0))
-        .configure(CraftyConfigure {
+        .configure(TrembitaConfigure {
             tick_period: Duration::from_millis(10),
             reconcile_period: Duration::from_millis(20),
             directory_publish_period: Duration::from_millis(20),
-            ..CraftyConfigure::default()
+            ..TrembitaConfigure::default()
         })
         .data_dir(dir)
-        .configure(CraftyConfigure {
+        .configure(TrembitaConfigure {
             admin_addr: Some("127.0.0.1:9380".parse().expect("admin")),
-            ..CraftyConfigure::default()
+            ..TrembitaConfigure::default()
         })
         .gateway(
             GatewayOpts::new(gateway)
@@ -169,22 +169,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn print_banner() {
-    println!("crafty showcase · real-time sessions (stateful actors)");
-    println!("  listen   {}", env::var("CRAFTY_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
-    if env::var("CRAFTY_GATEWAY").is_ok_and(|g| g != "-") {
-        let gw = env::var("CRAFTY_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8294".into());
+    println!("trembita showcase · real-time sessions (stateful actors)");
+    println!("  listen   {}", env::var("TREMBITA_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
+    if env::var("TREMBITA_GATEWAY").is_ok_and(|g| g != "-") {
+        let gw = env::var("TREMBITA_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8294".into());
         let host = display_addr(&gw);
         println!("  websocket ws://{host}/ws?user=alice");
-        println!("  http chat POST http://{host}/chat  (Bearer + X-Crafty-User or ?user=)");
+        println!("  http chat POST http://{host}/chat  (Bearer + X-Trembita-User or ?user=)");
         println!("  http me    GET  http://{host}/me?user=alice");
     }
-    if let Ok(admin) = env::var("CRAFTY_ADMIN") {
+    if let Ok(admin) = env::var("TREMBITA_ADMIN") {
         if admin != "-" {
             println!("  admin    http://{}/dashboard", display_addr(&admin));
         }
     }
-    if env::var("CRAFTY_JOIN_SEEDS").is_ok() {
-        println!("  join     via CRAFTY_JOIN_SEEDS");
+    if env::var("TREMBITA_JOIN_SEEDS").is_ok() {
+        println!("  join     via TREMBITA_JOIN_SEEDS");
     } else {
         println!("  role     seed");
     }

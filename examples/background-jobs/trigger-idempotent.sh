@@ -5,12 +5,12 @@
 #   1. `?dedup=` collapses duplicate *enqueues*   → one job id, one job
 #   2. the handler marker survives *redelivery*   → one side effect
 set -euo pipefail
-GATEWAY="${CRAFTY_GATEWAY:-127.0.0.1:8090}"
+GATEWAY="${TREMBITA_GATEWAY:-127.0.0.1:8090}"
 GATEWAY="${GATEWAY#http://}"
 GATEWAY="${GATEWAY#https://}"
 PAYLOAD="${1:-welcome-user-42}"
-STREAM="${CRAFTY_JOB_QUEUE:-emails}"
-DEDUP="${CRAFTY_DEDUP_KEY:-$PAYLOAD}"
+STREAM="${TREMBITA_JOB_QUEUE:-emails}"
+DEDUP="${TREMBITA_DEDUP_KEY:-$PAYLOAD}"
 
 post() {
     curl -sS -X POST "http://$GATEWAY/jobs/$STREAM?dedup=$DEDUP" \
@@ -40,6 +40,6 @@ Now watch the server terminal. Expect, for one job:
   [worker] delivery #1 — <key>: crashing before ack (expect redelivery)
   [worker] delivery #2 — <key>: duplicate, side effect already applied (skipping)
 
-Two deliveries, one side effect. Set CRAFTY_SIMULATE_REDELIVERY=0 on the server
+Two deliveries, one side effect. Set TREMBITA_SIMULATE_REDELIVERY=0 on the server
 to turn the simulated crash off.
 TXT

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# publish-workspace.sh — publish crafty workspace crates to crates.io (library-and-publishing).
+# publish-workspace.sh — publish trembita workspace crates to crates.io (library-and-publishing).
 #
 # `cargo publish --workspace` uploads many *new* crates in one burst and triggers
 # crates.io HTTP 429 ("published too many new crates in a short period"). This
@@ -13,22 +13,22 @@
 #   ./scripts/publish-workspace.sh 0.1.0        # explicit version (must match manifest)
 #
 # Env:
-#   CRAFTY_PUBLISH_DELAY_SECS=30     pause after each successful new upload
-#   CRAFTY_PUBLISH_429_BUFFER_SECS=5 extra slack after a 429 retry-after time
-#   CRAFTY_PUBLISH_MAX_ATTEMPTS=12   per-crate attempts before giving up
+#   TREMBITA_PUBLISH_DELAY_SECS=30     pause after each successful new upload
+#   TREMBITA_PUBLISH_429_BUFFER_SECS=5 extra slack after a 429 retry-after time
+#   TREMBITA_PUBLISH_MAX_ATTEMPTS=12   per-crate attempts before giving up
 #   CARGO_REGISTRY_TOKEN             or `cargo login` credentials
 #
 # Resume after a partial run: re-run the same command; already-indexed crates
-# are skipped. See docs/releasing.md and .cursor/skills/crafty-publishing/.
+# are skipped. See docs/releasing.md and .cursor/skills/trembita-publishing/.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ROOT_MANIFEST="Cargo.toml"
-DELAY="${CRAFTY_PUBLISH_DELAY_SECS:-30}"
-BUFFER="${CRAFTY_PUBLISH_429_BUFFER_SECS:-5}"
-MAX_ATTEMPTS="${CRAFTY_PUBLISH_MAX_ATTEMPTS:-12}"
-UA="crafty-publish (https://gitlab.com/lemarco/craft)"
+DELAY="${TREMBITA_PUBLISH_DELAY_SECS:-30}"
+BUFFER="${TREMBITA_PUBLISH_429_BUFFER_SECS:-5}"
+MAX_ATTEMPTS="${TREMBITA_PUBLISH_MAX_ATTEMPTS:-12}"
+UA="trembita-publish (https://gitlab.com/lemarco/trembita)"
 
 die() { echo "error: $*" >&2; exit 1; }
 
@@ -41,19 +41,19 @@ current_version() {
 # Topological publish order (must match intra-workspace deps). `publish = false`
 # crates are omitted.
 PUBLISH_ORDER=(
-    crafty-macros
-    crafty-proto
-    crafty-core
-    crafty-storage
-    crafty-net
-    crafty-actor
-    crafty-client
-    crafty-dashboard
-    crafty-http
-    crafty-sim
-    crafty-store-redis
-    crafty-backlog-postgres
-    crafty
+    trembita-macros
+    trembita-proto
+    trembita-core
+    trembita-storage
+    trembita-net
+    trembita-actor
+    trembita-client
+    trembita-dashboard
+    trembita-http
+    trembita-sim
+    trembita-store-redis
+    trembita-backlog-postgres
+    trembita
 )
 
 VERSION="${1:-$(current_version)}"
@@ -121,7 +121,7 @@ publish_one() {
     die "exhausted ${MAX_ATTEMPTS} attempts for ${pkg}"
 }
 
-log "publishing crafty workspace v${VERSION} (${#PUBLISH_ORDER[@]} crates, ${DELAY}s inter-crate delay)"
+log "publishing trembita workspace v${VERSION} (${#PUBLISH_ORDER[@]} crates, ${DELAY}s inter-crate delay)"
 
 published=0
 skipped=0
@@ -140,4 +140,4 @@ for pkg in "${PUBLISH_ORDER[@]}"; do
 done
 
 log "done: ${published} uploaded, ${skipped} skipped (already indexed)"
-echo "OK: crafty v${VERSION} publish complete."
+echo "OK: trembita v${VERSION} publish complete."

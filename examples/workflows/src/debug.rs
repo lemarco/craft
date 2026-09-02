@@ -3,7 +3,7 @@
 pub const NAME: &str = "workflows";
 
 pub fn init_tracing() {
-    crafty::init_tracing();
+    trembita::init_tracing();
     tracing::debug!(target: "showcase", showcase = NAME, "tracing initialized");
 }
 
@@ -14,8 +14,8 @@ pub fn startup(mode: &str, node_id: u64, data_dir: &std::path::Path) {
         mode,
         node_id,
         data_dir = %data_dir.display(),
-        gateway = ?std::env::var("CRAFTY_GATEWAY").ok(),
-        join_seeds = ?std::env::var("CRAFTY_JOIN_SEEDS").ok(),
+        gateway = ?std::env::var("TREMBITA_GATEWAY").ok(),
+        join_seeds = ?std::env::var("TREMBITA_JOIN_SEEDS").ok(),
         "showcase starting"
     );
 }

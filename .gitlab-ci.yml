@@ -1,4 +1,4 @@
-# GitLab CI for crafty (testing-strategy: fast lane on every push/MR, heavy lane nightly).
+# GitLab CI for trembita (testing-strategy: fast lane on every push/MR, heavy lane nightly).
 
 stages:
   - check
@@ -57,7 +57,7 @@ fast:
     - !reference [.rust_fast_lane_setup, before_script]
   script:
     - df -h .
-    - CRAFTY_CI_DISK_PRUNE=1 bash scripts/ci-fast-lane.sh
+    - TREMBITA_CI_DISK_PRUNE=1 bash scripts/ci-fast-lane.sh
 
 # --- Minimum Supported Rust Version check (library-and-publishing) --------------------------
 msrv:
@@ -82,7 +82,7 @@ fuzz:
     - !reference [.rust_linux_linker, before_script]
   script:
     - cargo install cargo-fuzz
-    - cd crates/crafty-fuzz && cargo fuzz run wire_decode -- -max_total_time=300
+    - cd crates/trembita-fuzz && cargo fuzz run wire_decode -- -max_total_time=300
 
 e2e:
   stage: heavy
@@ -92,7 +92,7 @@ e2e:
   variables:
     DOCKER_HOST: "tcp://docker:2375"
     DOCKER_TLS_CERTDIR: ""
-    CRAFTY_E2E_HOST: "docker"
+    TREMBITA_E2E_HOST: "docker"
   rules:
     - !reference [.run-heavy-rules, rules]
   before_script:
@@ -103,7 +103,7 @@ e2e:
     - bash e2e/queue.sh
     - bash e2e/chaos.sh
     - bash e2e/cert_renew.sh
-    - CRAFTY_LINEARIZABILITY_SKIP_SIM=1 CRAFTY_E2E_LINEARIZABILITY=1 bash e2e/linearizability.sh
+    - TREMBITA_LINEARIZABILITY_SKIP_SIM=1 TREMBITA_E2E_LINEARIZABILITY=1 bash e2e/linearizability.sh
 
 linearizability-sim:
   stage: heavy
@@ -111,7 +111,7 @@ linearizability-sim:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
   script:
-    - CRAFTY_E2E_LINEARIZABILITY=0 bash e2e/linearizability.sh
+    - TREMBITA_E2E_LINEARIZABILITY=0 bash e2e/linearizability.sh
 
 store-redis:
   stage: heavy
@@ -125,7 +125,7 @@ store-redis:
   rules:
     - !reference [.run-heavy-rules, rules]
   script:
-    - cargo test -p crafty-store-redis --features docker-tests -- --ignored
+    - cargo test -p trembita-store-redis --features docker-tests -- --ignored
 
 bench:
   stage: heavy
@@ -150,7 +150,7 @@ publish-dry-run:
   before_script:
     - !reference [.rust_fast_lane_setup, before_script]
   script:
-    - CRAFTY_CI_DISK_PRUNE=1 bash scripts/ci-fast-lane.sh
+    - TREMBITA_CI_DISK_PRUNE=1 bash scripts/ci-fast-lane.sh
 
 publish:
   stage: release

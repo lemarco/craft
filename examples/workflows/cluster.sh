@@ -5,10 +5,10 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"
 source "$CRAFT_ROOT/dev/cluster-common.sh"
 
-DEV="${CRAFTY_WORKFLOWS_CLUSTER_DIR:-$CRAFT_ROOT/target/crafty-workflows-cluster}"
+DEV="${TREMBITA_WORKFLOWS_CLUSTER_DIR:-$CRAFT_ROOT/target/trembita-workflows-cluster}"
 CERTS="$DEV/certs"
 SEED="1@127.0.0.1:7643"
-BIN="crafty-showcase-workflows"
+BIN="trembita-showcase-workflows"
 CLUSTER_PORTS=(7643 7653 7663 7673 8490 8491 8492 9480 9481 9482 9483)
 
 cluster_common_init "$ROOT" "$BIN" "$DEV" "$CERTS" "$SEED"
@@ -40,8 +40,8 @@ status() {
 }
 
 health() {
-    local gw=000 adm=000 i
-    for i in 1 2 3 4 5 6 7 8 9 10; do
+    local gw=000 adm=000
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
         gw=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8490/workflows/run \
             -H 'content-type: application/json' -d '{"saga_id":"health"}' 2>/dev/null || echo 000)
         adm=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9480/health 2>/dev/null || echo 000)
@@ -74,7 +74,7 @@ run_node() {
 node_env() {
     local id=$1 listen=$2 admin=$3 gateway=$4
     cluster_prepare_node "$id" "$listen" "$admin" "$gateway"
-    env | rg '^CRAFTY_' | sort
+    env | rg '^TREMBITA_' | sort
 }
 
 run_node_bg() {

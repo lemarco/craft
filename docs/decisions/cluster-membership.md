@@ -43,8 +43,8 @@ Membership changes always go through the Raft log — HTTP routes are **entry po
 
 ### Seed-set discovery
 
-- `CraftyClusterBuilder::join_seeds` / `crafty::discovery::Seed` — ordered candidate list; tries each in turn.
-- `crafty::discovery::resolve_dns_seeds` — ordinal DNS names (`node-0.cluster`, …) → seed set.
+- `TrembitaClusterBuilder::join_seeds` / `trembita::discovery::Seed` — ordered candidate list; tries each in turn.
+- `trembita::discovery::resolve_dns_seeds` — ordinal DNS names (`node-0.cluster`, …) → seed set.
 - Peer addresses converge via `/cluster/peers` anti-entropy gossip.
 
 Full cloud-metadata auto-discovery beyond a seed set remains out of scope.
@@ -96,7 +96,7 @@ pub enum LeaveResponse {
 | `NotMember` | `node_id` not in committed voters or learners |
 | `LastMember` | Would empty the voter set |
 
-**Facade:** `CraftyClusterBuilder::allow_leave`, `CraftyCluster::request_leave`, `CraftyCluster::leave()`. Actor migration before leave is the caller's job ([cross-node-actors](cross-node-actors.md), [drain-timeout](drain-timeout.md)). `crafty-node` with `CRAFTY_GRACEFUL_LEAVE=1` calls `leave()` on `SIGINT`.
+**Facade:** `TrembitaClusterBuilder::allow_leave`, `TrembitaCluster::request_leave`, `TrembitaCluster::leave()`. Actor migration before leave is the caller's job ([cross-node-actors](cross-node-actors.md), [drain-timeout](drain-timeout.md)). `trembita-node` with `TREMBITA_GRACEFUL_LEAVE=1` calls `leave()` on `SIGINT`.
 
 Multi-Raft routes cluster leave to **Meta-Raft** (or group 0 in single-group mode); per-group sync removes the node from shard groups.
 
@@ -142,7 +142,7 @@ When `raft_groups > 1`, each group has its **own voter set**:
 | **Cluster registry** | Known peers, coordinator metadata | Meta-Raft join/leave (or group 0 in single-group) |
 | **Group membership** | Voters for *this* group's log | Per-group `ConfChange` (joint consensus) |
 
-Desired voters: rank nodes by rendezvous weight `group_node_weight(G, node)`, take top **`replication_factor`** (default 3). Planner API in `crafty-core::shard`: `group_voters`, `plan_group_membership_change`, `groups_joining_node_affects`, `groups_leaving_node_affects`. Runtime: `MultiRaftState::sync_group_membership` on membership delta.
+Desired voters: rank nodes by rendezvous weight `group_node_weight(G, node)`, take top **`replication_factor`** (default 3). Planner API in `trembita-core::shard`: `group_voters`, `plan_group_membership_change`, `groups_joining_node_affects`, `groups_leaving_node_affects`. Runtime: `MultiRaftState::sync_group_membership` on membership delta.
 
 Join is two-phase: cluster registry first, then per-group ConfChange; partial failure must be retried.
 

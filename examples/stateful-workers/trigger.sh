@@ -4,10 +4,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"
 ORDER="${1:-1001}"
-GATEWAY="${CRAFTY_GATEWAY:-127.0.0.1:8190}"
+GATEWAY="${TREMBITA_GATEWAY:-127.0.0.1:8190}"
 GATEWAY="${GATEWAY#http://}"
 GATEWAY="${GATEWAY#https://}"
-CLIENT="$CRAFT_ROOT/target/debug/crafty-showcase-client"
+CLIENT="$CRAFT_ROOT/target/debug/trembita-showcase-client"
 
 if [ -x "$CLIENT" ]; then
     exec "$CLIENT" cast "$GATEWAY" orders "$ORDER"

@@ -10,7 +10,7 @@
 //! | `cast N` | Dev client — POST order id `N` |
 //! | `migrate-demo` | 2-node LocalNetwork migration walkthrough |
 //!
-//! QUIC migration: `CRAFTY_MIGRATE_DEMO=1` + `./cluster.sh 1-migrate|2-migrate`, then `./cluster.sh migrate-run`.
+//! QUIC migration: `TREMBITA_MIGRATE_DEMO=1` + `./cluster.sh 1-migrate|2-migrate`, then `./cluster.sh migrate-run`.
 
 mod debug;
 mod gateway_orders;
@@ -22,20 +22,20 @@ mod processor;
 use std::env;
 use std::time::Duration;
 
-use crafty::{
-    CraftyApp, CraftyAppBuilder, CraftyConfigure, GatewayOpts, ReadyOpts, RunOpts, WorkerOpts,
+use trembita::{
+    TrembitaApp, TrembitaAppBuilder, TrembitaConfigure, GatewayOpts, ReadyOpts, RunOpts, WorkerOpts,
     WorkerScale, workers,
 };
-use crafty_showcase_common::gateway_auth::ShowcaseGatewayIdentity;
-use crafty_showcase_common::{data_dir, display_addr, env_flag};
+use trembita_showcase_common::gateway_auth::ShowcaseGatewayIdentity;
+use trembita_showcase_common::{data_dir, display_addr, env_flag};
 
 use crate::migrate_counter::StatefulCounter;
 use crate::processor::{OrderProcessor, ProcessorCfg};
 
-const DATA_DIR_NAME: &str = "crafty-showcase-stateful-workers";
+const DATA_DIR_NAME: &str = "trembita-showcase-stateful-workers";
 
 fn migrate_demo_mode() -> bool {
-    env_flag("CRAFTY_MIGRATE_DEMO")
+    env_flag("TREMBITA_MIGRATE_DEMO")
 }
 
 fn processor_cfg() -> ProcessorCfg {
@@ -44,7 +44,7 @@ fn processor_cfg() -> ProcessorCfg {
     }
 }
 
-fn apply_actors(builder: CraftyAppBuilder) -> CraftyAppBuilder {
+fn apply_actors(builder: TrembitaAppBuilder) -> TrembitaAppBuilder {
     if migrate_demo_mode() {
         builder.workers(workers!(
             WorkerOpts::<StatefulCounter>::new("counter")
@@ -72,21 +72,21 @@ fn gateway_opts(addr: std::net::SocketAddr) -> GatewayOpts {
     }
 }
 
-fn server_builder() -> CraftyAppBuilder {
+fn server_builder() -> TrembitaAppBuilder {
     let dir = data_dir(DATA_DIR_NAME);
     let _ = std::fs::create_dir_all(&dir);
-    let gateway: std::net::SocketAddr = env::var("CRAFTY_GATEWAY")
+    let gateway: std::net::SocketAddr = env::var("TREMBITA_GATEWAY")
         .unwrap_or_else(|_| "127.0.0.1:8190".into())
         .parse()
         .expect("gateway");
     apply_actors(
-        CraftyApp::builder()
+        TrembitaApp::builder()
             .data_dir(dir)
-            .configure(CraftyConfigure {
+            .configure(TrembitaConfigure {
                 tick_period: Duration::from_millis(10),
                 reconcile_period: Duration::from_millis(20),
                 admin_addr: Some("127.0.0.1:9280".parse().expect("admin")),
-                ..CraftyConfigure::default()
+                ..TrembitaConfigure::default()
             }),
     )
     .gateway(gateway_opts(gateway))
@@ -119,20 +119,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn print_banner() {
-    println!("crafty showcase · stateful workers (stateful actors)");
+    println!("trembita showcase · stateful workers (stateful actors)");
     if migrate_demo_mode() {
         println!("  mode     migration demo (counter actor)");
         println!("  migrate  ./cluster.sh migrate-run  (POST /demo/migrate/run)");
     } else {
-        println!("  listen   {}", env::var("CRAFTY_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
-        if env::var("CRAFTY_GATEWAY").is_ok_and(|g| g != "-") {
-            let gw = env::var("CRAFTY_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8190".into());
+        println!("  listen   {}", env::var("TREMBITA_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
+        if env::var("TREMBITA_GATEWAY").is_ok_and(|g| g != "-") {
+            let gw = env::var("TREMBITA_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8190".into());
             let host = display_addr(&gw);
             println!("  gateway  http://{host}/actors/orders/cast  (built-in ActorsApi)");
             println!("  auth     POST http://{host}/orders/submit?user=tenant-1  (custom identity route)");
         }
-        if env::var("CRAFTY_JOIN_SEEDS").is_ok() {
-            println!("  join     via CRAFTY_JOIN_SEEDS");
+        if env::var("TREMBITA_JOIN_SEEDS").is_ok() {
+            println!("  join     via TREMBITA_JOIN_SEEDS");
         } else {
             println!("  role     seed");
         }
@@ -149,9 +149,9 @@ fn print_banner() {
 }
 
 async fn cast_order(order_id: u64) -> Result<(), Box<dyn std::error::Error>> {
-    let gateway = env::var("CRAFTY_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8190".into());
+    let gateway = env::var("TREMBITA_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8190".into());
     debug::order_cast(order_id, &gateway);
-    let resp = crafty_showcase_client::cast_actor(&gateway, "orders", &order_id.to_string()).await?;
+    let resp = trembita_showcase_client::cast_actor(&gateway, "orders", &order_id.to_string()).await?;
     if resp.is_success() {
         println!("cast order {order_id} → HTTP {}", resp.status);
         Ok(())

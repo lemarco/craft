@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rename crafty -> crafty across the workspace (crates, docs, scripts, deploy).
+# Rename trembita -> trembita across the workspace (crates, docs, scripts, deploy).
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
@@ -11,34 +11,34 @@ rename_crate_dir() {
   fi
 }
 
-for d in crafty-e2e-queue-client crafty-test-support crafty-store-redis \
-  crafty-e2e-client crafty-dashboard crafty-storage crafty-proto crafty-macros \
-  crafty-client crafty-actor crafty-core crafty-node crafty-net crafty-sim \
-  crafty-ops crafty-fuzz; do
-  rename_crate_dir "$d" "crafty-${d#crafty-}"
+for d in trembita-e2e-queue-client trembita-test-support trembita-store-redis \
+  trembita-e2e-client trembita-dashboard trembita-storage trembita-proto trembita-macros \
+  trembita-client trembita-actor trembita-core trembita-node trembita-net trembita-sim \
+  trembita-ops trembita-fuzz; do
+  rename_crate_dir "$d" "trembita-${d#trembita-}"
 done
-rename_crate_dir crafty crafty
+rename_crate_dir trembita trembita
 
-for f in .cursor/rules/crafty-architecture.mdc .cursor/rules/crafty-quality-gate.mdc \
-  .cursor/rules/crafty-testing.mdc .cursor/rules/crafty-commits.mdc; do
+for f in .cursor/rules/trembita-architecture.mdc .cursor/rules/trembita-quality-gate.mdc \
+  .cursor/rules/trembita-testing.mdc .cursor/rules/trembita-commits.mdc; do
   if [[ -f $f ]]; then
-    git mv "$f" "${f/crafty-/crafty-}"
+    git mv "$f" "${f/trembita-/trembita-}"
   fi
 done
 
-for d in .cursor/skills/crafty-add-feature .cursor/skills/crafty-quality-gate \
-  .cursor/skills/crafty-testing; do
+for d in .cursor/skills/trembita-add-feature .cursor/skills/trembita-quality-gate \
+  .cursor/skills/trembita-testing; do
   if [[ -d $d ]]; then
-    git mv "$d" "${d/crafty-/crafty-}"
+    git mv "$d" "${d/trembita-/trembita-}"
   fi
 done
 
 while IFS= read -r -d '' f; do
   perl -i -pe '
-    s/crafty-/crafty-/g;
-    s/CRAFTY_/CRAFTY_/g;
-    s/Crafty(?!y)/Crafty/g;
-    s/crafty(?!y)/crafty/g;
+    s/trembita-/trembita-/g;
+    s/TREMBITA_/TREMBITA_/g;
+    s/Trembita(?!y)/Trembita/g;
+    s/trembita(?!y)/trembita/g;
   ' "$f"
 done < <(find . \( -path ./target -o -path ./.git \) -prune -o -type f \( \
   -name '*.rs' -o -name '*.toml' -o -name '*.md' -o -name '*.mdc' -o -name '*.sh' -o \
@@ -46,4 +46,4 @@ done < <(find . \( -path ./target -o -path ./.git \) -prune -o -type f \( \
   -name 'CHANGELOG.md' -o -name 'lefthook.yml' -o -name 'Dockerfile' -o -name '*.stderr' \
   \) -print0)
 
-echo "rename-to-crafty: done"
+echo "rename-to-trembita: done"

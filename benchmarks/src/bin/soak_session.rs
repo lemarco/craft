@@ -9,13 +9,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use crafty::actor::{UserActor, actor};
-use crafty::core::{Config, StateMachine};
-use crafty::net::LocalNetwork;
-use crafty::proto::LogIndex;
-use crafty::cluster::CraftyCluster;
-use crafty::NodeId;
-use crafty_benchmarks::env_u64;
+use trembita::actor::{UserActor, actor};
+use trembita::core::{Config, StateMachine};
+use trembita::net::LocalNetwork;
+use trembita::proto::LogIndex;
+use trembita::cluster::TrembitaCluster;
+use trembita::NodeId;
+use trembita_benchmarks::env_u64;
 
 static HANDLED: AtomicU64 = AtomicU64::new(0);
 
@@ -82,7 +82,7 @@ fn raft_config(seed: u64) -> Config {
     }
 }
 
-async fn await_workers(clusters: &[Arc<CraftyCluster<Empty>>], count: usize) {
+async fn await_workers(clusters: &[Arc<TrembitaCluster<Empty>>], count: usize) {
     for _ in 0..1000 {
         if clusters[0].directory().lookup("w").len() >= count {
             let local_ok = clusters.iter().all(|c| c.registry().contains("w"));
@@ -95,7 +95,7 @@ async fn await_workers(clusters: &[Arc<CraftyCluster<Empty>>], count: usize) {
     panic!("soak_session: workers not ready (need {count} in directory + local registry)");
 }
 
-use crafty::actor::CastError;
+use trembita::actor::CastError;
 
 fn cast_error_retryable(err: &CastError) -> bool {
     match err {
@@ -108,7 +108,7 @@ fn cast_error_retryable(err: &CastError) -> bool {
     }
 }
 
-async fn cast_session_round(cluster: &CraftyCluster<Empty>, user: &String, n: u64) -> u64 {
+async fn cast_session_round(cluster: &TrembitaCluster<Empty>, user: &String, n: u64) -> u64 {
     let dir = cluster.directory();
     let cluster_view = dir.cluster("w");
     let session = cluster_view
@@ -116,7 +116,7 @@ async fn cast_session_round(cluster: &CraftyCluster<Empty>, user: &String, n: u6
         .expect("session");
     let mut ok = 0u64;
     for msg in 0..n {
-        let payload = crafty::proto::encode(&(msg as u64)).unwrap();
+        let payload = trembita::proto::encode(&(msg as u64)).unwrap();
         for attempt in 0..50 {
             match cluster.messaging().cast_session(&session, payload.clone()).await {
                 Ok(()) => {
@@ -142,10 +142,10 @@ async fn main() {
 
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let net = LocalNetwork::new();
-    let mut clusters: Vec<Arc<CraftyCluster<Empty>>> = Vec::new();
+    let mut clusters: Vec<Arc<TrembitaCluster<Empty>>> = Vec::new();
 
     for &id in &ids {
-        let cluster = CraftyCluster::builder(id, Empty)
+        let cluster = TrembitaCluster::builder(id, Empty)
             .members(ids)
             .raft_config(raft_config(base_seed ^ id.0))
             .tick_period(Duration::from_millis(10))
@@ -179,7 +179,7 @@ async fn main() {
         let _ = net.detach(victim);
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let cluster = CraftyCluster::builder(victim, Empty)
+        let cluster = TrembitaCluster::builder(victim, Empty)
             .members(ids)
             .raft_config(raft_config(base_seed ^ victim.0 ^ rounds))
             .tick_period(Duration::from_millis(10))

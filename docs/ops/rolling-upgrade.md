@@ -1,6 +1,6 @@
 # Rolling upgrade runbook
 
-How to upgrade a crafty cluster without downtime. Distinguishes **wire protocol**
+How to upgrade a trembita cluster without downtime. Distinguishes **wire protocol**
 (rolling N/N−1 band) from **application semver** (exact match required).
 
 ## Two version axes
@@ -21,7 +21,7 @@ Use when the release bumps `PROTOCOL_VERSION` but not your app build.
 3. Each node accepts peers in the compatibility band; old and new wire may coexist briefly.
 4. After the fleet is on the new binary, raise `MIN_COMPATIBLE_PROTOCOL_VERSION` only in a **subsequent** release once no N−1 nodes remain.
 
-Verify with `./scripts/test-with-log.sh -p crafty-net --test protocol_compat`.
+Verify with `./scripts/test-with-log.sh -p trembita-net --test protocol_compat`.
 
 ## App semver upgrade (state machine change)
 
@@ -29,7 +29,7 @@ When your `StateMachine`, actors, or command encoding changes:
 
 1. **Stop** adding nodes.
 2. Upgrade **all** existing members to the **same** new app semver (rolling wire OK, app must match before join completes).
-3. Configure `CRAFTY_APP_VERSION` (or equivalent builder field) identically on every node.
+3. Configure `TREMBITA_APP_VERSION` (or equivalent builder field) identically on every node.
 4. Only then deploy new VPS joiners with the matching semver.
 
 Join rejects with `409 VERSION_MISMATCH` if either axis fails.
@@ -44,7 +44,7 @@ shape, not application semantics.
 
 - [ ] Same `app_version` on all nodes before expanding membership
 - [ ] Protocol in band: `MIN_COMPATIBLE .. PROTOCOL_VERSION`
-- [ ] Snapshot / `crafty-ops backup export` before risky upgrades
+- [ ] Snapshot / `trembita-ops backup export` before risky upgrades
 - [ ] Post-upgrade: `/ready`, sample propose/query, `e2e/run.sh` or nightly linearizability gate
 
 ## Automated self-update (no external orchestrator)

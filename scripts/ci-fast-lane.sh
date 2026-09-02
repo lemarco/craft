@@ -5,7 +5,7 @@
 # Usage: ./scripts/ci-fast-lane.sh
 #
 # Env:
-#   CRAFTY_CI_DISK_PRUNE=1  — run ci-disk-prune.sh between heavy steps (CI runners)
+#   TREMBITA_CI_DISK_PRUNE=1  — run ci-disk-prune.sh between heavy steps (CI runners)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."

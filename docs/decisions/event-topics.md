@@ -67,7 +67,7 @@ leader election.
 
 ## References
 
-- [`crates/crafty-actor/src/topic.rs`](../../crates/crafty-actor/src/topic.rs) — port
-- [`crates/crafty-actor/src/redb_topic.rs`](../../crates/crafty-actor/src/redb_topic.rs) — storage
-- [`crates/crafty-actor/src/topic_service.rs`](../../crates/crafty-actor/src/topic_service.rs) — leader service
+- [`crates/trembita-actor/src/topic.rs`](../../crates/trembita-actor/src/topic.rs) — port
+- [`crates/trembita-actor/src/redb_topic.rs`](../../crates/trembita-actor/src/redb_topic.rs) — storage
+- [`crates/trembita-actor/src/topic_service.rs`](../../crates/trembita-actor/src/topic_service.rs) — leader service
 - [`docs/scenarios/event-topics.md`](../scenarios/event-topics.md) — product scenario

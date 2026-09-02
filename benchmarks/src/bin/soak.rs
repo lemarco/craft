@@ -14,8 +14,8 @@
 
 use std::time::{Duration, Instant};
 
-use crafty_benchmarks::TinyRng;
-use crafty_sim::Cluster;
+use trembita_benchmarks::TinyRng;
+use trembita_sim::Cluster;
 
 fn env_u64(key: &str, default: u64) -> u64 {
     std::env::var(key)

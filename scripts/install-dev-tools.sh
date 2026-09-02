@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install local tools that materially cut compile/test time for crafty.
+# Install local tools that materially cut compile/test time for trembita.
 #
 # Usage:
 #   ./scripts/install-dev-tools.sh          # nextest + mold (if missing)
@@ -66,7 +66,7 @@ enable_sccache() {
   if grep -qF "$line" "$rc" 2>/dev/null; then
     echo "sccache already enabled in $rc"
   else
-    printf '\n# crafty: cache rustc artifacts across clean builds\n%s\n' "$line" >>"$rc"
+    printf '\n# trembita: cache rustc artifacts across clean builds\n%s\n' "$line" >>"$rc"
     echo "appended RUSTC_WRAPPER=sccache to $rc (restart shell or: source $rc)"
   fi
   sccache --show-stats 2>/dev/null || true
@@ -80,4 +80,4 @@ if [[ "${1:-}" == "--sccache" ]]; then
   enable_sccache
 fi
 
-echo ">> dev tools ready — try: ./scripts/test-fast.sh -p crafty-core"
+echo ">> dev tools ready — try: ./scripts/test-fast.sh -p trembita-core"

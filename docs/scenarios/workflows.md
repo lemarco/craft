@@ -2,7 +2,7 @@
 
 **Pattern:** Multi-step business processes with forward steps and compensators; journal survives process restart; steps can call queue, actors, or Raft.
 
-**Status:** **Shipped** in 0.2.x — `WorkflowBuilder`, `CraftyApp::run_workflow`, Meta-Raft journal, [examples/workflows/](../../examples/workflows/).
+**Status:** **Shipped** in 0.2.x — `WorkflowBuilder`, `TrembitaApp::run_workflow`, Meta-Raft journal, [examples/workflows/](../../examples/workflows/).
 
 ## When to use
 
@@ -44,13 +44,13 @@ Product path: **Meta-Raft** — no external DB.
 ### 1. Obtain journal from cluster
 
 ```rust
-use crafty::cluster::{CraftyCluster, CompositeSagaJournal, MetaRaftSagaJournal};
-use crafty_client::{run_saga, resume_saga, SagaPlan, SagaStep, RunSagaOpts};
+use trembita::cluster::{TrembitaCluster, CompositeSagaJournal, MetaRaftSagaJournal};
+use trembita_client::{run_saga, resume_saga, SagaPlan, SagaStep, RunSagaOpts};
 
 let journal = cluster.saga_journal();  // CompositeSagaJournal in multi-Raft mode
 ```
 
-Built from [`CraftyCluster::saga_journal`](../../crates/crafty/src/cluster.rs) — wires Meta-Raft + optional store.
+Built from [`TrembitaCluster::saga_journal`](../../crates/trembita/src/cluster.rs) — wires Meta-Raft + optional store.
 
 ### 2. Define steps
 
@@ -122,7 +122,7 @@ Global serializable isolation across shards is **not** a goal ([multi-raft](../d
 
 ## Observability
 
-- Metrics: `crafty_saga_*` (see dashboard / telemetry)
+- Metrics: `trembita_saga_*` (see dashboard / telemetry)
 - Backlog **B-07:** workflow status in admin UI
 
 ## Operations
@@ -138,9 +138,9 @@ Global serializable isolation across shards is **not** a goal ([multi-raft](../d
 | Asset | Purpose |
 |-------|---------|
 | [`examples/workflows/`](../../examples/workflows/) | Meta-Raft saga + compensators + resume |
-| `crafty/tests/saga.rs` | Facade integration |
-| `crafty/tests/two_phase.rs` | Cross-shard 2PC (advanced) |
-| `crafty-client` | `run_saga`, `SagaPlan` API |
+| `trembita/tests/saga.rs` | Facade integration |
+| `trembita/tests/two_phase.rs` | Cross-shard 2PC (advanced) |
+| `trembita-client` | `run_saga`, `SagaPlan` API |
 
 ## Future polish
 

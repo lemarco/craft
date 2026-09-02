@@ -1,29 +1,29 @@
 # Production runbook
 
-Operational checklist for running crafty on **N identical VPS or bare-metal nodes** — one binary, embedded redb, no mandatory Redis. Deep dives link out to focused guides.
+Operational checklist for running trembita on **N identical VPS or bare-metal nodes** — one binary, embedded redb, no mandatory Redis. Deep dives link out to focused guides.
 
 **Deployment model:** [deployment-model](../decisions/deployment-model.md)  
 **Certs:** [certs.md](../certs.md)
 
 ## VPS deployment checklist
 
-1. **Build once** — same artifact on every node (`crafty-node` or your app embedding `crafty`).
-2. **Unique node id** — set `CRAFTY_NODE_ID` (1…N) per host.
-3. **Listen address** — `CRAFTY_LISTEN=0.0.0.0:7443` (QUIC/mTLS crafty wire).
-4. **Data directory** — `CRAFTY_DATA_DIR=/var/lib/crafty/data` (redb: Raft groups, queues, actor store).
-5. **Peers** — static `CRAFTY_PEERS=id@host:7443,...` **or** dynamic `CRAFTY_JOIN_SEEDS` on first boot.
-6. **TLS** — `CRAFTY_NODE_CERT`, `CRAFTY_NODE_KEY`, `CRAFTY_CA_CERT` (see [certs.md](../certs.md)).
-7. **Admin (optional)** — `CRAFTY_ADMIN=0.0.0.0:8080`; bind privately or firewall. Dashboard at `/dashboard`, Prometheus at `/metrics`.
+1. **Build once** — same artifact on every node (`trembita-node` or your app embedding `trembita`).
+2. **Unique node id** — set `TREMBITA_NODE_ID` (1…N) per host.
+3. **Listen address** — `TREMBITA_LISTEN=0.0.0.0:7443` (QUIC/mTLS trembita wire).
+4. **Data directory** — `TREMBITA_DATA_DIR=/var/lib/trembita/data` (redb: Raft groups, queues, actor store).
+5. **Peers** — static `TREMBITA_PEERS=id@host:7443,...` **or** dynamic `TREMBITA_JOIN_SEEDS` on first boot.
+6. **TLS** — `TREMBITA_NODE_CERT`, `TREMBITA_NODE_KEY`, `TREMBITA_CA_CERT` (see [certs.md](../certs.md)).
+7. **Admin (optional)** — `TREMBITA_ADMIN=0.0.0.0:8080`; bind privately or firewall. Dashboard at `/dashboard`, Prometheus at `/metrics`.
 8. **Firewall** — allow **UDP/TCP 7443** between cluster members; restrict admin port to ops networks only.
 
 ### First node (bootstrap)
 
-- Set `CRAFTY_PEERS` to itself or leave join seeds empty for a single-node dev cluster.
-- For multi-node: node 1 starts with voter config; subsequent nodes use `CRAFTY_JOIN_SEEDS` pointing at an existing member.
+- Set `TREMBITA_PEERS` to itself or leave join seeds empty for a single-node dev cluster.
+- For multi-node: node 1 starts with voter config; subsequent nodes use `TREMBITA_JOIN_SEEDS` pointing at an existing member.
 
 ### Adding nodes
 
-- New VPS gets the same binary, certs signed by the same CA, a new `CRAFTY_NODE_ID`, and join seeds / peer list.
+- New VPS gets the same binary, certs signed by the same CA, a new `TREMBITA_NODE_ID`, and join seeds / peer list.
 - Wait for `/ready` (HTTP 200) before sending traffic.
 
 ## Operations (deep dives)
@@ -33,7 +33,7 @@ Operational checklist for running crafty on **N identical VPS or bare-metal node
 | Snapshot / restore `data_dir` | [backup-restore.md](backup-restore.md) |
 | Rolling wire vs app semver upgrades | [rolling-upgrade.md](rolling-upgrade.md) |
 | PKI generation and SAN naming | [certs.md](../certs.md) |
-| `crafty-ops` CLI | [crafty-ops README](../../crates/crafty-ops/README.md) |
+| `trembita-ops` CLI | [trembita-ops README](../../crates/trembita-ops/README.md) |
 
 **Pre-upgrade:** export a backup before risky app semver bumps or catalog expansion.
 
@@ -58,7 +58,7 @@ Start with **one group** until metrics or latency justify adding groups — prem
 | `GET /introspect/queues` | Per-stream pending / leased depth |
 | `GET /introspect/sagas` | Saga journal records (running / done / stuck) |
 
-Scrape `/metrics` from a private network; do not expose the admin port on the public internet without TLS (`CRAFTY_ADMIN_TLS_*`) and firewall rules.
+Scrape `/metrics` from a private network; do not expose the admin port on the public internet without TLS (`TREMBITA_ADMIN_TLS_*`) and firewall rules.
 
 ## Post-deploy verification
 
@@ -70,5 +70,5 @@ Scrape `/metrics` from a private network; do not expose the admin port on the pu
 ## Related
 
 - [scenarios/README.md](../scenarios/README.md) — product patterns
-- [getting-started.md](../getting-started.md) — CraftyApp tutorial
+- [getting-started.md](../getting-started.md) — TrembitaApp tutorial
 - [multi-raft.md § Production reliability](../decisions/multi-raft.md#production-reliability)

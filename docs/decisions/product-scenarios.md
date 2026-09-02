@@ -5,7 +5,7 @@
 
 ## Context
 
-crafty targets **product teams**, not infra teams running Kubernetes microservices. The deployment model is [library-first](deployment-model.md): **one Rust codebase**, **one binary**, **N identical VPS processes** that join a cluster incrementally. Scale unit = **actors and VPS count**, not new Deployments or service meshes.
+trembita targets **product teams**, not infra teams running Kubernetes microservices. The deployment model is [library-first](deployment-model.md): **one Rust codebase**, **one binary**, **N identical VPS processes** that join a cluster incrementally. Scale unit = **actors and VPS count**, not new Deployments or service meshes.
 
 Five application patterns cover most distributed product work:
 
@@ -23,18 +23,18 @@ All five compose on the same runtime. No separate job server, workflow server, o
 
 ### Positioning
 
-> **Crafty** — a **distributed coordination runtime**: cache hooks, job queue, actors, workflow machinery, cron. **Same [`CraftyApp`](../../crates/crafty/src/app.rs) API** on one laptop or N VPSes. Domain data stays in **your** Postgres / services — crafty is not an application database. Cluster membership is **automatic** (seed + join); graceful shutdown drains actors and can leave the cluster. No Kubernetes. No mandatory Redis.
+> **Trembita** — a **distributed coordination runtime**: cache hooks, job queue, actors, workflow machinery, cron. **Same [`TrembitaApp`](../../crates/trembita/src/app.rs) API** on one laptop or N VPSes. Domain data stays in **your** Postgres / services — trembita is not an application database. Cluster membership is **automatic** (seed + join); graceful shutdown drains actors and can leave the cluster. No Kubernetes. No mandatory Redis.
 
 ### Coordination vs domain data
 
-| Built into crafty | Stays external |
+| Built into trembita | Stays external |
 |-------------------|----------------|
 | Job queue, cron, lease/ack | Business tables (Postgres, …) |
 | Actors, sessions, directory | Authoritative domain SM as product DB |
 | Saga / workflow **journal** | Long-running side effects via enqueue / HTTP / cast |
 | `ActorStateStore` (idempotency, step keys) | Mandatory Redis |
 
-Advanced teams may embed a custom [`StateMachine`](../../crates/crafty-core/src/lib.rs) via [`CraftyCluster`](../../crates/crafty/src/cluster.rs) — that is **not** the default [`CraftyApp`](../../crates/crafty/src/app.rs) product path.
+Advanced teams may embed a custom [`StateMachine`](../../crates/trembita-core/src/lib.rs) via [`TrembitaCluster`](../../crates/trembita/src/cluster.rs) — that is **not** the default [`TrembitaApp`](../../crates/trembita/src/app.rs) product path.
 
 ### Three messaging layers (product view)
 
@@ -53,8 +53,8 @@ See [job-queue](job-queue.md) for why mailboxes and Raft logs are not misused as
 
 | Required | Optional |
 |----------|----------|
-| VPS / bare metal (or containers as packaging only) | `crafty-store-redis` — integration with non-crafty services |
-| `data_dir` on disk (`group-*.redb`, `queue-*.redb`, `topic-*.redb`, …) | [`crafty-backlog-postgres`](../../crates/crafty-backlog-postgres/) — optional `ExternalBacklog` adapter; Valkey/other adapters as needed |
+| VPS / bare metal (or containers as packaging only) | `trembita-store-redis` — integration with non-trembita services |
+| `data_dir` on disk (`group-*.redb`, `queue-*.redb`, `topic-*.redb`, …) | [`trembita-backlog-postgres`](../../crates/trembita-backlog-postgres/) — optional `ExternalBacklog` adapter; Valkey/other adapters as needed |
 | mTLS certs ([certificates](certificates.md)) | Load balancer in front of gateway nodes |
 
 **Non-goals:** Kubernetes as core product, one-container-per-actor microservices, mandatory Redis/PostgreSQL/RabbitMQ, **static node roles** as the primary scaling model (removed — use homogeneous nodes + `.workload()`).
@@ -65,23 +65,23 @@ Every VPS runs the **same binary** (gateway when configured + job consumers + ac
 
 When ingress is quiet, **job consumers use spare CPU** on that node (night batch scenario). When gateway load rises, a per-node **workload governor** throttles consumer parallelism so API latency stays bounded — without rescaling the cluster.
 
-See [workload-governor](workload-governor.md). Static role env vars (`CRAFTY_ROLE`, etc.) were **removed** in B-16g.
+See [workload-governor](workload-governor.md). Static role env vars (`TREMBITA_ROLE`, etc.) were **removed** in B-16g.
 
 ### Unified product surface (0.3.0+)
 
-[`CraftyApp`](../../crates/crafty/src/app.rs) wraps the same runtime as `CraftyClusterBuilder`:
+[`TrembitaApp`](../../crates/trembita/src/app.rs) wraps the same runtime as `TrembitaClusterBuilder`:
 
 ```rust
 use std::time::Duration;
-use crafty::{CraftyApp, GatewayOpts, JobOpts, RunOpts, consumer};
+use trembita::{TrembitaApp, GatewayOpts, JobOpts, RunOpts, consumer};
 
 #[consumer("emails")]
 async fn send_email(_payload: &[u8]) -> Result<(), ()> {
     Ok(())
 }
 
-CraftyApp::builder()
-    .data_dir("/var/lib/crafty")
+TrembitaApp::builder()
+    .data_dir("/var/lib/trembita")
     .jobs([JobOpts::new("emails")
         .lease(Duration::from_secs(300))
         .consumer(&SendEmailConsumer)
@@ -91,7 +91,7 @@ CraftyApp::builder()
     .await?;
 ```
 
-Declarative [`.jobs()`](../../crates/crafty/src/job_opts.rs) registers queue + consumer (+ optional HTTP enqueue). [`.workers()`](../../crates/crafty/src/worker_opts.rs) registers actor groups with explicit [`WorkerScale`](../../crates/crafty/src/worker_opts.rs) (`Fixed` / `PerNode` / queue `Auto`). Legacy [`.actors()`](../../crates/crafty/src/app.rs) + [`ActorGroupOpts`](../../crates/crafty/src/actor_group.rs) remain supported ([examples/](../../examples/README.md)).
+Declarative [`.jobs()`](../../crates/trembita/src/job_opts.rs) registers queue + consumer (+ optional HTTP enqueue). [`.workers()`](../../crates/trembita/src/worker_opts.rs) registers actor groups with explicit [`WorkerScale`](../../crates/trembita/src/worker_opts.rs) (`Fixed` / `PerNode` / queue `Auto`). Legacy [`.actors()`](../../crates/trembita/src/app.rs) + [`ActorGroupOpts`](../../crates/trembita/src/actor_group.rs) remain supported ([examples/](../../examples/README.md)).
 
 ### Scenario composition
 
@@ -101,7 +101,7 @@ flowchart TB
         HTTP[HTTP / WebSocket]
     end
 
-    subgraph Cluster["crafty cluster"]
+    subgraph Cluster["trembita cluster"]
         B[Actor mailbox — ask / ActorSession]
         C[Job queue — enqueue]
         W[Workflow journal + steps]
@@ -131,15 +131,15 @@ Typical flows:
 | `ActorSession`, consistent-hash routing | **shipped** | — |
 | Actor migration on leave/crash | **shipped** | — |
 | `RedbActorStateStore` + voter replication + TTL/GC | **shipped** | B-01 ✅ |
-| `CraftyApp` product facade + gateway | **shipped** | B-02 ✅ |
+| `TrembitaApp` product facade + gateway | **shipped** | B-02 ✅ |
 | HTTP jobs API (`202`, batch, DLQ requeue) | **shipped** | B-03 ✅ |
 | Real-time showcase + `ActorsApi` on gateway | **shipped** | B-04 ✅ — [examples/realtime/](../../examples/realtime/) |
 | `WorkflowBuilder` + resume CLI | **shipped** | B-05 ✅ |
-| `crafty init` template | **shipped** | B-06 ✅ — polish: richer worker stubs |
+| `trembita init` template | **shipped** | B-06 ✅ — polish: richer worker stubs |
 | Dashboard: queue depth + saga status | **shipped** | B-07 ✅ |
 | Scenario docs (redb-first, no mandatory Redis) | **shipped** | B-08 ✅ |
 | Gateway bearer auth + `protect_product_apis` | **shipped** | B-14a ✅ |
-| E2E HTTP batch via product gateway | **shipped** | B-14c ✅ — `crafty/tests/gateway_jobs_http.rs` |
+| E2E HTTP batch via product gateway | **shipped** | B-14c ✅ — `trembita/tests/gateway_jobs_http.rs` |
 | Gateway auth (custom beyond bearer stub) | **polish** | apps add `AuthFn` / custom identity |
 
 Full epic list: [backlog.md](../backlog.md) (P0–P3 ✅).
@@ -155,7 +155,7 @@ Full epic list: [backlog.md](../backlog.md) (P0–P3 ✅).
 **Negative**
 
 - Declarative `.jobs()` / `.workers()` builder sugar shipped — legacy `.queue`, `.consumer`, and `.actors(name, ActorGroupOpts::…)` remain supported
-- WebSocket gateway auth: [`GatewayBearerIdentity`](../../crates/crafty/src/gateway/identity.rs) covers bearer tokens on product routes; session/OAuth/JWT for custom WebSocket handlers remains app-owned via `.identity()` and custom routes
+- WebSocket gateway auth: [`GatewayBearerIdentity`](../../crates/trembita/src/gateway/identity.rs) covers bearer tokens on product routes; session/OAuth/JWT for custom WebSocket handlers remains app-owned via `.identity()` and custom routes
 - Stateful workers need `RedbActorStateStore` + SM discipline — keys without SM still require explicit design
 
 ## Related

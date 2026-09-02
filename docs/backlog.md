@@ -1,6 +1,6 @@
 # Backlog
 
-Product and implementation backlog for crafty. Shipped capabilities stay in [status.md](status.md); design rationale in [decisions/](decisions/).
+Product and implementation backlog for trembita. Shipped capabilities stay in [status.md](status.md); design rationale in [decisions/](decisions/).
 
 **Product vision:** [decisions/product-scenarios.md](decisions/product-scenarios.md) — jobs, event topics, workers, sessions, workflows; **no mandatory Redis**.
 
@@ -14,7 +14,7 @@ Epics **B-01 … B-17** are **shipped** (see [Shipped epics](#shipped-epics-arch
 
 | Id | Item | Status | Notes |
 |----|------|--------|-------|
-| O-01 | `crafty-store-redis` maintenance | ongoing | Keep as optional adapter |
+| O-01 | `trembita-store-redis` maintenance | ongoing | Keep as optional adapter |
 | O-02 | PostgreSQL `ActorStateStore` | deferred | Only if external integration demand |
 
 
@@ -71,7 +71,7 @@ Historical record of product epics B-01 … B-16. Current capabilities: [status.
 flowchart TB
     subgraph P0["P0 — foundation"]
         B01[B-01 RedbActorStateStore]
-        B02[B-02 CraftyApp]
+        B02[B-02 TrembitaApp]
     end
 
     subgraph Jobs["Background jobs"]
@@ -82,7 +82,7 @@ flowchart TB
         B13[B-13 queue idempotency DX ✅]
         B14[B-14 product polish & composition]
         B14a[B-14a gateway auth]
-        B14b[B-14b crafty init v2]
+        B14b[B-14b trembita init v2]
         B16[B-16 workload governor]
     end
 
@@ -138,15 +138,15 @@ flowchart TB
 | B-01a … B-01f | ✅      |
 
 
-**Acceptance:** `crafty/tests/store.rs`, `crafty-actor/src/redb_store.rs` tests.
+**Acceptance:** `trembita/tests/store.rs`, `trembita-actor/src/redb_store.rs` tests.
 
 ---
 
 
 
-### B-02 ✅ `CraftyApp` product facade
+### B-02 ✅ `TrembitaApp` product facade
 
-**Shipped:** 2026-08-28 — `CraftyApp`, `CraftyAppBuilder`, `env_config`, [getting-started.md](getting-started.md).
+**Shipped:** 2026-08-28 — `TrembitaApp`, `TrembitaAppBuilder`, `env_config`, [getting-started.md](getting-started.md).
 
 
 | Subtask       | Status                    |
@@ -154,7 +154,7 @@ flowchart TB
 | B-02a … B-02h | ✅ (B-02h getting-started) |
 
 
-**Acceptance:** `crafty/tests/app.rs`, docs/getting-started.md.
+**Acceptance:** `trembita/tests/app.rs`, docs/getting-started.md.
 
 ---
 
@@ -166,17 +166,17 @@ flowchart TB
 
 ### B-03 ✅ Background jobs — HTTP + DX
 
-**Shipped:** 2026-08-28 — `crafty-http`, `http-jobs` feature, `crafty/tests/http_jobs.rs`. **2026-08-29** — `#[crafty::consumer]`, `CraftyApp::spawn_consumer`, DLQ requeue HTTP + `CraftyApp` parity.
+**Shipped:** 2026-08-28 — `trembita-http`, `http-jobs` feature, `trembita/tests/http_jobs.rs`. **2026-08-29** — `#[trembita::consumer]`, `TrembitaApp::spawn_consumer`, DLQ requeue HTTP + `TrembitaApp` parity.
 
 
 | Subtask | Description                                                                 | Status                        |
 | ------- | --------------------------------------------------------------------------- | ----------------------------- |
-| B-03a   | Axum route `POST /jobs/{stream}` → `202` + `{ "job_id": … }`; raw or JSON envelope body | ✅ `crafty-http`               |
-| B-03b   | `#[crafty::consumer("stream")]` + `CraftyApp::spawn_consumer` (no manual `run_queue_consumer` + `tokio::spawn`) | ✅ `crafty-macros`, `crafty/tests/consumer.rs` |
+| B-03a   | Axum route `POST /jobs/{stream}` → `202` + `{ "job_id": … }`; raw or JSON envelope body | ✅ `trembita-http`               |
+| B-03b   | `#[trembita::consumer("stream")]` + `TrembitaApp::spawn_consumer` (no manual `run_queue_consumer` + `tokio::spawn`) | ✅ `trembita-macros`, `trembita/tests/consumer.rs` |
 | B-03c   | Optional `GET /jobs/{stream}/{id}` if queue metadata extended               | ✅ `JobQueue::job_status` + HTTP GET |
-| B-03d   | Optional `crafty/http-jobs` feature or `crafty-http` crate (decide in impl) | ✅ `crafty-http` + feature     |
-| B-03e   | Integration test: HTTP enqueue → worker ack                                 | ✅ `crafty/tests/http_jobs.rs` |
-| B-03f   | `CraftyApp` parity: batch enqueue/ack, `requeue_dead_letter`, `recurring_job` builder; HTTP `POST /jobs/{stream}/{id}/requeue` | ✅ `CraftyApp`, `crafty-http` |
+| B-03d   | Optional `trembita/http-jobs` feature or `trembita-http` crate (decide in impl) | ✅ `trembita-http` + feature     |
+| B-03e   | Integration test: HTTP enqueue → worker ack                                 | ✅ `trembita/tests/http_jobs.rs` |
+| B-03f   | `TrembitaApp` parity: batch enqueue/ack, `requeue_dead_letter`, `recurring_job` builder; HTTP `POST /jobs/{stream}/{id}/requeue` | ✅ `TrembitaApp`, `trembita-http` |
 
 
 ---
@@ -195,7 +195,7 @@ flowchart TB
 | B-04c   | Auth stub + `ActorSession` open on connect                      | ✅ `GATEWAY_TOKEN` |
 | B-04d   | Reconnect: handle `NoTarget`, session TTL expiry                | ✅ auto reopen in example |
 | B-04e   | Optional: checkpoint last N messages to SM (comment in example) | ✅ comment on `ChatWorker` |
-| B-04f   | Product HTTP `POST /actors/{group}/ask` + `/cast` on gateway (`ActorsApi`) | ✅ `crafty-http`, `CraftyApp::actors_api` |
+| B-04f   | Product HTTP `POST /actors/{group}/ask` + `/cast` on gateway (`ActorsApi`) | ✅ `trembita-http`, `TrembitaApp::actors_api` |
 
 
 ---
@@ -204,30 +204,30 @@ flowchart TB
 
 ### B-05 ✅ Workflows — fluent builder
 
-**Shipped:** 2026-08-28 — `WorkflowBuilder`, `CraftyApp::run_workflow` / `resume_workflow`.
+**Shipped:** 2026-08-28 — `WorkflowBuilder`, `TrembitaApp::run_workflow` / `resume_workflow`.
 
 
 | Subtask | Description                                                                 | Status           |
 | ------- | --------------------------------------------------------------------------- | ---------------- |
 | B-05a   | `WorkflowBuilder` — named `.step(id, fn)`, `.compensate(id, fn)`            | ✅                |
 | B-05b   | Builds `SagaPlan`; runs via `run_saga` / `CompositeSagaJournal`             | ✅                |
-| B-05c   | `CraftyApp::workflow(name, builder_fn)` registration                        | ✅ `run_workflow` |
+| B-05c   | `TrembitaApp::workflow(name, builder_fn)` registration                        | ✅ `run_workflow` |
 | B-05d   | Example: [`examples/workflows/`](../examples/workflows/) — saga + enqueue + propose steps | ✅                |
-| B-05e   | `crafty workflow resume <id>` CLI stub (optional, via `crafty-node` or ops) | ✅ `scripts/crafty-workflow.sh` |
+| B-05e   | `trembita workflow resume <id>` CLI stub (optional, via `trembita-node` or ops) | ✅ `scripts/trembita-workflow.sh` |
 
 
 ---
 
 
 
-### B-06 ✅ `crafty init` project template
+### B-06 ✅ `trembita init` project template
 
-**Shipped:** 2026-08-28 — `scripts/crafty-init.sh`, `templates/crafty-app/`.
+**Shipped:** 2026-08-28 — `scripts/trembita-init.sh`, `templates/trembita-app/`.
 
 
 | Subtask | Description                                                         | Status     |
 | ------- | ------------------------------------------------------------------- | ---------- |
-| B-06a   | `scripts/crafty-init.sh` or cargo-template: main + one worker       | ✅          |
+| B-06a   | `scripts/trembita-init.sh` or cargo-template: main + one worker       | ✅          |
 | B-06b   | Generated: job stream stub + optional saga stub                     | ✅ template |
 | B-06c   | `docker-compose.yml` 3-node local (dev-certs)                       | ✅          |
 | B-06d   | Zero `redis://`; README points to [scenarios/](scenarios/README.md) | ✅          |
@@ -250,7 +250,7 @@ flowchart TB
 | ------- | -------------------------------------------------------------------------- | ------ |
 | B-07a   | Admin HTML: per-stream queue depth, active leases                          | ✅      |
 | B-07b   | Admin HTML: saga records (running / done / failed) from journal or metrics | ✅      |
-| B-07c   | Wire existing `crafty_saga_*` / queue metrics to dashboard views           | ✅      |
+| B-07c   | Wire existing `trembita_saga_*` / queue metrics to dashboard views           | ✅      |
 
 
 ---
@@ -305,15 +305,15 @@ Document the contract, show effectively-once patterns, and improve consumer ergo
 
 | Subtask | Description | Priority slice | Status |
 | ------- | ----------- | -------------- | ------ |
-| B-13a   | [background-jobs.md](scenarios/background-jobs.md): **Delivery semantics** — at-least-once vs effectively-once; table of what crafty guarantees vs what the app must do; three idempotency layers (`dedup_key` enqueue, `ActorStateStore`/SM processing, saga step keys) | MR-1 | ✅ |
-| B-13b   | **Effectively-once recipe** — short guide (section or `docs/scenarios/` doc): enqueue `dedup_key` + worker CAS in store + ack after durable mark; link [stateful-workers example](../examples/stateful-workers/) and [`idempotent_worker`](../crates/crafty-store-redis/examples/idempotent_worker.rs) | MR-1 | ✅ |
+| B-13a   | [background-jobs.md](scenarios/background-jobs.md): **Delivery semantics** — at-least-once vs effectively-once; table of what trembita guarantees vs what the app must do; three idempotency layers (`dedup_key` enqueue, `ActorStateStore`/SM processing, saga step keys) | MR-1 | ✅ |
+| B-13b   | **Effectively-once recipe** — short guide (section or `docs/scenarios/` doc): enqueue `dedup_key` + worker CAS in store + ack after durable mark; link [stateful-workers example](../examples/stateful-workers/) and [`idempotent_worker`](../crates/trembita-store-redis/examples/idempotent_worker.rs) | MR-1 | ✅ |
 | B-13c   | [job-queue.md](decisions/job-queue.md): one-line consequence — exactly-once delivery mode not planned; point to B-13 recipe | MR-1 | ✅ |
 | B-13d   | `QueueOpts` / `JobOpts::default_max_attempts(u32)` — stream default when `EnqueueOptions::max_attempts` is unset (`0` = inherit stream default; explicit `0` on enqueue still means unlimited) | MR-1 | ✅ |
-| B-13e   | `JobContext` in `#[consumer]` — expose `job_id`, `attempts`, optional `dedup_key` from [`LeasedJob`](../crates/crafty-actor/src/queue.rs); thread through `run_queue_consumer` → `JobConsumer` | MR-2 | ✅ |
+| B-13e   | `JobContext` in `#[consumer]` — expose `job_id`, `attempts`, optional `dedup_key` from [`LeasedJob`](../crates/trembita-actor/src/queue.rs); thread through `run_queue_consumer` → `JobConsumer` | MR-2 | ✅ |
 | B-13f   | `ConsumerOpts::idempotency(...)` helper — key fn + `ActorStateStore` prefix; CAS `processing` → handler → `done` → ack (effectively-once, not a magic flag) | MR-2 | ✅ |
 | B-13g   | [background-jobs example](../examples/background-jobs/): idempotent handler demo — HTTP `?dedup=` retry + simulated redelivery; `trigger.sh` like stateful-workers | MR-1 | ✅ |
 | B-13h   | Cross-links: background-jobs ↔ [stateful-workers](scenarios/stateful-workers.md) ↔ [workflows](scenarios/workflows.md) (step `dedup_key`) | MR-1 | ✅ |
-| B-13i   | Prometheus: `crafty_queue_redeliveries_total{stream}` + attempts histogram (optional) | later | ✅ |
+| B-13i   | Prometheus: `trembita_queue_redeliveries_total{stream}` + attempts histogram (optional) | later | ✅ |
 | B-13j   | Dashboard / `/introspect/queues`: surface jobs with `attempts > 1` as idempotency smell | later | ✅ |
 
 
@@ -326,7 +326,7 @@ Document the contract, show effectively-once patterns, and improve consumer ergo
 | **MR-3** (observability) ✅ | B-13i, B-13j | backlog |
 
 
-**Acceptance:** MR-1 docs + example runnable; MR-2 `crafty/tests/` redelivery idempotency regression; no public API promising exactly-once.
+**Acceptance:** MR-1 docs + example runnable; MR-2 `trembita/tests/` redelivery idempotency regression; no public API promising exactly-once.
 
 
 ---
@@ -343,8 +343,8 @@ Gateway production readiness, queue lifecycle polish, and glue between product s
 
 | Subtask | Wave | Description | Status |
 | ------- | ---- | ----------- | ------ |
-| B-14a   | 1 | **Gateway auth hook** — middleware slot on [`GatewayOpts`](../crates/crafty/src/gateway/mod.rs) (JWT / API key / custom Axum layer); document pattern; extend [`examples/realtime/`](../examples/realtime/) beyond `GATEWAY_TOKEN` query stub ([product-scenarios](decisions/product-scenarios.md)) | ✅ |
-| B-14b   | 1 | **`crafty init` v2** — [`templates/crafty-app/`](../templates/crafty-app/): `JobOpts` + `#[consumer]` + `IdempotencyOpts::by_dedup_key` + `default_max_attempts(5)`; remove bare `TODO` stub ([B-06](backlog.md#b-06--crafty-init-project-template)) | ✅ |
+| B-14a   | 1 | **Gateway auth hook** — middleware slot on [`GatewayOpts`](../crates/trembita/src/gateway/mod.rs) (JWT / API key / custom Axum layer); document pattern; extend [`examples/realtime/`](../examples/realtime/) beyond `GATEWAY_TOKEN` query stub ([product-scenarios](decisions/product-scenarios.md)) | ✅ |
+| B-14b   | 1 | **`trembita init` v2** — [`templates/trembita-app/`](../templates/trembita-app/): `JobOpts` + `#[consumer]` + `IdempotencyOpts::by_dedup_key` + `default_max_attempts(5)`; remove bare `TODO` stub ([B-06](backlog.md#b-06--trembita-init-project-template)) | ✅ |
 | B-14c   | 1 | **E2E HTTP jobs via gateway (docker)** — `POST /jobs/{stream}/batch` through product gateway in `e2e/` (QUIC queue E2E exists; HTTP gateway path does not) | ✅ |
 | B-14d   | 2 | **`IdempotencyOpts` TTL** — optional `retain_for` / `with_ttl` on done markers in `ActorStateStore`; default forever for payment-style keys; doc high-volume cleanup | ✅ |
 | B-14e   | 2 | **Graceful consumer drain** — on shutdown: stop leasing, wait for in-flight handlers (timeout), then ack/nack; `RunOpts` or `ConsumerOpts` hook to avoid noisy redelivery metrics | ✅ |
@@ -353,7 +353,7 @@ Gateway production readiness, queue lifecycle polish, and glue between product s
 | B-14h   | 2 | **E2E idempotency + failover** — extend `./e2e/queue.sh` (or sibling): redelivery under leader kill with `IdempotencyOpts` → one side effect | ✅ |
 | B-14i   | 3 | **Saga step idempotency helper** — `WorkflowBuilder` sugar wrapping enqueue + `dedup_key(step_key)` (parallel to B-13f for consumers); aligns with [workflows § Future polish](scenarios/workflows.md#future-polish) | ✅ |
 | B-14j   | 3 | **State placement cheat sheet** — one doc (`docs/scenarios/state-placement.md` or scenarios README section): SM vs `JobQueue` vs `ActorStateStore` vs saga journal — when to use which | ✅ |
-| B-14k   | 3 | **Queue → actor bridge** — example + doc pattern: job consumer delegates side effects via `CraftyApp::cast` / `ask` to stateful worker group (orchestration without duplicating handler logic) | ✅ |
+| B-14k   | 3 | **Queue → actor bridge** — example + doc pattern: job consumer delegates side effects via `TrembitaApp::cast` / `ask` to stateful worker group (orchestration without duplicating handler logic) | ✅ |
 
 
 **Suggested MR slices**
@@ -386,9 +386,9 @@ Teams with backlog in Postgres/MySQL get leader-fed queue windows, dedup on re-e
 | B-15b   | 1 | **`run_backlog_feeder`** — leader-only top-up to `pending_target × consumers` | ✅ |
 | B-15c   | 1 | **Settlement wiring** — ack/nack/reclaim → durable outbox → `settle` drainer | ✅ |
 | B-15d   | 1 | **Autoscale depth** — `effective_queue_depth` feeds worker + membership policies | ✅ |
-| B-15e   | 1 | **`JobOpts::backlog`** + `CraftyClusterBuilder::job_queue_external_backlog` | ✅ |
-| B-15f   | 2 | **`crafty-backlog-postgres`** — `PgBacklog` with `SKIP LOCKED` | ✅ |
-| B-15g   | 2 | **Integration test** — `crafty/tests/external_backlog.rs` | ✅ |
+| B-15e   | 1 | **`JobOpts::backlog`** + `TrembitaClusterBuilder::job_queue_external_backlog` | ✅ |
+| B-15f   | 2 | **`trembita-backlog-postgres`** — `PgBacklog` with `SKIP LOCKED` | ✅ |
+| B-15g   | 2 | **Integration test** — `trembita/tests/external_backlog.rs` | ✅ |
 
 
 **Acceptance:** In-memory backlog → consumer → `Settlement::Done`; autoscale reads external `depth()` when registered.
@@ -402,7 +402,7 @@ Teams with backlog in Postgres/MySQL get leader-fed queue windows, dedup on re-e
 **Scenario:** all four — homogeneous nodes, no static roles  
 **ADR:** [workload-governor](decisions/workload-governor.md)
 
-Every VPS runs the same binary. **Compute tokens** arbitrate gateway ingress vs job/actor work on one node: API protected when hot; spare capacity goes to jobs when ingress is quiet (e.g. overnight) — **without** cluster rescale or `CRAFTY_ROLE`.
+Every VPS runs the same binary. **Compute tokens** arbitrate gateway ingress vs job/actor work on one node: API protected when hot; spare capacity goes to jobs when ingress is quiet (e.g. overnight) — **without** cluster rescale or `TREMBITA_ROLE`.
 
 
 | Subtask | Wave | Description | Status |
@@ -411,14 +411,14 @@ Every VPS runs the same binary. **Compute tokens** arbitrate gateway ingress vs 
 | B-16b   | 1 | **`ComputeTokenPool`** — process-wide semaphore, RAII `ComputeGuard`, configurable `max_tokens` | ✅ |
 | B-16c   | 1 | **Acquire hooks** — gateway product routes + `run_queue_consumer` handler wrap + optional actor ask | ✅ |
 | B-16d   | 1 | **`WorkloadGovernor`** — per-node loop: `ConnectionTracker` + queue depth → tune consumers / token ceiling | ✅ |
-| B-16e   | 1 | **`WorkloadOpts`** + `CraftyAppBuilder::workload` — presets (`Balanced`, `ApiFirst`, `JobsOpportunistic`) | ✅ |
-| B-16f   | 2 | **Deprecate `CRAFTY_ROLE`** — `#[deprecated]` on `NodeRole` / env helpers; update docs & examples | ✅ |
-| B-16g   | 2 | **Remove role env** — delete `CRAFTY_ROLE`, `CRAFTY_GATEWAY_ONLY`, `CRAFTY_NO_CONSUMER` (semver major) | ✅ |
+| B-16e   | 1 | **`WorkloadOpts`** + `TrembitaAppBuilder::workload` — presets (`Balanced`, `ApiFirst`, `JobsOpportunistic`) | ✅ |
+| B-16f   | 2 | **Deprecate `TREMBITA_ROLE`** — `#[deprecated]` on `NodeRole` / env helpers; update docs & examples | ✅ |
+| B-16g   | 2 | **Remove role env** — delete `TREMBITA_ROLE`, `TREMBITA_GATEWAY_ONLY`, `TREMBITA_NO_CONSUMER` (semver major) | ✅ |
 | B-16h   | 2 | **Tests** — governor lowers consumer batch when connections high; boosts when idle + depth | ✅ |
-| B-16i   | 3 | **Metrics** — `crafty_compute_tokens_in_use`, throttle/tune event counters | ✅ |
+| B-16i   | 3 | **Metrics** — `trembita_compute_tokens_in_use`, throttle/tune event counters | ✅ |
 
 
-**Acceptance:** Single-node soak: simulated idle gateway → consumer throughput rises; simulated connection load → API p99 stable and job poll throttles. No `CRAFTY_ROLE` in docs or showcases.
+**Acceptance:** Single-node soak: simulated idle gateway → consumer throughput rises; simulated connection load → API p99 stable and job poll throttles. No `TREMBITA_ROLE` in docs or showcases.
 
 
 ---
@@ -438,7 +438,7 @@ Weighted token acquire and an optional load port so the workload governor accoun
 | B-17c   | 1 | **`ExternalLoad` port** + `WorkloadOpts::external_load` | ✅ |
 | B-17d   | 1 | **Governor** — map external units to protective tune | ✅ |
 | B-17e   | 2 | **Tests** — weighted acquire; external load triggers protection | ✅ |
-| B-17f   | 2 | **Metrics** — `crafty_compute_external_load_units` | ✅ |
+| B-17f   | 2 | **Metrics** — `trembita_compute_external_load_units` | ✅ |
 
 
 **Acceptance:** `compute_cost(4)` on an 8-token pool limits concurrent handlers to 2; `ManualExternalLoad` at ceiling triggers protective consumer tune with zero gateway connections.
@@ -476,7 +476,7 @@ Weighted token acquire and an optional load port so the workload governor accoun
 
 | Subtask | Description                                       | Status                                                                        |
 | ------- | ------------------------------------------------- | ----------------------------------------------------------------------------- |
-| B-11a   | Public API audit (`CraftyApp`, facade re-exports) | ✅ [public-api-1.0.md](decisions/public-api-1.0.md)                            |
+| B-11a   | Public API audit (`TrembitaApp`, facade re-exports) | ✅ [public-api-1.0.md](decisions/public-api-1.0.md)                            |
 | B-11b   | `missing_docs = deny` on published crates         | ✅ shipped 2026-08-29 |
 | B-11c   | CHANGELOG policy for 1.0 breaking changes         | ✅ [CHANGELOG.md](../CHANGELOG.md)                                             |
 
@@ -516,7 +516,7 @@ Moved to [Open work](#open-work). **O-05** (self-update coordinator) shipped —
 | Done when | Item                                                        |
 | --------- | ----------------------------------------------------------- |
 | ✅         | `RedbJobQueue`, `ClusterJobQueue`, autoscale, E2E           |
-| ✅         | B-03 HTTP `202`, B-02c jobs on `CraftyApp`, B-07a dashboard |
+| ✅         | B-03 HTTP `202`, B-02c jobs on `TrembitaApp`, B-07a dashboard |
 | ✅         | B-13 delivery semantics docs + effectively-once recipe      |
 | ✅         | B-13g idempotent consumer example; B-13e/f consumer DX      |
 | ✅         | B-14d/e/g/h queue lifecycle + HTTP parity + failover E2E    |
@@ -531,7 +531,7 @@ Moved to [Open work](#open-work). **O-05** (self-update coordinator) shipped —
 | Done when | Item                                                  |
 | --------- | ----------------------------------------------------- |
 | ✅         | Migration, supervisor, `RedbActorStateStore`, SM path |
-| ✅         | B-02d `worker_groups`, `workers`, `cast`, `ask` on `CraftyApp` |
+| ✅         | B-02d `worker_groups`, `workers`, `cast`, `ask` on `TrembitaApp` |
 | ✅         | B-10a soak                                            |
 | ✅         | B-14k consumer delegates to actor group               |
 
@@ -568,7 +568,7 @@ Moved to [Open work](#open-work). **O-05** (self-update coordinator) shipped —
 | Done when | Item                                                        |
 | --------- | ----------------------------------------------------------- |
 | ✅         | `EventTopic`, `RedbEventTopic`, voter replication, compaction |
-| ✅         | `TopicOpts`, `.topics()`, `CraftyApp::publish`, subscription consumers |
+| ✅         | `TopicOpts`, `.topics()`, `TrembitaApp::publish`, subscription consumers |
 | ✅         | ADR + [event-topics.md](scenarios/event-topics.md) scenario guide |
 | ✅         | `topic_failover` integration test                           |
 

@@ -1,6 +1,6 @@
-//! Shared helpers for the crafty benchmarks + soak harness (backlog T10).
+//! Shared helpers for the trembita benchmarks + soak harness (backlog T10).
 
-use crafty_proto::{EntryPayload, LogEntry, LogIndex, Term};
+use trembita_proto::{EntryPayload, LogEntry, LogIndex, Term};
 
 /// Parse a `u64` from the environment, falling back to `default`.
 #[must_use]

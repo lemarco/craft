@@ -6,10 +6,10 @@
 
 ## Context
 
-crafty already validates correctness via:
+trembita already validates correctness via:
 
-- Pure Raft FSM + property tests (`crafty-core`)
-- Seeded deterministic simulation + linearizability checker (`crafty-sim`)
+- Pure Raft FSM + property tests (`trembita-core`)
+- Seeded deterministic simulation + linearizability checker (`trembita-sim`)
 - Integration tests over `LocalNetwork` and real loopback QUIC
 - Scheduled E2E (docker-compose, chaos, cert renew)
 - Scenario soak harness (`benchmarks/` — B-10)

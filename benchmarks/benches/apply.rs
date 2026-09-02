@@ -5,8 +5,8 @@
 //! of commands and draining the resulting [`Output::Apply`] effects — the pure,
 //! I/O-free hot path the runtime's applier loop feeds from.
 
-use crafty_core::proto::NodeId;
-use crafty_core::{Config, Output, RaftNode};
+use trembita_core::proto::NodeId;
+use trembita_core::{Config, Output, RaftNode};
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 use std::hint::black_box;
 
@@ -17,7 +17,7 @@ fn leader() -> RaftNode {
     let _ = node.take_outputs();
     assert_eq!(
         node.role(),
-        crafty_core::Role::Leader,
+        trembita_core::Role::Leader,
         "single node must lead"
     );
     node

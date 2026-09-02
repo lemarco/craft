@@ -6,12 +6,12 @@
 ## Context
 
 Product apps expose HTTP / WebSocket on a **stateless gateway** while sticky
-[`ActorSession`](../../crates/crafty-actor/src/session.rs) traffic routes to
+[`ActorSession`](../../crates/trembita-actor/src/session.rs) traffic routes to
 pinned workers ([realtime-sessions](../scenarios/realtime-sessions.md)).
 
 Teams need:
 
-- Their own auth (JWT, cookie→Postgres, API keys) — not built into crafty
+- Their own auth (JWT, cookie→Postgres, API keys) — not built into trembita
 - A stable **session key** for consistent-hash worker pick (same as `session_str`)
 - Less boilerplate than hand-rolling reconnect + WS lifecycle
 
@@ -23,22 +23,22 @@ Teams need:
 |-------|-------|---------|
 | User auth | Application | JWT, cookie session in Postgres |
 | Session key | App mapping or [`SessionKey`] | `user_id`, `room_id` |
-| Sticky routing | Crafty | `SessionHandle`, `ActorSession` |
+| Sticky routing | Trembita | `SessionHandle`, `ActorSession` |
 
-### Public API (`crafty::gateway`)
+### Public API (`trembita::gateway`)
 
 | Type | Role |
 |------|------|
 | [`GatewayIdentity`] | User struct + `extract()` |
 | [`SessionKey`] | Default map identity → session key |
 | [`GatewayOpts::identity_mapped`] | Custom session key when identity ≠ key |
-| [`CraftyGatewayState::extract_session`] | Auth + session key (HTTP) |
-| [`CraftyGatewayState::extract_session_parts`] | Same for WebSocket upgrade (`Method`, `Uri`, `HeaderMap`) |
-| [`CraftyGatewayState::open_actor_session_parts`] | Auth + [`SessionHandle`] on WebSocket upgrade |
+| [`TrembitaGatewayState::extract_session`] | Auth + session key (HTTP) |
+| [`TrembitaGatewayState::extract_session_parts`] | Same for WebSocket upgrade (`Method`, `Uri`, `HeaderMap`) |
+| [`TrembitaGatewayState::open_actor_session_parts`] | Auth + [`SessionHandle`] on WebSocket upgrade |
 | [`SessionHandle`] | cast / ask with auto-reopen |
 | [`GatewayHandle`] | Graceful drain on shutdown |
 
-Auth is **never** prescribed (no JWT crate, no cookie store in crafty).
+Auth is **never** prescribed (no JWT crate, no cookie store in trembita).
 
 ### Transport
 
@@ -50,7 +50,7 @@ Auth is **never** prescribed (no JWT crate, no cookie store in crafty).
 
 - [`spawn_gateway`] returns [`GatewayHandle`].
 - [`ShutdownOpts::drain_gateway`] (default `true`) waits for active connections
-  up to `CRAFTY_GATEWAY_DRAIN_TIMEOUT` / [`GatewayOpts::drain_timeout`] (default 30s).
+  up to `TREMBITA_GATEWAY_DRAIN_TIMEOUT` / [`GatewayOpts::drain_timeout`] (default 30s).
 
 ## Rejected
 
@@ -70,12 +70,12 @@ Auth is **never** prescribed (no JWT crate, no cookie store in crafty).
 - [product-scenarios](product-scenarios.md)
 - [security](security.md) — browser TLS stays user-owned
 
-[`GatewayIdentity`]: ../../crates/crafty/src/gateway/identity.rs
-[`SessionKey`]: ../../crates/crafty/src/gateway/identity.rs
-[`GatewayRequest::from_http`]: ../../crates/crafty/src/gateway/identity.rs
-[`IdentityError`]: ../../crates/crafty/src/gateway/identity.rs
+[`GatewayIdentity`]: ../../crates/trembita/src/gateway/identity.rs
+[`SessionKey`]: ../../crates/trembita/src/gateway/identity.rs
+[`GatewayRequest::from_http`]: ../../crates/trembita/src/gateway/identity.rs
+[`IdentityError`]: ../../crates/trembita/src/gateway/identity.rs
 [`IntoResponse`]: https://docs.rs/axum/latest/axum/response/trait.IntoResponse.html
-[`spawn_gateway`]: ../../crates/crafty/src/gateway/mod.rs
-[`GatewayHandle`]: ../../crates/crafty/src/gateway/drain.rs
-[`ShutdownOpts::drain_gateway`]: ../../crates/crafty/src/app.rs
-[`GatewayOpts::drain_timeout`]: ../../crates/crafty/src/gateway/mod.rs
+[`spawn_gateway`]: ../../crates/trembita/src/gateway/mod.rs
+[`GatewayHandle`]: ../../crates/trembita/src/gateway/drain.rs
+[`ShutdownOpts::drain_gateway`]: ../../crates/trembita/src/app.rs
+[`GatewayOpts::drain_timeout`]: ../../crates/trembita/src/gateway/mod.rs

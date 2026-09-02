@@ -2,7 +2,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crafty::actor::{UserActor, actor};
+use trembita::actor::{UserActor, actor};
 
 pub static LEDGER_RECORDS: AtomicUsize = AtomicUsize::new(0);
 

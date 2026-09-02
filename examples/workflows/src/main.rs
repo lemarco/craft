@@ -6,29 +6,29 @@ mod onboarding;
 use std::env;
 use std::time::Duration;
 
-use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, ReadyOpts, RunOpts, WorkflowOpts};
-use crafty_showcase_common::{data_dir, display_addr};
+use trembita::{TrembitaApp, TrembitaConfigure, GatewayOpts, ReadyOpts, RunOpts, WorkflowOpts};
+use trembita_showcase_common::{data_dir, display_addr};
 
 use crate::onboarding::{apply_workers, build_plan, run_onboarding_plan};
 
-const DATA_DIR_NAME: &str = "crafty-showcase-workflows";
+const DATA_DIR_NAME: &str = "trembita-showcase-workflows";
 
-fn server_builder() -> crafty::CraftyAppBuilder {
+fn server_builder() -> trembita::TrembitaAppBuilder {
     let dir = data_dir(DATA_DIR_NAME);
     let _ = std::fs::create_dir_all(&dir);
-    let gateway: std::net::SocketAddr = env::var("CRAFTY_GATEWAY")
+    let gateway: std::net::SocketAddr = env::var("TREMBITA_GATEWAY")
         .unwrap_or_else(|_| "127.0.0.1:8490".into())
         .parse()
         .expect("gateway");
     apply_workers(
-        CraftyApp::builder()
+        TrembitaApp::builder()
             .data_dir(dir)
             .workflows([WorkflowOpts::named("onboard", build_plan, run_onboarding_plan)])
-            .configure(CraftyConfigure {
+            .configure(TrembitaConfigure {
                 tick_period: Duration::from_millis(10),
                 reconcile_period: Duration::from_millis(20),
                 admin_addr: Some("127.0.0.1:9480".parse().expect("admin")),
-                ..CraftyConfigure::default()
+                ..TrembitaConfigure::default()
             })
             .gateway(GatewayOpts::new(gateway).with_workflows_api(true)),
     )
@@ -47,19 +47,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn print_banner() {
-    println!("crafty showcase · workflows (coordination saga)");
-    println!("  listen   {}", env::var("CRAFTY_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
-    if env::var("CRAFTY_GATEWAY").is_ok_and(|g| g != "-") {
-        let gw = env::var("CRAFTY_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8490".into());
+    println!("trembita showcase · workflows (coordination saga)");
+    println!("  listen   {}", env::var("TREMBITA_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
+    if env::var("TREMBITA_GATEWAY").is_ok_and(|g| g != "-") {
+        let gw = env::var("TREMBITA_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8490".into());
         println!("  gateway  http://{}/workflows/run", display_addr(&gw));
     }
-    if let Ok(admin) = env::var("CRAFTY_ADMIN") {
+    if let Ok(admin) = env::var("TREMBITA_ADMIN") {
         if admin != "-" {
             println!("  admin    http://{}/dashboard", display_addr(&admin));
         }
     }
-    if env::var("CRAFTY_JOIN_SEEDS").is_ok() {
-        println!("  join     via CRAFTY_JOIN_SEEDS");
+    if env::var("TREMBITA_JOIN_SEEDS").is_ok() {
+        println!("  join     via TREMBITA_JOIN_SEEDS");
     } else {
         println!("  role     seed");
     }

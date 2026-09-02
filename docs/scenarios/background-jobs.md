@@ -2,7 +2,7 @@
 
 **Pattern:** Sidekiq / Celery-style async work — enqueue now, workers consume later, survive crash and leader failover.
 
-**Status:** **Shipped** in 0.2.x — `CraftyApp`, HTTP `202`/batch, `#[crafty::consumer]`, gateway, DLQ requeue, cron schedules.
+**Status:** **Shipped** in 0.2.x — `TrembitaApp`, HTTP `202`/batch, `#[trembita::consumer]`, gateway, DLQ requeue, cron schedules.
 
 ## When to use
 
@@ -27,24 +27,24 @@ Producer (any node)          Leader QueueService          Workers (any node)
 - **Failover:** voter replication; new leader serves same backlog from local redb
 - **Elastic join:** scale-out VPS nodes join as **learners** (default) — full peers for workers/ingress, not voters; queue fan-out stays O(voters)
 
-## Quick start (`CraftyApp`)
+## Quick start (`TrembitaApp`)
 
 ### 1. Builder — register queue + consumer
 
-Prefer [`.jobs()`](../../crates/crafty/src/job_opts.rs) to register stream, lease, consumer, and optional HTTP enqueue together:
+Prefer [`.jobs()`](../../crates/trembita/src/job_opts.rs) to register stream, lease, consumer, and optional HTTP enqueue together:
 
 ```rust
 use std::time::Duration;
 
-use crafty::{CraftyApp, CronOpts, GatewayOpts, JobOpts, RecurringJob, RunOpts, consumer};
+use trembita::{TrembitaApp, CronOpts, GatewayOpts, JobOpts, RecurringJob, RunOpts, consumer};
 
 #[consumer("emails")]
 async fn send_email(_payload: &[u8]) -> Result<(), ()> {
     Ok(())
 }
 
-CraftyApp::builder()
-    .data_dir("/var/lib/crafty")
+TrembitaApp::builder()
+    .data_dir("/var/lib/trembita")
     .jobs([JobOpts::new("emails")
         .lease(Duration::from_secs(300))
         .consumer(&SendEmailConsumer)
@@ -65,7 +65,7 @@ CraftyApp::builder()
     .await?;
 ```
 
-Lower-level [`.queue()`](../../crates/crafty/src/app.rs) + [`.consumer()`](../../crates/crafty/src/app.rs) remain available. Cluster-level autoscale, sharded streams, priority, dedup: see [background-jobs showcase](../../examples/background-jobs/) and [job-queue](../decisions/job-queue.md).
+Lower-level [`.queue()`](../../crates/trembita/src/app.rs) + [`.consumer()`](../../crates/trembita/src/app.rs) remain available. Cluster-level autoscale, sharded streams, priority, dedup: see [background-jobs showcase](../../examples/background-jobs/) and [job-queue](../decisions/job-queue.md).
 
 #### Dynamic schedules (`ScheduleSource`)
 
@@ -76,11 +76,11 @@ redeploying for every change ([schedule-source](../decisions/schedule-source.md)
 use std::sync::Arc;
 use std::time::Duration;
 
-use crafty::{CraftyApp, QueueOpts, SchedulePoll, ScheduleSource};
-use crafty_actor::RecurringJob;
+use trembita::{TrembitaApp, QueueOpts, SchedulePoll, ScheduleSource};
+use trembita_actor::RecurringJob;
 
-CraftyApp::builder()
-    .data_dir("/var/lib/crafty")
+TrembitaApp::builder()
+    .data_dir("/var/lib/trembita")
     .queue([QueueOpts::new("emails", Duration::from_secs(300))])
     .schedule_source(
         "emails",
@@ -92,14 +92,14 @@ CraftyApp::builder()
     .await?;
 ```
 
-Implement [`ScheduleSource`](../../crates/crafty-actor/src/schedule_source.rs) in your
-crate; return `Err` on backend failure (crafty keeps the last good set). An initial
+Implement [`ScheduleSource`](../../crates/trembita-actor/src/schedule_source.rs) in your
+crate; return `Err` on backend failure (trembita keeps the last good set). An initial
 `Ok([])` before any successful poll does not wipe schedules already in redb.
 
 ### 2. Enqueue (from any node)
 
 ```rust
-use crafty::cluster::EnqueueOptions;
+use trembita::cluster::EnqueueOptions;
 
 let job_id = app.enqueue("emails", br#"{"to":"user@example.com"}"#).await?;
 
@@ -115,16 +115,16 @@ app.enqueue_opts(
 app.enqueue_batch("emails", &[b"a".as_slice(), b"b"]).await?;
 ```
 
-### 3. Consume — `#[crafty::consumer]` (recommended)
+### 3. Consume — `#[trembita::consumer]` (recommended)
 
-Annotate an async handler; the macro generates a `JobConsumer` adapter. Spawn with `CraftyApp::spawn_consumer` — no manual `tokio::spawn` + `run_queue_consumer` boilerplate ([backlog B-03b](../backlog.md)).
+Annotate an async handler; the macro generates a `JobConsumer` adapter. Spawn with `TrembitaApp::spawn_consumer` — no manual `tokio::spawn` + `run_queue_consumer` boilerplate ([backlog B-03b](../backlog.md)).
 
 ```rust
 use std::sync::Arc;
 
-use crafty::{consumer, ConsumerOpts, CraftyApp};
+use trembita::{consumer, ConsumerOpts, TrembitaApp};
 
-#[crafty::consumer("emails")]
+#[trembita::consumer("emails")]
 async fn handle_email(payload: &[u8]) -> Result<(), MyError> {
     // decode payload, send mail, …
     Ok(())
@@ -146,7 +146,7 @@ let worker = app.spawn_consumer(
 // … later: stop_tx.send(true)?; worker.await?;
 ```
 
-**Lower level:** [`run_queue_consumer`](../../crates/crafty-actor/src/queue.rs) on `cluster.job_queue("stream")` when you need a custom loop. See [background-jobs showcase](../../examples/background-jobs/) or `./e2e/queue.sh` for QUIC failover.
+**Lower level:** [`run_queue_consumer`](../../crates/trembita-actor/src/queue.rs) on `cluster.job_queue("stream")` when you need a custom loop. See [background-jobs showcase](../../examples/background-jobs/) or `./e2e/queue.sh` for QUIC failover.
 
 **Idempotency:** use `EnqueueOptions::dedup_key` and/or store processed ids in your `StateMachine` or `ActorStateStore`.
 
@@ -155,11 +155,11 @@ let worker = app.spawn_consumer(
 Use the queue for **durability and retry**; delegate **stateful side effects** to a worker group via `cast` / `ask`. The background-jobs showcase implements this in [`examples/background-jobs/src/bridge.rs`](../../examples/background-jobs/src/bridge.rs):
 
 ```rust
-// Register Arc<CraftyApp> when the consumer starts.
+// Register Arc<TrembitaApp> when the consumer starts.
 ConsumerOpts::default().on_app(|app| bridge::register(app))
 
 // In the handler — fire-and-forget to a stateful worker group.
-app.cast("ledger", crafty::proto::encode(&job_key)?).await?;
+app.cast("ledger", trembita::proto::encode(&job_key)?).await?;
 ```
 
 Runnable showcase: [`examples/background-jobs/`](../../examples/background-jobs/) (`LedgerWorker` + `SendEmailConsumer`).
@@ -170,29 +170,29 @@ Patterns:
 |------|-----|
 | Fire-and-forget to a stateful worker | `app.cast(group, bytes)` |
 | Read-modify-write with reply | `app.ask(group, bytes)` |
-| Wire `CraftyApp` into a `#[consumer]` handler | [`ConsumerOpts::on_app`](../../crates/crafty/src/consumer.rs) |
-| Cross-shard saga step | `app.enqueue_workflow_step` + [`WorkflowBuilder::step_dedup_key`](../../crates/crafty/src/workflow.rs) |
+| Wire `TrembitaApp` into a `#[consumer]` handler | [`ConsumerOpts::on_app`](../../crates/trembita/src/consumer.rs) |
+| Cross-shard saga step | `app.enqueue_workflow_step` + [`WorkflowBuilder::step_dedup_key`](../../crates/trembita/src/workflow.rs) |
 
 See [state placement cheat sheet](state-placement.md) for where queue backlog vs actor state vs saga journal live.
 
 ### External backlog (Postgres / existing work table)
 
-When the **authoritative backlog** lives outside crafty (Postgres `pending` rows, legacy job table), use [`ExternalBacklog`](../../crates/crafty-actor/src/external_backlog.rs) instead of reimplementing a leader feeder:
+When the **authoritative backlog** lives outside trembita (Postgres `pending` rows, legacy job table), use [`ExternalBacklog`](../../crates/trembita-actor/src/external_backlog.rs) instead of reimplementing a leader feeder:
 
 ```rust
 JobOpts::new("imports")
     .backlog(
-        Arc::new(PgBacklog::connect(&database_url, "crafty_jobs").await?),
+        Arc::new(PgBacklog::connect(&database_url, "trembita_jobs").await?),
         BacklogFeedOpts::default().pending_target_per_consumer(2),
     )
     .consumer(&ImportConsumer)
 ```
 
-crafty runs **`claim` on the leader only**, tops the in-flight queue window to `pending_target × consumer_instances` (live by default: `reachable_nodes × instances`), enqueues with `dedup_key = item.key`, **`settle`s** on ack/nack/reclaim via a durable outbox (`backlog-settle-outbox.redb` + leader drainer), and feeds **`depth()`** to autoscale. Adapter: [`crafty-backlog-postgres`](../../crates/crafty-backlog-postgres/). ADR: [external-backlog](../decisions/external-backlog.md).
+trembita runs **`claim` on the leader only**, tops the in-flight queue window to `pending_target × consumer_instances` (live by default: `reachable_nodes × instances`), enqueues with `dedup_key = item.key`, **`settle`s** on ack/nack/reclaim via a durable outbox (`backlog-settle-outbox.redb` + leader drainer), and feeds **`depth()`** to autoscale. Adapter: [`trembita-backlog-postgres`](../../crates/trembita-backlog-postgres/). ADR: [external-backlog](../decisions/external-backlog.md).
 
 ### 4. HTTP mapping (recommended)
 
-Wire the gateway (`http-jobs` feature) with [`GatewayOpts`](../../crates/crafty/src/gateway/mod.rs) — built-in `/jobs/*` routes are **opt-in** (`.with_jobs_api(true)` or `CRAFTY_GATEWAY_JOBS=1`). Request bodies: raw bytes or JSON `{ "payload": "…" }` / `{ "payload_b64": "…" }` ([`crafty-http` README](../../crates/crafty-http/README.md)).
+Wire the gateway (`http-jobs` feature) with [`GatewayOpts`](../../crates/trembita/src/gateway/mod.rs) — built-in `/jobs/*` routes are **opt-in** (`.with_jobs_api(true)` or `TREMBITA_GATEWAY_JOBS=1`). Request bodies: raw bytes or JSON `{ "payload": "…" }` / `{ "payload_b64": "…" }` ([`trembita-http` README](../../crates/trembita-http/README.md)).
 
 | Intent | Response | Route / API |
 |--------|----------|-------------|
@@ -209,7 +209,7 @@ Wire the gateway (`http-jobs` feature) with [`GatewayOpts`](../../crates/crafty/
 
 ## Delivery semantics
 
-crafty delivers **at-least-once**. A job is acked only after the handler returns
+trembita delivers **at-least-once**. A job is acked only after the handler returns
 `Ok`, so any crash, lease expiry, or `nack` between "handler ran" and "ack landed"
 redelivers the job. There is no exactly-once delivery mode, and there will not be
 one — see [job-queue](../decisions/job-queue.md). Exactly-once is a property you
@@ -217,7 +217,7 @@ build in the handler, not a flag you set on the queue.
 
 What that splits into:
 
-| Guaranteed by crafty | Your handler must do |
+| Guaranteed by trembita | Your handler must do |
 |----------------------|----------------------|
 | A job is never silently lost once `enqueue` returns | Tolerate seeing the same job **more than once** |
 | A job is delivered to one worker at a time (lease) | Tolerate a **partially applied** previous attempt |
@@ -263,13 +263,13 @@ idempotency key derived from the same job key.
 
 Worked implementations:
 
-- [`crafty-store-redis/examples/idempotent_worker.rs`](../../crates/crafty-store-redis/examples/idempotent_worker.rs) — CAS in a shared store
+- [`trembita-store-redis/examples/idempotent_worker.rs`](../../crates/trembita-store-redis/examples/idempotent_worker.rs) — CAS in a shared store
 - [`examples/stateful-workers/`](../../examples/stateful-workers/) — durable per-actor state
 - [`examples/background-jobs/`](../../examples/background-jobs/) — `?dedup=` retry plus simulated redelivery
 
 ### Knowing you are a redelivery
 
-A handler can take a second argument to receive [`JobContext`](../../crates/crafty-actor/src/queue.rs):
+A handler can take a second argument to receive [`JobContext`](../../crates/trembita-actor/src/queue.rs):
 
 ```rust
 #[consumer("emails")]
@@ -286,8 +286,8 @@ the enqueue-time `dedup_key`. Single-argument handlers keep working unchanged.
 
 ### Long handlers — extend the lease
 
-Set a **short** stream lease (e.g. 60s via [`JobOpts::lease`](../../crates/crafty/src/job_opts.rs))
-and call [`JobContext::keep_alive`](../../crates/crafty-actor/src/queue.rs) periodically from
+Set a **short** stream lease (e.g. 60s via [`JobOpts::lease`](../../crates/trembita/src/job_opts.rs))
+and call [`JobContext::keep_alive`](../../crates/trembita-actor/src/queue.rs) periodically from
 inside the handler. Each call resets visibility to the full stream lease duration, so
 another worker cannot reclaim the job while you are still working:
 
@@ -314,7 +314,7 @@ to skip work.
 
 ### Built-in effectively-once guard
 
-[`ConsumerOpts::idempotency`](../../crates/crafty/src/consumer.rs) wires the recipe
+[`ConsumerOpts::idempotency`](../../crates/trembita/src/consumer.rs) wires the recipe
 above for you, backed by any [`ActorStateStore`](stateful-workers.md):
 
 ```rust
@@ -338,7 +338,7 @@ is only as strong as the store and the key you choose:
 | Marker TTL expires before the last redelivery | Duplicate window reopens — size the TTL against lease × attempts |
 | Handler crashes the process mid-side-effect | Marker stays `processing`; the job is redelivered but not auto-skipped |
 
-Regression coverage: [`crafty/tests/consumer_idempotency.rs`](../../crates/crafty/tests/consumer_idempotency.rs)
+Regression coverage: [`trembita/tests/consumer_idempotency.rs`](../../crates/trembita/tests/consumer_idempotency.rs)
 asserts one side effect across a redelivery, with an unguarded control case.
 
 ### Spotting duplicates in production
@@ -347,17 +347,17 @@ Redelivery is invisible until you measure it. Three signals, all per `stream`:
 
 | Signal | Kind | Means |
 |--------|------|-------|
-| `crafty_queue_redeliveries_total` | counter | Deliveries that were not the first attempt |
-| `crafty_queue_job_attempts` | histogram | Attempt number per delivery (`1` = first) |
-| `crafty_queue_redelivered_jobs` | gauge | Jobs in the queue that already failed an attempt |
+| `trembita_queue_redeliveries_total` | counter | Deliveries that were not the first attempt |
+| `trembita_queue_job_attempts` | histogram | Attempt number per delivery (`1` = first) |
+| `trembita_queue_redelivered_jobs` | gauge | Jobs in the queue that already failed an attempt |
 
 The counter and histogram are recorded once per delivery from the queue lifecycle
 hook; the gauge is sampled with the other queue depths.
 
-A non-zero `crafty_queue_redelivered_jobs` is an **idempotency smell**, not
+A non-zero `trembita_queue_redelivered_jobs` is an **idempotency smell**, not
 necessarily a bug: it means handlers on that stream are being re-run, so they had
 better be safe to re-run. A steadily climbing
-`crafty_queue_redeliveries_total` with a flat dead-letter count usually means a
+`trembita_queue_redeliveries_total` with a flat dead-letter count usually means a
 handler that fails after its side effect — exactly the case the
 [recipe](#effectively-once-recipe) is for.
 
@@ -373,7 +373,7 @@ $ curl -s localhost:9080/introspect/queues | jq '.streams[]'
 ### Attempt ceilings
 
 `max_attempts` bounds redelivery. Per job it is an
-[`EnqueueOptions`](../../crates/crafty-actor/src/queue.rs) field; per stream it is
+[`EnqueueOptions`](../../crates/trembita-actor/src/queue.rs) field; per stream it is
 a default, which is what HTTP enqueues and cron ticks get since they cannot pass
 per-job options:
 
@@ -415,12 +415,12 @@ Policy can persist in Meta-Raft ([job-queue](../decisions/job-queue.md)).
 |-------|---------|
 | [`examples/background-jobs/`](../../examples/background-jobs/) | Background jobs showcase — HTTP `202`, `#[consumer]` |
 | `e2e/queue.sh` | Real QUIC/mTLS, follower worker + leader failover |
-| `crafty/tests/queue.rs` | Integration |
-| `crafty/tests/consumer.rs` | `#[crafty::consumer]` + `spawn_consumer` |
-| `crafty/tests/consumer_idempotency.rs` | Redelivery → one side effect (guard + control) |
-| `crafty/tests/http_jobs.rs` | HTTP enqueue, batch, DLQ requeue |
+| `trembita/tests/queue.rs` | Integration |
+| `trembita/tests/consumer.rs` | `#[trembita::consumer]` + `spawn_consumer` |
+| `trembita/tests/consumer_idempotency.rs` | Redelivery → one side effect (guard + control) |
+| `trembita/tests/http_jobs.rs` | HTTP enqueue, batch, DLQ requeue |
 
-See [examples/background-jobs/](../../examples/background-jobs/) for the full [`JobOpts`](../../crates/crafty/src/job_opts.rs) showcase.
+See [examples/background-jobs/](../../examples/background-jobs/) for the full [`JobOpts`](../../crates/trembita/src/job_opts.rs) showcase.
 
 ## Related
 

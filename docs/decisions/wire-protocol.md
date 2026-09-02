@@ -6,7 +6,7 @@
 
 ## Context
 
-All network I/O uses one stack: **HTTP/3 over QUIC** with **postcard** bodies. Operators need predictable default ports and a separate admin surface for health checks without speaking crafty's mTLS wire.
+All network I/O uses one stack: **HTTP/3 over QUIC** with **postcard** bodies. Operators need predictable default ports and a separate admin surface for health checks without speaking trembita's mTLS wire.
 
 ## Transport — HTTP/3 everywhere
 
@@ -43,7 +43,7 @@ Each HTTP request is **one RPC round-trip**. Long-lived **QUIC connections** bet
 | `rustls` | TLS 1.3 |
 | `postcard` | Request/response bodies |
 
-`crafty-net` owns HTTP/3 server, peer pool, outbound client. Peer pool: one QUIC connection per remote `NodeId`; peer RPC uses a dedicated connection separate from client/actor traffic (R2 mitigation).
+`trembita-net` owns HTTP/3 server, peer pool, outbound client. Peer pool: one QUIC connection per remote `NodeId`; peer RPC uses a dedicated connection separate from client/actor traffic (R2 mitigation).
 
 **Rejected:** gRPC, framed TCP + postcard, HTTP/3 client only with TCP for peers.
 
@@ -59,7 +59,7 @@ Use **`postcard`** with **`serde`** for all hot-path wire bodies.
 
 **HTTP header:** `Content-Type: application/x-postcard`
 
-Centralize encode/decode in `crafty-proto/src/codec.rs`. Not self-describing — wire compatibility requires matching Rust types.
+Centralize encode/decode in `trembita-proto/src/codec.rs`. Not self-describing — wire compatibility requires matching Rust types.
 
 Optional dev-only JSON for debugging may be added later; not the default wire format.
 
@@ -70,9 +70,9 @@ Optional dev-only JSON for debugging may be added later; not the default wire fo
 | Source | Key | Default |
 |--------|-----|---------|
 | Builder | `.listen(addr)` | `0.0.0.0:7443` if omitted |
-| Environment | `LISTEN_ADDR` / `CRAFTY_LISTEN` | same |
+| Environment | `LISTEN_ADDR` / `TREMBITA_LISTEN` | same |
 
-All crafty wire traffic on one listener: peer, client, join, actor routes. Firewall: open **UDP 7443** (or chosen port) for peer and client mTLS.
+All trembita wire traffic on one listener: peer, client, join, actor routes. Firewall: open **UDP 7443** (or chosen port) for peer and client mTLS.
 
 ## Admin HTTP port — 8080/tcp
 
@@ -91,16 +91,16 @@ Responses: plain HTTP, JSON (admin is **not** the postcard hot path).
 | Source | Key | Default |
 |--------|-----|---------|
 | Builder | `.admin_listen(addr)` | `0.0.0.0:8080` |
-| Environment | `CRAFTY_ADMIN_ADDR` | same |
-| Disable | `.admin_disabled()` / `CRAFTY_ADMIN_ADDR=off` | admin off |
+| Environment | `TREMBITA_ADMIN_ADDR` | same |
+| Disable | `.admin_disabled()` / `TREMBITA_ADMIN_ADDR=off` | admin off |
 
-Admin carries **no consensus / client data**. Default plain HTTP; optional server-only TLS via `.admin_tls()` / `CRAFTY_ADMIN_TLS_*`. No mTLS requirement. No mutation endpoints in v1.
+Admin carries **no consensus / client data**. Default plain HTTP; optional server-only TLS via `.admin_tls()` / `TREMBITA_ADMIN_TLS_*`. No mTLS requirement. No mutation endpoints in v1.
 
 ## Product gateway port
 
-**Separate product HTTP listener** (address from [`GatewayOpts::new`](../../crates/crafty/src/gateway/mod.rs) / `CRAFTY_GATEWAY`), distinct from admin and QUIC.
+**Separate product HTTP listener** (address from [`GatewayOpts::new`](../../crates/trembita/src/gateway/mod.rs) / `TREMBITA_GATEWAY`), distinct from admin and QUIC.
 
-Default plain HTTP / WS. Optional server-only TLS via [`.tls()`](../../crates/crafty/src/gateway/mod.rs) / `CRAFTY_GATEWAY_TLS_*` — WebSocket upgrades use **WSS** automatically on a TLS listener. No client certificates.
+Default plain HTTP / WS. Optional server-only TLS via [`.tls()`](../../crates/trembita/src/gateway/mod.rs) / `TREMBITA_GATEWAY_TLS_*` — WebSocket upgrades use **WSS** automatically on a TLS listener. No client certificates.
 
 ## Consequences
 

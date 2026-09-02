@@ -1,0 +1,26 @@
+[package]
+name = "trembita-node"
+description = "Reference binary that runs a trembita cluster node from env/CLI config."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "trembita-node"
+path = "src/main.rs"
+
+[dependencies]
+trembita = { workspace = true, features = ["dev-certs"] }
+trembita-actor.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+
+[dev-dependencies]
+temp-env = "0.3.6"
+tempfile = "3"

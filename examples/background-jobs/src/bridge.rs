@@ -2,12 +2,12 @@
 
 use std::sync::{Arc, OnceLock};
 
-use crafty::{CraftyApp, proto};
+use trembita::{TrembitaApp, proto};
 
-static APP: OnceLock<Arc<CraftyApp>> = OnceLock::new();
+static APP: OnceLock<Arc<TrembitaApp>> = OnceLock::new();
 
 /// Called from [`ConsumerOpts::on_app`] before the lease loop starts.
-pub fn register(app: Arc<CraftyApp>) {
+pub fn register(app: Arc<TrembitaApp>) {
     let _ = APP.set(app);
 }
 

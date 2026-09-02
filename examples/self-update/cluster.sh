@@ -5,12 +5,10 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"
 source "$CRAFT_ROOT/dev/cluster-common.sh"
 
-DEV="${CRAFTY_SELF_UPDATE_CLUSTER_DIR:-$CRAFT_ROOT/target/crafty-self-update-cluster}"
+DEV="${TREMBITA_SELF_UPDATE_CLUSTER_DIR:-$CRAFT_ROOT/target/trembita-self-update-cluster}"
 CERTS="$DEV/certs"
-PEERS="1@127.0.0.1:7643,2@127.0.0.1:7653,3@127.0.0.1:7663"
 SEED="1@127.0.0.1:7643"
-BIN="crafty-showcase-self-update"
-CLUSTER_PORTS=(7643 7653 7663 8190 8191 8192 9280 9281 9282)
+BIN="trembita-showcase-self-update"
 
 cluster_common_init "$ROOT" "$BIN" "$DEV" "$CERTS" "$SEED"
 
@@ -20,8 +18,8 @@ status() { pgrep -af "$BIN" 2>/dev/null || echo "(no processes)"; }
 node_env() {
     local id=$1 listen=$2 admin=$3 gateway=$4
     cluster_prepare_node "$id" "$listen" "$admin" "$gateway"
-    export CRAFTY_NODE_ID="$id"
-    export CRAFTY_UPGRADE_DRY_RUN="${CRAFTY_UPGRADE_DRY_RUN:-1}"
+    export TREMBITA_NODE_ID="$id"
+    export TREMBITA_UPGRADE_DRY_RUN="${TREMBITA_UPGRADE_DRY_RUN:-1}"
 }
 
 reset() {

@@ -2,7 +2,7 @@
 # Cast order ids — round-robin gateways; re-sends first id to demo idempotency.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-GATEWAYS="${CRAFTY_GATEWAYS:-http://127.0.0.1:8190 http://127.0.0.1:8191 http://127.0.0.1:8192}"
+GATEWAYS="${TREMBITA_GATEWAYS:-http://127.0.0.1:8190 http://127.0.0.1:8191 http://127.0.0.1:8192}"
 read -r -a GW <<< "$GATEWAYS"
 COUNT="${1:-10}"
 BASE="${2:-2000}"
@@ -13,7 +13,7 @@ for i in $(seq 0 $((COUNT - 1))); do
     gw="${GW[$(( i % ${#GW[@]} ))]}"
     host="${gw#http://}"
     host="${host#https://}"
-    if CRAFTY_GATEWAY="$host" "$ROOT/trigger.sh" "$order" >/dev/null 2>&1; then
+    if TREMBITA_GATEWAY="$host" "$ROOT/trigger.sh" "$order" >/dev/null 2>&1; then
         OK=$((OK + 1))
         echo "  order $order @ ${host##*/} → 202"
     else
@@ -22,5 +22,7 @@ for i in $(seq 0 $((COUNT - 1))); do
     fi
 done
 echo "idempotency: re-cast order $BASE"
-CRAFTY_GATEWAY="${GW[0]#http://}" CRAFTY_GATEWAY="${CRAFTY_GATEWAY#https://}" "$ROOT/trigger.sh" "$BASE" || true
+host="${GW[0]#http://}"
+host="${host#https://}"
+TREMBITA_GATEWAY="$host" "$ROOT/trigger.sh" "$BASE" || true
 echo "done: $OK ok, $FAIL failed — dashboard http://127.0.0.1:9280/dashboard"

@@ -6,12 +6,12 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crafty::core::{Config, StateMachine};
-use crafty::net::LocalNetwork;
-use crafty::proto::LogIndex;
-use crafty::cluster::CraftyCluster;
-use crafty::NodeId;
-use crafty_benchmarks::env_u64;
+use trembita::core::{Config, StateMachine};
+use trembita::net::LocalNetwork;
+use trembita::proto::LogIndex;
+use trembita::cluster::TrembitaCluster;
+use trembita::NodeId;
+use trembita_benchmarks::env_u64;
 
 #[derive(Default)]
 struct Empty;
@@ -55,12 +55,12 @@ async fn spawn_all(
     ids: [NodeId; 3],
     base: &Path,
     seed: u64,
-) -> Vec<Arc<CraftyCluster<Empty>>> {
+) -> Vec<Arc<TrembitaCluster<Empty>>> {
     let mut clusters = Vec::new();
     for &id in &ids {
         let data_dir = node_dir(base, id);
         std::fs::create_dir_all(&data_dir).expect("mkdir");
-        let cluster = CraftyCluster::builder(id, Empty)
+        let cluster = TrembitaCluster::builder(id, Empty)
             .members(ids)
             .raft_config(raft_config(seed ^ id.0))
             .tick_period(Duration::from_millis(10))
@@ -73,7 +73,7 @@ async fn spawn_all(
     clusters
 }
 
-async fn await_leader(clusters: &[Arc<CraftyCluster<Empty>>]) -> NodeId {
+async fn await_leader(clusters: &[Arc<TrembitaCluster<Empty>>]) -> NodeId {
     for _ in 0..500 {
         for c in clusters {
             if c.is_leader().await {
@@ -86,7 +86,7 @@ async fn await_leader(clusters: &[Arc<CraftyCluster<Empty>>]) -> NodeId {
 }
 
 async fn store_set_with_retry(
-    leader: &CraftyCluster<Empty>,
+    leader: &TrembitaCluster<Empty>,
     key: &str,
     value: &[u8],
 ) {
@@ -106,7 +106,7 @@ async fn store_set_with_retry(
     }
 }
 
-async fn verify_key(clusters: &[Arc<CraftyCluster<Empty>>], key: &str, value: &[u8]) {
+async fn verify_key(clusters: &[Arc<TrembitaCluster<Empty>>], key: &str, value: &[u8]) {
     for c in clusters {
         let store = c.actor_state_store().expect("store on node");
         let got = store.get(key).await.expect("get");
@@ -119,7 +119,7 @@ async fn verify_key(clusters: &[Arc<CraftyCluster<Empty>>], key: &str, value: &[
     }
 }
 
-async fn stop_all(clusters: Vec<Arc<CraftyCluster<Empty>>>) {
+async fn stop_all(clusters: Vec<Arc<TrembitaCluster<Empty>>>) {
     for c in clusters {
         c.shutdown_and_wait().await;
     }

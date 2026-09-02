@@ -16,10 +16,10 @@ Operational model: **VPS / bare metal** — one process per node; docker-compose
 
 | Artifact | Role |
 |----------|------|
-| **`crafty-*` crates + `CraftyCluster` API** | Primary product — user embeds in their app |
+| **`trembita-*` crates + `TrembitaCluster` API** | Primary product — user embeds in their app |
 | **`examples/`** | Four product showcases (jobs, stateful workers, realtime, workflows) — each standalone `Cargo.toml`, local + QUIC `cluster.sh` |
 | **`dev/`** | Shared cluster helpers (`cluster-common.sh`), certs, optional Docker Compose per showcase |
-| **`crafty-node` (optional)** | Thin wrapper around the same API for demos only — not a plugin host |
+| **`trembita-node` (optional)** | Thin wrapper around the same API for demos only — not a plugin host |
 
 The user ships **one binary** built from their app. Production runs **N processes** (N VPSes), each process = **one Raft peer** + **local actor runtime**. Same codebase everywhere; config differs per VPS (`node_id`, listen addr, join target).
 
@@ -28,7 +28,7 @@ The user ships **one binary** built from their app. Production runs **N processe
 ```rust
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cluster = CraftyCluster::builder()
+    let cluster = TrembitaCluster::builder()
         .node_id(env("NODE_ID"))
         .listen(env("LISTEN_ADDR"))           // e.g. 0.0.0.0:7443
         .join(env_optional("JOIN_ADDR"))      // None = seed/first node; Some = join existing

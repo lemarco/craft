@@ -1,7 +1,7 @@
 //! # Background jobs showcase (durable job queue)
 //!
 //! Every run mode is a QUIC cluster member: solo `cargo run` is a one-node seed
-//! (`CRAFTY_ALLOW_JOIN=1`); `./cluster.sh` adds nodes via dynamic join.
+//! (`TREMBITA_ALLOW_JOIN=1`); `./cluster.sh` adds nodes via dynamic join.
 
 mod bridge;
 mod debug;
@@ -13,11 +13,11 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use crafty::{
-    ActorGroupOpts, ConsumerOpts, CraftyApp, CraftyConfigure, GatewayBearerIdentity, GatewayOpts,
+use trembita::{
+    ActorGroupOpts, ConsumerOpts, TrembitaApp, TrembitaConfigure, GatewayBearerIdentity, GatewayOpts,
     JobOpts, RunOpts, consumer,
 };
-use crafty_showcase_common::{data_dir, display_addr};
+use trembita_showcase_common::{data_dir, display_addr};
 
 use crate::bridge::register as register_bridge;
 use crate::ledger::LedgerWorker;
@@ -30,7 +30,7 @@ static SENT: AtomicUsize = AtomicUsize::new(0);
 ///
 /// Process-local on purpose — this is a single-binary showcase. In production
 /// this is an [`ActorStateStore`] (see `examples/stateful-workers/`) or a shared
-/// store (`crates/crafty-store-redis/examples/idempotent_worker.rs`) so the
+/// store (`crates/trembita-store-redis/examples/idempotent_worker.rs`) so the
 /// marker survives a crash and is visible to whichever node redelivers.
 static MARKERS: Mutex<Option<HashMap<String, Marker>>> = Mutex::new(None);
 
@@ -41,7 +41,7 @@ enum Marker {
 }
 
 const STREAM: &str = "emails";
-const DATA_DIR_NAME: &str = "crafty-showcase-background-jobs";
+const DATA_DIR_NAME: &str = "trembita-showcase-background-jobs";
 
 /// Business key for the job. Derived from the event, not from the payload bytes.
 fn job_key(payload: &[u8]) -> String {
@@ -52,7 +52,7 @@ fn job_key(payload: &[u8]) -> String {
 /// `1` (default) makes the first delivery of each key fail *after* the marker is
 /// written — the crash-before-ack window that at-least-once always leaves open.
 fn simulate_redelivery() -> bool {
-    env::var("CRAFTY_SIMULATE_REDELIVERY").as_deref() != Ok("0")
+    env::var("TREMBITA_SIMULATE_REDELIVERY").as_deref() != Ok("0")
 }
 
 /// Effectively-once handler — see `docs/scenarios/background-jobs.md`.
@@ -106,32 +106,32 @@ async fn send_email(payload: &[u8]) -> Result<(), ()> {
 }
 
 fn worker_count() -> u32 {
-    env::var("CRAFTY_WORKERS")
+    env::var("TREMBITA_WORKERS")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(1)
         .max(1)
 }
 
-fn server_builder() -> crafty::CraftyAppBuilder {
+fn server_builder() -> trembita::TrembitaAppBuilder {
     let dir = data_dir(DATA_DIR_NAME);
     let _ = std::fs::create_dir_all(&dir);
-    let gateway: std::net::SocketAddr = env::var("CRAFTY_GATEWAY")
+    let gateway: std::net::SocketAddr = env::var("TREMBITA_GATEWAY")
         .unwrap_or_else(|_| "127.0.0.1:8090".into())
         .parse()
         .expect("gateway");
-    let mut builder = CraftyApp::builder()
+    let mut builder = TrembitaApp::builder()
         .data_dir(dir)
         .actors::<LedgerWorker>("ledger", ActorGroupOpts::new(0))
         .jobs([JobOpts::new(STREAM)
             .lease(Duration::from_secs(300))
             .default_max_attempts(5)
             .http_enqueue(true)])
-        .configure(CraftyConfigure {
+        .configure(TrembitaConfigure {
             tick_period: Duration::from_millis(10),
             reconcile_period: Duration::from_millis(20),
             admin_addr: Some("127.0.0.1:9080".parse().expect("admin")),
-            ..CraftyConfigure::default()
+            ..TrembitaConfigure::default()
         })
         .gateway(
             GatewayOpts::new(gateway)
@@ -165,21 +165,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn print_banner() {
-    println!("crafty showcase · background jobs (background jobs)");
-    println!("  listen   {}", env::var("CRAFTY_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
-    if env::var("CRAFTY_GATEWAY").is_ok_and(|g| g != "-") {
-        let gw = env::var("CRAFTY_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8090".into());
+    println!("trembita showcase · background jobs (background jobs)");
+    println!("  listen   {}", env::var("TREMBITA_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
+    if env::var("TREMBITA_GATEWAY").is_ok_and(|g| g != "-") {
+        let gw = env::var("TREMBITA_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8090".into());
         println!("  gateway  http://{}/jobs/{STREAM}", display_addr(&gw));
     }
-    if let Ok(admin) = env::var("CRAFTY_ADMIN") {
+    if let Ok(admin) = env::var("TREMBITA_ADMIN") {
         if admin != "-" {
             println!("  admin    http://{}/dashboard", display_addr(&admin));
         }
     }
-    if env::var("CRAFTY_JOIN_SEEDS").is_ok() {
-        println!("  join     via CRAFTY_JOIN_SEEDS");
+    if env::var("TREMBITA_JOIN_SEEDS").is_ok() {
+        println!("  join     via TREMBITA_JOIN_SEEDS");
     } else {
-        println!("  role     seed (CRAFTY_ALLOW_JOIN when unset)");
+        println!("  role     seed (TREMBITA_ALLOW_JOIN when unset)");
     }
     println!("  cluster  ./cluster.sh setup && ./cluster.sh up");
     println!("  trigger  ./trigger.sh <payload>");

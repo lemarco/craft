@@ -5,10 +5,10 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"
 source "$CRAFT_ROOT/dev/cluster-common.sh"
 
-DEV="${CRAFTY_RT_CLUSTER_DIR:-$CRAFT_ROOT/target/crafty-realtime-cluster}"
+DEV="${TREMBITA_RT_CLUSTER_DIR:-$CRAFT_ROOT/target/trembita-realtime-cluster}"
 CERTS="$DEV/certs"
 SEED="1@127.0.0.1:7743"
-BIN="crafty-showcase-realtime"
+BIN="trembita-showcase-realtime"
 CLUSTER_PORTS=(7743 7753 7763 7773 8290 8291 8292 9380 9381 9382 9383)
 
 cluster_common_init "$ROOT" "$BIN" "$DEV" "$CERTS" "$SEED"
@@ -40,8 +40,8 @@ status() {
 }
 
 health() {
-    local adm=000 i
-    for i in 1 2 3 4 5 6 7 8 9 10; do
+    local adm=000
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
         adm=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9380/health 2>/dev/null || echo 000)
         [ "$adm" = 200 ] && break
         sleep 1

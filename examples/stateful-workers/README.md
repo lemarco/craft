@@ -1,6 +1,6 @@
 # Stateful workers (stateful actors)
 
-Idempotent order processing with [`ActorStateStore`](../../crates/crafty-actor/src/store.rs) and a two-node migration walkthrough.
+Idempotent order processing with [`ActorStateStore`](../../crates/trembita-actor/src/store.rs) and a two-node migration walkthrough.
 
 ## What you run
 
@@ -8,7 +8,7 @@ Idempotent order processing with [`ActorStateStore`](../../crates/crafty-actor/s
 |-------|------|
 | This binary | `OrderProcessor` actor + HTTP cast API + authenticated submit route |
 | [`trigger.sh`](trigger.sh) | Cast one order id via built-in `/actors/orders/cast` (`202 Accepted`) |
-| [`trigger-auth.sh`](trigger-auth.sh) | Same flow via custom `POST /orders/submit` + [`GatewayIdentity`](../../crates/crafty/src/gateway/identity.rs) |
+| [`trigger-auth.sh`](trigger-auth.sh) | Same flow via custom `POST /orders/submit` + [`GatewayIdentity`](../../crates/trembita/src/gateway/identity.rs) |
 | [`trigger-batch.sh`](trigger-batch.sh) | Round-robin cast across gateways + idempotency re-send |
 | Admin | Dashboard + actor introspection |
 
@@ -74,9 +74,9 @@ curl -X POST http://127.0.0.1:8190/actors/orders/cast \
 
 | Var | Default | Meaning |
 |-----|---------|---------|
-| `CRAFTY_GATEWAY` | `127.0.0.1:8190` (local) | Product HTTP bind (`-` disables) |
-| `CRAFTY_PEERS` | unset | When set → QUIC cluster mode |
-| `CRAFTY_DATA_DIR` | `/tmp/crafty-showcase-stateful-workers` | redb actor store per node |
-| `CRAFTY_GATEWAYS` | `8190 8191 8192` | Round-robin list for `trigger-batch.sh` |
+| `TREMBITA_GATEWAY` | `127.0.0.1:8190` (local) | Product HTTP bind (`-` disables) |
+| `TREMBITA_PEERS` | unset | When set → QUIC cluster mode |
+| `TREMBITA_DATA_DIR` | `/tmp/trembita-showcase-stateful-workers` | redb actor store per node |
+| `TREMBITA_GATEWAYS` | `8190 8191 8192` | Round-robin list for `trigger-batch.sh` |
 
 Guide: [docs/scenarios/stateful-workers.md](../../docs/scenarios/stateful-workers.md)

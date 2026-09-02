@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# leave.sh — verify crafty-node graceful leave (CRAFTY_GRACEFUL_LEAVE=1) removes
+# leave.sh — verify trembita-node graceful leave (TREMBITA_GRACEFUL_LEAVE=1) removes
 # the departing node from membership before exit.
 
 set -euo pipefail
@@ -19,7 +19,7 @@ if ! wait_leader "" 1 2 3 >/dev/null; then
 fi
 echo "PASS: cluster ready"
 
-echo "SIGINT node3 (CRAFTY_GRACEFUL_LEAVE=1)…"
+echo "SIGINT node3 (TREMBITA_GRACEFUL_LEAVE=1)…"
 $COMPOSE kill -s INT node3
 
 tries=0

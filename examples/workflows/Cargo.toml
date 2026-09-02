@@ -1,5 +1,5 @@
 [package]
-name = "crafty-showcase-workflows"
+name = "trembita-showcase-workflows"
 version = "0.0.0"
 edition = "2024"
 publish = false
@@ -7,9 +7,9 @@ publish = false
 [workspace]
 
 [dependencies]
-crafty = { path = "../../crates/crafty", features = ["http-jobs"] }
-crafty-actor = { path = "../../crates/crafty-actor" }
-crafty-showcase-common = { path = "../../crates/crafty-showcase-common" }
+trembita = { path = "../../crates/trembita", features = ["http-jobs"] }
+trembita-actor = { path = "../../crates/trembita-actor" }
+trembita-showcase-common = { path = "../../crates/trembita-showcase-common" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net"] }
 serde = { version = "1", features = ["derive"] }
 tracing = "0.1"

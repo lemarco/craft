@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"
-DEV="${CRAFTY_SELF_UPDATE_CLUSTER_DIR:-$CRAFT_ROOT/target/crafty-self-update-cluster}"
+DEV="${TREMBITA_SELF_UPDATE_CLUSTER_DIR:-$CRAFT_ROOT/target/trembita-self-update-cluster}"
 ARTIFACT="${DEV}/artifacts/app-9.9.9.bin"
 GATEWAY="${1:-http://127.0.0.1:8190}"
 SHA=$(sha256sum "$ARTIFACT" | awk '{print $1}')

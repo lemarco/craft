@@ -1,0 +1,248 @@
+//! Declarative job registration for [`TrembitaAppBuilder`](super::app::TrembitaAppBuilder).
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use trembita_actor::{BacklogFeedOpts, ConsumerCount, DEFAULT_QUEUE_PREFETCH, ExternalBacklog};
+
+use crate::consumer::{ConsumerOpts, ConsumerSpawnFn, IdempotencyOpts, JobConsumer};
+use crate::queue_opts::QueueOpts;
+
+/// One durable job stream with optional handler, scaling, and HTTP enqueue.
+///
+/// Combines [`.queue`](super::app::TrembitaAppBuilder::queue) + [`.consumer`](super::app::TrembitaAppBuilder::consumer)
+/// (+ optional gateway `/jobs/*`) in a single declaration.
+///
+/// ```
+/// # use std::time::Duration;
+/// # use trembita::{TrembitaApp, JobOpts, RunOpts, consumer};
+/// #
+/// # #[consumer("emails")]
+/// # async fn send_email(_payload: &[u8]) -> Result<(), ()> { Ok(()) }
+/// #
+/// # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
+/// TrembitaApp::builder()
+///     .data_dir("/tmp/app")
+///     .jobs([JobOpts::new("emails")
+///         .lease(Duration::from_secs(300))
+///         .consumer(&SendEmailConsumer)
+///         .instances(2)
+///         .batch(4)
+///         .http_enqueue(true)])
+///     .run(RunOpts::default().with_wait_queue("emails"))
+///     .await?;
+/// # Ok(())
+/// # }
+/// ```
+pub struct JobOpts {
+    name: String,
+    lease: Duration,
+    prefetch: usize,
+    instances: u32,
+    batch: usize,
+    idle_sleep: Duration,
+    http_enqueue: bool,
+    default_max_attempts: u32,
+    idempotency: Option<IdempotencyOpts>,
+    compute_cost: usize,
+    backlog: Option<(Arc<dyn ExternalBacklog>, BacklogFeedOpts)>,
+    spawners: Vec<ConsumerSpawnFn>,
+    config_error: Option<String>,
+}
+
+impl std::fmt::Debug for JobOpts {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JobOpts")
+            .field("name", &self.name)
+            .field("lease", &self.lease)
+            .field("prefetch", &self.prefetch)
+            .field("instances", &self.instances)
+            .field("batch", &self.batch)
+            .field("idle_sleep", &self.idle_sleep)
+            .field("http_enqueue", &self.http_enqueue)
+            .field("default_max_attempts", &self.default_max_attempts)
+            .field("idempotency", &self.idempotency)
+            .field("compute_cost", &self.compute_cost)
+            .field("backlog", &self.backlog.as_ref().map(|_| "<external>"))
+            .field("consumers", &self.spawners.len())
+            .field("config_error", &self.config_error)
+            .finish()
+    }
+}
+
+impl JobOpts {
+    /// Register a job stream named `name` (creates `queue-{name}.redb` under `data_dir`).
+    #[must_use]
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            lease: Duration::from_secs(60),
+            prefetch: DEFAULT_QUEUE_PREFETCH,
+            instances: 1,
+            batch: 1,
+            idle_sleep: Duration::from_millis(100),
+            http_enqueue: false,
+            default_max_attempts: 0,
+            idempotency: None,
+            compute_cost: 1,
+            backlog: None,
+            spawners: Vec::new(),
+            config_error: None,
+        }
+    }
+
+    /// Lease visibility timeout for workers holding jobs from this stream.
+    #[must_use]
+    pub fn lease(mut self, lease: Duration) -> Self {
+        self.lease = lease;
+        self
+    }
+
+    /// Leader prefetch depth (`0` disables). Default: framework prefetch.
+    #[must_use]
+    pub fn prefetch(mut self, prefetch: usize) -> Self {
+        self.prefetch = prefetch;
+        self
+    }
+
+    /// Number of consumer loops on **this** node (`instance` 0..N-1).
+    #[must_use]
+    pub fn instances(mut self, count: u32) -> Self {
+        self.instances = count.max(1);
+        self
+    }
+
+    /// Max jobs leased per poll for each consumer instance.
+    #[must_use]
+    pub fn batch(mut self, batch: usize) -> Self {
+        self.batch = batch.max(1);
+        self
+    }
+
+    /// Sleep between polls when the queue is empty.
+    #[must_use]
+    pub fn idle_sleep(mut self, idle_sleep: Duration) -> Self {
+        self.idle_sleep = idle_sleep;
+        self
+    }
+
+    /// Attempt ceiling for enqueues that leave `max_attempts` unset (`0` = unlimited).
+    ///
+    /// Covers HTTP `POST /jobs/{stream}` and cron ticks, which have no way to pass
+    /// per-job options. A job that sets its own ceiling always wins. After the last
+    /// attempt the job moves to dead letter instead of retrying forever.
+    #[must_use]
+    pub fn default_max_attempts(mut self, max: u32) -> Self {
+        self.default_max_attempts = max;
+        self
+    }
+
+    /// Mount `POST /jobs/{stream}` on the product gateway (`with_jobs_api`).
+    #[must_use]
+    pub fn http_enqueue(mut self, enabled: bool) -> Self {
+        self.http_enqueue = enabled;
+        self
+    }
+
+    /// Wrap this stream's consumers in the effectively-once guard.
+    ///
+    /// Must be set **before** [`.consumer`](Self::consumer), which is where the
+    /// per-instance options are captured.
+    #[must_use]
+    pub fn idempotency(mut self, opts: IdempotencyOpts) -> Self {
+        self.idempotency = Some(opts);
+        self
+    }
+
+    /// Token units reserved from the workload pool per handler invocation.
+    ///
+    /// Declare subprocess-heavy cost up front — e.g. Chromium via CDP where the
+    /// async handler waits on IO but child processes consume several CPU cores
+    /// ([external-load](../../../docs/decisions/external-load.md)).
+    #[must_use]
+    pub fn compute_cost(mut self, cost: usize) -> Self {
+        self.compute_cost = cost.max(1);
+        self
+    }
+
+    /// Wire an external source-of-truth backlog ([`ExternalBacklog`](trembita_actor::ExternalBacklog)).
+    ///
+    /// The leader claims items, enqueues with `dedup_key = item.key`, and settles outcomes
+    /// back to the source after ack or dead-letter.
+    #[must_use]
+    pub fn backlog(mut self, backlog: Arc<dyn ExternalBacklog>, opts: BacklogFeedOpts) -> Self {
+        self.backlog = Some((backlog, opts));
+        self
+    }
+
+    /// [`JobConsumer`] from `#[consumer("…")]` — `C::STREAM` must match [`.new`](Self::new).
+    ///
+    /// Pass the generated unit type (e.g. `SendEmailConsumer`), not the async fn.
+    #[must_use]
+    pub fn consumer<C>(mut self, consumer: &C) -> Self
+    where
+        C: JobConsumer + Clone + 'static,
+    {
+        if C::STREAM != self.name {
+            self.config_error = Some(format!(
+                "JobOpts::new({:?}).consumer(): stream mismatch — handler is registered for {:?}, expected {:?}",
+                self.name,
+                C::STREAM,
+                self.name
+            ));
+            return self;
+        }
+        let instances = self.instances;
+        let batch = self.batch;
+        let idle_sleep = self.idle_sleep;
+        let compute_cost = self.compute_cost;
+        let idempotency = self.idempotency.clone();
+        for instance in 0..instances {
+            let consumer = consumer.clone();
+            let mut opts = ConsumerOpts::default()
+                .instance(instance)
+                .batch(batch)
+                .idle_sleep(idle_sleep)
+                .compute_cost(compute_cost);
+            if let Some(idem) = idempotency.clone() {
+                opts = opts.idempotency(idem);
+            }
+            self.spawners.push(Box::new(move |app, stop| {
+                app.spawn_consumer(consumer.clone(), opts.clone(), stop)
+            }));
+        }
+        self
+    }
+
+    pub(crate) fn into_registration(self) -> JobRegistration {
+        let instances = self.instances;
+        let backlog = self.backlog.map(|(backlog, mut opts)| {
+            if let ConsumerCount::Live { ref mut per_node } = opts.consumer_instances {
+                *per_node = u64::from(instances.max(1));
+            }
+            (backlog, opts)
+        });
+        JobRegistration {
+            queue: QueueOpts {
+                name: self.name.clone(),
+                lease: self.lease,
+                prefetch: self.prefetch,
+                default_max_attempts: self.default_max_attempts,
+            },
+            stream: self.name,
+            spawners: self.spawners,
+            http_enqueue: self.http_enqueue,
+            config_error: self.config_error,
+            backlog,
+        }
+    }
+}
+
+pub(crate) struct JobRegistration {
+    pub queue: QueueOpts,
+    pub stream: String,
+    pub spawners: Vec<ConsumerSpawnFn>,
+    pub http_enqueue: bool,
+    pub config_error: Option<String>,
+    pub backlog: Option<(Arc<dyn ExternalBacklog>, BacklogFeedOpts)>,
+}

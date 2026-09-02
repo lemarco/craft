@@ -1,6 +1,6 @@
-# Releasing crafty
+# Releasing trembita
 
-crafty publishes to crates.io as a synchronized workspace: every `crafty-*` crate
+trembita publishes to crates.io as a synchronized workspace: every `trembita-*` crate
 shares one version and is released together ([library-and-publishing](decisions/library-and-publishing.md)).
 
 See [process.md](process.md) for the full commit → push → CI → release diagram.
@@ -29,9 +29,9 @@ See [process.md](process.md) for the full commit → push → CI → release dia
   one at a time in topological order (see script `PUBLISH_ORDER`). **Do not**
   use `cargo publish --workspace` for real uploads.
 - **Rate limits & resume.** Default **30s** pause between uploads
-  (`CRAFTY_PUBLISH_DELAY_SECS`). Re-run the same command after a partial publish.
+  (`TREMBITA_PUBLISH_DELAY_SECS`). Re-run the same command after a partial publish.
 - **Not published.** `publish = false` crates are skipped, including
-  `crafty-node` (reference binary — build from the repo or Docker/e2e only).
+  `trembita-node` (reference binary — build from the repo or Docker/e2e only).
 - **Release gate.** `./scripts/release-gate.sh` (= `gate.sh --tier release`) runs
   autofix, [ci-fast-lane.sh](../scripts/ci-fast-lane.sh), examples, showcase,
   MSRV (**strict**), and release build when publishing.

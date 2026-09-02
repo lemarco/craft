@@ -37,7 +37,7 @@ fi
 echo "re-elected leader = node $NEW (was $LEADER)"
 
 echo "phase 2: drain backlog after failover…"
-if ! CRAFTY_QUEUE_CONTACT_NODE="$NEW" run_queue_client after_failover; then
+if ! TREMBITA_QUEUE_CONTACT_NODE="$NEW" run_queue_client after_failover; then
     echo "FAIL: queue after_failover"; $COMPOSE logs --tail 40; exit 1
 fi
 

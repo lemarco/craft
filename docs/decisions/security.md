@@ -39,7 +39,7 @@ RemoteClient::connect(addr, ClientTlsConfig {
 
 ### In-process client (`ClientHandle`)
 
-**No TLS** — same process as `CraftyCluster`; messages via `ractor`. This is the recommended path when the user’s HTTPS app and crafty run in **one binary** on the same VPS.
+**No TLS** — same process as `TrembitaCluster`; messages via `ractor`. This is the recommended path when the user’s HTTPS app and trembita run in **one binary** on the same VPS.
 
 | Caller | Path | TLS |
 |--------|------|-----|
@@ -50,7 +50,7 @@ RemoteClient::connect(addr, ClientTlsConfig {
 ### Development / tests
 
 - **`insecure-dev` feature** (tests only): skip verification; `rcgen` self-signed material
-- **`crafty-sim`:** in-memory transport; no TLS
+- **`trembita-sim`:** in-memory transport; no TLS
 
 Production examples document a **single cluster CA** issuing:
 
@@ -65,11 +65,11 @@ Provide `dev/certs/` script: generate CA, node cert, client cert.
 - Cert loading via `rustls-pemfile` or embedded paths from env:
 
 ```bash
-CRAFTY_CA_CERT=/etc/crafty/ca.pem
-CRAFTY_NODE_CERT=/etc/crafty/node.pem
-CRAFTY_NODE_KEY=/etc/crafty/node.key
-CRAFTY_CLIENT_CERT=/etc/crafty/client.pem   # for RemoteClient
-CRAFTY_CLIENT_KEY=/etc/crafty/client.key
+TREMBITA_CA_CERT=/etc/trembita/ca.pem
+TREMBITA_NODE_CERT=/etc/trembita/node.pem
+TREMBITA_NODE_KEY=/etc/trembita/node.key
+TREMBITA_CLIENT_CERT=/etc/trembita/client.pem   # for RemoteClient
+TREMBITA_CLIENT_KEY=/etc/trembita/client.key
 ```
 
 ## Consequences
@@ -83,7 +83,7 @@ CRAFTY_CLIENT_KEY=/etc/crafty/client.key
 **Negative**
 
 - Must issue/revoke client cert per calling service (not per browser user)
-- Split-process apps (HTTPS app ≠ crafty node) need cert provisioning
+- Split-process apps (HTTPS app ≠ trembita node) need cert provisioning
 
 ## Alternatives rejected
 

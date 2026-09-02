@@ -6,7 +6,7 @@
 
 ## Context
 
-Users need mTLS material for VPS deploys ([security](security.md)). v1 ships manual PKI; operators also want **automatic issuance and renewal** without full process restarts. Public ACME (Let's Encrypt) is **out of scope** — crafty mTLS requires a private cluster CA with `serverAuth` + `clientAuth` EKU and SAN/CN of `crafty-node-<NodeId>`.
+Users need mTLS material for VPS deploys ([security](security.md)). v1 ships manual PKI; operators also want **automatic issuance and renewal** without full process restarts. Public ACME (Let's Encrypt) is **out of scope** — trembita mTLS requires a private cluster CA with `serverAuth` + `clientAuth` EKU and SAN/CN of `trembita-node-<NodeId>`.
 
 ## Manual provisioning (v1 baseline)
 
@@ -26,11 +26,11 @@ Ship **both**:
 ### Environment variables
 
 ```bash
-CRAFTY_CA_CERT=/etc/crafty/ca.pem
-CRAFTY_NODE_CERT=/etc/crafty/node.pem
-CRAFTY_NODE_KEY=/etc/crafty/node.key
-CRAFTY_CLIENT_CERT=/etc/crafty/client.pem
-CRAFTY_CLIENT_KEY=/etc/crafty/client.key
+TREMBITA_CA_CERT=/etc/trembita/ca.pem
+TREMBITA_NODE_CERT=/etc/trembita/node.pem
+TREMBITA_NODE_KEY=/etc/trembita/node.key
+TREMBITA_CLIENT_CERT=/etc/trembita/client.pem
+TREMBITA_CLIENT_KEY=/etc/trembita/client.key
 ```
 
 Docs cover: first VPS (create CA), joining VPS N, client cert for `RemoteClient`, `insecure-dev` for local sim, rolling restart rotation (no auto-rotation in manual-only mode).
@@ -39,7 +39,7 @@ Docs cover: first VPS (create CA), joining VPS N, client cert for `RemoteClient`
 
 ### Issuance stays external
 
-crafty **does not embed an ACME client**. CAs and renewers run outside the binary:
+trembita **does not embed an ACME client**. CAs and renewers run outside the binary:
 
 | Environment | Issuer | Renewal |
 |-------------|--------|---------|
@@ -47,7 +47,7 @@ crafty **does not embed an ACME client**. CAs and renewers run outside the binar
 
 Issued certs must match the manual contract above. Env vars unchanged.
 
-### Hot reload in `crafty-net`
+### Hot reload in `trembita-net`
 
 When PEM paths are configured, reload TLS without exiting:
 
@@ -58,7 +58,7 @@ When PEM paths are configured, reload TLS without exiting:
 
 | Trigger | Default |
 |---------|---------|
-| **File poll** | on when `PemSecurity` used; every `CRAFTY_CERT_WATCH_SECS` (default 60) |
+| **File poll** | on when `PemSecurity` used; every `TREMBITA_CERT_WATCH_SECS` (default 60) |
 | **`SIGHUP`** | on when PEM paths set |
 
 Builder: `Security::from_pem_files` → `PemSecurity`; `.cert_watch(period)` enables polling. Admin HTTP stays read-only — no POST reload endpoint.
@@ -75,8 +75,8 @@ Builder: `Security::from_pem_files` → `PemSecurity`; `.cert_watch(period)` ena
 |------|---------|
 | `dev/step-ca/` | docker-compose + bootstrap + renewal demo |
 | `docs/certs.md` § Automation | Operator runbook |
-| `crafty-net` pem + reload | Load + apply |
-| `crafty` `PemSecurity` / `CertReloadHandle` | Facade + `crafty-node` wiring |
+| `trembita-net` pem + reload | Load + apply |
+| `trembita` `PemSecurity` / `CertReloadHandle` | Facade + `trembita-node` wiring |
 
 ## Consequences
 

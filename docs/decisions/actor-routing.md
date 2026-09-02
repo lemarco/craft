@@ -14,25 +14,25 @@ This record covers operator and application UX for sticky sessions, smoother sca
 ### Consistent hash ring (replaces `hash % N`)
 
 Actor keyed routing (`ActorDirectory::pick_keyed`, local `PoolInner::pick_keyed`)
-uses a **virtual-node ring** ([`crafty-actor/src/ring.rs`](../../crates/crafty-actor/src/ring.rs)):
+uses a **virtual-node ring** ([`trembita-actor/src/ring.rs`](../../crates/trembita-actor/src/ring.rs)):
 64 vnodes per member, clockwise successor from `hash(key)`, salted per group name.
 Adding/removing an instance remaps roughly `1/N` of keys instead of almost all keys.
 
 ### Sticky session / lease
 
-[`ActorSession`](../../crates/crafty-actor/src/session.rs) pins casts/asks to a
+[`ActorSession`](../../crates/trembita-actor/src/session.rs) pins casts/asks to a
 specific [`ActorId`] until TTL expiry or the instance disappears.
 Obtain via `ClusterRef::session_keyed` or `ActorSession::new`; deliver with
 `ClusterMessaging::cast_session` / `ask_session`.
 
 ### Per-actor drain override
 
-Cluster default remains **60s** ([`DEFAULT_DRAIN_TIMEOUT`](../../crates/crafty-actor/src/registry.rs)).
+Cluster default remains **60s** ([`DEFAULT_DRAIN_TIMEOUT`](../../crates/trembita-actor/src/registry.rs)).
 [`ActorRegistry::set_group_drain_timeout`] overrides per group; [`stop_graceful`]
 uses override when set, else the caller's default (facade:
-[`CraftyCluster::drain_timeout`](../../crates/crafty/src/cluster.rs),
-[`CraftyClusterBuilder::drain_timeout`](../../crates/crafty/src/builder.rs),
-`CRAFTY_DRAIN_TIMEOUT` in `crafty-node`).
+[`TrembitaCluster::drain_timeout`](../../crates/trembita/src/cluster.rs),
+[`TrembitaClusterBuilder::drain_timeout`](../../crates/trembita/src/builder.rs),
+`TREMBITA_DRAIN_TIMEOUT` in `trembita-node`).
 
 ### Linearizable ask (optional)
 
@@ -47,7 +47,7 @@ Raft `query` remains the linearizable path for replicated state machine data.
 
 [`DirectoryPolicy::ReadYourWrites`] enables brief retry on `NoTarget` after
 spawn/scale (mitigates R3). Facade helper
-[`CraftyCluster::publish_directory_visible`] publishes then waits for local
+[`TrembitaCluster::publish_directory_visible`] publishes then waits for local
 visibility. Default remains eventual + periodic anti-entropy.
 
 ## Consequences

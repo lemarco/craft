@@ -31,10 +31,10 @@ A single Raft group funnels all writes through one leader (risk **R1** in [futur
 
 | Component | Location |
 |-----------|----------|
-| Shard planners | `crafty-core::shard` |
-| Sharded runtime | `crafty-actor::sharded`, `group_rebalance` |
-| Keyed client | `crafty-client` |
-| Facade builder | `CraftyClusterBuilder::raft_groups`, `stable_shards`, `data_dir` |
+| Shard planners | `trembita-core::shard` |
+| Sharded runtime | `trembita-actor::sharded`, `group_rebalance` |
+| Keyed client | `trembita-client` |
+| Facade builder | `TrembitaClusterBuilder::raft_groups`, `stable_shards`, `data_dir` |
 
 Per-group membership: [cluster-membership](cluster-membership.md#per-group-membership-multi-raft).
 
@@ -58,7 +58,7 @@ When `raft_groups > 1`, a dedicated **Meta-Raft** group isolates coordinator tra
 | Feature | API |
 |---------|-----|
 | Per-group learners | `group_learner_factor`, `NodeHandle::propose_membership(voters, learners)` |
-| Modulus shard expansion | `ShardRouter::expand_shard_count`, `CraftyCluster::expand_shard_count` — keys remap; prefer add groups |
+| Modulus shard expansion | `ShardRouter::expand_shard_count`, `TrembitaCluster::expand_shard_count` — keys remap; prefer add groups |
 | Non-atomic keyed batch | `propose_keyed_batch` — sequential; `BatchError::Partial` on failure |
 | Observability | `GET /introspect/raft-groups` |
 
@@ -75,7 +75,7 @@ When `raft_groups > 1`, a dedicated **Meta-Raft** group isolates coordinator tra
 
 - Catalog rules: non-empty, starts at group 0, contiguous ids `0..=max`.
 - Leader proposes `CatalogCommand::AddGroups`; all nodes replay → rebalance adopt + membership sync.
-- Facade: `CraftyCluster::add_raft_groups(count)`.
+- Facade: `TrembitaCluster::add_raft_groups(count)`.
 
 ### Stable shards
 
@@ -93,7 +93,7 @@ Multi-Raft routes each keyed write to one group. For atomicity across shards:
 | `propose_cross_shard_2pc` | Atomic commit if all groups ack prepare (opt-in via `cross_shard_2pc(true)`) |
 | + `durable_cross_shard_2pc(true)` | Prepare/abort in each group's Raft log; replay rebuilds `PrepareStore` |
 
-**Default path:** framework saga coordinator with `SagaStep { key, command, compensate }`, `SagaJournal`, metrics (`crafty_saga_*`). Compensation runs on the **same shard as the forward step**.
+**Default path:** framework saga coordinator with `SagaStep { key, command, compensate }`, `SagaJournal`, metrics (`trembita_saga_*`). Compensation runs on the **same shard as the forward step**.
 
 Neither saga nor 2PC provides **global serializable isolation** — explicit non-goal.
 
@@ -105,12 +105,12 @@ Six production-oriented capabilities (landed):
 
 | Feature | Implementation |
 |---------|----------------|
-| Reachability tuning + hysteresis | `ReachabilityConfig`, `CraftyClusterBuilder::reachability()` |
+| Reachability tuning + hysteresis | `ReachabilityConfig`, `TrembitaClusterBuilder::reachability()` |
 | Phi-accrual detector | `FailureDetectorKind::PhiAccrual` |
-| Snapshot backup / restore | `crafty-ops` CLI — local gzip-tar + `s3://` / `gs://` / `file://` via opendal |
+| Snapshot backup / restore | `trembita-ops` CLI — local gzip-tar + `s3://` / `gs://` / `file://` via opendal |
 | Rolling wire upgrade (N/N−1) | `MIN_COMPATIBLE_PROTOCOL_VERSION` + `protocol_version_compatible()` |
-| Admin TLS | `AdminServer::serve_tls`, `CRAFTY_ADMIN_TLS_*` |
-| Jepsen-lite gate | `e2e/linearizability.sh` — crafty-sim checker + docker phase |
+| Admin TLS | `AdminServer::serve_tls`, `TREMBITA_ADMIN_TLS_*` |
+| Jepsen-lite gate | `e2e/linearizability.sh` — trembita-sim checker + docker phase |
 
 `app_version` join skew remains **exact match**; only protocol/wire accepts a compatibility band ([cluster-membership](cluster-membership.md#version-skew--hard-reject)).
 

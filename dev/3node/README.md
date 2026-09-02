@@ -1,6 +1,6 @@
 # 3-node QUIC cluster — hands-on example
 
-Real **QUIC/mTLS** cluster on localhost: three `crafty-node` processes, no Docker,
+Real **QUIC/mTLS** cluster on localhost: three `trembita-node` processes, no Docker,
 no in-process simulator.
 
 ## Quick start
@@ -30,7 +30,7 @@ Wait ~5–10 s after starting nodes for leader election.
 | Lease / ack waves | `pending` ↓, `leased` ↑ then ↓ |
 | Event feed | SSE-события кластера |
 
-Пауза между шагами: 10 s (override: `CRAFTY_DEV_WATCH_PAUSE_SECS=15`).
+Пауза между шагами: 10 s (override: `TREMBITA_DEV_WATCH_PAUSE_SECS=15`).
 
 ## What `demo` does (fast)
 
@@ -79,33 +79,33 @@ Works on **any** node (9080/9081/9082).
 
 ## Manual QUIC client
 
-The demo binary [`crafty-dev-client`](../../crates/crafty-dev-client/) can be run directly:
+The demo binary [`trembita-dev-client`](../../crates/trembita-dev-client/) can be run directly:
 
 ```bash
-cargo build -p crafty-dev-client --release
+cargo build -p trembita-dev-client --release
 # same env as ./scripts/dev-3node.sh demo — see scripts/dev-3node.sh client_env()
 ```
 
-Optional overrides: `CRAFTY_DEMO_PROPOSE_NODE`, `CRAFTY_DEMO_QUERY_NODE`,
-`CRAFTY_DEMO_SUBMIT_NODE`, `CRAFTY_DEMO_WORKER_PEER`.
+Optional overrides: `TREMBITA_DEMO_PROPOSE_NODE`, `TREMBITA_DEMO_QUERY_NODE`,
+`TREMBITA_DEMO_SUBMIT_NODE`, `TREMBITA_DEMO_WORKER_PEER`.
 
 ## Failover smoke (e2e harness)
 
 ```bash
 ./scripts/dev-3node.sh queue-smoke   # before killing the leader
 # kill leader node, restart it, then:
-CRAFTY_E2E_QUEUE_PHASE=after_failover ./scripts/dev-3node.sh queue-smoke
+TREMBITA_E2E_QUEUE_PHASE=after_failover ./scripts/dev-3node.sh queue-smoke
 ```
 
 ## Files
 
 | Path | Purpose |
 |------|---------|
-| `target/crafty-3node-dev/certs/` | Cluster CA + node 1–4 certs |
-| `target/crafty-3node-dev/data/node-{1,2,3}/` | Persistent redb (Raft + queue) |
+| `target/trembita-3node-dev/certs/` | Cluster CA + node 1–4 certs |
+| `target/trembita-3node-dev/data/node-{1,2,3}/` | Persistent redb (Raft + queue) |
 
 ## See also
 
-- [`crafty-node` README](../../crates/crafty-node/README.md)
-- [`docs/scenarios/background-jobs.md`](../../docs/scenarios/background-jobs.md) — product HTTP (`CraftyApp`)
+- [`trembita-node` README](../../crates/trembita-node/README.md)
+- [`docs/scenarios/background-jobs.md`](../../docs/scenarios/background-jobs.md) — product HTTP (`TrembitaApp`)
 - [`examples/README.md`](../../examples/README.md) — product showcases (in-process)

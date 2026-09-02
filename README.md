@@ -1,12 +1,12 @@
-# crafty
+# trembita
 
 **A distributed Raft + actor framework for Rust: one codebase, N nodes, elastic and self-healing.**
 
 [![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![rust](https://img.shields.io/badge/rustc-1.90%2B-orange.svg)](#msrv)
 
-[![crates.io](https://img.shields.io/crates/v/crafty.svg)](https://crates.io/crates/crafty)
-[![docs.rs](https://docs.rs/crafty/badge.svg)](https://docs.rs/crafty)
+[![crates.io](https://img.shields.io/crates/v/trembita.svg)](https://crates.io/crates/trembita)
+[![docs.rs](https://docs.rs/trembita/badge.svg)](https://docs.rs/trembita)
 
 ---
 
@@ -24,9 +24,9 @@
 
 | | |
 |---|---|
-| **Version** | `0.6.1` |
-| **Distribution** | Published on [crates.io](https://crates.io/crates/crafty) — E2E/chaos, product showcases |
-| **Release** | v0.6.1 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/crafty/0.6.1](https://docs.rs/crafty/0.6.1) |
+| **Version** | `0.1.0` |
+| **Distribution** | Published on [crates.io](https://crates.io/crates/trembita) — E2E/chaos, product showcases |
+| **Release** | v0.1.0 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/trembita/0.1.0](https://docs.rs/trembita/0.1.0) |
 | **Full status** | [docs/status.md](docs/status.md) |
 
 ### Highlights
@@ -34,9 +34,9 @@
 - Pure Raft FSM, HTTP/3/mTLS, redb persistence, cross-node actors
 - Multi-Raft write scaling: **Meta-Raft coordinator** (join/catalog/saga isolated from user groups), dynamic catalog, stable shards, group migration, per-group membership
 - Cross-shard saga coordinator + optional 2PC; follower/lease reads
-- mTLS hot reload, reachability-driven supervisor, `crafty-ops` backup
+- mTLS hot reload, reachability-driven supervisor, `trembita-ops` backup
 - **Product showcases** — five standalone apps in [`examples/`](examples/README.md) (jobs, stateful workers, realtime, workflows, self-update)
-- **`CraftyApp`** + HTTP gateway (sticky sessions, TLS, drain), batch jobs, event topics, external backlog, workload governor — [getting-started](docs/getting-started.md)
+- **`TrembitaApp`** + HTTP gateway (sticky sessions, TLS, drain), batch jobs, event topics, external backlog, workload governor — [getting-started](docs/getting-started.md)
 - **Self-update coordinator** — leader reconcile + local executor ([upgrade-coordinator](docs/decisions/upgrade-coordinator.md))
 - Design decision records — [docs/decisions/](docs/decisions/)
 
@@ -52,7 +52,7 @@ These are explicit non-goals, not gaps in quality:
 ## Quick start
 
 ```sh
-cd crafty
+cd trembita
 lefthook install
 ./scripts/quality-gate-pre-commit.sh
 
@@ -66,17 +66,17 @@ lefthook install
 ./e2e/chaos.sh    # partition + heal
 ```
 
-**Read next:** [docs/status.md](docs/status.md) → [docs/architecture.md](docs/architecture.md) → [crates/crafty/src/builder.rs](crates/crafty/src/builder.rs)
+**Read next:** [docs/status.md](docs/status.md) → [docs/architecture.md](docs/architecture.md) → [crates/trembita/src/builder.rs](crates/trembita/src/builder.rs)
 
-**`crafty-node` env:** `CRAFTY_NODE_ID`, `CRAFTY_LISTEN` (`:7443`), `CRAFTY_ADMIN` (`:8080`), `CRAFTY_PEERS`, `CRAFTY_JOIN_SEEDS`, `CRAFTY_DISCOVERY` — [docs/certs.md](docs/certs.md)
+**`trembita-node` env:** `TREMBITA_NODE_ID`, `TREMBITA_LISTEN` (`:7443`), `TREMBITA_ADMIN` (`:8080`), `TREMBITA_PEERS`, `TREMBITA_JOIN_SEEDS`, `TREMBITA_DISCOVERY` — [docs/certs.md](docs/certs.md)
 
-**Job queue on `crafty-node`** (optional, requires `CRAFTY_DATA_DIR`):
+**Job queue on `trembita-node`** (optional, requires `TREMBITA_DATA_DIR`):
 
 | Var | Meaning |
 |-----|---------|
-| `CRAFTY_DATA_DIR` | Persistent redb directory (Raft log + queue file) |
-| `CRAFTY_JOB_QUEUE` | Enable durable queue stream name (e.g. `jobs`) |
-| `CRAFTY_JOB_QUEUE_LEASE_SECS` | Lease visibility timeout (default `60`) |
+| `TREMBITA_DATA_DIR` | Persistent redb directory (Raft log + queue file) |
+| `TREMBITA_JOB_QUEUE` | Enable durable queue stream name (e.g. `jobs`) |
+| `TREMBITA_JOB_QUEUE_LEASE_SECS` | Lease visibility timeout (default `60`) |
 
 See [job-queue](docs/decisions/job-queue.md) and [protocol.md](docs/protocol.md#job-queue).
 
@@ -86,47 +86,47 @@ See [job-queue](docs/decisions/job-queue.md) and [protocol.md](docs/protocol.md#
 
 ```rust
 use std::time::Duration;
-use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, JobOpts, RunOpts, consumer};
+use trembita::{TrembitaApp, TrembitaConfigure, GatewayOpts, JobOpts, RunOpts, consumer};
 
 #[consumer("jobs")]
 async fn handle_job(_payload: &[u8]) -> Result<(), ()> {
     Ok(())
 }
 
-CraftyApp::builder()
-    .data_dir("/var/lib/crafty")
+TrembitaApp::builder()
+    .data_dir("/var/lib/trembita")
     .jobs([JobOpts::new("jobs")
         .lease(Duration::from_secs(300))
         .consumer(&HandleJobConsumer)
         .http_enqueue(true)])
-    .configure(CraftyConfigure {
+    .configure(TrembitaConfigure {
         admin_addr: Some("127.0.0.1:8080".parse()?),
-        ..CraftyConfigure::default()
+        ..TrembitaConfigure::default()
     })
     .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?))
     .run(RunOpts::default().with_wait_queue("jobs"))
     .await?;
 ```
 
-## Cluster APIs (`crafty::cluster`)
+## Cluster APIs (`trembita::cluster`)
 
-Custom [`StateMachine`](crates/crafty-core/src/lib.rs) wiring, multi-Raft, keyed client, and direct queue access live in [`crafty::cluster`](crates/crafty/src/cluster.rs). Product apps use [`CraftyApp`](docs/getting-started.md) instead.
+Custom [`StateMachine`](crates/trembita-core/src/lib.rs) wiring, multi-Raft, keyed client, and direct queue access live in [`trembita::cluster`](crates/trembita/src/cluster.rs). Product apps use [`TrembitaApp`](docs/getting-started.md) instead.
 
 See [multi-raft](docs/decisions/multi-raft.md), [job-queue](docs/decisions/job-queue.md), and [getting-started](docs/getting-started.md).
 
 ## Design principles
 
-- **Library-first** — embed `crafty`, no sidecar ([deployment-model](docs/decisions/deployment-model.md))
+- **Library-first** — embed `trembita`, no sidecar ([deployment-model](docs/decisions/deployment-model.md))
 - **Linearizable SM** — `propose` / `query` via Raft ([client-and-routing](docs/decisions/client-and-routing.md))
 - **Transparent routing** — any node forwards to leader ([client-and-routing](docs/decisions/client-and-routing.md))
-- **Pure core** — `crafty-core` is I/O-free; ports & adapters ([architecture-style](docs/decisions/architecture-style.md))
+- **Pure core** — `trembita-core` is I/O-free; ports & adapters ([architecture-style](docs/decisions/architecture-style.md))
 - **Testable** — sim-first + E2E ([testing-strategy](docs/decisions/testing-strategy.md))
 
 ## Install
 
 ```toml
 [dependencies]
-crafty = "0.5"
+trembita = "0.5"
 ```
 
 Product apps: enable `http-jobs` for HTTP job routes and `dev-certs` for local QUIC without PEM files — see [getting-started](docs/getting-started.md).
@@ -135,26 +135,26 @@ Product apps: enable `http-jobs` for HTTP job routes and `dev-certs` for local Q
 
 | Crate | Purpose |
 |-------|---------|
-| [`crafty`](crates/crafty) | Facade — `CraftyApp` + `crafty::cluster` |
-| [`crafty-http`](crates/crafty-http) | Product HTTP (`POST /jobs/{stream}` → 202) |
-| [`crafty-core`](crates/crafty-core) | Pure Raft FSM + shard planners + reference [`kv`](crates/crafty-core/src/kv.rs) StateMachine |
-| [`crafty-proto`](crates/crafty-proto) | Wire types + codec |
-| [`crafty-storage`](crates/crafty-storage) | Durable log, snapshots |
-| [`crafty-net`](crates/crafty-net) | HTTP/3 / QUIC + mTLS |
-| [`crafty-actor`](crates/crafty-actor) | Runtime, registry, supervisor |
-| [`crafty-client`](crates/crafty-client) | Client, saga, keyed/batch APIs |
-| [`crafty-macros`](crates/crafty-macros) | Derive macros |
-| [`crafty-store-redis`](crates/crafty-store-redis) | Redis `ActorStateStore` |
-| [`crafty-dashboard`](crates/crafty-dashboard) | Admin + observability |
-| [`crafty-sim`](crates/crafty-sim) | Deterministic sim harness |
-| [`crafty-ops`](crates/crafty-ops) | Backup/restore CLI |
-| [`crafty-node`](crates/crafty-node) | Reference binary (repo/e2e only) |
+| [`trembita`](crates/trembita) | Facade — `TrembitaApp` + `trembita::cluster` |
+| [`trembita-http`](crates/trembita-http) | Product HTTP (`POST /jobs/{stream}` → 202) |
+| [`trembita-core`](crates/trembita-core) | Pure Raft FSM + shard planners + reference [`kv`](crates/trembita-core/src/kv.rs) StateMachine |
+| [`trembita-proto`](crates/trembita-proto) | Wire types + codec |
+| [`trembita-storage`](crates/trembita-storage) | Durable log, snapshots |
+| [`trembita-net`](crates/trembita-net) | HTTP/3 / QUIC + mTLS |
+| [`trembita-actor`](crates/trembita-actor) | Runtime, registry, supervisor |
+| [`trembita-client`](crates/trembita-client) | Client, saga, keyed/batch APIs |
+| [`trembita-macros`](crates/trembita-macros) | Derive macros |
+| [`trembita-store-redis`](crates/trembita-store-redis) | Redis `ActorStateStore` |
+| [`trembita-dashboard`](crates/trembita-dashboard) | Admin + observability |
+| [`trembita-sim`](crates/trembita-sim) | Deterministic sim harness |
+| [`trembita-ops`](crates/trembita-ops) | Backup/restore CLI |
+| [`trembita-node`](crates/trembita-node) | Reference binary (repo/e2e only) |
 
 ## Documentation map
 
 | Doc | When to read |
 |-----|----------------|
-| [docs/getting-started.md](docs/getting-started.md) | **Product app tutorial** (CraftyApp, no Redis) |
+| [docs/getting-started.md](docs/getting-started.md) | **Product app tutorial** (TrembitaApp, no Redis) |
 | [docs/scenarios/README.md](docs/scenarios/README.md) | **Four product scenarios** |
 | [docs/status.md](docs/status.md) | **Current capabilities and limits** |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | **How to contribute** (humans) |

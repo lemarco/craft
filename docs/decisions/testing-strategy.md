@@ -5,11 +5,11 @@
 
 ## Context
 
-crafty is a distributed consensus + actor framework: the hardest bugs are **timing- and partition-dependent** (split brain, lost commits, stale reads, migration races). Traditional "spin up containers and poke it" testing is slow, flaky, and finds these bugs rarely and non-reproducibly.
+trembita is a distributed consensus + actor framework: the hardest bugs are **timing- and partition-dependent** (split brain, lost commits, stale reads, migration races). Traditional "spin up containers and poke it" testing is slow, flaky, and finds these bugs rarely and non-reproducibly.
 
 Two design choices make a rigorous strategy cheap:
 
-1. **`crafty-core` is a pure FSM** (`RaftInput → RaftOutput`, no I/O). It can be driven by a deterministic, seeded scheduler.
+1. **`trembita-core` is a pure FSM** (`RaftInput → RaftOutput`, no I/O). It can be driven by a deterministic, seeded scheduler.
 2. **`Transport` is a trait** ([wire-protocol](wire-protocol.md)). An in-memory implementation can inject delay/drop/partition without real sockets.
 
 Together these let **deterministic simulation** be the primary bug-finder, with containers/E2E as a thin confidence layer.
@@ -25,7 +25,7 @@ Adopt a **testing pyramid** with deterministic simulation at its core.
 | **Unit** | pure functions, per crate | `cargo-nextest` | fast |
 | **Property** | Raft safety invariants (election safety, log matching, leader completeness, state-machine safety) | `proptest` | fast |
 | **Compile-fail** | macro misuse rejected with good errors | `trybuild` | fast |
-| **Deterministic simulation** ⭐ | whole cluster in one process, seeded/reproducible; partitions, delays, reorder, drops, join/leave, migrate, `scale_cluster` | **`crafty-sim`** (virtual clock + in-mem `Transport`) | fast |
+| **Deterministic simulation** ⭐ | whole cluster in one process, seeded/reproducible; partitions, delays, reorder, drops, join/leave, migrate, `scale_cluster` | **`trembita-sim`** (virtual clock + in-mem `Transport`) | fast |
 | **Linearizability** | client-visible history is linearizable | `porcupine`-style checker over sim histories | fast |
 | **Fuzz** | wire decoders (`postcard`) never panic / OOM | `cargo-fuzz` (libFuzzer) | nightly |
 | **Integration** | N nodes, **one process**, real loopback QUIC + mTLS | tokio async tests | fast |
@@ -38,7 +38,7 @@ Adopt a **testing pyramid** with deterministic simulation at its core.
 
 - **Determinism first.** Every sim test takes a **seed**; failures print the seed and replay identically. The bug matrix (partition topologies × timing) lives here — fast and reproducible.
 - **Containers are the thin top.** E2E validates the *real* wire (HTTP/3 QUIC), TLS handshake, cert loading, and process/OS boundaries — not consensus correctness. Keep E2E scenarios small: bootstrap, join, leave, migrate, one partition.
-- **Test containers only for real external services** (Redis now; Postgres later if added). Not for crafty nodes in the fast lane.
+- **Test containers only for real external services** (Redis now; Postgres later if added). Not for trembita nodes in the fast lane.
 - **Every fixed bug gets a regression test** at the lowest layer that reproduces it (usually a seeded sim case).
 - **No `sleep`-based synchronization** in deterministic tests; advance the virtual clock.
 
@@ -46,16 +46,16 @@ Adopt a **testing pyramid** with deterministic simulation at its core.
 
 | Crate | Primary layers |
 |-------|----------------|
-| `crafty-proto` | unit, fuzz (decode), property (roundtrip encode/decode) |
-| `crafty-core` | unit, **property**, driven by `crafty-sim` |
-| `crafty-storage` | unit, crash-recovery (kill mid-write, reopen) |
-| `crafty-net` | unit, integration (loopback QUIC + mTLS) |
-| `crafty-macros` | **trybuild** compile-pass/fail |
-| `crafty-actor` | integration, driven by `crafty-sim` (migrate/scale/deliver) |
-| `crafty-client` | integration (forward, leader-follow, retries) |
-| `crafty-store-redis` | **testcontainers** Redis integration |
-| `crafty-sim` | the harness itself + scenario suite |
-| `crafty` / `crafty-node` | E2E (docker-compose + chaos) |
+| `trembita-proto` | unit, fuzz (decode), property (roundtrip encode/decode) |
+| `trembita-core` | unit, **property**, driven by `trembita-sim` |
+| `trembita-storage` | unit, crash-recovery (kill mid-write, reopen) |
+| `trembita-net` | unit, integration (loopback QUIC + mTLS) |
+| `trembita-macros` | **trybuild** compile-pass/fail |
+| `trembita-actor` | integration, driven by `trembita-sim` (migrate/scale/deliver) |
+| `trembita-client` | integration (forward, leader-follow, retries) |
+| `trembita-store-redis` | **testcontainers** Redis integration |
+| `trembita-sim` | the harness itself + scenario suite |
+| `trembita` / `trembita-node` | E2E (docker-compose + chaos) |
 
 ### CI mapping ([library-and-publishing](library-and-publishing.md))
 
@@ -92,7 +92,7 @@ See [testing-coverage.md](../testing-coverage.md#ci-lane-mapping).
 
 **Negative**
 
-- `crafty-sim` is a real engineering investment (virtual clock, scheduler, fault injection)
+- `trembita-sim` is a real engineering investment (virtual clock, scheduler, fault injection)
 - Linearizability checker adds complexity
 - Two CI lanes (fast/nightly) to maintain; E2E chaos infra (docker-compose, pumba) to keep green
 

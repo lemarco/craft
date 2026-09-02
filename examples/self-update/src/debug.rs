@@ -5,15 +5,15 @@ use std::error::Error;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
 
-use crafty::cluster::{
+use trembita::cluster::{
     CertPaths, PemSecurity, Security, cert_paths_from_env,
 };
-use crafty::discovery::Seed;
-use crafty::net::PeerDirectory;
-use crafty::NodeId;
-use crafty_showcase_common::data_dir;
+use trembita::discovery::Seed;
+use trembita::net::PeerDirectory;
+use trembita::NodeId;
+use trembita_showcase_common::data_dir;
 
-const DATA_DIR_NAME: &str = "crafty-showcase-self-update";
+const DATA_DIR_NAME: &str = "trembita-showcase-self-update";
 
 /// Parsed node boot configuration.
 pub struct NodeConfig {
@@ -47,8 +47,8 @@ pub struct NodeConfig {
 
 pub fn init_tracing() {
     let filter = std::env::var("RUST_LOG")
-        .or_else(|_| std::env::var("CRAFTY_LOG"))
-        .unwrap_or_else(|_| "info,crafty=info".into());
+        .or_else(|_| std::env::var("TREMBITA_LOG"))
+        .unwrap_or_else(|_| "info,trembita=info".into());
     let _ = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .try_init();
@@ -56,11 +56,11 @@ pub fn init_tracing() {
 
 pub fn startup() {
     eprintln!(
-        "self-update showcase — upgrade-coordinator demo (CRAFTY_UPGRADE_DRY_RUN=1 skips exit)"
+        "self-update showcase — upgrade-coordinator demo (TREMBITA_UPGRADE_DRY_RUN=1 skips exit)"
     );
 }
 
-pub fn ready(cluster: &crafty::cluster::CraftyCluster<crafty::UpgradeMachine>) {
+pub fn ready(cluster: &trembita::cluster::TrembitaCluster<trembita::UpgradeMachine>) {
     eprintln!(
         "node {:?} ready — members {:?}",
         cluster.node_id(),
@@ -95,7 +95,7 @@ fn parse_peers(raw: &str) -> Result<(PeerDirectory, Vec<NodeId>), Box<dyn Error>
     for entry in raw.split(',').map(str::trim).filter(|e| !e.is_empty()) {
         let (id, addr) = entry
             .split_once('@')
-            .ok_or_else(|| format!("bad CRAFTY_PEERS entry {entry:?}"))?;
+            .ok_or_else(|| format!("bad TREMBITA_PEERS entry {entry:?}"))?;
         map.insert(NodeId(id.parse()?), resolve_addr(addr)?);
     }
     let members: Vec<NodeId> = map.keys().copied().collect();
@@ -121,9 +121,9 @@ fn load_security(
     joining: bool,
 ) -> Result<(Security, Option<CertPaths>), Box<dyn Error>> {
     match (
-        env("CRAFTY_NODE_CERT"),
-        env("CRAFTY_NODE_KEY"),
-        env("CRAFTY_CA_CERT"),
+        env("TREMBITA_NODE_CERT"),
+        env("TREMBITA_NODE_KEY"),
+        env("TREMBITA_CA_CERT"),
     ) {
         (Some(cert), Some(key), Some(ca)) => {
             let paths = cert_paths_from_env(cert, key, ca);
@@ -132,36 +132,36 @@ fn load_security(
         }
         (None, None, None) => {
             if members.len() > 1 || joining {
-                return Err("multi-node cluster requires CRAFTY_* cert env (see docs/certs.md)".into());
+                return Err("multi-node cluster requires TREMBITA_* cert env (see docs/certs.md)".into());
             }
-            let ca = crafty::net::tls::ClusterCa::generate()?;
+            let ca = trembita::net::tls::ClusterCa::generate()?;
             Ok((Security::dev(&ca, node_id)?, None))
         }
-        _ => Err("set all CRAFTY_NODE_CERT, CRAFTY_NODE_KEY, CRAFTY_CA_CERT or none for dev".into()),
+        _ => Err("set all TREMBITA_NODE_CERT, TREMBITA_NODE_KEY, TREMBITA_CA_CERT or none for dev".into()),
     }
 }
 
-/// Load configuration from standard `CRAFTY_*` environment variables.
+/// Load configuration from standard `TREMBITA_*` environment variables.
 pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
-    let node_id = NodeId(env("CRAFTY_NODE_ID").unwrap_or_else(|| "1".into()).parse()?);
-    let listen: SocketAddr = env("CRAFTY_LISTEN")
+    let node_id = NodeId(env("TREMBITA_NODE_ID").unwrap_or_else(|| "1".into()).parse()?);
+    let listen: SocketAddr = env("TREMBITA_LISTEN")
         .unwrap_or_else(|| "0.0.0.0:7443".into())
         .parse()?;
-    let admin = match env("CRAFTY_ADMIN").as_deref() {
+    let admin = match env("TREMBITA_ADMIN").as_deref() {
         Some("-") => None,
         Some(s) => Some(s.parse()?),
         None => Some("127.0.0.1:8080".parse()?),
     };
-    let gateway = env("CRAFTY_GATEWAY").map(|s| s.parse()).transpose()?;
-    let join_seeds = env("CRAFTY_JOIN_SEEDS")
+    let gateway = env("TREMBITA_GATEWAY").map(|s| s.parse()).transpose()?;
+    let join_seeds = env("TREMBITA_JOIN_SEEDS")
         .map(|s| parse_seeds(&s))
         .transpose()?
         .unwrap_or_default();
-    let (peers, members) = env("CRAFTY_PEERS")
+    let (peers, members) = env("TREMBITA_PEERS")
         .map(|s| parse_peers(&s))
         .transpose()?
         .unwrap_or_else(|| (PeerDirectory::new(), vec![node_id]));
-    let data_dir = env("CRAFTY_DATA_DIR")
+    let data_dir = env("TREMBITA_DATA_DIR")
         .map(PathBuf::from)
         .or_else(|| Some(data_dir(DATA_DIR_NAME)));
     let (security, pem_paths) = load_security(node_id, members.as_slice(), !join_seeds.is_empty())?;
@@ -172,9 +172,9 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
         gateway,
         members: members.to_vec(),
         join_seeds,
-        allow_join: env_bool("CRAFTY_ALLOW_JOIN"),
-        allow_leave: env_bool("CRAFTY_ALLOW_LEAVE"),
-        graceful_leave: env_bool("CRAFTY_GRACEFUL_LEAVE"),
+        allow_join: env_bool("TREMBITA_ALLOW_JOIN"),
+        allow_leave: env_bool("TREMBITA_ALLOW_LEAVE"),
+        graceful_leave: env_bool("TREMBITA_GRACEFUL_LEAVE"),
         data_dir,
         security,
         peers,

@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-05  
-**Amended:** 2026-07-05 — product name **crafty** (replaces `drafs`)
+**Amended:** 2026-07-05 — product name **trembita** (replaces `drafs`)
 
 ## Context
 
@@ -10,43 +10,43 @@ Repository: `distributive_raft_actor_system`. Crates need a unique, memorable na
 
 ## Decision
 
-**Product name: `crafty`.** Prefixed workspace crates **`crafty-*`** + facade crate **`crafty`**.
+**Product name: `trembita`.** Prefixed workspace crates **`trembita-*`** + facade crate **`trembita`**.
 
 | Name | Role |
 |------|------|
-| **crafty** | Product / project name |
-| **`crafty`** | Primary dependency — `CraftyApp` for product apps; `crafty::cluster` for custom SM / low-level control |
-| **`crafty-*`** | Internal workspace crates |
+| **trembita** | Product / project name |
+| **`trembita`** | Primary dependency — `TrembitaApp` for product apps; `trembita::cluster` for custom SM / low-level control |
+| **`trembita-*`** | Internal workspace crates |
 | **`distributive_raft_actor_system`** | Git repo folder (unchanged) |
 
 ### Crate map
 
 ```
 crates/
-├── crafty/              # facade — what most users depend on
-├── crafty-proto/
-├── crafty-core/
-├── crafty-storage/
-├── crafty-net/
-├── crafty-actor/
-├── crafty-client/
-├── crafty-macros/
-├── crafty-sim/
-└── crafty-node/         # optional reference binary
+├── trembita/              # facade — what most users depend on
+├── trembita-proto/
+├── trembita-core/
+├── trembita-storage/
+├── trembita-net/
+├── trembita-actor/
+├── trembita-client/
+├── trembita-macros/
+├── trembita-sim/
+└── trembita-node/         # optional reference binary
 ```
 
 ### User `Cargo.toml`
 
 ```toml
 [dependencies]
-crafty = { path = "../crafty" }   # or crates.io when published
-crafty-macros = { path = "../crafty-macros" }
+trembita = { path = "../trembita" }   # or crates.io when published
+trembita-macros = { path = "../trembita-macros" }
 ```
 
 ```rust
-use crafty::{CraftyApp, RunOpts};
-use crafty::cluster::{CraftyCluster, ResourceProfile};
-use crafty_macros::{UserActor, StateMachine};
+use trembita::{TrembitaApp, RunOpts};
+use trembita::cluster::{TrembitaCluster, ResourceProfile};
+use trembita_macros::{UserActor, StateMachine};
 ```
 
 ### Main cluster type
@@ -54,20 +54,20 @@ use crafty_macros::{UserActor, StateMachine};
 Public builder type renamed to match the product:
 
 ```rust
-CraftyCluster::builder()
+TrembitaCluster::builder()
     .node_id(1)
     .listen("0.0.0.0:7443")
     .spawn()
     .await?;
 ```
 
-(`RaftCluster` alias may exist temporarily for docs migration; **`CraftyCluster` is canonical**.)
+(`RaftCluster` alias may exist temporarily for docs migration; **`TrembitaCluster` is canonical**.)
 
-### Why `crafty`
+### Why `trembita`
 
 - Short, memorable, distinct from generic `raft-*`
-- Reads as a **framework you crafty applications with** — fits library-first embed model
-- Publish-ready prefix `crafty-*` without ecosystem collision
+- Reads as a **framework you trembita applications with** — fits library-first embed model
+- Publish-ready prefix `trembita-*` without ecosystem collision
 
 ### Rejected
 
@@ -78,8 +78,8 @@ CraftyCluster::builder()
 
 ## Consequences
 
-- **Positive:** Clear brand; single `crafty` import
-- **Negative:** Verify `crafty` availability on crates.io before publish (reserve or use org scope if taken)
+- **Positive:** Clear brand; single `trembita` import
+- **Negative:** Verify `trembita` availability on crates.io before publish (reserve or use org scope if taken)
 
 ## Related
 

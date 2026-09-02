@@ -4,9 +4,9 @@
 #   lefthook install
 #
 # Bypass:  LEFTHOOK=0 git commit|push …
-# Log:     CRAFTY_HOOK_LOG=1 git push
+# Log:     TREMBITA_HOOK_LOG=1 git push
 # Release: lefthook run pre-push --tags release
-# No autofix commit on push: CRAFTY_NO_AUTOFIX_COMMIT=1 git push
+# No autofix commit on push: TREMBITA_NO_AUTOFIX_COMMIT=1 git push
 
 min_version: '1.12.0'
 
@@ -41,7 +41,7 @@ pre-push:
   piped: true
   jobs:
     - name: autofix
-      run: CRAFTY_GATE_AUTOFIX=1 CRAFTY_AUTOFIX_COMMIT=1 bash scripts/gate-step.sh autofix
+      run: TREMBITA_GATE_AUTOFIX=1 TREMBITA_AUTOFIX_COMMIT=1 bash scripts/gate-step.sh autofix
 
     - name: fmt
       run: bash scripts/gate-step.sh fmt

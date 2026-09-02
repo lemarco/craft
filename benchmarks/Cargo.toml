@@ -5,7 +5,7 @@
 # Queue hotspot: `cargo bench --bench queue`, `SOAK_QUEUE_SECS=60 cargo run --release --bin soak_queue`.
 # Scenario soaks (B-10): `soak_actor_store`, `soak_saga`, `soak_session` — see docs/testing-coverage.md.
 [package]
-name = "crafty-benchmarks"
+name = "trembita-benchmarks"
 version = "0.0.0"
 edition = "2024"
 publish = false
@@ -13,13 +13,13 @@ publish = false
 [workspace]
 
 [dependencies]
-crafty-core = { path = "../crates/crafty-core" }
-crafty-storage = { path = "../crates/crafty-storage" }
-crafty-actor = { path = "../crates/crafty-actor" }
-crafty-proto = { path = "../crates/crafty-proto" }
-crafty-sim = { path = "../crates/crafty-sim" }
-crafty = { path = "../crates/crafty" }
-crafty-test-support = { path = "../crates/crafty-test-support", features = ["facade"] }
+trembita-core = { path = "../crates/trembita-core" }
+trembita-storage = { path = "../crates/trembita-storage" }
+trembita-actor = { path = "../crates/trembita-actor" }
+trembita-proto = { path = "../crates/trembita-proto" }
+trembita-sim = { path = "../crates/trembita-sim" }
+trembita = { path = "../crates/trembita" }
+trembita-test-support = { path = "../crates/trembita-test-support", features = ["facade"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 serde = { version = "1", features = ["derive"] }
 tempfile = "3"

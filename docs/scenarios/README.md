@@ -1,6 +1,6 @@
 # Product scenarios
 
-Guides for building on crafty **without mandatory Redis or Kubernetes**. Each scenario uses the same binary and `data_dir`; scale by adding VPSes ([deployment-model](../decisions/deployment-model.md)).
+Guides for building on trembita **without mandatory Redis or Kubernetes**. Each scenario uses the same binary and `data_dir`; scale by adding VPSes ([deployment-model](../decisions/deployment-model.md)).
 
 **Decision record:** [product-scenarios](../decisions/product-scenarios.md)  
 **Implementation backlog:** [backlog.md](../backlog.md)
@@ -78,6 +78,6 @@ E2E: `./e2e/queue.sh` (QUIC/mTLS, failover). Product HTTP/WS: [`examples/`](../.
 
 - [status.md](../status.md) — shipped vs deferred
 - [architecture.md](../architecture.md) — crate graph
-- [getting-started.md](../getting-started.md) — CraftyApp tutorial
+- [getting-started.md](../getting-started.md) — TrembitaApp tutorial
 - [ops/production-runbook.md](../ops/production-runbook.md) — VPS deployment checklist
 - [deployment-model](../decisions/deployment-model.md) — one binary, N VPS

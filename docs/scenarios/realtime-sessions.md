@@ -10,7 +10,7 @@
 - Client must hit the **same actor instance** for a period (in-memory state)
 - Gateway can sit behind a load balancer; workers run anywhere in cluster
 
-**Do not** require Redis for session stickiness — use [`ActorSession`](../../crates/crafty-actor/src/session.rs) ([actor-routing](../decisions/actor-routing.md)).
+**Do not** require Redis for session stickiness — use [`ActorSession`](../../crates/trembita-actor/src/session.rs) ([actor-routing](../decisions/actor-routing.md)).
 
 ## Architecture
 
@@ -44,7 +44,7 @@
 ### 1. Cluster + workers
 
 ```rust
-CraftyCluster::builder(node_id, machine)
+TrembitaCluster::builder(node_id, machine)
     .auto_workers([AutoWorkerSpec::new("chat", WorkerConfig::default())])
     .directory_policy(DirectoryPolicy::ReadYourWrites)  // optional: fresher directory
     .start_quic(...)
@@ -59,7 +59,7 @@ cluster.scale_cluster::<ChatWorker>("chat", node_count, config).await?;
 
 ### 2. Open sticky session
 
-From messaging / directory ([`ClusterMessaging`](../../crates/crafty-actor/src/messaging.rs)):
+From messaging / directory ([`ClusterMessaging`](../../crates/trembita-actor/src/messaging.rs)):
 
 ```rust
 use std::time::Duration;
@@ -97,15 +97,15 @@ Decision: [gateway-identity](../decisions/gateway-identity.md). Full example: [`
 use std::time::Duration;
 use axum::http::{HeaderMap, Method, Uri};
 use axum::{Router, extract::State, routing::get};
-use crafty::{
-    CraftyGatewayState, GatewayIdentity, GatewayOpts, GatewayRequest, SessionHandle, SessionKey,
+use trembita::{
+    TrembitaGatewayState, GatewayIdentity, GatewayOpts, GatewayRequest, SessionHandle, SessionKey,
 };
 
-// Your auth (JWT, cookie→DB, …) — crafty only calls extract().
+// Your auth (JWT, cookie→DB, …) — trembita only calls extract().
 struct AppIdentity { /* db, jwt, … */ }
 impl GatewayIdentity for AppIdentity {
     type Identity = UserId;
-    async fn extract(&self, req: &GatewayRequest<'_>) -> Result<UserId, crafty::IdentityError> {
+    async fn extract(&self, req: &GatewayRequest<'_>) -> Result<UserId, trembita::IdentityError> {
         /* … */
     }
 }
@@ -117,7 +117,7 @@ impl SessionKey for UserId {
 
 async fn ws(
     ws: WebSocketUpgrade,
-    State(state): State<CraftyGatewayState>,
+    State(state): State<TrembitaGatewayState>,
     method: Method,
     uri: Uri,
     headers: HeaderMap,
@@ -132,7 +132,7 @@ async fn ws(
     ws.on_upgrade(move |socket| async move {
         let _guard = state.track_connection();
         while let Some(Ok(Message::Text(text))) = socket.recv().await {
-            let payload = crafty::proto::encode(&text).unwrap();
+            let payload = trembita::proto::encode(&text).unwrap();
             let _ = handle.cast(payload).await;
             let _ = socket.send(Message::Text(format!("ok: {text}"))).await;
         }
@@ -140,17 +140,17 @@ async fn ws(
     .into_response()
 }
 
-CraftyApp::builder()
+TrembitaApp::builder()
     .gateway(GatewayOpts::new(addr).identity(AppIdentity { /* … */ }).routes(|state| {
         Router::new().route("/ws", get(ws)).with_state(state)
     }));
 ```
 
-Gateway does **not** hold conversation state — only the session handle ([`SessionHandle`](../../crates/crafty/src/gateway/session.rs)).
+Gateway does **not** hold conversation state — only the session handle ([`SessionHandle`](../../crates/trembita/src/gateway/session.rs)).
 
 ### 5. HTTP handlers (same identity)
 
-Use [`open_actor_session_parts`](../../crates/crafty/src/gateway/mod.rs) when the handler also extracts a JSON body; use [`open_actor_session_from`](../../crates/crafty/src/gateway/mod.rs) / [`extract_session_from`](../../crates/crafty/src/gateway/mod.rs) on plain GET handlers.
+Use [`open_actor_session_parts`](../../crates/trembita/src/gateway/mod.rs) when the handler also extracts a JSON body; use [`open_actor_session_from`](../../crates/trembita/src/gateway/mod.rs) / [`extract_session_from`](../../crates/trembita/src/gateway/mod.rs) on plain GET handlers.
 
 Showcases: [`examples/realtime/src/gateway_http.rs`](../../examples/realtime/src/gateway_http.rs) (`POST /chat`, `GET /me`), [`examples/stateful-workers/src/gateway_orders.rs`](../../examples/stateful-workers/src/gateway_orders.rs) (`POST /orders/submit` beside built-in `/actors/*`).
 
@@ -163,7 +163,7 @@ use axum::response::IntoResponse;
 struct ChatPost { message: String }
 
 async fn post_chat(
-    State(state): State<CraftyGatewayState>,
+    State(state): State<TrembitaGatewayState>,
     method: Method,
     uri: Uri,
     headers: HeaderMap,
@@ -176,7 +176,7 @@ async fn post_chat(
         Ok(h) => h,
         Err(e) => return e.into_response(),
     };
-    let payload = crafty::proto::encode(&body.message).unwrap();
+    let payload = trembita::proto::encode(&body.message).unwrap();
     match handle.cast(payload).await {
         Ok(()) => Json(json!({ "ok": true })).into_response(),
         Err(e) => (StatusCode::BAD_GATEWAY, e.to_string()).into_response(),
@@ -184,7 +184,7 @@ async fn post_chat(
 }
 
 async fn get_me(
-    State(state): State<CraftyGatewayState>,
+    State(state): State<TrembitaGatewayState>,
     method: Method,
     uri: Uri,
     headers: HeaderMap,
@@ -199,7 +199,7 @@ async fn get_me(
 }
 ```
 
-Integration tests: [`crafty/tests/gateway_http.rs`](../../crates/crafty/tests/gateway_http.rs).
+Integration tests: [`trembita/tests/gateway_http.rs`](../../crates/trembita/tests/gateway_http.rs).
 
 ## Consistency choices
 
@@ -239,13 +239,13 @@ See [read-consistency](../decisions/client-and-routing.md#read-consistency).
 
 | Asset | Purpose |
 |-------|---------|
-| `crafty-actor/tests/messaging.rs` — `cast_session` | ✅ |
+| `trembita-actor/tests/messaging.rs` — `cast_session` | ✅ |
 | [`examples/realtime/`](../../examples/realtime/) | WebSocket + `ActorSession` showcase |
-| `crafty/tests/http_actors.rs` | HTTP cast/ask on gateway |
+| `trembita/tests/http_actors.rs` | HTTP cast/ask on gateway |
 
 ## Future polish
 
-Gateway auth: [`GatewayBearerIdentity`](../../crates/crafty/src/gateway/identity.rs) + [`.protect_product_apis(true)`](../../crates/crafty/src/gateway/mod.rs) on [`GatewayOpts`](../../crates/crafty/src/gateway/mod.rs). Custom routes use the same identity via [`CraftyGatewayState::open_actor_session_parts`](../../crates/crafty/src/gateway/mod.rs). See [`examples/realtime/`](../../examples/realtime/).
+Gateway auth: [`GatewayBearerIdentity`](../../crates/trembita/src/gateway/identity.rs) + [`.protect_product_apis(true)`](../../crates/trembita/src/gateway/mod.rs) on [`GatewayOpts`](../../crates/trembita/src/gateway/mod.rs). Custom routes use the same identity via [`TrembitaGatewayState::open_actor_session_parts`](../../crates/trembita/src/gateway/mod.rs). See [`examples/realtime/`](../../examples/realtime/).
 
 ## Related
 

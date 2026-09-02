@@ -17,9 +17,9 @@ cursors. See [event-topics](../decisions/event-topics.md).
 
 ```rust
 use std::time::Duration;
-use crafty::{TopicOpts, CraftyAppBuilder, TopicContext};
+use trembita::{TopicOpts, TrembitaAppBuilder, TopicContext};
 
-CraftyAppBuilder::new()
+TrembitaAppBuilder::new()
     .data_dir("/var/lib/myapp")
     .topics([TopicOpts::topic("platform.events")
         .lease(Duration::from_secs(300))
@@ -36,7 +36,7 @@ app.publish("platform.events", postcard::to_allocvec(&event)?).await?;
 ## Subscribe
 
 ```rust
-#[crafty::consumer("platform.events", subscription = "analytics")]
+#[trembita::consumer("platform.events", subscription = "analytics")]
 async fn track(payload: &[u8], ctx: TopicContext<'_>) -> Result<(), MyError> {
     if ctx.is_redelivery() {
         // at-least-once — handler must be idempotent
@@ -64,4 +64,4 @@ Call `EventTopic::metrics()` (cluster client or local redb) for:
 ## Leader failover
 
 Topic mutations replicate to voters before the leader acks. After election, the new leader
-continues from replicated cursors (see `crafty-actor/tests/topic_failover.rs`).
+continues from replicated cursors (see `trembita-actor/tests/topic_failover.rs`).

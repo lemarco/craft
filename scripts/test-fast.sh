@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Fast local test path — default workspace members (skips crafty-ops / e2e / redis),
+# Fast local test path — default workspace members (skips trembita-ops / e2e / redis),
 # nextest when available, no redundant cargo check phase.
 #
 # Usage:
 #   ./scripts/test-fast.sh                           # default-members, nextest profile=fast
 #   ./scripts/test-heavy.sh                          # all tests + 250-case proptest
-#   CRAFTY_ALL_FEATURES=1 ./scripts/test-fast.sh      # enable json-wire etc.
-#   ./scripts/test-fast.sh -p crafty-actor group_rebalance
+#   TREMBITA_ALL_FEATURES=1 ./scripts/test-fast.sh      # enable json-wire etc.
+#   ./scripts/test-fast.sh -p trembita-actor group_rebalance
 #   ./scripts/test-fast.sh --workspace               # full workspace (same as test-with-log)
-#   CRAFTY_FORCE_CHECK=1 ./scripts/test-fast.sh -p crafty
+#   TREMBITA_FORCE_CHECK=1 ./scripts/test-fast.sh -p trembita
 #
 # For CI parity / pre-push: ./scripts/test-with-log.sh --workspace --all-features
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-LOG="${CRAFTY_TEST_LOG:-target/test-run.log}"
+LOG="${TREMBITA_TEST_LOG:-target/test-run.log}"
 mkdir -p target
 
 log() {
@@ -33,10 +33,10 @@ fi
 export CARGO_LOG="${CARGO_LOG:-cargo::core=info}"
 
 if [[ $# -eq 0 ]]; then
-  # default-members only — omits crafty-ops, crafty-e2e-client, crafty-store-redis,
-  # crafty-dashboard, crafty-node
+  # default-members only — omits trembita-ops, trembita-e2e-client, trembita-store-redis,
+  # trembita-dashboard, trembita-node
   CARGO_ARGS=()
-  if [[ -n "${CRAFTY_ALL_FEATURES:-}" ]]; then
+  if [[ -n "${TREMBITA_ALL_FEATURES:-}" ]]; then
     CARGO_ARGS+=(--all-features)
   fi
 else
@@ -44,7 +44,7 @@ else
 fi
 
 # Optional compile gate (off by default — nextest/cargo test fail fast on compile errors).
-if [[ -n "${CRAFTY_FORCE_CHECK:-}" ]]; then
+if [[ -n "${TREMBITA_FORCE_CHECK:-}" ]]; then
   log "=== phase 1: cargo check ==="
   set +e
   cargo check "${CARGO_ARGS[@]}" 2>&1 | tee -a "$LOG"

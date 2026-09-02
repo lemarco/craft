@@ -1,7 +1,7 @@
 # Backup and restore runbook
 
-Operational guide for snapshotting a crafty node's on-disk Raft layout and
-restoring it after failure or migration. Uses the [`crafty-ops`](../../crates/crafty-ops/)
+Operational guide for snapshotting a trembita node's on-disk Raft layout and
+restoring it after failure or migration. Uses the [`trembita-ops`](../../crates/trembita-ops/)
 CLI for snapshot backup/restore ([multi-raft](../decisions/multi-raft.md#production-reliability)).
 
 ## When to use
@@ -19,7 +19,7 @@ the committed voter set or join via `/cluster/join`.
 Multi-group clusters store one Redb file per Raft group:
 
 ```text
-/data/crafty/
+/data/trembita/
   group-meta.redb # Meta-Raft coordinator (multi-Raft only)
   group-0.redb    # user raft group 0
   group-1.redb
@@ -34,20 +34,20 @@ Single-group nodes use only `group-0.redb`.
 corruption):
 
 ```bash
-crafty-ops backup export \
-  --data-dir /var/lib/crafty/data \
-  --archive /tmp/crafty-backup.tar.gz
+trembita-ops backup export \
+  --data-dir /var/lib/trembita/data \
+  --archive /tmp/trembita-backup.tar.gz
 ```
 
 **Restore** on a fresh machine:
 
 ```bash
-crafty-ops backup import \
-  --data-dir /var/lib/crafty/data \
-  --archive /tmp/crafty-backup.tar.gz
+trembita-ops backup import \
+  --data-dir /var/lib/trembita/data \
+  --archive /tmp/trembita-backup.tar.gz
 ```
 
-Then start `crafty-node` with the same `CRAFTY_NODE_ID`, peers, and certs as
+Then start `trembita-node` with the same `TREMBITA_NODE_ID`, peers, and certs as
 before the outage.
 
 ## Object storage (S3 / GCS)
@@ -55,17 +55,17 @@ before the outage.
 Push after export:
 
 ```bash
-crafty-ops backup push \
-  --archive /tmp/crafty-backup.tar.gz \
-  --dest s3://my-bucket/crafty/node-2/2026-08-27.tar.gz
+trembita-ops backup push \
+  --archive /tmp/trembita-backup.tar.gz \
+  --dest s3://my-bucket/trembita/node-2/2026-08-27.tar.gz
 ```
 
 Pull before import:
 
 ```bash
-crafty-ops backup pull \
-  --src s3://my-bucket/crafty/node-2/2026-08-27.tar.gz \
-  --archive /tmp/crafty-backup.tar.gz
+trembita-ops backup pull \
+  --src s3://my-bucket/trembita/node-2/2026-08-27.tar.gz \
+  --archive /tmp/trembita-backup.tar.gz
 ```
 
 GCS uses the same URI shape: `gs://bucket/key`. Local smoke tests use
@@ -76,7 +76,7 @@ No vault integration — inject secrets via your orchestrator.
 
 ## Verification checklist
 
-1. Stop the node (`systemctl stop crafty-node` or container exit).
+1. Stop the node (`systemctl stop trembita-node` or container exit).
 2. Export → push to object storage.
 3. On a staging host: pull → import → start with matching identity.
 4. Confirm `/ready` is `200`, `/introspect/cluster` shows expected `commit_index`.

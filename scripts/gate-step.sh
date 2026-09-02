@@ -20,8 +20,8 @@ log() { printf '[%s] >> %s\n' "$(date -Is)" "$*" >&2; }
 
 # Avoid block-buffering when lefthook captures stdout (spinner hides partial output).
 run_cmd() {
-  if [[ -n "${CRAFTY_HOOK_LOG:-}" ]]; then
-    "$@" 2>&1 | tee -a "${CRAFTY_TEST_LOG:-target/test-run.log}"
+  if [[ -n "${TREMBITA_HOOK_LOG:-}" ]]; then
+    "$@" 2>&1 | tee -a "${TREMBITA_TEST_LOG:-target/test-run.log}"
   elif command -v stdbuf >/dev/null 2>&1; then
     stdbuf -oL -eL "$@"
   else
@@ -30,7 +30,7 @@ run_cmd() {
 }
 
 maybe_disk_prune() {
-  if [[ "${CRAFTY_CI_DISK_PRUNE:-0}" == "1" ]]; then
+  if [[ "${TREMBITA_CI_DISK_PRUNE:-0}" == "1" ]]; then
     bash scripts/ci-disk-prune.sh
   fi
 }
@@ -43,13 +43,13 @@ fi
 
 case "$STEP" in
   autofix)
-    [[ "${CRAFTY_GATE_AUTOFIX:-0}" == "1" ]] || exit 0
+    [[ "${TREMBITA_GATE_AUTOFIX:-0}" == "1" ]] || exit 0
     log "autofix (fmt + clippy --fix)"
     run_cmd bash scripts/gate-autofix.sh --stage
-    if [[ "${CRAFTY_NO_AUTOFIX_COMMIT:-0}" == "1" ]]; then
+    if [[ "${TREMBITA_NO_AUTOFIX_COMMIT:-0}" == "1" ]]; then
       exit 0
     fi
-    if [[ "${CRAFTY_AUTOFIX_COMMIT:-0}" == "1" ]] && ! git diff --cached --quiet; then
+    if [[ "${TREMBITA_AUTOFIX_COMMIT:-0}" == "1" ]] && ! git diff --cached --quiet; then
       log "autofix commit"
       git commit -m "chore: apply fmt/clippy autofix"
     fi
@@ -98,7 +98,7 @@ case "$STEP" in
     ;;
   showcase)
     log "showcase common + client"
-    run_cmd cargo check -p crafty-showcase-common -p crafty-showcase-client
+    run_cmd cargo check -p trembita-showcase-common -p trembita-showcase-client
     ;;
   msrv)
     log "msrv"

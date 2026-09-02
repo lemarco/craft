@@ -1,4 +1,4 @@
-# Self-hosted GitLab Runner for crafty CI (docker executor, host Docker socket).
+# Self-hosted GitLab Runner for trembita CI (docker executor, host Docker socket).
 #
 #   cp .env.example .env   # set GITLAB_RUNNER_TOKEN
 #   ./register.sh
@@ -7,7 +7,7 @@
 services:
   gitlab-runner:
     image: gitlab/gitlab-runner:latest
-    container_name: crafty-gitlab-runner
+    container_name: trembita-gitlab-runner
     restart: unless-stopped
     volumes:
       - ./config:/etc/gitlab-runner

@@ -54,7 +54,7 @@ do_publish() {
     ./scripts/publish-workspace.sh "$version"
     echo ">> updating docs for published release…"
     ./scripts/post-publish-docs.sh "$version"
-    echo "OK: published crafty v$version."
+    echo "OK: published trembita v$version."
 }
 
 commit_post_publish_docs() {
@@ -63,7 +63,7 @@ commit_post_publish_docs() {
         return 0
     fi
     git add README.md docs/status.md
-    git commit -m "docs: mark crafty v${version} published on crates.io"
+    git commit -m "docs: mark trembita v${version} published on crates.io"
 }
 
 push_release() {
@@ -80,7 +80,7 @@ set_version() {
     tmp="$(mktemp)"
     awk -v old="$old" -v ver="$version" '
         $0 == "version = \"" old "\"" { print "version = \"" ver "\""; next }
-        /^crafty[a-z0-9-]* = / {
+        /^trembita[a-z0-9-]* = / {
             gsub("version = \"" old "\"", "version = \"" ver "\""); print; next
         }
         { print }
@@ -128,10 +128,10 @@ prepare_release() {
     if git diff --cached --quiet; then
         echo ">> no manifest changes; tagging current HEAD"
     else
-        git commit -m "chore(release): crafty v$version"
+        git commit -m "chore(release): trembita v$version"
     fi
 
-    git tag -a "v$version" -m "crafty v$version"
+    git tag -a "v$version" -m "trembita v$version"
     echo ">> tagged v$version"
 }
 
@@ -203,6 +203,6 @@ if [ "$PUSH" = "1" ]; then
 elif [ "$PUBLISH" = "1" ]; then
     echo ">> tip: git push && git push origin v$VERSION (or omit --no-push next time)"
 else
-    echo "OK: prepared crafty v$VERSION."
+    echo "OK: prepared trembita v$VERSION."
     echo "  ./scripts/release.sh $VERSION --publish-only"
 fi

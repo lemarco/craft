@@ -16,7 +16,7 @@ use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crafty::actor::{MessageDecodeError, UserActor, actor, store_get, store_set};
+use trembita::actor::{MessageDecodeError, UserActor, actor, store_get, store_set};
 use serde::{Deserialize, Serialize};
 
 /// Marker stored under `order:{id}` — presence means "already handled".
@@ -32,7 +32,7 @@ pub struct ProcessorCfg {
 }
 
 pub struct OrderProcessor {
-    store: Arc<dyn crafty::actor::ActorStateStore>,
+    store: Arc<dyn trembita::actor::ActorStateStore>,
 }
 
 #[derive(Debug)]
@@ -51,7 +51,7 @@ impl UserActor for OrderProcessor {
     type Error = ProcessorErr;
 
     fn decode_message(payload: &[u8]) -> Result<Self::Message, MessageDecodeError> {
-        crafty::proto::decode(payload).or_else(|_| {
+        trembita::proto::decode(payload).or_else(|_| {
             std::str::from_utf8(payload)
                 .map(|s| s.to_string())
                 .map_err(|e| MessageDecodeError::Decode(e.to_string()))
@@ -60,8 +60,8 @@ impl UserActor for OrderProcessor {
 
     fn start(cfg: Self::Config) -> Result<Self, Self::Error> {
         std::fs::create_dir_all(&cfg.data_dir).map_err(|_| ProcessorErr)?;
-        // redb file colocated with node's CRAFTY_DATA_DIR — survives process restart.
-        let store = crafty_actor::RedbActorStateStore::open(&cfg.data_dir.join("actor-store.redb"))
+        // redb file colocated with node's TREMBITA_DATA_DIR — survives process restart.
+        let store = trembita_actor::RedbActorStateStore::open(&cfg.data_dir.join("actor-store.redb"))
             .map_err(|_| ProcessorErr)?;
         Ok(Self {
             store: Arc::new(store),
@@ -81,7 +81,7 @@ impl UserActor for OrderProcessor {
             crate::debug::order_handle(order_id, true);
             println!(
                 "[orders node {}] order {order_id}: idempotent skip (already in store)",
-                env::var("CRAFTY_NODE_ID").unwrap_or_else(|_| "?".into())
+                env::var("TREMBITA_NODE_ID").unwrap_or_else(|_| "?".into())
             );
             return Ok(());
         }
@@ -99,7 +99,7 @@ impl UserActor for OrderProcessor {
         crate::debug::order_handle(order_id, false);
         println!(
             "[orders node {}] order {order_id}: processed → ActorStateStore",
-            env::var("CRAFTY_NODE_ID").unwrap_or_else(|_| "?".into())
+            env::var("TREMBITA_NODE_ID").unwrap_or_else(|_| "?".into())
         );
         Ok(())
     }

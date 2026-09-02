@@ -3,11 +3,11 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use crafty::ActorGroupOpts;
-use crafty::CraftyApp;
-use crafty::actor::{UserActor, actor};
-use crafty::client::{Client, ClientError, KeyedClient, RemoteClient, SagaOutcome, SagaPlan, SagaError};
-use crafty::proto::{decode, encode};
+use trembita::ActorGroupOpts;
+use trembita::TrembitaApp;
+use trembita::actor::{UserActor, actor};
+use trembita::client::{Client, ClientError, KeyedClient, RemoteClient, SagaOutcome, SagaPlan, SagaError};
+use trembita::proto::{decode, encode};
 use serde::{Deserialize, Serialize};
 
 /// Side-effect payload encoded in saga step commands (not Raft domain data).
@@ -98,13 +98,13 @@ impl UserActor for OnboardingWorker {
 /// Routes saga step commands to onboarding actors, then checkpoints in the journal via `()`.
 pub struct OnboardingWorkflowClient {
     inner: Arc<RemoteClient>,
-    app: Arc<CraftyApp>,
+    app: Arc<TrembitaApp>,
 }
 
 impl OnboardingWorkflowClient {
     /// Build a client that executes onboarding side effects then proposes coordination markers.
     #[must_use]
-    pub fn new(app: Arc<CraftyApp>) -> Self {
+    pub fn new(app: Arc<TrembitaApp>) -> Self {
         Self {
             inner: app.keyed_client(),
             app,
@@ -144,7 +144,7 @@ impl KeyedClient for OnboardingWorkflowClient {
 }
 
 /// Default runner: onboarding client + Meta-Raft journal.
-pub async fn run_onboarding_plan(app: Arc<CraftyApp>, plan: SagaPlan) -> Result<SagaOutcome, SagaError> {
+pub async fn run_onboarding_plan(app: Arc<TrembitaApp>, plan: SagaPlan) -> Result<SagaOutcome, SagaError> {
     let client = OnboardingWorkflowClient::new(Arc::clone(&app));
     app.run_workflow(&client, &plan).await
 }
@@ -152,7 +152,7 @@ pub async fn run_onboarding_plan(app: Arc<CraftyApp>, plan: SagaPlan) -> Result<
 /// Resume onboarding workflow after partial progress.
 #[allow(dead_code)]
 pub async fn resume_onboarding_plan(
-    app: Arc<CraftyApp>,
+    app: Arc<TrembitaApp>,
     plan: SagaPlan,
 ) -> Result<SagaOutcome, SagaError> {
     let client = OnboardingWorkflowClient::new(Arc::clone(&app));
@@ -171,7 +171,7 @@ pub fn user_from_saga(saga_id: &str) -> String {
 pub fn build_plan(saga_id: &str) -> SagaPlan {
     let user_id = user_from_saga(saga_id);
     let key = user_id.as_bytes().to_vec();
-    crafty::WorkflowBuilder::new(saga_id)
+    trembita::WorkflowBuilder::new(saga_id)
         .step(
             "create_account",
             &key,
@@ -200,6 +200,6 @@ pub fn build_plan(saga_id: &str) -> SagaPlan {
         .expect("valid workflow")
 }
 
-pub fn apply_workers(builder: crafty::CraftyAppBuilder) -> crafty::CraftyAppBuilder {
+pub fn apply_workers(builder: trembita::TrembitaAppBuilder) -> trembita::TrembitaAppBuilder {
     builder.actors::<OnboardingWorker>("onboarding", ActorGroupOpts::fixed((), 1))
 }

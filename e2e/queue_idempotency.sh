@@ -8,6 +8,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo "running queue idempotency integration tests…"
-./scripts/test-fast.sh -p crafty --test consumer_idempotency -- --nocapture
-./scripts/test-fast.sh -p crafty --test queue dedup_key_survives_leader_failover
+./scripts/test-fast.sh -p trembita --test consumer_idempotency -- --nocapture
+./scripts/test-fast.sh -p trembita --test queue dedup_key_survives_leader_failover
 echo "QUEUE IDEMPOTENCY OK ✓"

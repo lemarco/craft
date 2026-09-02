@@ -12,9 +12,9 @@ x-showcase-build: &showcase-build
     dockerfile: examples/stateful-workers/Dockerfile
 
 x-node-env: &node-env
-  CRAFTY_PEERS: "1@node1:7643,2@node2:7653,3@node3:7663"
-  CRAFTY_CA_CERT: /certs/ca.pem
-  RUST_LOG: info,showcase=debug,crafty=info,crafty_net=warn
+  TREMBITA_PEERS: "1@node1:7643,2@node2:7653,3@node3:7663"
+  TREMBITA_CA_CERT: /certs/ca.pem
+  RUST_LOG: info,showcase=debug,trembita=info,trembita_net=warn
 
 services:
   certgen:
@@ -41,13 +41,13 @@ services:
         condition: service_completed_successfully
     environment:
       <<: *node-env
-      CRAFTY_NODE_ID: "1"
-      CRAFTY_LISTEN: 0.0.0.0:7643
-      CRAFTY_ADMIN: 0.0.0.0:9280
-      CRAFTY_GATEWAY: 0.0.0.0:8190
-      CRAFTY_NODE_CERT: /certs/node-1.pem
-      CRAFTY_NODE_KEY: /certs/node-1.key
-      CRAFTY_DATA_DIR: /data
+      TREMBITA_NODE_ID: "1"
+      TREMBITA_LISTEN: 0.0.0.0:7643
+      TREMBITA_ADMIN: 0.0.0.0:9280
+      TREMBITA_GATEWAY: 0.0.0.0:8190
+      TREMBITA_NODE_CERT: /certs/node-1.pem
+      TREMBITA_NODE_KEY: /certs/node-1.key
+      TREMBITA_DATA_DIR: /data
     volumes:
       - certs:/certs
       - node1-data:/data
@@ -62,13 +62,13 @@ services:
         condition: service_completed_successfully
     environment:
       <<: *node-env
-      CRAFTY_NODE_ID: "2"
-      CRAFTY_LISTEN: 0.0.0.0:7653
-      CRAFTY_ADMIN: 0.0.0.0:9281
-      CRAFTY_GATEWAY: 0.0.0.0:8191
-      CRAFTY_NODE_CERT: /certs/node-2.pem
-      CRAFTY_NODE_KEY: /certs/node-2.key
-      CRAFTY_DATA_DIR: /data
+      TREMBITA_NODE_ID: "2"
+      TREMBITA_LISTEN: 0.0.0.0:7653
+      TREMBITA_ADMIN: 0.0.0.0:9281
+      TREMBITA_GATEWAY: 0.0.0.0:8191
+      TREMBITA_NODE_CERT: /certs/node-2.pem
+      TREMBITA_NODE_KEY: /certs/node-2.key
+      TREMBITA_DATA_DIR: /data
     volumes:
       - certs:/certs
       - node2-data:/data
@@ -83,13 +83,13 @@ services:
         condition: service_completed_successfully
     environment:
       <<: *node-env
-      CRAFTY_NODE_ID: "3"
-      CRAFTY_LISTEN: 0.0.0.0:7663
-      CRAFTY_ADMIN: 0.0.0.0:9282
-      CRAFTY_GATEWAY: 0.0.0.0:8192
-      CRAFTY_NODE_CERT: /certs/node-3.pem
-      CRAFTY_NODE_KEY: /certs/node-3.key
-      CRAFTY_DATA_DIR: /data
+      TREMBITA_NODE_ID: "3"
+      TREMBITA_LISTEN: 0.0.0.0:7663
+      TREMBITA_ADMIN: 0.0.0.0:9282
+      TREMBITA_GATEWAY: 0.0.0.0:8192
+      TREMBITA_NODE_CERT: /certs/node-3.pem
+      TREMBITA_NODE_KEY: /certs/node-3.key
+      TREMBITA_DATA_DIR: /data
     volumes:
       - certs:/certs
       - node3-data:/data

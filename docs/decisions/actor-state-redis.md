@@ -1,8 +1,8 @@
 # Stateful actors — external store (Redis)
 
 > **Product default (2026-08-28):** embedded **redb** via [`ActorStateStore`](actor-state-store.md) —
-> no mandatory Redis. This record remains for the **optional** `crafty-store-redis` adapter and
-> integration with non-crafty services. Scenario guides: [stateful-workers](../scenarios/stateful-workers.md).
+> no mandatory Redis. This record remains for the **optional** `trembita-store-redis` adapter and
+> integration with non-trembita services. Scenario guides: [stateful-workers](../scenarios/stateful-workers.md).
 
 **Status:** Accepted (optional adapter path)  
 **Date:** 2026-07-05  
@@ -27,18 +27,18 @@ Options considered: document-only, Raft log snapshots, hybrid. User chose **exte
 
 ### Redis as default recommendation
 
-Redis fits crafty’s VPS model:
+Redis fits trembita’s VPS model:
 
 - Survives **node crash** — new worker on any VPS reads same keys
 - Fast read/write for actor `handle` loops
 - TTL, pub/sub, locks (Redlock patterns) for distributed workers
-- User operates Redis HA (Sentinel/Cluster) — **outside** crafty core
+- User operates Redis HA (Sentinel/Cluster) — **outside** trembita core
 
 Other backends may implement the same trait (PostgreSQL, Valkey, etc.).
 
 ### Framework surface
 
-Optional crate **`crafty-store`** (or module in `crafty-actor`):
+Optional crate **`trembita-store`** (or module in `trembita-actor`):
 
 ```rust
 #[async_trait]
@@ -50,7 +50,7 @@ pub trait ActorStateStore: Send + Sync {
 }
 
 // User-facing builder
-CraftyCluster::builder()
+TrembitaCluster::builder()
     .actor_state_store(RedisStore::new(redis_url)?)
     .auto_workers([...])
 ```
@@ -88,7 +88,7 @@ Raft `migration_snapshot` remains for **small hot buffers**; **Redis is source o
 ### What Redis is not
 
 - **Not** a replacement for Raft `StateMachine` for consensus data
-- **Not** managed by crafty — user provisions Redis (single instance dev, HA prod)
+- **Not** managed by trembita — user provisions Redis (single instance dev, HA prod)
 - **Not** linearizable with Raft reads unless user designs transactions carefully
 
 ### v1 scope
@@ -96,10 +96,10 @@ Raft `migration_snapshot` remains for **small hot buffers**; **Redis is source o
 | In v1 | Deferred |
 |-------|----------|
 | `ActorStateStore` trait | Built-in PostgreSQL impl |
-| **`crafty-store-redis`** example impl (`redis` / `fred` crate) | Redis Cluster auto-discovery |
+| **`trembita-store-redis`** example impl (`redis` / `fred` crate) | Redis Cluster auto-discovery |
 | Docs + example worker using Redis | Framework-hosted Redis |
 
-Core crafty **works without Redis** — stateless actors + Raft SM only. Redis is **recommended pattern** for stateful actors.
+Core trembita **works without Redis** — stateless actors + Raft SM only. Redis is **recommended pattern** for stateful actors.
 
 ## Consequences
 
@@ -107,7 +107,7 @@ Core crafty **works without Redis** — stateless actors + Raft SM only. Redis i
 
 - Clear durability story on crash without Raft log pollution
 - Natural fit with 1 worker/VPS + cross-node workers
-- Users know Redis ops; crafty stays focused
+- Users know Redis ops; trembita stays focused
 
 **Negative**
 

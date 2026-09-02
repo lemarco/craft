@@ -1,13 +1,13 @@
-# step-ca reference + 3-node crafty cluster (cert-automation)
+# step-ca reference + 3-node trembita cluster (cert-automation)
 #
 # Quick start:
 #   cd dev/step-ca
 #   ./bootstrap.sh                 # mint certs/ via generate.sh
-#   docker compose up --build      # 3 crafty-node containers + optional step-ca
+#   docker compose up --build      # 3 trembita-node containers + optional step-ca
 #
-# Hot reload: reissue a node cert, then SIGHUP or wait for CRAFTY_CERT_WATCH_SECS:
+# Hot reload: reissue a node cert, then SIGHUP or wait for TREMBITA_CERT_WATCH_SECS:
 #   ./../certs/generate.sh --node-id 1 --out ./certs --ca ./certs/ca.pem --ca-key ./certs/ca.key
-#   docker compose kill -s HUP crafty-1
+#   docker compose kill -s HUP trembita-1
 #
 # Full step-ca ACME/JWK issuance is documented in docs/certs.md — initialize
 # step-ca separately, then replace bootstrap with `step ca certificate …`.
@@ -22,66 +22,66 @@ services:
       - step-ca-data:/home/step
     # Initialize out-of-band: https://smallstep.com/docs/step-ca/installation/
 
-  crafty-1:
+  trembita-1:
     build:
       context: ../..
       dockerfile: deploy/Dockerfile
-    image: crafty-node:step-ca-demo
-    hostname: crafty-1
+    image: trembita-node:step-ca-demo
+    hostname: trembita-1
     environment:
-      CRAFTY_NODE_ID: "1"
-      CRAFTY_LISTEN: "0.0.0.0:7443"
-      CRAFTY_ADMIN: "0.0.0.0:8080"
-      CRAFTY_PEERS: "1@crafty-1:7443,2@crafty-2:7443,3@crafty-3:7443"
-      CRAFTY_NODE_CERT: /etc/crafty/node.pem
-      CRAFTY_NODE_KEY: /etc/crafty/node.key
-      CRAFTY_CA_CERT: /etc/crafty/ca.pem
-      CRAFTY_CERT_WATCH_SECS: "30"
+      TREMBITA_NODE_ID: "1"
+      TREMBITA_LISTEN: "0.0.0.0:7443"
+      TREMBITA_ADMIN: "0.0.0.0:8080"
+      TREMBITA_PEERS: "1@trembita-1:7443,2@trembita-2:7443,3@trembita-3:7443"
+      TREMBITA_NODE_CERT: /etc/trembita/node.pem
+      TREMBITA_NODE_KEY: /etc/trembita/node.key
+      TREMBITA_CA_CERT: /etc/trembita/ca.pem
+      TREMBITA_CERT_WATCH_SECS: "30"
     volumes:
-      - ./certs/node-1.pem:/etc/crafty/node.pem
-      - ./certs/node-1.key:/etc/crafty/node.key
-      - ./certs/ca.pem:/etc/crafty/ca.pem
+      - ./certs/node-1.pem:/etc/trembita/node.pem
+      - ./certs/node-1.key:/etc/trembita/node.key
+      - ./certs/ca.pem:/etc/trembita/ca.pem
     ports:
       - "7441:7443/udp"
       - "8081:8080"
 
-  crafty-2:
-    image: crafty-node:step-ca-demo
-    hostname: crafty-2
+  trembita-2:
+    image: trembita-node:step-ca-demo
+    hostname: trembita-2
     depends_on:
-      - crafty-1
+      - trembita-1
     environment:
-      CRAFTY_NODE_ID: "2"
-      CRAFTY_LISTEN: "0.0.0.0:7443"
-      CRAFTY_ADMIN: "0.0.0.0:8080"
-      CRAFTY_PEERS: "1@crafty-1:7443,2@crafty-2:7443,3@crafty-3:7443"
-      CRAFTY_NODE_CERT: /etc/crafty/node.pem
-      CRAFTY_NODE_KEY: /etc/crafty/node.key
-      CRAFTY_CA_CERT: /etc/crafty/ca.pem
-      CRAFTY_CERT_WATCH_SECS: "30"
+      TREMBITA_NODE_ID: "2"
+      TREMBITA_LISTEN: "0.0.0.0:7443"
+      TREMBITA_ADMIN: "0.0.0.0:8080"
+      TREMBITA_PEERS: "1@trembita-1:7443,2@trembita-2:7443,3@trembita-3:7443"
+      TREMBITA_NODE_CERT: /etc/trembita/node.pem
+      TREMBITA_NODE_KEY: /etc/trembita/node.key
+      TREMBITA_CA_CERT: /etc/trembita/ca.pem
+      TREMBITA_CERT_WATCH_SECS: "30"
     volumes:
-      - ./certs/node-2.pem:/etc/crafty/node.pem
-      - ./certs/node-2.key:/etc/crafty/node.key
-      - ./certs/ca.pem:/etc/crafty/ca.pem
+      - ./certs/node-2.pem:/etc/trembita/node.pem
+      - ./certs/node-2.key:/etc/trembita/node.key
+      - ./certs/ca.pem:/etc/trembita/ca.pem
 
-  crafty-3:
-    image: crafty-node:step-ca-demo
-    hostname: crafty-3
+  trembita-3:
+    image: trembita-node:step-ca-demo
+    hostname: trembita-3
     depends_on:
-      - crafty-2
+      - trembita-2
     environment:
-      CRAFTY_NODE_ID: "3"
-      CRAFTY_LISTEN: "0.0.0.0:7443"
-      CRAFTY_ADMIN: "0.0.0.0:8080"
-      CRAFTY_PEERS: "1@crafty-1:7443,2@crafty-2:7443,3@crafty-3:7443"
-      CRAFTY_NODE_CERT: /etc/crafty/node.pem
-      CRAFTY_NODE_KEY: /etc/crafty/node.key
-      CRAFTY_CA_CERT: /etc/crafty/ca.pem
-      CRAFTY_CERT_WATCH_SECS: "30"
+      TREMBITA_NODE_ID: "3"
+      TREMBITA_LISTEN: "0.0.0.0:7443"
+      TREMBITA_ADMIN: "0.0.0.0:8080"
+      TREMBITA_PEERS: "1@trembita-1:7443,2@trembita-2:7443,3@trembita-3:7443"
+      TREMBITA_NODE_CERT: /etc/trembita/node.pem
+      TREMBITA_NODE_KEY: /etc/trembita/node.key
+      TREMBITA_CA_CERT: /etc/trembita/ca.pem
+      TREMBITA_CERT_WATCH_SECS: "30"
     volumes:
-      - ./certs/node-3.pem:/etc/crafty/node.pem
-      - ./certs/node-3.key:/etc/crafty/node.key
-      - ./certs/ca.pem:/etc/crafty/ca.pem
+      - ./certs/node-3.pem:/etc/trembita/node.pem
+      - ./certs/node-3.key:/etc/trembita/node.key
+      - ./certs/ca.pem:/etc/trembita/ca.pem
 
 volumes:
   step-ca-data:

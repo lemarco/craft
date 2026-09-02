@@ -7,11 +7,11 @@
 
 use std::time::Duration;
 
-use crafty::core::{Config, StateMachine};
-use crafty::net::LocalNetwork;
-use crafty::proto::{ActorId, LogIndex};
-use crafty::cluster::CraftyCluster;
-use crafty::NodeId;
+use trembita::core::{Config, StateMachine};
+use trembita::net::LocalNetwork;
+use trembita::proto::{ActorId, LogIndex};
+use trembita::cluster::TrembitaCluster;
+use trembita::NodeId;
 
 use crate::migrate_counter::{CounterMsg, StatefulCounter};
 
@@ -38,7 +38,7 @@ impl StateMachine for Empty {
     }
 }
 
-async fn wait_leader(clusters: &[CraftyCluster<Empty>]) {
+async fn wait_leader(clusters: &[TrembitaCluster<Empty>]) {
     for _ in 0..300 {
         for c in clusters {
             if c.is_leader().await {
@@ -51,7 +51,7 @@ async fn wait_leader(clusters: &[CraftyCluster<Empty>]) {
 }
 
 pub async fn run_local() -> Result<(), Box<dyn std::error::Error>> {
-    let base = std::env::temp_dir().join("crafty-showcase-stateful-migrate");
+    let base = std::env::temp_dir().join("trembita-showcase-stateful-migrate");
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base)?;
 
@@ -63,7 +63,7 @@ pub async fn run_local() -> Result<(), Box<dyn std::error::Error>> {
         let data_dir = base.join(format!("node-{}", id.0));
         std::fs::create_dir_all(&data_dir)?;
         clusters.push(
-            CraftyCluster::builder(id, Empty)
+            TrembitaCluster::builder(id, Empty)
                 .members(ids)
                 .raft_config(Config {
                     election_timeout_min: 5,

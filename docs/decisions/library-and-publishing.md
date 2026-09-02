@@ -5,29 +5,29 @@
 
 ## Context
 
-[deployment-model](deployment-model.md) sets crafty as a **library-first framework**; [naming](naming.md) reserves publish-ready `crafty-*` names. This ADR makes the **publishing contract** explicit: crafty is intended to be **published to crates.io** as a reusable library, not just an internal repo.
+[deployment-model](deployment-model.md) sets trembita as a **library-first framework**; [naming](naming.md) reserves publish-ready `trembita-*` names. This ADR makes the **publishing contract** explicit: trembita is intended to be **published to crates.io** as a reusable library, not just an internal repo.
 
 ## Decision
 
-**crafty is a public, open-source Rust library published on crates.io.**
+**trembita is a public, open-source Rust library published on crates.io.**
 
 ### Public vs internal crates
 
 | Crate | Published | Audience |
 |-------|-----------|----------|
-| `crafty` | **Yes** — primary | Framework users depend on this |
-| `crafty-macros` | Yes | Re-exported by `crafty`; also direct |
-| `crafty-proto`, `crafty-core`, `crafty-storage`, `crafty-net`, `crafty-actor`, `crafty-client` | Yes | Advanced users / composability |
-| `crafty-store-redis` | Yes (optional) | Redis `ActorStateStore` |
-| `crafty-dashboard` | Yes (optional) | Monitoring UI |
-| `crafty-sim` | Yes (dev) | Testing / simulation |
-| `crafty-node` | **No** (`publish = false`) | Reference/demo runner — build from repo or e2e Docker |
+| `trembita` | **Yes** — primary | Framework users depend on this |
+| `trembita-macros` | Yes | Re-exported by `trembita`; also direct |
+| `trembita-proto`, `trembita-core`, `trembita-storage`, `trembita-net`, `trembita-actor`, `trembita-client` | Yes | Advanced users / composability |
+| `trembita-store-redis` | Yes (optional) | Redis `ActorStateStore` |
+| `trembita-dashboard` | Yes (optional) | Monitoring UI |
+| `trembita-sim` | Yes (dev) | Testing / simulation |
+| `trembita-node` | **No** (`publish = false`) | Reference/demo runner — build from repo or e2e Docker |
 
-`crafty` facade re-exports the stable public API so users typically add **one dependency**.
+`trembita` facade re-exports the stable public API so users typically add **one dependency**.
 
 ### Versioning
 
-- **SemVer** across the workspace; all `crafty-*` crates share a synchronized version.
+- **SemVer** across the workspace; all `trembita-*` crates share a synchronized version.
 - Pre-1.0 (`0.x`): breaking changes may land on minor bumps, documented in CHANGELOG.
 - Wire/protocol compatibility tracked separately via `Raft-Protocol-Version` ([protocol.md](../protocol.md)); protocol changes are breaking and gated by [cluster-membership](cluster-membership.md#version-skew--hard-reject).
 
@@ -52,7 +52,7 @@
 ### Release process
 
 - `cargo release` (or workspace script) publishes crates in dependency order:
-  `crafty-proto → crafty-core / crafty-storage / crafty-macros → crafty-net → crafty-actor → crafty-client → crafty-store-redis / crafty-dashboard / crafty-sim → crafty`.
+  `trembita-proto → trembita-core / trembita-storage / trembita-macros → trembita-net → trembita-actor → trembita-client → trembita-store-redis / trembita-dashboard / trembita-sim → trembita`.
 - Tag `vX.Y.Z`; GitLab release with CHANGELOG excerpt.
 - `docs.rs` builds automatically on publish.
 
@@ -60,21 +60,21 @@
 
 - Public repository (folder `distributive_raft_actor_system`); README with quickstart, examples, and link to `docs/`.
 - `examples/` — four [product showcases](../../examples/README.md) plus self-update; excluded from workspace default-members; CI via `./scripts/check-examples.sh`
-- Reference KV StateMachine: `crafty_core::kv` (not a separate example crate)
+- Reference KV StateMachine: `trembita_core::kv` (not a separate example crate)
 
 ## Consequences
 
 **Positive**
 
-- Clear expectation: crafty is a distributable library, not just app code
-- Users get one dep (`crafty`) + optional advanced crates
+- Clear expectation: trembita is a distributable library, not just app code
+- Users get one dep (`trembita`) + optional advanced crates
 - Publishing discipline (SemVer, MSRV, docs, license) set from day one
 
 **Negative**
 
 - Publishing overhead (docs, CHANGELOG, dry-run CI, name reservation)
 - Synchronized versioning couples crate releases
-- `crafty` name must be secured on crates.io (fallback: org scope or `crafty-rs`)
+- `trembita` name must be secured on crates.io (fallback: org scope or `trembita-rs`)
 
 ## Related
 

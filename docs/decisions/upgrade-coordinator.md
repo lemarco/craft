@@ -5,7 +5,7 @@
 
 ## Context
 
-Operators running crafty on **N identical VPS processes** ([deployment-model](deployment-model.md))
+Operators running trembita on **N identical VPS processes** ([deployment-model](deployment-model.md))
 need rolling upgrades without Ansible/Kubernetes. Manual steps are documented in
 [rolling-upgrade.md](../ops/rolling-upgrade.md): drain, leave, replace binary, restart,
 verify `/ready`.
@@ -18,7 +18,7 @@ Users asked for a **maximally elegant** path:
 - **No service downtime** — for patch upgrades on **≥3 nodes**, remaining members keep
   quorum and serve traffic while one node restarts.
 
-Crafty already has the primitives: Raft **leader-only** reconciliation
+Trembita already has the primitives: Raft **leader-only** reconciliation
 ([cluster-elasticity#supervisor--leader-only-reconciliation](cluster-elasticity.md#supervisor--leader-only-reconciliation)),
 graceful `leave()` + drain ([drain-timeout](drain-timeout.md)), wire N/N−1
 ([cluster-membership#version-skew--hard-reject](cluster-membership.md#version-skew--hard-reject)),
@@ -28,9 +28,9 @@ This ADR defines a **reference pattern** for application authors: upgrade state 
 user's **StateMachine**; the Raft leader runs a declarative reconcile loop; each node executes
 locally when granted a slot.
 
-**Non-goals for crafty core (v1 of this ADR):**
+**Non-goals for trembita core (v1 of this ADR):**
 
-- Embedding download/replace logic inside the `crafty` crate.
+- Embedding download/replace logic inside the `trembita` crate.
 - Replacing systemd or artifact hosting.
 - Zero-risk rolling of **breaking** `app_version` / SM semantics without user migration
   discipline.
@@ -70,7 +70,7 @@ Types below are illustrative; apps may nest them in existing command enums.
 ```rust
 /// Published by ops (propose on any node; leader applies).
 struct ArtifactManifest {
-    app_version: String,       // must match CRAFTY_APP_VERSION after restart
+    app_version: String,       // must match TREMBITA_APP_VERSION after restart
     url: String,
     sha256: [u8; 32],
     min_protocol: u32,         // optional guard vs PROTOCOL_VERSION band
@@ -138,7 +138,7 @@ This mirrors `ClusterSupervisor::reconcile`: declarative desired state, idempote
 
 ### Local executor (every node)
 
-Background task (or `CraftyApp` hook):
+Background task (or `TrembitaApp` hook):
 
 ```text
 loop:
@@ -153,7 +153,7 @@ loop:
   atomic_install(tmp)          // rename or symlink swap; see below
   propose(Report { Installed })
 
-  shutdown_graceful(leave=true)  // CraftyApp / cluster.leave()
+  shutdown_graceful(leave=true)  // TrembitaApp / cluster.leave()
   exit(0)                        // systemd Restart=always
 ```
 
@@ -175,7 +175,7 @@ ln -sfn "/opt/app/app-$VERSION" "/opt/app/current"
 mv "$tmp" "/opt/app/current"   # running process keeps old inode until exit
 ```
 
-`ExecStart=/opt/app/current` in systemd; `TimeoutStopSec` ≥ `CRAFTY_DRAIN_TIMEOUT`.
+`ExecStart=/opt/app/current` in systemd; `TimeoutStopSec` ≥ `TREMBITA_DRAIN_TIMEOUT`.
 
 ### Operator surface
 
@@ -206,7 +206,7 @@ GET /cluster/upgrade
 
 | Upgrade kind | Mixed fleet during roll | Coordinator notes |
 |--------------|-------------------------|-------------------|
-| **Patch / wire-only** (same `app_version`, new crafty wire) | Safe if `protocol_version` in N/N−1 band | Default happy path; zero-downtime on ≥3 nodes |
+| **Patch / wire-only** (same `app_version`, new trembita wire) | Safe if `protocol_version` in N/N−1 band | Default happy path; zero-downtime on ≥3 nodes |
 | **App semver** (SM / command change) | **Unsafe** unless `apply` backward-compatible for overlap window | Roll fast; do not expand membership until all `Ready`; consider `Abort` on first `Failed` |
 | **Breaking SM** | Requires migration commands or maintenance | Coordinator can run, but ops must design SM compatibility or stop writes |
 
@@ -223,7 +223,7 @@ does not relax `app_version` exact-match on join.
 | Quorum would be lost | Require **≥3 voters** and **max_parallel = 1**; never grant two slots |
 | Bad artifact fleet-wide | First `Failed` → propose `Abort`; ops rollback symlinks + `SetDesired` previous manifest |
 
-Pre-upgrade: `crafty-ops backup export` remains recommended ([backup-restore.md](../ops/backup-restore.md)).
+Pre-upgrade: `trembita-ops backup export` remains recommended ([backup-restore.md](../ops/backup-restore.md)).
 
 ### Security
 
@@ -233,21 +233,21 @@ Pre-upgrade: `crafty-ops backup export` remains recommended ([backup-restore.md]
 - Admin `POST /cluster/upgrade/desired` must be authenticated (mTLS admin, `GATEWAY_TOKEN`, or
   network ACL) — same bar as other cluster mutations.
 
-### What stays outside crafty core
+### What stays outside trembita core
 
 | Concern | Owner |
 |---------|--------|
 | `UpgradeCommand` / `UpgradeState` types | User `StateMachine` |
-| Leader reconcile tick | User actor or `CraftyApp` extension |
+| Leader reconcile tick | User actor or `TrembitaApp` extension |
 | Download / install / exit | User binary |
 | systemd unit | Operator |
 | Artifact registry | Operator |
 
-Optional future **crafty** crate additions (not required for the pattern):
+Optional future **trembita** crate additions (not required for the pattern):
 
-- `crafty::upgrade` reference SM + reconcile helper (like `crafty_core::kv`).
-- Admin routes in `crafty-dashboard` for `GET/POST /cluster/upgrade`.
-- Example in `examples/` or template in `crafty init`.
+- `trembita::upgrade` reference SM + reconcile helper (like `trembita_core::kv`).
+- Admin routes in `trembita-dashboard` for `GET/POST /cluster/upgrade`.
+- Example in `examples/` or template in `trembita init`.
 
 ## Consequences
 
@@ -272,7 +272,7 @@ Optional future **crafty** crate additions (not required for the pattern):
 | Sidecar updater process | Extra moving part; same mechanics, less elegant |
 | Each node polls manifest independently | Race — full fleet restart |
 | In-memory coordinator on leader | Lost on failover |
-| Embed updater in `crafty` core | Violates ports/adapters; app paths and SM differ per product |
+| Embed updater in `trembita` core | Violates ports/adapters; app paths and SM differ per product |
 | Kubernetes operator | Explicit non-goal ([product-scenarios](product-scenarios.md)) |
 
 ## Implementation backlog
@@ -282,10 +282,10 @@ Reference implementation (optional, not blocking 1.0):
 | Id | Item | Layer |
 |----|------|-------|
 | O-05a | ADR | docs ✅ |
-| O-05b | `crafty_core::upgrade` reference SM + unit tests | crafty-core ✅ |
-| O-05c | `UpgradeReconciler` / `spawn_upgrade_coordinator` | crafty facade ✅ |
+| O-05b | `trembita_core::upgrade` reference SM + unit tests | trembita-core ✅ |
+| O-05c | `UpgradeReconciler` / `spawn_upgrade_coordinator` | trembita facade ✅ |
 | O-05d | Example `examples/self-update` | examples ✅ |
-| O-05e | [rolling-upgrade.md](../ops/rolling-upgrade.md) + integration test | docs + crafty/tests ✅ |
+| O-05e | [rolling-upgrade.md](../ops/rolling-upgrade.md) + integration test | docs + trembita/tests ✅ |
 
 ## Related
 

@@ -1,0 +1,33 @@
+[package]
+name = "trembita-client"
+description = "In-process and remote (HTTP/3) client API for trembita."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+readme = "README.md"
+homepage.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints]
+workspace = true
+
+[dependencies]
+trembita-proto.workspace = true
+trembita-core.workspace = true
+trembita-net.workspace = true
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+tokio = { version = "1", features = ["time"] }
+
+[dev-dependencies]
+trembita-actor.workspace = true
+trembita-test-support = { path = "../trembita-test-support" }
+serde = { workspace = true, features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "test-util"] }

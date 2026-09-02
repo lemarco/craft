@@ -1,13 +1,13 @@
 # Where to put state — cheat sheet
 
-One page for choosing between crafty storage layers. See scenario guides for full patterns.
+One page for choosing between trembita storage layers. See scenario guides for full patterns.
 
 | Data | Store | API | Durability | Example |
 |------|-------|-----|------------|---------|
 | **Authoritative business facts** (orders, balances, config you audit) | Raft state machine | `propose` / `query` | Replicated log | Order total, account balance |
-| **Async work backlog** (emails, exports, retries) | [`JobQueue`](../../crates/crafty-actor/src/queue.rs) | `enqueue` / `lease` / `ack` | `queue-*.redb` | `POST /jobs/emails` → worker |
-| **Hot session / handler cache** (loss on crash OK) | Actor struct + [`ActorSession`](../../crates/crafty-actor/src/session.rs) | `cast` / `ask` | In-memory | Chat history in RAM |
-| **Idempotency / step progress** (survive worker crash) | [`ActorStateStore`](../../crates/crafty-actor/src/store.rs) | `get` / `set` / CAS | `actor-store.redb` (default) | "order-42 processed" marker |
+| **Async work backlog** (emails, exports, retries) | [`JobQueue`](../../crates/trembita-actor/src/queue.rs) | `enqueue` / `lease` / `ack` | `queue-*.redb` | `POST /jobs/emails` → worker |
+| **Hot session / handler cache** (loss on crash OK) | Actor struct + [`ActorSession`](../../crates/trembita-actor/src/session.rs) | `cast` / `ask` | In-memory | Chat history in RAM |
+| **Idempotency / step progress** (survive worker crash) | [`ActorStateStore`](../../crates/trembita-actor/src/store.rs) | `get` / `set` / CAS | `actor-store.redb` (default) | "order-42 processed" marker |
 | **Multi-step workflow journal** | Meta-Raft saga journal | `run_saga` / `resume_saga` | Meta-Raft log | Onboarding saga steps |
 
 ## Decision flow
@@ -31,7 +31,7 @@ Job delivery is **at-least-once**. Use three layers together for effectively-onc
 
 1. **Enqueue** — `EnqueueOptions::dedup_key` / HTTP `?dedup=` (safe client retry)
 2. **Processing** — `ConsumerOpts::idempotency` or CAS in `ActorStateStore` ([background-jobs § Effectively-once recipe](background-jobs.md#effectively-once-recipe))
-3. **Workflow steps** — `CraftyApp::enqueue_workflow_step` / [`WorkflowBuilder::step_dedup_key`](../../crates/crafty/src/workflow.rs)
+3. **Workflow steps** — `TrembitaApp::enqueue_workflow_step` / [`WorkflowBuilder::step_dedup_key`](../../crates/trembita/src/workflow.rs)
 
 ## Anti-patterns
 

@@ -8,33 +8,33 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::post;
-use crafty::proto::ActorId;
-use crafty::{CraftyApp, NodeId};
+use trembita::proto::ActorId;
+use trembita::{TrembitaApp, NodeId};
 
 use crate::migrate_counter::{CounterMsg, StatefulCounter};
 
 fn migrate_target() -> NodeId {
-    std::env::var("CRAFTY_MIGRATE_TARGET")
+    std::env::var("TREMBITA_MIGRATE_TARGET")
         .ok()
         .and_then(|v| v.parse().ok())
         .map(NodeId)
         .unwrap_or(NodeId(2))
 }
 
-pub fn migrate_routes(state: crafty::CraftyGatewayState) -> Router {
+pub fn migrate_routes(state: trembita::TrembitaGatewayState) -> Router {
     Router::new()
         .route("/demo/migrate/run", post(run_demo))
         .with_state(state.app)
 }
 
-async fn run_demo(State(app): State<Arc<CraftyApp>>) -> impl IntoResponse {
+async fn run_demo(State(app): State<Arc<TrembitaApp>>) -> impl IntoResponse {
     match run_demo_inner(&app).await {
         Ok(msg) => (StatusCode::OK, msg),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
     }
 }
 
-async fn run_demo_inner(app: &CraftyApp) -> Result<String, String> {
+async fn run_demo_inner(app: &TrembitaApp) -> Result<String, String> {
     let local = app.node_id();
     let target = migrate_target();
     tracing::debug!(target: "showcase", local = local.0, to = target.0, "migration demo start");

@@ -16,8 +16,8 @@
 
 | Level | Mechanism | Survives crash? |
 |-------|-----------|-----------------|
-| **Hot** | Fields on actor struct + [`ActorSession`](../../crates/crafty-actor/src/session.rs) | ❌ (OK for live session) |
-| **Workflow keys** | [`ActorStateStore`](../../crates/crafty-actor/src/store.rs) → `RedbActorStateStore` | ✅ |
+| **Hot** | Fields on actor struct + [`ActorSession`](../../crates/trembita-actor/src/session.rs) | ❌ (OK for live session) |
+| **Workflow keys** | [`ActorStateStore`](../../crates/trembita-actor/src/store.rs) → `RedbActorStateStore` | ✅ |
 | **Domain data** | `StateMachine` via `propose` | ✅ (Raft replicated) |
 
 ## Architecture
@@ -35,15 +35,15 @@ Cross-node paths: [cross-node-actors](../decisions/cross-node-actors.md) — `sp
 
 ## Quick start (current API)
 
-### 1. Register workers on `CraftyApp`
+### 1. Register workers on `TrembitaApp`
 
 `RedbActorStateStore` is wired automatically with `.data_dir()` — same trait, no extra setup.
 
 ```rust
-use crafty::{CraftyApp, RunOpts, WorkerOpts, WorkerScale, workers};
+use trembita::{TrembitaApp, RunOpts, WorkerOpts, WorkerScale, workers};
 
-CraftyApp::builder()
-    .data_dir("/var/lib/crafty")
+TrembitaApp::builder()
+    .data_dir("/var/lib/trembita")
     .workers(workers!(
         WorkerOpts::<OrderProcessor>::new("orders")
             .config(processor_cfg())
@@ -59,7 +59,7 @@ See [`examples/stateful-workers/`](../../examples/stateful-workers/).
 ### 2. Stateful worker — write-through
 
 ```rust
-use crafty::actor::{UserActor, actor, store_get, store_set};
+use trembita::actor::{UserActor, actor, store_get, store_set};
 
 #[actor]
 impl UserActor for OrderProcessor {
@@ -111,7 +111,7 @@ Add VPS → increase `total_nodes` (or rely on auto-spawn-on-join).
 |-------|----------------|
 | **Process crash** | Leader respawns worker elsewhere; reload from store / SM |
 | **`cluster.leave()`** | Drain ([drain-timeout](../decisions/drain-timeout.md)); migration RPC optional |
-| **Stale session** | [`ActorSession`](../../crates/crafty-actor/src/session.rs) expires → client re-opens or handles `NoTarget` |
+| **Stale session** | [`ActorSession`](../../crates/trembita-actor/src/session.rs) expires → client re-opens or handles `NoTarget` |
 
 ## Sticky session without external store
 
@@ -129,7 +129,7 @@ Documented in [actor-routing](../decisions/actor-routing.md). For durability acr
 | Concern | Action |
 |---------|--------|
 | Backup | `actor-store.redb` + `group-*.redb` if using SM |
-| Drain | `CRAFTY_DRAIN_TIMEOUT` / per-group override |
+| Drain | `TREMBITA_DRAIN_TIMEOUT` / per-group override |
 | Split brain vs SM | Never contradict SM in actor store — SM wins |
 
 ## Examples
@@ -138,17 +138,17 @@ Documented in [actor-routing](../decisions/actor-routing.md). For durability acr
 |-------|-------|
 | [`examples/stateful-workers/`](../../examples/stateful-workers/) | `ActorStateStore` + idempotent cast + migration demo |
 | [`examples/stateful-workers/src/migrate_demo.rs`](../../examples/stateful-workers/src/migrate_demo.rs) | LocalNetwork migration walkthrough |
-| `crafty-sim/tests/actor_scenarios.rs` | `scale_cluster`, migration |
+| `trembita-sim/tests/actor_scenarios.rs` | `scale_cluster`, migration |
 
 ## Registration API
 
-Prefer [`.workers()`](../../crates/crafty/src/worker_opts.rs) with explicit [`WorkerScale`](../../crates/crafty/src/worker_opts.rs):
+Prefer [`.workers()`](../../crates/trembita/src/worker_opts.rs) with explicit [`WorkerScale`](../../crates/trembita/src/worker_opts.rs):
 
 ```rust
-use crafty::{CraftyApp, GatewayOpts, RunOpts, WorkerOpts, WorkerScale, workers};
+use trembita::{TrembitaApp, GatewayOpts, RunOpts, WorkerOpts, WorkerScale, workers};
 
-CraftyApp::builder()
-    .data_dir("/var/lib/crafty")
+TrembitaApp::builder()
+    .data_dir("/var/lib/trembita")
     .workers(workers!(
         WorkerOpts::<OrderProcessor>::new("orders")
             .config(processor_cfg())
@@ -160,7 +160,7 @@ CraftyApp::builder()
     .await?;
 ```
 
-Legacy [`.actors()`](../../crates/crafty/src/app.rs) + [`ActorGroupOpts`](../../crates/crafty/src/actor_group.rs) remain supported.
+Legacy [`.actors()`](../../crates/trembita/src/app.rs) + [`ActorGroupOpts`](../../crates/trembita/src/actor_group.rs) remain supported.
 
 See [examples/stateful-workers/](../../examples/stateful-workers/).
 

@@ -2,15 +2,15 @@
 # MSRV gate — mirrors .gitlab-ci.yml `msrv` job (library-and-publishing).
 #
 # Env:
-#   CRAFTY_MSRV=1.90           — toolchain version (default from workspace)
-#   CRAFTY_MSRV_STRICT=1       — fail when rustup/toolchain missing (release gate)
+#   TREMBITA_MSRV=1.90           — toolchain version (default from workspace)
+#   TREMBITA_MSRV_STRICT=1       — fail when rustup/toolchain missing (release gate)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/hook-prelude.sh
 
-MSRV="${CRAFTY_MSRV:-1.90}"
-STRICT="${CRAFTY_MSRV_STRICT:-0}"
+MSRV="${TREMBITA_MSRV:-1.90}"
+STRICT="${TREMBITA_MSRV_STRICT:-0}"
 
 fail_or_warn() {
   if [[ "$STRICT" == "1" ]]; then
@@ -22,7 +22,7 @@ fail_or_warn() {
 }
 
 if ! command -v rustup >/dev/null 2>&1; then
-  fail_or_warn "rustup not found — skipping MSRV ${MSRV} check (install rustup or set CRAFTY_MSRV_STRICT=0)"
+  fail_or_warn "rustup not found — skipping MSRV ${MSRV} check (install rustup or set TREMBITA_MSRV_STRICT=0)"
 fi
 
 if ! rustup toolchain list 2>/dev/null | grep -qE "^${MSRV}(-.*)?\$"; then

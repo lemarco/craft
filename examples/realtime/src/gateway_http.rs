@@ -6,7 +6,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
-use crafty::CraftyGatewayState;
+use trembita::TrembitaGatewayState;
 use serde::{Deserialize, Serialize};
 
 use crate::debug;
@@ -33,9 +33,9 @@ pub struct MeResponse {
     pub user: String,
 }
 
-/// `POST /chat` — JSON body; auth via Bearer + `X-Crafty-User` or `?user=` (see `GatewayBearerIdentity`).
+/// `POST /chat` — JSON body; auth via Bearer + `X-Trembita-User` or `?user=` (see `GatewayBearerIdentity`).
 pub async fn post_chat(
-    State(state): State<CraftyGatewayState>,
+    State(state): State<TrembitaGatewayState>,
     method: Method,
     uri: Uri,
     headers: HeaderMap,
@@ -49,7 +49,7 @@ pub async fn post_chat(
         Err(err) => return err.into_response(),
     };
     let user = handle.session_key().to_string();
-    let payload = match crafty::proto::encode(&body.message) {
+    let payload = match trembita::proto::encode(&body.message) {
         Ok(p) => p,
         Err(e) => {
             return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
@@ -69,11 +69,11 @@ pub async fn post_chat(
 
 /// `GET /me?user=…` — auth check; returns session key as JSON.
 ///
-/// Uses [`CraftyGatewayState::extract_session_parts`] (same as POST). Call
-/// [`CraftyGatewayState::extract_session_from`] when middleware already gave you a
+/// Uses [`TrembitaGatewayState::extract_session_parts`] (same as POST). Call
+/// [`TrembitaGatewayState::extract_session_from`] when middleware already gave you a
 /// [`Request`](axum::http::Request).
 pub async fn get_me(
-    State(state): State<CraftyGatewayState>,
+    State(state): State<TrembitaGatewayState>,
     method: Method,
     uri: Uri,
     headers: HeaderMap,

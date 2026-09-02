@@ -1,13 +1,13 @@
 # Real-time sessions (stateful actors)
 
-WebSocket **and authenticated HTTP** on one gateway → sticky [`ActorSession`](../../crates/crafty-actor/src/session.rs) → in-memory chat workers.
+WebSocket **and authenticated HTTP** on one gateway → sticky [`ActorSession`](../../crates/trembita-actor/src/session.rs) → in-memory chat workers.
 
 ## What you run
 
 | Piece | Role |
 |-------|------|
 | This binary | WS + HTTP gateway + `ChatWorker` actors |
-| [`trigger.sh`](trigger.sh) | One WS message via `crafty-showcase-client` or [websocat](https://github.com/vi/websocat) |
+| [`trigger.sh`](trigger.sh) | One WS message via `trembita-showcase-client` or [websocat](https://github.com/vi/websocat) |
 | [`trigger-http.sh`](trigger-http.sh) | One HTTP `POST /chat` (JSON body + Bearer or query auth) |
 | [`trigger-batch.sh`](trigger-batch.sh) | Multi-user chat burst |
 | Admin | Dashboard + actor directory |
@@ -41,7 +41,7 @@ Manual HTTP with Bearer (recommended when `GATEWAY_TOKEN` is set):
 ```bash
 curl -X POST 'http://127.0.0.1:8294/chat' \
   -H 'Authorization: Bearer YOUR_TOKEN' \
-  -H 'X-Crafty-User: alice' \
+  -H 'X-Trembita-User: alice' \
   -H 'Content-Type: application/json' \
   -d '{"message":"hello"}'
 ```
@@ -52,14 +52,14 @@ Dev without a token: `?user=alice` on WebSocket and HTTP still works.
 
 | Route | Auth | Body |
 |-------|------|------|
-| `GET /ws` | `?user=` or Bearer + `X-Crafty-User` | WebSocket upgrade |
-| `POST /chat` | Bearer + `X-Crafty-User` or `?user=` | `{"message":"…"}` |
-| `GET /me` | Bearer + `X-Crafty-User` or `?user=` | returns `{"user":"…"}` |
+| `GET /ws` | `?user=` or Bearer + `X-Trembita-User` | WebSocket upgrade |
+| `POST /chat` | Bearer + `X-Trembita-User` or `?user=` | `{"message":"…"}` |
+| `GET /me` | Bearer + `X-Trembita-User` or `?user=` | returns `{"user":"…"}` |
 
-Identity: [`GatewayBearerIdentity`](../../crates/crafty/src/gateway/identity.rs) via
-[`GatewayOpts::identity`](../../crates/crafty/src/gateway/mod.rs). Built-in `/jobs/*`,
+Identity: [`GatewayBearerIdentity`](../../crates/trembita/src/gateway/identity.rs) via
+[`GatewayOpts::identity`](../../crates/trembita/src/gateway/mod.rs). Built-in `/jobs/*`,
 `/actors/*`, and `/workflows/*` routes are protected with
-[`.protect_product_apis(true)`](../../crates/crafty/src/gateway/mod.rs) when enabled on
+[`.protect_product_apis(true)`](../../crates/trembita/src/gateway/mod.rs) when enabled on
 the gateway.
 
 ## Quick start (cluster — 3 terminals, QUIC)
@@ -87,9 +87,9 @@ Connect to any node's gateway URL; sessions stick to a worker instance cluster-w
 
 | Var | Default | Meaning |
 |-----|---------|---------|
-| `CRAFTY_GATEWAY` | `127.0.0.1:8294` | HTTP/WS bind (`-` disables gateway on a node) |
-| `CRAFTY_PEERS` | unset | When set → QUIC cluster mode |
+| `TREMBITA_GATEWAY` | `127.0.0.1:8294` | HTTP/WS bind (`-` disables gateway on a node) |
+| `TREMBITA_PEERS` | unset | When set → QUIC cluster mode |
 | `GATEWAY_TOKEN` | unset | When set, require matching Bearer (or legacy `?token=` on WS) |
-| `CRAFTY_DATA_DIR` | `/tmp/crafty-showcase-realtime` | Cluster + actor data |
+| `TREMBITA_DATA_DIR` | `/tmp/trembita-showcase-realtime` | Cluster + actor data |
 
 Guide: [docs/scenarios/realtime-sessions.md](../../docs/scenarios/realtime-sessions.md)

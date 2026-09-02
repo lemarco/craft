@@ -1,0 +1,44 @@
+---
+description: Local quality gates, conventional commits, and pre-push workflow for trembita (library-and-publishing, testing-strategy)
+alwaysApply: true
+---
+
+# trembita quality gates
+
+See [docs/process.md](../../docs/process.md) for the full diagram.
+
+## Before commit
+
+```bash
+./scripts/gate.sh --tier commit --staged-only --stage   # or lefthook pre-commit
+```
+
+Autofix: fmt + clippy `--fix` on staged crates; doc-links + clippy check.
+
+## Before push / MR
+
+```bash
+./scripts/gate.sh --tier push                           # or lefthook pre-push
+TREMBITA_NO_AUTOFIX_COMMIT=1 git push                     # fail instead of chore autofix commit
+lefthook run pre-push --tags release                    # include release build
+```
+
+Push tier = `ci-fast-lane.sh` + examples + showcase + MSRV.
+
+## CI parity
+
+- **Fast / tag gate:** `scripts/ci-fast-lane.sh`
+- **Heavy:** nightly or MR label `run-heavy` (e2e, store-redis)
+- **MSRV:** separate CI job + strict on release gate
+
+While iterating: `./scripts/test-with-log.sh -p <crate> --test <name>` — see `cargo-shell-safety` rule.
+
+## Standards
+
+- **MSRV 1.90**, edition 2024, `unsafe` forbidden workspace-wide.
+- **Clippy / rustc: `-D warnings`**; **`clippy::pedantic`** via `scripts/clippy-args.sh`.
+- **`missing_docs`**: `deny` on published crates; audit: `./scripts/docs-missing-audit.sh`.
+- **Conventional commits**; GitLab issues as `#<number>`.
+- **Do not commit** unless the user explicitly asks.
+
+New `#[ignore]` integration tests must note which heavy job runs them.

@@ -1,14 +1,14 @@
-# mTLS certificates for a crafty cluster
+# mTLS certificates for a trembita cluster
 
-Every production network path in crafty is mutually authenticated (security):
+Every production network path in trembita is mutually authenticated (security):
 peers and clients present a certificate issued by the **cluster CA**, and both
 ends verify the other against that CA. This page shows how to mint that PKI —
 with the bundled script or by hand with OpenSSL — and how to hand it to
-`crafty-node` (or your own binary embedding `crafty`).
+`trembita-node` (or your own binary embedding `trembita`).
 
 > **Naming contract.** A node's certificate binds it to its `NodeId`: the
 > Common Name **and** a DNS Subject Alternative Name must be
-> `crafty-node-<id>` (e.g. `crafty-node-2`). This is the server name crafty dials
+> `trembita-node-<id>` (e.g. `trembita-node-2`). This is the server name trembita dials
 > over QUIC, so the SAN must match or the handshake fails. The script does this
 > for you.
 
@@ -43,56 +43,56 @@ Artifacts written to `--out`:
 | `node-<id>.pem` / `.key` | One node's mTLS identity | that VPS only |
 | `client-<name>.pem` / `.key` | A `RemoteClient` identity | that client app only |
 
-Keys are P-256 (ECDSA), which the rustls `ring` provider crafty uses supports
+Keys are P-256 (ECDSA), which the rustls `ring` provider trembita uses supports
 natively. The private-key files are written `chmod 600`.
 
 ---
 
-## Running `crafty-node` with the certs
+## Running `trembita-node` with the certs
 
-`crafty-node` reads its cert material from the environment. Give **every** node
+`trembita-node` reads its cert material from the environment. Give **every** node
 the shared `ca.pem`, its own `node-<id>` pair, and the full member list:
 
 ```bash
 # on VPS 1
-export CRAFTY_NODE_ID=1
-export CRAFTY_LISTEN=0.0.0.0:7443
-export CRAFTY_ADMIN=0.0.0.0:8080
-export CRAFTY_PEERS="1@10.0.0.1:7443,2@10.0.0.2:7443,3@10.0.0.3:7443"
-export CRAFTY_CA_CERT=/etc/crafty/ca.pem
-export CRAFTY_NODE_CERT=/etc/crafty/node-1.pem
-export CRAFTY_NODE_KEY=/etc/crafty/node-1.key
-crafty-node
+export TREMBITA_NODE_ID=1
+export TREMBITA_LISTEN=0.0.0.0:7443
+export TREMBITA_ADMIN=0.0.0.0:8080
+export TREMBITA_PEERS="1@10.0.0.1:7443,2@10.0.0.2:7443,3@10.0.0.3:7443"
+export TREMBITA_CA_CERT=/etc/trembita/ca.pem
+export TREMBITA_NODE_CERT=/etc/trembita/node-1.pem
+export TREMBITA_NODE_KEY=/etc/trembita/node-1.key
+trembita-node
 ```
 
-`CRAFTY_PEERS` is the same on every node (id → reachable address for all
-members); each node fills in `CRAFTY_NODE_ID` / `CRAFTY_NODE_*` for itself.
+`TREMBITA_PEERS` is the same on every node (id → reachable address for all
+members); each node fills in `TREMBITA_NODE_ID` / `TREMBITA_NODE_*` for itself.
 
 ### Environment variable reference
 
 | Variable | Meaning |
 |----------|---------|
-| `CRAFTY_CA_CERT` | PEM cluster CA — the trust anchor for peers **and** clients |
-| `CRAFTY_NODE_CERT` | PEM certificate chain for this node (leaf `crafty-node-<id>`) |
-| `CRAFTY_NODE_KEY` | PEM private key matching `CRAFTY_NODE_CERT` |
-| `CRAFTY_CLIENT_CERT` / `CRAFTY_CLIENT_KEY` | Client identity for a split `RemoteClient` process (used by your client app, not the node) |
+| `TREMBITA_CA_CERT` | PEM cluster CA — the trust anchor for peers **and** clients |
+| `TREMBITA_NODE_CERT` | PEM certificate chain for this node (leaf `trembita-node-<id>`) |
+| `TREMBITA_NODE_KEY` | PEM private key matching `TREMBITA_NODE_CERT` |
+| `TREMBITA_CLIENT_CERT` / `TREMBITA_CLIENT_KEY` | Client identity for a split `RemoteClient` process (used by your client app, not the node) |
 
-### Embedding crafty in your own binary
+### Embedding trembita in your own binary
 
-If you build your own binary instead of using `crafty-node`, load the PEM files
-into a [`Security`](https://docs.rs/crafty) and pass it to `start_quic`:
+If you build your own binary instead of using `trembita-node`, load the PEM files
+into a [`Security`](https://docs.rs/trembita) and pass it to `start_quic`:
 
 ```rust,ignore
-use crafty::cluster::{PeerDirectory, Security};
-use crafty::cluster::CraftyCluster;
-use crafty::NodeId;
-use crafty::net::NodeIdentity;
+use trembita::cluster::{PeerDirectory, Security};
+use trembita::cluster::TrembitaCluster;
+use trembita::NodeId;
+use trembita::net::NodeIdentity;
 
 // Load node-<id>.pem / .key and ca.pem (e.g. with rustls-pemfile), then:
 let identity = NodeIdentity::from_der(NodeId(1), cert_chain, key);
 let security = Security::from_ca_certs(identity, &ca_certs)?;
 
-let cluster = CraftyCluster::builder(NodeId(1), my_state_machine)
+let cluster = TrembitaCluster::builder(NodeId(1), my_state_machine)
     .members([NodeId(1), NodeId(2), NodeId(3)])
     .start_quic(security, "0.0.0.0:7443".parse()?, peers)
     .await?;
@@ -114,7 +114,7 @@ distinguished_name = dn
 x509_extensions = v3_ca
 prompt = no
 [dn]
-CN = crafty cluster CA
+CN = trembita cluster CA
 [v3_ca]
 basicConstraints = critical,CA:TRUE
 keyUsage = critical,keyCertSign,cRLSign
@@ -128,9 +128,9 @@ openssl req -x509 -new -key ca.key -days 3650 -out ca.pem -config ca.cnf
 ```bash
 ID=1
 openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:prime256v1 -out node-$ID.key
-openssl req -new -key node-$ID.key -out node-$ID.csr -subj "/CN=crafty-node-$ID"
+openssl req -new -key node-$ID.key -out node-$ID.csr -subj "/CN=trembita-node-$ID"
 cat > node-$ID.ext <<EOF
-subjectAltName = DNS:crafty-node-$ID
+subjectAltName = DNS:trembita-node-$ID
 basicConstraints = critical,CA:FALSE
 keyUsage = critical,digitalSignature,keyEncipherment
 extendedKeyUsage = serverAuth,clientAuth
@@ -146,7 +146,7 @@ A node acts as both TLS **server** (accepting peers/clients) and **client**
 
 ```bash
 openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:prime256v1 -out client-app.key
-openssl req -new -key client-app.key -out client-app.csr -subj "/CN=crafty-client-app"
+openssl req -new -key client-app.key -out client-app.csr -subj "/CN=trembita-client-app"
 cat > client-app.ext <<'EOF'
 basicConstraints = critical,CA:FALSE
 keyUsage = critical,digitalSignature
@@ -170,7 +170,7 @@ CN is free-form.
    list required (discovery, join-rpc):
 
    ```rust
-   let cluster = CraftyCluster::builder(NodeId(N), machine)
+   let cluster = TrembitaCluster::builder(NodeId(N), machine)
        .members(current_voters)          // the cluster's current voter set (not this node)
        .join(seed_id, seed_addr)         // contact any member; it forwards to the leader
        .start_quic(security, listen, [(seed_id, seed_addr)].into_iter().collect())
@@ -180,11 +180,11 @@ CN is free-form.
    The joiner fetches the peer-address book from the seed over `/cluster/peers`,
    the leader commits a membership change adding it, and addresses propagate both
    ways so every node can reach the newcomer.    See [`dev/3node/README.md`](../dev/3node/README.md) and dynamic `join` on
-[`crafty-node`](../crates/crafty-node/README.md).
+[`trembita-node`](../crates/trembita-node/README.md).
 
 > **Static membership still works** for fixed clusters: bootstrap the full member
-> set up front via matching `CRAFTY_PEERS` + `.members(...)`. Dynamic `join` is the
-> elastic path; the reference `crafty-node` binary reads a static `CRAFTY_PEERS`.
+> set up front via matching `TREMBITA_PEERS` + `.members(...)`. Dynamic `join` is the
+> elastic path; the reference `trembita-node` binary reads a static `TREMBITA_PEERS`.
 
 ---
 
@@ -193,37 +193,37 @@ CN is free-form.
 ### Manual (always works)
 
 1. Reissue the leaf cert from the same CA (`generate.sh --node-id <N> ... --ca ...`).
-2. Write the new `node-<N>.pem`/`.key` to the paths in `CRAFTY_NODE_*`.
+2. Write the new `node-<N>.pem`/`.key` to the paths in `TREMBITA_NODE_*`.
 3. Either **hot-reload** (below) or restart that node **one at a time** (rolling
    restart) so the cluster keeps quorum.
 
 ### Automatic (cert-automation)
 
-When `CRAFTY_NODE_CERT` / `CRAFTY_NODE_KEY` / `CRAFTY_CA_CERT` are set, `crafty-node`
-uses [`start_quic_pem`](../crates/crafty/src/builder.rs) and **polls** those files
-every `CRAFTY_CERT_WATCH_SECS` (default **60**). When a renewer (`step ca renew`
-or `generate.sh`) rewrites the PEMs, crafty reloads TLS **without exiting**:
+When `TREMBITA_NODE_CERT` / `TREMBITA_NODE_KEY` / `TREMBITA_CA_CERT` are set, `trembita-node`
+uses [`start_quic_pem`](../crates/trembita/src/builder.rs) and **polls** those files
+every `TREMBITA_CERT_WATCH_SECS` (default **60**). When a renewer (`step ca renew`
+or `generate.sh`) rewrites the PEMs, trembita reloads TLS **without exiting**:
 
 - new QUIC handshakes pick up the fresh server cert;
 - outbound pools are evicted so the next dial presents the new client cert;
 - **`SIGHUP`** triggers the same reload on Unix (`docker compose kill -s HUP …`).
 
 Reload on the **Raft leader** is rejected unless you call
-[`ReloadOpts { allow_leader: true }`](../crates/crafty/src/certs.rs) — roll
+[`ReloadOpts { allow_leader: true }`](../crates/trembita/src/certs.rs) — roll
 **followers first**, leader last.
 
 | Environment | Issuer | Example |
 |-------------|--------|---------|
 | VPS / compose | [step-ca](https://smallstep.com/docs/step-ca/) | [`dev/step-ca/`](../dev/step-ca/) |
 
-Public ACME (Let's Encrypt) is **not** supported for crafty wire identities — you
-need a private CA with `serverAuth` + `clientAuth` and SAN `crafty-node-<id>`.
+Public ACME (Let's Encrypt) is **not** supported for trembita wire identities — you
+need a private CA with `serverAuth` + `clientAuth` and SAN `trembita-node-<id>`.
 
 Embedding apps use the same API:
 
 ```rust
 let pem = PemSecurity::load(node_id, paths)?;
-let cluster = CraftyCluster::builder(node_id, machine)
+let cluster = TrembitaCluster::builder(node_id, machine)
     .members(members)
     .cert_watch(Duration::from_secs(60))
     .start_quic_pem(pem, listen, peers)
@@ -244,7 +244,7 @@ rollout.
 
 ## Local development
 
-For a single machine you don't need any of this: run `crafty-node` with **no**
+For a single machine you don't need any of this: run `trembita-node` with **no**
 cert variables and it mints a throwaway in-memory CA for a one-node cluster.
 Tests and the simulator use the in-memory `LocalNetwork` transport, which skips
 TLS entirely. These paths are **dev-only** — every real deployment uses the
@@ -258,13 +258,13 @@ If you point actor workflow state at Redis (actor-state-redis) over TLS, that co
 is **managed by you** via the Redis connection URL (`rediss://…`) and your
 Redis server's own certificates — it is independent of the cluster CA above.
 
-Use [`crafty_store_redis::RedisStore::connect`] when the Redis CA is in the
+Use [`trembita_store_redis::RedisStore::connect`] when the Redis CA is in the
 OS / public trust store, or [`RedisStore::connect_with_tls`] with a PEM trust
 anchor (and optional client cert for Redis mTLS):
 
 ```rust,no_run
 # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
-use crafty_store_redis::{RedisStore, RedisTlsConfig};
+use trembita_store_redis::{RedisStore, RedisTlsConfig};
 
 let ca = std::fs::read("/etc/redis/ca.pem")?;
 let store = RedisStore::connect_with_tls(

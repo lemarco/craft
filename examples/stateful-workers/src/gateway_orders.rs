@@ -6,7 +6,7 @@ use axum::extract::State;
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
-use crafty::CraftyGatewayState;
+use trembita::TrembitaGatewayState;
 use serde::{Deserialize, Serialize};
 
 use crate::debug;
@@ -24,7 +24,7 @@ pub struct SubmitAck {
     pub tenant: String,
 }
 
-pub fn routes(state: CraftyGatewayState) -> Router {
+pub fn routes(state: TrembitaGatewayState) -> Router {
     Router::new()
         .route("/orders/submit", post(submit_order))
         .with_state(state)
@@ -32,7 +32,7 @@ pub fn routes(state: CraftyGatewayState) -> Router {
 
 /// `POST /orders/submit?user=<tenant>&token=…` — sticky cast to `orders` group.
 pub async fn submit_order(
-    State(state): State<CraftyGatewayState>,
+    State(state): State<TrembitaGatewayState>,
     method: Method,
     uri: Uri,
     headers: HeaderMap,
@@ -47,7 +47,7 @@ pub async fn submit_order(
     };
     let tenant = handle.session_key().to_string();
     let payload = format!(r#"{{"payload":"{}"}}"#, body.order_id);
-    let bytes = match crafty::proto::encode(&payload) {
+    let bytes = match trembita::proto::encode(&payload) {
         Ok(b) => b,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     };

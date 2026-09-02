@@ -5,7 +5,7 @@
 
 ## Context
 
-crafty is actor-native on `ractor` (modeled on Erlang/OTP). The user wants **BEAM-level monitoring** — everything Observer / LiveDashboard / `:telemetry` / supervision offers, mapped to crafty's distributed cross-node model.
+trembita is actor-native on `ractor` (modeled on Erlang/OTP). The user wants **BEAM-level monitoring** — everything Observer / LiveDashboard / `:telemetry` / supervision offers, mapped to trembita's distributed cross-node model.
 
 User chose **ALL** proposed capabilities in v1 (with tracing/dashboard performance caveats).
 
@@ -21,13 +21,13 @@ Ship a **full observability stack**:
 6. **Live web dashboard** (read-only)
 7. Opt-in **message tracing**
 
-All read surfaces live on the **admin port** ([wire-protocol](wire-protocol.md#admin-http-port--8080tcp), default `:8080`), never on the mTLS crafty wire.
+All read surfaces live on the **admin port** ([wire-protocol](wire-protocol.md#admin-http-port--8080tcp), default `:8080`), never on the mTLS trembita wire.
 
 ---
 
 ### 1. Tracing
 
-`tracing` spans across `crafty-core`, `crafty-net`, `crafty-actor`. Correlated by `NodeId`, `ActorId`, `req_id`. Configurable level via `RUST_LOG` / `CRAFTY_LOG`.
+`tracing` spans across `trembita-core`, `trembita-net`, `trembita-actor`. Correlated by `NodeId`, `ActorId`, `req_id`. Configurable level via `RUST_LOG` / `TREMBITA_LOG`.
 
 ### 2. Metrics (`GET /metrics`, Prometheus)
 
@@ -46,7 +46,7 @@ Always-on and cheap (counters/gauges/histograms).
 BEAM `:telemetry`-style events emitted from the runtime:
 
 ```rust
-pub enum CraftyEvent {
+pub enum TrembitaEvent {
     ActorSpawned { id: ActorId },
     ActorStopped { id: ActorId, reason: StopReason },
     ActorRestarted { id: ActorId, count: u32 },
@@ -96,7 +96,7 @@ pub enum RestartPolicy {
 }
 ```
 
-Restart events surface in telemetry + metrics. Exhausted restart budget → escalate (stop + `CraftyEvent::ActorStopped { reason: RestartLimit }`).
+Restart events surface in telemetry + metrics. Exhausted restart budget → escalate (stop + `TrembitaEvent::ActorStopped { reason: RestartLimit }`).
 
 ### 6. Live web dashboard (`GET /dashboard`)
 
@@ -132,11 +132,11 @@ Emits trace events to telemetry stream / logs; auto-expires. Never on for whole 
 
 | Crate | Add |
 |-------|-----|
-| `crafty-actor` | telemetry emitter, mailbox metrics, restart policy |
-| `crafty-net` | admin routes: `/metrics`, `/introspect/*`, `/dashboard`, SSE |
-| `crafty-core` | Raft metrics + events |
-| `crafty` (facade) | `cluster.events()`, `cluster.introspect()`, `cluster.trace()` |
-| `crafty-dashboard` (optional) | embedded UI assets |
+| `trembita-actor` | telemetry emitter, mailbox metrics, restart policy |
+| `trembita-net` | admin routes: `/metrics`, `/introspect/*`, `/dashboard`, SSE |
+| `trembita-core` | Raft metrics + events |
+| `trembita` (facade) | `cluster.events()`, `cluster.introspect()`, `cluster.trace()` |
+| `trembita-dashboard` (optional) | embedded UI assets |
 
 ## Consequences
 

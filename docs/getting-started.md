@@ -1,6 +1,6 @@
 # Getting started — product apps (no Redis)
 
-Quick path for **product teams** using [`CraftyApp`](../crates/crafty/src/app.rs) — actors, jobs, and durable workflow keys on **embedded redb**, no Kubernetes, no mandatory Redis.
+Quick path for **product teams** using [`TrembitaApp`](../crates/trembita/src/app.rs) — actors, jobs, and durable workflow keys on **embedded redb**, no Kubernetes, no mandatory Redis.
 
 **Scenarios:** [scenarios/README.md](scenarios/README.md) · **Showcases:** [examples/README.md](../examples/README.md) · **Backlog:** [backlog.md](backlog.md)
 
@@ -8,29 +8,29 @@ Quick path for **product teams** using [`CraftyApp`](../crates/crafty/src/app.rs
 
 ```toml
 [dependencies]
-crafty = "0.5"
+trembita = "0.5"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 ```
 
 Enable `dev-certs` for local single-node without PEM files:
 
 ```toml
-crafty = { version = "0.5", features = ["dev-certs"] }
+trembita = { version = "0.5", features = ["dev-certs"] }
 ```
 
 ## 2. Minimal app
 
-Every process is a **QUIC cluster member**: solo `cargo run` is a one-node seed (`CRAFTY_ALLOW_JOIN=1` by default); add nodes with `CRAFTY_JOIN_SEEDS`. Same binary, same `.run()`.
+Every process is a **QUIC cluster member**: solo `cargo run` is a one-node seed (`TREMBITA_ALLOW_JOIN=1` by default); add nodes with `TREMBITA_JOIN_SEEDS`. Same binary, same `.run()`.
 
 ```rust
 use std::time::Duration;
-use crafty::{CraftyApp, GatewayOpts, QueueOpts, RunOpts};
+use trembita::{TrembitaApp, GatewayOpts, QueueOpts, RunOpts};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    crafty::init_tracing();
+    trembita::init_tracing();
 
-    CraftyApp::builder()
+    TrembitaApp::builder()
         .data_dir("/tmp/my-app")
         .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
         .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?)) // add .routes(...) and opt-in APIs as needed
@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 With `dev-certs` and no PEM env vars, a solo seed uses ephemeral mTLS automatically.
 
-With `data_dir`, crafty opens `{data_dir}/actor-store.redb`, `{data_dir}/queue-*.redb`, and `{data_dir}/node-id` (assigned id, persisted across restarts).
+With `data_dir`, trembita opens `{data_dir}/actor-store.redb`, `{data_dir}/queue-*.redb`, and `{data_dir}/node-id` (assigned id, persisted across restarts).
 
 ## 3. Multi-node (env only)
 
@@ -49,19 +49,19 @@ Same code as above. [`cluster.sh`](../examples/background-jobs/cluster.sh) sets 
 
 | Variable | Purpose |
 |----------|---------|
-| `CRAFTY_LISTEN` | QUIC `host:port` (default `0.0.0.0:7443`) |
-| `CRAFTY_DATA_DIR` | redb + `node-id` file |
-| `CRAFTY_CERT_DIR` | Shared dir with `node-{id}.pem` + `ca.pem` |
-| `CRAFTY_JOIN_SEEDS` | Join existing cluster (`id@host:port`) |
-| `CRAFTY_ALLOW_JOIN` | Seed accepts joins (default `1` when not joining) |
-| `CRAFTY_GATEWAY` | Product HTTP/WS bind |
-| `CRAFTY_GATEWAY_TLS_CERT` / `CRAFTY_GATEWAY_TLS_KEY` | Gateway HTTPS / WSS (optional; both required) |
-| `CRAFTY_ADMIN_TLS_CERT` / `CRAFTY_ADMIN_TLS_KEY` | Admin HTTPS (optional; both required) |
-| `CRAFTY_JOB_QUEUE` | Job stream name (optional) |
+| `TREMBITA_LISTEN` | QUIC `host:port` (default `0.0.0.0:7443`) |
+| `TREMBITA_DATA_DIR` | redb + `node-id` file |
+| `TREMBITA_CERT_DIR` | Shared dir with `node-{id}.pem` + `ca.pem` |
+| `TREMBITA_JOIN_SEEDS` | Join existing cluster (`id@host:port`) |
+| `TREMBITA_ALLOW_JOIN` | Seed accepts joins (default `1` when not joining) |
+| `TREMBITA_GATEWAY` | Product HTTP/WS bind |
+| `TREMBITA_GATEWAY_TLS_CERT` / `TREMBITA_GATEWAY_TLS_KEY` | Gateway HTTPS / WSS (optional; both required) |
+| `TREMBITA_ADMIN_TLS_CERT` / `TREMBITA_ADMIN_TLS_KEY` | Admin HTTPS (optional; both required) |
+| `TREMBITA_JOB_QUEUE` | Job stream name (optional) |
 
-Node id is **not** configured — seed gets `1`, joiners are assigned by the leader and persisted under `CRAFTY_DATA_DIR`.
+Node id is **not** configured — seed gets `1`, joiners are assigned by the leader and persisted under `TREMBITA_DATA_DIR`.
 
-**Homogeneous nodes:** every VPS runs the same binary (gateway + consumers when configured). Local **API vs jobs** fairness uses [`.workload()`](../crates/crafty/src/workload.rs) compute tokens ([workload governor](decisions/workload-governor.md)) — not static node roles. Edge-only ingress without local consumers: omit `.jobs()` / `.workers()` on those nodes (deployment choice), not a role env var.
+**Homogeneous nodes:** every VPS runs the same binary (gateway + consumers when configured). Local **API vs jobs** fairness uses [`.workload()`](../crates/trembita/src/workload.rs) compute tokens ([workload governor](decisions/workload-governor.md)) — not static node roles. Edge-only ingress without local consumers: omit `.jobs()` / `.workers()` on those nodes (deployment choice), not a role env var.
 
 ## 4. Try the showcases
 
@@ -86,20 +86,20 @@ Shared infra: [`dev/`](../dev/README.md) (`cluster-common.sh`, `certs/generate.s
 Internal HTTP/WS client (not on crates.io; built by `./cluster.sh setup`):
 
 ```bash
-cargo build -p crafty-showcase-client
-./target/debug/crafty-showcase-client job 127.0.0.1:8090 emails hello
-./target/debug/crafty-showcase-client ws 127.0.0.1:8294 alice hello
+cargo build -p trembita-showcase-client
+./target/debug/trembita-showcase-client job 127.0.0.1:8090 emails hello
+./target/debug/trembita-showcase-client ws 127.0.0.1:8294 alice hello
 ```
 
-Reference KV [`StateMachine`](../crates/crafty-core/src/kv.rs) (`crafty::kv` on the facade) for low-level Raft `propose` / `query` without a full product app.
+Reference KV [`StateMachine`](../crates/trembita-core/src/kv.rs) (`trembita::kv` on the facade) for low-level Raft `propose` / `query` without a full product app.
 
 ## 5. Workers (actors)
 
-Register worker types with [`.workers()`](../crates/crafty/src/worker_opts.rs) and explicit [`WorkerScale`](../crates/crafty/src/worker_opts.rs) (`Fixed`, `PerNode`, or queue-driven `Auto`):
+Register worker types with [`.workers()`](../crates/trembita/src/worker_opts.rs) and explicit [`WorkerScale`](../crates/trembita/src/worker_opts.rs) (`Fixed`, `PerNode`, or queue-driven `Auto`):
 
 ```rust
-use crafty::actor::{UserActor, actor};
-use crafty::{CraftyApp, RunOpts, WorkerOpts, WorkerScale, workers};
+use trembita::actor::{UserActor, actor};
+use trembita::{TrembitaApp, RunOpts, WorkerOpts, WorkerScale, workers};
 
 struct EmailWorker;
 
@@ -111,8 +111,8 @@ impl UserActor for EmailWorker {
     // …
 }
 
-CraftyApp::builder()
-    .data_dir("/var/lib/crafty")
+TrembitaApp::builder()
+    .data_dir("/var/lib/trembita")
     .workers(workers!(
         WorkerOpts::<EmailWorker>::new("email")
             .config(())
@@ -122,29 +122,29 @@ CraftyApp::builder()
     .await?;
 ```
 
-Legacy [`.actors()`](../crates/crafty/src/app.rs) + [`ActorGroupOpts`](../crates/crafty/src/actor_group.rs) remain supported.
+Legacy [`.actors()`](../crates/trembita/src/app.rs) + [`ActorGroupOpts`](../crates/trembita/src/actor_group.rs) remain supported.
 
-Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store_set`](../crates/crafty-actor/src/store_codec.rs) — backed by redb when `data_dir` is set.
+Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store_set`](../crates/trembita-actor/src/store_codec.rs) — backed by redb when `data_dir` is set.
 
 ## 6. HTTP job enqueue (optional)
 
-Prefer [`.jobs()`](../crates/crafty/src/job_opts.rs) to register queue + consumer + HTTP enqueue in one call. Enable the `http-jobs` feature (default on the facade):
+Prefer [`.jobs()`](../crates/trembita/src/job_opts.rs) to register queue + consumer + HTTP enqueue in one call. Enable the `http-jobs` feature (default on the facade):
 
 ```toml
-crafty = { version = "0.5", features = ["http-jobs"] }
+trembita = { version = "0.5", features = ["http-jobs"] }
 ```
 
 ```rust
 use std::time::Duration;
-use crafty::{CraftyApp, GatewayOpts, JobOpts, RunOpts, consumer};
+use trembita::{TrembitaApp, GatewayOpts, JobOpts, RunOpts, consumer};
 
 #[consumer("jobs")]
 async fn handle_job(_payload: &[u8]) -> Result<(), ()> {
     Ok(())
 }
 
-CraftyApp::builder()
-    .data_dir("/var/lib/crafty")
+TrembitaApp::builder()
+    .data_dir("/var/lib/trembita")
     .jobs([JobOpts::new("jobs")
         .lease(Duration::from_secs(300))
         .consumer(&HandleJobConsumer)
@@ -156,14 +156,14 @@ CraftyApp::builder()
 // POST /jobs/{stream} → 202 { "job_id": … }
 ```
 
-Lower-level [`.queue()`](../crates/crafty/src/app.rs) + [`.consumer()`](../crates/crafty/src/app.rs) remain available. See [crafty-http README](../crates/crafty-http/README.md) and [background-jobs](scenarios/background-jobs.md).
+Lower-level [`.queue()`](../crates/trembita/src/app.rs) + [`.consumer()`](../crates/trembita/src/app.rs) remain available. See [trembita-http README](../crates/trembita-http/README.md) and [background-jobs](scenarios/background-jobs.md).
 
 ## 7. Workflows (sagas)
 
-Build a named plan with [`WorkflowBuilder`](../crates/crafty/src/workflow.rs) and run it on the cluster journal:
+Build a named plan with [`WorkflowBuilder`](../crates/trembita/src/workflow.rs) and run it on the cluster journal:
 
 ```rust
-use crafty::{WorkflowBuilder, CraftyApp};
+use trembita::{WorkflowBuilder, TrembitaApp};
 
 let plan = WorkflowBuilder::new("onboard-user")
     .step("create_account", &key, payload)
@@ -177,17 +177,17 @@ Example: `./scripts/run-example.sh workflows`.
 
 ## 8. Real-time gateway
 
-WebSocket + sticky session routing. Auth stays in your code via [`GatewayIdentity`](scenarios/realtime-sessions.md); crafty maps identity → session key and opens a [`SessionHandle`](scenarios/realtime-sessions.md).
+WebSocket + sticky session routing. Auth stays in your code via [`GatewayIdentity`](scenarios/realtime-sessions.md); trembita maps identity → session key and opens a [`SessionHandle`](scenarios/realtime-sessions.md).
 
 ```rust
 use axum::http::{HeaderMap, Method, Uri};
 use axum::response::IntoResponse;
-use crafty::{CraftyGatewayState, GatewayOpts, GatewayIdentity, GatewayRequest, SessionKey};
+use trembita::{TrembitaGatewayState, GatewayOpts, GatewayIdentity, GatewayRequest, SessionKey};
 
 // WebSocket upgrade: use Method + Uri + HeaderMap (not Request — upgrade consumes the body).
 async fn ws(
     ws: WebSocketUpgrade,
-    State(state): State<CraftyGatewayState>,
+    State(state): State<TrembitaGatewayState>,
     method: Method,
     uri: Uri,
     headers: HeaderMap,
@@ -202,7 +202,7 @@ async fn ws(
     // ws.on_upgrade(|socket| async move { handle.cast(...).await; … })
 }
 
-CraftyApp::builder()
+TrembitaApp::builder()
     .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?).identity(MyAuth).routes(|state| { /* Router */ }));
 ```
 
@@ -210,7 +210,7 @@ Runnable showcase:
 
 ```bash
 cd examples/realtime && cargo run --release
-./trigger.sh alice hello   # uses crafty-showcase-client or websocat
+./trigger.sh alice hello   # uses trembita-showcase-client or websocat
 ```
 
 See [realtime-sessions](scenarios/realtime-sessions.md) and [gateway-identity](decisions/gateway-identity.md).
@@ -218,25 +218,25 @@ See [realtime-sessions](scenarios/realtime-sessions.md) and [gateway-identity](d
 ## 9. Scaffold a new project
 
 ```bash
-./scripts/crafty-init.sh my-app
+./scripts/trembita-init.sh my-app
 cd my-app
 cargo run
 ```
 
-Generates a `CraftyApp` stub, docker-compose for 3-node local dev, and links to scenario guides.
+Generates a `TrembitaApp` stub, docker-compose for 3-node local dev, and links to scenario guides.
 
 ## 10. Observability & ops
 
 | Need | How |
 |------|-----|
-| Live dashboard | `.configure(CraftyConfigure { admin_addr: Some(...), ..Default::default() })` or `CRAFTY_ADMIN` |
+| Live dashboard | `.configure(TrembitaConfigure { admin_addr: Some(...), ..Default::default() })` or `TREMBITA_ADMIN` |
 | Queue / workflow panels | Dashboard polls `/introspect/queues` and `/introspect/sagas` |
-| Prometheus | Scrape `GET /metrics` (includes `crafty_queue_*`, `crafty_saga_*`) |
+| Prometheus | Scrape `GET /metrics` (includes `trembita_queue_*`, `trembita_saga_*`) |
 | Production checklist | [ops/production-runbook.md](ops/production-runbook.md) |
 
 ## 11. Cluster APIs
 
-Most apps stay on `CraftyApp`. For custom state machines, multi-Raft, or direct supervisor/queue access, use [`crafty::cluster`](../crates/crafty/src/cluster.rs) or the [`CraftyApp`](../crates/crafty/src/app.rs) methods (`control`, `registry`, `supervisor`, …).
+Most apps stay on `TrembitaApp`. For custom state machines, multi-Raft, or direct supervisor/queue access, use [`trembita::cluster`](../crates/trembita/src/cluster.rs) or the [`TrembitaApp`](../crates/trembita/src/app.rs) methods (`control`, `registry`, `supervisor`, …).
 
 | Need | Doc |
 |------|-----|

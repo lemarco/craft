@@ -8,7 +8,7 @@
 
 Medium open question **#2** ([cross-node-actors](cross-node-actors.md)): what happens to **stateful actor** workflow data on VPS crash?
 
-The original ADR recommended **Redis** as the primary example. Product direction (2026-08-28) is **zero mandatory external infra**: the same embedded `redb` model used for [job-queue](job-queue.md) and Raft storage should cover actor workflow keys for teams that run entirely on crafty.
+The original ADR recommended **Redis** as the primary example. Product direction (2026-08-28) is **zero mandatory external infra**: the same embedded `redb` model used for [job-queue](job-queue.md) and Raft storage should cover actor workflow keys for teams that run entirely on trembita.
 
 ## Decision
 
@@ -17,7 +17,7 @@ The original ADR recommended **Redis** as the primary example. Product direction
 | Layer | Store | Purpose |
 |-------|--------|---------|
 | **Authoritative / consensus** | Raft → `StateMachine` | Orders, balances, config — linearizable and replicated |
-| **Actor workflow** | [`ActorStateStore`](../../crates/crafty-actor/src/store.rs) | Session progress, idempotency keys, locks, handler caches — survives crash when backed by durable store |
+| **Actor workflow** | [`ActorStateStore`](../../crates/trembita-actor/src/store.rs) | Session progress, idempotency keys, locks, handler caches — survives crash when backed by durable store |
 
 **Do not** put routine actor workflow bytes in the Raft log — avoids R1 write ceiling and wrong abstraction ([future-work-and-risks](future-work-and-risks.md)).
 
@@ -27,7 +27,7 @@ The original ADR recommended **Redis** as the primary example. Product direction
 |---------|------|--------|
 | **`InMemoryStore`** | Tests, single-node dev | **shipped** |
 | **`RedbActorStateStore`** | Production, `{data_dir}/actor-store.redb`, voter replication like `RedbJobQueue` | **shipped** (0.2.x) |
-| **`RedisStore`** (`crafty-store-redis`) | Optional — shared cache with non-crafty services | **shipped** |
+| **`RedisStore`** (`trembita-store-redis`) | Optional — shared cache with non-trembita services | **shipped** |
 
 Product getting started and [scenario guides](../scenarios/README.md) use **redb or SM only**. Redis is documented under optional integration.
 
@@ -37,7 +37,7 @@ Product getting started and [scenario guides](../scenarios/README.md) use **redb
 |------|-----------|
 | Business entity the product audits | `StateMachine` via `propose` |
 | Job payload / retry | `JobQueue` via `enqueue` |
-| Hot state for one session (loss on crash OK) | Actor struct fields + [`ActorSession`](../../crates/crafty-actor/src/session.rs) |
+| Hot state for one session (loss on crash OK) | Actor struct fields + [`ActorSession`](../../crates/trembita-actor/src/session.rs) |
 | Idempotency / step counter across crash | `ActorStateStore` (`RedbActorStateStore` with `.data_dir()`) |
 | Saga coordinator progress (multi-step workflow) | `MetaRaftSagaJournal` / `CompositeSagaJournal` ([workflows](../scenarios/workflows.md)) |
 
@@ -51,8 +51,8 @@ pub trait ActorStateStore: Send + Sync {
     async fn delete(&self, key: &str) -> Result<(), StoreError>;
 }
 
-CraftyCluster::builder()
-    .data_dir("/var/lib/crafty")
+TrembitaCluster::builder()
+    .data_dir("/var/lib/trembita")
     .actor_state_store(store)  // auto: RedbActorStateStore when `.data_dir()` is set
     .auto_workers([...])
 ```
@@ -79,10 +79,10 @@ Mirror [job-queue voter replication](job-queue.md):
 
 ### What external Redis is still for
 
-- Cache shared with **non-crafty** processes (Python monolith, legacy service)
-- Operator already runs Redis HA for other reasons — `crafty-store-redis` plugs in via the same trait
+- Cache shared with **non-trembita** processes (Python monolith, legacy service)
+- Operator already runs Redis HA for other reasons — `trembita-store-redis` plugs in via the same trait
 
-Not required for any of the four [product scenarios](product-scenarios.md) when the app is crafty-only.
+Not required for any of the four [product scenarios](product-scenarios.md) when the app is trembita-only.
 
 ## Consequences
 

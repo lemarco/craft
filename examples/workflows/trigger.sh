@@ -4,10 +4,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"
 GATEWAYS=(127.0.0.1:8490 127.0.0.1:8491 127.0.0.1:8492)
-GATEWAY="${CRAFTY_GATEWAY:-127.0.0.1:8490}"
+GATEWAY="${TREMBITA_GATEWAY:-127.0.0.1:8490}"
 GATEWAY="${GATEWAY#http://}"
 GATEWAY="${GATEWAY#https://}"
-CLIENT="$CRAFT_ROOT/target/debug/crafty-showcase-client"
+CLIENT="$CRAFT_ROOT/target/debug/trembita-showcase-client"
 
 pick_gateway() {
     for g in "${GATEWAYS[@]}"; do

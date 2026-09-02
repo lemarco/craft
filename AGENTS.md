@@ -1,4 +1,4 @@
-# Agent guide (crafty)
+# Agent guide (trembita)
 
 Distributed Raft + actor framework in Rust. Read before making changes.
 
@@ -21,16 +21,16 @@ Distributed Raft + actor framework in Rust. Read before making changes.
 
 | Path | Purpose |
 |------|---------|
-| `.cursor/rules/crafty-architecture.mdc` | No I/O in core; ports & adapters |
-| `.cursor/rules/crafty-testing.mdc` | Test layer choice; update coverage doc |
-| `.cursor/rules/crafty-quality-gate.mdc` | Pre-commit/push gates |
-| `.cursor/rules/crafty-commits.mdc` | Small, focused, testable commits |
+| `.cursor/rules/trembita-architecture.mdc` | No I/O in core; ports & adapters |
+| `.cursor/rules/trembita-testing.mdc` | Test layer choice; update coverage doc |
+| `.cursor/rules/trembita-quality-gate.mdc` | Pre-commit/push gates |
+| `.cursor/rules/trembita-commits.mdc` | Small, focused, testable commits |
 | `.cursor/rules/cargo-shell-safety.mdc` | One cargo, logging wrappers |
-| `.cursor/skills/crafty-testing/` | How to write tests |
-| `.cursor/skills/crafty-quality-gate/` | Merge-ready verification |
-| `.cursor/skills/crafty-add-feature/` | Feature placement workflow |
-| `.cursor/rules/crafty-publishing.mdc` | crates.io release; rate limits |
-| `.cursor/skills/crafty-publishing/` | Tag + publish + resume workflow |
+| `.cursor/skills/trembita-testing/` | How to write tests |
+| `.cursor/skills/trembita-quality-gate/` | Merge-ready verification |
+| `.cursor/skills/trembita-add-feature/` | Feature placement workflow |
+| `.cursor/rules/trembita-publishing.mdc` | crates.io release; rate limits |
+| `.cursor/skills/trembita-publishing/` | Tag + publish + resume workflow |
 | `.cursor/skills/cargo-diagnostics/` | Debug cargo lock / silent hangs |
 
 ## Quality (local)

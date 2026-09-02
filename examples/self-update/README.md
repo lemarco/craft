@@ -6,11 +6,11 @@ Leader-coordinated rolling upgrade ([upgrade-coordinator](../../docs/decisions/u
 
 ```bash
 ./cluster.sh setup
-./cluster.sh up          # background nodes (CRAFTY_UPGRADE_DRY_RUN=1 default)
+./cluster.sh up          # background nodes (TREMBITA_UPGRADE_DRY_RUN=1 default)
 ./trigger-upgrade.sh     # POST manifest → rolling grant on each node
 ```
 
-Dry-run mode reports `Ready` without process exit. For production-style restarts, unset `CRAFTY_UPGRADE_DRY_RUN` and run under **systemd** with `Restart=always`.
+Dry-run mode reports `Ready` without process exit. For production-style restarts, unset `TREMBITA_UPGRADE_DRY_RUN` and run under **systemd** with `Restart=always`.
 
 ## HTTP
 

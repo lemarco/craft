@@ -1,6 +1,6 @@
-# Contributing to crafty
+# Contributing to trembita
 
-Thank you for helping improve crafty. This guide is for **human contributors**; AI agents should start from [AGENTS.md](AGENTS.md) instead.
+Thank you for helping improve trembita. This guide is for **human contributors**; AI agents should start from [AGENTS.md](AGENTS.md) instead.
 
 ## Before you code
 
@@ -31,7 +31,7 @@ Full process diagram: [docs/process.md](docs/process.md).
 | Pre-push / MR | `./scripts/gate.sh --tier push` |
 | Release check | `./scripts/release.sh --dry-run` |
 
-Hooks auto-fix fmt and fixable clippy lints (staged-only on commit; full workspace on push with an optional `chore: apply fmt/clippy autofix` commit). Disable push autofix commit with `CRAFTY_NO_AUTOFIX_COMMIT=1 git push`.
+Hooks auto-fix fmt and fixable clippy lints (staged-only on commit; full workspace on push with an optional `chore: apply fmt/clippy autofix` commit). Disable push autofix commit with `TREMBITA_NO_AUTOFIX_COMMIT=1 git push`.
 
 Fast iteration while coding:
 
@@ -46,9 +46,9 @@ See [.cursor/rules/cargo-shell-safety.mdc](.cursor/rules/cargo-shell-safety.mdc)
 
 | Change | Location |
 |--------|----------|
-| Pure Raft / FSM | `crafty-core` |
-| Runtime, actors, queues | `crafty-actor`, facade in `crafty` |
-| Public product API | `CraftyApp` in `crafty`, docs in `docs/getting-started.md` |
+| Pure Raft / FSM | `trembita-core` |
+| Runtime, actors, queues | `trembita-actor`, facade in `trembita` |
+| Public product API | `TrembitaApp` in `trembita`, docs in `docs/getting-started.md` |
 | New port trait | core trait + prod adapter crate + test/sim adapter |
 | Runnable product demo | `examples/<name>/` (standalone `Cargo.toml`) |
 | Design rationale | new or updated ADR in `docs/decisions/` |
@@ -63,7 +63,7 @@ Choose the layer from [docs/decisions/testing-strategy.md](docs/decisions/testin
 
 - Unit — pure logic in `#[cfg(test)]`
 - Integration — `crates/*/tests/`
-- Sim — `crafty-sim` for deterministic cluster scenarios
+- Sim — `trembita-sim` for deterministic cluster scenarios
 - E2E — `e2e/*.sh` for real QUIC/mTLS processes
 
 New `#[ignore]` integration tests must note which CI heavy job runs them.
@@ -87,7 +87,7 @@ Published crates require rustdoc (`missing_docs = "deny"`). Audit: `./scripts/do
 
 ## Release (maintainers)
 
-See [docs/releasing.md](docs/releasing.md) and [.cursor/skills/crafty-publishing/](.cursor/skills/crafty-publishing/SKILL.md).
+See [docs/releasing.md](docs/releasing.md) and [.cursor/skills/trembita-publishing/](.cursor/skills/trembita-publishing/SKILL.md).
 
 ## Related
 

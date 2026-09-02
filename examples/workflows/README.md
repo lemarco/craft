@@ -2,13 +2,13 @@
 
 Multi-step onboarding with compensators; journal in `group-meta.redb`.
 
-Uses [`CraftyApp`](../../crates/crafty/src/app.rs) — same onboarding path as the other product showcases.
+Uses [`TrembitaApp`](../../crates/trembita/src/app.rs) — same onboarding path as the other product showcases.
 
 ## What you run
 
 | Piece | Role |
 |-------|------|
-| This binary | `CraftyApp` + gateway `/workflows/*` |
+| This binary | `TrembitaApp` + gateway `/workflows/*` |
 | [`trigger.sh`](trigger.sh) | Run / resume saga via gateway HTTP |
 | Admin | Dashboard **Sagas** panel |
 
@@ -62,9 +62,9 @@ Docker Compose: `cd dev/compose/workflows && docker compose up --build`
 
 | Var | Default | Meaning |
 |-----|---------|---------|
-| `CRAFTY_GATEWAY` | `127.0.0.1:8490` (local) | Product HTTP bind (`/workflows/run`, `/workflows/resume`) |
-| `CRAFTY_DATA_DIR` | `/tmp/crafty-showcase-workflows` | Raft + Meta-Raft redb |
-| `CRAFTY_PEERS` | unset | When set → QUIC cluster mode |
-| `CRAFTY_GATEWAY_WORKFLOWS` | unset | Set `1` to mount `/workflows/*` when gateway comes from env only |
+| `TREMBITA_GATEWAY` | `127.0.0.1:8490` (local) | Product HTTP bind (`/workflows/run`, `/workflows/resume`) |
+| `TREMBITA_DATA_DIR` | `/tmp/trembita-showcase-workflows` | Raft + Meta-Raft redb |
+| `TREMBITA_PEERS` | unset | When set → QUIC cluster mode |
+| `TREMBITA_GATEWAY_WORKFLOWS` | unset | Set `1` to mount `/workflows/*` when gateway comes from env only |
 
 Guide: [docs/scenarios/workflows.md](../../docs/scenarios/workflows.md)

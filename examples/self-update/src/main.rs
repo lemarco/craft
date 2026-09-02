@@ -1,8 +1,8 @@
 //! # Self-update showcase
 //!
-//! Demonstrates the [upgrade-coordinator](https://gitlab.com/lemarco/craft/-/blob/main/docs/decisions/upgrade-coordinator.md)
+//! Demonstrates the [upgrade-coordinator](https://gitlab.com/lemarco/trembita/-/blob/main/docs/decisions/upgrade-coordinator.md)
 //! pattern: Raft leader grants one node at a time; each node downloads an artifact,
-//! verifies SHA-256, installs under `data_dir/bin/`, and (unless `CRAFTY_UPGRADE_DRY_RUN=1`)
+//! verifies SHA-256, installs under `data_dir/bin/`, and (unless `TREMBITA_UPGRADE_DRY_RUN=1`)
 //! calls `leave()` and exits for systemd restart.
 //!
 //! ## HTTP
@@ -23,12 +23,12 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crafty::cluster::{CraftyCluster, PemSecurity};
-use crafty::upgrade::{UpgradeMachine, UpgradeOpts, spawn_upgrade_runtime, upgrade_api};
-use crafty::ReadyOpts;
-use crafty_showcase_common::{data_dir, display_addr, env_flag};
+use trembita::cluster::{TrembitaCluster, PemSecurity};
+use trembita::upgrade::{UpgradeMachine, UpgradeOpts, spawn_upgrade_runtime, upgrade_api};
+use trembita::ReadyOpts;
+use trembita_showcase_common::{data_dir, display_addr, env_flag};
 
-const DATA_DIR_NAME: &str = "crafty-showcase-self-update";
+const DATA_DIR_NAME: &str = "trembita-showcase-self-update";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -38,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = debug::config_from_env()?;
     let seeds = cfg.join_seeds.clone();
 
-    let mut builder = CraftyCluster::builder(cfg.node_id, UpgradeMachine::default())
+    let mut builder = TrembitaCluster::builder(cfg.node_id, UpgradeMachine::default())
         .members(cfg.members.iter().copied());
     if let Some(admin) = cfg.admin {
         builder = builder.admin_addr(admin);
@@ -74,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         || data_dir(DATA_DIR_NAME),
         Clone::clone,
     ));
-    upgrade_opts.dry_run = env_flag("CRAFTY_UPGRADE_DRY_RUN");
+    upgrade_opts.dry_run = env_flag("TREMBITA_UPGRADE_DRY_RUN");
     upgrade_opts.tick_period = Duration::from_secs(5);
     let _upgrade = spawn_upgrade_runtime(Arc::clone(&cluster), upgrade_opts);
 
@@ -97,19 +97,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn spawn_upgrade_http(
-    cluster: Arc<CraftyCluster<UpgradeMachine>>,
+    cluster: Arc<TrembitaCluster<UpgradeMachine>>,
     addr: SocketAddr,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let api = upgrade_api(cluster);
     let router = api.router().with_state(Arc::new(api.into_state()));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     eprintln!(
-        "crafty: upgrade API http://{} (GET /cluster/upgrade, POST /cluster/upgrade/desired)",
+        "trembita: upgrade API http://{} (GET /cluster/upgrade, POST /cluster/upgrade/desired)",
         display_addr(&addr.to_string())
     );
     tokio::spawn(async move {
         if let Err(e) = axum::serve(listener, router).await {
-            eprintln!("crafty: upgrade API failed: {e}");
+            eprintln!("trembita: upgrade API failed: {e}");
         }
     });
     Ok(())

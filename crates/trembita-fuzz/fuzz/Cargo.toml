@@ -1,0 +1,19 @@
+[package]
+name = "trembita-fuzz-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[[bin]]
+name = "wire_decode"
+path = "fuzz_targets/wire_decode.rs"
+test = false
+doc = false
+bench = false
+
+[dependencies]
+trembita-proto = { path = "../../trembita-proto" }
+libfuzzer-sys = "0.4"

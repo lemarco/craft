@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"
-CLIENT="$CRAFT_ROOT/target/debug/crafty-showcase-client"
+CLIENT="$CRAFT_ROOT/target/debug/trembita-showcase-client"
 GATEWAYS=(127.0.0.1:8294 127.0.0.1:8295 127.0.0.1:8296)
 
 USERS=(alice bob carol)
@@ -19,7 +19,7 @@ for i in $(seq 1 "$COUNT"); do
     elif command -v websocat >/dev/null 2>&1; then
         out=$(printf '%s\n' "$msg" | websocat -1 "ws://${gw}/ws?user=${user}" 2>/dev/null || true)
     else
-        echo "install crafty-showcase-client or websocat" >&2
+        echo "install trembita-showcase-client or websocat" >&2
         exit 1
     fi
     if echo "$out" | rg -q "ok: $msg"; then

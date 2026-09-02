@@ -3,24 +3,24 @@
 #
 # Usage:
 #   ./scripts/test-with-log.sh                          # full workspace
-#   ./scripts/test-with-log.sh -p crafty-actor group_rebalance
-#   CRAFTY_LOG_REBALANCE=1 ./scripts/test-with-log.sh -p crafty
+#   ./scripts/test-with-log.sh -p trembita-actor group_rebalance
+#   TREMBITA_LOG_REBALANCE=1 ./scripts/test-with-log.sh -p trembita
 #
 # Local iteration (faster — default-members, no check phase):
-#   ./scripts/test-fast.sh -p crafty-actor
+#   ./scripts/test-fast.sh -p trembita-actor
 #
 # Env:
 #   CARGO_LOG         — cargo internals (default: cargo::core=info for this script)
-#   CRAFTY_SKIP_CHECK  — skip phase-1 cargo check (default: 1 when cargo-nextest exists)
-#   CRAFTY_FORCE_CHECK — always run phase-1 cargo check
+#   TREMBITA_SKIP_CHECK  — skip phase-1 cargo check (default: 1 when cargo-nextest exists)
+#   TREMBITA_FORCE_CHECK — always run phase-1 cargo check
 #   NEXTEST_PROFILE   — nextest profile (default: default; use ci for pre-push)
-#   CRAFTY_LOG_REBALANCE — enable `crafty::rebalance=debug` tracing (call
-#     `crafty_test_support::test_setup()` in tests, or use `crafty-node` binary)
+#   TREMBITA_LOG_REBALANCE — enable `trembita::rebalance=debug` tracing (call
+#     `trembita_test_support::test_setup()` in tests, or use `trembita-node` binary)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-LOG="${CRAFTY_TEST_LOG:-target/test-run.log}"
+LOG="${TREMBITA_TEST_LOG:-target/test-run.log}"
 mkdir -p target
 
 log() {
@@ -58,12 +58,12 @@ fi
 
 # Phase 1: compile gate — skip when nextest is available (saves a full recompile pass).
 RUN_CHECK=1
-if [[ -n "${CRAFTY_SKIP_CHECK:-}" ]]; then
+if [[ -n "${TREMBITA_SKIP_CHECK:-}" ]]; then
   RUN_CHECK=0
-elif [[ "$USE_NEXTEST" -eq 1 && -z "${CRAFTY_FORCE_CHECK:-}" ]]; then
+elif [[ "$USE_NEXTEST" -eq 1 && -z "${TREMBITA_FORCE_CHECK:-}" ]]; then
   RUN_CHECK=0
 fi
-if [[ -n "${CRAFTY_FORCE_CHECK:-}" ]]; then
+if [[ -n "${TREMBITA_FORCE_CHECK:-}" ]]; then
   RUN_CHECK=1
 fi
 
@@ -79,7 +79,7 @@ if [[ "$RUN_CHECK" -eq 1 ]]; then
   fi
   log "=== phase 1 ok ==="
 else
-  log "=== phase 1: skipped (nextest compiles in one pass; CRAFTY_FORCE_CHECK=1 to enable check) ==="
+  log "=== phase 1: skipped (nextest compiles in one pass; TREMBITA_FORCE_CHECK=1 to enable check) ==="
 fi
 
 NEXTEST_PROFILE="${NEXTEST_PROFILE:-default}"

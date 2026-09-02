@@ -22,12 +22,12 @@ Run locally before a release candidate:
 ./scripts/docs-missing-audit.sh --workspace
 ```
 
-Fix warnings crate-by-crate; prefer documenting public items on the **`crafty`**
+Fix warnings crate-by-crate; prefer documenting public items on the **`trembita`**
 facade first (see [public-api-1.0.md](public-api-1.0.md)).
 
 ## Exemptions
 
-- `publish = false` crates (`crafty-test-support`, `crafty-e2e-*`, benchmarks)
+- `publish = false` crates (`trembita-test-support`, `trembita-e2e-*`, benchmarks)
 - Private / `pub(crate)` items (no rustdoc required)
 - Do **not** blanket-allow `missing_docs` at 1.0 — use targeted `#[expect(missing_docs)]`
   only for generated or truly internal modules, with a comment.

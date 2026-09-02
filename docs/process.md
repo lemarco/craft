@@ -59,8 +59,8 @@ Opt-out / tuning:
 
 ```bash
 LEFTHOOK=0 git commit                    # skip hooks
-CRAFTY_NO_AUTOFIX_COMMIT=1 git push      # fail on unfixed fmt/clippy instead of chore commit
-CRAFTY_HOOK_LOG=1 git push               # log to target/test-run.log
+TREMBITA_NO_AUTOFIX_COMMIT=1 git push      # fail on unfixed fmt/clippy instead of chore commit
+TREMBITA_HOOK_LOG=1 git push               # log to target/test-run.log
 lefthook run pre-push --tags release     # include release build
 ```
 
@@ -114,7 +114,7 @@ Real uploads always go through `publish-workspace.sh` (rate-limit safe). Never `
 ## Autofix policy
 
 - **Pre-commit:** fmt + clippy `--fix` on **staged crates only**; lefthook re-stages into the current commit.
-- **Pre-push:** full-workspace autofix; fixable changes auto-committed as `chore: apply fmt/clippy autofix` (disable with `CRAFTY_NO_AUTOFIX_COMMIT=1`).
+- **Pre-push:** full-workspace autofix; fixable changes auto-committed as `chore: apply fmt/clippy autofix` (disable with `TREMBITA_NO_AUTOFIX_COMMIT=1`).
 - **Release:** autofix included in `chore(release): …` commit when preparing a new version.
 
 Non-fixable clippy pedantic lints still fail the gate — autofix never hides real issues.

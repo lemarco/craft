@@ -3,7 +3,7 @@
 pub const NAME: &str = "stateful-workers";
 
 pub fn init_tracing() {
-    crafty::init_tracing();
+    trembita::init_tracing();
     tracing::debug!(target: "showcase", showcase = NAME, "tracing initialized");
 }
 
@@ -14,8 +14,8 @@ pub fn startup(mode: &str, node_id: u64, data_dir: &std::path::Path) {
         mode,
         node_id,
         data_dir = %data_dir.display(),
-        gateway = ?std::env::var("CRAFTY_GATEWAY").ok(),
-        peers = ?std::env::var("CRAFTY_PEERS").ok(),
+        gateway = ?std::env::var("TREMBITA_GATEWAY").ok(),
+        peers = ?std::env::var("TREMBITA_PEERS").ok(),
         "showcase starting"
     );
 }
@@ -50,7 +50,7 @@ pub fn order_handle(order_id: u64, idempotent_skip: bool) {
     tracing::debug!(
         target: "showcase",
         showcase = NAME,
-        node_id = ?std::env::var("CRAFTY_NODE_ID").ok(),
+        node_id = ?std::env::var("TREMBITA_NODE_ID").ok(),
         order_id,
         idempotent_skip,
         "OrderProcessor handle"

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
 # cert_renew.sh — reissue on-disk PEMs and hot-reload TLS without restarting
-# crafty-node (cert-automation). Two paths exercised on a live docker-compose cluster:
+# trembita-node (cert-automation). Two paths exercised on a live docker-compose cluster:
 #
 #   1. SIGHUP after rewrite (simulates `step ca renew` + hook)
-#   2. File poll (CRAFTY_CERT_WATCH_SECS) after rewrite, no signal
+#   2. File poll (TREMBITA_CERT_WATCH_SECS) after rewrite, no signal
 #
 # Requires Docker + `docker compose`. Run from anywhere:
 #   ./e2e/cert_renew.sh
@@ -15,11 +15,11 @@ cd "$(dirname "$0")"
 . ./lib.sh
 
 # Short poll window so the poll scenario finishes quickly in CI.
-export CRAFTY_CERT_WATCH_SECS="${CRAFTY_CERT_WATCH_SECS:-5}"
+export TREMBITA_CERT_WATCH_SECS="${TREMBITA_CERT_WATCH_SECS:-5}"
 
 trap cleanup EXIT
 
-echo "building + starting 3-node cluster (QUIC + mTLS, cert watch ${CRAFTY_CERT_WATCH_SECS}s)…"
+echo "building + starting 3-node cluster (QUIC + mTLS, cert watch ${TREMBITA_CERT_WATCH_SECS}s)…"
 $COMPOSE up -d --build
 
 echo "waiting for a live majority leader…"
@@ -52,7 +52,7 @@ echo "PASS: majority leader = node $AFTER_HUP after SIGHUP reload"
 echo "reissuing node${POLL_TARGET} cert and waiting for poll reload…"
 reissue_node_cert "$POLL_TARGET" 1
 # Two watch intervals + slack for mtime detection and reload.
-sleep $((CRAFTY_CERT_WATCH_SECS * 2 + 3))
+sleep $((TREMBITA_CERT_WATCH_SECS * 2 + 3))
 
 if ! AFTER_POLL=$(wait_majority_leader); then
     echo "FAIL: cluster lost majority after poll reload on node${POLL_TARGET}"

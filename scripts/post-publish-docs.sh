@@ -21,14 +21,14 @@ README="README.md"
 STATUS="docs/status.md"
 
 # Add crates.io + docs.rs badges after the MSRV badge (once).
-if ! grep -q 'img.shields.io/crates/v/crafty' "$README"; then
+if ! grep -q 'img.shields.io/crates/v/trembita' "$README"; then
     tmp="$(mktemp)"
     awk '
         /img.shields.io.*rustc/ {
             print
             print ""
-            print "[![crates.io](https://img.shields.io/crates/v/crafty.svg)](https://crates.io/crates/crafty)"
-            print "[![docs.rs](https://docs.rs/crafty/badge.svg)](https://docs.rs/crafty)"
+            print "[![crates.io](https://img.shields.io/crates/v/trembita.svg)](https://crates.io/crates/trembita)"
+            print "[![docs.rs](https://docs.rs/trembita/badge.svg)](https://docs.rs/trembita)"
             next
         }
         { print }
@@ -46,7 +46,7 @@ fi
 # status.md: maturity + release bullets (idempotent — matches pre-publish wording).
 if grep -q 'release-ready' "$STATUS"; then
     sed -i \
-        -e 's|release-ready (\[releasing.md\](releasing.md))|published on [crates.io](https://crates.io/crates/crafty)|' \
+        -e 's|release-ready (\[releasing.md\](releasing.md))|published on [crates.io](https://crates.io/crates/trembita)|' \
         -e "s|run \[releasing.md\](releasing.md) (\`./scripts/release.sh [^)]*\`)|published v$VERSION — see [CHANGELOG.md](../CHANGELOG.md)|" \
         "$STATUS"
     echo ">> updated $STATUS for v$VERSION"
@@ -60,11 +60,11 @@ for f in "$README" "$STATUS"; do
     sed -i -E \
         -e "s/(\\| \\*\\*Version\\*\\* \\| \`)[0-9]+\\.[0-9]+\\.[0-9]+(\`)/\\1$VERSION\\2/" \
         -e "s#(\\| \\*\\*Release\\*\\* \\| v)[0-9]+\\.[0-9]+\\.[0-9]+#\\1$VERSION#" \
-        -e "s#docs\\.rs/crafty/[0-9]+\\.[0-9]+\\.[0-9]+#docs.rs/crafty/$VERSION#g" \
+        -e "s#docs\\.rs/trembita/[0-9]+\\.[0-9]+\\.[0-9]+#docs.rs/trembita/$VERSION#g" \
         -e "s#(crates\\.io / docs\\.rs publish\\*\\* . v)[0-9]+\\.[0-9]+\\.[0-9]+#\\1$VERSION#" \
         "$f"
 done
 echo ">> refreshed version references to v$VERSION in $README and $STATUS"
 
 echo "OK: post-publish docs refreshed for v$VERSION."
-echo "tip: commit with: git commit -am \"docs: mark crafty v$VERSION published on crates.io\""
+echo "tip: commit with: git commit -am \"docs: mark trembita v$VERSION published on crates.io\""

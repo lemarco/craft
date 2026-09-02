@@ -5,10 +5,10 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"
 source "$CRAFT_ROOT/dev/cluster-common.sh"
 
-DEV="${CRAFTY_SW_CLUSTER_DIR:-$CRAFT_ROOT/target/crafty-stateful-workers-cluster}"
+DEV="${TREMBITA_SW_CLUSTER_DIR:-$CRAFT_ROOT/target/trembita-stateful-workers-cluster}"
 CERTS="$DEV/certs"
 SEED="1@127.0.0.1:7843"
-BIN="crafty-showcase-stateful-workers"
+BIN="trembita-showcase-stateful-workers"
 CLUSTER_PORTS=(7843 7853 7863 7873 8190 8191 8192 9280 9281 9282 9283)
 
 cluster_common_init "$ROOT" "$BIN" "$DEV" "$CERTS" "$SEED"
@@ -54,7 +54,7 @@ health() {
 }
 
 migrate_env() {
-    export CRAFTY_MIGRATE_DEMO=1
+    export TREMBITA_MIGRATE_DEMO=1
 }
 
 run_node_migrate() {
