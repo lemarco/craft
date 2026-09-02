@@ -58,9 +58,9 @@ impl Parse for ConsumerJsonArgs {
     }
 }
 
-/// Register a JSON job handler and generate a [`JobConsumer`] adapter.
+/// Register a JSON job handler and generate a `JobConsumer` adapter.
 ///
-/// Apply to `async fn` taking a `serde::Deserialize` payload (and optional [`JobContext`]):
+/// Apply to `async fn` taking a `serde::Deserialize` payload (and optional `JobContext`):
 ///
 /// ```ignore
 /// #[crafty::consumer_json("emails", EmailJob)]
