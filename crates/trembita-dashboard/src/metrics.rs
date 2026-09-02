@@ -8,10 +8,14 @@
 //!
 //! The registry is cheap and always-on: `Metrics` is an `Arc` handle shared by
 //! the runtime (which records samples) and the admin server (which renders).
+//! Optional [`MetricsSink`](crate::MetricsSink) hooks receive the same samples
+//! for push export without replacing Prometheus scrape.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
+
+use crate::metrics_sink::MetricsSink;
 
 /// The Prometheus type of a metric family.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,9 +57,16 @@ struct Registry {
 }
 
 /// A shared, cloneable Prometheus metrics registry.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Metrics {
     inner: Arc<Mutex<Registry>>,
+    extra_sinks: Arc<[Arc<dyn MetricsSink>]>,
+}
+
+impl Default for Metrics {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Format a label slice into a deterministic Prometheus label set, e.g.
@@ -86,7 +97,28 @@ impl Metrics {
     /// A fresh, empty registry.
     #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            inner: Arc::new(Mutex::new(Registry::default())),
+            extra_sinks: Arc::from([]),
+        }
+    }
+
+    /// Same as [`new`](Self::new) but also forwards every sample to `sinks`.
+    #[must_use]
+    pub fn with_extra_sinks(sinks: Vec<Arc<dyn MetricsSink>>) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(Registry::default())),
+            extra_sinks: Arc::from(sinks),
+        }
+    }
+
+    fn forward<F>(&self, record: F)
+    where
+        F: Fn(&dyn MetricsSink),
+    {
+        for sink in self.extra_sinks.iter() {
+            record(sink.as_ref());
+        }
     }
 
     fn family<'a>(
@@ -109,13 +141,16 @@ impl Metrics {
     /// # Panics
     /// Panics if the registry lock is poisoned.
     pub fn incr(&self, name: &str, help: &str, labels: &[(&str, &str)], by: f64) {
-        let mut reg = self.inner.lock().expect("poisoned");
-        let key = format_labels(labels);
-        let family = Self::family(&mut reg, name, MetricKind::Counter, help);
-        match family.series.entry(key).or_insert(Sample::Scalar(0.0)) {
-            Sample::Scalar(v) => *v += by,
-            Sample::Summary { .. } => {}
+        {
+            let mut reg = self.inner.lock().expect("poisoned");
+            let key = format_labels(labels);
+            let family = Self::family(&mut reg, name, MetricKind::Counter, help);
+            match family.series.entry(key).or_insert(Sample::Scalar(0.0)) {
+                Sample::Scalar(v) => *v += by,
+                Sample::Summary { .. } => {}
+            }
         }
+        self.forward(|sink| sink.incr(name, help, labels, by));
     }
 
     /// Set a gauge series to `value` (created on first use).
@@ -123,10 +158,13 @@ impl Metrics {
     /// # Panics
     /// Panics if the registry lock is poisoned.
     pub fn set(&self, name: &str, help: &str, labels: &[(&str, &str)], value: f64) {
-        let mut reg = self.inner.lock().expect("poisoned");
-        let key = format_labels(labels);
-        let family = Self::family(&mut reg, name, MetricKind::Gauge, help);
-        family.series.insert(key, Sample::Scalar(value));
+        {
+            let mut reg = self.inner.lock().expect("poisoned");
+            let key = format_labels(labels);
+            let family = Self::family(&mut reg, name, MetricKind::Gauge, help);
+            family.series.insert(key, Sample::Scalar(value));
+        }
+        self.forward(|sink| sink.set(name, help, labels, value));
     }
 
     /// Record an observation into a summary series (count += 1, sum += value).
@@ -134,20 +172,23 @@ impl Metrics {
     /// # Panics
     /// Panics if the registry lock is poisoned.
     pub fn observe(&self, name: &str, help: &str, labels: &[(&str, &str)], value: f64) {
-        let mut reg = self.inner.lock().expect("poisoned");
-        let key = format_labels(labels);
-        let family = Self::family(&mut reg, name, MetricKind::Summary, help);
-        match family
-            .series
-            .entry(key)
-            .or_insert(Sample::Summary { count: 0, sum: 0.0 })
         {
-            Sample::Summary { count, sum } => {
-                *count += 1;
-                *sum += value;
+            let mut reg = self.inner.lock().expect("poisoned");
+            let key = format_labels(labels);
+            let family = Self::family(&mut reg, name, MetricKind::Summary, help);
+            match family
+                .series
+                .entry(key)
+                .or_insert(Sample::Summary { count: 0, sum: 0.0 })
+            {
+                Sample::Summary { count, sum } => {
+                    *count += 1;
+                    *sum += value;
+                }
+                Sample::Scalar(_) => {}
             }
-            Sample::Scalar(_) => {}
         }
+        self.forward(|sink| sink.observe(name, help, labels, value));
     }
 
     /// Render the whole registry as Prometheus text exposition format.
@@ -257,5 +298,24 @@ mod tests {
         assert!(out.contains("# TYPE trembita_handle_latency_seconds summary"));
         assert!(out.contains("trembita_handle_latency_seconds_count{} 2"));
         assert!(out.contains("trembita_handle_latency_seconds_sum{} 2"));
+    }
+
+    #[test]
+    fn extra_sink_receives_prometheus_samples() {
+        use crate::RecordingMetricsSink;
+
+        let recorder = RecordingMetricsSink::new();
+        let m = Metrics::with_extra_sinks(vec![Arc::new(recorder.clone())]);
+        m.incr("trembita_test_total", "test", &[], 1.0);
+        assert!(m.render().contains("trembita_test_total 1"));
+        assert_eq!(
+            recorder.take_samples(),
+            vec![crate::RecordedMetric::Incr {
+                name: "trembita_test_total".into(),
+                help: "test".into(),
+                labels: vec![],
+                by: 1.0,
+            }]
+        );
     }
 }

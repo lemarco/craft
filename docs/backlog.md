@@ -16,6 +16,7 @@ Epics **B-01 … B-17** are **shipped** (see [Shipped epics](#shipped-epics-arch
 |----|------|--------|-------|
 | O-01 | `trembita-store-redis` maintenance | ongoing | Keep as optional adapter |
 | O-02 | PostgreSQL `ActorStateStore` | deferred | Only if external integration demand |
+| O-03 | Optional OTLP metrics adapter (`trembita-metrics-otlp`) | deferred | Builds on shipped [`MetricsSink`](decisions/observability.md#metrics-export-port) port |
 
 
 

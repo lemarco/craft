@@ -232,6 +232,8 @@ Generates a `TrembitaApp` stub, docker-compose for 3-node local dev, and links t
 | Live dashboard | `.configure(TrembitaConfigure { admin_addr: Some(...), ..Default::default() })` or `TREMBITA_ADMIN` |
 | Queue / workflow panels | Dashboard polls `/introspect/queues` and `/introspect/sagas` |
 | Prometheus | Scrape `GET /metrics` (includes `trembita_queue_*`, `trembita_saga_*`) |
+| Push export | `.metrics_sink(Arc::new(my_sink))` on [`TrembitaAppBuilder`](../crates/trembita/src/app.rs) — see [`MetricsSink`](../crates/trembita-dashboard/src/metrics_sink.rs) |
+| Live events | `cluster.events().subscribe()` — forward [`TrembitaEvent`](../crates/trembita-dashboard/src/telemetry.rs) to your sink |
 | Production checklist | [ops/production-runbook.md](ops/production-runbook.md) |
 
 ## 11. Cluster APIs

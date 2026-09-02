@@ -41,6 +41,21 @@ All read surfaces live on the **admin port** ([wire-protocol](wire-protocol.md#a
 
 Always-on and cheap (counters/gauges/histograms).
 
+#### Metrics export port
+
+Pull via `GET /metrics` remains the default path (Prometheus scrape). For push
+backends, implement [`MetricsSink`](../crates/trembita-dashboard/src/metrics_sink.rs)
+and wire it on the cluster/app builder:
+
+```rust
+cluster.metrics_sink(Arc::new(my_sink));
+// or: TrembitaApp::builder().metrics_sink(Arc::new(my_sink))
+```
+
+The in-process Prometheus registry is **always** updated in parallel; the sink
+receives the same `incr` / `set` / `observe` samples. OpenTelemetry / OTLP belongs
+in an optional adapter crate (backlog O-03), not in the default dependency tree.
+
 ### 3. Telemetry event stream
 
 BEAM `:telemetry`-style events emitted from the runtime:

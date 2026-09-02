@@ -469,6 +469,42 @@ async fn telemetry_publishes_consensus_and_actor_metrics() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn metrics_sink_receives_runtime_samples() {
+    use std::sync::Arc;
+
+    use trembita::{RecordedMetric, RecordingMetricsSink, TrembitaCluster};
+
+    let recorder = Arc::new(RecordingMetricsSink::new());
+    let net = LocalNetwork::new();
+    let cluster = TrembitaCluster::builder(NodeId(1), Kv::default())
+        .members([NodeId(1)])
+        .raft_config(fast_raft_config())
+        .tick_period(TICK_PERIOD)
+        .metrics_sink(recorder.clone())
+        .manage_auto::<Worker>("w", 0)
+        .start_local(&net)
+        .await;
+
+    eventually_default("prometheus actor spawn counter", move || {
+        cluster
+            .metrics()
+            .render()
+            .contains("trembita_actor_spawns_total")
+    })
+    .await;
+
+    assert!(
+        recorder.take_samples().iter().any(|sample| matches!(
+            sample,
+            RecordedMetric::Incr { name, .. } if name == "trembita_actor_spawns_total"
+        )),
+        "external sink should mirror prometheus samples"
+    );
+
+    cluster.shutdown();
+}
+
+#[tokio::test(start_paused = true)]
 async fn opt_in_tracing_emits_message_handled_events() {
     use trembita::TraceOpts;
 

@@ -122,7 +122,8 @@ pub use upgrade::{
 pub use trembita_macros::{consumer, consumer_json};
 
 pub use trembita_dashboard::{
-    EventBus, EventSubscription, Metrics, StopReason, TraceOpts, TrembitaEvent, init_tracing,
+    EventBus, EventSubscription, Metrics, MetricsSink, MultiMetricsSink, NoopMetricsSink,
+    RecordedMetric, RecordingMetricsSink, StopReason, TraceOpts, TrembitaEvent, init_tracing,
 };
 
 /// Library version string (from `Cargo.toml`).

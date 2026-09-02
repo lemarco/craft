@@ -20,6 +20,7 @@ use trembita_core::StateMachine;
 use trembita_proto::LogIndex;
 
 use crate::NodeId;
+use trembita_dashboard::MetricsSink;
 use crate::actor_group::ActorGroupOpts;
 use crate::app_opts::RunOpts;
 use crate::builder::{StartError, TrembitaClusterBuilder};
@@ -543,6 +544,13 @@ impl TrembitaAppBuilder {
     #[must_use]
     pub fn configure(mut self, config: TrembitaConfigure) -> Self {
         self.inner = config.apply_to(self.inner);
+        self
+    }
+
+    /// Forward runtime metrics to an external [`MetricsSink`] (Prometheus scrape stays enabled).
+    #[must_use]
+    pub fn metrics_sink(mut self, sink: Arc<dyn MetricsSink>) -> Self {
+        self.inner = self.inner.metrics_sink(sink);
         self
     }
 

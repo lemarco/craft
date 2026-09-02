@@ -18,7 +18,8 @@ use trembita_core::{
     ReachabilityConfig, StateMachine,
 };
 use trembita_dashboard::{
-    AdminServer, AdminTlsPaths, EventBus, Metrics, Observer, TrembitaEvent, admin_tls_config,
+    AdminServer, AdminTlsPaths, EventBus, Metrics, MetricsSink, Observer, TrembitaEvent,
+    admin_tls_config,
 };
 use trembita_net::transport::RequestHandler;
 use trembita_net::{
@@ -188,6 +189,7 @@ pub struct TrembitaClusterBuilder<M: StateMachine> {
     publish_period: Duration,
     refresh_period: Duration,
     event_capacity: usize,
+    metrics_sink: Option<Arc<dyn MetricsSink>>,
     admin_addr: Option<SocketAddr>,
     admin_tls: Option<AdminTlsPaths>,
     join_seeds: Vec<Seed>,
@@ -243,6 +245,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             publish_period: Duration::from_millis(250),
             refresh_period: Duration::from_millis(50),
             event_capacity: 1024,
+            metrics_sink: None,
             admin_addr: None,
             admin_tls: None,
             join_seeds: Vec::new(),
@@ -657,6 +660,14 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     #[must_use]
     pub fn event_capacity(mut self, capacity: usize) -> Self {
         self.event_capacity = capacity.max(1);
+        self
+    }
+
+    /// Forward every runtime metrics sample to an external [`MetricsSink`]
+    /// while keeping the admin `GET /metrics` Prometheus registry updated.
+    #[must_use]
+    pub fn metrics_sink(mut self, sink: Arc<dyn MetricsSink>) -> Self {
+        self.metrics_sink = Some(sink);
         self
     }
 
@@ -1322,7 +1333,10 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
         let dynamic_join = !self.join_seeds.is_empty();
         let bootstrap_voters = consensus_bootstrap_voters(&self.members, node_id, dynamic_join);
 
-        let metrics = Metrics::new();
+        let metrics = match self.metrics_sink {
+            Some(sink) => Metrics::with_extra_sinks(vec![sink]),
+            None => Metrics::new(),
+        };
         let on_two_phase_gc_aborted: trembita_actor::TwoPhaseGcAbortedFn = Arc::new({
             let metrics = metrics.clone();
             move || crate::two_phase::record_two_phase_gc_aborted(&metrics, node_id.0)

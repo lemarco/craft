@@ -8,6 +8,7 @@
 //! Pieces:
 //!
 //! * [`Metrics`] — a small always-on Prometheus registry (`GET /metrics`).
+//! * [`MetricsSink`] — optional push export port for the same samples.
 //! * [`EventBus`] / [`TrembitaEvent`] — the BEAM-`:telemetry`-style event stream,
 //!   consumed by user sinks and the dashboard's SSE feed.
 //! * [`Observer`] + view types — the port the runtime implements to expose
@@ -20,12 +21,16 @@ pub use {trembita_actor, trembita_net};
 mod admin_tls;
 mod dashboard;
 mod metrics;
+mod metrics_sink;
 mod server;
 mod telemetry;
 mod views;
 
 pub use admin_tls::{AdminTlsError, AdminTlsPaths, server_config as admin_tls_config};
 pub use metrics::Metrics;
+pub use metrics_sink::{
+    MetricsSink, MultiMetricsSink, NoopMetricsSink, RecordedMetric, RecordingMetricsSink,
+};
 pub use server::AdminServer;
 pub use telemetry::{EventBus, EventSubscription, StopReason, TraceOpts, TrembitaEvent};
 pub use trembita_actor::init_tracing;
