@@ -537,7 +537,11 @@ async fn dedup_key_held_on_dead_letter() {
     let id = queue
         .enqueue_opts(
             b"poison",
-            EnqueueOptions::dedup_key("row-99").max_attempts(1),
+            EnqueueOptions {
+                dedup_key: Some(b"row-99".to_vec()),
+                max_attempts: Some(1),
+                ..EnqueueOptions::default()
+            },
         )
         .await
         .expect("enqueue");

@@ -409,7 +409,11 @@ pub struct GatewayConfig {
 /// Installs connection-tracking middleware on the merged router so HTTP handlers
 /// do not need to call [`TrembitaGatewayState::track_connection`] manually.
 pub fn build_gateway_router(app: Arc<TrembitaApp>, config: GatewayConfig) -> Router {
-    let connections = Arc::new(ConnectionTracker::default());
+    let connections = app
+        .cluster()
+        .workload_runtime()
+        .map(|w| w.connections())
+        .unwrap_or_else(|| Arc::new(ConnectionTracker::default()));
     build_gateway_router_with_tracker(app, config, Some(connections))
 }
 
