@@ -54,7 +54,6 @@ PUBLISH_ORDER=(
     crafty-store-redis
     crafty-backlog-postgres
     crafty
-    crafty-node
 )
 
 VERSION="${1:-$(current_version)}"

@@ -23,10 +23,15 @@ MSRV is **1.90**. Edition **2024**. `unsafe` is forbidden workspace-wide.
 
 ## Quality gates
 
+Full process diagram: [docs/process.md](docs/process.md).
+
 | When | Command |
 |------|---------|
-| Pre-commit | `./scripts/quality-gate-pre-commit.sh` (or `lefthook run pre-commit`) |
-| Pre-push / MR | `./scripts/quality-gate-pre-push.sh` |
+| Pre-commit | `./scripts/gate.sh --tier commit` (or `lefthook run pre-commit`) |
+| Pre-push / MR | `./scripts/gate.sh --tier push` |
+| Release check | `./scripts/release.sh --dry-run` |
+
+Hooks auto-fix fmt and fixable clippy lints (staged-only on commit; full workspace on push with an optional `chore: apply fmt/clippy autofix` commit). Disable push autofix commit with `CRAFTY_NO_AUTOFIX_COMMIT=1 git push`.
 
 Fast iteration while coding:
 
@@ -70,7 +75,7 @@ When shipping or changing user-visible behavior:
 1. Update [docs/status.md](docs/status.md) (capabilities or limits)
 2. Update the relevant scenario guide under [docs/scenarios/](docs/scenarios/README.md) if product-facing
 3. Add or extend an ADR in [docs/decisions/](docs/decisions/) for non-obvious design choices
-4. Run `./scripts/check-doc-links.sh` before push
+4. Doc-links are checked in the commit gate (`gate.sh --tier commit`)
 
 Published crates require rustdoc (`missing_docs = "deny"`). Audit: `./scripts/docs-missing-audit.sh`.
 

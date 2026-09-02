@@ -5,33 +5,40 @@ alwaysApply: true
 
 # crafty quality gates
 
+See [docs/process.md](../../docs/process.md) for the full diagram.
+
 ## Before commit
 
 ```bash
-./scripts/quality-gate-pre-commit.sh   # or lefthook (fmt, shellcheck, clippy)
+./scripts/gate.sh --tier commit --staged-only --stage   # or lefthook pre-commit
 ```
+
+Autofix: fmt + clippy `--fix` on staged crates; doc-links + clippy check.
 
 ## Before push / MR
 
 ```bash
-./scripts/quality-gate-pre-push.sh     # clippy → tests → doctests → doc → publish dry-run → MSRV
-lefthook run pre-push --tags release   # optional release build
+./scripts/gate.sh --tier push                           # or lefthook pre-push
+CRAFTY_NO_AUTOFIX_COMMIT=1 git push                     # fail instead of chore autofix commit
+lefthook run pre-push --tags release                    # include release build
 ```
+
+Push tier = `ci-fast-lane.sh` + examples + showcase + MSRV.
+
+## CI parity
+
+- **Fast / tag gate:** `scripts/ci-fast-lane.sh`
+- **Heavy:** nightly or MR label `run-heavy` (e2e, store-redis)
+- **MSRV:** separate CI job + strict on release gate
 
 While iterating: `./scripts/test-with-log.sh -p <crate> --test <name>` — see `cargo-shell-safety` rule.
 
 ## Standards
 
 - **MSRV 1.90**, edition 2024, `unsafe` forbidden workspace-wide.
-- **Clippy / rustc: `-D warnings`** (`RUSTFLAGS` in CI and lefthook); **`clippy::pedantic`** via `scripts/clippy-args.sh`.
-- **`missing_docs`**: `deny` on published crates (workspace lint); `publish = false` crates use `missing_docs = "allow"`. Track with `./scripts/docs-missing-audit.sh`.
-- **Conventional commits**: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`.
-- Reference GitLab issues as `#<number>` in commits/MR descriptions.
+- **Clippy / rustc: `-D warnings`**; **`clippy::pedantic`** via `scripts/clippy-args.sh`.
+- **`missing_docs`**: `deny` on published crates; audit: `./scripts/docs-missing-audit.sh`.
+- **Conventional commits**; GitLab issues as `#<number>`.
 - **Do not commit** unless the user explicitly asks.
-
-## CI lanes (`.gitlab-ci.yml`)
-
-- **Fast** (every MR): fmt, clippy, nextest, doctests, doc
-- **Heavy** (scheduled): e2e, `crafty-store-redis --ignored`, bench/soak
 
 New `#[ignore]` integration tests must note which heavy job runs them.

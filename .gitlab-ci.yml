@@ -9,18 +9,26 @@ variables:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
   RUSTDOCFLAGS: "-D warnings"
-  # Keep cargo's registry/build output inside the project so it can be cached.
   CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
-  # saas-linux-small runners (~25G root). Local dev uses unpacked debuginfo for
-  # faster links; CI disables it so cached target/ + test linking fits on disk.
   CARGO_PROFILE_DEV_DEBUG: "0"
   CARGO_PROFILE_DEV_SPLIT_DEBUGINFO: "off"
   NEXTEST_PROFILE: ci
 
-# .cargo/config.toml uses clang + mold on Linux; rust:* images omit both.
 .rust_linux_linker:
   before_script:
     - bash scripts/ci-linux-linker-deps.sh
+
+.rust_fast_lane_setup:
+  before_script:
+    - !reference [.rust_linux_linker, before_script]
+    - rustup component add rustfmt clippy
+    - mkdir -p "$CARGO_HOME/bin" && curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C "$CARGO_HOME/bin"
+    - bash scripts/ci-dns-localhost.sh
+
+.run-heavy-rules:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /run-heavy/
 
 default:
   image: rust:latest
@@ -30,7 +38,6 @@ default:
     key:
       files:
         - Cargo.lock
-      # Bust pre-slim caches that stored unpacked debuginfo under target/.
       prefix: ci-slim-v1
     paths:
       - .cargo/registry/index/
@@ -47,22 +54,10 @@ fast:
       when: never
     - if: $CI_COMMIT_BRANCH
   before_script:
-    - !reference [.rust_linux_linker, before_script]
-    - rustup component add rustfmt clippy
-    - mkdir -p "$CARGO_HOME/bin" && curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C "$CARGO_HOME/bin"
-    - bash scripts/ci-dns-localhost.sh
+    - !reference [.rust_fast_lane_setup, before_script]
   script:
     - df -h .
-    - cargo fmt --all -- --check
-    - source scripts/clippy-args.sh
-    - cargo clippy --workspace --all-targets --all-features -- "${CLIPPY_ARGS[@]}"
-    - bash scripts/ci-disk-prune.sh
-    # Examples are clippy-checked above; skip linking them again for tests.
-    - cargo nextest run --profile ci --workspace --all-features --lib --tests --bins
-    - bash scripts/ci-disk-prune.sh
-    - cargo test --workspace --doc --all-features
-    - cargo doc --workspace --no-deps --all-features
-    - cargo publish --workspace --dry-run
+    - CRAFTY_CI_DISK_PRUNE=1 bash scripts/ci-fast-lane.sh
 
 # --- Minimum Supported Rust Version check (library-and-publishing) --------------------------
 msrv:
@@ -78,9 +73,6 @@ msrv:
   script:
     - cargo check --workspace --all-features
 
-# --- Heavy lane — scheduled (nightly) pipelines only -------------------------
-# Configure a pipeline schedule (cron "0 3 * * *") in the project's CI/CD
-# settings to run these. Both are placeholders wired up as the tracks land.
 fuzz:
   stage: heavy
   image: rustlang/rust:nightly
@@ -92,12 +84,6 @@ fuzz:
     - cargo install cargo-fuzz
     - cd crates/crafty-fuzz && cargo fuzz run wire_decode -- -max_total_time=300
 
-# --- E2E docker-compose cluster over real QUIC + mTLS (Track T, T8/T9) -------
-# Builds the crafty-node image, mints a shared CA + per-node certs, boots a
-# 3-node cluster, and asserts election + failover (run.sh) then network
-# partition + heal (chaos.sh). Scheduled so it does not slow the fast lane;
-# needs a Docker daemon (dind). The pumba latency scenario is opt-in
-# (CRAFTY_E2E_PUMBA=1) and left off here since dind lacks a mountable socket.
 e2e:
   stage: heavy
   image: docker:27
@@ -106,10 +92,9 @@ e2e:
   variables:
     DOCKER_HOST: "tcp://docker:2375"
     DOCKER_TLS_CERTDIR: ""
-    # Published container ports live on the dind daemon host, not localhost.
     CRAFTY_E2E_HOST: "docker"
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - !reference [.run-heavy-rules, rules]
   before_script:
     - apk add --no-cache bash curl
   script:
@@ -120,7 +105,6 @@ e2e:
     - bash e2e/cert_renew.sh
     - CRAFTY_LINEARIZABILITY_SKIP_SIM=1 CRAFTY_E2E_LINEARIZABILITY=1 bash e2e/linearizability.sh
 
-# Seeded crafty-sim linearizability sweep (Jepsen-lite phase 1; read-consistency).
 linearizability-sim:
   stage: heavy
   image: rust:latest
@@ -129,9 +113,6 @@ linearizability-sim:
   script:
     - CRAFTY_E2E_LINEARIZABILITY=0 bash e2e/linearizability.sh
 
-# --- Redis-backed ActorStateStore integration tests (Track G, actor-state-redis) ------
-# Runs the `#[ignore]`d testcontainers tests against a real Redis. Scheduled so
-# it does not slow the fast lane; needs a Docker daemon (dind).
 store-redis:
   stage: heavy
   image: rust:latest
@@ -142,14 +123,10 @@ store-redis:
     DOCKER_TLS_CERTDIR: ""
     TESTCONTAINERS_RYUK_DISABLED: "true"
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - !reference [.run-heavy-rules, rules]
   script:
     - cargo test -p crafty-store-redis --features docker-tests -- --ignored
 
-# --- Benchmarks + soak (Track T, T10, testing-strategy) ------------------------------
-# The `benchmarks/` crate is a standalone workspace (excluded from the root) so
-# criterion never touches the fast lane. Runs on schedule: criterion micro-benches
-# (append/apply/deliver) plus a soak over the deterministic simulator.
 bench:
   stage: heavy
   image: rust:latest
@@ -164,22 +141,31 @@ bench:
     - SOAK_SAGA_SECS=60 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak_saga
     - SOAK_SESSION_SECS=60 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak_session
 
-# --- Publish (library-and-publishing) ------------------------------------------------------
-# `cargo publish --workspace` resolves intra-workspace path deps locally and
-# uploads every crate in dependency order. The fast lane runs `--dry-run` on
-# every MR/branch push; tag pipelines skip fast, so this job repeats the gate
-# before manual publish. See docs/releasing.md.
+# --- Publish (library-and-publishing) ----------------------------------------
+# Tag pipelines skip branch fast lane; run the full ci-fast-lane before publish.
 publish-dry-run:
   stage: release
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+  before_script:
+    - !reference [.rust_fast_lane_setup, before_script]
   script:
-    - cargo publish --workspace --dry-run
+    - CRAFTY_CI_DISK_PRUNE=1 bash scripts/ci-fast-lane.sh
 
 publish:
   stage: release
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
       when: manual
+  before_script:
+    - !reference [.rust_linux_linker, before_script]
   script:
-    - ./scripts/publish-workspace.sh
+    - VERSION="${CI_COMMIT_TAG#v}"
+    - ./scripts/publish-workspace.sh "$VERSION"
+    - ./scripts/post-publish-docs.sh "$VERSION"
+  artifacts:
+    when: always
+    paths:
+      - README.md
+      - docs/status.md
+    expire_in: 30 days

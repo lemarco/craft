@@ -15,6 +15,7 @@ Distributed Raft + actor framework in Rust. Read before making changes.
 7. [docs/decisions/product-scenarios.md](docs/decisions/product-scenarios.md) — actor-first platform, no mandatory Redis
 8. [docs/decisions/testing-strategy.md](docs/decisions/testing-strategy.md) — test pyramid
 9. [docs/testing-coverage.md](docs/testing-coverage.md) — test inventory
+10. [docs/process.md](docs/process.md) — gates, CI, release flow
 
 ## Cursor config
 
@@ -37,9 +38,11 @@ Distributed Raft + actor framework in Rust. Read before making changes.
 ```bash
 lefthook install
 ./scripts/install-dev-tools.sh   # cargo-nextest (parallel tests)
-./scripts/quality-gate-pre-commit.sh
-./scripts/quality-gate-pre-push.sh
+./scripts/gate.sh --tier commit
+./scripts/gate.sh --tier push
 ```
+
+See [docs/process.md](docs/process.md) for gate tiers, CI lanes, and release.
 
 Fast iteration while coding: `./scripts/test-fast.sh -p <crate>`.
 

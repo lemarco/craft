@@ -1,25 +1,24 @@
-# Lefthook v2 — local quality gates aligned with .gitlab-ci.yml fast lane (library-and-publishing, testing-strategy).
+# Lefthook v2 — local quality gates aligned with ci-fast-lane.sh (library-and-publishing).
 #
 # Setup (once per clone):
 #   lefthook install
 #
-# lefthook v2 skips jobs unless {staged_files} appears in `run` (or `glob` is set).
-# Jobs with `glob` run only when matching paths are staged/pushed.
-#
 # Bypass:  LEFTHOOK=0 git commit|push …
 # Log:     CRAFTY_HOOK_LOG=1 git push
 # Release: lefthook run pre-push --tags release
+# No autofix commit on push: CRAFTY_NO_AUTOFIX_COMMIT=1 git push
 
 min_version: '1.12.0'
 
 pre-commit:
   jobs:
-    - name: cargo-fmt
+    - name: gate-commit
+      glob: '*.{rs,toml,lock,md}'
       fail_text: |
-        rustfmt check failed — workspace is not formatted. Fix with:
-          ./scripts/gate-fmt.sh
-          git add -u
-      run: bash scripts/gate-fmt.sh --check
+        commit gate failed. Fix manually or run:
+          ./scripts/gate.sh --tier commit --staged-only --stage
+      run: bash scripts/gate.sh --tier commit --staged-only
+      stage_fixed: true
 
     - name: shellcheck
       glob: '*.sh'
@@ -28,31 +27,24 @@ pre-commit:
           bash scripts/check-shell-scripts.sh
       run: bash scripts/check-shell-scripts.sh {staged_files}
 
-    - name: clippy
-      glob: '*.{rs,toml,lock}'
-      fail_text: |
-        clippy failed. Fix warnings or run:
-          ./scripts/quality-gate-pre-commit.sh
-      run: bash scripts/gate-clippy.sh
-
 pre-push:
   jobs:
     - name: quality-full
       fail_text: |
         Pre-push gate failed. Re-run:
-          ./scripts/quality-gate-pre-push.sh
+          ./scripts/gate.sh --tier push
+        With autofix commit disabled:
+          CRAFTY_NO_AUTOFIX_COMMIT=1 git push
         With log:
           CRAFTY_HOOK_LOG=1 git push
-      run: bash scripts/quality-gate-pre-push.sh
+      run: CRAFTY_GATE_AUTOFIX=1 CRAFTY_AUTOFIX_COMMIT=1 bash scripts/gate.sh --tier push
 
     - name: release-build
       tags: [release]
       fail_text: |
         Release build failed. Run:
-          cargo build --workspace --all-features --release
-      run: |
-        source scripts/hook-prelude.sh
-        cargo build --workspace --all-features --release
+          bash scripts/gate.sh --tier push --release-build
+      run: bash scripts/gate.sh --tier push --release-build
 
 commit-msg:
   jobs:

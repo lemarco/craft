@@ -2,25 +2,15 @@
 #
 # release.sh — cut a synchronized workspace release (library-and-publishing).
 #
-# All crafty-* crates share one version (`[workspace.package] version`), so a
-# release is: bump that version (when needed), refresh the lockfile, run the
-# publish dry-run gate, commit, tag `vX.Y.Z`, and (optionally) publish every
-# crate in dependency order via `./scripts/publish-workspace.sh`.
-#
 # Usage:
-#   ./scripts/release.sh <version>                 # prepare: bump + verify + commit + tag
-#   ./scripts/release.sh <version> --publish         # prepare (if needed) + publish
-#   ./scripts/release.sh <version> --publish-only    # publish when tag already exists
-#   ./scripts/release.sh --dry-run                   # just run the publish dry-run gate
+#   ./scripts/release.sh <version>                      # prepare: gate + bump + tag
+#   ./scripts/release.sh <version> --publish            # prepare + publish + push (default)
+#   ./scripts/release.sh <version> --publish --no-push  # publish without git push
+#   ./scripts/release.sh <version> --publish-only         # publish when tag exists
+#   ./scripts/release.sh --dry-run                      # release gate (same as release-gate.sh)
 #
-# When the workspace version already matches <version> (typical for the first
-# release), the bump step is skipped and the current HEAD is tagged.
-#
-# Real publishes use publish-workspace.sh (rate-limit safe). Do not run
-# `cargo publish --workspace` by hand for a multi-crate first release.
-#
-# Publishing needs CARGO_REGISTRY_TOKEN (or `cargo login`) and push access for
-# the tag. Update CHANGELOG.md's [Unreleased] section before running.
+# Real publishes use publish-workspace.sh (rate-limit safe). Update CHANGELOG.md
+# [Unreleased] before running.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -33,14 +23,28 @@ current_version() {
     grep -m1 '^version = ' "$ROOT_MANIFEST" | sed -E 's/version = "(.*)"/\1/'
 }
 
-# `cargo publish --workspace --dry-run` packages every crate and resolves the
-# intra-workspace path deps locally, in dependency order — the release gate.
-#
-# `--allow-dirty` because prepare_release bumps Cargo.toml *before* gating and
-# only commits afterwards, so the tree is intentionally dirty here (same flag as
-# scripts/publish-dry-run.sh). Nothing is uploaded by a dry run.
+release_gate() {
+    local extra=()
+    if [[ "${RELEASE_BUILD:-0}" == "1" ]]; then
+        extra+=(--release-build)
+    fi
+    echo ">> release gate (autofix + full checks, MSRV strict)…"
+    bash scripts/release-gate.sh "${extra[@]}"
+}
+
+commit_autofix_if_needed() {
+    if git diff --quiet && git diff --cached --quiet; then
+        return 0
+    fi
+    git add -u
+    if git diff --cached --quiet; then
+        return 0
+    fi
+    git commit -m "chore: apply fmt/clippy autofix"
+}
+
 dry_run() {
-    echo ">> publish dry-run (all crates, dependency order)…"
+    echo ">> publish dry-run (bumped manifest, dependency order)…"
     cargo publish --workspace --dry-run --allow-dirty
 }
 
@@ -53,9 +57,22 @@ do_publish() {
     echo "OK: published crafty v$version."
 }
 
-# Bump the workspace version: the `[workspace.package]` version *and* the
-# `version = "…"` pin on every internal `crafty-* = { path = …, version = … }`
-# dependency (so a bumped crate depends on the bumped, not the previous, crates).
+commit_post_publish_docs() {
+    local version=$1
+    if git diff --quiet -- README.md docs/status.md 2>/dev/null; then
+        return 0
+    fi
+    git add README.md docs/status.md
+    git commit -m "docs: mark crafty v${version} published on crates.io"
+}
+
+push_release() {
+    local version=$1
+    echo ">> pushing commits and tag v${version}…"
+    git push
+    git push origin "v${version}"
+}
+
 set_version() {
     local version="$1" old tmp
     old="$(current_version)"
@@ -77,6 +94,8 @@ prepare_release() {
     local version="$1"
     local old bumped=0
 
+    release_gate
+
     old="$(current_version)"
     [ -n "$old" ] || die "could not read current [workspace.package] version"
 
@@ -93,16 +112,17 @@ prepare_release() {
 
     dry_run
 
-    if [ "$bumped" = 1 ]; then
+    if [ "$bumped" = "1" ]; then
         git add "$ROOT_MANIFEST"
-        # Cargo.lock is gitignored for this library workspace; only stage it in
-        # clones where it is actually tracked (`git add` errors on an ignored path).
         if git ls-files --error-unmatch Cargo.lock >/dev/null 2>&1; then
             git add Cargo.lock
         fi
     fi
     if ! git diff --quiet -- CHANGELOG.md 2>/dev/null; then
         git add CHANGELOG.md
+    fi
+    if ! git diff --quiet; then
+        git add -u
     fi
 
     if git diff --cached --quiet; then
@@ -112,31 +132,60 @@ prepare_release() {
     fi
 
     git tag -a "v$version" -m "crafty v$version"
-    echo ">> tagged v$version (push with: git push && git push origin v$version)"
+    echo ">> tagged v$version"
 }
 
 # ---- arg parsing ----------------------------------------------------------
 if [ "${1:-}" = "--dry-run" ]; then
-    dry_run
-    echo "OK: dry-run passed."
+    bash scripts/release-gate.sh
+    echo "OK: release gate passed."
     exit 0
 fi
 
 VERSION="${1:-}"
 PUBLISH=0
 PUBLISH_ONLY=0
-case "${2:-}" in
-    --publish) PUBLISH=1 ;;
-    --publish-only) PUBLISH=1; PUBLISH_ONLY=1 ;;
-esac
-[ -n "$VERSION" ] || die "usage: $0 <version> [--publish|--publish-only] | --dry-run"
+PUSH=0
+NO_PUSH=0
+RELEASE_BUILD=0
+shift || true
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --publish) PUBLISH=1 ;;
+        --publish-only) PUBLISH=1; PUBLISH_ONLY=1 ;;
+        --push) PUSH=1 ;;
+        --no-push) NO_PUSH=1 ;;
+        --release-build) RELEASE_BUILD=1 ;;
+        *)
+            die "usage: $0 <version> [--publish] [--publish-only] [--push|--no-push] [--release-build] | --dry-run"
+            ;;
+    esac
+    shift
+done
+
+[ -n "$VERSION" ] || die "usage: $0 <version> [--publish] [--publish-only] [--push|--no-push] [--release-build] | --dry-run"
 echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.].+)?$' \
     || die "version must look like X.Y.Z (got: $VERSION)"
 
-if [ "$PUBLISH_ONLY" = 1 ]; then
+# --publish and --publish-only push to origin by default; --no-push opts out.
+if [ "$PUBLISH" = "1" ] && [ "$NO_PUSH" = "0" ]; then
+    PUSH=1
+fi
+# Full publish runs release build unless explicitly skipped elsewhere.
+if [ "$PUBLISH" = "1" ]; then
+    RELEASE_BUILD=1
+fi
+
+if [ "$PUBLISH_ONLY" = "1" ]; then
     git rev-parse "v$VERSION" >/dev/null 2>&1 \
         || die "tag v$VERSION not found; run without --publish-only to prepare first"
+    release_gate
+    commit_autofix_if_needed
     do_publish "$VERSION"
+    commit_post_publish_docs "$VERSION"
+    if [ "$PUSH" = "1" ]; then
+        push_release "$VERSION"
+    fi
     exit 0
 fi
 
@@ -144,9 +193,16 @@ fi
 
 prepare_release "$VERSION"
 
-if [ "$PUBLISH" = 1 ]; then
+if [ "$PUBLISH" = "1" ]; then
     do_publish "$VERSION"
+    commit_post_publish_docs "$VERSION"
+fi
+
+if [ "$PUSH" = "1" ]; then
+    push_release "$VERSION"
+elif [ "$PUBLISH" = "1" ]; then
+    echo ">> tip: git push && git push origin v$VERSION (or omit --no-push next time)"
 else
-    echo "OK: prepared crafty v$VERSION. Push tag, then:"
+    echo "OK: prepared crafty v$VERSION."
     echo "  ./scripts/release.sh $VERSION --publish-only"
 fi
