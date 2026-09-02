@@ -1,9 +1,11 @@
 //! Workload governor: ingress signals tune consumers and token ceiling.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use crafty::{ConsumerOpts, CraftyApp, CraftyConfigure, JobOpts, WorkloadOpts, consumer};
+use crafty_actor::ManualExternalLoad;
 use crafty_test_support::boot_local_app;
 
 static HANDLED: AtomicUsize = AtomicUsize::new(0);
@@ -105,4 +107,56 @@ async fn workload_governor_tunes_for_connections_and_depth() {
     stop_tx.send(true).ok();
     let _ = consumer.await;
     assert!(HANDLED.load(Ordering::SeqCst) >= 1);
+}
+
+#[tokio::test]
+async fn external_load_triggers_protective_tune() {
+    let base = std::env::temp_dir().join(format!(
+        "crafty-external-load-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+
+    let external = Arc::new(ManualExternalLoad::new());
+    let opts = WorkloadOpts::balanced()
+        .api_protect_connections(4)
+        .max_compute_tokens(4)
+        .external_load(external.clone());
+    let protective_batch = opts.when_protective.batch;
+
+    let app = boot_local_app(
+        || {
+            CraftyApp::builder()
+                .data_dir(&base)
+                .workload(WorkloadOpts {
+                    tick: Duration::from_millis(20),
+                    ..opts
+                })
+                .configure(CraftyConfigure {
+                    tick_period: Duration::from_millis(5),
+                    ..CraftyConfigure::default()
+                })
+        },
+        None,
+    )
+    .await;
+
+    let wl = app
+        .cluster()
+        .workload_runtime()
+        .expect("workload runtime should be wired");
+    let mut tune = wl.tune();
+
+    external.set(4);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while tune.borrow().batch != protective_batch {
+            tune.changed().await.unwrap();
+        }
+    })
+    .await
+    .expect("governor should publish protective tune under external load");
 }

@@ -1407,7 +1407,8 @@ pub struct QueueConsumerWorkload {
 /// Runs until `stop` is set. When the queue is empty, sleeps `idle_sleep` between polls.
 ///
 /// When `workload` is set, `batch` / `idle_sleep` come from the governor's
-/// [`crate::ConsumerTune`] watch channel and each handler acquires a compute token.
+/// [`crate::ConsumerTune`] watch channel and each handler acquires `compute_cost`
+/// token units from the pool (default 1).
 pub async fn run_queue_consumer<Q, F, Fut, E>(
     queue: std::sync::Arc<Q>,
     worker: WorkerId,
@@ -1416,6 +1417,7 @@ pub async fn run_queue_consumer<Q, F, Fut, E>(
     mut stop: tokio::sync::watch::Receiver<bool>,
     mut handle: F,
     workload: Option<QueueConsumerWorkload>,
+    compute_cost: usize,
 ) where
     Q: JobQueue + ?Sized,
     F: FnMut(&LeasedJob) -> Fut,
@@ -1461,7 +1463,7 @@ pub async fn run_queue_consumer<Q, F, Fut, E>(
         let mut nacks = Vec::new();
         for job in jobs {
             let _token = if let Some(wl) = &workload {
-                Some(wl.tokens.acquire().await)
+                Some(wl.tokens.acquire_weighted(compute_cost).await)
             } else {
                 None
             };
@@ -1896,6 +1898,7 @@ mod tests {
                     }
                 },
                 None,
+                1,
             )
             .await;
         });
@@ -1932,6 +1935,7 @@ mod tests {
                     }
                 },
                 None,
+                1,
             )
             .await;
         });

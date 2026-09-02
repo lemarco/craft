@@ -19,6 +19,7 @@ mod directory;
 mod directory_policy;
 mod driver;
 mod external_backlog;
+mod external_load;
 mod group_membership;
 mod group_rebalance;
 mod mailbox_spool;
@@ -56,7 +57,9 @@ pub use backlog_settle_outbox::{
     BacklogSettleOutbox, BacklogSettleOutboxError, BacklogSettleOutboxId, BacklogSettleOutboxOpts,
     InMemoryBacklogSettleOutbox, RedbBacklogSettleOutbox, push_backlog_settle,
 };
-pub use compute_token::{ComputeGuard, ComputeTokenPool, with_compute_guard};
+pub use compute_token::{
+    ComputeGuard, ComputeTokenPool, with_compute_guard, with_compute_guard_weighted,
+};
 pub use directory::{ActorDirectory, ClusterRef, DirectorySync};
 pub use directory_policy::{DirectoryPolicy, DirectoryRetry};
 pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
@@ -66,6 +69,7 @@ pub use external_backlog::{
     effective_queue_depth, emit_backlog_settle_for_terminal_ops, run_backlog_feeder,
     run_backlog_settle_drainer, terminal_backlog_outcome,
 };
+pub use external_load::{ExternalLoad, ManualExternalLoad};
 pub use group_membership::{GroupMembershipSyncReport, sync_hosted_group_membership};
 pub use group_rebalance::{GroupRebalanceReport, RaftGroupReconciler};
 pub use mailbox_spool::{

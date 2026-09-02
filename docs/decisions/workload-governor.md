@@ -99,7 +99,8 @@ Edge-only ingress without local consumers is achieved by **not registering** `.j
 
 - Homogeneous fleet matches product story; no role-based ops playbooks
 - CPU-bound handlers must release tokens quickly or block peers — document RAII pattern
-- Token pool is **cooperative** (same process); true isolation still needs separate processes if handlers runaway
+- Token pool is **cooperative** (same process); subprocess / shell-out load uses
+  [`compute_cost`](external-load.md) and optional [`ExternalLoad`](external-load.md)
 - Governor adds one background task per node; metrics: `crafty_compute_tokens_in_use`, `crafty_consumer_tune_events`
 
 ## Alternatives considered

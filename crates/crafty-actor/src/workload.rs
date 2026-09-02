@@ -8,6 +8,7 @@ use std::time::Duration;
 use tokio::sync::watch;
 
 use crate::compute_token::ComputeTokenPool;
+use crate::external_load::ExternalLoad;
 use crate::queue::JobQueue;
 
 /// Consumer knobs published by [`run_workload_governor`].
@@ -29,7 +30,7 @@ impl Default for ConsumerTune {
 }
 
 /// Builder knobs for the per-node workload governor.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct WorkloadOpts {
     /// Upper bound on concurrent compute holders (gateway + consumers).
     pub max_compute_tokens: usize,
@@ -45,6 +46,26 @@ pub struct WorkloadOpts {
     pub when_balanced: ConsumerTune,
     /// Tune when ingress is hot.
     pub when_protective: ConsumerTune,
+    /// Optional subprocess / shell-out load the token pool cannot observe.
+    pub external_load: Option<Arc<dyn ExternalLoad>>,
+}
+
+impl std::fmt::Debug for WorkloadOpts {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WorkloadOpts")
+            .field("max_compute_tokens", &self.max_compute_tokens)
+            .field("min_compute_tokens", &self.min_compute_tokens)
+            .field("api_protect_connections", &self.api_protect_connections)
+            .field("tick", &self.tick)
+            .field("when_opportunistic", &self.when_opportunistic)
+            .field("when_balanced", &self.when_balanced)
+            .field("when_protective", &self.when_protective)
+            .field(
+                "external_load",
+                &self.external_load.as_ref().map(|_| "<external>"),
+            )
+            .finish()
+    }
 }
 
 impl WorkloadOpts {
@@ -69,6 +90,7 @@ impl WorkloadOpts {
                 batch: 1,
                 idle_sleep: Duration::from_millis(500),
             },
+            external_load: None,
         }
     }
 
@@ -109,6 +131,13 @@ impl WorkloadOpts {
         self.api_protect_connections = connections.max(1);
         self
     }
+
+    /// Attach a port that reports compute load outside the cooperative token pool.
+    #[must_use]
+    pub fn external_load(mut self, load: Arc<dyn ExternalLoad>) -> Self {
+        self.external_load = Some(load);
+        self
+    }
 }
 
 /// Snapshot emitted to metrics hooks on each governor tick.
@@ -122,6 +151,8 @@ pub struct WorkloadMetricsSnapshot {
     pub active_connections: usize,
     /// Sum of `pending` across registered job queues.
     pub queue_depth: u64,
+    /// Subprocess / shell-out units from [`ExternalLoad`], if wired.
+    pub external_load_units: usize,
     /// Consumer tune after this tick.
     pub tune: ConsumerTune,
     /// `true` when consumer tune changed this tick.
@@ -155,6 +186,10 @@ pub async fn run_workload_governor(
         }
 
         let active_connections = connections();
+        let external_load_units = opts
+            .external_load
+            .as_ref()
+            .map_or(0, |load| load.units());
         let mut queue_depth = 0u64;
         for queue in &queues {
             if let Ok(m) = queue.metrics().await {
@@ -162,7 +197,13 @@ pub async fn run_workload_governor(
             }
         }
 
-        let (token_ceiling, tune) = decide(&opts, active_connections, queue_depth);
+        let (token_ceiling, tune) = decide(
+            &opts,
+            active_connections,
+            queue_depth,
+            pool.in_use(),
+            external_load_units,
+        );
         pool.set_max(token_ceiling);
         let tune_changed = tune != last_tune;
         if tune_changed {
@@ -176,6 +217,7 @@ pub async fn run_workload_governor(
                 token_ceiling,
                 active_connections,
                 queue_depth,
+                external_load_units,
                 tune,
                 tune_changed,
             });
@@ -183,22 +225,35 @@ pub async fn run_workload_governor(
     }
 }
 
-fn decide(opts: &WorkloadOpts, connections: usize, queue_depth: u64) -> (usize, ConsumerTune) {
-    if connections >= opts.api_protect_connections {
+fn decide(
+    opts: &WorkloadOpts,
+    connections: usize,
+    queue_depth: u64,
+    tokens_in_use: usize,
+    external_units: usize,
+) -> (usize, ConsumerTune) {
+    let external_pressure = external_units
+        .saturating_mul(opts.api_protect_connections)
+        / opts.max_compute_tokens.max(1);
+    let effective_connections = connections.saturating_add(external_pressure);
+    if effective_connections >= opts.api_protect_connections {
         return (opts.min_compute_tokens.max(1), opts.when_protective);
     }
-    if connections == 0 && queue_depth > 0 {
+    if effective_connections == 0 && queue_depth > 0 {
         return (opts.max_compute_tokens.max(1), opts.when_opportunistic);
     }
     let span = opts.api_protect_connections.saturating_sub(1).max(1);
-    let pressure = connections.min(span);
+    let pressure = effective_connections.min(span);
     let headroom = opts
         .max_compute_tokens
         .saturating_sub(opts.min_compute_tokens);
-    let token_ceiling = opts
+    let mut token_ceiling = opts
         .min_compute_tokens
         .saturating_add(headroom.saturating_mul(span - pressure) / span)
         .max(1);
+    // Do not raise the ceiling above what in-flight holders + external load already consume.
+    let floor = tokens_in_use.saturating_add(external_units).max(1);
+    token_ceiling = token_ceiling.max(floor);
     (token_ceiling, opts.when_balanced)
 }
 
@@ -209,7 +264,7 @@ mod tests {
     #[test]
     fn decide_hot_protects_api() {
         let opts = WorkloadOpts::balanced();
-        let (tokens, tune) = decide(&opts, opts.api_protect_connections, 100);
+        let (tokens, tune) = decide(&opts, opts.api_protect_connections, 100, 0, 0);
         assert_eq!(tokens, opts.min_compute_tokens.max(1));
         assert_eq!(tune, opts.when_protective);
     }
@@ -217,7 +272,7 @@ mod tests {
     #[test]
     fn decide_idle_with_depth_boosts_jobs() {
         let opts = WorkloadOpts::balanced();
-        let (tokens, tune) = decide(&opts, 0, 5);
+        let (tokens, tune) = decide(&opts, 0, 5, 0, 0);
         assert_eq!(tokens, opts.max_compute_tokens.max(1));
         assert_eq!(tune, opts.when_opportunistic);
     }
@@ -225,10 +280,19 @@ mod tests {
     #[test]
     fn decide_moderate_load_balances() {
         let opts = WorkloadOpts::balanced();
-        let (tokens, tune) = decide(&opts, 4, 0);
+        let (tokens, tune) = decide(&opts, 4, 0, 0, 0);
         assert!(tokens > opts.min_compute_tokens);
         assert!(tokens <= opts.max_compute_tokens);
         assert_eq!(tune, opts.when_balanced);
+    }
+
+    #[test]
+    fn decide_external_load_protects_api() {
+        let opts = WorkloadOpts::balanced();
+        let heavy_external = opts.max_compute_tokens;
+        let (tokens, tune) = decide(&opts, 0, 0, 0, heavy_external);
+        assert_eq!(tokens, opts.min_compute_tokens.max(1));
+        assert_eq!(tune, opts.when_protective);
     }
 
     #[tokio::test]

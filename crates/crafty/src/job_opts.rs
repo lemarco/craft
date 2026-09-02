@@ -44,6 +44,7 @@ pub struct JobOpts {
     http_enqueue: bool,
     default_max_attempts: u32,
     idempotency: Option<IdempotencyOpts>,
+    compute_cost: usize,
     backlog: Option<(Arc<dyn ExternalBacklog>, BacklogFeedOpts)>,
     spawners: Vec<ConsumerSpawnFn>,
     config_error: Option<String>,
@@ -61,6 +62,7 @@ impl std::fmt::Debug for JobOpts {
             .field("http_enqueue", &self.http_enqueue)
             .field("default_max_attempts", &self.default_max_attempts)
             .field("idempotency", &self.idempotency)
+            .field("compute_cost", &self.compute_cost)
             .field("backlog", &self.backlog.as_ref().map(|_| "<external>"))
             .field("consumers", &self.spawners.len())
             .field("config_error", &self.config_error)
@@ -82,6 +84,7 @@ impl JobOpts {
             http_enqueue: false,
             default_max_attempts: 0,
             idempotency: None,
+            compute_cost: 1,
             backlog: None,
             spawners: Vec::new(),
             config_error: None,
@@ -151,6 +154,17 @@ impl JobOpts {
         self
     }
 
+    /// Token units reserved from the workload pool per handler invocation.
+    ///
+    /// Declare subprocess-heavy cost up front — e.g. Chromium via CDP where the
+    /// async handler waits on IO but child processes consume several CPU cores
+    /// ([external-load](../../../docs/decisions/external-load.md)).
+    #[must_use]
+    pub fn compute_cost(mut self, cost: usize) -> Self {
+        self.compute_cost = cost.max(1);
+        self
+    }
+
     /// Wire an external source-of-truth backlog ([`ExternalBacklog`](crafty_actor::ExternalBacklog)).
     ///
     /// The leader claims items, enqueues with `dedup_key = item.key`, and settles outcomes
@@ -181,13 +195,15 @@ impl JobOpts {
         let instances = self.instances;
         let batch = self.batch;
         let idle_sleep = self.idle_sleep;
+        let compute_cost = self.compute_cost;
         let idempotency = self.idempotency.clone();
         for instance in 0..instances {
             let consumer = consumer.clone();
             let mut opts = ConsumerOpts::default()
                 .instance(instance)
                 .batch(batch)
-                .idle_sleep(idle_sleep);
+                .idle_sleep(idle_sleep)
+                .compute_cost(compute_cost);
             if let Some(idem) = idempotency.clone() {
                 opts = opts.idempotency(idem);
             }

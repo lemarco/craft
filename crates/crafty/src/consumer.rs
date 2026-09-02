@@ -152,7 +152,9 @@ pub struct ConsumerOpts {
     /// Maximum jobs leased per poll ([`run_queue_consumer`] batch size).
     pub batch: usize,
     /// Sleep between polls when the queue is empty.
-    pub idle_sleep: Duration,
+    pub     idle_sleep: Duration,
+    /// Token units reserved per handler when a workload pool is wired (default 1).
+    pub compute_cost: usize,
     /// Optional effectively-once guard around the handler.
     pub idempotency: Option<IdempotencyOpts>,
     /// Optional hook invoked once when the consumer task starts (queue → actor bridge).
@@ -165,6 +167,7 @@ impl std::fmt::Debug for ConsumerOpts {
             .field("instance", &self.instance)
             .field("batch", &self.batch)
             .field("idle_sleep", &self.idle_sleep)
+            .field("compute_cost", &self.compute_cost)
             .field("idempotency", &self.idempotency)
             .field("on_app", &self.on_app.as_ref().map(|_| "Fn"))
             .finish()
@@ -177,6 +180,7 @@ impl Default for ConsumerOpts {
             instance: 0,
             batch: 1,
             idle_sleep: Duration::from_millis(100),
+            compute_cost: 1,
             idempotency: None,
             on_app: None,
         }
@@ -219,6 +223,17 @@ impl ConsumerOpts {
     #[must_use]
     pub fn idle_sleep(mut self, idle_sleep: Duration) -> Self {
         self.idle_sleep = idle_sleep;
+        self
+    }
+
+    /// Token units to reserve from the workload pool per handler invocation.
+    ///
+    /// Use for subprocess-heavy jobs (Chromium, ffmpeg) where one async handler
+    /// represents several CPU cores of external work
+    /// ([external-load](../../../docs/decisions/external-load.md)).
+    #[must_use]
+    pub fn compute_cost(mut self, cost: usize) -> Self {
+        self.compute_cost = cost.max(1);
         self
     }
 }
@@ -298,6 +313,7 @@ impl CraftyApp {
             instance,
             batch,
             idle_sleep,
+            compute_cost,
             idempotency,
             on_app,
         } = opts;
@@ -343,6 +359,7 @@ impl CraftyApp {
                     }
                 },
                 workload,
+                compute_cost,
             )
             .await;
         })

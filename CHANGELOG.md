@@ -9,6 +9,14 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ## [Unreleased]
 
+### Added
+
+- **External compute load** — [`JobOpts::compute_cost`](crates/crafty/src/job_opts.rs) reserves
+  weighted units from [`ComputeTokenPool`](crates/crafty-actor/src/compute_token.rs) for
+  subprocess-heavy handlers; optional [`ExternalLoad`](crates/crafty-actor/src/external_load.rs)
+  port on [`WorkloadOpts`](crates/crafty-actor/src/workload.rs) feeds the governor when child
+  processes compete with the gateway ([`external-load`](docs/decisions/external-load.md)).
+
 ### Changed
 
 - **`BacklogFeedOpts::consumer_instances`** — defaults to `ConsumerCount::Live`

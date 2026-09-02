@@ -10,7 +10,7 @@ Product and implementation backlog for crafty. Shipped capabilities stay in [sta
 
 ## Open work
 
-Epics **B-01 … B-16** are **shipped** (see [Shipped epics](#shipped-epics-archive) below). Remaining items are optional integrations and maintenance — not blockers for product scenarios.
+Epics **B-01 … B-17** are **shipped** (see [Shipped epics](#shipped-epics-archive) below). Remaining items are optional integrations and maintenance — not blockers for product scenarios.
 
 | Id | Item | Status | Notes |
 |----|------|--------|-------|
@@ -419,6 +419,29 @@ Every VPS runs the same binary. **Compute tokens** arbitrate gateway ingress vs 
 
 
 **Acceptance:** Single-node soak: simulated idle gateway → consumer throughput rises; simulated connection load → API p99 stable and job poll throttles. No `CRAFTY_ROLE` in docs or showcases.
+
+
+---
+
+### B-17 ✅ External compute load
+
+**Scenario:** background jobs — subprocess-heavy handlers colocated with gateway  
+**ADR:** [external-load](decisions/external-load.md)
+
+Weighted token acquire and an optional load port so the workload governor accounts for Chromium/ffmpeg/shell-out work the cooperative pool cannot observe.
+
+
+| Subtask | Wave | Description | Status |
+| ------- | ---- | ----------- | ------ |
+| B-17a   | 1 | **ADR** — `compute_cost`, `ExternalLoad`, governor mapping | ✅ |
+| B-17b   | 1 | **`ComputeTokenPool::acquire_weighted`** + `JobOpts::compute_cost` | ✅ |
+| B-17c   | 1 | **`ExternalLoad` port** + `WorkloadOpts::external_load` | ✅ |
+| B-17d   | 1 | **Governor** — map external units to protective tune | ✅ |
+| B-17e   | 2 | **Tests** — weighted acquire; external load triggers protection | ✅ |
+| B-17f   | 2 | **Metrics** — `crafty_compute_external_load_units` | ✅ |
+
+
+**Acceptance:** `compute_cost(4)` on an 8-token pool limits concurrent handlers to 2; `ManualExternalLoad` at ceiling triggers protective consumer tune with zero gateway connections.
 
 
 ---

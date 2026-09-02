@@ -2109,6 +2109,12 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                 let metrics = metrics.clone();
                 Some(Arc::new(move |snap: WorkloadMetricsSnapshot| {
                     metrics.set(
+                        "crafty_compute_external_load_units",
+                        "Subprocess compute units reported by ExternalLoad on this node.",
+                        &[],
+                        f64::from(u32::try_from(snap.external_load_units).unwrap_or(u32::MAX)),
+                    );
+                    metrics.set(
                         "crafty_compute_tokens_in_use",
                         "Compute tokens currently held on this node.",
                         &[],

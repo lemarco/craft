@@ -40,7 +40,7 @@ pub use crafty_actor::{
     run_backlog_feeder, run_queue_autoscaler, run_queue_consumer, run_queue_membership_autoscaler,
     run_queue_schedule_ticker, run_workload_governor,
 };
-pub use crafty_actor::{ComputeTokenPool, ResourceProfile, VpsResources};
+pub use crafty_actor::{ComputeTokenPool, ExternalLoad, ManualExternalLoad, ResourceProfile, VpsResources};
 pub use crafty_core::ReachabilityConfig;
 pub use crafty_core::kv;
 pub use crafty_core::kv::{Kv, KvCommand, KvError, KvMachine, KvQuery, KvResponse};
