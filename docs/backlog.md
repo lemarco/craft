@@ -14,11 +14,11 @@ Product and implementation backlog for crafty **0.4.x → 1.0**. Shipped capabil
 | Priority     | Count | Items                           |
 | ------------ | ----- | ------------------------------- |
 | **P0**       | 2     | B-01 ✅, B-02 ✅                  |
-| **P1**       | 5     | B-03 ✅ … B-06 ✅, B-14 ✅        |
+| **P1**       | 6     | B-03 ✅ … B-06 ✅, B-14 ✅, B-16 🔲 |
 | **P2**       | 4     | B-07 ✅ … B-09 ✅, B-13 ✅        |
 | **P3**       | 3     | B-10 ✅ … B-12 ✅                 |
 | **Optional** | 5     | O-01 … O-05                     |
-| **Subtasks** | 49    | B-01a … B-14k (see epics below) |
+| **Subtasks** | 58    | B-01a … B-16i (see epics below) |
 
 
 ---
@@ -66,6 +66,7 @@ flowchart TB
         B14[B-14 product polish & composition]
         B14a[B-14a gateway auth]
         B14b[B-14b crafty init v2]
+        B16[B-16 workload governor]
     end
 
     subgraph Workers["Stateful workers"]
@@ -173,7 +174,7 @@ flowchart TB
 | Subtask | Description                                                     | Status |
 | ------- | --------------------------------------------------------------- | ------ |
 | B-04a   | [`examples/realtime/`](../../examples/realtime/) — axum WS + `ChatWorker` | ✅      |
-| B-04b   | Homogeneous cluster showcases (same binary every node; `CRAFTY_ROLE=gateway` for edge-only) | ✅      |
+| B-04b   | Homogeneous cluster showcases (same binary every node; no role env) | ✅ (superseded role docs → B-16) |
 | B-04c   | Auth stub + `ActorSession` open on connect                      | ✅ `GATEWAY_TOKEN` |
 | B-04d   | Reconnect: handle `NoTarget`, session TTL expiry                | ✅ auto reopen in example |
 | B-04e   | Optional: checkpoint last N messages to SM (comment in example) | ✅ comment on `ChatWorker` |
@@ -354,6 +355,58 @@ Gateway production readiness, queue lifecycle polish, and glue between the four 
 ---
 
 
+### B-15 ✅ External backlog port (Postgres / existing work table)
+
+**Scenario:** [background-jobs](scenarios/background-jobs.md)  
+**ADR:** [external-backlog](decisions/external-backlog.md)
+
+Teams with backlog in Postgres/MySQL get leader-fed tier-C windows, dedup on re-enqueue, settlement, and honest autoscale depth — without reimplementing the feeder loop.
+
+
+| Subtask | Tier | Description | Status |
+| ------- | ---- | ----------- | ------ |
+| B-15a   | 1 | **`ExternalBacklog` trait** — `depth`, `claim`, `settle`; `InMemoryExternalBacklog` for tests | ✅ |
+| B-15b   | 1 | **`run_backlog_feeder`** — leader-only top-up to `pending_target × consumers` | ✅ |
+| B-15c   | 1 | **Settlement wiring** — ack/nack/reclaim → durable outbox → `settle` drainer | ✅ |
+| B-15d   | 1 | **Autoscale depth** — `effective_queue_depth` feeds worker + membership policies | ✅ |
+| B-15e   | 1 | **`JobOpts::backlog`** + `CraftyClusterBuilder::job_queue_external_backlog` | ✅ |
+| B-15f   | 2 | **`crafty-backlog-postgres`** — `PgBacklog` with `SKIP LOCKED` | ✅ |
+| B-15g   | 2 | **Integration test** — `crafty/tests/external_backlog.rs` | ✅ |
+
+
+**Acceptance:** In-memory backlog → consumer → `Settlement::Done`; autoscale reads external `depth()` when registered.
+
+
+---
+
+
+### B-16 ✅ Workload governor (compute tokens)
+
+**Scenario:** all four — homogeneous nodes, no static roles  
+**ADR:** [workload-governor](decisions/workload-governor.md)
+
+Every VPS runs the same binary. **Compute tokens** arbitrate gateway ingress vs job/actor work on one node: API protected when hot; spare capacity goes to jobs when ingress is quiet (e.g. overnight) — **without** cluster rescale or `CRAFTY_ROLE`.
+
+
+| Subtask | Tier | Description | Status |
+| ------- | ---- | ----------- | ------ |
+| B-16a   | 1 | **ADR + scenario notes** — compute token model, signal/action table, deprecate roles | ✅ |
+| B-16b   | 1 | **`ComputeTokenPool`** — process-wide semaphore, RAII `ComputeGuard`, configurable `max_tokens` | ✅ |
+| B-16c   | 1 | **Acquire hooks** — gateway product routes + `run_queue_consumer` handler wrap + optional actor ask | ✅ |
+| B-16d   | 1 | **`WorkloadGovernor`** — per-node loop: `ConnectionTracker` + queue depth → tune consumers / token ceiling | ✅ |
+| B-16e   | 1 | **`WorkloadOpts`** + `CraftyAppBuilder::workload` — presets (`Balanced`, `ApiFirst`, `JobsOpportunistic`) | ✅ |
+| B-16f   | 2 | **Deprecate `CRAFTY_ROLE`** — `#[deprecated]` on `NodeRole` / env helpers; update docs & examples | ✅ |
+| B-16g   | 2 | **Remove role env** — delete `CRAFTY_ROLE`, `CRAFTY_GATEWAY_ONLY`, `CRAFTY_NO_CONSUMER` (semver major) | ✅ |
+| B-16h   | 2 | **Tests** — governor lowers consumer batch when connections high; boosts when idle + depth | ✅ |
+| B-16i   | 3 | **Metrics** — `crafty_compute_tokens_in_use`, throttle/tune event counters | ✅ |
+
+
+**Acceptance:** Single-node soak: simulated idle gateway → consumer throughput rises; simulated connection load → API p99 stable and job poll throttles. No `CRAFTY_ROLE` in docs or showcases.
+
+
+---
+
+
 
 ## P3 — 1.0 stabilization
 
@@ -434,7 +487,8 @@ Gateway production readiness, queue lifecycle polish, and glue between the four 
 | **0.5.x** | B-09, B-10, B-13 MR-2 (consumer idempotency helper)     |
 | **0.6.x** | B-14 MR-1 (gateway auth + init + HTTP E2E)                |
 | **0.7.x** | B-14 MR-2–3 (queue lifecycle + cross-scenario composition)|
-| **1.0**   | B-11; evaluate B-12; B-14 MR-4 (typed jobs, optional)     |
+| **0.8.x** | B-16 workload governor (compute tokens); deprecate `CRAFTY_ROLE` |
+| **1.0**   | B-11; evaluate B-12; B-14 MR-4; B-16g remove role env |
 
 
 ---

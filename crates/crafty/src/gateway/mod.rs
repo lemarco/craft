@@ -1,5 +1,10 @@
 //! Product HTTP / WebSocket gateway for [`CraftyApp`](super::app::CraftyApp).
+//!
+//! Several hostnames on one listen port: use [`HostRouter`] (re-exported from
+//! `crafty-http`) in [`GatewayOpts::routes`] — strict by default, opt-in
+//! [`HostRouter::local_dev_fallback`] for loopback only.
 
+mod compute;
 mod drain;
 mod identity;
 mod session;
@@ -158,6 +163,9 @@ impl GatewayOpts {
     }
 
     /// Custom Axum routes (WebSocket, authenticated HTTP, …).
+    /// Custom Axum routes merged after built-in APIs. Return a [`Router`] from
+    /// [`HostRouter::build`](crafty_http::HostRouter::build) when dispatching
+    /// several hostnames on one listen port.
     #[must_use]
     pub fn routes<F>(mut self, routes: F) -> Self
     where
@@ -460,6 +468,9 @@ fn build_gateway_router_with_tracker(
 
 /// Spawn the gateway HTTP server; returns a [`GatewayHandle`] for graceful drain.
 ///
+/// When a [`crate::WorkloadRuntime`] is configured on the cluster, reuses its
+/// [`ConnectionTracker`] and installs compute-token middleware on the router.
+///
 /// # Errors
 /// Returns [`std::io::Error`] when the listen socket cannot be bound or TLS PEM
 /// material is invalid.
@@ -470,9 +481,19 @@ pub async fn spawn_gateway(
     let addr = config.addr;
     let drain_timeout = config.drain_timeout;
     let tls_paths = config.tls.clone();
-    let connections = Arc::new(ConnectionTracker::default());
-    let router =
+    let workload = app.cluster().workload_runtime();
+    let connections = workload.as_ref().map_or_else(
+        || Arc::new(ConnectionTracker::default()),
+        |w| w.connections(),
+    );
+    let mut router =
         build_gateway_router_with_tracker(Arc::clone(&app), config, Some(Arc::clone(&connections)));
+    if let Some(wl) = &workload {
+        router = router.layer(axum::middleware::from_fn_with_state(
+            wl.pool(),
+            compute::acquire_compute_token,
+        ));
+    }
     let tls = tls_paths
         .as_ref()
         .map(crafty_dashboard::admin_tls_config)

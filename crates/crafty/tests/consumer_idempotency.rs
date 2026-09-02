@@ -67,13 +67,15 @@ fn temp_dir(tag: &str) -> std::path::PathBuf {
 async fn boot(stream: &'static str, tag: &str) -> Arc<CraftyApp> {
     let base = temp_dir(tag);
     let app = boot_local_app(
-        CraftyApp::builder()
-            .data_dir(&base)
-            .queue([QueueOpts::new(stream, Duration::from_millis(200))])
-            .configure(CraftyConfigure {
-                tick_period: Duration::from_millis(5),
-                ..CraftyConfigure::default()
-            }),
+        || {
+            CraftyApp::builder()
+                .data_dir(&base)
+                .queue([QueueOpts::new(stream, Duration::from_millis(200))])
+                .configure(CraftyConfigure {
+                    tick_period: Duration::from_millis(5),
+                    ..CraftyConfigure::default()
+                })
+        },
         None,
     )
     .await;

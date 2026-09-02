@@ -31,13 +31,15 @@ async fn consumer_macro_spawns_and_processes_job() {
     std::fs::create_dir_all(&base).unwrap();
 
     let app = boot_local_app(
-        CraftyApp::builder()
-            .data_dir(&base)
-            .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
-            .configure(CraftyConfigure {
-                tick_period: Duration::from_millis(5),
-                ..CraftyConfigure::default()
-            }),
+        || {
+            CraftyApp::builder()
+                .data_dir(&base)
+                .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
+                .configure(CraftyConfigure {
+                    tick_period: Duration::from_millis(5),
+                    ..CraftyConfigure::default()
+                })
+        },
         None,
     )
     .await;

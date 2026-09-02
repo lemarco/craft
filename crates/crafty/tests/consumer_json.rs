@@ -20,28 +20,16 @@ async fn send_welcome(job: WelcomeEmail) -> Result<(), String> {
 #[tokio::test]
 async fn consumer_json_decodes_payload() {
     assert_eq!(SendWelcomeConsumer::STREAM, "emails");
-    let ctx = JobContext {
-        job_id: JobId(1),
-        lease_id: LeaseId(1),
-        stream: "emails",
-        attempts: 1,
-        dedup_key: None,
-    };
-    SendWelcomeConsumer::handle(br#"{"to":"user@example.com"}"#, ctx)
+    let ctx = JobContext::new(JobId(1), LeaseId(1), "emails", 1, None);
+    SendWelcomeConsumer::handle_job(br#"{"to":"user@example.com"}"#, ctx)
         .await
         .expect("valid json");
 }
 
 #[tokio::test]
 async fn consumer_json_rejects_invalid_json() {
-    let ctx = JobContext {
-        job_id: JobId(1),
-        lease_id: LeaseId(1),
-        stream: "emails",
-        attempts: 1,
-        dedup_key: None,
-    };
-    let err = SendWelcomeConsumer::handle(b"not-json", ctx)
+    let ctx = JobContext::new(JobId(1), LeaseId(1), "emails", 1, None);
+    let err = SendWelcomeConsumer::handle_job(b"not-json", ctx)
         .await
         .expect_err("invalid json");
     assert!(err.contains("invalid job json"));

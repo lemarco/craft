@@ -33,25 +33,32 @@ use crafty_storage::GroupRedbLayout;
 use tokio::net::TcpListener;
 
 use crafty_actor::{
-    ActorDirectory, ActorRegistry, AutoscalePolicy, ClusterActorStateStore, ClusterControl,
-    ClusterJobQueue, ClusterMessaging, ClusterState, ClusterSupervisor,
-    DEFAULT_ACTOR_STORE_GC_MAX_KEYS, DEFAULT_ACTOR_STORE_GC_PERIOD, DEFAULT_DRAIN_TIMEOUT,
-    DEFAULT_QUEUE_PREFETCH, DirectoryPolicy, DirectoryRetry, DirectorySync, JobQueue, MailboxSpool,
-    MembershipAutoscalePolicy, NodeService, QueueAutoscaleRegistry, QueueService, RaftDriver,
-    RecurringJob, RedbActorStateStore, RedbJobQueue, RedbMailboxSpool, ResourceProfile,
-    RuntimeConfig, ShardedJobQueue, StoreService, UserActor, VpsResources,
-    run_actor_store_gc_ticker, run_mailbox_spool_drainer, run_queue_autoscaler,
-    run_queue_membership_autoscaler, run_queue_schedule_ticker, spawn_multi_raft_node, spawn_node,
+    ActorDirectory, ActorRegistry, AutoscalePolicy, BacklogFeedOpts, BacklogRegistry,
+    BacklogSettleOutbox, BacklogSettleOutboxOpts, ClusterActorStateStore, ClusterControl,
+    ClusterEventTopic, ClusterJobQueue, ClusterMessaging, ClusterState, ClusterSupervisor,
+    CompositeScheduleSource, ComputeTokenPool, DEFAULT_ACTOR_STORE_GC_MAX_KEYS,
+    DEFAULT_ACTOR_STORE_GC_PERIOD, DEFAULT_DRAIN_TIMEOUT, DEFAULT_QUEUE_PREFETCH, DirectoryPolicy,
+    DirectoryRetry, DirectorySync, EventTopic, ExternalBacklog, InMemoryBacklogSettleOutbox,
+    JobQueue, MailboxSpool, MembershipAutoscalePolicy, NodeService, QueueAutoscaleRegistry,
+    QueueService, RaftDriver, RecurringJob, RedbActorStateStore, RedbBacklogSettleOutbox,
+    RedbEventTopic, RedbJobQueue, RedbMailboxSpool, ResourceProfile, RuntimeConfig, SchedulePoll,
+    ScheduleSource, ShardedJobQueue, StaticScheduleSource, StoreService, TopicRetentionOpts,
+    TopicService, TopicSubscriptionDef, UserActor, VpsResources, WorkloadMetricsSnapshot,
+    WorkloadOpts, run_actor_store_gc_ticker, run_backlog_feeder, run_backlog_settle_drainer,
+    run_mailbox_spool_drainer, run_queue_autoscaler, run_queue_membership_autoscaler,
+    run_queue_schedule_ticker, run_workload_governor, spawn_multi_raft_node, spawn_node,
 };
 
 use crate::certs::{CertReloadHandle, PemSecurity, cert_paths_for_node};
 use crate::cluster_handle::{ClusterFacts, CraftyCluster};
 use crate::discovery::Seed;
+use crate::gateway::ConnectionTracker;
 use crate::handler::{NoPeers, NodeRouter, PeerSource, QuicPeers};
 use crate::multi_raft::{ArcGroupMigrate, GroupMigratePort, MultiRaftState};
 use crate::node_id;
 use crate::observer::CraftyObserver;
 use crate::security::Security;
+use crate::workload::WorkloadRuntime;
 
 #[allow(clippy::cast_precision_loss)] // Prometheus gauges use f64; actor counts fit in practice.
 fn metric_usize(v: usize) -> f64 {
@@ -107,6 +114,7 @@ type AutoscaleTask = Box<
             Arc<ActorDirectory>,
             HashMap<String, Arc<dyn JobQueue>>,
             Arc<QueueAutoscaleRegistry>,
+            Arc<BacklogRegistry>,
         ) -> tokio::task::JoinHandle<()>
         + Send,
 >;
@@ -118,6 +126,15 @@ struct JobStreamSpec {
     lease_timeout: Duration,
     prefetch: usize,
     default_max_attempts: u32,
+}
+
+#[derive(Debug, Clone)]
+struct TopicStreamSpec {
+    name: String,
+    path: Option<PathBuf>,
+    lease_timeout: Duration,
+    retention: TopicRetentionOpts,
+    subscriptions: Vec<TopicSubscriptionDef>,
 }
 
 #[derive(Debug, Clone)]
@@ -138,8 +155,23 @@ type MembershipAutoscaleTask = Box<
             Arc<dyn ClusterState>,
             HashMap<String, Arc<dyn JobQueue>>,
             Arc<QueueAutoscaleRegistry>,
+            Arc<BacklogRegistry>,
         ) + Send,
 >;
+
+#[derive(Clone)]
+struct BacklogFeedSpec {
+    stream: String,
+    backlog: Arc<dyn ExternalBacklog>,
+    opts: BacklogFeedOpts,
+}
+
+#[derive(Clone)]
+struct ScheduleSourceSpec {
+    stream: String,
+    source: Arc<dyn ScheduleSource>,
+    poll: Duration,
+}
 
 /// A fluent builder for a single crafty node (deployment-model). Create it with
 /// [`CraftyCluster::builder`](crate::cluster::CraftyCluster::builder).
@@ -178,11 +210,16 @@ pub struct CraftyClusterBuilder<M: StateMachine> {
     registrations: Vec<RegisterFn>,
     managed: Vec<ManageFn>,
     job_streams: Vec<JobStreamSpec>,
+    topic_streams: Vec<TopicStreamSpec>,
     job_sharded: Vec<ShardedJobSpec>,
     recurring_jobs: Vec<RecurringJobSpec>,
     job_autoscale: Vec<AutoscaleTask>,
     job_membership_autoscale: Vec<MembershipAutoscaleTask>,
     queue_autoscale_meta: BTreeMap<String, QueueAutoscalePolicyCommand>,
+    backlog_feeds: Vec<BacklogFeedSpec>,
+    schedule_sources: Vec<ScheduleSourceSpec>,
+    /// Per-node workload governor ([workload-governor](../../docs/decisions/workload-governor.md)).
+    workload: Option<WorkloadOpts>,
     /// Persist cross-node `/actor/deliver` envelopes to redb outbox/inbox.
     durable_mailbox: bool,
 }
@@ -226,11 +263,15 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             registrations: Vec::new(),
             managed: Vec::new(),
             job_streams: Vec::new(),
+            topic_streams: Vec::new(),
             job_sharded: Vec::new(),
             recurring_jobs: Vec::new(),
             job_autoscale: Vec::new(),
             job_membership_autoscale: Vec::new(),
             queue_autoscale_meta: BTreeMap::new(),
+            backlog_feeds: Vec::new(),
+            schedule_sources: Vec::new(),
+            workload: None,
             durable_mailbox: false,
         }
     }
@@ -722,6 +763,113 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         self
     }
 
+    /// Enable a durable event topic at `{data_dir}/topic-{name}.redb`
+    /// ([event-topics](../../docs/decisions/event-topics.md)). Requires [`data_dir`](Self::data_dir).
+    #[must_use]
+    pub fn event_topic(mut self, name: &str, lease_timeout: Duration) -> Self {
+        self.topic_streams.push(TopicStreamSpec {
+            name: name.to_string(),
+            path: None,
+            lease_timeout,
+            retention: TopicRetentionOpts::default(),
+            subscriptions: Vec::new(),
+        });
+        self
+    }
+
+    /// Like [`event_topic`](Self::event_topic) but opens an explicit redb path.
+    #[must_use]
+    pub fn event_topic_at(
+        mut self,
+        name: &str,
+        path: impl Into<PathBuf>,
+        lease_timeout: Duration,
+    ) -> Self {
+        self.topic_streams.push(TopicStreamSpec {
+            name: name.to_string(),
+            path: Some(path.into()),
+            lease_timeout,
+            retention: TopicRetentionOpts::default(),
+            subscriptions: Vec::new(),
+        });
+        self
+    }
+
+    /// Declare subscriptions and retention for a registered topic.
+    #[must_use]
+    pub fn event_topic_subscriptions(
+        mut self,
+        name: &str,
+        subscriptions: &[TopicSubscriptionDef],
+    ) -> Self {
+        for spec in &mut self.topic_streams {
+            if spec.name == name {
+                spec.subscriptions = subscriptions.to_vec();
+            }
+        }
+        self
+    }
+
+    /// Retention thresholds for a registered topic.
+    #[must_use]
+    pub fn event_topic_retention(mut self, name: &str, retention: TopicRetentionOpts) -> Self {
+        for spec in &mut self.topic_streams {
+            if spec.name == name {
+                spec.retention = retention;
+            }
+        }
+        self
+    }
+
+    /// Leader-fed stream backed by an [`ExternalBacklog`] ([external-backlog](../../docs/decisions/external-backlog.md)).
+    ///
+    /// Requires [`job_queue`](Self::job_queue) on the same `stream`. The leader claims from
+    /// `backlog`, enqueues into tier C with `dedup_key = item.key`, and calls
+    /// [`ExternalBacklog::settle`] on terminal ack/dead-letter outcomes.
+    #[must_use]
+    pub fn job_queue_external_backlog(
+        mut self,
+        stream: &str,
+        backlog: Arc<dyn ExternalBacklog>,
+        opts: BacklogFeedOpts,
+    ) -> Self {
+        self.backlog_feeds.push(BacklogFeedSpec {
+            stream: stream.to_string(),
+            backlog,
+            opts,
+        });
+        self
+    }
+
+    /// Per-node workload governor — compute tokens arbitrate gateway vs job handlers
+    /// ([workload-governor](../../docs/decisions/workload-governor.md)).
+    #[must_use]
+    pub fn workload(mut self, opts: WorkloadOpts) -> Self {
+        self.workload = Some(opts);
+        self
+    }
+
+    /// Register a dynamic [`ScheduleSource`] for recurring jobs on `stream`
+    /// ([schedule-source](../../docs/decisions/schedule-source.md)).
+    ///
+    /// Requires [`job_queue`](Self::job_queue) on the same stream. Pairs with
+    /// [`.cron()`](crate::CraftyAppBuilder::cron) — static and external sources
+    /// are merged.
+    #[must_use]
+    pub fn schedule_source(
+        mut self,
+        stream: &str,
+        source: Arc<dyn ScheduleSource>,
+        poll: SchedulePoll,
+    ) -> Self {
+        self.schedule_sources.push(ScheduleSourceSpec {
+            stream: stream.to_string(),
+            source,
+            poll: poll.duration(),
+        });
+        self
+    }
+
     /// Register a cron-driven recurring job on `stream` ([`RecurringJob`]).
     ///
     /// Requires [`job_queue`](Self::job_queue) on the same stream. Schedules persist in
@@ -765,12 +913,13 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                 control.register_type::<A>();
             }));
         self.job_autoscale.push(Box::new(
-            move |control, state, directory, queues, registry| {
+            move |control, state, directory, queues, registry, backlog_registry| {
                 let Some(queue) = queues.get(&stream).cloned() else {
                     panic!(
                         "job_queue_autoscale stream {stream:?} was not registered via job_queue"
                     );
                 };
+                let backlog = backlog_registry.get(&stream);
                 let policy = policy.clone();
                 let config = config.clone();
                 let worker_group = worker_group.clone();
@@ -783,6 +932,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                         registry,
                         stream,
                         policy,
+                        backlog,
                         move |desired| {
                             let control = Arc::clone(&control);
                             let state = Arc::clone(&state);
@@ -866,12 +1016,13 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             Some(policy.to_wire()),
         );
         self.job_membership_autoscale
-            .push(Box::new(move |state, queues, registry| {
+            .push(Box::new(move |state, queues, registry, backlog_registry| {
             let Some(queue) = queues.get(&stream).cloned() else {
                 panic!(
                     "job_queue_membership_autoscale stream {stream:?} was not registered via job_queue or job_queue_sharded"
                 );
             };
+            let backlog = backlog_registry.get(&stream);
             let policy = policy.clone();
             let join = Arc::clone(&join);
             let stream = stream.clone();
@@ -882,6 +1033,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                     registry,
                     stream,
                     policy,
+                    backlog,
                     move || {
                         let join = Arc::clone(&join);
                         async move { join().await }
@@ -1288,11 +1440,18 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         };
 
         // --- Actor planes -------------------------------------------------
+        let workload_opts = self.workload.clone();
+        let compute_pool = workload_opts
+            .as_ref()
+            .map(|opts| ComputeTokenPool::new(opts.max_compute_tokens));
         let registry = if self.dev_multi_workers {
             ActorRegistry::new_dev()
         } else {
             ActorRegistry::new()
         };
+        if let Some(pool) = compute_pool.as_ref() {
+            registry.set_compute_tokens(Arc::clone(pool));
+        }
         let directory = ActorDirectory::new();
         // Live leadership/membership facts, updated by the facts-refresher loop.
         // Created before the control plane so forwarded scales can be
@@ -1326,6 +1485,9 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                         .expect("open mailbox spool redb"),
                 ) as Arc<dyn MailboxSpool>;
                 messaging = messaging.with_mailbox_spool(spool);
+            }
+            if let Some(pool) = compute_pool.as_ref() {
+                messaging = messaging.with_compute_tokens(Arc::clone(pool));
             }
             messaging
         });
@@ -1366,44 +1528,71 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         registry.set_observer(telemetry.clone());
 
         // --- Job queue (leader wire service) ------------------------------
+        let backlog_registry = Arc::new(BacklogRegistry::new());
+        for feed in &self.backlog_feeds {
+            backlog_registry.register(&feed.stream, Arc::clone(&feed.backlog));
+        }
+        let backlog_settle_outbox: Option<Arc<dyn BacklogSettleOutbox>> =
+            if self.backlog_feeds.is_empty() {
+                None
+            } else {
+                let outbox: Arc<dyn BacklogSettleOutbox> = if let Some(data_dir) =
+                    self.data_dir.as_ref()
+                {
+                    Arc::new(
+                        RedbBacklogSettleOutbox::open(data_dir.join("backlog-settle-outbox.redb"))
+                            .unwrap_or_else(|e| {
+                                panic!(
+                                    "open backlog settle outbox at {}: {e}",
+                                    data_dir.join("backlog-settle-outbox.redb").display()
+                                )
+                            }),
+                    )
+                } else {
+                    Arc::new(InMemoryBacklogSettleOutbox::new())
+                };
+                Some(outbox)
+            };
         let queue_service: Option<Arc<QueueService>> = if self.job_streams.is_empty() {
             None
         } else {
             let events_for_queue = events.clone();
             let metrics_for_queue = metrics.clone();
-            Some(Arc::new(
-                QueueService::new(
-                    node_id,
-                    Arc::clone(&facts) as Arc<dyn ClusterState>,
-                    Arc::clone(&transport),
-                )
-                .with_lifecycle_hook(Arc::new(move |ev| {
-                    // Attempts are recorded here, once per delivery — a metrics
-                    // sampler polling queue depth cannot see individual deliveries.
-                    if let crafty_actor::QueueLifecycleEvent::Leased {
-                        ref stream,
-                        attempts,
-                        ..
-                    } = ev
-                    {
-                        metrics_for_queue.observe(
-                            "crafty_queue_job_attempts",
-                            "Delivery attempts per leased job (1 = first delivery).",
+            let mut service = QueueService::new(
+                node_id,
+                Arc::clone(&facts) as Arc<dyn ClusterState>,
+                Arc::clone(&transport),
+            )
+            .with_lifecycle_hook(Arc::new(move |ev| {
+                // Attempts are recorded here, once per delivery — a metrics
+                // sampler polling queue depth cannot see individual deliveries.
+                if let crafty_actor::QueueLifecycleEvent::Leased {
+                    ref stream,
+                    attempts,
+                    ..
+                } = ev
+                {
+                    metrics_for_queue.observe(
+                        "crafty_queue_job_attempts",
+                        "Delivery attempts per leased job (1 = first delivery).",
+                        &[("stream", stream)],
+                        f64::from(attempts),
+                    );
+                    if attempts > 1 {
+                        metrics_for_queue.incr(
+                            "crafty_queue_redeliveries_total",
+                            "Job deliveries that were not the first attempt.",
                             &[("stream", stream)],
-                            f64::from(attempts),
+                            1.0,
                         );
-                        if attempts > 1 {
-                            metrics_for_queue.incr(
-                                "crafty_queue_redeliveries_total",
-                                "Job deliveries that were not the first attempt.",
-                                &[("stream", stream)],
-                                1.0,
-                            );
-                        }
                     }
-                    let _ = events_for_queue.emit(CraftyEvent::from_queue_lifecycle(ev));
-                })),
-            ))
+                }
+                let _ = events_for_queue.emit(CraftyEvent::from_queue_lifecycle(ev));
+            }));
+            if let Some(outbox) = backlog_settle_outbox.as_ref() {
+                service = service.with_backlog_settle_outbox(Arc::clone(outbox));
+            }
+            Some(Arc::new(service))
         };
         let mut job_queues: HashMap<String, Arc<dyn JobQueue>> = HashMap::new();
         let mut local_backends: HashMap<String, Arc<dyn JobQueue>> = HashMap::new();
@@ -1428,13 +1617,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             );
             local_backends.insert(spec.name.clone(), Arc::clone(&local) as Arc<dyn JobQueue>);
             if let Some(service) = queue_service.as_ref() {
-                let schedules: Vec<RecurringJob> = self
-                    .recurring_jobs
-                    .iter()
-                    .filter(|rj| rj.stream == spec.name)
-                    .map(|rj| rj.job.clone())
-                    .collect();
-                service.register_redb_stream(&spec.name, &local, &schedules, spec.prefetch);
+                service.register_redb_stream(&spec.name, &local, spec.prefetch);
             }
             let client: Arc<dyn JobQueue> = Arc::new(
                 ClusterJobQueue::new(
@@ -1479,6 +1662,90 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             }
         }
 
+        if let Some(service) = queue_service.as_ref() {
+            let mut streams: std::collections::HashSet<String> = self
+                .schedule_sources
+                .iter()
+                .map(|spec| spec.stream.clone())
+                .collect();
+            for recurring in &self.recurring_jobs {
+                streams.insert(recurring.stream.clone());
+            }
+            for stream in streams {
+                let static_jobs: Vec<RecurringJob> = self
+                    .recurring_jobs
+                    .iter()
+                    .filter(|recurring| recurring.stream == stream)
+                    .map(|recurring| recurring.job.clone())
+                    .collect();
+                let user_specs: Vec<&ScheduleSourceSpec> = self
+                    .schedule_sources
+                    .iter()
+                    .filter(|spec| spec.stream == stream)
+                    .collect();
+                let mut sources: Vec<Arc<dyn ScheduleSource>> = Vec::new();
+                let mut poll = Duration::from_secs(60);
+                if !static_jobs.is_empty() {
+                    sources.push(Arc::new(StaticScheduleSource::new(static_jobs)));
+                }
+                for spec in user_specs {
+                    poll = spec.poll;
+                    sources.push(Arc::clone(&spec.source));
+                }
+                if sources.is_empty() {
+                    continue;
+                }
+                let combined: Arc<dyn ScheduleSource> = if sources.len() == 1 {
+                    Arc::clone(&sources[0])
+                } else {
+                    Arc::new(CompositeScheduleSource::new(sources))
+                };
+                service.register_schedule_source(stream, combined, poll);
+            }
+        }
+
+        let topic_service: Option<Arc<TopicService>> = if self.topic_streams.is_empty() {
+            None
+        } else {
+            Some(Arc::new(TopicService::new(
+                node_id,
+                Arc::clone(&facts) as Arc<dyn ClusterState>,
+                Arc::clone(&transport),
+            )))
+        };
+        let mut event_topics: HashMap<String, Arc<dyn EventTopic>> = HashMap::new();
+        for spec in &self.topic_streams {
+            let path = match &spec.path {
+                Some(path) => path.clone(),
+                None => self
+                    .data_dir
+                    .as_ref()
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "event_topic({:?}) requires data_dir or event_topic_at with an explicit path",
+                            spec.name
+                        )
+                    })
+                    .join(format!("topic-{}.redb", spec.name)),
+            };
+            let local = Arc::new(
+                RedbEventTopic::open(&path, spec.lease_timeout)
+                    .unwrap_or_else(|e| panic!("open event topic at {}: {e}", path.display()))
+                    .retention(spec.retention),
+            );
+            if let Some(service) = topic_service.as_ref() {
+                service.register_redb_topic(&spec.name, &local);
+            }
+            let client: Arc<dyn EventTopic> = Arc::new(ClusterEventTopic::new(
+                &spec.name,
+                node_id,
+                Arc::clone(&facts) as Arc<dyn ClusterState>,
+                Arc::clone(&transport),
+            ));
+            event_topics.insert(spec.name.clone(), client);
+        }
+        let topic_bootstrap_specs = self.topic_streams.clone();
+
         // --- Actor workflow store (redb + voter replication) ----------------
         let mut actor_state_store = self.actor_state_store.clone();
         let store_service: Option<Arc<StoreService>> =
@@ -1513,6 +1780,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             Arc::clone(&messaging),
             Arc::clone(&directory_sync),
             queue_service.clone(),
+            topic_service.clone(),
             store_service.clone(),
             Arc::clone(&peers),
             multi_raft.as_ref().map(|state| {
@@ -1720,6 +1988,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                 Arc::clone(&directory),
                 job_queues.clone(),
                 Arc::clone(&queue_autoscale_registry),
+                Arc::clone(&backlog_registry),
             ));
         }
 
@@ -1728,7 +1997,43 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                 Arc::clone(&facts) as Arc<dyn ClusterState>,
                 job_queues.clone(),
                 Arc::clone(&queue_autoscale_registry),
+                Arc::clone(&backlog_registry),
             );
+        }
+
+        if let Some(outbox) = backlog_settle_outbox.as_ref() {
+            let state = Arc::clone(&facts) as Arc<dyn ClusterState>;
+            let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            let outbox = Arc::clone(outbox);
+            tasks.push(tokio::spawn(async move {
+                run_backlog_settle_drainer(
+                    Arc::clone(&backlog_registry),
+                    outbox,
+                    state,
+                    BacklogSettleOutboxOpts::default(),
+                    stop_rx,
+                )
+                .await;
+            }));
+        }
+
+        for feed in &self.backlog_feeds {
+            let Some(local) = local_backends.get(&feed.stream).cloned() else {
+                panic!(
+                    "job_queue_external_backlog stream {:?} has no matching job_queue registration",
+                    feed.stream
+                );
+            };
+            let state = Arc::clone(&facts) as Arc<dyn ClusterState>;
+            let backlog = Arc::clone(&feed.backlog);
+            let stream = feed.stream.clone();
+            let opts = feed.opts.clone();
+            let settle_outbox = backlog_settle_outbox.clone();
+            let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            tasks.push(tokio::spawn(async move {
+                run_backlog_feeder(stream, local, backlog, state, opts, settle_outbox, stop_rx)
+                    .await;
+            }));
         }
 
         if messaging.has_mailbox_spool() {
@@ -1740,12 +2045,38 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
         }
 
         if let Some(service) = queue_service.as_ref()
-            && !self.recurring_jobs.is_empty()
+            && service.has_schedule_sources()
         {
             let service = Arc::clone(service);
             let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
             tasks.push(tokio::spawn(async move {
                 run_queue_schedule_ticker(service, Duration::from_secs(1), stop_rx).await;
+            }));
+        }
+
+        if let Some(service) = topic_service.as_ref() {
+            let service = Arc::clone(service);
+            let specs = topic_bootstrap_specs;
+            let facts = Arc::clone(&facts) as Arc<dyn ClusterState>;
+            tasks.push(tokio::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_millis(200));
+                let mut bootstrapped = false;
+                loop {
+                    interval.tick().await;
+                    if facts.is_leader() {
+                        if !bootstrapped {
+                            for spec in &specs {
+                                if !spec.subscriptions.is_empty() {
+                                    let _ = service
+                                        .bootstrap_subscriptions(&spec.name, &spec.subscriptions)
+                                        .await;
+                                }
+                            }
+                            bootstrapped = true;
+                        }
+                        let _ = service.enforce_retention_all().await;
+                    }
+                }
             }));
         }
 
@@ -1762,6 +2093,58 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
                 .await;
             }));
         }
+
+        let workload = workload_opts.map(|opts| {
+            let pool =
+                compute_pool.unwrap_or_else(|| ComputeTokenPool::new(opts.max_compute_tokens));
+            let connections = Arc::new(ConnectionTracker::default());
+            let (tune_tx, tune_rx) = tokio::sync::watch::channel(opts.when_balanced);
+            let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            let queues: Vec<Arc<dyn JobQueue>> = job_queues.values().cloned().collect();
+            let connections_fn: Arc<dyn Fn() -> usize + Send + Sync> = {
+                let c = Arc::clone(&connections);
+                Arc::new(move || c.active())
+            };
+            let metrics_hook = {
+                let metrics = metrics.clone();
+                Some(Arc::new(move |snap: WorkloadMetricsSnapshot| {
+                    metrics.set(
+                        "crafty_compute_tokens_in_use",
+                        "Compute tokens currently held on this node.",
+                        &[],
+                        f64::from(u32::try_from(snap.tokens_in_use).unwrap_or(u32::MAX)),
+                    );
+                    metrics.set(
+                        "crafty_compute_token_ceiling",
+                        "Effective compute token ceiling after the last governor tick.",
+                        &[],
+                        f64::from(u32::try_from(snap.token_ceiling).unwrap_or(u32::MAX)),
+                    );
+                    if snap.tune_changed {
+                        metrics.incr(
+                            "crafty_workload_tune_events_total",
+                            "Consumer tune changes published by the workload governor.",
+                            &[],
+                            1.0,
+                        );
+                    }
+                }) as crafty_actor::WorkloadMetricsHook)
+            };
+            let pool_for_governor = Arc::clone(&pool);
+            tasks.push(tokio::spawn(async move {
+                run_workload_governor(
+                    pool_for_governor,
+                    tune_tx,
+                    stop_rx,
+                    opts,
+                    connections_fn,
+                    queues,
+                    metrics_hook,
+                )
+                .await;
+            }));
+            WorkloadRuntime::new(pool, tune_rx, connections, stop_tx)
+        });
 
         let queue_autoscale_proposals: Vec<_> = self.queue_autoscale_meta.into_values().collect();
         if !queue_autoscale_proposals.is_empty() {
@@ -1853,6 +2236,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             vps_resources,
             actor_state_store,
             job_queues,
+            event_topics,
             wire_handler: Arc::clone(&router),
             transport,
             facts,
@@ -1860,6 +2244,7 @@ impl<M: StateMachine + Default + 'static> CraftyClusterBuilder<M> {
             cert_reload: None,
             drain_timeout: self.drain_timeout,
             tasks: Mutex::new(tasks),
+            workload,
         };
         (cluster, router)
     }

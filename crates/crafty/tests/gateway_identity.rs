@@ -66,7 +66,7 @@ async fn gateway_state_extracts_identity_session_key() {
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).unwrap();
 
-    let app = boot_local_app(crafty::CraftyApp::builder().data_dir(&base), None).await;
+    let app = boot_local_app(|| crafty::CraftyApp::builder().data_dir(&base), None).await;
 
     wait_for_crafty_app_leader(&app).await;
     advance(Duration::from_millis(50)).await;
@@ -96,7 +96,7 @@ async fn identity_mapped_uses_custom_session_key() {
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).unwrap();
 
-    let app = boot_local_app(crafty::CraftyApp::builder().data_dir(&base), None).await;
+    let app = boot_local_app(|| crafty::CraftyApp::builder().data_dir(&base), None).await;
     let state = CraftyGatewayState::with_identity_mapped(
         Arc::clone(&app),
         RoomIdentity,
@@ -128,7 +128,7 @@ async fn session_handle_none_without_workers() {
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).unwrap();
 
-    let app = Arc::new(boot_local_app(crafty::CraftyApp::builder().data_dir(&base), None).await);
+    let app = Arc::new(boot_local_app(|| crafty::CraftyApp::builder().data_dir(&base), None).await);
     wait_for_crafty_app_leader(&app).await;
 
     assert!(SessionHandle::open(&app, "missing", "user-1", None).is_none());

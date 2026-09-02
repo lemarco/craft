@@ -13,9 +13,12 @@ pub use {crafty_core, crafty_net, crafty_proto, crafty_storage};
 /// [macro docs](macro@actor) for usage.
 pub use crafty_macros::actor;
 
+mod backlog_settle_outbox;
+mod compute_token;
 mod directory;
 mod directory_policy;
 mod driver;
+mod external_backlog;
 mod group_membership;
 mod group_rebalance;
 mod mailbox_spool;
@@ -30,10 +33,12 @@ mod queue_schedule;
 mod queue_service;
 mod redb_queue;
 mod redb_store;
+mod redb_topic;
 mod registry;
 mod resources;
 mod ring;
 mod runtime;
+mod schedule_source;
 mod session;
 mod sharded;
 mod sharded_queue;
@@ -41,12 +46,26 @@ mod store;
 mod store_codec;
 mod store_service;
 mod supervisor;
+mod topic;
+mod topic_service;
 mod tracing_init;
 mod two_phase;
+mod workload;
 
+pub use backlog_settle_outbox::{
+    BacklogSettleOutbox, BacklogSettleOutboxError, BacklogSettleOutboxId, BacklogSettleOutboxOpts,
+    InMemoryBacklogSettleOutbox, RedbBacklogSettleOutbox, push_backlog_settle,
+};
+pub use compute_token::{ComputeGuard, ComputeTokenPool, with_compute_guard};
 pub use directory::{ActorDirectory, ClusterRef, DirectorySync};
 pub use directory_policy::{DirectoryPolicy, DirectoryRetry};
 pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
+pub use external_backlog::{
+    BacklogError, BacklogFeedOpts, BacklogItem, BacklogRegistry, BacklogSettleEvent,
+    BacklogSettleOutcome, ExternalBacklog, InMemoryExternalBacklog, Settlement,
+    effective_queue_depth, emit_backlog_settle_for_terminal_ops, run_backlog_feeder,
+    run_backlog_settle_drainer, terminal_backlog_outcome,
+};
 pub use group_membership::{GroupMembershipSyncReport, sync_hosted_group_membership};
 pub use group_rebalance::{GroupRebalanceReport, RaftGroupReconciler};
 pub use mailbox_spool::{
@@ -62,9 +81,10 @@ pub use placement::{
 };
 pub(crate) use queue::after_failed_attempt;
 pub use queue::{
-    EnqueueOptions, InMemoryJobQueue, JobContext, JobId, JobLifecycle, JobQueue, JobStatus,
-    LeaseId, LeasedJob, QueueError, QueueMetrics, QueueReplicateOp, QueueReplicationOps, WorkerId,
-    run_queue_consumer,
+    BatchRequeueResult, EnqueueOptions, InMemoryJobQueue, JobContext, JobId, JobLifecycle,
+    JobListFilter, JobListPage, JobQueue, JobStatus, LIST_JOBS_DEFAULT_LIMIT, LeaseId, LeasedJob,
+    QueueConsumerWorkload, QueueError, QueueMetrics, QueueReplicateOp, QueueReplicationOps,
+    WorkerId, job_status_matches_filter, run_queue_consumer,
 };
 pub use queue_autoscale::{
     AutoscalePolicy, MembershipAutoscalePolicy, QueueAutoscaleRegistry, run_queue_autoscaler,
@@ -81,6 +101,7 @@ pub use redb_store::{
     DEFAULT_ACTOR_STORE_GC_MAX_KEYS, DEFAULT_ACTOR_STORE_GC_PERIOD, RedbActorStateStore,
     StoreReplicationOps,
 };
+pub use redb_topic::RedbEventTopic;
 pub use registry::{
     ASK_TIMEOUT, ActorGroupStats, ActorObserver, ActorRef, ActorRegistry, AskError,
     ConfigCodecError, DEFAULT_DRAIN_TIMEOUT, DeliverError, DrainOutcome, LocalActorIntrospection,
@@ -93,9 +114,22 @@ pub use runtime::{
     ClientError, NodeHandle, NodeService, NodeStatus, QueueAutoscalePolicyAppliedFn, RuntimeConfig,
     SagaJournalAppliedFn, TwoPhaseGcAbortedFn, TwoPhaseJournalAppliedFn, spawn as spawn_node,
 };
+pub use schedule_source::{
+    CompositeScheduleSource, ScheduleError, SchedulePoll, ScheduleReconcilePlan, ScheduleSource,
+    StaticScheduleSource, plan_schedule_reconcile, wire_to_recurring_job,
+};
 pub use session::ActorSession;
 pub use sharded_queue::{ShardedJobQueue, ShardedReplication};
+pub use topic::{
+    EventId, EventTopic, InMemoryEventTopic, LeasedEvent, SubscriptionStart, TopicContext,
+    TopicError, TopicLeaseId, TopicMetrics, TopicReplicationOps, TopicRetentionOpts,
+    TopicSubscriptionDef, TopicSubscriptionMetrics, run_topic_subscriber,
+};
+pub use topic_service::{ClusterEventTopic, TopicService};
 pub use tracing_init::init_tracing;
+pub use workload::{
+    ConsumerTune, WorkloadMetricsHook, WorkloadMetricsSnapshot, WorkloadOpts, run_workload_governor,
+};
 pub mod rebalance_log;
 pub use sharded::{
     MultiRaftSpawnResult, ShardedNodeService, spawn_multi_raft_node, spawn_raft_group,

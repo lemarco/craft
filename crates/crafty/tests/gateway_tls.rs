@@ -204,15 +204,17 @@ fn rustls_connector(trust_anchor: &CertificateDer<'static>) -> Connector {
 
 async fn boot_echo_app(base: &std::path::Path) -> Arc<CraftyApp> {
     let app = boot_local_app(
-        CraftyApp::builder()
-            .data_dir(base)
-            .actors::<EchoWorker>("echo", ActorGroupOpts::new(0))
-            .configure(CraftyConfigure {
-                tick_period: Duration::from_millis(5),
-                reconcile_period: Duration::from_millis(20),
-                directory_publish_period: Duration::from_millis(20),
-                ..CraftyConfigure::default()
-            }),
+        || {
+            CraftyApp::builder()
+                .data_dir(base)
+                .actors::<EchoWorker>("echo", ActorGroupOpts::new(0))
+                .configure(CraftyConfigure {
+                    tick_period: Duration::from_millis(5),
+                    reconcile_period: Duration::from_millis(20),
+                    directory_publish_period: Duration::from_millis(20),
+                    ..CraftyConfigure::default()
+                })
+        },
         None,
     )
     .await;

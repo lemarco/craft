@@ -73,7 +73,7 @@ async fn queue_service_batch_prefetch_priority_and_ack_eviction() {
         RedbJobQueue::open(dir.path().join("jobs.redb"), Duration::from_secs(60))
             .expect("open queue"),
     );
-    service.register_redb_stream("jobs", &queue, &[], DEFAULT_QUEUE_PREFETCH);
+    service.register_redb_stream("jobs", &queue, DEFAULT_QUEUE_PREFETCH);
     net.attach(NodeId(1), Arc::new(QueueHandler(Arc::clone(&service))));
 
     let client = LocalTransport::new(net, NodeId(1));

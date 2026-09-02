@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::{
-    BoxFuture, EnqueueOptions, JobId, JobQueue, JobStatus, LeaseId, LeasedJob, QueueError,
-    QueueMetrics, QueueReplicationOps, WorkerId,
+    BoxFuture, EnqueueOptions, JobId, JobListFilter, JobListPage, JobQueue, JobStatus, LeaseId,
+    LeasedJob, QueueError, QueueMetrics, QueueReplicationOps, WorkerId, job_status_matches_filter,
 };
 
 const SHARD_SHIFT: u32 = 56;
@@ -267,6 +267,69 @@ impl ShardedJobQueue {
             .await?;
         Ok(ShardedReplication { shard, ops })
     }
+
+    /// Extend a live lease, routing to the shard encoded in `lease_id`.
+    ///
+    /// # Errors
+    /// Returns [`QueueError`] if the shard index is invalid or extend fails.
+    pub async fn extend_lease_replicated_sharded(
+        &self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> Result<ShardedReplication, QueueError> {
+        let (shard, local) = decode_id(lease_id.0);
+        let ops = self
+            .shard(shard)?
+            .extend_lease_replicated(worker, LeaseId(local))
+            .await?;
+        Ok(ShardedReplication { shard, ops })
+    }
+
+    /// Requeue many dead-letter jobs, returning per-shard replication batches.
+    ///
+    /// # Errors
+    /// Returns [`QueueError`] when a shard index is invalid or requeue fails fatally.
+    pub async fn requeue_dead_letter_batch_replicated_sharded(
+        &self,
+        global_job_ids: &[JobId],
+    ) -> Result<
+        (
+            Vec<JobId>,
+            Vec<(JobId, QueueError)>,
+            Vec<ShardedReplication>,
+        ),
+        QueueError,
+    > {
+        let mut by_shard: std::collections::BTreeMap<usize, Vec<JobId>> =
+            std::collections::BTreeMap::new();
+        for job_id in global_job_ids {
+            let (shard, local) = decode_id(job_id.0);
+            by_shard.entry(shard).or_default().push(JobId(local));
+        }
+        let mut requeued = Vec::new();
+        let mut failures = Vec::new();
+        let mut reps = Vec::new();
+        for (shard, locals) in by_shard {
+            let (shard_requeued, shard_failures, ops) = self
+                .shard(shard)?
+                .requeue_dead_letter_batch_replicated(&locals)
+                .await?;
+            if !ops.is_empty() {
+                reps.push(ShardedReplication { shard, ops });
+            }
+            requeued.extend(
+                shard_requeued
+                    .into_iter()
+                    .map(|id| JobId(encode_id(shard, id.0))),
+            );
+            failures.extend(
+                shard_failures
+                    .into_iter()
+                    .map(|(id, err)| (JobId(encode_id(shard, id.0)), err)),
+            );
+        }
+        Ok((requeued, failures, reps))
+    }
 }
 
 impl JobQueue for ShardedJobQueue {
@@ -378,6 +441,31 @@ impl JobQueue for ShardedJobQueue {
         })
     }
 
+    fn extend_lease(
+        &self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> BoxFuture<'_, Result<(), QueueError>> {
+        Box::pin(async move {
+            self.extend_lease_replicated(worker, lease_id)
+                .await
+                .map(|_| ())
+        })
+    }
+
+    fn extend_lease_replicated(
+        &self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>> {
+        Box::pin(async move {
+            let (shard, local) = decode_id(lease_id.0);
+            self.shard(shard)?
+                .extend_lease_replicated(worker, LeaseId(local))
+                .await
+        })
+    }
+
     fn metrics(&self) -> BoxFuture<'_, Result<QueueMetrics, QueueError>> {
         Box::pin(async move {
             let mut total = QueueMetrics::default();
@@ -410,6 +498,48 @@ impl JobQueue for ShardedJobQueue {
                 s.job_id = job_id;
                 s
             }))
+        })
+    }
+
+    fn list_jobs(&self, filter: JobListFilter) -> BoxFuture<'_, Result<JobListPage, QueueError>> {
+        Box::pin(async move {
+            let mut scan = filter.clone();
+            scan.after_job_id = None;
+            scan.limit = None;
+            let mut all = Vec::new();
+            for (shard_idx, shard) in self.shards.iter().enumerate() {
+                let page = shard.list_jobs(scan.clone()).await?;
+                all.extend(page.jobs.into_iter().map(|mut status| {
+                    status.job_id = JobId(encode_id(shard_idx, status.job_id.0));
+                    status
+                }));
+            }
+            all.sort_by_key(|status| status.job_id.0);
+            let after = filter.after_job_id.map_or(0, |id| id.0);
+            all.retain(|status| status.job_id.0 > after);
+            all.retain(|status| job_status_matches_filter(status, &filter));
+            let limit = filter.effective_limit();
+            let has_more = all.len() > limit;
+            all.truncate(limit);
+            Ok(JobListPage {
+                jobs: all,
+                has_more,
+            })
+        })
+    }
+
+    fn requeue_dead_letter_batch_replicated<'a>(
+        &'a self,
+        job_ids: &'a [JobId],
+    ) -> BoxFuture<
+        'a,
+        Result<(Vec<JobId>, Vec<(JobId, QueueError)>, QueueReplicationOps), QueueError>,
+    > {
+        Box::pin(async move {
+            let (requeued, failures, _reps) = self
+                .requeue_dead_letter_batch_replicated_sharded(job_ids)
+                .await?;
+            Ok((requeued, failures, Vec::new()))
         })
     }
 }

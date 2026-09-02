@@ -9,6 +9,21 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ## [Unreleased]
 
+### Added
+
+- **Durable event topics** — [`EventTopic`](crates/crafty-actor/src/topic.rs) pub/sub with named
+  subscriptions, independent cursors, compaction by `min(cursor)`, retention thresholds, and
+  voter replication ([`event-topics`](docs/decisions/event-topics.md)); [`TopicOpts`](crates/crafty/src/topic_opts.rs),
+  [`.topics()`](crates/crafty/src/app.rs), [`CraftyApp::publish`](crates/crafty/src/app.rs),
+  `#[consumer(..., subscription = "...")]` for subscribers. Not a replacement for transactional
+  outbox — see ADR.
+- **`ScheduleSource` port** — dynamic recurring-job schedules polled on the queue
+  leader ([`schedule-source`](docs/decisions/schedule-source.md)); [`.schedule_source()`](crates/crafty/src/app.rs)
+  on `CraftyAppBuilder`; [`.cron()`](crates/crafty/src/app.rs) reimplemented via
+  [`StaticScheduleSource`](crates/crafty-actor/src/schedule_source.rs). Source errors and
+  bootstrap empty polls never wipe persisted schedules; diff reconcile replicates
+  `UpsertSchedule` / `RemoveSchedule`.
+
 ## [0.5.2] — 2026-09-02
 
 **Product polish & cross-scenario composition (B-14).** Gateway auth for built-in

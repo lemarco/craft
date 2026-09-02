@@ -23,14 +23,16 @@ async fn gateway_serves_jobs_api_on_configured_addr() {
     std::fs::create_dir_all(&base).unwrap();
 
     let app = boot_local_app(
-        CraftyApp::builder()
-            .data_dir(&base)
-            .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
-            .configure(CraftyConfigure {
-                tick_period: Duration::from_millis(5),
-                ..CraftyConfigure::default()
-            })
-            .gateway(GatewayOpts::new("127.0.0.1:0".parse().unwrap()).with_jobs_api(true)),
+        || {
+            CraftyApp::builder()
+                .data_dir(&base)
+                .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
+                .configure(CraftyConfigure {
+                    tick_period: Duration::from_millis(5),
+                    ..CraftyConfigure::default()
+                })
+                .gateway(GatewayOpts::new("127.0.0.1:0".parse().unwrap()).with_jobs_api(true))
+        },
         None,
     )
     .await;

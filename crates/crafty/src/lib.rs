@@ -47,10 +47,12 @@ mod queue_opts;
 mod ready;
 mod saga;
 mod security;
+mod topic_opts;
 mod two_phase;
 mod worker_opts;
 mod workflow;
 mod workflow_opts;
+mod workload;
 
 /// Cluster builder, runtime handle, queues, journals.
 pub mod cluster;
@@ -83,6 +85,13 @@ pub use configure::CraftyConfigure;
 pub use consumer::{ConsumerGroup, ConsumerOpts, IdempotencyKeyFn, IdempotencyOpts, JobConsumer};
 pub use crafty_actor::InMemoryStore;
 pub use crafty_actor::JobContext;
+pub use crafty_actor::TopicContext;
+pub use crafty_actor::WorkloadOpts;
+pub use crafty_actor::{
+    BacklogFeedOpts, BacklogItem, BacklogRegistry, BacklogSettleOutbox, BacklogSettleOutboxOpts,
+    CompositeScheduleSource, ExternalBacklog, InMemoryBacklogSettleOutbox, InMemoryExternalBacklog,
+    ScheduleError, SchedulePoll, ScheduleSource, Settlement, StaticScheduleSource,
+};
 pub use cron_opts::CronOpts;
 pub use gateway::{
     ConnectionGuard, ConnectionTracker, CraftyGatewayState, DEFAULT_GATEWAY_DRAIN_TIMEOUT,
@@ -93,11 +102,14 @@ pub use gateway::{
 pub use job_opts::JobOpts;
 pub use queue_opts::QueueOpts;
 pub use ready::ReadyOpts;
+pub use topic_opts::TopicOpts;
 pub use worker_opts::{WorkerGroup, WorkerOpts, WorkerScale};
 pub use workflow::{WorkflowBuildError, WorkflowBuilder};
 pub use workflow_opts::WorkflowOpts;
+pub use workload::WorkloadRuntime;
 
 #[cfg(feature = "http-jobs")]
+pub use crafty_http::{HostRouter, is_local_dev_host, normalize_host};
 pub use upgrade::upgrade_api;
 pub use upgrade::{
     ArtifactManifest, UpgradeCommand, UpgradeError, UpgradeMachine, UpgradeOpts, UpgradePhase,

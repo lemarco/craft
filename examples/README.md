@@ -30,7 +30,7 @@ Start with [`background-jobs/src/main.rs`](background-jobs/src/main.rs) — the 
 Every showcase runs the **same binary on every node** — gateway + workers/consumers on each VPS. The cluster routes work (Raft leader, queue lease, actor directory); you do not split ingress vs worker roles in the happy path.
 
 - Readiness: `RunOpts::default().with_wait_queue("emails")` (or `.with_wait_ready(...)`)
-- Optional: `CRAFTY_ROLE=gateway|worker|both` for edge-only nodes — not used by default in these showcases
+- Optional: homogeneous cluster — same env on every node; see [workload governor](../docs/decisions/workload-governor.md) (B-16). **`CRAFTY_ROLE` is deprecated.**
 
 ### Internal HTTP/WS client (`crafty-showcase-client`, not on crates.io)
 

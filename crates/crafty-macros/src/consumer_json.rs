@@ -65,9 +65,11 @@ pub(crate) fn expand_consumer_json(
 
         impl ::crafty::JobConsumer for #consumer_name {
             const STREAM: &'static str = #stream;
+            const SUBSCRIPTION: Option<&'static str> = None;
             type Error = #err_ty;
 
-            async fn handle(
+            #[allow(clippy::unused_async_trait_impl)]
+            async fn handle_job(
                 payload: &[u8],
                 #ctx_binding: ::crafty::JobContext<'_>,
             ) -> ::core::result::Result<(), Self::Error> {
@@ -76,6 +78,14 @@ pub(crate) fn expand_consumer_json(
                     <#err_ty as ::core::convert::From<::std::string::String>>::from(msg)
                 })?;
                 #call
+            }
+
+            #[allow(clippy::unused_async_trait_impl)]
+            async fn handle_topic(
+                _payload: &[u8],
+                _ctx: ::crafty::TopicContext<'_>,
+            ) -> ::core::result::Result<(), Self::Error> {
+                panic!("consumer_json does not support topic subscriptions")
             }
         }
     }

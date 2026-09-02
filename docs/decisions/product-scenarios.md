@@ -55,7 +55,15 @@ See [job-queue](job-queue.md) for why mailboxes and Raft logs are not misused as
 | `data_dir` on disk (`group-*.redb`, `queue-*.redb`, …) | External PostgreSQL / Valkey adapters (future) |
 | mTLS certs ([certificates](certificates.md)) | Load balancer in front of gateway nodes |
 
-**Non-goals:** Kubernetes as core product, one-container-per-actor microservices, mandatory Redis/PostgreSQL/RabbitMQ.
+**Non-goals:** Kubernetes as core product, one-container-per-actor microservices, mandatory Redis/PostgreSQL/RabbitMQ, **static node roles** (`CRAFTY_ROLE`) as the primary scaling model.
+
+### Homogeneous nodes — compute tokens (B-16)
+
+Every VPS runs the **same binary** (gateway when configured + job consumers + actors). There is no fleet-wide “gateway pool vs worker pool” env switch.
+
+When ingress is quiet, **job consumers use spare CPU** on that node (night batch scenario). When gateway load rises, a per-node **workload governor** throttles consumer parallelism so API latency stays bounded — without rescaling the cluster.
+
+See [workload-governor](workload-governor.md). `CRAFTY_ROLE` is deprecated and scheduled for removal.
 
 ### Unified product surface (0.3.0+)
 

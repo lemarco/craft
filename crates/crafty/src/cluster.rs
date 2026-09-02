@@ -30,15 +30,17 @@ pub use crate::upgrade::{
 };
 pub use crate::workflow::{WorkflowBuildError, WorkflowBuilder};
 pub use crafty_actor::{
-    ActorSession, AutoscalePolicy, ClusterActorStateStore, ClusterJobQueue, DEFAULT_DRAIN_TIMEOUT,
-    DEFAULT_QUEUE_BATCH_MAX, DEFAULT_QUEUE_PREFETCH, DirectoryPolicy, DirectoryRetry,
-    EnqueueOptions, InMemoryJobQueue, InMemoryMailboxSpool, JobId, JobQueue, LeaseId, LeasedJob,
-    MailboxSpool, MembershipAutoscalePolicy, QueueError, QueueMetrics, QueueService, RecurringJob,
-    RedbActorStateStore, RedbJobQueue, RedbMailboxSpool, ShardedJobQueue, StoreService, WorkerId,
-    run_queue_autoscaler, run_queue_consumer, run_queue_membership_autoscaler,
-    run_queue_schedule_ticker,
+    ActorSession, AutoscalePolicy, BacklogError, BacklogFeedOpts, BacklogItem, BacklogRegistry,
+    ClusterActorStateStore, ClusterJobQueue, DEFAULT_DRAIN_TIMEOUT, DEFAULT_QUEUE_BATCH_MAX,
+    DEFAULT_QUEUE_PREFETCH, DirectoryPolicy, DirectoryRetry, EnqueueOptions, ExternalBacklog,
+    InMemoryExternalBacklog, InMemoryJobQueue, InMemoryMailboxSpool, JobId, JobQueue, LeaseId,
+    LeasedJob, MailboxSpool, MembershipAutoscalePolicy, QueueConsumerWorkload, QueueError,
+    QueueMetrics, QueueService, RecurringJob, RedbActorStateStore, RedbJobQueue, RedbMailboxSpool,
+    Settlement, ShardedJobQueue, StoreService, WorkerId, WorkloadOpts, effective_queue_depth,
+    run_backlog_feeder, run_queue_autoscaler, run_queue_consumer, run_queue_membership_autoscaler,
+    run_queue_schedule_ticker, run_workload_governor,
 };
-pub use crafty_actor::{ResourceProfile, VpsResources};
+pub use crafty_actor::{ComputeTokenPool, ResourceProfile, VpsResources};
 pub use crafty_core::ReachabilityConfig;
 pub use crafty_core::kv;
 pub use crafty_core::kv::{Kv, KvCommand, KvError, KvMachine, KvQuery, KvResponse};
@@ -49,7 +51,8 @@ pub use crafty_core::upgrade::{
 pub use crafty_core::{CompactionPolicy, DEFAULT_COMPACT_BYTES, DEFAULT_COMPACT_ENTRIES};
 #[cfg(feature = "http-jobs")]
 pub use crafty_http::{
-    SagaBody, WorkflowAccepted, WorkflowsApi, WorkflowsApiError, spawn_workflows_server,
+    HostRouter, SagaBody, WorkflowAccepted, WorkflowsApi, WorkflowsApiError, is_local_dev_host,
+    normalize_host, spawn_workflows_server,
 };
 pub use crafty_net::PeerDirectory;
 pub use crafty_net::{CertPaths, load_pem_material};

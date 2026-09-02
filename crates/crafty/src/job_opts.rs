@@ -1,8 +1,9 @@
 //! Declarative job registration for [`CraftyAppBuilder`](super::app::CraftyAppBuilder).
 
+use std::sync::Arc;
 use std::time::Duration;
 
-use crafty_actor::DEFAULT_QUEUE_PREFETCH;
+use crafty_actor::{BacklogFeedOpts, DEFAULT_QUEUE_PREFETCH, ExternalBacklog};
 
 use crate::consumer::{ConsumerOpts, ConsumerSpawnFn, IdempotencyOpts, JobConsumer};
 use crate::queue_opts::QueueOpts;
@@ -43,6 +44,7 @@ pub struct JobOpts {
     http_enqueue: bool,
     default_max_attempts: u32,
     idempotency: Option<IdempotencyOpts>,
+    backlog: Option<(Arc<dyn ExternalBacklog>, BacklogFeedOpts)>,
     spawners: Vec<ConsumerSpawnFn>,
     config_error: Option<String>,
 }
@@ -59,6 +61,7 @@ impl std::fmt::Debug for JobOpts {
             .field("http_enqueue", &self.http_enqueue)
             .field("default_max_attempts", &self.default_max_attempts)
             .field("idempotency", &self.idempotency)
+            .field("backlog", &self.backlog.as_ref().map(|_| "<external>"))
             .field("consumers", &self.spawners.len())
             .field("config_error", &self.config_error)
             .finish()
@@ -79,6 +82,7 @@ impl JobOpts {
             http_enqueue: false,
             default_max_attempts: 0,
             idempotency: None,
+            backlog: None,
             spawners: Vec::new(),
             config_error: None,
         }
@@ -147,6 +151,16 @@ impl JobOpts {
         self
     }
 
+    /// Wire an external source-of-truth backlog ([`ExternalBacklog`](crafty_actor::ExternalBacklog)).
+    ///
+    /// The leader claims items, enqueues with `dedup_key = item.key`, and settles outcomes
+    /// back to the source after ack or dead-letter.
+    #[must_use]
+    pub fn backlog(mut self, backlog: Arc<dyn ExternalBacklog>, opts: BacklogFeedOpts) -> Self {
+        self.backlog = Some((backlog, opts));
+        self
+    }
+
     /// [`JobConsumer`] from `#[consumer("…")]` — `C::STREAM` must match [`.new`](Self::new).
     ///
     /// Pass the generated unit type (e.g. `SendEmailConsumer`), not the async fn.
@@ -185,6 +199,11 @@ impl JobOpts {
     }
 
     pub(crate) fn into_registration(self) -> JobRegistration {
+        let instances = self.instances;
+        let backlog = self.backlog.map(|(backlog, mut opts)| {
+            opts.consumer_instances = u64::from(instances.max(1));
+            (backlog, opts)
+        });
         JobRegistration {
             queue: QueueOpts {
                 name: self.name.clone(),
@@ -196,6 +215,7 @@ impl JobOpts {
             spawners: self.spawners,
             http_enqueue: self.http_enqueue,
             config_error: self.config_error,
+            backlog,
         }
     }
 }
@@ -206,4 +226,5 @@ pub(crate) struct JobRegistration {
     pub spawners: Vec<ConsumerSpawnFn>,
     pub http_enqueue: bool,
     pub config_error: Option<String>,
+    pub backlog: Option<(Arc<dyn ExternalBacklog>, BacklogFeedOpts)>,
 }

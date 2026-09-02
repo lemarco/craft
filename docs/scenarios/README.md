@@ -10,10 +10,12 @@ Guides for building on crafty **without mandatory Redis or Kubernetes**. Each sc
 | I need… | Guide | Runtime today | Product polish |
 |---------|-------|---------------|----------------|
 | Async work, retries, many workers | [Background jobs](background-jobs.md) | ✅ `RedbJobQueue`, E2E, HTTP `202` | Dashboard queue view |
+| One publish, many independent subscribers | [Event topics](event-topics.md) | ✅ `EventTopic`, voter replication | Metrics dashboard |
 | Actor state survives VPS crash | [Stateful workers](stateful-workers.md) | ✅ `RedbActorStateStore`, migration | — |
 | WebSocket / live session to one worker | [Real-time sessions](realtime-sessions.md) | ✅ `ActorSession`, gateway showcase | `GatewayBearerIdentity` + `protect_product_apis` |
 | Multi-step process with compensation | [Workflows](workflows.md) | ✅ `WorkflowBuilder`, Meta-Raft journal | Dashboard saga view |
 | Where to put state (queue vs SM vs store) | [State placement](state-placement.md) | ✅ cheat sheet | — |
+| Same binary everywhere; API vs jobs on one node | [Workload governor](../decisions/workload-governor.md) | 🔲 B-16 compute tokens | — |
 
 ## Shared persistence model
 
@@ -22,6 +24,7 @@ data_dir/
 ├── group-0.redb           # Raft — StateMachine (domain data)
 ├── group-meta.redb        # Meta-Raft — saga journal, catalog (multi-Raft)
 ├── queue-{stream}.redb    # JobQueue backlog
+├── topic-{name}.redb      # EventTopic log (one file per topic)
 ├── mailbox-spool.redb     # durable cross-node deliver (optional)
 └── actor-store.redb       # ActorStateStore (RedbActorStateStore)
 ```
@@ -33,8 +36,9 @@ data_dir/
 | **Raft state machine** | `propose` / `query`, `run_saga` | Authoritative replicated domain data |
 | **Actor mailbox** | `send` / `ask`, `ActorSession` | Talk to a specific actor now |
 | **Job queue** | `enqueue` / `lease` / `ack` | Shared durable backlog |
+| **Event topic** | `publish` / `lease` / `ack` (per subscription) | Fan-out domain events |
 
-See [job-queue](../decisions/job-queue.md#three-messaging-tiers-explicit-split).
+See [job-queue](../decisions/job-queue.md#three-messaging-tiers-explicit-split) and [event-topics](../decisions/event-topics.md).
 
 ## Compose scenarios
 

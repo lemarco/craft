@@ -13,6 +13,7 @@ use crafty_test_support::{advance, boot_local_app, wait_for_crafty_app_leader};
 use tower::ServiceExt;
 
 #[tokio::test(start_paused = true)]
+#[allow(clippy::too_many_lines)]
 async fn http_post_job_returns_202_and_enqueues() {
     let base = std::env::temp_dir().join(format!(
         "crafty-http-jobs-{}",
@@ -25,13 +26,15 @@ async fn http_post_job_returns_202_and_enqueues() {
     std::fs::create_dir_all(&base).unwrap();
 
     let app = boot_local_app(
-        CraftyApp::builder()
-            .data_dir(&base)
-            .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
-            .configure(CraftyConfigure {
-                tick_period: Duration::from_millis(5),
-                ..CraftyConfigure::default()
-            }),
+        || {
+            CraftyApp::builder()
+                .data_dir(&base)
+                .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
+                .configure(CraftyConfigure {
+                    tick_period: Duration::from_millis(5),
+                    ..CraftyConfigure::default()
+                })
+        },
         None,
     )
     .await;

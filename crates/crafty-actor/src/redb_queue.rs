@@ -13,8 +13,9 @@ use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 
 use super::queue_prefetch::CachedPendingJob;
 use super::{
-    BoxFuture, EnqueueOptions, JobId, JobLifecycle, JobQueue, JobStatus, LeaseId, LeasedJob,
-    QueueError, QueueMetrics, QueueReplicationOps, WorkerId, after_failed_attempt,
+    BoxFuture, EnqueueOptions, JobId, JobLifecycle, JobListFilter, JobListPage, JobQueue,
+    JobStatus, LeaseId, LeasedJob, QueueError, QueueMetrics, QueueReplicationOps, WorkerId,
+    after_failed_attempt, job_status_matches_filter,
 };
 
 const JOBS: TableDefinition<u64, &[u8]> = TableDefinition::new("queue_jobs");
@@ -426,6 +427,27 @@ impl RedbJobQueue {
                         pending.insert(*job_id, &[] as &[u8]).map_err(backend)?;
                     }
                 }
+                QueueReplicateOp::ExtendLease {
+                    lease_id,
+                    worker_node,
+                    worker_instance,
+                    expires_at_ms,
+                } => {
+                    let stored_update = leases
+                        .get(*lease_id)
+                        .map_err(backend)?
+                        .map(|bytes| decode::<StoredLease>(bytes.value()).map_err(codec))
+                        .transpose()?;
+                    if let Some(mut stored) = stored_update
+                        && stored.worker_node == *worker_node
+                        && stored.worker_instance == *worker_instance
+                    {
+                        stored.expires_at_ms = *expires_at_ms;
+                        leases
+                            .insert(*lease_id, encode(&stored).map_err(codec)?.as_slice())
+                            .map_err(backend)?;
+                    }
+                }
                 QueueReplicateOp::UpsertSchedule { schedule } => {
                     let mut schedules = txn.open_table(SCHEDULES).map_err(backend)?;
                     schedules
@@ -452,6 +474,10 @@ impl RedbJobQueue {
                             .insert(name.as_str(), bytes.as_slice())
                             .map_err(backend)?;
                     }
+                }
+                QueueReplicateOp::RemoveSchedule { name } => {
+                    let mut schedules = txn.open_table(SCHEDULES).map_err(backend)?;
+                    schedules.remove(name.as_str()).map_err(backend)?;
                 }
             }
         }
@@ -513,6 +539,79 @@ impl RedbJobQueue {
             max_attempts: stored.max_attempts,
             dedup_key: stored.dedup_key.clone(),
         }))
+    }
+
+    fn list_jobs_inner(&self, filter: &JobListFilter) -> Result<JobListPage, QueueError> {
+        self.reclaim_expired()?;
+        let now = now_ms();
+        let limit = filter.effective_limit();
+        let after = filter.after_job_id.map_or(0, |id| id.0);
+        let txn = self
+            .db
+            .lock()
+            .expect("poisoned")
+            .begin_read()
+            .map_err(backend)?;
+        let jobs = txn.open_table(JOBS).map_err(backend)?;
+        let pending = txn.open_table(PENDING).map_err(backend)?;
+        let leases = txn.open_table(LEASES).map_err(backend)?;
+        let mut leased_by_job = std::collections::BTreeMap::new();
+        for row in leases.iter().map_err(backend)? {
+            let (_, bytes) = row.map_err(backend)?;
+            let lease: StoredLease = decode(bytes.value()).map_err(codec)?;
+            leased_by_job.insert(
+                lease.job_id,
+                WorkerId {
+                    node: crafty_proto::NodeId(lease.worker_node),
+                    instance: lease.worker_instance,
+                },
+            );
+        }
+        let mut out = Vec::new();
+        let mut has_more = false;
+        for row in jobs.iter().map_err(backend)? {
+            let (key, bytes) = row.map_err(backend)?;
+            let job_id = key.value();
+            if job_id <= after {
+                continue;
+            }
+            let stored: StoredJob = decode(bytes.value()).map_err(codec)?;
+            let leased_by = leased_by_job.get(&job_id).copied();
+            let lifecycle = if stored.dead_letter {
+                JobLifecycle::DeadLetter
+            } else if leased_by.is_some() {
+                JobLifecycle::Leased
+            } else if stored.not_before_ms > now {
+                JobLifecycle::Delayed
+            } else if pending.get(job_id).map_err(backend)?.is_some() {
+                JobLifecycle::Pending
+            } else {
+                continue;
+            };
+            let status = JobStatus {
+                job_id: JobId(job_id),
+                lifecycle,
+                payload_len: u64::try_from(stored.payload.len()).unwrap_or(u64::MAX),
+                priority: stored.priority,
+                leased_by,
+                attempts: stored.attempts,
+                max_attempts: stored.max_attempts,
+                dedup_key: stored.dedup_key.clone(),
+            };
+            if !job_status_matches_filter(&status, filter) {
+                continue;
+            }
+            out.push(status);
+            if out.len() > limit {
+                out.pop();
+                has_more = true;
+                break;
+            }
+        }
+        Ok(JobListPage {
+            jobs: out,
+            has_more,
+        })
     }
 
     fn metrics_inner(&self) -> Result<QueueMetrics, QueueError> {
@@ -779,6 +878,21 @@ impl RedbJobQueue {
         }
         Ok(ops)
     }
+
+    pub(crate) fn peek_lease_for_settle(
+        &self,
+        lease_id: LeaseId,
+    ) -> Option<(Option<Vec<u8>>, u32)> {
+        let db = self.db.lock().ok()?;
+        let txn = db.begin_read().ok()?;
+        let leases = txn.open_table(LEASES).ok()?;
+        let jobs = txn.open_table(JOBS).ok()?;
+        let lease_bytes = leases.get(lease_id.0).ok()??;
+        let stored: StoredLease = decode(lease_bytes.value()).ok()?;
+        let job_bytes = jobs.get(stored.job_id).ok()??;
+        let job: StoredJob = decode(job_bytes.value()).ok()?;
+        Some((job.dedup_key, job.attempts))
+    }
 }
 
 impl JobQueue for RedbJobQueue {
@@ -1008,6 +1122,50 @@ impl JobQueue for RedbJobQueue {
         })
     }
 
+    fn extend_lease_replicated(
+        &self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>> {
+        Box::pin(async move {
+            let expires_at_ms =
+                now_ms() + u64::try_from(self.lease_timeout.as_millis()).unwrap_or(u64::MAX);
+            {
+                let db = self.db.lock().expect("poisoned");
+                let txn = db.begin_write().map_err(backend)?;
+                {
+                    let mut leases = txn.open_table(LEASES).map_err(backend)?;
+                    let stored: StoredLease = match leases.remove(lease_id.0).map_err(backend)? {
+                        None => return Err(QueueError::InvalidLease),
+                        Some(bytes) => decode(bytes.value()).map_err(codec)?,
+                    };
+                    if stored.worker_node != worker.node.0
+                        || stored.worker_instance != worker.instance
+                    {
+                        leases
+                            .insert(lease_id.0, encode(&stored).map_err(codec)?.as_slice())
+                            .map_err(backend)?;
+                        return Err(QueueError::InvalidLease);
+                    }
+                    let updated = StoredLease {
+                        expires_at_ms,
+                        ..stored
+                    };
+                    leases
+                        .insert(lease_id.0, encode(&updated).map_err(codec)?.as_slice())
+                        .map_err(backend)?;
+                }
+                txn.commit().map_err(backend)?;
+            }
+            Ok(vec![QueueReplicateOp::ExtendLease {
+                lease_id: lease_id.0,
+                worker_node: worker.node.0,
+                worker_instance: worker.instance,
+                expires_at_ms,
+            }])
+        })
+    }
+
     fn requeue_dead_letter(&self, job_id: JobId) -> BoxFuture<'_, Result<(), QueueError>> {
         Box::pin(async move {
             self.requeue_dead_letter_replicated(job_id)
@@ -1051,12 +1209,72 @@ impl JobQueue for RedbJobQueue {
         })
     }
 
+    fn requeue_dead_letter_batch_replicated(
+        &self,
+        job_ids: &[JobId],
+    ) -> BoxFuture<
+        '_,
+        Result<(Vec<JobId>, Vec<(JobId, QueueError)>, QueueReplicationOps), QueueError>,
+    > {
+        let ids = job_ids.to_vec();
+        Box::pin(async move {
+            let now = now_ms();
+            let db = self.db.lock().expect("poisoned");
+            let txn = db.begin_write().map_err(backend)?;
+            let mut requeued = Vec::new();
+            let mut failures = Vec::new();
+            {
+                let mut jobs = txn.open_table(JOBS).map_err(backend)?;
+                let mut pending = txn.open_table(PENDING).map_err(backend)?;
+                for job_id in ids {
+                    let stored_update = jobs
+                        .get(job_id.0)
+                        .map_err(backend)?
+                        .map(|bytes| decode::<StoredJob>(bytes.value()).map_err(codec))
+                        .transpose()?;
+                    let Some(mut stored) = stored_update else {
+                        failures.push((job_id, QueueError::NotDeadLetter));
+                        continue;
+                    };
+                    if !stored.dead_letter {
+                        failures.push((job_id, QueueError::NotDeadLetter));
+                        continue;
+                    }
+                    stored.dead_letter = false;
+                    stored.attempts = 0;
+                    stored.not_before_ms = now;
+                    jobs.insert(job_id.0, encode(&stored).map_err(codec)?.as_slice())
+                        .map_err(backend)?;
+                    pending.insert(job_id.0, &[] as &[u8]).map_err(backend)?;
+                    requeued.push(job_id);
+                }
+            }
+            txn.commit().map_err(backend)?;
+            let ops = requeued
+                .iter()
+                .map(|job_id| QueueReplicateOp::RequeueDeadLetter {
+                    job_id: job_id.0,
+                    attempts: 0,
+                })
+                .collect();
+            Ok((requeued, failures, ops))
+        })
+    }
+
     fn metrics(&self) -> BoxFuture<'_, Result<QueueMetrics, QueueError>> {
         Box::pin(async move { self.metrics_inner() })
     }
 
     fn job_status(&self, job_id: JobId) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>> {
         Box::pin(async move { self.job_status_inner(job_id) })
+    }
+
+    fn list_jobs(&self, filter: JobListFilter) -> BoxFuture<'_, Result<JobListPage, QueueError>> {
+        Box::pin(async move { self.list_jobs_inner(&filter) })
+    }
+
+    fn peek_lease_meta(&self, lease_id: LeaseId) -> BoxFuture<'_, Option<(Option<Vec<u8>>, u32)>> {
+        Box::pin(async move { self.peek_lease_for_settle(lease_id) })
     }
 }
 

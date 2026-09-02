@@ -20,17 +20,19 @@ fn noop_plan(saga_id: &str) -> crafty_client::SagaPlan {
 async fn crafty_app_runs_workflow_locally() {
     let dir = tempfile::tempdir().expect("tempdir");
     let app = boot_local_app(
-        CraftyApp::builder()
-            .data_dir(dir.path())
-            .configure(CraftyConfigure {
-                raft_config: fast_raft_config_with_seed(7),
-                tick_period: TICK_PERIOD,
-                ..CraftyConfigure::default()
-            })
-            .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
-            .gateway(
-                GatewayOpts::new("127.0.0.1:0".parse().expect("addr")).with_workflows_api(true),
-            ),
+        || {
+            CraftyApp::builder()
+                .data_dir(dir.path())
+                .configure(CraftyConfigure {
+                    raft_config: fast_raft_config_with_seed(7),
+                    tick_period: TICK_PERIOD,
+                    ..CraftyConfigure::default()
+                })
+                .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
+                .gateway(
+                    GatewayOpts::new("127.0.0.1:0".parse().expect("addr")).with_workflows_api(true),
+                )
+        },
         Some(ReadyOpts::default()),
     )
     .await;
@@ -43,17 +45,19 @@ async fn crafty_app_runs_workflow_locally() {
 async fn crafty_app_workflows_api_on_gateway() {
     let dir = tempfile::tempdir().expect("tempdir");
     let app = boot_local_app(
-        CraftyApp::builder()
-            .data_dir(dir.path())
-            .configure(CraftyConfigure {
-                raft_config: fast_raft_config_with_seed(8),
-                tick_period: TICK_PERIOD,
-                ..CraftyConfigure::default()
-            })
-            .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
-            .gateway(
-                GatewayOpts::new("127.0.0.1:0".parse().expect("addr")).with_workflows_api(true),
-            ),
+        || {
+            CraftyApp::builder()
+                .data_dir(dir.path())
+                .configure(CraftyConfigure {
+                    raft_config: fast_raft_config_with_seed(8),
+                    tick_period: TICK_PERIOD,
+                    ..CraftyConfigure::default()
+                })
+                .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
+                .gateway(
+                    GatewayOpts::new("127.0.0.1:0".parse().expect("addr")).with_workflows_api(true),
+                )
+        },
         Some(ReadyOpts::default()),
     )
     .await;
@@ -76,17 +80,20 @@ mod gateway_merge {
     async fn gateway_router_merges_workflows_api() {
         let dir = tempfile::tempdir().expect("tempdir");
         let app = boot_local_app(
-            CraftyApp::builder()
-                .data_dir(dir.path())
-                .configure(CraftyConfigure {
-                    raft_config: fast_raft_config_with_seed(9),
-                    tick_period: TICK_PERIOD,
-                    ..CraftyConfigure::default()
-                })
-                .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
-                .gateway(
-                    GatewayOpts::new("127.0.0.1:0".parse().expect("addr")).with_workflows_api(true),
-                ),
+            || {
+                CraftyApp::builder()
+                    .data_dir(dir.path())
+                    .configure(CraftyConfigure {
+                        raft_config: fast_raft_config_with_seed(9),
+                        tick_period: TICK_PERIOD,
+                        ..CraftyConfigure::default()
+                    })
+                    .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
+                    .gateway(
+                        GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
+                            .with_workflows_api(true),
+                    )
+            },
             Some(ReadyOpts::default()),
         )
         .await;

@@ -134,6 +134,7 @@ pub struct CraftyAppBuilder {
     pub(crate) registration: CraftyAppRegistrationFlags,
     queue_streams: HashSet<String>,
     cron_streams: Vec<String>,
+    schedule_streams: Vec<String>,
     consumer_streams: Vec<String>,
     pending_consumers: Vec<ConsumerSpawnFn>,
     pub(crate) gateway: Option<GatewayConfig>,
@@ -224,6 +225,11 @@ impl CraftyAppBuilder {
             self.inner = self
                 .inner
                 .job_queue_max_attempts(&reg.queue.name, reg.queue.default_max_attempts);
+            if let Some((backlog, opts)) = reg.backlog {
+                self.inner = self
+                    .inner
+                    .job_queue_external_backlog(&reg.stream, backlog, opts);
+            }
             if !reg.spawners.is_empty() {
                 self.consumer_streams.push(reg.stream);
             }
@@ -253,7 +259,28 @@ impl CraftyAppBuilder {
         self
     }
 
+    /// Register durable event topics with named subscriptions (requires [`Self::data_dir`]).
+    #[must_use]
+    pub fn topics(
+        mut self,
+        topics: impl IntoIterator<Item = crate::topic_opts::TopicOpts>,
+    ) -> Self {
+        for opts in topics {
+            self.inner = self.inner.event_topic(&opts.name, opts.lease);
+            self.inner = self.inner.event_topic_retention(&opts.name, opts.retention);
+            if !opts.subscriptions.is_empty() {
+                self.inner = self
+                    .inner
+                    .event_topic_subscriptions(&opts.name, &opts.subscriptions);
+            }
+        }
+        self
+    }
+
     /// Register cron-driven recurring enqueues (requires matching [`.queue`](Self::queue) streams).
+    ///
+    /// Implemented as a [`StaticScheduleSource`](crafty_actor::StaticScheduleSource) —
+    /// same reconcile path as [`.schedule_source`](Self::schedule_source).
     ///
     /// # Errors
     /// [`Self::run`] / [`Self::boot_for_test`] fail at boot when a cron stream has no matching
@@ -264,6 +291,23 @@ impl CraftyAppBuilder {
             self.cron_streams.push(opts.stream.clone());
             self.inner = self.inner.recurring_job(&opts.stream, opts.job);
         }
+        self
+    }
+
+    /// Poll a [`ScheduleSource`] on the queue leader and reconcile recurring jobs
+    /// ([schedule-source](../../docs/decisions/schedule-source.md)).
+    ///
+    /// Requires a matching [`.queue`](Self::queue) stream. Pairs with [`.cron`](Self::cron).
+    #[must_use]
+    pub fn schedule_source(
+        mut self,
+        stream: impl Into<String>,
+        source: Arc<dyn crafty_actor::ScheduleSource>,
+        poll: crafty_actor::SchedulePoll,
+    ) -> Self {
+        let stream = stream.into();
+        self.schedule_streams.push(stream.clone());
+        self.inner = self.inner.schedule_source(&stream, source, poll);
         self
     }
 
@@ -334,6 +378,14 @@ impl CraftyAppBuilder {
         self
     }
 
+    /// Per-node workload governor — compute tokens arbitrate gateway vs job handlers
+    /// ([workload governor](../../docs/decisions/workload-governor.md)).
+    #[must_use]
+    pub fn workload(mut self, opts: crafty_actor::WorkloadOpts) -> Self {
+        self.inner = self.inner.workload(opts);
+        self
+    }
+
     fn validate(&self) -> Result<(), StartError> {
         if let Some(err) = self.config_errors.first() {
             return Err(StartError::Config(err.clone()));
@@ -342,6 +394,13 @@ impl CraftyAppBuilder {
             if !self.queue_streams.contains(stream) {
                 return Err(StartError::Config(format!(
                     "`.cron()` stream {stream:?} has no matching `.queue()` registration"
+                )));
+            }
+        }
+        for stream in &self.schedule_streams {
+            if !self.queue_streams.contains(stream) {
+                return Err(StartError::Config(format!(
+                    "`.schedule_source()` stream {stream:?} has no matching `.queue()` registration"
                 )));
             }
         }
@@ -513,6 +572,7 @@ impl CraftyApp {
             registration: CraftyAppRegistrationFlags::default(),
             queue_streams: HashSet::new(),
             cron_streams: Vec::new(),
+            schedule_streams: Vec::new(),
             consumer_streams: Vec::new(),
             pending_consumers: Vec::new(),
             gateway: None,
@@ -560,6 +620,27 @@ impl CraftyApp {
     #[must_use]
     pub fn job_queue(&self, stream: &str) -> Option<Arc<dyn JobQueue>> {
         self.cluster.job_queue(stream)
+    }
+
+    /// Look up a registered durable topic by name.
+    #[must_use]
+    pub fn event_topic(&self, name: &str) -> Option<Arc<dyn crafty_actor::EventTopic>> {
+        self.cluster.event_topic(name)
+    }
+
+    /// Publish one event to a registered topic ([event-topics](../../docs/decisions/event-topics.md)).
+    ///
+    /// # Errors
+    /// Returns an error when the topic is unknown or publish fails.
+    pub async fn publish(
+        &self,
+        topic: &str,
+        payload: &[u8],
+    ) -> Result<crafty_actor::EventId, crafty_actor::TopicError> {
+        let t = self.event_topic(topic).ok_or_else(|| {
+            crafty_actor::TopicError::NotFound(format!("unknown topic {topic:?}"))
+        })?;
+        t.publish(payload).await
     }
 
     /// Whether this node is the Raft leader on the default group.
@@ -720,6 +801,32 @@ impl CraftyApp {
         job_id: JobId,
     ) -> Result<(), crafty_actor::QueueError> {
         self.cluster.requeue_dead_letter(stream, job_id).await
+    }
+
+    /// List jobs in a stream with optional filters (admin inspection).
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or listing fails.
+    pub async fn list_jobs(
+        &self,
+        stream: &str,
+        filter: crafty_actor::JobListFilter,
+    ) -> Result<crafty_actor::JobListPage, crafty_actor::QueueError> {
+        self.cluster.list_jobs(stream, filter).await
+    }
+
+    /// Requeue many dead-letter jobs; partial success is allowed.
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or the whole batch request fails.
+    pub async fn requeue_dead_letter_batch(
+        &self,
+        stream: &str,
+        job_ids: &[JobId],
+    ) -> Result<crafty_actor::BatchRequeueResult, crafty_actor::QueueError> {
+        self.cluster
+            .requeue_dead_letter_batch(stream, job_ids)
+            .await
     }
 
     /// Worker group names known cluster-wide (from the actor directory).
@@ -977,7 +1084,9 @@ impl CraftyApp {
         let batch_app = Arc::clone(&app);
         let ack_app = Arc::clone(&app);
         let status_app = Arc::clone(&app);
-        let requeue_app = app;
+        let list_app = Arc::clone(&app);
+        let requeue_app = Arc::clone(&app);
+        let requeue_batch_app = app;
         crafty_http::JobsApi::new(
             Arc::new(move |stream, payload, opts| {
                 let app = Arc::clone(&enqueue_app);
@@ -1001,9 +1110,23 @@ impl CraftyApp {
                 let app = Arc::clone(&status_app);
                 Box::pin(async move { app.job_status(&stream, JobId(job_id)).await })
             }),
+            Arc::new(move |stream, filter| {
+                let app = Arc::clone(&list_app);
+                Box::pin(async move { app.list_jobs(&stream, filter).await })
+            }),
             Arc::new(move |stream, job_id| {
                 let app = Arc::clone(&requeue_app);
                 Box::pin(async move { app.requeue_dead_letter(&stream, JobId(job_id)).await })
+            }),
+            Arc::new(move |stream, job_ids| {
+                let app = Arc::clone(&requeue_batch_app);
+                Box::pin(async move {
+                    app.requeue_dead_letter_batch(
+                        &stream,
+                        &job_ids.iter().copied().map(JobId).collect::<Vec<_>>(),
+                    )
+                    .await
+                })
             }),
         )
     }

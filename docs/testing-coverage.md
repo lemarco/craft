@@ -146,6 +146,11 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | **Meta-Raft queue autoscale policy** | ✅ `queue_autoscale_policy` (core) | ✅ `queue` (autoscale tests) | — | — | ✅ |
 | **RedbJobQueue ack-driven compaction** | ✅ `redb_queue` | ✅ `queue` | — | — | ✅ |
 | **Queue throughput (batch enqueue/ack + leader prefetch)** | ✅ `redb_queue`, `queue_prefetch` | ✅ `queue`, `queue_throughput` | — | — | ✅ |
+| **Event topics (`EventTopic`, pub/sub + named subscriptions)** | ✅ `topic`, `redb_topic` | — | — | — | ✅ |
+| **Event topic wire + voter replication (`/topic/replicate`)** | ✅ `topic_service` | — | — | — | ✅ |
+| **Event topic leader failover (replicated cursors)** | — | ✅ `topic_failover` | — | — | ✅ |
+| **External backlog (feeder + settle outbox drainer + autoscale depth)** | ✅ `external_backlog`, `backlog_settle_outbox` | ✅ `external_backlog` (facade) | — | — | ✅ |
+| **Workload governor (compute tokens + consumer tune + actor ask)** | ✅ `compute_token`, `workload`, `messaging` | ✅ `workload_governor` | — | — | ✅ |
 | **Job queue E2E (QUIC enqueue → follower lease/ack → leader failover)** | — | — | — | ✅ `e2e/queue.sh` | ✅ |
 | **Durable mailbox outbox/inbox** | ✅ `mailbox_spool` | ✅ `mailbox_spool` (wire) | — | — | ✅ |
 | Actor state store resume + idempotency (facade) | — | ✅ `actor_store_resume` | — | — | ✅ |
@@ -223,6 +228,9 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 |--------|------|-------|
 | 2026-08 | Scenario soak per product path (actor store, saga resume, session restart) | `benchmarks/soak_{actor_store,saga,session}.rs`, `.gitlab-ci.yml` `bench` |
 | 2026-08 | Gateway identity, `SessionHandle`, WS + HTTP E2E, gateway drain | `crafty/src/gateway/`, `crafty/tests/{gateway_identity,gateway_ws,gateway_http}.rs`, `examples/{realtime,stateful-workers}/`, `docs/decisions/gateway-identity.md` |
+| 2026-09 | Gateway virtual-host dispatch (`HostRouter`, strict default, loopback dev fallback) | `crafty-http/src/host_router.rs` (unit), `crafty-http/README.md`, `crafty/src/gateway/mod.rs` |
+| 2026-09 | Durable event topics (`EventTopic`, min-cursor compaction, retention discard, voter replication) | `crafty-actor/src/{topic,redb_topic,topic_service}.rs`, `crafty-actor/tests/topic_failover.rs`, `crafty/src/topic_opts.rs`, `docs/decisions/event-topics.md` |
+| 2026-09 | Dynamic schedule source (`ScheduleSource`, diff reconcile, leader replication) | `crafty-actor/src/schedule_source.rs`, `crafty-actor/tests/schedule_source.rs`, `crafty/tests/schedule_source.rs`, `docs/decisions/schedule-source.md` |
 | 2026-08 | Transport + facade gaps: QUIC backoff, DNS discovery, queue compaction, auto-spawn sim, admin/leave E2E | `crafty-net/tests/quic.rs`, `crafty/tests/{discovery,queue}.rs`, `crafty-sim/tests/{auto_spawn,actor_scenarios}.rs`, `e2e/{run,leave}.sh` |
 | 2026-08 | Runtime fatal-error observable path (`status()` → `None`, `Stopped`) | `crafty-actor/tests/runtime.rs` |
 | 2026-08 | Multi-Raft sim: shard routing + independent group safety | `crafty-sim/tests/multi_raft.rs` |

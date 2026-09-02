@@ -415,6 +415,8 @@ pub struct CraftyCluster<M: StateMachine> {
     pub(crate) actor_state_store: Option<Arc<dyn crafty_actor::ActorStateStore>>,
     /// Cluster-facing queue clients keyed by stream name.
     pub(crate) job_queues: HashMap<String, Arc<dyn crafty_actor::JobQueue>>,
+    /// Cluster-facing topic clients keyed by topic name.
+    pub(crate) event_topics: HashMap<String, Arc<dyn crafty_actor::EventTopic>>,
     /// Full `/raft/v1/*` handler attached to the transport (stored so tests can
     /// re-attach a node after simulating partition on [`LocalNetwork`]).
     pub(crate) wire_handler: Arc<dyn RequestHandler>,
@@ -425,6 +427,7 @@ pub struct CraftyCluster<M: StateMachine> {
     pub(crate) cert_reload: Option<Arc<CertReloadHandle>>,
     pub(crate) drain_timeout: Duration,
     pub(crate) tasks: Mutex<Vec<JoinHandle<()>>>,
+    pub(crate) workload: Option<Arc<crate::workload::WorkloadRuntime>>,
 }
 
 impl<M: StateMachine> CraftyCluster<M> {
@@ -471,6 +474,12 @@ impl<M: StateMachine> CraftyCluster<M> {
         self.vps_resources
     }
 
+    /// Per-node workload governor runtime when [`CraftyClusterBuilder::workload`] was set.
+    #[must_use]
+    pub fn workload_runtime(&self) -> Option<Arc<crate::workload::WorkloadRuntime>> {
+        self.workload.as_ref().map(Arc::clone)
+    }
+
     /// The workflow-state store wired by
     /// [`CraftyClusterBuilder::actor_state_store`](crate::cluster::CraftyClusterBuilder::actor_state_store),
     /// if any (actor-state-redis). Clone the `Arc` into actor `Config` when spawning
@@ -485,6 +494,13 @@ impl<M: StateMachine> CraftyCluster<M> {
     #[must_use]
     pub fn job_queue(&self, stream: &str) -> Option<Arc<dyn crafty_actor::JobQueue>> {
         self.job_queues.get(stream).cloned()
+    }
+
+    /// Cluster-facing topic client for `name`
+    /// ([`CraftyClusterBuilder::event_topic`](crate::cluster::CraftyClusterBuilder::event_topic)).
+    #[must_use]
+    pub fn event_topic(&self, name: &str) -> Option<Arc<dyn crafty_actor::EventTopic>> {
+        self.event_topics.get(name).cloned()
     }
 
     /// Enqueue many jobs in one leader transaction (tier C batch path).
@@ -548,6 +564,36 @@ impl<M: StateMachine> CraftyCluster<M> {
             crafty_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
         })?;
         queue.requeue_dead_letter(job_id).await
+    }
+
+    /// List jobs in a stream with optional filters (admin inspection).
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or listing fails.
+    pub async fn list_jobs(
+        &self,
+        stream: &str,
+        filter: crafty_actor::JobListFilter,
+    ) -> Result<crafty_actor::JobListPage, crafty_actor::QueueError> {
+        let queue = self.job_queue(stream).ok_or_else(|| {
+            crafty_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
+        })?;
+        queue.list_jobs(filter).await
+    }
+
+    /// Requeue many dead-letter jobs; partial success is allowed.
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or the whole batch request fails.
+    pub async fn requeue_dead_letter_batch(
+        &self,
+        stream: &str,
+        job_ids: &[crafty_actor::JobId],
+    ) -> Result<crafty_actor::BatchRequeueResult, crafty_actor::QueueError> {
+        let queue = self.job_queue(stream).ok_or_else(|| {
+            crafty_actor::QueueError::Backend(format!("unknown stream {stream:?}"))
+        })?;
+        queue.requeue_dead_letter_batch(job_ids).await
     }
 
     /// Registry of queue autoscale policies replicated via Meta-Raft / group 0.

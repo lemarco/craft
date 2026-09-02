@@ -18,13 +18,15 @@ async fn crafty_app_start_local_with_data_dir_and_queue() {
     std::fs::create_dir_all(&base).unwrap();
 
     let app = boot_local_app(
-        CraftyApp::builder()
-            .data_dir(&base)
-            .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
-            .configure(CraftyConfigure {
-                tick_period: Duration::from_millis(5),
-                ..CraftyConfigure::default()
-            }),
+        || {
+            CraftyApp::builder()
+                .data_dir(&base)
+                .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
+                .configure(CraftyConfigure {
+                    tick_period: Duration::from_millis(5),
+                    ..CraftyConfigure::default()
+                })
+        },
         None,
     )
     .await;
@@ -58,13 +60,15 @@ async fn crafty_app_requeue_dead_letter() {
     std::fs::create_dir_all(&base).unwrap();
 
     let app = boot_local_app(
-        CraftyApp::builder()
-            .data_dir(&base)
-            .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
-            .configure(CraftyConfigure {
-                tick_period: Duration::from_millis(5),
-                ..CraftyConfigure::default()
-            }),
+        || {
+            CraftyApp::builder()
+                .data_dir(&base)
+                .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
+                .configure(CraftyConfigure {
+                    tick_period: Duration::from_millis(5),
+                    ..CraftyConfigure::default()
+                })
+        },
         None,
     )
     .await;

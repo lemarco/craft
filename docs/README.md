@@ -44,6 +44,8 @@ Architecture and decision records for the distributive Raft actor system.
 | Stateful actors → workflow store (redb-first) | [actor-state-store](decisions/actor-state-store.md) |
 | Stateful actors → Redis (optional adapter) | [actor-state-redis](decisions/actor-state-redis.md) |
 | Durable job queue (mailbox vs backlog, autoscale) | [job-queue](decisions/job-queue.md) |
+| External backlog port (Postgres adapter optional) | [external-backlog](decisions/external-backlog.md) |
+| Homogeneous nodes — compute tokens / workload governor | [workload-governor](decisions/workload-governor.md) |
 | Drain timeout (default 60s, configurable) | [drain-timeout](decisions/drain-timeout.md) |
 | Actor / routing UX — Tier 3 | [actor-routing-tier3](decisions/actor-routing-tier3.md) |
 

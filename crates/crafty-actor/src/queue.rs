@@ -5,6 +5,7 @@
 //! backs tests and single-node dev; production uses [`RedbJobQueue`](super::redb_queue::RedbJobQueue).
 
 use std::collections::{BTreeMap, VecDeque};
+use std::fmt;
 use std::future::Future;
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -55,7 +56,7 @@ pub struct LeasedJob {
 /// Passed to `#[consumer]` handlers that declare a second argument. See
 /// [background-jobs](../../../docs/scenarios/background-jobs.md#delivery-semantics)
 /// for what is and is not guaranteed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct JobContext<'a> {
     /// Job id within the stream.
     pub job_id: JobId,
@@ -67,9 +68,46 @@ pub struct JobContext<'a> {
     pub attempts: u32,
     /// Client idempotency token from enqueue, when set.
     pub dedup_key: Option<&'a [u8]>,
+    keep_alive: Option<JobKeepAlive>,
+}
+
+/// Leader-backed lease extension wired by the consumer runtime.
+#[derive(Clone)]
+struct JobKeepAlive {
+    queue: std::sync::Arc<dyn JobQueue>,
+    worker: WorkerId,
+    lease_id: LeaseId,
+}
+
+impl fmt::Debug for JobKeepAlive {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JobKeepAlive")
+            .field("worker", &self.worker)
+            .field("lease_id", &self.lease_id)
+            .finish_non_exhaustive()
+    }
 }
 
 impl JobContext<'_> {
+    /// Build a delivery context for tests and manual handler invocation.
+    #[must_use]
+    pub fn new<'a>(
+        job_id: JobId,
+        lease_id: LeaseId,
+        stream: &'a str,
+        attempts: u32,
+        dedup_key: Option<&'a [u8]>,
+    ) -> JobContext<'a> {
+        JobContext {
+            job_id,
+            lease_id,
+            stream,
+            attempts,
+            dedup_key,
+            keep_alive: None,
+        }
+    }
+
     /// `true` when this is not the first delivery of the job.
     ///
     /// A redelivery does not mean the previous attempt did nothing — only that it
@@ -77,6 +115,37 @@ impl JobContext<'_> {
     #[must_use]
     pub fn is_redelivery(&self) -> bool {
         self.attempts > 1
+    }
+
+    /// Reset the visibility timeout to the stream's lease duration.
+    ///
+    /// Call periodically from long-running handlers so the queue does not reclaim
+    /// the job while work is still in progress. No-op when the context was not
+    /// created by the consumer runtime (e.g. unit tests).
+    ///
+    /// # Errors
+    /// Returns [`QueueError::InvalidLease`] when the lease expired or belongs to
+    /// another worker.
+    pub async fn keep_alive(&self) -> Result<(), QueueError> {
+        match &self.keep_alive {
+            Some(ext) => ext.queue.extend_lease(ext.worker, ext.lease_id).await,
+            None => Ok(()),
+        }
+    }
+
+    /// Attach lease extension for consumer runtime wiring.
+    #[must_use]
+    pub fn attach_keep_alive(
+        mut self,
+        queue: std::sync::Arc<dyn JobQueue>,
+        worker: WorkerId,
+    ) -> Self {
+        self.keep_alive = Some(JobKeepAlive {
+            queue,
+            worker,
+            lease_id: self.lease_id,
+        });
+        self
     }
 }
 
@@ -182,6 +251,71 @@ pub struct JobStatus {
     pub dedup_key: Option<Vec<u8>>,
 }
 
+/// Filters for [`JobQueue::list_jobs`] (admin / HTTP list endpoint).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct JobListFilter {
+    /// When set, only jobs in this lifecycle phase.
+    pub lifecycle: Option<JobLifecycle>,
+    /// When set, only jobs with `attempts >= min_attempts`.
+    pub min_attempts: Option<u32>,
+    /// When set, only jobs with this exact dedup key.
+    pub dedup_key: Option<Vec<u8>>,
+    /// Maximum rows to return (default [`LIST_JOBS_DEFAULT_LIMIT`], capped at
+    /// [`crate::DEFAULT_QUEUE_BATCH_MAX`]).
+    pub limit: Option<usize>,
+    /// Pagination cursor — return jobs with id strictly greater than this.
+    pub after_job_id: Option<JobId>,
+}
+
+/// Default page size for [`JobListFilter`].
+pub const LIST_JOBS_DEFAULT_LIMIT: usize = 50;
+
+impl JobListFilter {
+    /// Resolved page size after applying defaults and the server cap.
+    #[must_use]
+    pub fn effective_limit(&self) -> usize {
+        self.limit
+            .unwrap_or(LIST_JOBS_DEFAULT_LIMIT)
+            .clamp(1, crate::DEFAULT_QUEUE_BATCH_MAX)
+    }
+}
+
+/// One page of jobs from [`JobQueue::list_jobs`].
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct JobListPage {
+    /// Matching jobs in ascending job-id order.
+    pub jobs: Vec<JobStatus>,
+    /// `true` when more rows exist beyond this page.
+    pub has_more: bool,
+}
+
+/// Outcome of [`JobQueue::requeue_dead_letter_batch`].
+#[derive(Debug, Default)]
+pub struct BatchRequeueResult {
+    /// Job ids successfully moved back to pending.
+    pub requeued: Vec<JobId>,
+    /// Per-id failures (not dead letter, unknown id, …).
+    pub failures: Vec<(JobId, QueueError)>,
+}
+
+/// Returns `true` when `status` satisfies optional list filters.
+#[must_use]
+pub fn job_status_matches_filter(status: &JobStatus, filter: &JobListFilter) -> bool {
+    if filter.lifecycle.is_some_and(|l| status.lifecycle != l) {
+        return false;
+    }
+    if filter.min_attempts.is_some_and(|min| status.attempts < min) {
+        return false;
+    }
+    if let Some(key) = &filter.dedup_key {
+        match &status.dedup_key {
+            Some(k) if k == key => {}
+            _ => return false,
+        }
+    }
+    true
+}
+
 /// Depth gauges returned by [`JobQueue::metrics`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct QueueMetrics {
@@ -249,11 +383,34 @@ pub trait JobQueue: Send + Sync {
     /// Return a leased job to the pending set immediately.
     fn nack(&self, worker: WorkerId, lease_id: LeaseId) -> BoxFuture<'_, Result<(), QueueError>>;
 
+    /// Reset visibility timeout for a live lease (worker heartbeat).
+    fn extend_lease(
+        &self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> BoxFuture<'_, Result<(), QueueError>> {
+        Box::pin(async move {
+            self.extend_lease_replicated(worker, lease_id)
+                .await
+                .map(|_| ())
+        })
+    }
+
+    /// Like [`extend_lease`](Self::extend_lease) but returns a replication op on success.
+    fn extend_lease_replicated(
+        &self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>>;
+
     /// Depth gauges for observability and autoscale.
     fn metrics(&self) -> BoxFuture<'_, Result<QueueMetrics, QueueError>>;
 
     /// Lookup job metadata by id (`None` when acked or unknown).
     fn job_status(&self, job_id: JobId) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>>;
+
+    /// List jobs in the stream with optional filters (admin inspection).
+    fn list_jobs(&self, filter: JobListFilter) -> BoxFuture<'_, Result<JobListPage, QueueError>>;
 
     /// Apply an idempotent replicated mutation from the queue leader.
     fn apply_replicate<'a>(
@@ -300,8 +457,36 @@ pub trait JobQueue: Send + Sync {
         lease_id: LeaseId,
     ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>>;
 
+    /// Peek dedup key and attempts for a live lease (external backlog settlement).
+    fn peek_lease_meta(&self, lease_id: LeaseId) -> BoxFuture<'_, Option<(Option<Vec<u8>>, u32)>> {
+        let _ = lease_id;
+        Box::pin(async { None })
+    }
+
     /// Move a dead-letter job back to pending (operator recovery).
     fn requeue_dead_letter(&self, job_id: JobId) -> BoxFuture<'_, Result<(), QueueError>>;
+
+    /// Requeue many dead-letter jobs; partial success is allowed.
+    fn requeue_dead_letter_batch(
+        &self,
+        job_ids: &[JobId],
+    ) -> BoxFuture<'_, Result<BatchRequeueResult, QueueError>> {
+        let ids: Vec<JobId> = job_ids.to_vec();
+        Box::pin(async move {
+            let (requeued, failures, _) = self.requeue_dead_letter_batch_replicated(&ids).await?;
+            Ok(BatchRequeueResult { requeued, failures })
+        })
+    }
+
+    /// Like [`requeue_dead_letter_batch`](Self::requeue_dead_letter_batch) but returns replication ops.
+    #[allow(clippy::type_complexity)]
+    fn requeue_dead_letter_batch_replicated<'a>(
+        &'a self,
+        job_ids: &'a [JobId],
+    ) -> BoxFuture<
+        'a,
+        Result<(Vec<JobId>, Vec<(JobId, QueueError)>, QueueReplicationOps), QueueError>,
+    >;
 
     /// Like [`requeue_dead_letter`](Self::requeue_dead_letter) but returns replication ops.
     fn requeue_dead_letter_replicated(
@@ -487,6 +672,16 @@ impl InMemoryJobQueue {
         inner.reclaim_expired();
         f(&mut inner)
     }
+
+    pub(crate) fn peek_lease_for_settle(
+        &self,
+        lease_id: LeaseId,
+    ) -> Option<(Option<Vec<u8>>, u32)> {
+        let inner = self.inner.lock().ok()?;
+        let lease = inner.leases.get(&lease_id)?;
+        let entry = inner.jobs.get(&lease.job_id)?;
+        Some((entry.dedup_key.clone(), entry.attempts))
+    }
 }
 
 impl Inner {
@@ -636,6 +831,44 @@ impl Inner {
             max_attempts: entry.max_attempts,
             dedup_key: entry.dedup_key.clone(),
         })
+    }
+
+    fn list_jobs(&self, filter: &JobListFilter) -> JobListPage {
+        let limit = filter.effective_limit();
+        let after = filter.after_job_id.map_or(0, |id| id.0);
+        let mut jobs = Vec::new();
+        let mut has_more = false;
+        for job_id in self.jobs.keys().copied().filter(|id| id.0 > after) {
+            let Some(status) = self.job_status(job_id) else {
+                continue;
+            };
+            if !job_status_matches_filter(&status, filter) {
+                continue;
+            }
+            jobs.push(status);
+            if jobs.len() > limit {
+                jobs.pop();
+                has_more = true;
+                break;
+            }
+        }
+        JobListPage { jobs, has_more }
+    }
+
+    fn requeue_dead_letter_batch(
+        &mut self,
+        job_ids: &[JobId],
+        now_ms: u64,
+    ) -> (Vec<JobId>, Vec<(JobId, QueueError)>) {
+        let mut requeued = Vec::with_capacity(job_ids.len());
+        let mut failures = Vec::new();
+        for &job_id in job_ids {
+            match self.requeue_dead_letter(job_id, now_ms) {
+                Ok(()) => requeued.push(job_id),
+                Err(e) => failures.push((job_id, e)),
+            }
+        }
+        (requeued, failures)
     }
 
     fn metrics(&self) -> QueueMetrics {
@@ -875,8 +1108,23 @@ impl JobQueue for InMemoryJobQueue {
                     }
                     Ok(())
                 }
+                QueueReplicateOp::ExtendLease {
+                    lease_id,
+                    worker_node,
+                    worker_instance,
+                    expires_at_ms,
+                } => {
+                    if let Some(lease) = inner.leases.get_mut(&LeaseId(*lease_id))
+                        && lease.worker.node.0 == *worker_node
+                        && lease.worker.instance == *worker_instance
+                    {
+                        lease.expires_at = instant_from_unix_ms(*expires_at_ms);
+                    }
+                    Ok(())
+                }
                 QueueReplicateOp::UpsertSchedule { .. }
-                | QueueReplicateOp::UpdateScheduleNextRun { .. } => Ok(()),
+                | QueueReplicateOp::UpdateScheduleNextRun { .. }
+                | QueueReplicateOp::RemoveSchedule { .. } => Ok(()),
             })
         })
     }
@@ -1042,6 +1290,34 @@ impl JobQueue for InMemoryJobQueue {
         })
     }
 
+    fn extend_lease_replicated(
+        &self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>> {
+        Box::pin(async move {
+            let expires_at = Instant::now() + self.lease_timeout;
+            let expires_at_ms = unix_ms_from_instant(expires_at);
+            self.with_inner(|inner| {
+                let lease = inner
+                    .leases
+                    .get_mut(&lease_id)
+                    .ok_or(QueueError::InvalidLease)?;
+                if lease.worker != worker {
+                    return Err(QueueError::InvalidLease);
+                }
+                lease.expires_at = expires_at;
+                Ok(())
+            })?;
+            Ok(vec![QueueReplicateOp::ExtendLease {
+                lease_id: lease_id.0,
+                worker_node: worker.node.0,
+                worker_instance: worker.instance,
+                expires_at_ms,
+            }])
+        })
+    }
+
     fn requeue_dead_letter(&self, job_id: JobId) -> BoxFuture<'_, Result<(), QueueError>> {
         Box::pin(async move {
             self.requeue_dead_letter_replicated(job_id)
@@ -1077,6 +1353,50 @@ impl JobQueue for InMemoryJobQueue {
     fn job_status(&self, job_id: JobId) -> BoxFuture<'_, Result<Option<JobStatus>, QueueError>> {
         Box::pin(async move { Ok(self.with_inner(|inner| inner.job_status(job_id))) })
     }
+
+    fn list_jobs(&self, filter: JobListFilter) -> BoxFuture<'_, Result<JobListPage, QueueError>> {
+        Box::pin(async move { Ok(self.with_inner(|inner| inner.list_jobs(&filter))) })
+    }
+
+    fn requeue_dead_letter_batch_replicated<'a>(
+        &'a self,
+        job_ids: &'a [JobId],
+    ) -> BoxFuture<
+        'a,
+        Result<(Vec<JobId>, Vec<(JobId, QueueError)>, QueueReplicationOps), QueueError>,
+    > {
+        Box::pin(async move {
+            let now_ms = u64::try_from(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis(),
+            )
+            .unwrap_or(u64::MAX);
+            let (requeued, failures) =
+                self.with_inner(|inner| Ok(inner.requeue_dead_letter_batch(job_ids, now_ms)))?;
+            let ops: QueueReplicationOps = requeued
+                .iter()
+                .map(|job_id| QueueReplicateOp::RequeueDeadLetter {
+                    job_id: job_id.0,
+                    attempts: 0,
+                })
+                .collect();
+            Ok((requeued, failures, ops))
+        })
+    }
+
+    fn peek_lease_meta(&self, lease_id: LeaseId) -> BoxFuture<'_, Option<(Option<Vec<u8>>, u32)>> {
+        Box::pin(async move { self.peek_lease_for_settle(lease_id) })
+    }
+}
+
+/// Optional workload governor integration for [`run_queue_consumer`].
+pub struct QueueConsumerWorkload {
+    /// Shared compute token pool (acquired per handler invocation).
+    pub tokens: std::sync::Arc<crate::ComputeTokenPool>,
+    /// Live consumer tuning from [`crate::run_workload_governor`].
+    pub tune: tokio::sync::watch::Receiver<crate::ConsumerTune>,
 }
 
 /// Poll a [`JobQueue`], invoke `handle` on each leased job, then ack or nack.
@@ -1085,6 +1405,9 @@ impl JobQueue for InMemoryJobQueue {
 /// [`JobQueue::ack_batch`] (one leader transaction when using [`crate::ClusterJobQueue`]).
 ///
 /// Runs until `stop` is set. When the queue is empty, sleeps `idle_sleep` between polls.
+///
+/// When `workload` is set, `batch` / `idle_sleep` come from the governor's
+/// [`crate::ConsumerTune`] watch channel and each handler acquires a compute token.
 pub async fn run_queue_consumer<Q, F, Fut, E>(
     queue: std::sync::Arc<Q>,
     worker: WorkerId,
@@ -1092,25 +1415,43 @@ pub async fn run_queue_consumer<Q, F, Fut, E>(
     idle_sleep: Duration,
     mut stop: tokio::sync::watch::Receiver<bool>,
     mut handle: F,
+    workload: Option<QueueConsumerWorkload>,
 ) where
     Q: JobQueue + ?Sized,
     F: FnMut(&LeasedJob) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
+    let mut tune_rx = workload.as_ref().map(|w| w.tune.clone());
     loop {
         if *stop.borrow() {
             break;
         }
+        let (batch, idle_sleep) = tune_rx.as_ref().map_or((batch.max(1), idle_sleep), |rx| {
+            let tune = *rx.borrow();
+            (tune.batch.max(1), tune.idle_sleep)
+        });
         let Ok(jobs) = queue.lease(worker, batch).await else {
             tokio::time::sleep(idle_sleep).await;
             continue;
         };
         if jobs.is_empty() {
-            tokio::select! {
-                () = tokio::time::sleep(idle_sleep) => {}
-                _ = stop.changed() => {
-                    if *stop.borrow() {
-                        break;
+            if let Some(rx) = tune_rx.as_mut() {
+                tokio::select! {
+                    () = tokio::time::sleep(idle_sleep) => {}
+                    _ = stop.changed() => {
+                        if *stop.borrow() {
+                            break;
+                        }
+                    }
+                    _ = rx.changed() => {}
+                }
+            } else {
+                tokio::select! {
+                    () = tokio::time::sleep(idle_sleep) => {}
+                    _ = stop.changed() => {
+                        if *stop.borrow() {
+                            break;
+                        }
                     }
                 }
             }
@@ -1119,6 +1460,11 @@ pub async fn run_queue_consumer<Q, F, Fut, E>(
         let mut acks = Vec::with_capacity(jobs.len());
         let mut nacks = Vec::new();
         for job in jobs {
+            let _token = if let Some(wl) = &workload {
+                Some(wl.tokens.acquire().await)
+            } else {
+                None
+            };
             match handle(&job).await {
                 Ok(()) => acks.push(job.lease_id),
                 Err(_) => nacks.push(job.lease_id),
@@ -1133,6 +1479,38 @@ pub async fn run_queue_consumer<Q, F, Fut, E>(
         if *stop.borrow() {
             break;
         }
+    }
+}
+
+fn unix_ms_now() -> u64 {
+    u64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis(),
+    )
+    .unwrap_or(u64::MAX)
+}
+
+fn unix_ms_from_instant(deadline: Instant) -> u64 {
+    let now_ms = unix_ms_now();
+    let now = Instant::now();
+    if deadline <= now {
+        now_ms
+    } else {
+        now_ms.saturating_add(
+            u64::try_from(deadline.duration_since(now).as_millis()).unwrap_or(u64::MAX),
+        )
+    }
+}
+
+fn instant_from_unix_ms(ms: u64) -> Instant {
+    let now_ms = unix_ms_now();
+    let now = Instant::now();
+    if ms <= now_ms {
+        now
+    } else {
+        now + Duration::from_millis(ms - now_ms)
     }
 }
 
@@ -1207,6 +1585,25 @@ mod tests {
 
         let again = q.lease(worker(1), 1).await.unwrap();
         assert_eq!(again[0].payload, b"z");
+    }
+
+    #[tokio::test]
+    async fn extend_lease_prevents_reclaim() {
+        let q = InMemoryJobQueue::new(Duration::from_millis(50));
+        q.enqueue(b"long").await.unwrap();
+        let leased = q.lease(worker(0), 1).await.unwrap();
+        let lease_id = leased[0].lease_id;
+
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        q.extend_lease(worker(0), lease_id).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(40)).await;
+
+        let other = q.lease(worker(1), 1).await.unwrap();
+        assert!(other.is_empty());
+        let m = q.metrics().await.unwrap();
+        assert_eq!(m.leased, 1);
+
+        q.ack(worker(0), lease_id).await.unwrap();
     }
 
     #[tokio::test]
@@ -1310,6 +1707,41 @@ mod tests {
         let pending = q.job_status(id).await.unwrap().expect("pending again");
         assert_eq!(pending.lifecycle, JobLifecycle::Pending);
         assert_eq!(pending.attempts, 0);
+    }
+
+    #[tokio::test]
+    async fn list_jobs_filters_dead_letter() {
+        let q = InMemoryJobQueue::new(Duration::from_secs(30)).default_max_attempts(1);
+        let id = q.enqueue(b"x").await.unwrap();
+        let leased = q.lease(worker(0), 1).await.unwrap();
+        q.nack(worker(0), leased[0].lease_id).await.unwrap();
+
+        let dl = q
+            .list_jobs(JobListFilter {
+                lifecycle: Some(JobLifecycle::DeadLetter),
+                ..JobListFilter::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(dl.jobs.len(), 1);
+        assert_eq!(dl.jobs[0].job_id, id);
+        assert_eq!(dl.jobs[0].lifecycle, JobLifecycle::DeadLetter);
+    }
+
+    #[tokio::test]
+    async fn requeue_dead_letter_batch_partial_success() {
+        let q = InMemoryJobQueue::new(Duration::from_secs(30)).default_max_attempts(1);
+        let id = q.enqueue(b"poison").await.unwrap();
+        let leased = q.lease(worker(0), 1).await.unwrap();
+        q.nack(worker(0), leased[0].lease_id).await.unwrap();
+
+        let result = q
+            .requeue_dead_letter_batch(&[id, JobId(999)])
+            .await
+            .unwrap();
+        assert_eq!(result.requeued, vec![id]);
+        assert_eq!(result.failures.len(), 1);
+        assert_eq!(result.failures[0].0, JobId(999));
     }
 
     #[tokio::test]
@@ -1463,6 +1895,7 @@ mod tests {
                         Ok::<(), ()>(())
                     }
                 },
+                None,
             )
             .await;
         });
@@ -1498,6 +1931,7 @@ mod tests {
                         Ok::<(), ()>(())
                     }
                 },
+                None,
             )
             .await;
         });

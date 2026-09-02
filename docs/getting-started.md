@@ -61,7 +61,7 @@ Same code as above. [`cluster.sh`](../examples/background-jobs/cluster.sh) sets 
 
 Node id is **not** configured — seed gets `1`, joiners are assigned by the leader and persisted under `CRAFTY_DATA_DIR`.
 
-Edge-only ingress (no local consumers): `CRAFTY_ROLE=gateway`.
+**Homogeneous nodes:** every VPS runs the same binary (gateway + consumers when configured). Local **API vs jobs** fairness uses **compute tokens** ([workload governor](decisions/workload-governor.md), epic B-16) — not static node roles. `CRAFTY_ROLE` is **deprecated** and will be removed.
 
 ## 4. Try the showcases
 

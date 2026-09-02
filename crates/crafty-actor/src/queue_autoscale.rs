@@ -9,7 +9,7 @@ use crafty_proto::{
 };
 
 use crate::supervisor::ClusterState;
-use crate::{ActorDirectory, ClusterScaleError, JobQueue};
+use crate::{ActorDirectory, ClusterScaleError, ExternalBacklog, JobQueue, effective_queue_depth};
 
 /// Tunables for [`run_queue_autoscaler`].
 #[derive(Debug, Clone)]
@@ -153,6 +153,7 @@ pub struct MembershipAutoscalePolicy {
 /// Leader-only loop: read queue metrics → scale worker group.
 ///
 /// `scale` performs the actual placement (typically `ClusterControl::scale_cluster`).
+#[allow(clippy::too_many_arguments)]
 pub async fn run_queue_autoscaler<F, Fut>(
     queue: Arc<dyn JobQueue>,
     directory: Arc<ActorDirectory>,
@@ -160,6 +161,7 @@ pub async fn run_queue_autoscaler<F, Fut>(
     registry: Arc<QueueAutoscaleRegistry>,
     stream: String,
     fallback: AutoscalePolicy,
+    backlog: Option<Arc<dyn ExternalBacklog>>,
     mut scale: F,
 ) where
     F: FnMut(usize) -> Fut + Send,
@@ -178,9 +180,7 @@ pub async fn run_queue_autoscaler<F, Fut>(
         let policy = registry
             .worker_policy(&stream)
             .unwrap_or_else(|| fallback.clone());
-        let Ok(metrics) = queue.metrics().await else {
-            continue;
-        };
+        let depth = effective_queue_depth(queue.as_ref(), backlog.as_deref()).await;
         let reachable = state.reachable_nodes().len();
         if reachable == 0 {
             continue;
@@ -189,10 +189,7 @@ pub async fn run_queue_autoscaler<F, Fut>(
         let desired_raw = if policy.target_pending_per_worker == 0 {
             policy.min_workers
         } else {
-            usize::try_from(
-                (metrics.pending + metrics.leased).div_ceil(policy.target_pending_per_worker),
-            )
-            .unwrap_or(usize::MAX)
+            usize::try_from(depth.div_ceil(policy.target_pending_per_worker)).unwrap_or(usize::MAX)
         };
         let desired = desired_raw
             .clamp(policy.min_workers, policy.max_workers)
@@ -217,6 +214,7 @@ pub async fn run_queue_membership_autoscaler<F, Fut>(
     registry: Arc<QueueAutoscaleRegistry>,
     stream: String,
     fallback: MembershipAutoscalePolicy,
+    backlog: Option<Arc<dyn ExternalBacklog>>,
     mut join: F,
 ) where
     F: FnMut() -> Fut + Send,
@@ -239,10 +237,7 @@ pub async fn run_queue_membership_autoscaler<F, Fut>(
         if reachable == 0 || reachable >= policy.max_nodes {
             continue;
         }
-        let Ok(metrics) = queue.metrics().await else {
-            continue;
-        };
-        let depth = metrics.pending + metrics.leased;
+        let depth = effective_queue_depth(queue.as_ref(), backlog.as_deref()).await;
         let per_node = depth / reachable as u64;
         if per_node <= policy.pending_per_node_threshold {
             continue;
@@ -313,6 +308,7 @@ mod tests {
                 registry,
                 "jobs".to_string(),
                 policy,
+                None,
                 move || {
                     let joins_task = Arc::clone(&joins_task);
                     async move {

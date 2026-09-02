@@ -14,7 +14,9 @@ use crafty_net::transport::{Body, BoxFuture, RequestHandler};
 use crafty_net::{QuicTransport, Route, TransportError, decode_body, encode_body};
 use crafty_proto::{JoinRequest, NodeId, PeerBook, PeerEntry, ScaleRequest};
 
-use crafty_actor::{ClusterControl, ClusterMessaging, DirectorySync, QueueService, StoreService};
+use crafty_actor::{
+    ClusterControl, ClusterMessaging, DirectorySync, QueueService, StoreService, TopicService,
+};
 
 use crate::multi_raft::GroupMigratePort;
 
@@ -74,6 +76,7 @@ pub(crate) struct NodeRouter {
     messaging: Arc<ClusterMessaging>,
     directory_sync: Arc<DirectorySync>,
     queue: Option<Arc<QueueService>>,
+    topic: Option<Arc<TopicService>>,
     store: Option<Arc<StoreService>>,
     peers: Arc<dyn PeerSource>,
     group_migrate: Option<Arc<dyn GroupMigratePort>>,
@@ -87,6 +90,7 @@ impl NodeRouter {
         messaging: Arc<ClusterMessaging>,
         directory_sync: Arc<DirectorySync>,
         queue: Option<Arc<QueueService>>,
+        topic: Option<Arc<TopicService>>,
         store: Option<Arc<StoreService>>,
         peers: Arc<dyn PeerSource>,
         group_migrate: Option<Arc<dyn GroupMigratePort>>,
@@ -97,6 +101,7 @@ impl NodeRouter {
             messaging,
             directory_sync,
             queue,
+            topic,
             store,
             peers,
             group_migrate,
@@ -166,9 +171,12 @@ impl RequestHandler for NodeRouter {
             | Route::QueueAck
             | Route::QueueAckBatch
             | Route::QueueNack
+            | Route::QueueExtendLease
             | Route::QueueMetrics
             | Route::QueueJobStatus
+            | Route::QueueListJobs
             | Route::QueueRequeueDeadLetter
+            | Route::QueueRequeueDeadLetterBatch
             | Route::QueueReplicate => {
                 let Some(queue) = self.queue.as_ref() else {
                     return Box::pin(async move {
@@ -177,6 +185,20 @@ impl RequestHandler for NodeRouter {
                 };
                 let queue = Arc::clone(queue);
                 Box::pin(async move { queue.handle_request(route, body).await })
+            }
+            Route::TopicPublish
+            | Route::TopicLease
+            | Route::TopicAck
+            | Route::TopicNack
+            | Route::TopicMetrics
+            | Route::TopicReplicate => {
+                let Some(topic) = self.topic.as_ref() else {
+                    return Box::pin(async move {
+                        Err(TransportError::Io("event topics are not enabled".into()))
+                    });
+                };
+                let topic = Arc::clone(topic);
+                Box::pin(async move { topic.handle_request(route, body).await })
             }
             Route::ActorStoreSet
             | Route::ActorStoreDelete
@@ -208,32 +230,13 @@ impl RequestHandler for NodeRouter {
             | Route::QueueAck
             | Route::QueueAckBatch
             | Route::QueueNack
+            | Route::QueueExtendLease
             | Route::QueueMetrics
             | Route::QueueJobStatus
+            | Route::QueueListJobs
             | Route::QueueRequeueDeadLetter
-            | Route::QueueReplicate
-            | Route::ActorStoreSet
-            | Route::ActorStoreDelete
-            | Route::ActorStoreCompareAndSet
-            | Route::ActorStoreReplicate => {
-                let route_store = matches!(
-                    route,
-                    Route::ActorStoreSet
-                        | Route::ActorStoreDelete
-                        | Route::ActorStoreCompareAndSet
-                        | Route::ActorStoreReplicate
-                );
-                if route_store {
-                    let Some(store) = self.store.as_ref() else {
-                        return Box::pin(async move {
-                            Err(TransportError::Io("actor store is not enabled".into()))
-                        });
-                    };
-                    let store = Arc::clone(store);
-                    return Box::pin(
-                        async move { store.handle_request_from(from, route, body).await },
-                    );
-                }
+            | Route::QueueRequeueDeadLetterBatch
+            | Route::QueueReplicate => {
                 let Some(queue) = self.queue.as_ref() else {
                     return Box::pin(async move {
                         Err(TransportError::Io("job queue is not enabled".into()))
@@ -241,6 +244,32 @@ impl RequestHandler for NodeRouter {
                 };
                 let queue = Arc::clone(queue);
                 Box::pin(async move { queue.handle_request_from(from, route, body).await })
+            }
+            Route::TopicPublish
+            | Route::TopicLease
+            | Route::TopicAck
+            | Route::TopicNack
+            | Route::TopicMetrics
+            | Route::TopicReplicate => {
+                let Some(topic) = self.topic.as_ref() else {
+                    return Box::pin(async move {
+                        Err(TransportError::Io("event topics are not enabled".into()))
+                    });
+                };
+                let topic = Arc::clone(topic);
+                Box::pin(async move { topic.handle_request_from(from, route, body).await })
+            }
+            Route::ActorStoreSet
+            | Route::ActorStoreDelete
+            | Route::ActorStoreCompareAndSet
+            | Route::ActorStoreReplicate => {
+                let Some(store) = self.store.as_ref() else {
+                    return Box::pin(async move {
+                        Err(TransportError::Io("actor store is not enabled".into()))
+                    });
+                };
+                let store = Arc::clone(store);
+                Box::pin(async move { store.handle_request_from(from, route, body).await })
             }
             _ => self.handle(route, body),
         }

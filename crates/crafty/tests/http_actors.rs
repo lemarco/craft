@@ -12,10 +12,12 @@ use tower::ServiceExt;
 #[tokio::test(start_paused = true)]
 async fn http_ask_returns_503_when_group_has_no_workers() {
     let app = boot_local_app(
-        CraftyApp::builder().configure(CraftyConfigure {
-            tick_period: Duration::from_millis(5),
-            ..CraftyConfigure::default()
-        }),
+        || {
+            CraftyApp::builder().configure(CraftyConfigure {
+                tick_period: Duration::from_millis(5),
+                ..CraftyConfigure::default()
+            })
+        },
         None,
     )
     .await;

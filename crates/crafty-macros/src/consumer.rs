@@ -1,4 +1,4 @@
-//! `#[consumer("stream")]` expansion helpers.
+//! `#[consumer("stream")]` and `#[consumer("topic", subscription = "…")]` expansion helpers.
 
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
@@ -44,7 +44,12 @@ pub(crate) fn result_err_type(ty: &Type) -> Option<Type> {
     }
 }
 
-pub(crate) fn expand_consumer(stream: &str, input_fn: &ItemFn) -> TokenStream2 {
+#[allow(clippy::too_many_lines)]
+pub(crate) fn expand_consumer(
+    stream: &str,
+    subscription: Option<&str>,
+    input_fn: &ItemFn,
+) -> TokenStream2 {
     let fn_name = &input_fn.sig.ident;
 
     if input_fn.sig.asyncness.is_none() {
@@ -100,7 +105,6 @@ pub(crate) fn expand_consumer(stream: &str, input_fn: &ItemFn) -> TokenStream2 {
         fn_name.span(),
     );
 
-    // A handler may take just the payload, or the payload plus a `JobContext`.
     let wants_ctx = input_fn.sig.inputs.len() > 1;
     let call = if wants_ctx {
         quote! { #fn_name(payload, ctx).await }
@@ -113,6 +117,56 @@ pub(crate) fn expand_consumer(stream: &str, input_fn: &ItemFn) -> TokenStream2 {
         quote! { _ctx }
     };
 
+    let subscription_const = if let Some(sub) = subscription {
+        quote! { Some(#sub) }
+    } else {
+        quote! { None }
+    };
+
+    let (impl_job, impl_topic) = if subscription.is_some() {
+        (
+            quote! {
+                #[allow(clippy::unused_async_trait_impl)]
+                async fn handle_job(
+                    _payload: &[u8],
+                    _ctx: ::crafty::JobContext<'_>,
+                ) -> ::core::result::Result<(), Self::Error> {
+                    panic!("topic subscriber invoked as queue consumer")
+                }
+            },
+            quote! {
+                #[allow(clippy::unused_async_trait_impl)]
+                async fn handle_topic(
+                    payload: &[u8],
+                    #ctx_binding: ::crafty::TopicContext<'_>,
+                ) -> ::core::result::Result<(), Self::Error> {
+                    #call
+                }
+            },
+        )
+    } else {
+        (
+            quote! {
+                #[allow(clippy::unused_async_trait_impl)]
+                async fn handle_job(
+                    payload: &[u8],
+                    #ctx_binding: ::crafty::JobContext<'_>,
+                ) -> ::core::result::Result<(), Self::Error> {
+                    #call
+                }
+            },
+            quote! {
+                #[allow(clippy::unused_async_trait_impl)]
+                async fn handle_topic(
+                    _payload: &[u8],
+                    _ctx: ::crafty::TopicContext<'_>,
+                ) -> ::core::result::Result<(), Self::Error> {
+                    panic!("queue consumer invoked as topic subscriber")
+                }
+            },
+        )
+    };
+
     quote! {
         #input_fn
 
@@ -123,14 +177,11 @@ pub(crate) fn expand_consumer(stream: &str, input_fn: &ItemFn) -> TokenStream2 {
 
         impl ::crafty::JobConsumer for #consumer_name {
             const STREAM: &'static str = #stream;
+            const SUBSCRIPTION: Option<&'static str> = #subscription_const;
             type Error = #err_ty;
 
-            async fn handle(
-                payload: &[u8],
-                #ctx_binding: ::crafty::JobContext<'_>,
-            ) -> ::core::result::Result<(), Self::Error> {
-                #call
-            }
+            #impl_job
+            #impl_topic
         }
     }
 }

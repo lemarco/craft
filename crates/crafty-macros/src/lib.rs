@@ -20,6 +20,47 @@ use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{Ident, ImplItem, ItemFn, ItemImpl, LitStr, Path, Token, parse_macro_input};
 
+struct ConsumerArgs {
+    stream: String,
+    subscription: Option<String>,
+}
+
+impl Parse for ConsumerArgs {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let stream: LitStr = input.parse()?;
+        let mut subscription = None;
+        if input.peek(Token![,]) {
+            input.parse::<Token![,]>()?;
+            let meta: syn::Meta = input.parse()?;
+            match meta {
+                syn::Meta::NameValue(nv) if nv.path.is_ident("subscription") => {
+                    let syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(s),
+                        ..
+                    }) = nv.value
+                    else {
+                        return Err(syn::Error::new_spanned(
+                            nv.value,
+                            "`subscription` must be a string literal",
+                        ));
+                    };
+                    subscription = Some(s.value());
+                }
+                other => {
+                    return Err(syn::Error::new_spanned(
+                        other,
+                        "unknown `consumer` option (expected `subscription = \"…\"`)",
+                    ));
+                }
+            }
+        }
+        Ok(Self {
+            stream: stream.value(),
+            subscription,
+        })
+    }
+}
+
 /// Register an async job handler and generate a `JobConsumer` adapter.
 ///
 /// Apply to an `async fn` taking `&[u8]` and returning `Result<(), E>`:
@@ -30,15 +71,19 @@ use syn::{Ident, ImplItem, ItemFn, ItemImpl, LitStr, Path, Token, parse_macro_in
 ///     Ok(())
 /// }
 ///
+/// #[crafty::consumer("platform.events", subscription = "analytics")]
+/// async fn on_event(payload: &[u8], ctx: TopicContext<'_>) -> Result<(), MyError> {
+///     Ok(())
+/// }
+///
 /// // Spawn with:
 /// app.spawn_consumer(HandleEmailConsumer, ConsumerOpts::default(), stop_rx);
 /// ```
 #[proc_macro_attribute]
 pub fn consumer(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let stream_lit = parse_macro_input!(attr as syn::LitStr);
-    let stream = stream_lit.value();
+    let args = parse_macro_input!(attr as ConsumerArgs);
     let input_fn = parse_macro_input!(item as ItemFn);
-    consumer::expand_consumer(&stream, &input_fn).into()
+    consumer::expand_consumer(&args.stream, args.subscription.as_deref(), &input_fn).into()
 }
 
 struct ConsumerJsonArgs {

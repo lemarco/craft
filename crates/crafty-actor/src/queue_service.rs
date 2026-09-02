@@ -12,26 +12,36 @@ use tokio::task::JoinSet;
 use crafty_net::transport::{Body, BoxFuture, Transport, TransportError};
 use crafty_net::{
     Route, decode_body, encode_body, send_queue_ack, send_queue_ack_batch, send_queue_enqueue,
-    send_queue_enqueue_batch, send_queue_job_status, send_queue_lease, send_queue_metrics,
-    send_queue_nack, send_queue_replicate,
+    send_queue_enqueue_batch, send_queue_extend_lease, send_queue_job_status, send_queue_lease,
+    send_queue_list_jobs, send_queue_metrics, send_queue_nack, send_queue_replicate,
+    send_queue_requeue_dead_letter_batch,
 };
 use crafty_proto::{
     NodeId, QueueAckBatchReply, QueueAckBatchRequest, QueueAckReply, QueueAckRequest,
     QueueBatchEnqueueJob, QueueEnqueueBatchReply, QueueEnqueueBatchRequest, QueueEnqueueReply,
-    QueueEnqueueRequest, QueueJobLifecycleWire, QueueJobStatusReply, QueueJobStatusRequest,
-    QueueLeaseReply, QueueLeaseRequest, QueueLeasedJobWire, QueueMetricsReply, QueueMetricsRequest,
-    QueueNackReply, QueueNackRequest, QueueReplicateOp, QueueReplicateReply, QueueReplicateRequest,
+    QueueEnqueueRequest, QueueExtendLeaseReply, QueueExtendLeaseRequest, QueueJobLifecycleWire,
+    QueueJobStatusReply, QueueJobStatusRequest, QueueLeaseReply, QueueLeaseRequest,
+    QueueLeasedJobWire, QueueListJobsReply, QueueListJobsRequest, QueueMetricsReply,
+    QueueMetricsRequest, QueueNackReply, QueueNackRequest, QueueReplicateOp, QueueReplicateReply,
+    QueueReplicateRequest, QueueRequeueDeadLetterBatchReply, QueueRequeueDeadLetterBatchRequest,
+    QueueRequeueFailureWire,
 };
 
+use crate::backlog_settle_outbox::{BacklogSettleOutbox, push_backlog_settle};
+use crate::external_backlog::{
+    BacklogSettleEvent, BacklogSettleOutcome, emit_backlog_settle_for_terminal_ops,
+};
 use crate::queue_lifecycle::QueueLifecycleEvent;
 use crate::queue_prefetch::{CachedPendingJob, DEFAULT_QUEUE_BATCH_MAX, QueuePrefetchCache};
 use crate::sharded_queue::{decode_global_id, encode_global_id};
 use crate::supervisor::ClusterState;
 use crate::{
-    EnqueueOptions, JobId, JobLifecycle, JobQueue, JobStatus, LeaseId, LeasedJob,
+    EnqueueOptions, JobId, JobLifecycle, JobListFilter, JobQueue, JobStatus, LeaseId, LeasedJob,
     NOT_LEADER_REASON, QueueError, QueueMetrics, QueueReplicationOps, RecurringJob, RedbJobQueue,
-    ShardedJobQueue, ShardedReplication, WorkerId,
+    ScheduleSource, ShardedJobQueue, ShardedReplication, WorkerId,
 };
+
+use std::time::{Duration, Instant};
 
 fn job_status_to_reply(job_id: u64, status: Option<JobStatus>) -> QueueJobStatusReply {
     match status {
@@ -66,6 +76,40 @@ fn job_status_to_reply(job_id: u64, status: Option<JobStatus>) -> QueueJobStatus
             dedup_key: s.dedup_key.clone(),
             error: None,
         },
+    }
+}
+
+fn job_status_to_list_entry(status: JobStatus) -> crafty_proto::QueueJobListEntryWire {
+    crafty_proto::QueueJobListEntryWire {
+        job_id: status.job_id.0,
+        lifecycle: match status.lifecycle {
+            JobLifecycle::Pending => QueueJobLifecycleWire::Pending,
+            JobLifecycle::Leased => QueueJobLifecycleWire::Leased,
+            JobLifecycle::Delayed => QueueJobLifecycleWire::Delayed,
+            JobLifecycle::DeadLetter => QueueJobLifecycleWire::DeadLetter,
+        },
+        payload_len: status.payload_len,
+        priority: status.priority,
+        leased_worker_node: status.leased_by.map(|w| w.node.0),
+        leased_worker_instance: status.leased_by.map(|w| w.instance),
+        attempts: status.attempts,
+        max_attempts: status.max_attempts,
+        dedup_key: status.dedup_key,
+    }
+}
+
+fn filter_from_list_request(request: &crafty_proto::QueueListJobsRequest) -> JobListFilter {
+    JobListFilter {
+        lifecycle: request.lifecycle.map(|l| match l {
+            QueueJobLifecycleWire::Pending => JobLifecycle::Pending,
+            QueueJobLifecycleWire::Leased => JobLifecycle::Leased,
+            QueueJobLifecycleWire::Delayed => JobLifecycle::Delayed,
+            QueueJobLifecycleWire::DeadLetter => JobLifecycle::DeadLetter,
+        }),
+        min_attempts: request.min_attempts,
+        dedup_key: request.dedup_key.clone(),
+        limit: Some(request.limit as usize),
+        after_job_id: (request.after_job_id != 0).then_some(JobId(request.after_job_id)),
     }
 }
 
@@ -107,6 +151,13 @@ fn now_ms() -> u64 {
 }
 const REPLICATE_NOT_LEADER: &str = "queue replicate rejected: caller is not raft leader";
 
+struct ScheduleSourceEntry {
+    source: Arc<dyn ScheduleSource>,
+    poll: Duration,
+    last_good: Option<Vec<RecurringJob>>,
+    next_poll_at: Option<Instant>,
+}
+
 /// Serves `/raft/v1/queue/*` on the leader; followers transparently forward.
 pub struct QueueService {
     node_id: NodeId,
@@ -114,9 +165,11 @@ pub struct QueueService {
     redb_streams: Mutex<HashMap<String, Arc<RedbJobQueue>>>,
     prefetch: Mutex<HashMap<String, QueuePrefetchCache>>,
     sharded: Mutex<HashMap<String, Arc<ShardedJobQueue>>>,
+    schedule_sources: Mutex<HashMap<String, ScheduleSourceEntry>>,
     state: Arc<dyn ClusterState>,
     transport: Arc<dyn Transport>,
     lifecycle_hook: Option<Arc<dyn Fn(QueueLifecycleEvent) + Send + Sync>>,
+    backlog_settle_outbox: Option<Arc<dyn BacklogSettleOutbox>>,
 }
 
 impl QueueService {
@@ -133,10 +186,19 @@ impl QueueService {
             redb_streams: Mutex::new(HashMap::new()),
             prefetch: Mutex::new(HashMap::new()),
             sharded: Mutex::new(HashMap::new()),
+            schedule_sources: Mutex::new(HashMap::new()),
             state,
             transport,
             lifecycle_hook: None,
+            backlog_settle_outbox: None,
         }
+    }
+
+    /// Persist terminal jobs with dedup keys to the settle outbox ([`crate::run_backlog_settle_drainer`]).
+    #[must_use]
+    pub fn with_backlog_settle_outbox(mut self, outbox: Arc<dyn BacklogSettleOutbox>) -> Self {
+        self.backlog_settle_outbox = Some(outbox);
+        self
     }
 
     /// Emit [`QueueLifecycleEvent`]s to the dashboard / user sinks (observability).
@@ -189,7 +251,67 @@ impl QueueService {
         });
     }
 
-    /// Register a local redb-backed stream, optional prefetch depth, and cron schedules.
+    fn emit_backlog_settle(
+        &self,
+        stream: &str,
+        dedup_key: Option<Vec<u8>>,
+        outcome: BacklogSettleOutcome,
+    ) {
+        push_backlog_settle(
+            self.backlog_settle_outbox.as_deref(),
+            BacklogSettleEvent {
+                stream: stream.to_owned(),
+                dedup_key,
+                outcome,
+            },
+        );
+    }
+
+    async fn emit_backlog_settle_for_terminal_ops(
+        &self,
+        stream: &str,
+        queue: &dyn JobQueue,
+        ops: &[QueueReplicateOp],
+        error: &str,
+    ) {
+        emit_backlog_settle_for_terminal_ops(
+            stream,
+            queue,
+            self.backlog_settle_outbox.as_deref(),
+            ops,
+            error,
+        )
+        .await;
+    }
+
+    async fn emit_backlog_settle_for_sharded_reps(
+        &self,
+        base: &str,
+        reps: &[ShardedReplication],
+        error: &str,
+    ) {
+        for rep in reps {
+            let stream = shard_stream_name(base, rep.shard);
+            if let Ok(queue) = self.local_stream(&stream) {
+                self.emit_backlog_settle_for_terminal_ops(&stream, queue.as_ref(), &rep.ops, error)
+                    .await;
+            }
+        }
+    }
+
+    async fn peek_lease_dedup(&self, stream: &str, lease_id: LeaseId) -> Option<Vec<u8>> {
+        match self.local_stream(stream) {
+            Ok(queue) => queue
+                .peek_lease_meta(lease_id)
+                .await
+                .and_then(|(dedup, _)| dedup),
+            Err(_) => None,
+        }
+    }
+
+    /// Register a local redb-backed stream and optional prefetch depth.
+    ///
+    /// Recurring schedules are loaded via [`Self::register_schedule_source`].
     ///
     /// `prefetch` controls the leader in-memory cache for recently enqueued jobs
     /// (`0` disables prefetch).
@@ -200,7 +322,6 @@ impl QueueService {
         &self,
         name: impl Into<String>,
         queue: &Arc<RedbJobQueue>,
-        schedules: &[RecurringJob],
         prefetch: usize,
     ) {
         let name = name.into();
@@ -218,9 +339,135 @@ impl QueueService {
                 .expect("poisoned")
                 .insert(name, QueuePrefetchCache::new(prefetch));
         }
-        for job in schedules {
-            let _ = queue.upsert_schedule(job);
+    }
+
+    /// Poll a dynamic [`ScheduleSource`] on the leader and reconcile redb + voters.
+    ///
+    /// Source errors and bootstrap `Ok([])` never clear persisted schedules.
+    ///
+    /// # Errors
+    /// Propagates queue or replication failures as strings.
+    ///
+    /// # Panics
+    /// If an internal mutex is poisoned.
+    pub async fn poll_schedule_sources(&self) -> Result<(), String> {
+        if !self.state.is_leader() {
+            return Ok(());
         }
+        let now = Instant::now();
+        let due: Vec<String> = self
+            .schedule_sources
+            .lock()
+            .expect("poisoned")
+            .iter()
+            .filter(|(_, entry)| entry.next_poll_at.is_none_or(|at| now >= at))
+            .map(|(stream, _)| stream.clone())
+            .collect();
+        for stream in due {
+            self.poll_schedule_source(&stream).await?;
+        }
+        Ok(())
+    }
+
+    async fn poll_schedule_source(&self, stream: &str) -> Result<(), String> {
+        let source = {
+            self.schedule_sources
+                .lock()
+                .expect("poisoned")
+                .get(stream)
+                .map(|entry| Arc::clone(&entry.source))
+        };
+        let Some(source) = source else {
+            return Ok(());
+        };
+
+        let desired = match source.schedules().await {
+            Err(e) => {
+                eprintln!("crafty: schedule source {stream:?}: {e}");
+                return Ok(());
+            }
+            Ok(jobs) => jobs,
+        };
+
+        let apply = {
+            let mut map = self.schedule_sources.lock().expect("poisoned");
+            let Some(entry) = map.get_mut(stream) else {
+                return Ok(());
+            };
+            entry.next_poll_at = Some(Instant::now() + entry.poll);
+            if desired.is_empty() && entry.last_good.is_none() {
+                false
+            } else {
+                entry.last_good = Some(desired.clone());
+                true
+            }
+        };
+
+        if apply {
+            self.reconcile_schedules(stream, &desired).await?;
+        }
+        Ok(())
+    }
+
+    /// Diff `desired` against live redb schedules and replicate mutations.
+    ///
+    /// # Errors
+    /// Propagates queue or replication failures as strings.
+    ///
+    /// # Panics
+    /// If an internal mutex is poisoned.
+    pub async fn reconcile_schedules(
+        &self,
+        stream: &str,
+        desired: &[RecurringJob],
+    ) -> Result<(), String> {
+        if !self.state.is_leader() {
+            return Ok(());
+        }
+        let queue = self
+            .redb_streams
+            .lock()
+            .expect("poisoned")
+            .get(stream)
+            .cloned()
+            .ok_or_else(|| format!("unknown queue stream {stream:?}"))?;
+        let ops = queue
+            .reconcile_schedules(desired)
+            .map_err(|e| e.to_string())?;
+        if !ops.is_empty() {
+            self.replicate_ops(stream, &ops).await?;
+        }
+        Ok(())
+    }
+
+    /// Register a [`ScheduleSource`] polled on the queue leader.
+    ///
+    /// # Panics
+    /// If an internal mutex is poisoned.
+    pub fn register_schedule_source(
+        &self,
+        stream: impl Into<String>,
+        source: Arc<dyn ScheduleSource>,
+        poll: Duration,
+    ) {
+        let stream = stream.into();
+        self.schedule_sources.lock().expect("poisoned").insert(
+            stream,
+            ScheduleSourceEntry {
+                source,
+                poll,
+                last_good: None,
+                next_poll_at: None,
+            },
+        );
+    }
+
+    /// Whether any [`ScheduleSource`] is registered.
+    ///
+    /// # Panics
+    /// If an internal mutex is poisoned.
+    pub fn has_schedule_sources(&self) -> bool {
+        !self.schedule_sources.lock().expect("poisoned").is_empty()
     }
 
     /// Fire due recurring schedules on the leader and replicate mutations.
@@ -568,6 +815,7 @@ impl QueueService {
             .collect()
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_enqueue(&self, request: QueueEnqueueRequest) -> QueueEnqueueReply {
         if self.state.is_leader() {
             if let Some(sharded) = self.sharded_stream(&request.stream) {
@@ -577,6 +825,12 @@ impl QueueService {
                     .await
                 {
                     Ok((id, rep)) => {
+                        self.emit_backlog_settle_for_sharded_reps(
+                            &request.stream,
+                            std::slice::from_ref(&rep),
+                            "reclaim",
+                        )
+                        .await;
                         if let Err(e) = self.replicate_sharded(&request.stream, &[rep]).await {
                             return QueueEnqueueReply {
                                 job_id: None,
@@ -623,6 +877,13 @@ impl QueueService {
                                     error: Some(e),
                                 };
                             }
+                            self.emit_backlog_settle_for_terminal_ops(
+                                &request.stream,
+                                queue.as_ref(),
+                                &ops,
+                                "reclaim",
+                            )
+                            .await;
                             self.cache_enqueued(
                                 &request.stream,
                                 id.0,
@@ -694,6 +955,12 @@ impl QueueService {
                                 error: Some(e),
                             };
                         }
+                        self.emit_backlog_settle_for_sharded_reps(
+                            &request.stream,
+                            &reps,
+                            "reclaim",
+                        )
+                        .await;
                         for (job, id) in request.jobs.iter().zip(&ids) {
                             self.cache_enqueued_sharded(
                                 &request.stream,
@@ -737,6 +1004,13 @@ impl QueueService {
                                     error: Some(e),
                                 };
                             }
+                            self.emit_backlog_settle_for_terminal_ops(
+                                &request.stream,
+                                queue.as_ref(),
+                                &ops,
+                                "reclaim",
+                            )
+                            .await;
                             for (job, id) in request.jobs.iter().zip(&ids) {
                                 self.cache_enqueued(
                                     &request.stream,
@@ -796,6 +1070,10 @@ impl QueueService {
                 instance: request.worker_instance,
             };
             let lease_ids: Vec<LeaseId> = request.lease_ids.iter().map(|id| LeaseId(*id)).collect();
+            let mut dedup_keys = Vec::with_capacity(lease_ids.len());
+            for lease_id in &lease_ids {
+                dedup_keys.push(self.peek_lease_dedup(&request.stream, *lease_id).await);
+            }
             if let Some(sharded) = self.sharded_stream(&request.stream) {
                 match sharded
                     .ack_batch_replicated_sharded(worker, &lease_ids)
@@ -806,8 +1084,13 @@ impl QueueService {
                             return QueueAckBatchReply { error: Some(e) };
                         }
                         self.evict_prefetch_sharded_acks(&request.stream, &reps);
-                        for lease_id in &request.lease_ids {
+                        for (lease_id, dedup_key) in request.lease_ids.iter().zip(dedup_keys) {
                             self.emit_acked(&request.stream, *lease_id, request.worker_node);
+                            self.emit_backlog_settle(
+                                &request.stream,
+                                dedup_key,
+                                BacklogSettleOutcome::Done,
+                            );
                         }
                         return QueueAckBatchReply { error: None };
                     }
@@ -826,8 +1109,13 @@ impl QueueService {
                             QueueAckBatchReply { error: Some(e) }
                         } else {
                             self.evict_prefetch_ack_ops(&request.stream, &ops);
-                            for lease_id in &request.lease_ids {
+                            for (lease_id, dedup_key) in request.lease_ids.iter().zip(dedup_keys) {
                                 self.emit_acked(&request.stream, *lease_id, request.worker_node);
+                                self.emit_backlog_settle(
+                                    &request.stream,
+                                    dedup_key,
+                                    BacklogSettleOutcome::Done,
+                                );
                             }
                             QueueAckBatchReply { error: None }
                         }
@@ -873,6 +1161,12 @@ impl QueueService {
                                 error: Some(e),
                             };
                         }
+                        self.emit_backlog_settle_for_sharded_reps(
+                            &request.stream,
+                            &reps,
+                            "reclaim",
+                        )
+                        .await;
                         for j in &jobs {
                             self.emit_leased(
                                 &request.stream,
@@ -931,6 +1225,13 @@ impl QueueService {
                                     error: Some(e),
                                 };
                             }
+                            self.emit_backlog_settle_for_terminal_ops(
+                                &request.stream,
+                                queue.as_ref(),
+                                &ops,
+                                "reclaim",
+                            )
+                            .await;
                             for j in &jobs {
                                 self.emit_leased(
                                     &request.stream,
@@ -979,6 +1280,9 @@ impl QueueService {
                 node: NodeId(request.worker_node),
                 instance: request.worker_instance,
             };
+            let dedup_key = self
+                .peek_lease_dedup(&request.stream, LeaseId(request.lease_id))
+                .await;
             if let Some(sharded) = self.sharded_stream(&request.stream) {
                 match sharded
                     .ack_replicated_sharded(worker, LeaseId(request.lease_id))
@@ -996,6 +1300,11 @@ impl QueueService {
                             std::slice::from_ref(&rep),
                         );
                         self.emit_acked(&request.stream, request.lease_id, request.worker_node);
+                        self.emit_backlog_settle(
+                            &request.stream,
+                            dedup_key.clone(),
+                            BacklogSettleOutcome::Done,
+                        );
                         return QueueAckReply { error: None };
                     }
                     Err(e) => {
@@ -1017,6 +1326,11 @@ impl QueueService {
                         }
                         self.evict_prefetch_ack_ops(&request.stream, &ops);
                         self.emit_acked(&request.stream, request.lease_id, request.worker_node);
+                        self.emit_backlog_settle(
+                            &request.stream,
+                            dedup_key,
+                            BacklogSettleOutcome::Done,
+                        );
                         QueueAckReply { error: None }
                     }
                     Err(e) => QueueAckReply {
@@ -1053,6 +1367,12 @@ impl QueueService {
                     .await
                 {
                     Ok(rep) => {
+                        self.emit_backlog_settle_for_sharded_reps(
+                            &request.stream,
+                            std::slice::from_ref(&rep),
+                            "nack",
+                        )
+                        .await;
                         if let Err(e) = self.replicate_sharded(&request.stream, &[rep]).await {
                             return QueueNackReply { error: Some(e) };
                         }
@@ -1076,6 +1396,13 @@ impl QueueService {
                             if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
                                 return QueueNackReply { error: Some(e) };
                             }
+                            self.emit_backlog_settle_for_terminal_ops(
+                                &request.stream,
+                                queue.as_ref(),
+                                &ops,
+                                "nack",
+                            )
+                            .await;
                             QueueNackReply { error: None }
                         }
                         Err(e) => QueueNackReply {
@@ -1097,6 +1424,66 @@ impl QueueService {
             {
                 Ok(reply) => reply,
                 Err(e) => QueueNackReply { error: Some(e) },
+            }
+        }
+    }
+
+    async fn handle_extend_lease(&self, request: QueueExtendLeaseRequest) -> QueueExtendLeaseReply {
+        if self.state.is_leader() {
+            let worker = WorkerId {
+                node: NodeId(request.worker_node),
+                instance: request.worker_instance,
+            };
+            if let Some(sharded) = self.sharded_stream(&request.stream) {
+                match sharded
+                    .extend_lease_replicated_sharded(worker, LeaseId(request.lease_id))
+                    .await
+                {
+                    Ok(rep) => {
+                        if let Err(e) = self.replicate_sharded(&request.stream, &[rep]).await {
+                            return QueueExtendLeaseReply { error: Some(e) };
+                        }
+                        return QueueExtendLeaseReply { error: None };
+                    }
+                    Err(e) => {
+                        return QueueExtendLeaseReply {
+                            error: Some(e.to_string()),
+                        };
+                    }
+                }
+            }
+            match self.local_stream(&request.stream) {
+                Err(e) => QueueExtendLeaseReply { error: Some(e) },
+                Ok(queue) => {
+                    match queue
+                        .extend_lease_replicated(worker, LeaseId(request.lease_id))
+                        .await
+                    {
+                        Ok(ops) => {
+                            if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
+                                return QueueExtendLeaseReply { error: Some(e) };
+                            }
+                            QueueExtendLeaseReply { error: None }
+                        }
+                        Err(e) => QueueExtendLeaseReply {
+                            error: Some(e.to_string()),
+                        },
+                    }
+                }
+            }
+        } else {
+            let transport = Arc::clone(&self.transport);
+            let request = request.clone();
+            match self
+                .forward_leader(move |leader| {
+                    Box::pin(async move {
+                        send_queue_extend_lease(transport.as_ref(), leader, &request).await
+                    })
+                })
+                .await
+            {
+                Ok(reply) => reply,
+                Err(e) => QueueExtendLeaseReply { error: Some(e) },
             }
         }
     }
@@ -1279,6 +1666,167 @@ impl QueueService {
             }
         }
     }
+
+    async fn handle_list_jobs(&self, request: QueueListJobsRequest) -> QueueListJobsReply {
+        if self.state.is_leader() {
+            let filter = filter_from_list_request(&request);
+            let page = if let Some(sharded) = self.sharded_stream(&request.stream) {
+                sharded.list_jobs(filter).await
+            } else {
+                match self.local_stream(&request.stream) {
+                    Err(e) => {
+                        return QueueListJobsReply {
+                            jobs: Vec::new(),
+                            has_more: false,
+                            error: Some(e),
+                        };
+                    }
+                    Ok(queue) => queue.list_jobs(filter).await,
+                }
+            };
+            match page {
+                Ok(page) => QueueListJobsReply {
+                    jobs: page
+                        .jobs
+                        .into_iter()
+                        .map(job_status_to_list_entry)
+                        .collect(),
+                    has_more: page.has_more,
+                    error: None,
+                },
+                Err(e) => QueueListJobsReply {
+                    jobs: Vec::new(),
+                    has_more: false,
+                    error: Some(e.to_string()),
+                },
+            }
+        } else {
+            let transport = Arc::clone(&self.transport);
+            let request = request.clone();
+            match self
+                .forward_leader(move |leader| {
+                    Box::pin(async move {
+                        send_queue_list_jobs(transport.as_ref(), leader, &request).await
+                    })
+                })
+                .await
+            {
+                Ok(reply) => reply,
+                Err(e) => QueueListJobsReply {
+                    jobs: Vec::new(),
+                    has_more: false,
+                    error: Some(e),
+                },
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn handle_requeue_dead_letter_batch(
+        &self,
+        request: QueueRequeueDeadLetterBatchRequest,
+    ) -> QueueRequeueDeadLetterBatchReply {
+        if request.job_ids.len() > DEFAULT_QUEUE_BATCH_MAX {
+            return QueueRequeueDeadLetterBatchReply {
+                requeued: Vec::new(),
+                failures: Vec::new(),
+                error: Some(format!(
+                    "batch size {} exceeds max {DEFAULT_QUEUE_BATCH_MAX}",
+                    request.job_ids.len()
+                )),
+            };
+        }
+        if self.state.is_leader() {
+            let job_ids: Vec<JobId> = request.job_ids.iter().map(|id| JobId(*id)).collect();
+            if let Some(sharded) = self.sharded_stream(&request.stream) {
+                match sharded
+                    .requeue_dead_letter_batch_replicated_sharded(&job_ids)
+                    .await
+                {
+                    Ok((requeued, failures, reps)) => {
+                        if let Err(e) = self.replicate_sharded(&request.stream, &reps).await {
+                            return QueueRequeueDeadLetterBatchReply {
+                                requeued: Vec::new(),
+                                failures: Vec::new(),
+                                error: Some(e),
+                            };
+                        }
+                        return QueueRequeueDeadLetterBatchReply {
+                            requeued: requeued.into_iter().map(|id| id.0).collect(),
+                            failures: failures
+                                .into_iter()
+                                .map(|(id, err)| QueueRequeueFailureWire {
+                                    job_id: id.0,
+                                    error: err.to_string(),
+                                })
+                                .collect(),
+                            error: None,
+                        };
+                    }
+                    Err(e) => {
+                        return QueueRequeueDeadLetterBatchReply {
+                            requeued: Vec::new(),
+                            failures: Vec::new(),
+                            error: Some(e.to_string()),
+                        };
+                    }
+                }
+            }
+            match self.local_stream(&request.stream) {
+                Err(e) => QueueRequeueDeadLetterBatchReply {
+                    requeued: Vec::new(),
+                    failures: Vec::new(),
+                    error: Some(e),
+                },
+                Ok(queue) => match queue.requeue_dead_letter_batch_replicated(&job_ids).await {
+                    Ok((requeued, failures, ops)) => {
+                        if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
+                            return QueueRequeueDeadLetterBatchReply {
+                                requeued: Vec::new(),
+                                failures: Vec::new(),
+                                error: Some(e),
+                            };
+                        }
+                        QueueRequeueDeadLetterBatchReply {
+                            requeued: requeued.into_iter().map(|id| id.0).collect(),
+                            failures: failures
+                                .into_iter()
+                                .map(|(id, err)| QueueRequeueFailureWire {
+                                    job_id: id.0,
+                                    error: err.to_string(),
+                                })
+                                .collect(),
+                            error: None,
+                        }
+                    }
+                    Err(e) => QueueRequeueDeadLetterBatchReply {
+                        requeued: Vec::new(),
+                        failures: Vec::new(),
+                        error: Some(e.to_string()),
+                    },
+                },
+            }
+        } else {
+            let transport = Arc::clone(&self.transport);
+            let request = request.clone();
+            match self
+                .forward_leader(move |leader| {
+                    Box::pin(async move {
+                        send_queue_requeue_dead_letter_batch(transport.as_ref(), leader, &request)
+                            .await
+                    })
+                })
+                .await
+            {
+                Ok(reply) => reply,
+                Err(e) => QueueRequeueDeadLetterBatchReply {
+                    requeued: Vec::new(),
+                    failures: Vec::new(),
+                    error: Some(e),
+                },
+            }
+        }
+    }
 }
 
 impl QueueService {
@@ -1324,6 +1872,10 @@ impl QueueService {
                 let request: QueueNackRequest = decode_body(&body)?;
                 Ok(encode_body(&service.handle_nack(request).await)?)
             }),
+            Route::QueueExtendLease => Box::pin(async move {
+                let request: QueueExtendLeaseRequest = decode_body(&body)?;
+                Ok(encode_body(&service.handle_extend_lease(request).await)?)
+            }),
             Route::QueueMetrics => Box::pin(async move {
                 let request: QueueMetricsRequest = decode_body(&body)?;
                 Ok(encode_body(&service.handle_metrics(request).await)?)
@@ -1332,10 +1884,20 @@ impl QueueService {
                 let request: QueueJobStatusRequest = decode_body(&body)?;
                 Ok(encode_body(&service.handle_job_status(request).await)?)
             }),
+            Route::QueueListJobs => Box::pin(async move {
+                let request: QueueListJobsRequest = decode_body(&body)?;
+                Ok(encode_body(&service.handle_list_jobs(request).await)?)
+            }),
             Route::QueueRequeueDeadLetter => Box::pin(async move {
                 let request: crafty_proto::QueueRequeueDeadLetterRequest = decode_body(&body)?;
                 Ok(encode_body(
                     &service.handle_requeue_dead_letter(request).await,
+                )?)
+            }),
+            Route::QueueRequeueDeadLetterBatch => Box::pin(async move {
+                let request: QueueRequeueDeadLetterBatchRequest = decode_body(&body)?;
+                Ok(encode_body(
+                    &service.handle_requeue_dead_letter_batch(request).await,
                 )?)
             }),
             Route::QueueReplicate => Box::pin(async move {
@@ -1439,6 +2001,17 @@ impl JobQueue for ClusterJobQueue {
     ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>> {
         Box::pin(async move {
             self.nack(worker, lease_id).await?;
+            Ok(Vec::new())
+        })
+    }
+
+    fn extend_lease_replicated(
+        &self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> BoxFuture<'_, Result<QueueReplicationOps, QueueError>> {
+        Box::pin(async move {
+            self.extend_lease(worker, lease_id).await?;
             Ok(Vec::new())
         })
     }
@@ -1631,6 +2204,32 @@ impl JobQueue for ClusterJobQueue {
         })
     }
 
+    fn extend_lease(
+        &self,
+        worker: WorkerId,
+        lease_id: LeaseId,
+    ) -> BoxFuture<'_, Result<(), QueueError>> {
+        Box::pin(async move {
+            let leader = self.leader()?;
+            let reply = send_queue_extend_lease(
+                self.transport.as_ref(),
+                leader,
+                &QueueExtendLeaseRequest {
+                    stream: self.stream.clone(),
+                    worker_node: worker.node.0,
+                    worker_instance: worker.instance,
+                    lease_id: lease_id.0,
+                },
+            )
+            .await
+            .map_err(|e| QueueError::Backend(e.to_string()))?;
+            if let Some(err) = reply.error {
+                return Err(QueueError::Backend(err));
+            }
+            Ok(())
+        })
+    }
+
     fn metrics(&self) -> BoxFuture<'_, Result<QueueMetrics, QueueError>> {
         Box::pin(async move {
             let leader = self.leader()?;
@@ -1702,6 +2301,79 @@ impl JobQueue for ClusterJobQueue {
         })
     }
 
+    fn list_jobs(
+        &self,
+        filter: JobListFilter,
+    ) -> BoxFuture<'_, Result<crate::JobListPage, QueueError>> {
+        Box::pin(async move {
+            let leader = self.leader()?;
+            let reply = send_queue_list_jobs(
+                self.transport.as_ref(),
+                leader,
+                &QueueListJobsRequest {
+                    stream: self.stream.clone(),
+                    lifecycle: filter.lifecycle.map(|l| match l {
+                        JobLifecycle::Pending => QueueJobLifecycleWire::Pending,
+                        JobLifecycle::Leased => QueueJobLifecycleWire::Leased,
+                        JobLifecycle::Delayed => QueueJobLifecycleWire::Delayed,
+                        JobLifecycle::DeadLetter => QueueJobLifecycleWire::DeadLetter,
+                    }),
+                    min_attempts: filter.min_attempts,
+                    dedup_key: filter.dedup_key.clone(),
+                    limit: u32::try_from(filter.effective_limit()).unwrap_or(u32::MAX),
+                    after_job_id: filter.after_job_id.map_or(0, |id| id.0),
+                },
+            )
+            .await
+            .map_err(|e| QueueError::Backend(e.to_string()))?;
+            if let Some(err) = reply.error {
+                return Err(QueueError::Backend(err));
+            }
+            Ok(crate::JobListPage {
+                jobs: reply
+                    .jobs
+                    .into_iter()
+                    .map(|entry| JobStatus {
+                        job_id: JobId(entry.job_id),
+                        lifecycle: match entry.lifecycle {
+                            QueueJobLifecycleWire::Pending => JobLifecycle::Pending,
+                            QueueJobLifecycleWire::Leased => JobLifecycle::Leased,
+                            QueueJobLifecycleWire::Delayed => JobLifecycle::Delayed,
+                            QueueJobLifecycleWire::DeadLetter => JobLifecycle::DeadLetter,
+                        },
+                        payload_len: entry.payload_len,
+                        priority: entry.priority,
+                        leased_by: match (entry.leased_worker_node, entry.leased_worker_instance) {
+                            (Some(node), Some(instance)) => Some(WorkerId {
+                                node: NodeId(node),
+                                instance,
+                            }),
+                            _ => None,
+                        },
+                        attempts: entry.attempts,
+                        max_attempts: entry.max_attempts,
+                        dedup_key: entry.dedup_key,
+                    })
+                    .collect(),
+                has_more: reply.has_more,
+            })
+        })
+    }
+
+    fn requeue_dead_letter_batch_replicated<'a>(
+        &'a self,
+        job_ids: &'a [JobId],
+    ) -> BoxFuture<
+        'a,
+        Result<(Vec<JobId>, Vec<(JobId, QueueError)>, QueueReplicationOps), QueueError>,
+    > {
+        let ids: Vec<JobId> = job_ids.to_vec();
+        Box::pin(async move {
+            let result = self.requeue_dead_letter_batch(&ids).await?;
+            Ok((result.requeued, result.failures, Vec::new()))
+        })
+    }
+
     fn requeue_dead_letter(&self, job_id: JobId) -> BoxFuture<'_, Result<(), QueueError>> {
         Box::pin(async move {
             let leader = self.leader()?;
@@ -1719,6 +2391,37 @@ impl JobQueue for ClusterJobQueue {
                 return Err(QueueError::Backend(err));
             }
             Ok(())
+        })
+    }
+
+    fn requeue_dead_letter_batch(
+        &self,
+        job_ids: &[JobId],
+    ) -> BoxFuture<'_, Result<crate::BatchRequeueResult, QueueError>> {
+        let ids: Vec<u64> = job_ids.iter().map(|id| id.0).collect();
+        Box::pin(async move {
+            let leader = self.leader()?;
+            let reply = send_queue_requeue_dead_letter_batch(
+                self.transport.as_ref(),
+                leader,
+                &QueueRequeueDeadLetterBatchRequest {
+                    stream: self.stream.clone(),
+                    job_ids: ids,
+                },
+            )
+            .await
+            .map_err(|e| QueueError::Backend(e.to_string()))?;
+            if let Some(err) = reply.error {
+                return Err(QueueError::Backend(err));
+            }
+            Ok(crate::BatchRequeueResult {
+                requeued: reply.requeued.into_iter().map(JobId).collect(),
+                failures: reply
+                    .failures
+                    .into_iter()
+                    .map(|f| (JobId(f.job_id), QueueError::Backend(f.error)))
+                    .collect(),
+            })
         })
     }
 }

@@ -18,6 +18,8 @@ pub use crate::ready::ReadyOpts;
 pub use crate::worker_opts::{WorkerGroup, WorkerOpts, WorkerScale};
 pub use crate::workflow::{WorkflowBuildError, WorkflowBuilder};
 pub use crate::workflow_opts::WorkflowOpts;
+pub use crate::workload::WorkloadRuntime;
+pub use crafty_actor::WorkloadOpts;
 pub use crafty_dashboard::init_tracing;
 pub use crafty_macros::consumer;
 pub use crafty_proto::NodeId;

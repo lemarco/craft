@@ -13,15 +13,19 @@ use crate::clock::{POLL_STEP, advance};
 
 /// Boot a local [`CraftyApp`] for integration tests (no Ctrl-C loop).
 ///
+/// Pass a closure so the large [`CraftyAppBuilder`] is constructed inside this
+/// future (keeps caller test futures under clippy's size threshold).
+///
 /// # Panics
 /// When boot fails.
+#[allow(clippy::large_futures)]
 pub async fn boot_local_app(
-    builder: CraftyAppBuilder,
+    build: impl FnOnce() -> CraftyAppBuilder,
     wait_ready: Option<ReadyOpts>,
 ) -> Arc<CraftyApp> {
     let mut opts = RunOpts::local();
     opts.wait_ready = wait_ready;
-    builder.boot_for_test(opts).await.expect("boot_local_app")
+    build().boot_for_test(opts).await.expect("boot_local_app")
 }
 
 /// Poll until one cluster in `clusters` reports leader, or panic after ~10s.
