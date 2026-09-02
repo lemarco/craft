@@ -30,6 +30,7 @@ use crafty_net::{
 use crafty_proto::{ActorEnvelope, ActorRegistration, DeliverAck, NodeId};
 
 use crate::ActorRegistry;
+use crate::compute_token::{ComputeTokenPool, with_compute_guard};
 use crate::directory::ActorDirectory;
 use crate::directory_policy::{DirectoryPolicy, DirectoryRetry};
 use crate::mailbox_spool::{MailboxSpool, MailboxSpoolId};
@@ -137,6 +138,8 @@ pub struct ClusterMessaging {
     dedup: Arc<Mutex<DedupCache>>,
     directory_policy: DirectoryPolicy,
     directory_retry: DirectoryRetry,
+    /// Optional shared compute pool ([workload governor](../../../docs/decisions/workload-governor.md)).
+    compute_tokens: Option<Arc<ComputeTokenPool>>,
     /// Optional durable outbox/inbox ([`MailboxSpool`]).
     spool: Option<Arc<dyn MailboxSpool>>,
 }
@@ -180,8 +183,22 @@ impl ClusterMessaging {
             dedup: Arc::new(Mutex::new(DedupCache::default())),
             directory_policy,
             directory_retry,
+            compute_tokens: None,
             spool: None,
         }
+    }
+
+    /// Attach the process-wide compute token pool for actor ask execution.
+    #[must_use]
+    pub fn with_compute_tokens(mut self, pool: Arc<ComputeTokenPool>) -> Self {
+        self.compute_tokens = Some(pool);
+        self
+    }
+
+    /// Whether a [`ComputeTokenPool`] is attached for actor ask.
+    #[must_use]
+    pub fn has_compute_tokens(&self) -> bool {
+        self.compute_tokens.is_some()
     }
 
     /// Enable write-ahead outbox/inbox persistence for cross-node delivery.
@@ -204,7 +221,13 @@ impl ClusterMessaging {
         };
         if let Ok(rows) = spool.list_inbox(64) {
             for (id, envelope) in rows {
-                let ack = serve_envelope(&self.registry, &self.dedup, &envelope).await;
+                let ack = serve_envelope(
+                    &self.registry,
+                    &self.dedup,
+                    &envelope,
+                    self.compute_tokens.as_ref(),
+                )
+                .await;
                 if ack.delivered {
                     let _ = spool.remove_inbox(id);
                 }
@@ -352,7 +375,13 @@ impl ClusterMessaging {
     /// reply. Called by the `/actor/deliver` handler.
     pub async fn serve_deliver(&self, envelope: &ActorEnvelope) -> DeliverAck {
         let inbox_id = self.spool_inbound(envelope);
-        let ack = serve_envelope(&self.registry, &self.dedup, envelope).await;
+        let ack = serve_envelope(
+            &self.registry,
+            &self.dedup,
+            envelope,
+            self.compute_tokens.as_ref(),
+        )
+        .await;
         if ack.delivered {
             self.spool_clear_inbound(inbox_id);
         }
@@ -470,12 +499,15 @@ impl ClusterMessaging {
             let rx =
                 self.registry
                     .deliver_local_ask(&target.id.name, target.id.instance, &payload)?;
-            return match tokio::time::timeout(REMOTE_ASK_TIMEOUT, rx).await {
-                Ok(Ok(Ok(reply))) => Ok(reply),
-                Ok(Ok(Err(reason))) => Err(AskError::ReplyEncode { reason }),
-                Ok(Err(_)) => Err(AskError::NoReply),
-                Err(_) => Err(AskError::Timeout(REMOTE_ASK_TIMEOUT)),
-            };
+            return with_compute_guard(self.compute_tokens.as_ref(), async {
+                match tokio::time::timeout(REMOTE_ASK_TIMEOUT, rx).await {
+                    Ok(Ok(Ok(reply))) => Ok(reply),
+                    Ok(Ok(Err(reason))) => Err(AskError::ReplyEncode { reason }),
+                    Ok(Err(_)) => Err(AskError::NoReply),
+                    Err(_) => Err(AskError::Timeout(REMOTE_ASK_TIMEOUT)),
+                }
+            })
+            .await;
         }
         let node = target.id.node;
         let envelope = ActorEnvelope {
@@ -555,12 +587,13 @@ async fn serve_envelope(
     registry: &ActorRegistry,
     dedup: &Mutex<DedupCache>,
     envelope: &ActorEnvelope,
+    compute_tokens: Option<&Arc<ComputeTokenPool>>,
 ) -> DeliverAck {
     if !envelope.reply_expected {
         return deliver_cast(registry, envelope);
     }
     let Some(origin) = envelope.origin else {
-        return serve_ask(registry, envelope).await;
+        return serve_ask(registry, envelope, compute_tokens).await;
     };
     let key = (origin, envelope.req_id);
     if let Some(reply) = dedup.lock().unwrap().get(&key) {
@@ -570,7 +603,7 @@ async fn serve_envelope(
             reply,
         };
     }
-    let ack = serve_ask(registry, envelope).await;
+    let ack = serve_ask(registry, envelope, compute_tokens).await;
     // Record only once the message reached a mailbox: a delivery that never ran
     // (unknown group / no instance) stays retryable against a later placement.
     if ack.delivered {
@@ -597,7 +630,11 @@ fn deliver_cast(registry: &ActorRegistry, envelope: &ActorEnvelope) -> DeliverAc
 
 /// Deliver an `ask` envelope to a local instance and await the encoded reply
 /// (bounded by [`REMOTE_ASK_TIMEOUT`]).
-async fn serve_ask(registry: &ActorRegistry, envelope: &ActorEnvelope) -> DeliverAck {
+async fn serve_ask(
+    registry: &ActorRegistry,
+    envelope: &ActorEnvelope,
+    compute_tokens: Option<&Arc<ComputeTokenPool>>,
+) -> DeliverAck {
     let rx = match registry.deliver_local_ask(
         &envelope.to.name,
         envelope.to.instance,
@@ -612,31 +649,34 @@ async fn serve_ask(registry: &ActorRegistry, envelope: &ActorEnvelope) -> Delive
             };
         }
     };
-    match tokio::time::timeout(REMOTE_ASK_TIMEOUT, rx).await {
-        Ok(Ok(Ok(reply))) => DeliverAck {
-            delivered: true,
-            error: None,
-            reply: Some(reply),
-        },
-        // The handler replied, but the reply value failed to serialize: a real
-        // error, surfaced instead of masquerading as a dropped reply.
-        Ok(Ok(Err(reason))) => DeliverAck {
-            delivered: true,
-            error: Some(format!("reply encode failed: {reason}")),
-            reply: None,
-        },
-        // Delivered, but the actor dropped the reply port before answering.
-        Ok(Err(_)) => DeliverAck {
-            delivered: true,
-            error: Some("actor dropped the reply".to_string()),
-            reply: None,
-        },
-        Err(_) => DeliverAck {
-            delivered: true,
-            error: Some("actor did not reply before the deadline".to_string()),
-            reply: None,
-        },
-    }
+    with_compute_guard(compute_tokens, async {
+        match tokio::time::timeout(REMOTE_ASK_TIMEOUT, rx).await {
+            Ok(Ok(Ok(reply))) => DeliverAck {
+                delivered: true,
+                error: None,
+                reply: Some(reply),
+            },
+            // The handler replied, but the reply value failed to serialize: a real
+            // error, surfaced instead of masquerading as a dropped reply.
+            Ok(Ok(Err(reason))) => DeliverAck {
+                delivered: true,
+                error: Some(format!("reply encode failed: {reason}")),
+                reply: None,
+            },
+            // Delivered, but the actor dropped the reply port before answering.
+            Ok(Err(_)) => DeliverAck {
+                delivered: true,
+                error: Some("actor dropped the reply".to_string()),
+                reply: None,
+            },
+            Err(_) => DeliverAck {
+                delivered: true,
+                error: Some("actor did not reply before the deadline".to_string()),
+                reply: None,
+            },
+        }
+    })
+    .await
 }
 
 /// Periodically replay pending mailbox spool rows until `stop` is set.
@@ -668,10 +708,12 @@ impl RequestHandler for ClusterMessaging {
                 let registry = self.registry.clone();
                 let dedup = Arc::clone(&self.dedup);
                 let spool = self.spool.clone();
+                let compute_tokens = self.compute_tokens.clone();
                 Box::pin(async move {
                     let envelope: ActorEnvelope = decode_body(&body)?;
                     let inbox_id = spool.as_ref().and_then(|s| s.push_inbox(&envelope).ok());
-                    let ack = serve_envelope(&registry, &dedup, &envelope).await;
+                    let ack =
+                        serve_envelope(&registry, &dedup, &envelope, compute_tokens.as_ref()).await;
                     if ack.delivered
                         && let (Some(s), Some(id)) = (spool.as_ref(), inbox_id)
                     {

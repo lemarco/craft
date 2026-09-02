@@ -574,6 +574,7 @@ pub trait ActorObserver: Send + Sync {
 /// registry outlives the telemetry wiring in the builder). Read once per
 /// instance task at launch.
 type ObserverHook = Arc<Mutex<Option<Arc<dyn ActorObserver>>>>;
+type ComputeTokenHook = Arc<Mutex<Option<Arc<crate::ComputeTokenPool>>>>;
 
 fn mailbox_depth_u64(depth: i64) -> u64 {
     depth.max(0).cast_unsigned()
@@ -1152,10 +1153,29 @@ impl<A: UserActor> WireIngress for PoolInner<A> {
 // Public handles
 // ---------------------------------------------------------------------------
 
+async fn await_typed_ask<R>(
+    compute_tokens: &ComputeTokenHook,
+    rx: oneshot::Receiver<R>,
+) -> Result<R, AskError>
+where
+    R: Send + 'static,
+{
+    let pool = compute_tokens.lock().unwrap().clone();
+    crate::compute_token::with_compute_guard(pool.as_ref(), async {
+        match tokio::time::timeout(ASK_TIMEOUT, rx).await {
+            Ok(Ok(reply)) => Ok(reply),
+            Ok(Err(_)) => Err(AskError::NoReply),
+            Err(_) => Err(AskError::Timeout(ASK_TIMEOUT)),
+        }
+    })
+    .await
+}
+
 /// A handle to a single named actor (a group of one). Cheap to clone.
 #[derive(Clone)]
 pub struct ActorRef<A: UserActor> {
     pool: Arc<PoolInner<A>>,
+    compute_tokens: ComputeTokenHook,
 }
 
 impl<A: UserActor> std::fmt::Debug for ActorRef<A> {
@@ -1163,7 +1183,7 @@ impl<A: UserActor> std::fmt::Debug for ActorRef<A> {
         f.debug_struct("ActorRef")
             .field("name", &self.pool.name)
             .field("alive", &(self.pool.len() > 0))
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -1189,11 +1209,7 @@ impl<A: UserActor> ActorRef<A> {
     {
         let (tx, rx) = oneshot::channel();
         self.pool.send_rr(build(RpcReplyPort::local(tx)))?;
-        match tokio::time::timeout(ASK_TIMEOUT, rx).await {
-            Ok(Ok(reply)) => Ok(reply),
-            Ok(Err(_)) => Err(AskError::NoReply),
-            Err(_) => Err(AskError::Timeout(ASK_TIMEOUT)),
-        }
+        await_typed_ask(&self.compute_tokens, rx).await
     }
 
     /// Whether the actor still has a live instance.
@@ -1226,6 +1242,7 @@ impl<A: UserActor> ActorRef<A> {
 #[derive(Clone)]
 pub struct PoolRef<A: UserActor> {
     pool: Arc<PoolInner<A>>,
+    compute_tokens: ComputeTokenHook,
 }
 
 impl<A: UserActor> std::fmt::Debug for PoolRef<A> {
@@ -1233,7 +1250,7 @@ impl<A: UserActor> std::fmt::Debug for PoolRef<A> {
         f.debug_struct("PoolRef")
             .field("name", &self.pool.name)
             .field("instances", &self.pool.len())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -1267,11 +1284,7 @@ impl<A: UserActor> PoolRef<A> {
     {
         let (tx, rx) = oneshot::channel();
         self.pool.send_rr(build(RpcReplyPort::local(tx)))?;
-        match tokio::time::timeout(ASK_TIMEOUT, rx).await {
-            Ok(Ok(reply)) => Ok(reply),
-            Ok(Err(_)) => Err(AskError::NoReply),
-            Err(_) => Err(AskError::Timeout(ASK_TIMEOUT)),
-        }
+        await_typed_ask(&self.compute_tokens, rx).await
     }
 
     /// Number of live instances.
@@ -1336,6 +1349,8 @@ pub struct ActorRegistry {
     dev_multi_workers: bool,
     /// Shared with every spawned pool so a later-installed observer still fires.
     observer: ObserverHook,
+    /// Optional compute pool for typed [`ActorRef::ask`] (workload governor).
+    compute_tokens: ComputeTokenHook,
     /// Previous cumulative message counts for per-group rate derivation.
     message_rate_sampler: Arc<Mutex<HashMap<String, (u64, Instant)>>>,
 }
@@ -1354,6 +1369,7 @@ impl ActorRegistry {
             groups: Arc::new(Mutex::new(HashMap::new())),
             dev_multi_workers: false,
             observer: Arc::new(Mutex::new(None)),
+            compute_tokens: Arc::new(Mutex::new(None)),
             message_rate_sampler: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -1366,6 +1382,7 @@ impl ActorRegistry {
             groups: Arc::new(Mutex::new(HashMap::new())),
             dev_multi_workers: true,
             observer: Arc::new(Mutex::new(None)),
+            compute_tokens: Arc::new(Mutex::new(None)),
             message_rate_sampler: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -1379,6 +1396,14 @@ impl ActorRegistry {
     /// If the internal mutex is poisoned.
     pub fn set_observer(&self, observer: Arc<dyn ActorObserver>) {
         *self.observer.lock().unwrap() = Some(observer);
+    }
+
+    /// Attach the process-wide compute token pool for typed [`ActorRef::ask`].
+    ///
+    /// # Panics
+    /// If the internal mutex is poisoned.
+    pub fn set_compute_tokens(&self, pool: Arc<crate::ComputeTokenPool>) {
+        *self.compute_tokens.lock().unwrap() = Some(pool);
     }
 
     /// Snapshot per-group runtime counters for metrics sampling (Track H). One
@@ -1509,7 +1534,10 @@ impl ActorRegistry {
             return Err(SpawnError::Start(Box::new(e)));
         }
         self.insert(name, &pool);
-        Ok(ActorRef { pool })
+        Ok(ActorRef {
+            pool,
+            compute_tokens: Arc::clone(&self.compute_tokens),
+        })
     }
 
     /// Spawn a supervised singleton whose handler errors are governed by
@@ -1535,7 +1563,10 @@ impl ActorRegistry {
             return Err(SpawnError::Start(Box::new(e)));
         }
         self.insert(name, &pool);
-        Ok(ActorRef { pool })
+        Ok(ActorRef {
+            pool,
+            compute_tokens: Arc::clone(&self.compute_tokens),
+        })
     }
 
     /// Spawn a single named actor and restore migratable state into it from a
@@ -1556,7 +1587,10 @@ impl ActorRegistry {
         let pool = PoolInner::<A>::new(name, self.observer.clone());
         pool.spawn_instance_restoring(config, snapshot)?;
         self.insert(name, &pool);
-        Ok(ActorRef { pool })
+        Ok(ActorRef {
+            pool,
+            compute_tokens: Arc::clone(&self.compute_tokens),
+        })
     }
 
     /// Spawn a pool of `count` identical actors under `name`.
@@ -1590,7 +1624,10 @@ impl ActorRegistry {
             }
         }
         self.insert(name, &pool);
-        Ok(PoolRef { pool })
+        Ok(PoolRef {
+            pool,
+            compute_tokens: Arc::clone(&self.compute_tokens),
+        })
     }
 
     /// Grow or shrink the pool `name` to exactly `count` instances.
@@ -1619,19 +1656,28 @@ impl ActorRegistry {
         pool.scale_to(count, &config)
             .await
             .map_err(|e| ScaleError::Start(Box::new(e)))?;
-        Ok(PoolRef { pool })
+        Ok(PoolRef {
+            pool,
+            compute_tokens: Arc::clone(&self.compute_tokens),
+        })
     }
 
     /// Get a handle to the singleton actor `name`, if registered as `A`.
     #[must_use]
     pub fn get<A: UserActor>(&self, name: &str) -> Option<ActorRef<A>> {
-        self.downcast::<A>(name).map(|pool| ActorRef { pool })
+        self.downcast::<A>(name).map(|pool| ActorRef {
+            pool,
+            compute_tokens: Arc::clone(&self.compute_tokens),
+        })
     }
 
     /// Get a handle to the pool `name`, if registered as `A`.
     #[must_use]
     pub fn pool<A: UserActor>(&self, name: &str) -> Option<PoolRef<A>> {
-        self.downcast::<A>(name).map(|pool| PoolRef { pool })
+        self.downcast::<A>(name).map(|pool| PoolRef {
+            pool,
+            compute_tokens: Arc::clone(&self.compute_tokens),
+        })
     }
 
     /// Stop and remove the actor group `name`.
