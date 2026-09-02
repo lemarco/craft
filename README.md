@@ -24,9 +24,9 @@
 
 | | |
 |---|---|
-| **Version** | `0.6.0` |
+| **Version** | `0.6.1` |
 | **Distribution** | Published on [crates.io](https://crates.io/crates/crafty) — E2E/chaos, product showcases |
-| **Release** | v0.6.0 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/crafty/0.6.0](https://docs.rs/crafty/0.6.0) |
+| **Release** | v0.6.1 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/crafty/0.6.1](https://docs.rs/crafty/0.6.1) |
 | **Full status** | [docs/status.md](docs/status.md) |
 
 ### Highlights
