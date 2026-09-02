@@ -19,6 +19,7 @@ pub mod queue;
 pub mod queue_autoscale;
 pub mod raft;
 pub mod saga_journal;
+pub mod topic;
 pub mod two_phase;
 pub mod two_phase_journal;
 
@@ -43,10 +44,13 @@ pub use leave::{LeaveRejection, LeaveRequest, LeaveResponse};
 pub use queue::{
     QueueAckBatchReply, QueueAckBatchRequest, QueueAckReply, QueueAckRequest, QueueBatchEnqueueJob,
     QueueEnqueueBatchReply, QueueEnqueueBatchRequest, QueueEnqueueReply, QueueEnqueueRequest,
-    QueueJobLifecycleWire, QueueJobStatusReply, QueueJobStatusRequest, QueueLeaseReply,
-    QueueLeaseRequest, QueueLeasedJobWire, QueueMetricsReply, QueueMetricsRequest, QueueNackReply,
-    QueueNackRequest, QueueReplicateOp, QueueReplicateReply, QueueReplicateRequest,
-    QueueRequeueDeadLetterReply, QueueRequeueDeadLetterRequest, RecurringScheduleWire,
+    QueueExtendLeaseReply, QueueExtendLeaseRequest, QueueJobLifecycleWire, QueueJobListEntryWire,
+    QueueJobStatusReply, QueueJobStatusRequest, QueueLeaseReply, QueueLeaseRequest,
+    QueueLeasedJobWire, QueueListJobsReply, QueueListJobsRequest, QueueMetricsReply,
+    QueueMetricsRequest, QueueNackReply, QueueNackRequest, QueueReplicateOp, QueueReplicateReply,
+    QueueReplicateRequest, QueueRequeueDeadLetterBatchReply, QueueRequeueDeadLetterBatchRequest,
+    QueueRequeueDeadLetterReply, QueueRequeueDeadLetterRequest, QueueRequeueFailureWire,
+    RecurringScheduleWire,
 };
 pub use queue_autoscale::{
     AutoscalePolicyWire, MembershipAutoscalePolicyWire, QueueAutoscalePolicyCommand,
@@ -56,6 +60,13 @@ pub use raft::{
     LogEntry, Membership, RaftRpc, RaftRpcReply, RequestVote, RequestVoteReply,
 };
 pub use saga_journal::SagaJournalCommand;
+pub use topic::{
+    DEFAULT_TOPIC_MAX_EVENT_AGE_MS, DEFAULT_TOPIC_MAX_RETAINED_EVENTS, TopicAckReply,
+    TopicAckRequest, TopicLeaseReply, TopicLeaseRequest, TopicLeasedEventWire, TopicMetricsReply,
+    TopicMetricsRequest, TopicNackReply, TopicNackRequest, TopicPublishReply, TopicPublishRequest,
+    TopicReplicateOp, TopicReplicateReply, TopicReplicateRequest, TopicSubscriptionMetricsWire,
+    duration_to_ms,
+};
 pub use two_phase::{TwoPhaseAbortCommand, TwoPhasePrepareCommand};
 pub use two_phase_journal::TwoPhaseJournalCommand;
 

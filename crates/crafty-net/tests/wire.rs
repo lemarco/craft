@@ -44,6 +44,7 @@ fn traffic_classes_isolate_peer_consensus_from_the_rest() {
         Route::QueueLease,
         Route::QueueAck,
         Route::QueueNack,
+        Route::QueueExtendLease,
         Route::QueueMetrics,
         Route::QueueJobStatus,
         Route::QueueReplicate,

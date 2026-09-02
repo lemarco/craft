@@ -22,12 +22,17 @@ use crafty_proto::{
     LeaveRequest, LeaveResponse, MigrateReply, MigrateRequest, NodeId, PeerBook,
     QueueAckBatchReply, QueueAckBatchRequest, QueueAckReply, QueueAckRequest,
     QueueEnqueueBatchReply, QueueEnqueueBatchRequest, QueueEnqueueReply, QueueEnqueueRequest,
-    QueueJobStatusReply, QueueJobStatusRequest, QueueLeaseReply, QueueLeaseRequest,
+    QueueExtendLeaseReply, QueueExtendLeaseRequest, QueueJobStatusReply, QueueJobStatusRequest,
+    QueueLeaseReply, QueueLeaseRequest, QueueListJobsReply, QueueListJobsRequest,
     QueueMetricsReply, QueueMetricsRequest, QueueNackReply, QueueNackRequest, QueueReplicateReply,
-    QueueReplicateRequest, QueueRequeueDeadLetterReply, QueueRequeueDeadLetterRequest, RaftRpc,
-    RaftRpcReply, RegisterAck, ScaleReply, ScaleRequest, SpawnReply, SpawnRequest, StopReply,
-    StopRequest, StoreCompareAndSetReply, StoreCompareAndSetRequest, StoreDeleteReply,
-    StoreDeleteRequest, StoreReplicateReply, StoreReplicateRequest, StoreSetReply, StoreSetRequest,
+    QueueReplicateRequest, QueueRequeueDeadLetterBatchReply, QueueRequeueDeadLetterBatchRequest,
+    QueueRequeueDeadLetterReply, QueueRequeueDeadLetterRequest, RaftRpc, RaftRpcReply, RegisterAck,
+    ScaleReply, ScaleRequest, SpawnReply, SpawnRequest, StopReply, StopRequest,
+    StoreCompareAndSetReply, StoreCompareAndSetRequest, StoreDeleteReply, StoreDeleteRequest,
+    StoreReplicateReply, StoreReplicateRequest, StoreSetReply, StoreSetRequest, TopicAckReply,
+    TopicAckRequest, TopicLeaseReply, TopicLeaseRequest, TopicMetricsReply, TopicMetricsRequest,
+    TopicNackReply, TopicNackRequest, TopicPublishReply, TopicPublishRequest, TopicReplicateReply,
+    TopicReplicateRequest,
 };
 
 use crate::route::Route;
@@ -439,6 +444,20 @@ pub async fn send_queue_nack<T: Transport + ?Sized>(
     Ok(decode_body(&response)?)
 }
 
+/// Extend a live lease visibility timeout (`/queue/extend-lease`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_queue_extend_lease<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &QueueExtendLeaseRequest,
+) -> Result<QueueExtendLeaseReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::QueueExtendLease, body).await?;
+    Ok(decode_body(&response)?)
+}
+
 /// Fetch queue depth metrics (`/queue/metrics`).
 ///
 /// # Errors
@@ -483,6 +502,36 @@ pub async fn send_queue_requeue_dead_letter<T: Transport + ?Sized>(
     Ok(decode_body(&response)?)
 }
 
+/// List jobs in a stream with filters (`/queue/list-jobs`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_queue_list_jobs<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &QueueListJobsRequest,
+) -> Result<QueueListJobsReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::QueueListJobs, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Requeue many dead-letter jobs (`/queue/requeue-dead-letter-batch`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_queue_requeue_dead_letter_batch<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &QueueRequeueDeadLetterBatchRequest,
+) -> Result<QueueRequeueDeadLetterBatchReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport
+        .send(peer, Route::QueueRequeueDeadLetterBatch, body)
+        .await?;
+    Ok(decode_body(&response)?)
+}
+
 /// Apply replicated queue mutations from the leader (`/queue/replicate`).
 ///
 /// # Errors
@@ -494,6 +543,90 @@ pub async fn send_queue_replicate<T: Transport + ?Sized>(
 ) -> Result<QueueReplicateReply, TransportError> {
     let body = encode_body(request)?;
     let response = transport.send(peer, Route::QueueReplicate, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Publish one event on the topic leader (`/topic/publish`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_topic_publish<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &TopicPublishRequest,
+) -> Result<TopicPublishReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::TopicPublish, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Lease events for a subscription (`/topic/lease`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_topic_lease<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &TopicLeaseRequest,
+) -> Result<TopicLeaseReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::TopicLease, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Acknowledge a leased event (`/topic/ack`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_topic_ack<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &TopicAckRequest,
+) -> Result<TopicAckReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::TopicAck, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Negative-acknowledge a leased event (`/topic/nack`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_topic_nack<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &TopicNackRequest,
+) -> Result<TopicNackReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::TopicNack, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Topic depth and lag gauges (`/topic/metrics`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_topic_metrics<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &TopicMetricsRequest,
+) -> Result<TopicMetricsReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::TopicMetrics, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Apply replicated topic mutations from the leader (`/topic/replicate`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_topic_replicate<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &TopicReplicateRequest,
+) -> Result<TopicReplicateReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport.send(peer, Route::TopicReplicate, body).await?;
     Ok(decode_body(&response)?)
 }
 

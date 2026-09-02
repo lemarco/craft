@@ -47,14 +47,32 @@ pub const QUEUE_ACK_PATH: &str = "/raft/v1/queue/ack";
 pub const QUEUE_ACK_BATCH_PATH: &str = "/raft/v1/queue/ack-batch";
 /// Return a leased job to pending.
 pub const QUEUE_NACK_PATH: &str = "/raft/v1/queue/nack";
+/// Extend a live lease (worker heartbeat during long handlers).
+pub const QUEUE_EXTEND_LEASE_PATH: &str = "/raft/v1/queue/extend-lease";
 /// Queue depth gauges for autoscale / observability.
 pub const QUEUE_METRICS_PATH: &str = "/raft/v1/queue/metrics";
 /// Lookup job metadata by id.
 pub const QUEUE_JOB_STATUS_PATH: &str = "/raft/v1/queue/job-status";
 /// Requeue a dead-letter job.
 pub const QUEUE_REQUEUE_DEAD_LETTER_PATH: &str = "/raft/v1/queue/requeue-dead-letter";
+/// List jobs in a stream with filters (admin / ops).
+pub const QUEUE_LIST_JOBS_PATH: &str = "/raft/v1/queue/list-jobs";
+/// Requeue many dead-letter jobs in one leader transaction.
+pub const QUEUE_REQUEUE_DEAD_LETTER_BATCH_PATH: &str = "/raft/v1/queue/requeue-dead-letter-batch";
 /// Leader → follower replication of queue mutations (failover durability).
 pub const QUEUE_REPLICATE_PATH: &str = "/raft/v1/queue/replicate";
+/// Publish one event on a durable topic ([event-topics](../../../docs/decisions/event-topics.md)).
+pub const TOPIC_PUBLISH_PATH: &str = "/raft/v1/topic/publish";
+/// Lease events for a named subscription.
+pub const TOPIC_LEASE_PATH: &str = "/raft/v1/topic/lease";
+/// Acknowledge a leased event on a subscription.
+pub const TOPIC_ACK_PATH: &str = "/raft/v1/topic/ack";
+/// Negative-acknowledge a leased event on a subscription.
+pub const TOPIC_NACK_PATH: &str = "/raft/v1/topic/nack";
+/// Topic depth and subscription lag gauges.
+pub const TOPIC_METRICS_PATH: &str = "/raft/v1/topic/metrics";
+/// Leader → follower replication of topic mutations.
+pub const TOPIC_REPLICATE_PATH: &str = "/raft/v1/topic/replicate";
 /// Set an actor workflow key on the store leader ([actor-state-store](../../../docs/decisions/actor-state-store.md)).
 pub const ACTOR_STORE_SET_PATH: &str = "/raft/v1/actor-store/set";
 /// Delete an actor workflow key on the store leader.
@@ -120,14 +138,32 @@ pub enum Route {
     QueueAckBatch,
     /// [`QUEUE_NACK_PATH`].
     QueueNack,
+    /// [`QUEUE_EXTEND_LEASE_PATH`].
+    QueueExtendLease,
     /// [`QUEUE_METRICS_PATH`].
     QueueMetrics,
     /// [`QUEUE_JOB_STATUS_PATH`].
     QueueJobStatus,
+    /// [`QUEUE_LIST_JOBS_PATH`].
+    QueueListJobs,
     /// [`QUEUE_REQUEUE_DEAD_LETTER_PATH`].
     QueueRequeueDeadLetter,
+    /// [`QUEUE_REQUEUE_DEAD_LETTER_BATCH_PATH`].
+    QueueRequeueDeadLetterBatch,
     /// [`QUEUE_REPLICATE_PATH`].
     QueueReplicate,
+    /// [`TOPIC_PUBLISH_PATH`].
+    TopicPublish,
+    /// [`TOPIC_LEASE_PATH`].
+    TopicLease,
+    /// [`TOPIC_ACK_PATH`].
+    TopicAck,
+    /// [`TOPIC_NACK_PATH`].
+    TopicNack,
+    /// [`TOPIC_METRICS_PATH`].
+    TopicMetrics,
+    /// [`TOPIC_REPLICATE_PATH`].
+    TopicReplicate,
     /// [`ACTOR_STORE_SET_PATH`].
     ActorStoreSet,
     /// [`ACTOR_STORE_DELETE_PATH`].
@@ -140,7 +176,7 @@ pub enum Route {
 
 impl Route {
     /// Every route, in a stable order (handy for building a router or tests).
-    pub const ALL: [Route; 27] = [
+    pub const ALL: [Route; 36] = [
         Route::PeerWire,
         Route::ClientWire,
         Route::ClusterJoin,
@@ -160,10 +196,19 @@ impl Route {
         Route::QueueAck,
         Route::QueueAckBatch,
         Route::QueueNack,
+        Route::QueueExtendLease,
         Route::QueueMetrics,
         Route::QueueJobStatus,
+        Route::QueueListJobs,
         Route::QueueRequeueDeadLetter,
+        Route::QueueRequeueDeadLetterBatch,
         Route::QueueReplicate,
+        Route::TopicPublish,
+        Route::TopicLease,
+        Route::TopicAck,
+        Route::TopicNack,
+        Route::TopicMetrics,
+        Route::TopicReplicate,
         Route::ActorStoreSet,
         Route::ActorStoreDelete,
         Route::ActorStoreCompareAndSet,
@@ -193,10 +238,19 @@ impl Route {
             Route::QueueAck => QUEUE_ACK_PATH,
             Route::QueueAckBatch => QUEUE_ACK_BATCH_PATH,
             Route::QueueNack => QUEUE_NACK_PATH,
+            Route::QueueExtendLease => QUEUE_EXTEND_LEASE_PATH,
             Route::QueueMetrics => QUEUE_METRICS_PATH,
             Route::QueueJobStatus => QUEUE_JOB_STATUS_PATH,
+            Route::QueueListJobs => QUEUE_LIST_JOBS_PATH,
             Route::QueueRequeueDeadLetter => QUEUE_REQUEUE_DEAD_LETTER_PATH,
+            Route::QueueRequeueDeadLetterBatch => QUEUE_REQUEUE_DEAD_LETTER_BATCH_PATH,
             Route::QueueReplicate => QUEUE_REPLICATE_PATH,
+            Route::TopicPublish => TOPIC_PUBLISH_PATH,
+            Route::TopicLease => TOPIC_LEASE_PATH,
+            Route::TopicAck => TOPIC_ACK_PATH,
+            Route::TopicNack => TOPIC_NACK_PATH,
+            Route::TopicMetrics => TOPIC_METRICS_PATH,
+            Route::TopicReplicate => TOPIC_REPLICATE_PATH,
             Route::ActorStoreSet => ACTOR_STORE_SET_PATH,
             Route::ActorStoreDelete => ACTOR_STORE_DELETE_PATH,
             Route::ActorStoreCompareAndSet => ACTOR_STORE_COMPARE_AND_SET_PATH,
@@ -233,10 +287,19 @@ impl Route {
             | Route::QueueAck
             | Route::QueueAckBatch
             | Route::QueueNack
+            | Route::QueueExtendLease
             | Route::QueueMetrics
             | Route::QueueJobStatus
+            | Route::QueueListJobs
             | Route::QueueRequeueDeadLetter
+            | Route::QueueRequeueDeadLetterBatch
             | Route::QueueReplicate
+            | Route::TopicPublish
+            | Route::TopicLease
+            | Route::TopicAck
+            | Route::TopicNack
+            | Route::TopicMetrics
+            | Route::TopicReplicate
             | Route::ActorStoreSet
             | Route::ActorStoreDelete
             | Route::ActorStoreCompareAndSet
