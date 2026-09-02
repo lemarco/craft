@@ -3,7 +3,9 @@
 //! Every run mode is a QUIC cluster member: solo `cargo run` is a one-node seed
 //! (`CRAFTY_ALLOW_JOIN=1`); `./cluster.sh` adds nodes via dynamic join.
 
+mod bridge;
 mod debug;
+mod ledger;
 
 use std::collections::HashMap;
 use std::env;
@@ -11,8 +13,14 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use crafty::{CraftyApp, CraftyConfigure, GatewayOpts, JobOpts, RunOpts, consumer};
+use crafty::{
+    ActorGroupOpts, ConsumerOpts, CraftyApp, CraftyConfigure, GatewayBearerIdentity, GatewayOpts,
+    JobOpts, RunOpts, consumer,
+};
 use crafty_showcase_common::{data_dir, display_addr};
+
+use crate::bridge::register as register_bridge;
+use crate::ledger::LedgerWorker;
 
 static HANDLED: AtomicUsize = AtomicUsize::new(0);
 /// Times the *real* side effect ran. Stays at one per key even under redelivery.
@@ -76,6 +84,11 @@ async fn send_email(payload: &[u8]) -> Result<(), ()> {
     let sent = SENT.fetch_add(1, Ordering::SeqCst) + 1;
     println!("[worker] delivery #{delivery} — {key}: sending email (side effects so far: {sent})");
 
+    // 2b. Delegate durable accounting to a stateful actor (queue → actor bridge).
+    if let Err(e) = bridge::notify_ledger(&key).await {
+        eprintln!("[worker] ledger cast failed: {e}");
+    }
+
     // 3. Record it durably *before* acking.
     MARKERS
         .lock()
@@ -107,15 +120,11 @@ fn server_builder() -> crafty::CraftyAppBuilder {
         .unwrap_or_else(|_| "127.0.0.1:8090".into())
         .parse()
         .expect("gateway");
-    CraftyApp::builder()
+    let mut builder = CraftyApp::builder()
         .data_dir(dir)
+        .actors::<LedgerWorker>("ledger", ActorGroupOpts::new(0))
         .jobs([JobOpts::new(STREAM)
             .lease(Duration::from_secs(300))
-            .consumer(&SendEmailConsumer)
-            .instances(worker_count())
-            .batch(4)
-            .idle_sleep(Duration::from_millis(50))
-            // Applies to HTTP enqueues, which cannot pass per-job options.
             .default_max_attempts(5)
             .http_enqueue(true)])
         .configure(CraftyConfigure {
@@ -124,7 +133,23 @@ fn server_builder() -> crafty::CraftyAppBuilder {
             admin_addr: Some("127.0.0.1:9080".parse().expect("admin")),
             ..CraftyConfigure::default()
         })
-        .gateway(GatewayOpts::new(gateway))
+        .gateway(
+            GatewayOpts::new(gateway)
+                .with_jobs_api(true)
+                .identity(GatewayBearerIdentity::from_env())
+                .protect_product_apis(true),
+        );
+    for instance in 0..worker_count() {
+        builder = builder.consumer(
+            SendEmailConsumer,
+            ConsumerOpts::default()
+                .instance(instance)
+                .batch(4)
+                .idle_sleep(Duration::from_millis(50))
+                .on_app(register_bridge),
+        );
+    }
+    builder
 }
 
 #[tokio::main]

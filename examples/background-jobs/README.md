@@ -6,7 +6,7 @@ Sidekiq-style async work on crafty: clients get **HTTP 202**, jobs survive resta
 
 | Piece | Role |
 |-------|------|
-| This binary | `CraftyApp` + gateway + `#[consumer]` email worker |
+| This binary | `CraftyApp` + gateway + `#[consumer]` email worker + `LedgerWorker` (queue → actor) |
 | [`trigger.sh`](trigger.sh) | Enqueue via HTTP (product gateway, not admin) |
 | [`trigger-idempotent.sh`](trigger-idempotent.sh) | Same job twice with one `?dedup=` key — duplicate enqueue + redelivery |
 | Admin (local) | `:9080` — dashboard in single-process mode |
@@ -104,6 +104,14 @@ so they survive the crash and are visible to whichever node redelivers.
 The stream also sets `.default_max_attempts(5)`, so an HTTP-enqueued job that keeps
 failing lands in the dead letter queue instead of retrying forever.
 
+## Queue → actor bridge
+
+After the email side effect, the consumer **casts** to `LedgerWorker` via
+[`src/bridge.rs`](src/bridge.rs) (`ConsumerOpts::on_app` registers `Arc<CraftyApp>`).
+Watch for `[ledger] recorded …` alongside `[worker] … sending email`.
+
+Guide: [background-jobs § Queue → actor bridge](../../docs/scenarios/background-jobs.md#queue--actor-bridge).
+
 ## Env
 
 | Var | Default | Meaning |
@@ -112,6 +120,7 @@ failing lands in the dead letter queue instead of retrying forever.
 | `CRAFTY_WORKERS` | `1` | Consumer instances **on this node only** (local dev) |
 | `CRAFTY_PEERS` | unset | When set → QUIC cluster mode (`cluster.sh`) |
 | `CRAFTY_DATA_DIR` | `/tmp/crafty-showcase-background-jobs` | redb queue + actor store |
+| `GATEWAY_TOKEN` | unset | When set, product `/jobs/*` routes require Bearer auth |
 | `CRAFTY_SIMULATE_REDELIVERY` | `1` | First delivery of each key fails after the marker is written; `0` disables |
 
 ## Troubleshooting

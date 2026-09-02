@@ -17,10 +17,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use crafty::actor::{UserActor, actor};
 use crafty::{
-    ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayOpts, ReadyOpts,
-    RunOpts,
+    ActorGroupOpts, CraftyApp, CraftyConfigure, CraftyGatewayState, GatewayBearerIdentity,
+    GatewayOpts, ReadyOpts, RunOpts,
 };
-use crafty_showcase_common::gateway_auth::ShowcaseGatewayIdentity;
 use crafty_showcase_common::{data_dir, display_addr};
 
 const DATA_DIR_NAME: &str = "crafty-showcase-realtime";
@@ -151,7 +150,8 @@ fn server_builder() -> crafty::CraftyAppBuilder {
         })
         .gateway(
             GatewayOpts::new(gateway)
-                .identity(ShowcaseGatewayIdentity::from_env())
+                .identity(GatewayBearerIdentity::from_env())
+                .protect_product_apis(true)
                 .routes(gateway_routes),
         )
 }
@@ -175,7 +175,7 @@ fn print_banner() {
         let gw = env::var("CRAFTY_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8294".into());
         let host = display_addr(&gw);
         println!("  websocket ws://{host}/ws?user=alice");
-        println!("  http chat POST http://{host}/chat?user=alice  (JSON {{\"message\":\"…\"}})");
+        println!("  http chat POST http://{host}/chat  (Bearer + X-Crafty-User or ?user=)");
         println!("  http me    GET  http://{host}/me?user=alice");
     }
     if let Ok(admin) = env::var("CRAFTY_ADMIN") {

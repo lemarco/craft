@@ -8,7 +8,7 @@ WebSocket **and authenticated HTTP** on one gateway → sticky [`ActorSession`](
 |-------|------|
 | This binary | WS + HTTP gateway + `ChatWorker` actors |
 | [`trigger.sh`](trigger.sh) | One WS message via `crafty-showcase-client` or [websocat](https://github.com/vi/websocat) |
-| [`trigger-http.sh`](trigger-http.sh) | One HTTP `POST /chat` (JSON body + query or Bearer auth) |
+| [`trigger-http.sh`](trigger-http.sh) | One HTTP `POST /chat` (JSON body + Bearer or query auth) |
 | [`trigger-batch.sh`](trigger-batch.sh) | Multi-user chat burst |
 | Admin | Dashboard + actor directory |
 
@@ -25,7 +25,7 @@ cargo run --release
 
 ```bash
 ./trigger.sh alice hello          # WebSocket
-./trigger-http.sh alice hello     # HTTP POST /chat
+./trigger-http.sh alice hello    # HTTP POST /chat
 curl 'http://127.0.0.1:8294/me?user=alice'   # GET /me (identity only)
 ./trigger-batch.sh 6
 ```
@@ -36,7 +36,7 @@ Manual WebSocket:
 websocat 'ws://127.0.0.1:8294/ws?user=alice'
 ```
 
-Manual HTTP (Bearer when `GATEWAY_TOKEN` is set):
+Manual HTTP with Bearer (recommended when `GATEWAY_TOKEN` is set):
 
 ```bash
 curl -X POST 'http://127.0.0.1:8294/chat' \
@@ -46,15 +46,21 @@ curl -X POST 'http://127.0.0.1:8294/chat' \
   -d '{"message":"hello"}'
 ```
 
+Dev without a token: `?user=alice` on WebSocket and HTTP still works.
+
 ## Gateway routes
 
 | Route | Auth | Body |
 |-------|------|------|
-| `GET /ws` | `?user=` (+ `?token=` if `GATEWAY_TOKEN` set) | WebSocket upgrade |
-| `POST /chat` | query or Bearer + `X-Crafty-User` | `{"message":"…"}` |
-| `GET /me` | query or Bearer | returns `{"user":"…"}` |
+| `GET /ws` | `?user=` or Bearer + `X-Crafty-User` | WebSocket upgrade |
+| `POST /chat` | Bearer + `X-Crafty-User` or `?user=` | `{"message":"…"}` |
+| `GET /me` | Bearer + `X-Crafty-User` or `?user=` | returns `{"user":"…"}` |
 
-Identity implementation: [`crafty-showcase-common::ShowcaseGatewayIdentity`](../../crates/crafty-showcase-common/src/gateway_auth.rs).
+Identity: [`GatewayBearerIdentity`](../../crates/crafty/src/gateway/identity.rs) via
+[`GatewayOpts::identity`](../../crates/crafty/src/gateway/mod.rs). Built-in `/jobs/*`,
+`/actors/*`, and `/workflows/*` routes are protected with
+[`.protect_product_apis(true)`](../../crates/crafty/src/gateway/mod.rs) when enabled on
+the gateway.
 
 ## Quick start (cluster — 3 terminals, QUIC)
 
@@ -83,7 +89,7 @@ Connect to any node's gateway URL; sessions stick to a worker instance cluster-w
 |-----|---------|---------|
 | `CRAFTY_GATEWAY` | `127.0.0.1:8294` | HTTP/WS bind (`-` disables gateway on a node) |
 | `CRAFTY_PEERS` | unset | When set → QUIC cluster mode |
-| `GATEWAY_TOKEN` | unset | When set, require `?token=` or matching Bearer |
+| `GATEWAY_TOKEN` | unset | When set, require matching Bearer (or legacy `?token=` on WS) |
 | `CRAFTY_DATA_DIR` | `/tmp/crafty-showcase-realtime` | Cluster + actor data |
 
 Guide: [docs/scenarios/realtime-sessions.md](../../docs/scenarios/realtime-sessions.md)

@@ -142,7 +142,7 @@ impl IdempotencyOpts {
 }
 
 /// Options for [`CraftyApp::spawn_consumer`].
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ConsumerOpts {
     /// Worker instance id on this node (distinct consumers on the same stream).
     pub instance: u32,
@@ -152,6 +152,20 @@ pub struct ConsumerOpts {
     pub idle_sleep: Duration,
     /// Optional effectively-once guard around the handler.
     pub idempotency: Option<IdempotencyOpts>,
+    /// Optional hook invoked once when the consumer task starts (queue → actor bridge).
+    on_app: Option<Arc<dyn Fn(Arc<CraftyApp>) + Send + Sync>>,
+}
+
+impl std::fmt::Debug for ConsumerOpts {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConsumerOpts")
+            .field("instance", &self.instance)
+            .field("batch", &self.batch)
+            .field("idle_sleep", &self.idle_sleep)
+            .field("idempotency", &self.idempotency)
+            .field("on_app", &self.on_app.as_ref().map(|_| "Fn"))
+            .finish()
+    }
 }
 
 impl Default for ConsumerOpts {
@@ -161,6 +175,7 @@ impl Default for ConsumerOpts {
             batch: 1,
             idle_sleep: Duration::from_millis(100),
             idempotency: None,
+            on_app: None,
         }
     }
 }
@@ -170,6 +185,37 @@ impl ConsumerOpts {
     #[must_use]
     pub fn idempotency(mut self, opts: IdempotencyOpts) -> Self {
         self.idempotency = Some(opts);
+        self
+    }
+
+    /// Run `hook` once when this consumer task starts (e.g. register `Arc<CraftyApp>` for handlers).
+    #[must_use]
+    pub fn on_app<F>(mut self, hook: F) -> Self
+    where
+        F: Fn(Arc<CraftyApp>) + Send + Sync + 'static,
+    {
+        self.on_app = Some(Arc::new(hook));
+        self
+    }
+
+    /// Set the worker instance id on this node.
+    #[must_use]
+    pub fn instance(mut self, instance: u32) -> Self {
+        self.instance = instance;
+        self
+    }
+
+    /// Set the lease batch size.
+    #[must_use]
+    pub fn batch(mut self, batch: usize) -> Self {
+        self.batch = batch.max(1);
+        self
+    }
+
+    /// Set idle sleep between empty polls.
+    #[must_use]
+    pub fn idle_sleep(mut self, idle_sleep: Duration) -> Self {
+        self.idle_sleep = idle_sleep;
         self
     }
 }
@@ -238,8 +284,12 @@ impl CraftyApp {
             batch,
             idle_sleep,
             idempotency,
+            on_app,
         } = opts;
         tokio::spawn(async move {
+            if let Some(hook) = &on_app {
+                hook(Arc::clone(&app));
+            }
             let queue = app
                 .job_queue(C::STREAM)
                 .expect("consumer stream must be registered via .queue");

@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Version** | `0.5.1` (pre-1.0 — API may change on minor bumps) |
+| **Version** | `0.5.2` (pre-1.0 — API may change on minor bumps) |
 | **MSRV** | 1.90 |
 | **Maturity** | Advanced prototype — full test pyramid, E2E/chaos, published on [crates.io](https://crates.io/crates/crafty) |
 
@@ -46,9 +46,10 @@
 - **Product API** — [`CraftyApp`](../crates/crafty/src/app.rs), [getting-started.md](getting-started.md)
 - Redis-backed `ActorStateStore` (`crafty-store-redis`); actor migration RPC
 - **`JobQueue`** — `InMemoryJobQueue`, `RedbJobQueue`, sharded streams, priority/delayed enqueue, **batch enqueue/ack** (single redb txn + one replicate RTT), **leader prefetch cache** (`job_queue_prefetch`, default 256), dead-letter lifecycle + **`requeue_dead_letter`**, **recurring/cron jobs** (`RecurringJob`, `queue_schedule` ticker), leader `QueueService` with parallel sync voter replication + replicate auth, `ClusterJobQueue`, `run_queue_consumer` + **`#[crafty::consumer]`** macro, worker + membership autoscale, Meta-Raft autoscale policy ([job-queue](decisions/job-queue.md))
-- **`crafty-http` jobs API** — `POST /jobs/{stream}/batch`, `POST /jobs/{stream}/ack-batch`, `POST /jobs/{stream}/{id}/requeue`; mounted on admin or **`CraftyApp` gateway**
-- **`CraftyApp` gateway** — separate HTTP listener (`.gateway(GatewayOpts::new(addr))`); optional HTTPS/WSS via `.tls()` / `CRAFTY_GATEWAY_TLS_*`; built-in `/jobs/*`, `/actors/*`, `/workflows/*` **opt-in** via `GatewayOpts::with_*_api(true)` or `CRAFTY_GATEWAY_*=1`; custom Axum/WebSocket via `.routes(|app| …)` ([examples/realtime/](../examples/realtime/)); boot with `RunOpts::default()` + `CRAFTY_*` env
-- **Job queue E2E** — `./e2e/queue.sh` (QUIC/mTLS, enqueue → follower worker → leader failover); `crafty-node` env `CRAFTY_DATA_DIR` + `CRAFTY_JOB_QUEUE`
+- **`crafty-http` jobs API** — `POST /jobs/{stream}/batch`, `POST /jobs/{stream}/ack-batch`, `POST /jobs/{stream}/{id}/requeue`; per-job `max_attempts` on enqueue; status exposes `dedup`, `attempts`, `is_redelivery`; mounted on admin or **`CraftyApp` gateway**
+- **`CraftyApp` gateway** — separate HTTP listener (`.gateway(GatewayOpts::new(addr))`); optional HTTPS/WSS via `.tls()` / `CRAFTY_GATEWAY_TLS_*`; built-in `/jobs/*`, `/actors/*`, `/workflows/*` **opt-in** via `GatewayOpts::with_*_api(true)` or `CRAFTY_GATEWAY_*=1`; **`GatewayBearerIdentity`** + **`.protect_product_apis(true)`** for bearer auth on product routes; custom Axum/WebSocket via `.routes(|app| …)` ([examples/realtime/](../examples/realtime/)); boot with `RunOpts::default()` + `CRAFTY_*` env
+- **Consumer DX** — `#[consumer_json]`, **`ConsumerOpts::on_app`**, **`IdempotencyOpts::retain_for`**, graceful drain via **`ShutdownOpts::consumer_drain_timeout`**, **`CraftyApp::enqueue_workflow_step`** + **`WorkflowBuilder::step_dedup_key`**
+- **Job queue E2E** — `./e2e/queue.sh` (QUIC/mTLS, enqueue → follower worker → leader failover); `./e2e/gateway_jobs.sh`, `./e2e/queue_idempotency.sh`; `crafty-node` env `CRAFTY_DATA_DIR` + `CRAFTY_JOB_QUEUE`
 - **Product showcases** — `examples/background-jobs`, `stateful-workers`, `realtime`, `workflows`
 
 ### Multi-Raft write scaling
@@ -91,7 +92,7 @@ Global serializable isolation across shards is **not** a goal — see [cross-sha
 
 ## Release & ops (process, not missing code)
 
-- **crates.io / docs.rs publish** — v0.5.1 live (see [CHANGELOG.md](../CHANGELOG.md))
+- **crates.io / docs.rs publish** — v0.5.2 (see [CHANGELOG.md](../CHANGELOG.md))
 - **Public API docs** — `missing_docs = "deny"` on published crates; `publish = false` crates exempt via crate lint override. Audit: `./scripts/docs-missing-audit.sh`
 - **Real-world soak** — scenario harness in `benchmarks/` (`soak`, `soak_queue`, `soak_multi_raft`, `soak_actor_store`, `soak_saga`, `soak_session`); scheduled CI `bench` job (60–120s budgets); long-running production soak is operator responsibility
 - **Heavy integration tests** — Redis/docker tests gated `#[ignore]` in fast CI; scheduled heavy lane
@@ -119,7 +120,8 @@ Four application patterns on one runtime — **no mandatory Redis or Kubernetes*
 
 | Scenario | Guide | Runtime |
 |----------|-------|---------|
-| Background jobs | [scenarios/background-jobs.md](scenarios/background-jobs.md) | ✅ batch/prefetch, DLQ, cron, `crafty-http` |
+| Background jobs | [scenarios/background-jobs.md](scenarios/background-jobs.md) | ✅ batch/prefetch, DLQ, cron, queue→actor bridge |
+| State placement | [scenarios/state-placement.md](scenarios/state-placement.md) | ✅ SM vs queue vs store vs saga |
 | Stateful workers | [scenarios/stateful-workers.md](scenarios/stateful-workers.md) | ✅ `RedbActorStateStore` + TTL/GC |
 | Real-time / session | [scenarios/realtime-sessions.md](scenarios/realtime-sessions.md) | ✅ `ActorSession` + gateway WS |
 | Workflows | [scenarios/workflows.md](scenarios/workflows.md) | ✅ Meta-Raft saga journal |

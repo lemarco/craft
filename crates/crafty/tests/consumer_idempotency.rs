@@ -95,15 +95,13 @@ async fn redelivery_runs_side_effect_once() {
     let app = boot("guarded", "idem-once").await;
 
     let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
-    let opts = ConsumerOpts {
-        batch: 1,
-        idle_sleep: Duration::from_millis(10),
-        ..ConsumerOpts::default()
-    }
-    .idempotency(IdempotencyOpts::by_dedup_key(
-        Arc::clone(&store),
-        "idem:guarded:",
-    ));
+    let opts = ConsumerOpts::default()
+        .batch(1)
+        .idle_sleep(Duration::from_millis(10))
+        .idempotency(IdempotencyOpts::by_dedup_key(
+            Arc::clone(&store),
+            "idem:guarded:",
+        ));
 
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     let consumer = app.spawn_consumer(ChargeGuardedConsumer, opts, stop_rx);
@@ -133,11 +131,9 @@ async fn redelivery_runs_side_effect_once() {
 async fn unguarded_consumer_reruns_the_side_effect() {
     let app = boot("plain", "idem-off").await;
 
-    let opts = ConsumerOpts {
-        batch: 1,
-        idle_sleep: Duration::from_millis(10),
-        ..ConsumerOpts::default()
-    };
+    let opts = ConsumerOpts::default()
+        .batch(1)
+        .idle_sleep(Duration::from_millis(10));
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     let consumer = app.spawn_consumer(ChargePlainConsumer, opts, stop_rx);
 

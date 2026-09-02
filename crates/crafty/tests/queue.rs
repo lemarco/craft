@@ -420,6 +420,43 @@ async fn backlog_survives_live_leader_failover() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn dedup_key_survives_leader_failover() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let ids = [NodeId(1), NodeId(2), NodeId(3), NodeId(4), NodeId(5)];
+    let (net, clusters) = spawn_queue_cluster_n(&dir, &ids, false).await;
+    let leader = await_crafty_leader(&clusters).await;
+    advance(Duration::from_millis(300)).await;
+
+    let queue = leader.job_queue("jobs").expect("queue");
+    let id_before = queue
+        .enqueue_opts(b"v1", EnqueueOptions::dedup_key("invoice-99"))
+        .await
+        .expect("enqueue");
+    assert_eq!(queue.metrics().await.expect("metrics").pending, 1);
+
+    let old_leader_id = leader.node_id();
+    wait_for_crafty_stopped(leader.as_ref()).await;
+    drop(leader);
+    let _ = net.detach(old_leader_id);
+
+    let survivors: Vec<_> = clusters
+        .into_iter()
+        .filter(|c| c.node_id() != old_leader_id)
+        .collect();
+    let new_leader = await_crafty_leader(&survivors).await;
+    advance(Duration::from_millis(300)).await;
+
+    let queue = new_leader.job_queue("jobs").expect("queue");
+    assert_eq!(queue.metrics().await.expect("metrics").pending, 1);
+    let id_after = queue
+        .enqueue_opts(b"v2", EnqueueOptions::dedup_key("invoice-99"))
+        .await
+        .expect("dedup retry");
+    assert_eq!(id_before, id_after);
+    assert_eq!(queue.metrics().await.expect("metrics").pending, 1);
+}
+
+#[tokio::test(start_paused = true)]
 async fn enqueue_dedup_key_is_idempotent_over_wire() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (_net, clusters) = spawn_queue_cluster(&dir, false).await;

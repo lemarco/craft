@@ -9,6 +9,7 @@ struct WelcomeEmail {
 }
 
 #[consumer_json("emails", WelcomeEmail)]
+#[allow(clippy::unused_async)] // macro requires `async fn`; handler is sync body
 async fn send_welcome(job: WelcomeEmail) -> Result<(), String> {
     if job.to.is_empty() {
         return Err("missing recipient".into());

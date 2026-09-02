@@ -9,6 +9,51 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-09-02
+
+**Product polish & cross-scenario composition (B-14).** Gateway auth for built-in
+product APIs, HTTP queue metadata parity, typed JSON consumers, graceful consumer
+drain, saga step dedup helpers, and runnable cross-scenario examples.
+
+### Added
+
+- **Gateway bearer auth (B-14a)** — [`GatewayBearerIdentity`](crates/crafty/src/gateway/identity.rs)
+  (`GATEWAY_TOKEN` / `Authorization: Bearer …`); [`GatewayOpts::protect_product_apis`](crates/crafty/src/gateway/mod.rs)
+  requires identity on built-in `/jobs/*`, `/actors/*`, `/workflows/*`. Optional `AuthFn`
+  hook on `crafty-http` API state for custom checks.
+- **`crafty init` v2 (B-14b)** — template ships `JobOpts`, `#[consumer]`,
+  `IdempotencyOpts::by_dedup_key`, `default_max_attempts(5)`, and gateway auth defaults.
+- **E2E gateway jobs (B-14c)** — `crafty/tests/gateway_jobs_http.rs`, `./e2e/gateway_jobs.sh`
+  (in-process HTTP batch enqueue through product gateway).
+- **`IdempotencyOpts::retain_for` (B-14d)** — alias for marker TTL on done keys
+  (high-volume cleanup; default remains forever).
+- **Graceful consumer drain (B-14e)** — `run_queue_consumer` finishes the in-flight
+  lease batch on stop; [`ShutdownOpts::consumer_drain_timeout`](crates/crafty/src/app.rs)
+  bounds shutdown wait.
+- **`#[consumer_json]` (B-14f)** — deserializes JSON payloads before the handler;
+  raw `&[u8]` remains the default for `#[consumer]`.
+- **HTTP queue parity (B-14g)** — enqueue accepts per-job `max_attempts`; job status
+  exposes `dedup`, `attempts`, and `is_redelivery`.
+- **Idempotency + failover test (B-14h)** — `dedup_key_survives_leader_failover` in
+  `crafty/tests/queue.rs`; `./e2e/queue_idempotency.sh` runs idempotency regression.
+- **Saga step dedup helper (B-14i)** — [`WorkflowBuilder::step_dedup_key`](crates/crafty/src/workflow.rs),
+  [`CraftyApp::enqueue_workflow_step`](crates/crafty/src/app.rs).
+- **State placement cheat sheet (B-14j)** — [docs/scenarios/state-placement.md](docs/scenarios/state-placement.md)
+  (SM vs queue vs actor store vs saga journal).
+- **Queue → actor bridge (B-14k)** — `examples/background-jobs/src/bridge.rs` +
+  [`ConsumerOpts::on_app`](crates/crafty/src/consumer.rs) pattern; consumer delegates
+  side effects via `CraftyApp::cast`.
+- **`ConsumerOpts` builders** — `.instance()`, `.batch()`, `.idle_sleep()` replace
+  struct-literal fields for test and app code.
+
+### Changed
+
+- **`examples/realtime/`** — `ShowcaseGatewayIdentity` replaced with
+  `GatewayBearerIdentity` + `protect_product_apis(true)`; docs and `trigger-http.sh`
+  updated.
+- **`QueueJobStatusReply::dedup_key`** — always serialized on the wire (fixes postcard
+  decode 503 when the field was omitted).
+
 ## [0.5.1] — 2026-09-01
 
 **Job queue delivery semantics & idempotency (B-13).** At-least-once is now

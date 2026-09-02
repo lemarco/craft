@@ -33,7 +33,7 @@ pub struct MeResponse {
     pub user: String,
 }
 
-/// `POST /chat?user=…&token=…` — JSON body; auth from query or Bearer (see showcase identity).
+/// `POST /chat` — JSON body; auth via Bearer + `X-Crafty-User` or `?user=` (see `GatewayBearerIdentity`).
 pub async fn post_chat(
     State(state): State<CraftyGatewayState>,
     method: Method,

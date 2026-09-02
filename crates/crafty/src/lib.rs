@@ -81,6 +81,7 @@ pub use app_opts::RunOpts;
 pub use builder::StartError;
 pub use configure::CraftyConfigure;
 pub use consumer::{ConsumerGroup, ConsumerOpts, IdempotencyKeyFn, IdempotencyOpts, JobConsumer};
+pub use crafty_actor::InMemoryStore;
 pub use crafty_actor::JobContext;
 pub use cron_opts::CronOpts;
 pub use gateway::{

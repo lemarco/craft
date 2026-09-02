@@ -19,11 +19,15 @@ if [ -x "$CLIENT" ]; then
     fi
 fi
 
-QUERY="user=${USER}"
 if [ -n "$TOKEN" ]; then
-    QUERY="${QUERY}&token=${TOKEN}"
+    curl -fsS -X POST "http://${HOST}/chat" \
+        -H "Authorization: Bearer ${TOKEN}" \
+        -H "X-Crafty-User: ${USER}" \
+        -H 'Content-Type: application/json' \
+        -d "{\"message\":\"${MSG}\"}"
+else
+    curl -fsS -X POST "http://${HOST}/chat?user=${USER}" \
+        -H 'Content-Type: application/json' \
+        -d "{\"message\":\"${MSG}\"}"
 fi
-curl -fsS -X POST "http://${HOST}/chat?${QUERY}" \
-    -H 'Content-Type: application/json' \
-    -d "{\"message\":\"${MSG}\"}"
 echo

@@ -122,18 +122,17 @@ let worker = app.spawn_consumer(
 
 ### Queue → actor bridge
 
-Use the queue for **durability and retry**; delegate **stateful side effects** to a worker group via `cast` / `ask` so you do not duplicate handler logic in the consumer:
+Use the queue for **durability and retry**; delegate **stateful side effects** to a worker group via `cast` / `ask`. The background-jobs showcase implements this in [`examples/background-jobs/src/bridge.rs`](../../examples/background-jobs/src/bridge.rs):
 
 ```rust
-#[consumer("orders")]
-async fn fulfill_order(payload: &[u8], ctx: JobContext<'_>) -> Result<(), MyError> {
-    let order_id = std::str::from_utf8(payload)?;
-    // Idempotent enqueue key already guards duplicate jobs; cast is fire-and-forget.
-    app.cast("inventory", format!("reserve:{order_id}").into_bytes()).await?;
-    app.ask("billing", format!("charge:{order_id}").into_bytes()).await?;
-    Ok(())
-}
+// Register Arc<CraftyApp> when the consumer starts.
+ConsumerOpts::default().on_app(|app| bridge::register(app))
+
+// In the handler — fire-and-forget to a stateful worker group.
+app.cast("ledger", crafty::proto::encode(&job_key)?).await?;
 ```
+
+Runnable showcase: [`examples/background-jobs/`](../../examples/background-jobs/) (`LedgerWorker` + `SendEmailConsumer`).
 
 Patterns:
 
@@ -141,6 +140,7 @@ Patterns:
 |------|-----|
 | Fire-and-forget to a stateful worker | `app.cast(group, bytes)` |
 | Read-modify-write with reply | `app.ask(group, bytes)` |
+| Wire `CraftyApp` into a `#[consumer]` handler | [`ConsumerOpts::on_app`](../../crates/crafty/src/consumer.rs) |
 | Cross-shard saga step | `app.enqueue_workflow_step` + [`WorkflowBuilder::step_dedup_key`](../../crates/crafty/src/workflow.rs) |
 
 See [state placement cheat sheet](state-placement.md) for where queue backlog vs actor state vs saga journal live.

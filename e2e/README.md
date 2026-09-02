@@ -34,7 +34,7 @@ real network between separate processes.
   follower (`crafty-e2e-queue-client`), kill the leader, drain the replicated
   backlog on the new leader.
 - `gateway_jobs.sh` — HTTP jobs batch + auth through product gateway (in-process test).
-- `queue_idempotency.sh` — `IdempotencyOpts` under redelivery (in-process; QUIC failover in `queue.sh`).
+- `queue_idempotency.sh` — `IdempotencyOpts` under redelivery + dedup key across leader failover (in-process tests).
 - `lib.sh` — shared helpers (compose wrapper, leader polling, `run_linclient`,
   `run_queue_client`) sourced by E2E scripts.
 

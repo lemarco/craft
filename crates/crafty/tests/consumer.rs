@@ -46,11 +46,9 @@ async fn consumer_macro_spawns_and_processes_job() {
     advance(Duration::from_millis(200)).await;
 
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
-    let opts = ConsumerOpts {
-        batch: 1,
-        idle_sleep: Duration::from_millis(10),
-        ..ConsumerOpts::default()
-    };
+    let opts = ConsumerOpts::default()
+        .batch(1)
+        .idle_sleep(Duration::from_millis(10));
     let consumer = app.spawn_consumer(HandleJobConsumer, opts, stop_rx);
 
     app.enqueue("jobs", b"work").await.expect("enqueue");

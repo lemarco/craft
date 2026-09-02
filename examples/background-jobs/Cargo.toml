@@ -12,6 +12,7 @@ publish = false
 
 [dependencies]
 crafty = { path = "../../crates/crafty", features = ["http-jobs"] }
+crafty-actor = { path = "../../crates/crafty-actor" }
 crafty-showcase-common = { path = "../../crates/crafty-showcase-common" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
 tracing = "0.1"

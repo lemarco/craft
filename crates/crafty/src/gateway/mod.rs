@@ -33,6 +33,7 @@ pub const DEFAULT_GATEWAY_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 pub const DEFAULT_CONSUMER_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Product HTTP gateway: listen address, custom Axum routes, optional built-in APIs.
+#[allow(clippy::struct_excessive_bools)] // feature toggles map 1:1 to optional product APIs.
 pub struct GatewayOpts {
     addr: SocketAddr,
     jobs_api: bool,
@@ -370,6 +371,7 @@ impl CraftyGatewayState {
 pub type GatewayRoutesFn = Box<dyn FnOnce(CraftyGatewayState) -> Router + Send>;
 
 /// Gateway listen address and route wiring collected on [`super::app::CraftyAppBuilder`].
+#[allow(clippy::struct_excessive_bools)] // feature toggles map 1:1 to optional product APIs.
 pub struct GatewayConfig {
     /// Public HTTP bind address.
     pub addr: SocketAddr,

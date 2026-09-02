@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 #
-# queue_idempotency.sh — idempotency under redelivery (B-14h).
-# Exercises IdempotencyOpts + dedup_key; docker failover covered by ./e2e/queue.sh.
+# queue_idempotency.sh — idempotency under redelivery + dedup across leader failover (B-14h).
 #
 #   ./e2e/queue_idempotency.sh
 
@@ -10,4 +9,5 @@ cd "$(dirname "$0")/.."
 
 echo "running queue idempotency integration tests…"
 ./scripts/test-fast.sh -p crafty --test consumer_idempotency -- --nocapture
+./scripts/test-fast.sh -p crafty --test queue dedup_key_survives_leader_failover
 echo "QUEUE IDEMPOTENCY OK ✓"

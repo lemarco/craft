@@ -245,7 +245,7 @@ See [read-consistency](../decisions/client-and-routing.md#read-consistency).
 
 ## Future polish
 
-Gateway auth beyond `GATEWAY_TOKEN` query param — apps add JWT/API keys in custom routes.
+Gateway auth: [`GatewayBearerIdentity`](../../crates/crafty/src/gateway/identity.rs) + [`.protect_product_apis(true)`](../../crates/crafty/src/gateway/mod.rs) on [`GatewayOpts`](../../crates/crafty/src/gateway/mod.rs). Custom routes use the same identity via [`CraftyGatewayState::open_actor_session_parts`](../../crates/crafty/src/gateway/mod.rs). See [`examples/realtime/`](../../examples/realtime/).
 
 ## Related
 

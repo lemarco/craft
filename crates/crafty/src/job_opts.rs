@@ -170,12 +170,13 @@ impl JobOpts {
         let idempotency = self.idempotency.clone();
         for instance in 0..instances {
             let consumer = consumer.clone();
-            let opts = ConsumerOpts {
-                instance,
-                batch,
-                idle_sleep,
-                idempotency: idempotency.clone(),
-            };
+            let mut opts = ConsumerOpts::default()
+                .instance(instance)
+                .batch(batch)
+                .idle_sleep(idle_sleep);
+            if let Some(idem) = idempotency.clone() {
+                opts = opts.idempotency(idem);
+            }
             self.spawners.push(Box::new(move |app, stop| {
                 app.spawn_consumer(consumer.clone(), opts.clone(), stop)
             }));
