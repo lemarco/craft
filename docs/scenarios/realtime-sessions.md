@@ -93,6 +93,8 @@ Same artifact on every VPS; LB round-robins **gateways only**. Workers communica
 
 Decision: [gateway-identity](../decisions/gateway-identity.md). Full example: [`examples/realtime/`](../../examples/realtime/).
 
+HTTP handlers are counted automatically by gateway middleware ([`build_gateway_router`](../../crates/trembita/src/gateway/mod.rs)). WebSocket sessions must call [`track_connection`](../../crates/trembita/src/gateway/mod.rs) inside the upgrade callback — the HTTP upgrade response returns before the socket closes.
+
 ```rust
 use std::time::Duration;
 use axum::http::{HeaderMap, Method, Uri};

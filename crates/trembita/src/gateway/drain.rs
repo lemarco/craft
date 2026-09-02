@@ -5,6 +5,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use axum::Router;
+use axum::body::Body;
+use axum::extract::State;
+use axum::http::Request;
+use axum::middleware::Next;
+use axum::response::Response;
 use hyper::server::conn::http1;
 use hyper_util::rt::TokioIo;
 use hyper_util::service::TowerToHyperService;
@@ -21,6 +26,9 @@ pub struct ConnectionTracker {
 
 impl ConnectionTracker {
     /// Increment active connection count; decrements when the guard drops.
+    ///
+    /// Short HTTP handlers are tracked automatically by gateway middleware
+    /// ([`track_connection`]); call this for long-lived work (WebSocket, SSE, …).
     #[must_use]
     pub fn track(&self) -> ConnectionGuard<'_> {
         self.active.fetch_add(1, Ordering::SeqCst);
@@ -32,6 +40,16 @@ impl ConnectionTracker {
     pub fn active(&self) -> usize {
         self.active.load(Ordering::SeqCst)
     }
+}
+
+/// Axum middleware: hold a connection slot for the duration of each HTTP request.
+pub async fn track_connection(
+    State(connections): State<Arc<ConnectionTracker>>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    let _guard = connections.track();
+    next.run(request).await
 }
 
 /// RAII guard — decrements [`ConnectionTracker`] on drop.
@@ -163,4 +181,45 @@ async fn serve_tls(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use axum::Router;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::get;
+    use tower::ServiceExt;
+
+    use super::{ConnectionTracker, track_connection};
+
+    #[tokio::test]
+    async fn track_connection_middleware_holds_slot_for_request() {
+        let connections = Arc::new(ConnectionTracker::default());
+        let during = Arc::clone(&connections);
+        let router = Router::new()
+            .route(
+                "/",
+                get(move || {
+                    let during = Arc::clone(&during);
+                    async move {
+                        assert_eq!(during.active(), 1);
+                        "ok"
+                    }
+                }),
+            )
+            .layer(axum::middleware::from_fn_with_state(
+                Arc::clone(&connections),
+                track_connection,
+            ));
+
+        let response = router
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert!(response.status().is_success());
+        assert_eq!(connections.active(), 0);
+    }
 }

@@ -239,7 +239,10 @@ impl TrembitaGatewayState {
         }
     }
 
-    /// Track a live connection until the returned guard drops (for gateway drain).
+    /// Track a long-lived connection until the guard drops (WebSocket, SSE, …).
+    ///
+    /// Short HTTP handlers are tracked automatically by gateway middleware when the
+    /// router is built via [`build_gateway_router`] or [`spawn_gateway`].
     #[must_use]
     pub fn track_connection(&self) -> Option<ConnectionGuard<'_>> {
         self.connections.as_ref().map(|c| c.track())
@@ -402,8 +405,12 @@ pub struct GatewayConfig {
 }
 
 /// Build the gateway router: custom routes first, then optional product APIs.
+///
+/// Installs connection-tracking middleware on the merged router so HTTP handlers
+/// do not need to call [`TrembitaGatewayState::track_connection`] manually.
 pub fn build_gateway_router(app: Arc<TrembitaApp>, config: GatewayConfig) -> Router {
-    build_gateway_router_with_tracker(app, config, None)
+    let connections = Arc::new(ConnectionTracker::default());
+    build_gateway_router_with_tracker(app, config, Some(connections))
 }
 
 fn build_gateway_router_with_tracker(
@@ -463,13 +470,20 @@ fn build_gateway_router_with_tracker(
         let _ = (jobs_api, actors_api, workflows_api, app);
     }
 
+    if let Some(connections) = connections {
+        router = router.layer(axum::middleware::from_fn_with_state(
+            connections,
+            drain::track_connection,
+        ));
+    }
+
     router
 }
 
 /// Spawn the gateway HTTP server; returns a [`GatewayHandle`] for graceful drain.
 ///
 /// When a [`crate::WorkloadRuntime`] is configured on the cluster, reuses its
-/// [`ConnectionTracker`] and installs compute-token middleware on the router.
+/// [`ConnectionTracker`] for drain, ingress counting, and compute-token middleware.
 ///
 /// # Errors
 /// Returns [`std::io::Error`] when the listen socket cannot be bound or TLS PEM
