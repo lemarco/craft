@@ -45,9 +45,11 @@
 - **Actor store TTL + GC** — per-key TTL on `set`/`set_with_ttl`; periodic leader GC ticker replicates expired-key deletes to voters (`DEFAULT_ACTOR_STORE_GC_PERIOD`, `DEFAULT_ACTOR_STORE_GC_MAX_KEYS`)
 - **Product API** — [`CraftyApp`](../crates/crafty/src/app.rs), [getting-started.md](getting-started.md)
 - Redis-backed `ActorStateStore` (`crafty-store-redis`); actor migration RPC
-- **`JobQueue`** — `InMemoryJobQueue`, `RedbJobQueue`, sharded streams, priority/delayed enqueue, **batch enqueue/ack** (single redb txn + one replicate RTT), **leader prefetch cache** (`job_queue_prefetch`, default 256), dead-letter lifecycle + **`requeue_dead_letter`**, **recurring/cron jobs** (`RecurringJob`, `queue_schedule` ticker), leader `QueueService` with parallel sync voter replication + replicate auth, `ClusterJobQueue`, `run_queue_consumer` + **`#[crafty::consumer]`** macro, worker + membership autoscale, Meta-Raft autoscale policy ([job-queue](decisions/job-queue.md)); **`ExternalBacklog`** port + leader feeder + settle on ack ([external-backlog](decisions/external-backlog.md), [`crafty-backlog-postgres`](../../crates/crafty-backlog-postgres/))
+- **`JobQueue`** — `InMemoryJobQueue`, `RedbJobQueue`, sharded streams, priority/delayed enqueue, **batch enqueue/ack** (single redb txn + one replicate RTT), **leader prefetch cache** (`job_queue_prefetch`, default 256), dead-letter lifecycle + **`requeue_dead_letter`**, **recurring/cron jobs** (`RecurringJob`, `queue_schedule` ticker), leader `QueueService` with parallel sync voter replication + replicate auth, `ClusterJobQueue`, `run_queue_consumer` + **`#[crafty::consumer]`** macro, worker + membership autoscale, Meta-Raft autoscale policy ([job-queue](decisions/job-queue.md)); **`ExternalBacklog`** port + leader feeder + settle on ack ([external-backlog](decisions/external-backlog.md), [`crafty-backlog-postgres`](../../crates/crafty-backlog-postgres/)); **`ScheduleSource`** port + leader diff reconcile for dynamic cron ([schedule-source](decisions/schedule-source.md))
+- **`EventTopic`** — durable pub/sub with named subscriptions, independent cursors, min-cursor compaction, retention, voter replication ([event-topics](decisions/event-topics.md)); [`TopicOpts`](../../crates/crafty/src/topic_opts.rs), [`.topics()`](../../crates/crafty/src/app.rs), [`CraftyApp::publish`](../../crates/crafty/src/app.rs), `#[consumer(..., subscription = "...")]`
+- **`WorkloadGovernor`** — per-node compute token pool + consumer tuning from gateway load and queue depth ([workload-governor](decisions/workload-governor.md)); [`WorkloadOpts`](../../crates/crafty/src/workload.rs), [`.workload()`](../../crates/crafty/src/app.rs)
 - **`crafty-http` jobs API** — `POST /jobs/{stream}/batch`, `POST /jobs/{stream}/ack-batch`, `POST /jobs/{stream}/{id}/requeue`; per-job `max_attempts` on enqueue; status exposes `dedup`, `attempts`, `is_redelivery`; mounted on admin or **`CraftyApp` gateway**
-- **`CraftyApp` gateway** — separate HTTP listener (`.gateway(GatewayOpts::new(addr))`); optional HTTPS/WSS via `.tls()` / `CRAFTY_GATEWAY_TLS_*`; built-in `/jobs/*`, `/actors/*`, `/workflows/*` **opt-in** via `GatewayOpts::with_*_api(true)` or `CRAFTY_GATEWAY_*=1`; **`GatewayBearerIdentity`** + **`.protect_product_apis(true)`** for bearer auth on product routes; custom Axum/WebSocket via `.routes(|app| …)` ([examples/realtime/](../examples/realtime/)); boot with `RunOpts::default()` + `CRAFTY_*` env
+- **`CraftyApp` gateway** — separate HTTP listener (`.gateway(GatewayOpts::new(addr))`); optional HTTPS/WSS via `.tls()` / `CRAFTY_GATEWAY_TLS_*`; built-in `/jobs/*`, `/actors/*`, `/workflows/*` **opt-in** via `GatewayOpts::with_*_api(true)` or `CRAFTY_GATEWAY_*=1`; **`GatewayBearerIdentity`** + **`.protect_product_apis(true)`** for bearer auth on product routes; custom Axum/WebSocket via `.routes(|app| …)`; optional **`HostRouter`** virtual-host dispatch ([`crafty-http`](../crates/crafty-http/README.md)); boot with `RunOpts::default()` + `CRAFTY_*` env
 - **Consumer DX** — `#[consumer_json]`, **`ConsumerOpts::on_app`**, **`IdempotencyOpts::retain_for`**, graceful drain via **`ShutdownOpts::consumer_drain_timeout`**, **`CraftyApp::enqueue_workflow_step`** + **`WorkflowBuilder::step_dedup_key`**
 - **Job queue E2E** — `./e2e/queue.sh` (QUIC/mTLS, enqueue → follower worker → leader failover); `./e2e/gateway_jobs.sh`, `./e2e/queue_idempotency.sh`; `crafty-node` env `CRAFTY_DATA_DIR` + `CRAFTY_JOB_QUEUE`
 - **Product showcases** — `examples/background-jobs`, `stateful-workers`, `realtime`, `workflows`
@@ -116,17 +118,18 @@ Documented in [future-work-and-risks](decisions/future-work-and-risks.md):
 
 ## Product scenarios (guides + backlog)
 
-Four application patterns on one runtime — **no mandatory Redis or Kubernetes**:
+Five application patterns on one runtime — **no mandatory Redis or Kubernetes**:
 
 | Scenario | Guide | Runtime |
 |----------|-------|---------|
-| Background jobs | [scenarios/background-jobs.md](scenarios/background-jobs.md) | ✅ batch/prefetch, DLQ, cron, queue→actor bridge |
+| Background jobs | [scenarios/background-jobs.md](scenarios/background-jobs.md) | ✅ batch/prefetch, DLQ, cron, `ScheduleSource`, external backlog, queue→actor bridge |
+| Event topics | [scenarios/event-topics.md](scenarios/event-topics.md) | ✅ `EventTopic`, voter replication, named subscriptions |
 | State placement | [scenarios/state-placement.md](scenarios/state-placement.md) | ✅ SM vs queue vs store vs saga |
 | Stateful workers | [scenarios/stateful-workers.md](scenarios/stateful-workers.md) | ✅ `RedbActorStateStore` + TTL/GC |
 | Real-time / session | [scenarios/realtime-sessions.md](scenarios/realtime-sessions.md) | ✅ `ActorSession` + gateway WS |
 | Workflows | [scenarios/workflows.md](scenarios/workflows.md) | ✅ Meta-Raft saga journal |
-| Product API | [getting-started.md](getting-started.md) | ✅ `CraftyApp` + gateway |
-| Homogeneous workload | [decisions/workload-governor.md](decisions/workload-governor.md) | ✅ B-16 compute tokens |
+| Product API | [getting-started.md](getting-started.md) | ✅ `CraftyApp` + gateway + `HostRouter` |
+| Homogeneous workload | [decisions/workload-governor.md](decisions/workload-governor.md) | ✅ compute tokens + consumer tune |
 
 Decision: [decisions/product-scenarios.md](decisions/product-scenarios.md) · Backlog: [backlog.md](backlog.md)
 
@@ -136,9 +139,9 @@ Decision: [decisions/product-scenarios.md](decisions/product-scenarios.md) · Ba
 
 | Doc | Purpose |
 |-----|---------|
-| [examples/README.md](../examples/README.md) | Four product showcases (local + QUIC cluster) |
+| [examples/README.md](../examples/README.md) | Product showcases (local + QUIC cluster) |
 | [scenarios/README.md](scenarios/README.md) | Product scenario index |
-| [backlog.md](backlog.md) | Planned work (0.4.x → 1.0) |
+| [backlog.md](backlog.md) | Planned work and open epics |
 | [architecture.md](architecture.md) | Crate graph, data flows |
 | [decisions/](decisions/) | Design decision records |
 | [testing-coverage.md](testing-coverage.md) | Test inventory |

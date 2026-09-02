@@ -22,6 +22,9 @@ Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `crafty-core`, I
 | Read consistency | ReadIndex / lease / follower reads | [client-and-routing](decisions/client-and-routing.md) |
 | Actor runtime | tokio tasks + supervision | [cross-node-actors](decisions/cross-node-actors.md) |
 | Job backlog | `JobQueue` port; default `redb`; leader `QueueService` + autoscale | [job-queue](decisions/job-queue.md) |
+| External backlog | `ExternalBacklog` port; optional [`crafty-backlog-postgres`](../crates/crafty-backlog-postgres/) | [external-backlog](decisions/external-backlog.md) |
+| Event topics | `EventTopic` port; default `redb`; leader `TopicService` + voter replication | [event-topics](decisions/event-topics.md) |
+| Workload fairness | `ComputeTokenPool` + `WorkloadGovernor` on each node | [workload-governor](decisions/workload-governor.md) |
 | Persistence | redb (per-group files in multi-Raft) | — |
 | TLS | mTLS peers + mTLS client wire | [security](decisions/security.md) |
 | Observability | metrics, telemetry, dashboard | [observability](decisions/observability.md) |
@@ -41,11 +44,12 @@ crates/
 ├── crafty-node/         # reference binary
 ├── crafty-sim/          # deterministic sim harness + linearizability checker
 ├── crafty-store-redis/  # optional ActorStateStore (Redis)
+├── crafty-backlog-postgres/  # optional ExternalBacklog (Postgres SKIP LOCKED)
 ├── crafty-dashboard/    # admin HTTP + observability views
 ├── crafty-ops/          # backup/restore CLI
 └── crafty-test-support/ # shared test harness helpers
 
-examples/                # four product showcases (standalone Cargo.toml each; not workspace members)
+examples/                # product showcases (standalone Cargo.toml each; not workspace members)
 dev/                     # certs, cluster-common.sh, compose/, 3-node crafty-node demo
 ```
 

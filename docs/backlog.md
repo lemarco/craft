@@ -1,8 +1,8 @@
 # Backlog
 
-Product and implementation backlog for crafty **0.4.x → 1.0**. Shipped capabilities stay in [status.md](status.md); design rationale in [decisions/](decisions/).
+Product and implementation backlog for crafty. Shipped capabilities stay in [status.md](status.md); design rationale in [decisions/](decisions/).
 
-**Product vision:** [decisions/product-scenarios.md](decisions/product-scenarios.md) — four scenarios, **no mandatory Redis**.
+**Product vision:** [decisions/product-scenarios.md](decisions/product-scenarios.md) — jobs, event topics, workers, sessions, workflows; **no mandatory Redis**.
 
 **Scenario guides:** [scenarios/](scenarios/README.md)
 
@@ -14,7 +14,7 @@ Product and implementation backlog for crafty **0.4.x → 1.0**. Shipped capabil
 | Priority     | Count | Items                           |
 | ------------ | ----- | ------------------------------- |
 | **P0**       | 2     | B-01 ✅, B-02 ✅                  |
-| **P1**       | 6     | B-03 ✅ … B-06 ✅, B-14 ✅, B-16 🔲 |
+| **P1**       | 6     | B-03 ✅ … B-06 ✅, B-14 ✅, B-16 ✅ |
 | **P2**       | 4     | B-07 ✅ … B-09 ✅, B-13 ✅        |
 | **P3**       | 3     | B-10 ✅ … B-12 ✅                 |
 | **Optional** | 5     | O-01 … O-05                     |
@@ -48,7 +48,7 @@ Product and implementation backlog for crafty **0.4.x → 1.0**. Shipped capabil
 
 
 
-## Epic map (four scenarios)
+## Epic map (product scenarios)
 
 ```mermaid
 flowchart TB
@@ -321,7 +321,7 @@ Document the contract, show effectively-once patterns, and improve consumer ergo
 **Scenarios:** [background-jobs](scenarios/background-jobs.md), [realtime-sessions](scenarios/realtime-sessions.md), [workflows](scenarios/workflows.md), [stateful-workers](scenarios/stateful-workers.md)  
 **Follows:** B-13 ✅ (delivery semantics + consumer idempotency DX)
 
-Gateway production readiness, queue lifecycle polish, and glue between the four product scenarios — without new delivery guarantees or mandatory external infra.
+Gateway production readiness, queue lifecycle polish, and glue between product scenarios — without new delivery guarantees or mandatory external infra.
 
 
 | Subtask | Tier | Description | Status |
@@ -474,27 +474,6 @@ Every VPS runs the same binary. **Compute tokens** arbitrate gateway ingress vs 
 
 ---
 
-
-
-## Wave mapping (suggested releases)
-
-
-| Release   | Epics / items                                           |
-| --------- | ------------------------------------------------------- |
-| **0.2.x** | B-01 (all subtasks), B-02 (all subtasks), B-03, B-08e–f |
-| **0.3.x** | B-04, B-05, B-06, B-07, B-08d                           |
-| **0.4.x** | B-13 MR-1 (docs + stream defaults + example)            |
-| **0.5.x** | B-09, B-10, B-13 MR-2 (consumer idempotency helper)     |
-| **0.6.x** | B-14 MR-1 (gateway auth + init + HTTP E2E)                |
-| **0.7.x** | B-14 MR-2–3 (queue lifecycle + cross-scenario composition)|
-| **0.8.x** | B-16 workload governor (compute tokens); deprecate `CRAFTY_ROLE` |
-| **1.0**   | B-11; evaluate B-12; B-14 MR-4; B-16g remove role env |
-
-
----
-
-
-
 ## Per-scenario checklist (what “done” looks like)
 
 
@@ -549,6 +528,17 @@ Every VPS runs the same binary. **Compute tokens** arbitrate gateway ingress vs 
 | ✅         | B-05d example, B-07b dashboard, B-10c soak                       |
 | ✅         | B-14i saga step idempotency helper                             |
 | ✅         | B-14j state placement cheat sheet (cross-scenario)               |
+
+
+### Event topics ✅ runtime
+
+
+| Done when | Item                                                        |
+| --------- | ----------------------------------------------------------- |
+| ✅         | `EventTopic`, `RedbEventTopic`, voter replication, compaction |
+| ✅         | `TopicOpts`, `.topics()`, `CraftyApp::publish`, subscription consumers |
+| ✅         | ADR + [event-topics.md](scenarios/event-topics.md) scenario guide |
+| ✅         | `topic_failover` integration test                           |
 
 
 ---

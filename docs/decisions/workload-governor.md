@@ -16,7 +16,7 @@ Teams rejected **static node roles** (`CRAFTY_ROLE=gateway|worker`) as the prima
 
 Today autoscale reads **queue depth only** ([job-queue](job-queue.md)). It does not observe **local gateway load**. Aggressive consumer settings (`batch`, `instances`, short `idle_sleep`) can starve HTTP/WebSocket handlers on the same node.
 
-`CRAFTY_ROLE` was an advanced env split for edge-only nodes. It conflicts with the homogeneous vision and is **scheduled for removal** (B-16f → B-16g).
+`CRAFTY_ROLE` was an advanced env split for edge-only nodes. It conflicted with the homogeneous vision and was **removed in B-16g** (after a deprecation phase in B-16f).
 
 ## Decision
 
@@ -84,13 +84,13 @@ flowchart LR
 
 Cluster-wide autoscale ([`AutoscalePolicy`](../../crates/crafty-actor/src/queue_autoscale.rs)) remains for **worker actor count across VPSes**. The governor is **local fairness** between ingress and compute on one machine.
 
-## Deprecation: `CRAFTY_ROLE`
+## Removed: `CRAFTY_ROLE`
 
 **Removed in B-16g.** Homogeneous nodes use `.workload()` and deployment choice (register consumers or not) instead of role env vars.
 
 | Phase | Item |
 |-------|------|
-| **B-16a** | Document as deprecated; do not use in showcases |
+| **B-16a** | Documented roles as deprecated; showcases use homogeneous env |
 | **B-16f–g** | Removed `NodeRole`, `node_role_from_env`, `CRAFTY_ROLE`, `CRAFTY_GATEWAY_ONLY`, `CRAFTY_NO_CONSUMER` |
 
 Edge-only ingress without local consumers is achieved by **not registering** `.jobs()` / `.workers()` on those nodes (deployment choice), or by setting consumer `instances(0)` — not by a role env var.

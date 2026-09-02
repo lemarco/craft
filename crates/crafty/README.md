@@ -12,7 +12,7 @@ depend only on `crafty`.
 
 ```toml
 [dependencies]
-crafty = { version = "0.4", features = ["http-jobs", "dev-certs"] }
+crafty = { version = "0.5", features = ["http-jobs", "dev-certs"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 ```
 

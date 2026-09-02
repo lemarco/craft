@@ -8,14 +8,14 @@ Quick path for **product teams** using [`CraftyApp`](../../crates/crafty/src/app
 
 ```toml
 [dependencies]
-crafty = "0.4"
+crafty = "0.5"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 ```
 
 Enable `dev-certs` for local single-node without PEM files:
 
 ```toml
-crafty = { version = "0.4", features = ["dev-certs"] }
+crafty = { version = "0.5", features = ["dev-certs"] }
 ```
 
 ## 2. Minimal app
@@ -61,7 +61,7 @@ Same code as above. [`cluster.sh`](../examples/background-jobs/cluster.sh) sets 
 
 Node id is **not** configured — seed gets `1`, joiners are assigned by the leader and persisted under `CRAFTY_DATA_DIR`.
 
-**Homogeneous nodes:** every VPS runs the same binary (gateway + consumers when configured). Local **API vs jobs** fairness uses **compute tokens** ([workload governor](decisions/workload-governor.md), epic B-16) — not static node roles. `CRAFTY_ROLE` is **deprecated** and will be removed.
+**Homogeneous nodes:** every VPS runs the same binary (gateway + consumers when configured). Local **API vs jobs** fairness uses [`.workload()`](../../crates/crafty/src/workload.rs) compute tokens ([workload governor](decisions/workload-governor.md)) — not static node roles. Edge-only ingress without local consumers: omit `.jobs()` / `.workers()` on those nodes (deployment choice), not a role env var.
 
 ## 4. Try the showcases
 
@@ -131,7 +131,7 @@ Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store
 Prefer [`.jobs()`](../../crates/crafty/src/job_opts.rs) to register queue + consumer + HTTP enqueue in one call. Enable the `http-jobs` feature (default on the facade):
 
 ```toml
-crafty = { version = "0.4", features = ["http-jobs"] }
+crafty = { version = "0.5", features = ["http-jobs"] }
 ```
 
 ```rust
@@ -241,9 +241,11 @@ Most apps stay on `CraftyApp`. For custom state machines, multi-Raft, or direct 
 | Need | Doc |
 |------|-----|
 | Background jobs | [scenarios/background-jobs.md](scenarios/background-jobs.md) |
+| Event topics | [scenarios/event-topics.md](scenarios/event-topics.md) |
 | Stateful workers | [scenarios/stateful-workers.md](scenarios/stateful-workers.md) |
 | Sessions / WebSocket | [scenarios/realtime-sessions.md](scenarios/realtime-sessions.md) |
 | Workflows | [scenarios/workflows.md](scenarios/workflows.md) |
+| Workload governor | [decisions/workload-governor.md](decisions/workload-governor.md) |
 
 ## Related
 

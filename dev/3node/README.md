@@ -108,4 +108,4 @@ CRAFTY_E2E_QUEUE_PHASE=after_failover ./scripts/dev-3node.sh queue-smoke
 
 - [`crafty-node` README](../../crates/crafty-node/README.md)
 - [`docs/scenarios/background-jobs.md`](../../docs/scenarios/background-jobs.md) — product HTTP (`CraftyApp`)
-- [`examples/README.md`](../../examples/README.md) — four product showcases (in-process)
+- [`examples/README.md`](../../examples/README.md) — product showcases (in-process)

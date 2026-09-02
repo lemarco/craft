@@ -4,7 +4,7 @@ Architecture and decision records for the distributive Raft actor system.
 
 **Start here:** [status.md](status.md) (current capabilities and limits) · [architecture.md](architecture.md) (crate graph)
 
-**Product teams:** [scenarios/](scenarios/README.md) (jobs, workers, sessions, workflows — no mandatory Redis) · [examples/](../examples/README.md) (runnable showcases) · [backlog.md](backlog.md)
+**Product teams:** [scenarios/](scenarios/README.md) (jobs, event topics, workers, sessions, workflows — no mandatory Redis) · [examples/](../examples/README.md) (runnable showcases) · [backlog.md](backlog.md)
 
 ## Decision records
 
@@ -44,7 +44,9 @@ Architecture and decision records for the distributive Raft actor system.
 | Stateful actors → workflow store (redb-first) | [actor-state-store](decisions/actor-state-store.md) |
 | Stateful actors → Redis (optional adapter) | [actor-state-redis](decisions/actor-state-redis.md) |
 | Durable job queue (mailbox vs backlog, autoscale) | [job-queue](decisions/job-queue.md) |
+| Durable event topics (pub/sub, named subscriptions) | [event-topics](decisions/event-topics.md) |
 | External backlog port (Postgres adapter optional) | [external-backlog](decisions/external-backlog.md) |
+| Dynamic schedule source (leader cron reconcile) | [schedule-source](decisions/schedule-source.md) |
 | Homogeneous nodes — compute tokens / workload governor | [workload-governor](decisions/workload-governor.md) |
 | Drain timeout (default 60s, configurable) | [drain-timeout](decisions/drain-timeout.md) |
 | Actor / routing UX — Tier 3 | [actor-routing-tier3](decisions/actor-routing-tier3.md) |
@@ -78,8 +80,8 @@ Architecture and decision records for the distributive Raft actor system.
 | [certs.md](certs.md) | mTLS provisioning |
 | [getting-started.md](getting-started.md) | **CraftyApp** quick start |
 | [status.md](status.md) | **Current capabilities and limits** |
-| [scenarios/](scenarios/README.md) | **Product scenario guides** (jobs, workers, sessions, workflows) |
-| [backlog.md](backlog.md) | Implementation backlog (0.2.x → 1.0) |
+| [scenarios/](scenarios/README.md) | **Product scenario guides** (jobs, topics, workers, sessions, workflows) |
+| [backlog.md](backlog.md) | Implementation backlog |
 | [testing-coverage.md](testing-coverage.md) | Test inventory and coverage matrix |
 | [releasing.md](releasing.md) | crates.io publish workflow |
 | [../CHANGELOG.md](../CHANGELOG.md) | Version history |

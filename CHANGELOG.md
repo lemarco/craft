@@ -23,6 +23,23 @@ Pre-1.0 (`0.x`): breaking changes may land on minor bumps and are noted here.
   [`StaticScheduleSource`](crates/crafty-actor/src/schedule_source.rs). Source errors and
   bootstrap empty polls never wipe persisted schedules; diff reconcile replicates
   `UpsertSchedule` / `RemoveSchedule`.
+- **`ExternalBacklog` port** — leader feeder + settle outbox for tier-C windows over an
+  external source of truth ([`external-backlog`](docs/decisions/external-backlog.md));
+  [`JobOpts::backlog`](crates/crafty/src/job_opts.rs), honest autoscale depth via
+  `effective_queue_depth`.
+- **`crafty-backlog-postgres`** — optional published crate with [`PgBacklog`](crates/crafty-backlog-postgres/src/lib.rs)
+  (`SKIP LOCKED` claim + idempotent settle).
+- **Workload governor** — per-node [`ComputeTokenPool`](crates/crafty-actor/src/compute_token.rs) +
+  [`WorkloadGovernor`](crates/crafty-actor/src/workload.rs) consumer tuning from gateway load
+  ([`workload-governor`](docs/decisions/workload-governor.md)); [`WorkloadOpts`](crates/crafty/src/workload.rs),
+  [`.workload()`](crates/crafty/src/app.rs). Removed static role env vars (`CRAFTY_ROLE`, etc.).
+- **`HostRouter`** — virtual-host dispatch for product gateway HTTP ([`crafty-http`](crates/crafty-http/src/host_router.rs));
+  strict default with loopback dev fallback.
+
+### Removed
+
+- **`CRAFTY_ROLE`**, **`CRAFTY_GATEWAY_ONLY`**, **`CRAFTY_NO_CONSUMER`** — use homogeneous nodes +
+  `.workload()` and deployment choice (register consumers or not) instead.
 
 ## [0.5.2] — 2026-09-02
 

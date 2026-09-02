@@ -1,7 +1,6 @@
 # Dynamic schedule source
 
-**Status:** Accepted  
-**Date:** 2026-09-02
+**Status:** Accepted (implemented)
 
 ## Context
 

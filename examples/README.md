@@ -1,6 +1,6 @@
 # Product showcases
 
-Four standalone projects — one per [product scenario](../docs/scenarios/README.md), plus a fifth ops showcase. Each has its own `Cargo.toml`, README, `cluster.sh` (QUIC/mTLS), and `trigger.sh`.
+Five standalone projects — four [product scenarios](../docs/scenarios/README.md) plus a self-update ops showcase. Each has its own `Cargo.toml`, README, `cluster.sh` (QUIC/mTLS), and `trigger.sh`.
 
 Shared helpers: [`crafty-showcase-common`](../crates/crafty-showcase-common/) (env/cluster utilities). HTTP/WS client: [`crafty-showcase-client`](../crates/crafty-showcase-client/) (built by `./cluster.sh setup`).
 
@@ -23,14 +23,14 @@ Each showcase `src/main.rs` is heavily commented:
 - **How** solo vs multi-node (`CRAFTY_JOIN_SEEDS` on nodes 2+; node 1 seed with `CRAFTY_ALLOW_JOIN`)
 - **`cluster.sh`** header explains env vars and port layout
 
-Start with [`background-jobs/src/main.rs`](background-jobs/src/main.rs) — the other three follow the same pattern.
+Start with [`background-jobs/src/main.rs`](background-jobs/src/main.rs) — the other showcases follow the same pattern.
 
 ### Shared cluster env
 
 Every showcase runs the **same binary on every node** — gateway + workers/consumers on each VPS. The cluster routes work (Raft leader, queue lease, actor directory); you do not split ingress vs worker roles in the happy path.
 
 - Readiness: `RunOpts::default().with_wait_queue("emails")` (or `.with_wait_ready(...)`)
-- Optional: homogeneous cluster — same env on every node; see [workload governor](../docs/decisions/workload-governor.md) (B-16). **`CRAFTY_ROLE` is deprecated.**
+- Optional: homogeneous cluster — same env on every node; see [workload governor](../docs/decisions/workload-governor.md) (`.workload()` compute tokens).
 
 ### Internal HTTP/WS client (`crafty-showcase-client`, not on crates.io)
 

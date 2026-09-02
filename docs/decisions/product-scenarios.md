@@ -7,16 +7,17 @@
 
 crafty targets **product teams**, not infra teams running Kubernetes microservices. The deployment model is [library-first](deployment-model.md): **one Rust codebase**, **one binary**, **N identical VPS processes** that join a cluster incrementally. Scale unit = **actors and VPS count**, not new Deployments or service meshes.
 
-Four application patterns cover most distributed product work:
+Five application patterns cover most distributed product work:
 
 | Scenario | User-facing name | Guide |
 |----------|------------------|-------|
 | Background jobs | Sidekiq-style durable queue | [background-jobs](../scenarios/background-jobs.md) |
+| Event topics | Pub/sub with independent subscribers | [event-topics](../scenarios/event-topics.md) |
 | Stateful workers | Crash-safe actors + migration | [stateful-workers](../scenarios/stateful-workers.md) |
 | Real-time / session | Sticky actors + stateless gateway | [realtime-sessions](../scenarios/realtime-sessions.md) |
 | Workflow | Saga coordination (not embedded DB) | [workflows](../scenarios/workflows.md) |
 
-All four compose on the same runtime. No separate job server, workflow server, or mandatory external KV.
+All five compose on the same runtime. No separate job server, workflow server, or mandatory external KV.
 
 ## Decision
 
@@ -41,7 +42,8 @@ Advanced teams may embed a custom [`StateMachine`](../../crates/crafty-core/src/
 |------|-----------|-------------|
 | **B — Actor mailbox** | `send` / `ask` / `ActorSession` | RPC, sync HTTP, real-time session to a pinned worker |
 | **C — Job queue** | `JobQueue` → `RedbJobQueue` | Async backlog, many workers, autoscale |
-| **Workflow machinery** | Meta-Raft saga journal + steps | Multi-step processes with compensators; steps call B/C or external APIs |
+| **D — Event topic** | `EventTopic` → `RedbEventTopic` | Fan-out domain events; per-subscription cursors ([event-topics](event-topics.md)) |
+| **Workflow machinery** | Meta-Raft saga journal + steps | Multi-step processes with compensators; steps call B/C/D or external APIs |
 
 Actor **workflow keys** (idempotency, step progress outside SM) use [`ActorStateStore`](actor-state-store.md) — default path **`redb`**, not Redis.
 
@@ -52,10 +54,10 @@ See [job-queue](job-queue.md) for why mailboxes and Raft logs are not misused as
 | Required | Optional |
 |----------|----------|
 | VPS / bare metal (or containers as packaging only) | `crafty-store-redis` — integration with non-crafty services |
-| `data_dir` on disk (`group-*.redb`, `queue-*.redb`, …) | External PostgreSQL / Valkey adapters (future) |
+| `data_dir` on disk (`group-*.redb`, `queue-*.redb`, `topic-*.redb`, …) | [`crafty-backlog-postgres`](../../crates/crafty-backlog-postgres/) — optional `ExternalBacklog` adapter; Valkey/other adapters as needed |
 | mTLS certs ([certificates](certificates.md)) | Load balancer in front of gateway nodes |
 
-**Non-goals:** Kubernetes as core product, one-container-per-actor microservices, mandatory Redis/PostgreSQL/RabbitMQ, **static node roles** (`CRAFTY_ROLE`) as the primary scaling model.
+**Non-goals:** Kubernetes as core product, one-container-per-actor microservices, mandatory Redis/PostgreSQL/RabbitMQ, **static node roles** as the primary scaling model (removed — use homogeneous nodes + `.workload()`).
 
 ### Homogeneous nodes — compute tokens (B-16)
 
@@ -63,7 +65,7 @@ Every VPS runs the **same binary** (gateway when configured + job consumers + ac
 
 When ingress is quiet, **job consumers use spare CPU** on that node (night batch scenario). When gateway load rises, a per-node **workload governor** throttles consumer parallelism so API latency stays bounded — without rescaling the cluster.
 
-See [workload-governor](workload-governor.md). `CRAFTY_ROLE` is deprecated and scheduled for removal.
+See [workload-governor](workload-governor.md). Static role env vars (`CRAFTY_ROLE`, etc.) were **removed** in B-16g.
 
 ### Unified product surface (0.3.0+)
 
@@ -136,8 +138,9 @@ Typical flows:
 | `crafty init` template | **shipped** | B-06 ✅ — polish: richer worker stubs |
 | Dashboard: queue depth + saga status | **shipped** | B-07 ✅ |
 | Scenario docs (redb-first, no mandatory Redis) | **shipped** | B-08 ✅ |
-| Gateway auth (beyond `GATEWAY_TOKEN` stub) | **polish** | — |
-| E2E HTTP batch via gateway in docker | **polish** | QUIC queue E2E exists |
+| Gateway bearer auth + `protect_product_apis` | **shipped** | B-14a ✅ |
+| E2E HTTP batch via product gateway | **shipped** | B-14c ✅ — `crafty/tests/gateway_jobs_http.rs` |
+| Gateway auth (custom beyond bearer stub) | **polish** | apps add `AuthFn` / custom identity |
 
 Full epic list: [backlog.md](../backlog.md) (P0–P3 ✅).
 
@@ -146,13 +149,13 @@ Full epic list: [backlog.md](../backlog.md) (P0–P3 ✅).
 **Positive**
 
 - Single story for product teams: actors + disk, not microservices + Redis cluster
-- All four scenarios share ops (backup `data_dir`, rolling upgrade, certs)
+- All product scenarios share ops (backup `data_dir`, rolling upgrade, certs)
 - Clear boundary: consensus in SM, work in queue, session in actor + optional store
 
 **Negative**
 
 - Declarative `.jobs()` / `.workers()` builder sugar shipped — legacy `.queue`, `.consumer`, and `.actors(name, ActorGroupOpts::…)` remain supported
-- WebSocket gateway auth remains a thin stub (`GATEWAY_TOKEN`) — production apps add their own layer
+- WebSocket gateway auth: [`GatewayBearerIdentity`](../../crates/crafty/src/gateway/identity.rs) covers bearer tokens on product routes; session/OAuth/JWT for custom WebSocket handlers remains app-owned via `.identity()` and custom routes
 - Stateful workers need `RedbActorStateStore` + SM discipline — keys without SM still require explicit design
 
 ## Related

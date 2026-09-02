@@ -15,7 +15,7 @@ Guides for building on crafty **without mandatory Redis or Kubernetes**. Each sc
 | WebSocket / live session to one worker | [Real-time sessions](realtime-sessions.md) | ✅ `ActorSession`, gateway showcase | `GatewayBearerIdentity` + `protect_product_apis` |
 | Multi-step process with compensation | [Workflows](workflows.md) | ✅ `WorkflowBuilder`, Meta-Raft journal | Dashboard saga view |
 | Where to put state (queue vs SM vs store) | [State placement](state-placement.md) | ✅ cheat sheet | — |
-| Same binary everywhere; API vs jobs on one node | [Workload governor](../decisions/workload-governor.md) | 🔲 B-16 compute tokens | — |
+| Same binary everywhere; API vs jobs on one node | [Workload governor](../decisions/workload-governor.md) | ✅ compute tokens + consumer tune | — |
 
 ## Shared persistence model
 

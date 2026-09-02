@@ -38,6 +38,10 @@ Relationship to [actor-state-redis](actor-state-redis.md): Redis remains an **op
 
 **Do not** route routine job payloads through tier B or tier A.
 
+**Event topics** are a separate fan-out layer (one publish, many named subscriptions with
+independent cursors) — see [event-topics](event-topics.md). Do not model pub/sub as multiple
+queue enqueues.
+
 Typical HTTP mapping:
 
 | User intent | Path |

@@ -141,6 +141,6 @@ curl -sf -X POST http://127.0.0.1:8090/jobs/emails \
 
 ## Production shape
 
-Same binary on every VPS; scale by adding nodes. Each node can accept HTTP and run consumers — the replicated queue assigns work. **Compute tokens** (B-16, [workload governor](../../docs/decisions/workload-governor.md)) arbitrate API vs jobs on one machine when both are active. Do not use `CRAFTY_ROLE` (deprecated).
+Same binary on every VPS; scale by adding nodes. Each node can accept HTTP and run consumers — the replicated queue assigns work. **Compute tokens** ([workload governor](../../docs/decisions/workload-governor.md), `.workload()`) arbitrate API vs jobs on one machine when both are active.
 
 Guide: [docs/scenarios/background-jobs.md](../../docs/scenarios/background-jobs.md)

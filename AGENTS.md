@@ -5,8 +5,8 @@ Distributed Raft + actor framework in Rust. Read before making changes.
 ## Start here
 
 1. [docs/status.md](docs/status.md) — current capabilities and limits
-2. [docs/scenarios/README.md](docs/scenarios/README.md) — product scenarios (jobs, workers, sessions, workflows)
-3. [examples/README.md](examples/README.md) — four runnable showcases (local + QUIC cluster)
+2. [docs/scenarios/README.md](docs/scenarios/README.md) — product scenarios (jobs, topics, workers, sessions, workflows)
+3. [examples/README.md](examples/README.md) — product showcases (local + QUIC cluster)
 4. [docs/backlog.md](docs/backlog.md) — implementation backlog
 5. [docs/architecture.md](docs/architecture.md) — crate graph
 6. [docs/decisions/architecture-style.md](docs/decisions/architecture-style.md) — pure core, trait ports

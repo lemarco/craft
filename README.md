@@ -16,7 +16,7 @@
 
 **Idea:** Embed consensus + actors in *your* binary. Same artifact on every node; the cluster bootstraps, elects a leader, replicates a linearizable state machine, and hosts supervised actors that can message and migrate across nodes. No sidecar, no separate control plane.
 
-**Product teams:** four scenarios (background jobs, stateful workers, real-time sessions, workflows) on **embedded redb** — no mandatory Redis or Kubernetes. Start with [docs/getting-started.md](docs/getting-started.md) and [docs/scenarios/README.md](docs/scenarios/README.md).
+**Product teams:** jobs, event topics, stateful workers, real-time sessions, and workflows on **embedded redb** — no mandatory Redis or Kubernetes. Start with [docs/getting-started.md](docs/getting-started.md) and [docs/scenarios/README.md](docs/scenarios/README.md).
 
 ---
 
@@ -36,7 +36,7 @@
 - Cross-shard saga coordinator + optional 2PC; follower/lease reads
 - mTLS hot reload, reachability-driven supervisor, `crafty-ops` backup
 - **Product showcases** — five standalone apps in [`examples/`](examples/README.md) (jobs, stateful workers, realtime, workflows, self-update)
-- **`CraftyApp`** + HTTP gateway (sticky sessions, TLS, drain), batch jobs, actor-store TTL/GC — [getting-started](docs/getting-started.md)
+- **`CraftyApp`** + HTTP gateway (sticky sessions, TLS, drain), batch jobs, event topics, external backlog, workload governor — [getting-started](docs/getting-started.md)
 - **Self-update coordinator** — leader reconcile + local executor ([upgrade-coordinator](docs/decisions/upgrade-coordinator.md))
 - Design decision records — [docs/decisions/](docs/decisions/)
 
@@ -124,7 +124,7 @@ See [multi-raft](docs/decisions/multi-raft.md), [job-queue](docs/decisions/job-q
 
 ```toml
 [dependencies]
-crafty = "0.4"
+crafty = "0.5"
 ```
 
 Product apps: enable `http-jobs` for HTTP job routes and `dev-certs` for local QUIC without PEM files — see [getting-started](docs/getting-started.md).
