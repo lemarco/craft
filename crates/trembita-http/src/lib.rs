@@ -37,7 +37,7 @@
 //! - `GET /introspect/actors/{id}`, `/introspect/node/{id}`
 //!
 //! Wire it to [`TrembitaApp::introspect_api`](https://docs.rs/trembita/latest/trembita/struct.TrembitaApp.html#method.introspect_api)
-//! or any [`Observer`](trembita_dashboard::Observer) implementation.
+//! or any [`Observer`] implementation.
 //!
 //! # Workflows API
 //!
@@ -400,7 +400,7 @@ pub struct IntrospectApi {
 }
 
 impl IntrospectApi {
-    /// Build from an [`Observer`] implementation (typically [`TrembitaApp::introspect_observer`]).
+    /// Build from an [`Observer`] implementation (typically [`TrembitaApp::introspect_observer`](https://docs.rs/trembita/latest/trembita/struct.TrembitaApp.html#method.introspect_observer)).
     #[must_use]
     pub fn new(observer: Arc<dyn Observer>) -> Self {
         Self { observer }

@@ -320,7 +320,7 @@ impl TrembitaAppBuilder {
         self
     }
 
-    /// Poll an [`EventOutboxSource`] on the topic leader and publish into the topic
+    /// Poll an [`EventOutboxSource`](crate::EventOutboxSource) on the topic leader and publish into the topic
     /// ([event-outbox](../../docs/decisions/event-outbox.md)).
     ///
     /// Requires a matching [`.topics`](Self::topics) registration.
