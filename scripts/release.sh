@@ -94,8 +94,6 @@ prepare_release() {
     local version="$1"
     local old bumped=0
 
-    release_gate
-
     old="$(current_version)"
     [ -n "$old" ] || die "could not read current [workspace.package] version"
 
@@ -110,7 +108,9 @@ prepare_release() {
         bumped=1
     fi
 
-    dry_run
+    # Gate (incl. publish dry-run) after bump so intra-workspace deps resolve
+    # against sibling tarballs at the new version, not the previous crates.io release.
+    release_gate
 
     if [ "$bumped" = "1" ]; then
         git add "$ROOT_MANIFEST"
