@@ -43,7 +43,7 @@ members = [
 exclude = ["benchmarks", "examples", "crates/trembita-fuzz"]
 
 [workspace.package]
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 rust-version = "1.90"
 license = "MIT OR Apache-2.0"
@@ -72,23 +72,23 @@ quote = "1"
 proc-macro2 = "1"
 
 # Internal crates referenced by path within the workspace.
-trembita-proto = { path = "crates/trembita-proto", version = "0.2.1" }
-trembita-core = { path = "crates/trembita-core", version = "0.2.1" }
-trembita-storage = { path = "crates/trembita-storage", version = "0.2.1" }
-trembita-net = { path = "crates/trembita-net", version = "0.2.1" }
-trembita-macros = { path = "crates/trembita-macros", version = "0.2.1" }
-trembita-runtime = { path = "crates/trembita-runtime", version = "0.2.1" }
-trembita-jobs = { path = "crates/trembita-jobs", version = "0.2.1" }
-trembita-events = { path = "crates/trembita-events", version = "0.2.1" }
-trembita-actor-store = { path = "crates/trembita-actor-store", version = "0.2.1" }
-trembita-client = { path = "crates/trembita-client", version = "0.2.1" }
-trembita-store-redis = { path = "crates/trembita-store-redis", version = "0.2.1" }
-trembita-dashboard = { path = "crates/trembita-dashboard", version = "0.2.1" }
-trembita-http = { path = "crates/trembita-http", version = "0.2.1" }
-trembita-sim = { path = "crates/trembita-sim", version = "0.2.1" }
-trembita = { path = "crates/trembita", version = "0.2.1" }
-trembita-test-support = { path = "crates/trembita-test-support", version = "0.2.1" }
-trembita-backlog-postgres = { path = "crates/trembita-backlog-postgres", version = "0.2.1" }
+trembita-proto = { path = "crates/trembita-proto", version = "0.2.2" }
+trembita-core = { path = "crates/trembita-core", version = "0.2.2" }
+trembita-storage = { path = "crates/trembita-storage", version = "0.2.2" }
+trembita-net = { path = "crates/trembita-net", version = "0.2.2" }
+trembita-macros = { path = "crates/trembita-macros", version = "0.2.2" }
+trembita-runtime = { path = "crates/trembita-runtime", version = "0.2.2" }
+trembita-jobs = { path = "crates/trembita-jobs", version = "0.2.2" }
+trembita-events = { path = "crates/trembita-events", version = "0.2.2" }
+trembita-actor-store = { path = "crates/trembita-actor-store", version = "0.2.2" }
+trembita-client = { path = "crates/trembita-client", version = "0.2.2" }
+trembita-store-redis = { path = "crates/trembita-store-redis", version = "0.2.2" }
+trembita-dashboard = { path = "crates/trembita-dashboard", version = "0.2.2" }
+trembita-http = { path = "crates/trembita-http", version = "0.2.2" }
+trembita-sim = { path = "crates/trembita-sim", version = "0.2.2" }
+trembita = { path = "crates/trembita", version = "0.2.2" }
+trembita-test-support = { path = "crates/trembita-test-support", version = "0.2.2" }
+trembita-backlog-postgres = { path = "crates/trembita-backlog-postgres", version = "0.2.2" }
 
 # Lints applied across the workspace (library-and-publishing).
 [workspace.lints.rust]
