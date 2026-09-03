@@ -141,7 +141,10 @@ Product apps: enable `http-jobs` for HTTP job routes and `dev-certs` for local Q
 | [`trembita-proto`](crates/trembita-proto) | Wire types + codec |
 | [`trembita-storage`](crates/trembita-storage) | Durable log, snapshots |
 | [`trembita-net`](crates/trembita-net) | HTTP/3 / QUIC + mTLS |
-| [`trembita-actor`](crates/trembita-actor) | Runtime, registry, supervisor |
+| [`trembita-runtime`](crates/trembita-runtime) | Node runtime, registry, supervisor |
+| [`trembita-jobs`](crates/trembita-jobs) | Job queue, autoscale, backlog |
+| [`trembita-events`](crates/trembita-events) | Durable pub/sub topics |
+| [`trembita-actor-store`](crates/trembita-actor-store) | Stateful actor workflow keys |
 | [`trembita-client`](crates/trembita-client) | Client, saga, keyed/batch APIs |
 | [`trembita-macros`](crates/trembita-macros) | Derive macros |
 | [`trembita-store-redis`](crates/trembita-store-redis) | Redis `ActorStateStore` |

@@ -7,7 +7,23 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with all
 
 Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases may include breaking changes on minor bumps; each is noted here.
 
+**Crates.io:** [`0.2.0`](https://crates.io/crates/trembita) (2026-09-03) is the first published trembita release. Git tags `v0.1.0`–`v0.6.1` from the prior **crafty**-era development were removed on 2026-09-03; they were never on crates.io. Historical notes for those internal milestones live under [Archive](#archive--pre-cratesio-development-crafty-era) below.
+
 ## [Unreleased]
+
+## [0.2.0] — 2026-09-03
+
+**First trembita release on [crates.io](https://crates.io/crates/trembita).** Synchronized workspace `0.2.0` (16 published crates). Capabilities below include work accumulated during the pre-crates.io internal line (see archive).
+
+### Changed (breaking)
+
+- **`trembita-actor` removed** — split into [`trembita-runtime`](crates/trembita-runtime/),
+  [`trembita-jobs`](crates/trembita-jobs/), [`trembita-events`](crates/trembita-events/),
+  and [`trembita-actor-store`](crates/trembita-actor-store/).
+- **Facade imports** — `trembita::actor::*` → `trembita::runtime::*`; job/topic/store types on
+  `trembita::jobs`, `trembita::events`, `trembita::actor_store`.
+- **Dev binaries** — `trembita-node`, `trembita-ops`, showcase clients merged into unpublished
+  [`trembita-tools`](crates/trembita-tools/); examples use `trembita_tools::showcase_*`.
 
 ### Added
 
@@ -21,12 +37,16 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ### Changed
 
-- **`trembita-node`** — removed from crates.io; `publish = false` (repo/e2e binary only).
+- **`trembita-node`** — not published; build from [`trembita-tools`](crates/trembita-tools/) or repo.
 - **`BacklogFeedOpts::consumer_instances`** — defaults to `ConsumerCount::Live`
   (`reachable_nodes × per_node` each poll); use `ConsumerCount::Fixed(n)` to opt out of
   elastic window sizing.
 
-## [0.1.0] — 2026-09-02
+## Archive — pre-crates.io development (crafty era)
+
+Internal git milestones only (tags removed 2026-09-03). **Not** the crates.io `0.2.0` release above.
+
+### 0.1.0 (internal patch, 2026-09-02)
 
 **Rustdoc fixes for docs.rs 0.6.0 builds.**
 
@@ -40,7 +60,7 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 - Release and CI gates unified (`ci-fast-lane.sh`, `gate.sh` tiers, lefthook per-step output);
   `trembita-node` explicitly `publish = false`.
 
-## [0.6.0] — 2026-09-02
+### 0.6.0 (internal, 2026-09-02)
 
 **Event topics, external backlog, workload governor, and dynamic schedules.**
 
@@ -81,7 +101,7 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 - **Documentation** — contributor guide, doc link checker, descriptive messaging layer
   names (dropped Tier labels); `actor-routing` ADR rename.
 
-## [0.5.2] — 2026-09-02
+### 0.5.2 (internal, 2026-09-02)
 
 **Product polish & cross-scenario composition (B-14).** Gateway auth for built-in
 product APIs, HTTP queue metadata parity, typed JSON consumers, graceful consumer
@@ -126,7 +146,7 @@ drain, saga step dedup helpers, and runnable cross-scenario examples.
 - **`QueueJobStatusReply::dedup_key`** — always serialized on the wire (fixes postcard
   decode 503 when the field was omitted).
 
-## [0.5.1] — 2026-09-01
+### 0.5.1 (internal, 2026-09-01)
 
 **Job queue delivery semantics & idempotency (B-13).** At-least-once is now
 documented as a contract rather than a caveat, consumers can tell a redelivery
@@ -180,14 +200,14 @@ from a first attempt, and redelivery is visible in metrics and the dashboard.
   list`, which rustup 1.29 rejects; the error was swallowed and the check exited `0` claiming
   the toolchain was missing. Verified: the workspace checks clean on 1.90.
 
-## [0.5.0] — 2026-09-01
+### 0.5.0 (internal, 2026-09-01)
 
 ### Changed
 
 - **`remote_actor` → `actor` (breaking on `0.x`)** — attribute macro renamed; use `use trembita::actor::{UserActor, actor}` and `#[actor]` / `#[actor(migratable)]`.
 - **Worker registration examples** — prefer `workers!(…)` call syntax (same macro; parentheses instead of brackets in docs and showcases).
 
-## [0.4.1] — 2026-09-01
+### 0.4.1 (internal, 2026-09-01)
 
 ### Changed
 
@@ -203,7 +223,7 @@ from a first attempt, and redelivery is visible in metrics and the dashboard.
 - **`WorkerOpts` + `WorkerScale` + `TrembitaAppBuilder::workers`** — declarative actor groups (`Fixed` / `PerNode` / queue `Auto`) via [`workers!`](crates/trembita/src/worker_opts.rs) macro.
 - `trembita_test_support::wait_for_trembita_app_leader` — poll leader election on a running `TrembitaApp`.
 
-## [0.4.0] — 2026-08-31
+### 0.4.0 (internal, 2026-08-31)
 
 **Gateway + ops release.** Sticky gateway sessions (HTTP/WS), optional gateway TLS,
 graceful drain, self-update coordinator, and a narrower public re-export surface
@@ -251,7 +271,7 @@ graceful drain, self-update coordinator, and a narrower public re-export surface
 - **Root re-exports narrowed** — advanced types moved to the `advanced` module (renamed to [`cluster`](crates/trembita/src/cluster.rs) in 0.4.1);
   [`lib.rs`](crates/trembita/src/lib.rs) rustdoc centers on [`TrembitaApp`](crates/trembita/src/app.rs).
 
-## [0.3.0] — 2026-08-31
+### 0.3.0 (internal, 2026-08-31)
 
 **Breaking product API release.** Single boot path (always QUIC cluster from env), config
 structs instead of long builder chains, gateway built-in routes opt-in by default, and
@@ -298,7 +318,7 @@ auto-assigned node ids for joiners.
 - **`RunOpts::local()`** from public docs (still available for integration tests).
 - **`members`** from `TrembitaConfigure` / product env surface (advanced: `TrembitaClusterBuilder`).
 - **`TREMBITA_GATEWAY_NO_*`** env vars (replaced by opt-in `TREMBITA_GATEWAY_*=1` flags).
-
+### 0.2.2 (internal, 2026-08-29)
 
 Product throughput and ops release: queue batch/prefetch, dead-letter recovery,
 cron scheduling, actor-store TTL/GC, and a dedicated **`TrembitaApp` HTTP gateway**.
@@ -341,13 +361,13 @@ cron scheduling, actor-store TTL/GC, and a dedicated **`TrembitaApp` HTTP gatewa
 - **`start_from_config_shared`** — QUIC production start with `TREMBITA_GATEWAY` auto-spawn (pair with `start_from_env_shared`).
 - **Docs** — synced for `0.2.2`: four product showcases under [`examples/`](examples/README.md) (replaces removed `crates/trembita/examples/*`); reference KV in [`trembita_core::kv`](crates/trembita-core/src/kv.rs).
 
-## [0.2.1] — 2026-08-29
+### 0.2.1 (internal, 2026-08-29)
 
 ### Changed
 
 - **B-11b:** workspace `missing_docs = "deny"` on published crates; CI/hooks no longer allow undocumented public API.
 
-## [0.2.0] — 2026-08-29
+### 0.2.0 (internal, 2026-08-29)
 
 Product layer release: **`TrembitaApp`** facade, four scenario guides, HTTP jobs API,
 WebSocket gateway example, workflow builder, and observability polish.
@@ -396,7 +416,7 @@ WebSocket gateway example, workflow builder, and observability polish.
 - **Node router** — `Route::QueueJobStatus` wired through `NodeRouter`.
 - **Examples** — websocket session key sizing; workflow resume CLI saga id type.
 
-## [0.1.0] — 2026-08-28
+### 0.1.0 (internal, 2026-08-28)
 
 Initial development release. The full workspace is in place and internally
 tested; APIs are still evolving toward a 1.0 stabilization.
@@ -464,12 +484,5 @@ tested; APIs are still evolving toward a 1.0 stabilization.
 
 - Bounded `ask` timeout (30s); at-most-once side-effecting `ask` dedup; reply-encode errors surfaced; actor-stream backpressure on QUIC.
 
-[Unreleased]: https://gitlab.com/lemarco/trembita/-/compare/v0.5.0...HEAD
-[0.5.0]: https://gitlab.com/lemarco/trembita/-/compare/v0.4.1...v0.5.0
-[0.4.1]: https://gitlab.com/lemarco/trembita/-/compare/v0.4.0...v0.4.1
-[0.4.0]: https://gitlab.com/lemarco/trembita/-/compare/v0.3.0...v0.4.0
-[0.3.0]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.2...v0.3.0
-[0.2.2]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.1...v0.2.2
-[0.2.1]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.0...v0.2.1
-[0.2.0]: https://gitlab.com/lemarco/trembita/-/compare/v0.1.0...v0.2.0
-[0.1.0]: https://gitlab.com/lemarco/trembita/-/tags/v0.1.0
+[Unreleased]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.0...HEAD
+[0.2.0]: https://gitlab.com/lemarco/trembita/-/tags/v0.2.0
