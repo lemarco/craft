@@ -189,11 +189,16 @@ impl ExternalBacklog for PgBacklog {
             let attempts_col = Self::ident(&schema.attempts_column)?;
             let id_str = String::from_utf8_lossy(&key).into_owned();
             match outcome {
-                Settlement::Done => {
+                Settlement::Done { attempts } => {
                     let next = schema.done_status.replace('\'', "''");
-                    let sql = format!("UPDATE {table} SET {status} = '{next}' WHERE {id} = $1");
+                    let claimed = schema.claimed_status.replace('\'', "''");
+                    let sql = format!(
+                        "UPDATE {table} SET {status} = '{next}' \
+                         WHERE {id} = $1 AND {status} = '{claimed}' AND {attempts_col} = $2"
+                    );
                     sqlx::query(&sql)
                         .bind(id_str)
+                        .bind(i32::try_from(attempts).unwrap_or(i32::MAX))
                         .execute(&pool)
                         .await
                         .map_err(|e| BacklogError::Backend(e.to_string()))?;

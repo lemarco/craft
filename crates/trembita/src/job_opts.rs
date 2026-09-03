@@ -168,7 +168,8 @@ impl JobOpts {
     /// Wire an external source-of-truth backlog ([`ExternalBacklog`](trembita_jobs::ExternalBacklog)).
     ///
     /// The leader claims items, enqueues with `dedup_key = item.key`, and settles outcomes
-    /// back to the source after ack or dead-letter.
+    /// back to the source after ack or dead-letter. [`EnqueueOptions::dedup_key`] is held
+    /// while the job exists and released after ack.
     #[must_use]
     pub fn backlog(mut self, backlog: Arc<dyn ExternalBacklog>, opts: BacklogFeedOpts) -> Self {
         self.backlog = Some((backlog, opts));

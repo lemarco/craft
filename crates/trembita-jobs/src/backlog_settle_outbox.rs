@@ -349,13 +349,16 @@ mod tests {
             .push(BacklogSettleEvent {
                 stream: "imports".into(),
                 dedup_key: Some(b"k1".to_vec()),
-                outcome: BacklogSettleOutcome::Done,
+                outcome: BacklogSettleOutcome::Done { attempts: 0 },
             })
             .unwrap();
         assert_eq!(outbox.pending_count().unwrap(), 1);
         let pending = outbox.list_pending(8).unwrap();
         assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].1.outcome, BacklogSettleOutcome::Done);
+        assert_eq!(
+            pending[0].1.outcome,
+            BacklogSettleOutcome::Done { attempts: 0 }
+        );
     }
 
     #[test]
@@ -368,7 +371,7 @@ mod tests {
                 .push(BacklogSettleEvent {
                     stream: "jobs".into(),
                     dedup_key: Some(b"x".to_vec()),
-                    outcome: BacklogSettleOutcome::Done,
+                    outcome: BacklogSettleOutcome::Done { attempts: 0 },
                 })
                 .unwrap()
         };

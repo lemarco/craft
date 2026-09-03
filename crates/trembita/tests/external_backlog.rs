@@ -95,7 +95,7 @@ async fn external_backlog_feeds_consumer_and_settles() {
     assert_eq!(backlog.depth().await.unwrap(), 0);
     assert_eq!(
         backlog.settled().get(b"row-1".as_slice()),
-        Some(&Settlement::Done)
+        Some(&Settlement::Done { attempts: 0 })
     );
 
     app.enqueue_opts("imports", b"direct", EnqueueOptions::dedup_key("direct-1"))

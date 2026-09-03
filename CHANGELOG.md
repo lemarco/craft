@@ -11,6 +11,14 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- **`Settlement::Done` / `BacklogSettleOutcome::Done`** — now carry `attempts` (queue attempt counter at ack). [`PgBacklog`](crates/trembita-backlog-postgres/src/lib.rs) applies `Done` only when the row is still `claimed` and `attempts` matches, ignoring stale settle-outbox entries after key reuse.
+
+### Fixed
+
+- **`EnqueueOptions::dedup_key` rustdoc** — documents that the key is held while a job exists and released after ack ([CF-010](docs/backlog.md#cf-010--dedup_key-lifecycle-docs)).
+
 ## [0.2.0] — 2026-09-03
 
 **First trembita release on [crates.io](https://crates.io/crates/trembita).** Synchronized workspace `0.2.0` (16 published crates). Capabilities below include work accumulated during the pre-crates.io internal line (see archive).

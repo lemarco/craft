@@ -167,7 +167,12 @@ pub struct EnqueueOptions {
     pub not_before_ms: Option<u64>,
     /// Routes to a shard when using [`ShardedJobQueue`](super::sharded_queue::ShardedJobQueue).
     pub shard_key: Option<Vec<u8>>,
-    /// Client-supplied idempotency token; duplicate enqueues return the same [`JobId`].
+    /// Client-supplied idempotency token; duplicate enqueues return the same [`JobId`]
+    /// while a job with that key exists (pending, leased, delayed, or dead-letter).
+    ///
+    /// The key is **released after ack** — once the job is removed from the queue,
+    /// the same token may be used to enqueue a new job. See
+    /// [background-jobs § `dedup_key` lifecycle](../../../docs/scenarios/background-jobs.md#dedup_key-lifecycle).
     pub dedup_key: Option<Vec<u8>>,
     /// Maximum delivery attempts before dead letter.
     ///
@@ -206,6 +211,10 @@ impl EnqueueOptions {
     }
 
     /// Job with a client idempotency key (safe enqueue retries).
+    ///
+    /// While a job with this key exists in the queue, duplicate enqueues return the
+    /// same [`JobId`]. The slot is **released after ack**, so the same key can
+    /// enqueue again once the prior job completes successfully.
     #[must_use]
     pub fn dedup_key(key: impl Into<Vec<u8>>) -> Self {
         Self {

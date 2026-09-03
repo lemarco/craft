@@ -14,6 +14,8 @@ Epics **B-01 … B-17** are **shipped** (see [Shipped epics](#shipped-epics-arch
 
 | Id | Item | Status | Notes |
 |----|------|--------|-------|
+| CF-010 | `dedup_key` lifecycle docs | shipped | Rustdoc on [`EnqueueOptions::dedup_key`](crates/trembita-jobs/src/queue.rs); scenario table already in [background-jobs](scenarios/background-jobs.md) |
+| CF-017 | Stale external backlog `Done` settle | shipped | `Settlement::Done { attempts }`; [`PgBacklog`](crates/trembita-backlog-postgres/src/lib.rs) guards on `claimed` + attempts |
 | O-01 | `trembita-store-redis` maintenance | ongoing | Keep as optional adapter |
 | O-02 | PostgreSQL `ActorStateStore` | deferred | Only if external integration demand |
 | O-03 | Optional OTLP metrics adapter (`trembita-metrics-otlp`) | deferred | Builds on shipped [`MetricsSink`](decisions/observability.md#metrics-export-port) port |
@@ -21,6 +23,18 @@ Epics **B-01 … B-17** are **shipped** (see [Shipped epics](#shipped-epics-arch
 
 
 For new feature epics, use the next **B-NN** id and link the scenario + ADR.
+
+### CF-010 — `dedup_key` lifecycle docs
+
+**Status:** Shipped (0.2.x unreleased).
+
+**Acceptance:** [`EnqueueOptions::dedup_key`](../../crates/trembita-jobs/src/queue.rs) rustdoc states the key is held while a job exists and released after ack; [background-jobs § lifecycle](scenarios/background-jobs.md#dedup_key-lifecycle) remains the scenario reference.
+
+### CF-017 — Stale external backlog `Done` settle
+
+**Status:** Shipped (0.2.x unreleased, breaking).
+
+**Acceptance:** `Settlement::Done { attempts }` / `BacklogSettleOutcome::Done { attempts }`; ack path passes queue attempt counter; [`PgBacklog`](../../crates/trembita-backlog-postgres/src/lib.rs) updates only `claimed` rows with matching `attempts`; regression test for ignored stale `Done`.
 
 ---
 
@@ -393,7 +407,7 @@ Teams with backlog in Postgres/MySQL get leader-fed queue windows, dedup on re-e
 | B-15g   | 2 | **Integration test** — `trembita/tests/external_backlog.rs` | ✅ |
 
 
-**Acceptance:** In-memory backlog → consumer → `Settlement::Done`; autoscale reads external `depth()` when registered.
+**Acceptance:** In-memory backlog → consumer → `Settlement::Done { attempts }`; autoscale reads external `depth()` when registered.
 
 
 ---

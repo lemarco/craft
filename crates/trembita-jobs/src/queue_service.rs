@@ -299,13 +299,14 @@ impl QueueService {
         }
     }
 
-    async fn peek_lease_dedup(&self, stream: &str, lease_id: LeaseId) -> Option<Vec<u8>> {
+    async fn peek_lease_meta(&self, stream: &str, lease_id: LeaseId) -> (Option<Vec<u8>>, u32) {
         match self.local_stream(stream) {
             Ok(queue) => queue
                 .peek_lease_meta(lease_id)
                 .await
-                .and_then(|(dedup, _)| dedup),
-            Err(_) => None,
+                .map(|(dedup, attempts)| (dedup, attempts))
+                .unwrap_or((None, 0)),
+            Err(_) => (None, 0),
         }
     }
 
@@ -1070,9 +1071,12 @@ impl QueueService {
                 instance: request.worker_instance,
             };
             let lease_ids: Vec<LeaseId> = request.lease_ids.iter().map(|id| LeaseId(*id)).collect();
-            let mut dedup_keys = Vec::with_capacity(lease_ids.len());
+            let mut lease_metas = Vec::with_capacity(lease_ids.len());
             for lease_id in &lease_ids {
-                dedup_keys.push(self.peek_lease_dedup(&request.stream, *lease_id).await);
+                lease_metas.push(
+                    self.peek_lease_meta(&request.stream, *lease_id)
+                        .await,
+                );
             }
             if let Some(sharded) = self.sharded_stream(&request.stream) {
                 match sharded
@@ -1084,12 +1088,14 @@ impl QueueService {
                             return QueueAckBatchReply { error: Some(e) };
                         }
                         self.evict_prefetch_sharded_acks(&request.stream, &reps);
-                        for (lease_id, dedup_key) in request.lease_ids.iter().zip(dedup_keys) {
+                        for (lease_id, (dedup_key, attempts)) in
+                            request.lease_ids.iter().zip(lease_metas)
+                        {
                             self.emit_acked(&request.stream, *lease_id, request.worker_node);
                             self.emit_backlog_settle(
                                 &request.stream,
                                 dedup_key,
-                                BacklogSettleOutcome::Done,
+                                BacklogSettleOutcome::Done { attempts },
                             );
                         }
                         return QueueAckBatchReply { error: None };
@@ -1109,12 +1115,14 @@ impl QueueService {
                             QueueAckBatchReply { error: Some(e) }
                         } else {
                             self.evict_prefetch_ack_ops(&request.stream, &ops);
-                            for (lease_id, dedup_key) in request.lease_ids.iter().zip(dedup_keys) {
+                            for (lease_id, (dedup_key, attempts)) in
+                                request.lease_ids.iter().zip(lease_metas)
+                            {
                                 self.emit_acked(&request.stream, *lease_id, request.worker_node);
                                 self.emit_backlog_settle(
                                     &request.stream,
                                     dedup_key,
-                                    BacklogSettleOutcome::Done,
+                                    BacklogSettleOutcome::Done { attempts },
                                 );
                             }
                             QueueAckBatchReply { error: None }
@@ -1280,8 +1288,8 @@ impl QueueService {
                 node: NodeId(request.worker_node),
                 instance: request.worker_instance,
             };
-            let dedup_key = self
-                .peek_lease_dedup(&request.stream, LeaseId(request.lease_id))
+            let (dedup_key, attempts) = self
+                .peek_lease_meta(&request.stream, LeaseId(request.lease_id))
                 .await;
             if let Some(sharded) = self.sharded_stream(&request.stream) {
                 match sharded
@@ -1303,7 +1311,7 @@ impl QueueService {
                         self.emit_backlog_settle(
                             &request.stream,
                             dedup_key.clone(),
-                            BacklogSettleOutcome::Done,
+                            BacklogSettleOutcome::Done { attempts },
                         );
                         return QueueAckReply { error: None };
                     }
@@ -1329,7 +1337,7 @@ impl QueueService {
                         self.emit_backlog_settle(
                             &request.stream,
                             dedup_key,
-                            BacklogSettleOutcome::Done,
+                            BacklogSettleOutcome::Done { attempts },
                         );
                         QueueAckReply { error: None }
                     }

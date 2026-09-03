@@ -25,7 +25,15 @@ pub enum BacklogError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Settlement {
     /// Handler acked successfully.
-    Done,
+    ///
+    /// `attempts` is the queue job's stored attempt counter at ack time (prior
+    /// failed deliveries only; `0` on first-try success). Adapters should
+    /// ignore stale `Done` when the counter does not match the in-flight
+    /// generation (see [external-backlog](../../../docs/decisions/external-backlog.md)).
+    Done {
+        /// Queue attempt counter at successful ack ([`JobQueue::peek_lease_meta`]).
+        attempts: u32,
+    },
     /// Failed but will retry (nack / lease timeout, not yet dead-letter).
     Failed {
         /// Attempt count after this failure.
@@ -366,7 +374,7 @@ pub async fn run_backlog_settle_drainer(
                 continue;
             };
             let settlement = match ev.outcome {
-                BacklogSettleOutcome::Done => Settlement::Done,
+                BacklogSettleOutcome::Done { attempts } => Settlement::Done { attempts },
                 BacklogSettleOutcome::Failed { attempts, error } => {
                     Settlement::Failed { attempts, error }
                 }
@@ -385,7 +393,10 @@ pub async fn run_backlog_settle_drainer(
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BacklogSettleOutcome {
     /// Successful ack.
-    Done,
+    Done {
+        /// Queue attempt counter at ack ([`JobQueue::peek_lease_meta`]).
+        attempts: u32,
+    },
     /// Nack / reclaim with retries remaining.
     Failed {
         /// Attempt count after this failure.
@@ -422,7 +433,8 @@ pub struct InMemoryExternalBacklog {
 #[derive(Default)]
 struct Inner {
     pending: VecDeque<BacklogItem>,
-    claimed: BTreeMap<Vec<u8>, BacklogItem>,
+    /// Attempt counter for each claimed key (matches external row at claim time).
+    claimed: BTreeMap<Vec<u8>, u32>,
     settled: BTreeMap<Vec<u8>, Settlement>,
 }
 
@@ -475,7 +487,7 @@ impl ExternalBacklog for InMemoryExternalBacklog {
                 let Some(item) = inner.pending.pop_front() else {
                     break;
                 };
-                inner.claimed.insert(item.key.clone(), item.clone());
+                inner.claimed.insert(item.key.clone(), 0);
                 out.push(item);
             }
             Ok(out)
@@ -489,8 +501,29 @@ impl ExternalBacklog for InMemoryExternalBacklog {
                 .inner
                 .lock()
                 .map_err(|_| BacklogError::Backend("poisoned InMemoryExternalBacklog".into()))?;
-            inner.claimed.remove(&key);
-            inner.settled.insert(key, outcome);
+            match &outcome {
+                Settlement::Done { attempts } => {
+                    if let Some(claimed_attempts) = inner.claimed.get(&key) {
+                        if *claimed_attempts != *attempts {
+                            return Ok(());
+                        }
+                        inner.claimed.remove(&key);
+                        inner.settled.insert(key, outcome);
+                        return Ok(());
+                    }
+                    if matches!(inner.settled.get(&key), Some(Settlement::Done { .. })) {
+                        return Ok(());
+                    }
+                    inner.settled.insert(key, outcome);
+                }
+                Settlement::Failed { attempts, .. } | Settlement::DeadLettered { attempts, .. } => {
+                    if let Some(claimed_attempts) = inner.claimed.get_mut(&key) {
+                        *claimed_attempts = *attempts;
+                    }
+                    inner.claimed.remove(&key);
+                    inner.settled.insert(key, outcome);
+                }
+            }
             Ok(())
         })
     }
@@ -613,11 +646,13 @@ mod tests {
         });
         let claimed = backlog.claim(1).await.unwrap();
         assert_eq!(claimed.len(), 1);
-        backlog.settle(b"order-1", Settlement::Done).await.unwrap();
+        backlog.settle(b"order-1", Settlement::Done { attempts: 0 })
+            .await
+            .unwrap();
         assert_eq!(backlog.depth().await.unwrap(), 0);
         assert_eq!(
             backlog.settled().get(b"order-1".as_slice()),
-            Some(&Settlement::Done)
+            Some(&Settlement::Done { attempts: 0 })
         );
     }
 
@@ -689,6 +724,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stale_done_settle_ignored_when_attempts_mismatch() {
+        let backlog = Arc::new(InMemoryExternalBacklog::new());
+        backlog.push(BacklogItem {
+            key: b"row-1".to_vec(),
+            payload: b"work".to_vec(),
+            priority: 0,
+        });
+        backlog.claim(1).await.unwrap();
+        backlog
+            .settle(
+                b"row-1",
+                Settlement::Done {
+                    attempts: 1,
+                },
+            )
+            .await
+            .unwrap();
+        assert!(backlog.settled().is_empty());
+        assert_eq!(backlog.depth().await.unwrap(), 1);
+        backlog
+            .settle(
+                b"row-1",
+                Settlement::Done {
+                    attempts: 0,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            backlog.settled().get(b"row-1".as_slice()),
+            Some(&Settlement::Done { attempts: 0 })
+        );
+    }
+
+    #[tokio::test]
     async fn outbox_drainer_retries_after_settle_failure() {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -729,7 +799,7 @@ mod tests {
             .push(BacklogSettleEvent {
                 stream: "imports".into(),
                 dedup_key: Some(b"k".to_vec()),
-                outcome: BacklogSettleOutcome::Done,
+                outcome: BacklogSettleOutcome::Done { attempts: 0 },
             })
             .unwrap();
         assert_eq!(outbox.pending_count().unwrap(), 1);
@@ -758,7 +828,7 @@ mod tests {
 
         assert_eq!(
             backlog.inner.settled().get(b"k".as_slice()),
-            Some(&Settlement::Done)
+            Some(&Settlement::Done { attempts: 0 })
         );
         assert_eq!(outbox.pending_count().unwrap(), 0);
     }
