@@ -96,6 +96,8 @@ Read-only cluster/actor state over admin HTTP (JSON):
 
 Cross-node aggregation: admin queries fan out via existing actor directory ([cross-node-actors](cross-node-actors.md)) / peer RPC; leader can serve cluster-wide view.
 
+**Product gateway (proposed):** teams with a custom admin UI can mount the same JSON on the product gateway via [`IntrospectApi`](introspect-api.md) (`GatewayOpts::with_introspect_api(true)`) behind [`AuthFn`](../../crates/trembita-http/src/lib.rs). The admin port remains the ops default (`/metrics`, embedded dashboard).
+
 ### 5. Supervision / restart policies
 
 Expose ractor OTP-style supervision to users:

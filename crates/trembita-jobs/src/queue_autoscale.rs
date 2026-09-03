@@ -219,7 +219,7 @@ pub async fn run_queue_autoscaler<F, Fut>(
 {
     let poll_interval = fallback.poll_interval;
     let cooldown = fallback.cooldown;
-    let mut inner = QueueAutoscalerLoop {
+    let inner = Arc::new(tokio::sync::Mutex::new(QueueAutoscalerLoop {
         queue,
         directory,
         state: Arc::clone(&state),
@@ -231,13 +231,18 @@ pub async fn run_queue_autoscaler<F, Fut>(
             .checked_sub(cooldown)
             .unwrap_or_else(Instant::now),
         scale,
-    };
+    }));
     let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     run_leader_loop(
         state,
         LeaderLoopOpts::new(poll_interval),
         stop_rx,
-        move |_| inner.tick(),
+        move |_| {
+            let inner = Arc::clone(&inner);
+            async move {
+                inner.lock().await.tick().await;
+            }
+        },
     )
     .await;
 }
@@ -297,7 +302,7 @@ pub async fn run_queue_membership_autoscaler<F, Fut>(
 {
     let poll_interval = fallback.poll_interval;
     let cooldown = fallback.cooldown;
-    let mut inner = QueueMembershipAutoscalerLoop {
+    let inner = Arc::new(tokio::sync::Mutex::new(QueueMembershipAutoscalerLoop {
         queue,
         state: Arc::clone(&state),
         registry,
@@ -308,13 +313,18 @@ pub async fn run_queue_membership_autoscaler<F, Fut>(
             .checked_sub(cooldown)
             .unwrap_or_else(Instant::now),
         join,
-    };
+    }));
     let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     run_leader_loop(
         state,
         LeaderLoopOpts::new(poll_interval),
         stop_rx,
-        move |_| inner.tick(),
+        move |_| {
+            let inner = Arc::clone(&inner);
+            async move {
+                inner.lock().await.tick().await;
+            }
+        },
     )
     .await;
 }

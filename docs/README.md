@@ -54,6 +54,7 @@ Architecture and decision records for the distributive Raft actor system.
 | Drain timeout (default 60s, configurable) | [drain-timeout](decisions/drain-timeout.md) |
 | Actor / routing UX (ring, sessions, drain) | [actor-routing](decisions/actor-routing.md) |
 | Gateway identity & sticky sessions | [gateway-identity](decisions/gateway-identity.md) |
+| Introspect API on product gateway (`IntrospectApi`) | [introspect-api](decisions/introspect-api.md) |
 
 ### Multi-Raft & write scaling
 

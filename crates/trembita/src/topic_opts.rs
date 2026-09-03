@@ -1,5 +1,6 @@
 //! Durable event topic registration options for [`TrembitaAppBuilder`](super::app::TrembitaAppBuilder).
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use trembita_events::{SubscriptionStart, TopicRetentionOpts, TopicSubscriptionDef};
@@ -16,6 +17,8 @@ pub struct TopicOpts {
     pub subscriptions: Vec<TopicSubscriptionDef>,
     /// Retention limits; lagging subscriptions are force-advanced when exceeded.
     pub retention: TopicRetentionOpts,
+    /// Optional transactional outbox drainer ([event-outbox](../../docs/decisions/event-outbox.md)).
+    pub outbox: Option<(Arc<dyn trembita_events::EventOutboxSource>, trembita_events::EventOutboxDrainOpts)>,
 }
 
 impl TopicOpts {

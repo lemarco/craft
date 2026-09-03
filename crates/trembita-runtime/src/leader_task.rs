@@ -201,11 +201,9 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn loop_ticks_only_while_leader() {
-        let state = Arc::new(MutexMock::new(false));
-        let (stop_tx, stop_rx) = watch::channel(false);
-        let ticks = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let ticks_task = Arc::clone(&ticks);
-        let state_task = Arc::clone(&state);
+        let mock = Arc::new(MutexMock::new(false));
+        let state: Arc<dyn ClusterState> = mock;
+        let mock_toggle = Arc::clone(&state);
 
         let handle = tokio::spawn(async move {
             run_leader_loop(
@@ -225,11 +223,11 @@ mod tests {
         tokio::time::advance(Duration::from_millis(250)).await;
         assert_eq!(ticks.load(std::sync::atomic::Ordering::SeqCst), 0);
 
-        state.set(true);
+        mock_toggle.set(true);
         tokio::time::advance(Duration::from_millis(250)).await;
         assert!(ticks.load(std::sync::atomic::Ordering::SeqCst) >= 1);
 
-        state.set(false);
+        mock_toggle.set(false);
         let before = ticks.load(std::sync::atomic::Ordering::SeqCst);
         tokio::time::advance(Duration::from_millis(250)).await;
         assert_eq!(ticks.load(std::sync::atomic::Ordering::SeqCst), before);
@@ -240,14 +238,14 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn run_on_acquire_ticks_before_first_interval() {
-        let state = Arc::new(MutexMock::new(true));
+        let state: Arc<dyn ClusterState> = Arc::new(MutexMock::new(true));
         let (stop_tx, stop_rx) = watch::channel(false);
         let first = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let first_task = Arc::clone(&first);
 
         let handle = tokio::spawn(async move {
             run_leader_loop(
-                Arc::clone(&state),
+                state,
                 LeaderLoopOpts::new(Duration::from_secs(60)).run_on_acquire(),
                 stop_rx,
                 move |gate| {

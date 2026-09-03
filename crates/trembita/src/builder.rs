@@ -2182,12 +2182,18 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
                 service,
                 specs,
             };
+            let topic_loop = Arc::new(tokio::sync::Mutex::new(topic_loop));
             tasks.push(tokio::spawn(async move {
                 run_leader_loop(
                     state,
                     LeaderLoopOpts::new(Duration::from_millis(200)),
                     stop_rx,
-                    move |gate| topic_loop.tick(gate),
+                    move |gate| {
+                        let topic_loop = Arc::clone(&topic_loop);
+                        async move {
+                            topic_loop.lock().await.tick(gate).await;
+                        }
+                    },
                 )
                 .await;
             }));

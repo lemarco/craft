@@ -10,11 +10,12 @@ Product and implementation backlog for trembita. Shipped capabilities stay in [s
 
 ## Open work
 
-Epics **B-01 … B-17** are **shipped** (see [Shipped epics](#shipped-epics-archive) below). **B-18** is the next product epic. Remaining items are optional integrations and maintenance — not blockers for product scenarios.
+Epics **B-01 … B-17** are **shipped** (see [Shipped epics](#shipped-epics-archive) below). **B-18** and **B-19** are the next product epics. Remaining items are optional integrations and maintenance — not blockers for product scenarios.
 
 | Id | Item | Status | Notes |
 |----|------|--------|-------|
 | B-18 | Leader task primitive | 🔲 | [ADR](decisions/leader-task.md) — `LeaderSession` + `run_leader_loop` + facade `on_leader` |
+| B-19 | Introspect API gateway router | 🔲 | [ADR](decisions/introspect-api.md) — `IntrospectApi` + `.with_introspect_api(true)` |
 | CF-010 | `dedup_key` lifecycle docs | shipped | Rustdoc on [`EnqueueOptions::dedup_key`](../crates/trembita-jobs/src/queue.rs); scenario table already in [background-jobs](scenarios/background-jobs.md) |
 | CF-017 | Stale external backlog `Done` settle | shipped | `Settlement::Done { attempts }`; [`PgBacklog`](../crates/trembita-backlog-postgres/src/lib.rs) guards on `claimed` + attempts |
 | O-01 | `trembita-store-redis` maintenance | ongoing | Keep as optional adapter |
@@ -55,6 +56,38 @@ For new feature epics, use the next **B-NN** id and link the scenario + ADR.
 
 
 **Acceptance:** User registers `on_leader` and body runs only on leader, stops within one facts-refresh period after step-down; `first_in_term` fires once per leadership term; internal feeder + supervisor loops use `run_leader_loop`; sim regression on A→B election.
+
+
+---
+
+### B-19 — Introspect API gateway router
+
+**Priority:** P1  
+**Scenario:** all — custom operator / admin UIs (session auth, multi-page apps)  
+**ADR:** [introspect-api](decisions/introspect-api.md)
+
+Introspection JSON (`/introspect/cluster`, `/actors`, `/queues`, `/sagas`, …) is served only by the admin hyper server on `:8080`. Product teams mounting Jobs/Actors/Workflows on the gateway still hand-write the same read-only handlers to feed their admin UI. `list_jobs` / `requeue_dead_letter_batch` are already on `JobsApi`; the gap is the **Observer snapshots** as a fourth mountable Axum router with `AuthFn`.
+
+
+| Subtask | Wave | Description | Status |
+| ------- | ---- | ----------- | ------ |
+| B-19a   | 1 | **ADR** — `IntrospectApi`, routes, gateway wiring, admin port unchanged | ✅ |
+| B-19b   | 1 | **`IntrospectApi` in `trembita-http`** — Axum routes over `Arc<dyn Observer>`, `AuthFn` | 🔲 |
+| B-19c   | 1 | **Facade** — `TrembitaApp::introspect_api`, `GatewayOpts::with_introspect_api`, `build_gateway_router` merge | 🔲 |
+| B-19d   | 1 | **Re-exports** — `Observer` + view types from `trembita` / `trembita-http` for app handlers | 🔲 |
+| B-19e   | 2 | **Tests** — route unit tests; integration `protect_product_apis` + JSON parity with admin | 🔲 |
+| B-19f   | 2 | **Docs** — `trembita-http` README, [observability](decisions/observability.md) cross-link, [testing-coverage.md](testing-coverage.md) | 🔲 |
+
+
+**Suggested MR slices**
+
+| MR | Subtasks | Wave | Effort |
+| -- | -------- | ---- | ------ |
+| **MR-1** (router + gateway) | B-19a–d | 1 | ~2 days |
+| **MR-2** (tests + docs) | B-19e–f | 2 | ~1 day |
+
+
+**Acceptance:** App enables `.with_introspect_api(true).with_jobs_api(true).protect_product_apis(true)`; admin pages fetch `/introspect/*` and `/jobs/*` on the gateway behind session auth; JSON matches admin port; admin `:8080` introspection unchanged for ops/dashboard.
 
 
 ---
