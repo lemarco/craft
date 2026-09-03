@@ -203,6 +203,9 @@ where
     }
 }
 
+/// Leader-only loop: read queue metrics → scale worker group.
+///
+/// `scale` performs the actual placement (typically `ClusterControl::scale_cluster`).
 #[allow(clippy::too_many_arguments)]
 pub async fn run_queue_autoscaler<F, Fut>(
     queue: Arc<dyn JobQueue>,
@@ -288,6 +291,8 @@ where
     }
 }
 
+/// Leader-only loop: when queue depth per live node exceeds a threshold and
+/// worker autoscale is capped at `live_nodes`, invoke `join` to add a VPS.
 pub async fn run_queue_membership_autoscaler<F, Fut>(
     queue: Arc<dyn JobQueue>,
     state: Arc<dyn ClusterState>,

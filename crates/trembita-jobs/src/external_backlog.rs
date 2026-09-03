@@ -11,7 +11,7 @@ use super::backlog_settle_outbox::{
 use crate::{EnqueueOptions, JobId, JobQueue};
 use trembita_actor_store::BoxFuture;
 use trembita_proto::QueueReplicateOp;
-use trembita_runtime::{ClusterState, LeaderLoopOpts, run_leader_loop};
+use trembita_runtime::ClusterState;
 
 /// Why an external backlog operation failed.
 #[derive(Debug, thiserror::Error)]
@@ -280,72 +280,68 @@ pub async fn run_backlog_feeder(
     state: Arc<dyn ClusterState>,
     opts: BacklogFeedOpts,
     settle_outbox: Option<Arc<dyn BacklogSettleOutbox>>,
-    stop: tokio::sync::watch::Receiver<bool>,
+    mut stop: tokio::sync::watch::Receiver<bool>,
 ) {
-    let stream_tick = stream.clone();
-    let queue_tick = Arc::clone(&queue);
-    let backlog_tick = Arc::clone(&backlog);
-    let state_tick = Arc::clone(&state);
-    let opts_tick = opts.clone();
-    let settle_outbox_tick = settle_outbox.clone();
-    run_leader_loop(
-        state,
-        LeaderLoopOpts::new(opts.poll_interval),
-        stop,
-        move |_| {
-            let stream = stream_tick.clone();
-            let queue = Arc::clone(&queue_tick);
-            let backlog = Arc::clone(&backlog_tick);
-            let state = Arc::clone(&state_tick);
-            let opts = opts_tick.clone();
-            let settle_outbox = settle_outbox_tick.clone();
-            async move {
-                let consumer_instances = opts.consumer_instances.resolve(state.as_ref());
-                let target_in_flight = opts
-                    .pending_target_per_consumer
-                    .saturating_mul(consumer_instances);
-                let Ok(metrics) = queue.metrics().await else {
-                    return;
-                };
-                let in_flight = metrics.pending.saturating_add(metrics.leased);
-                if in_flight >= target_in_flight {
-                    return;
-                }
-                let need = usize::try_from(target_in_flight.saturating_sub(in_flight))
-                    .unwrap_or(usize::MAX)
-                    .min(opts.max_claim_batch);
-                if need == 0 {
-                    return;
-                }
-                let Ok(items) = backlog.claim(need).await else {
-                    return;
-                };
-                for item in items {
-                    let options = EnqueueOptions {
-                        priority: item.priority,
-                        dedup_key: Some(item.key),
-                        ..EnqueueOptions::default()
-                    };
-                    let Ok((_, replicate_ops)) =
-                        queue.enqueue_opts_replicated(&item.payload, options).await
-                    else {
-                        continue;
-                    };
-                    if let Some(outbox) = settle_outbox.as_deref() {
-                        emit_backlog_settle_for_terminal_ops(
-                            &stream,
-                            queue.as_ref(),
-                            Some(outbox),
-                            &replicate_ops,
-                            "reclaim",
-                        )
-                        .await;
-                    }
+    let mut session = trembita_runtime::LeaderSession::new();
+    let mut interval = tokio::time::interval(opts.poll_interval);
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {}
+            _ = stop.changed() => {
+                if *stop.borrow() {
+                    break;
                 }
             }
-        },
-    )
-    .await;
+        }
+        if *stop.borrow() {
+            break;
+        }
+        if !session.gate(state.as_ref()).is_active() {
+            continue;
+        }
+        let consumer_instances = opts.consumer_instances.resolve(state.as_ref());
+        let target_in_flight = opts
+            .pending_target_per_consumer
+            .saturating_mul(consumer_instances);
+        let Ok(metrics) = queue.metrics().await else {
+            continue;
+        };
+        let in_flight = metrics.pending.saturating_add(metrics.leased);
+        if in_flight >= target_in_flight {
+            continue;
+        }
+        let need = usize::try_from(target_in_flight.saturating_sub(in_flight))
+            .unwrap_or(usize::MAX)
+            .min(opts.max_claim_batch);
+        if need == 0 {
+            continue;
+        }
+        let Ok(items) = backlog.claim(need).await else {
+            continue;
+        };
+        for item in items {
+            let options = EnqueueOptions {
+                priority: item.priority,
+                dedup_key: Some(item.key),
+                ..EnqueueOptions::default()
+            };
+            let Ok((_, replicate_ops)) =
+                queue.enqueue_opts_replicated(&item.payload, options).await
+            else {
+                continue;
+            };
+            if let Some(outbox) = settle_outbox.as_deref() {
+                emit_backlog_settle_for_terminal_ops(
+                    &stream,
+                    queue.as_ref(),
+                    Some(outbox),
+                    &replicate_ops,
+                    "reclaim",
+                )
+                .await;
+            }
+        }
+    }
 }
 
 /// Leader-only loop: drain the settle outbox into [`ExternalBacklog::settle`] with retry.
@@ -354,49 +350,48 @@ pub async fn run_backlog_settle_drainer(
     outbox: Arc<dyn BacklogSettleOutbox>,
     state: Arc<dyn ClusterState>,
     opts: BacklogSettleOutboxOpts,
-    stop: tokio::sync::watch::Receiver<bool>,
+    mut stop: tokio::sync::watch::Receiver<bool>,
 ) {
-    let registry_tick = Arc::clone(&registry);
-    let outbox_tick = Arc::clone(&outbox);
-    let opts_tick = opts.clone();
-    run_leader_loop(
-        state,
-        LeaderLoopOpts::new(opts.poll_interval),
-        stop,
-        move |_| {
-            let registry = Arc::clone(&registry_tick);
-            let outbox = Arc::clone(&outbox_tick);
-            let opts = opts_tick.clone();
-            async move {
-                let Ok(batch) = outbox.list_pending(opts.max_batch) else {
-                    return;
-                };
-                for (id, ev) in batch {
-                    let Some(backlog) = registry.get(&ev.stream) else {
-                        let _ = outbox.remove(id);
-                        continue;
-                    };
-                    let Some(key) = ev.dedup_key else {
-                        let _ = outbox.remove(id);
-                        continue;
-                    };
-                    let settlement = match ev.outcome {
-                        BacklogSettleOutcome::Done { attempts } => Settlement::Done { attempts },
-                        BacklogSettleOutcome::Failed { attempts, error } => {
-                            Settlement::Failed { attempts, error }
-                        }
-                        BacklogSettleOutcome::DeadLettered { attempts, error } => {
-                            Settlement::DeadLettered { attempts, error }
-                        }
-                    };
-                    if let Ok(()) = backlog.settle(&key, settlement).await {
-                        let _ = outbox.remove(id);
-                    }
+    let mut session = trembita_runtime::LeaderSession::new();
+    let mut interval = tokio::time::interval(opts.poll_interval);
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {}
+            _ = stop.changed() => {
+                if *stop.borrow() {
+                    break;
                 }
             }
-        },
-    )
-    .await;
+        }
+        if *stop.borrow() || !session.gate(state.as_ref()).is_active() {
+            continue;
+        }
+        let Ok(batch) = outbox.list_pending(opts.max_batch) else {
+            continue;
+        };
+        for (id, ev) in batch {
+            let Some(backlog) = registry.get(&ev.stream) else {
+                let _ = outbox.remove(id);
+                continue;
+            };
+            let Some(key) = ev.dedup_key else {
+                let _ = outbox.remove(id);
+                continue;
+            };
+            let settlement = match ev.outcome {
+                BacklogSettleOutcome::Done { attempts } => Settlement::Done { attempts },
+                BacklogSettleOutcome::Failed { attempts, error } => {
+                    Settlement::Failed { attempts, error }
+                }
+                BacklogSettleOutcome::DeadLettered { attempts, error } => {
+                    Settlement::DeadLettered { attempts, error }
+                }
+            };
+            if let Ok(()) = backlog.settle(&key, settlement).await {
+                let _ = outbox.remove(id);
+            }
+        }
+    }
 }
 
 /// Terminal job queue outcome forwarded to [`ExternalBacklog::settle`].
@@ -548,7 +543,7 @@ mod tests {
     use super::*;
     use crate::InMemoryBacklogSettleOutbox;
     use crate::{EnqueueOptions, InMemoryJobQueue, JobQueue};
-    use trembita_runtime::{ClusterState, LeaderLoopOpts, run_leader_loop};
+    use trembita_runtime::ClusterState;
 
     struct MockState {
         leader: bool,

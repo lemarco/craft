@@ -149,6 +149,8 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | **Event topics (`EventTopic`, pub/sub + named subscriptions)** | ✅ `topic`, `redb_topic` | — | — | — | ✅ |
 | **Event topic wire + voter replication (`/topic/replicate`)** | ✅ `topic_service` | — | — | — | ✅ |
 | **Event topic leader failover (replicated cursors)** | — | ✅ `topic_failover` | — | — | ✅ |
+| **Transactional event outbox drainer (`EventOutboxSource`)** | ✅ `event_outbox` | ✅ `event_outbox` (facade) | — | — | ✅ |
+| **Leader task primitive (`LeaderSession`, `run_leader_loop`, `on_leader`)** | ✅ `leader_task` | ✅ `leader_task` | — | — | ✅ |
 | **External backlog (feeder + settle outbox drainer + autoscale depth)** | ✅ `external_backlog`, `backlog_settle_outbox` | ✅ `external_backlog` (facade) | — | — | ✅ |
 | **Workload governor (compute tokens + consumer tune + actor ask)** | ✅ `compute_token`, `workload`, `messaging` | ✅ `workload_governor` | — | — | ✅ |
 | **Job queue E2E (QUIC enqueue → follower lease/ack → leader failover)** | — | — | — | ✅ `e2e/queue.sh` | ✅ |
@@ -176,6 +178,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 |------|:----:|:-----------:|:---:|:---:|--------|
 | `TrembitaCluster` local 3-node | — | ✅ | — | — | ✅ |
 | Admin / observability HTTP | — | ✅ | — | ✅ `run.sh` | ✅ |
+| Gateway introspection (`/introspect/*` on product router) | ✅ `introspect_routes` | ✅ `gateway_introspect_http` | — | — | ✅ |
 | Multi-Raft introspection (`/introspect/raft-groups`) | — | ✅ `admin`, `multi_raft` | — | — | ✅ |
 | Actors + auto-spawn | — | ✅ | ✅ `auto_spawn` | — | ✅ |
 | Multi-Raft file layout (`data_dir`) | — | ✅ `persistence` + `multi_raft` | — | — | ✅ |
@@ -228,6 +231,7 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 |--------|------|-------|
 | 2026-08 | Scenario soak per product path (actor store, saga resume, session restart) | `benchmarks/soak_{actor_store,saga,session}.rs`, `.gitlab-ci.yml` `bench` |
 | 2026-08 | Gateway identity, `SessionHandle`, WS + HTTP E2E, gateway drain | `trembita/src/gateway/`, `trembita/tests/{gateway_identity,gateway_ws,gateway_http}.rs`, `examples/{realtime,stateful-workers}/`, `docs/decisions/gateway-identity.md` |
+| 2026-09 | Introspect API on product gateway (`IntrospectApi`, `with_introspect_api`, `AuthFn`) | `trembita-http/src/introspect_routes.rs`, `trembita/tests/gateway_introspect_http.rs`, `docs/decisions/introspect-api.md` |
 | 2026-09 | Gateway virtual-host dispatch (`HostRouter`, strict default, loopback dev fallback) | `trembita-http/src/host_router.rs` (unit), `trembita-http/README.md`, `trembita/src/gateway/mod.rs` |
 | 2026-09 | Durable event topics (`EventTopic`, min-cursor compaction, retention discard, voter replication) | `trembita-actor/src/{topic,redb_topic,topic_service}.rs`, `trembita-actor/tests/topic_failover.rs`, `trembita/src/topic_opts.rs`, `docs/decisions/event-topics.md` |
 | 2026-09 | Dynamic schedule source (`ScheduleSource`, diff reconcile, leader replication) | `trembita-actor/src/schedule_source.rs`, `trembita-actor/tests/schedule_source.rs`, `trembita/tests/schedule_source.rs`, `docs/decisions/schedule-source.md` |

@@ -23,7 +23,7 @@ Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `trembita-core`,
 | Actor runtime | tokio tasks + supervision | [cross-node-actors](decisions/cross-node-actors.md) |
 | Job backlog | `JobQueue` port; default `redb`; leader `QueueService` + autoscale | [job-queue](decisions/job-queue.md) |
 | External backlog | `ExternalBacklog` port; optional [`trembita-backlog-postgres`](../crates/trembita-backlog-postgres/) | [external-backlog](decisions/external-backlog.md) |
-| Event topics | `EventTopic` port; default `redb`; leader `TopicService` + voter replication | [event-topics](decisions/event-topics.md) |
+| Event topics | `EventTopic` port; default `redb`; leader `TopicService` + voter replication; optional [`EventOutboxSource`](decisions/event-outbox.md) drainer | [event-topics](decisions/event-topics.md) |
 | Workload fairness | `ComputeTokenPool` + `WorkloadGovernor` on each node | [workload-governor](decisions/workload-governor.md) |
 | Persistence | redb (per-group files in multi-Raft) | — |
 | TLS | mTLS peers + mTLS client wire | [security](decisions/security.md) |

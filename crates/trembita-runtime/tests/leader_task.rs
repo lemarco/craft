@@ -1,32 +1,18 @@
 //! Driver-level tests for [`LeaderSession`] and [`run_leader_loop`].
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use tokio::sync::watch;
 use trembita_proto::NodeId;
 use trembita_runtime::{ClusterState, LeaderLoopOpts, LeaderSession, run_leader_loop};
 
-struct ToggleLeader {
-    leader: std::sync::Mutex<bool>,
-}
+struct AtomicLeader(Arc<AtomicBool>);
 
-impl ToggleLeader {
-    fn new(leader: bool) -> Arc<Self> {
-        Arc::new(Self {
-            leader: std::sync::Mutex::new(leader),
-        })
-    }
-
-    fn set(&self, leader: bool) {
-        *self.leader.lock().unwrap() = leader;
-    }
-}
-
-impl ClusterState for ToggleLeader {
+impl ClusterState for AtomicLeader {
     fn is_leader(&self) -> bool {
-        *self.leader.lock().unwrap()
+        self.0.load(Ordering::SeqCst)
     }
 
     fn live_nodes(&self) -> Vec<NodeId> {
@@ -36,25 +22,27 @@ impl ClusterState for ToggleLeader {
 
 #[test]
 fn session_first_in_term_after_step_down_and_re_elect() {
-    let state = ToggleLeader::new(false);
+    let leader = Arc::new(AtomicBool::new(false));
+    let state = AtomicLeader(Arc::clone(&leader));
     let mut session = LeaderSession::new();
 
-    assert!(!session.gate(&*state).is_active());
+    assert!(!session.gate(&state).is_active());
 
-    state.set(true);
-    assert!(session.gate(&*state).first_in_term());
-    assert!(!session.gate(&*state).first_in_term());
+    leader.store(true, Ordering::SeqCst);
+    assert!(session.gate(&state).first_in_term());
+    assert!(!session.gate(&state).first_in_term());
 
-    state.set(false);
-    assert!(!session.gate(&*state).is_active());
+    leader.store(false, Ordering::SeqCst);
+    assert!(!session.gate(&state).is_active());
 
-    state.set(true);
-    assert!(session.gate(&*state).first_in_term());
+    leader.store(true, Ordering::SeqCst);
+    assert!(session.gate(&state).first_in_term());
 }
 
 #[tokio::test(start_paused = true)]
 async fn run_leader_loop_stops_after_step_down_within_one_period() {
-    let state = ToggleLeader::new(true);
+    let leader = Arc::new(AtomicBool::new(true));
+    let state: Arc<dyn ClusterState> = Arc::new(AtomicLeader(Arc::clone(&leader)));
     let (stop_tx, stop_rx) = watch::channel(false);
     let ticks = Arc::new(AtomicUsize::new(0));
     let ticks_task = Arc::clone(&ticks);
@@ -75,10 +63,11 @@ async fn run_leader_loop_stops_after_step_down_within_one_period() {
         .await;
     });
 
+    tokio::task::yield_now().await;
     tokio::time::advance(Duration::from_millis(150)).await;
     assert!(ticks.load(Ordering::SeqCst) >= 1);
 
-    state.set(false);
+    leader.store(false, Ordering::SeqCst);
     let at_step_down = ticks.load(Ordering::SeqCst);
     tokio::time::advance(Duration::from_millis(250)).await;
     assert_eq!(ticks.load(Ordering::SeqCst), at_step_down);

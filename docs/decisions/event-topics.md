@@ -57,7 +57,7 @@ leader election.
 - Kafka-style partitioning or external offset replay
 - Cross-cluster topics
 - Dynamic subscription registration at runtime
-- **Transactional publish** with application state — use the [transactional outbox](https://microservices.io/patterns/data/transactional-outbox.html) pattern: write the event in the same DB transaction as domain data, then publish from the outbox. Topics alone do not guarantee atomicity with your database.
+- **Transactional publish** with application state — use the [transactional outbox](https://microservices.io/patterns/data/transactional-outbox.html) pattern: write the event in the same DB transaction as domain data, then drain via [`EventOutboxSource`](event-outbox.md). Topics alone do not guarantee atomicity with your database.
 
 ## Consequences
 

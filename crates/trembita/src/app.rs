@@ -135,6 +135,8 @@ pub struct TrembitaAppBuilder {
     queue_streams: HashSet<String>,
     cron_streams: Vec<String>,
     schedule_streams: Vec<String>,
+    event_outbox_streams: Vec<String>,
+    topic_streams: HashSet<String>,
     consumer_streams: Vec<String>,
     pending_consumers: Vec<ConsumerSpawnFn>,
     pub(crate) gateway: Option<GatewayConfig>,
@@ -266,12 +268,19 @@ impl TrembitaAppBuilder {
         topics: impl IntoIterator<Item = crate::topic_opts::TopicOpts>,
     ) -> Self {
         for opts in topics {
+            self.topic_streams.insert(opts.name.clone());
             self.inner = self.inner.event_topic(&opts.name, opts.lease);
             self.inner = self.inner.event_topic_retention(&opts.name, opts.retention);
             if !opts.subscriptions.is_empty() {
                 self.inner = self
                     .inner
                     .event_topic_subscriptions(&opts.name, &opts.subscriptions);
+            }
+            if let Some((source, drain_opts)) = opts.outbox {
+                self.event_outbox_streams.push(opts.name.clone());
+                self.inner = self
+                    .inner
+                    .event_outbox_source_with_opts(&opts.name, source, drain_opts);
             }
         }
         self
@@ -308,6 +317,23 @@ impl TrembitaAppBuilder {
         let stream = stream.into();
         self.schedule_streams.push(stream.clone());
         self.inner = self.inner.schedule_source(&stream, source, poll);
+        self
+    }
+
+    /// Poll an [`EventOutboxSource`] on the topic leader and publish into the topic
+    /// ([event-outbox](../../docs/decisions/event-outbox.md)).
+    ///
+    /// Requires a matching [`.topics`](Self::topics) registration.
+    #[must_use]
+    pub fn event_outbox_source(
+        mut self,
+        topic: impl Into<String>,
+        source: Arc<dyn trembita_events::EventOutboxSource>,
+        poll: trembita_events::EventOutboxPoll,
+    ) -> Self {
+        let topic = topic.into();
+        self.event_outbox_streams.push(topic.clone());
+        self.inner = self.inner.event_outbox_source(&topic, source, poll);
         self
     }
 
@@ -401,6 +427,13 @@ impl TrembitaAppBuilder {
             if !self.queue_streams.contains(stream) {
                 return Err(StartError::Config(format!(
                     "`.schedule_source()` stream {stream:?} has no matching `.queue()` registration"
+                )));
+            }
+        }
+        for topic in &self.event_outbox_streams {
+            if !self.topic_streams.contains(topic) {
+                return Err(StartError::Config(format!(
+                    "`.event_outbox_source()` topic {topic:?} has no matching `.topics()` registration"
                 )));
             }
         }
@@ -580,6 +613,8 @@ impl TrembitaApp {
             queue_streams: HashSet::new(),
             cron_streams: Vec::new(),
             schedule_streams: Vec::new(),
+            event_outbox_streams: Vec::new(),
+            topic_streams: HashSet::new(),
             consumer_streams: Vec::new(),
             pending_consumers: Vec::new(),
             gateway: None,
@@ -1161,6 +1196,21 @@ impl TrembitaApp {
                 Box::pin(async move { app.cast(&group, payload).await })
             }),
         )
+    }
+
+    /// Live [`Observer`](trembita_dashboard::Observer) for admin and gateway introspection routes.
+    #[must_use]
+    pub fn introspect_observer(&self) -> Arc<dyn trembita_dashboard::Observer> {
+        self.cluster.introspect_observer()
+    }
+
+    /// HTTP introspection API (`GET /introspect/*`). Requires `http-jobs` feature.
+    ///
+    /// Pair with [`TrembitaApp::jobs_api`] when the operator UI also lists or requeues jobs.
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn introspect_api(&self) -> trembita_http::IntrospectApi {
+        trembita_http::IntrospectApi::new(self.introspect_observer())
     }
 
     /// Run a cross-shard workflow using the node's default saga journal.

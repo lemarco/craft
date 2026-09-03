@@ -7,7 +7,7 @@ use trembita_events::{SubscriptionStart, TopicRetentionOpts, TopicSubscriptionDe
 use trembita_proto::{DEFAULT_TOPIC_MAX_EVENT_AGE_MS, DEFAULT_TOPIC_MAX_RETAINED_EVENTS};
 
 /// One durable topic with named subscriptions ([event-topics](../../docs/decisions/event-topics.md)).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct TopicOpts {
     /// Topic name (`topic-{name}.redb` under `data_dir`).
     pub name: String,

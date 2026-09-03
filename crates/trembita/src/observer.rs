@@ -19,8 +19,38 @@ use trembita_client::SagaJournalPhase;
 use trembita_jobs::JobQueue;
 use trembita_runtime::{ActorDirectory, ActorRegistry, NodeHandle};
 
+use crate::cluster_handle::TrembitaCluster;
 use crate::multi_raft::MultiRaftState;
 use crate::saga::SagaRegistry;
+
+/// Build a live [`Observer`] from a running cluster handle.
+pub(crate) fn build_introspect_observer<M: StateMachine>(
+    cluster: &TrembitaCluster<M>,
+) -> Arc<dyn Observer> {
+    let (replication_factor, learner_factor) = cluster.multi_raft.as_ref().map_or(
+        (
+            trembita_core::DEFAULT_GROUP_REPLICATION_FACTOR,
+            trembita_core::DEFAULT_GROUP_LEARNER_FACTOR,
+        ),
+        |mr| (mr.replication_factor, mr.learner_factor),
+    );
+    Arc::new(TrembitaObserver::new(
+        cluster.node_id,
+        cluster.handle.clone(),
+        Arc::clone(&cluster.directory),
+        cluster.registry.clone(),
+        cluster.shard_count,
+        cluster.shard_routing,
+        cluster.raft_groups,
+        replication_factor,
+        learner_factor,
+        cluster.multi_raft.clone(),
+        Arc::clone(&cluster.catalog_version),
+        cluster.job_queues.clone(),
+        Arc::clone(&cluster.saga_registry),
+        cluster.metrics.clone(),
+    ))
+}
 
 /// A read-only view onto one running node for the admin/dashboard endpoints.
 pub(crate) struct TrembitaObserver<M: StateMachine> {

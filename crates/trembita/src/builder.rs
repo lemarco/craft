@@ -1844,6 +1844,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             )))
         };
         let mut event_topics: HashMap<String, Arc<dyn EventTopic>> = HashMap::new();
+        let mut local_event_topics: HashMap<String, Arc<RedbEventTopic>> = HashMap::new();
         for spec in &self.topic_streams {
             let path = match &spec.path {
                 Some(path) => path.clone(),
@@ -1873,8 +1874,26 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
                 Arc::clone(&transport),
             ));
             event_topics.insert(spec.name.clone(), client);
+            local_event_topics.insert(spec.name.clone(), local);
         }
         let topic_bootstrap_specs = self.topic_streams.clone();
+        let event_outbox_feeds = self.event_outbox_feeds.clone();
+        let event_outbox_cursor: Option<Arc<dyn EventOutboxCursor>> =
+            if event_outbox_feeds.is_empty() {
+                None
+            } else if let Some(data_dir) = self.data_dir.as_ref() {
+                Some(Arc::new(
+                    RedbEventOutboxCursor::open(data_dir.join("event-outbox-cursors.redb"))
+                        .unwrap_or_else(|e| {
+                            panic!(
+                                "open event outbox cursors at {}: {e}",
+                                data_dir.join("event-outbox-cursors.redb").display()
+                            )
+                        }),
+                ))
+            } else {
+                Some(Arc::new(InMemoryEventOutboxCursor::new()))
+            };
 
         // --- Actor workflow store (redb + voter replication) ----------------
         let mut actor_state_store = self.actor_state_store.clone();
@@ -2224,7 +2243,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
                     let _ = self.service.enforce_retention_all().await;
                 }
             }
-            let mut topic_loop = TopicLeaderLoop {
+            let topic_loop = TopicLeaderLoop {
                 bootstrapped: false,
                 service,
                 specs,
@@ -2244,6 +2263,30 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
                 )
                 .await;
             }));
+        }
+
+        if let Some(cursor) = event_outbox_cursor.as_ref() {
+            for feed in &event_outbox_feeds {
+                let Some(topic) = local_event_topics.get(&feed.topic).cloned() else {
+                    panic!(
+                        "event_outbox_source topic {:?} has no matching event_topic registration",
+                        feed.topic
+                    );
+                };
+                let topic: Arc<dyn EventTopic> = topic;
+                let state = Arc::clone(&facts) as Arc<dyn ClusterState>;
+                let source = Arc::clone(&feed.source);
+                let topic_name = feed.topic.clone();
+                let opts = feed.opts.clone();
+                let cursor = Arc::clone(cursor);
+                let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+                tasks.push(tokio::spawn(async move {
+                    run_event_outbox_drainer(
+                        topic_name, topic, source, cursor, state, opts, stop_rx,
+                    )
+                    .await;
+                }));
+            }
         }
 
         if let Some(service) = store_service.as_ref() {

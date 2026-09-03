@@ -29,6 +29,16 @@
 //!
 //! Wire it to [`TrembitaApp::actors_api`](https://docs.rs/trembita/latest/trembita/struct.TrembitaApp.html#method.actors_api).
 //!
+//! # Introspect API
+//!
+//! [`IntrospectApi`] exposes read-only cluster snapshots (same JSON as the admin port):
+//!
+//! - `GET /introspect/cluster`, `/actors`, `/queues`, `/sagas`, `/raft-groups`
+//! - `GET /introspect/actors/{id}`, `/introspect/node/{id}`
+//!
+//! Wire it to [`TrembitaApp::introspect_api`](https://docs.rs/trembita/latest/trembita/struct.TrembitaApp.html#method.introspect_api)
+//! or any [`Observer`](trembita_dashboard::Observer) implementation.
+//!
 //! # Workflows API
 //!
 //! [`WorkflowsApi`] exposes:
@@ -42,6 +52,8 @@
 mod actor_routes;
 mod actor_types;
 mod host_router;
+mod introspect_routes;
+mod introspect_types;
 mod routes;
 mod types;
 mod upgrade_routes;
@@ -63,7 +75,12 @@ use trembita_runtime::{CastError, ClusterAskError};
 
 pub use actor_types::{ActorsApiError, AskAccepted};
 pub use host_router::{HostRouter, is_local_dev_host, normalize_host};
+pub use introspect_types::IntrospectApiError;
 pub use routes::parse_enqueue_body;
+pub use trembita_dashboard::{
+    ActorView, ClusterView, NodeSummary, NodeView, Observer, QueueStreamView, QueuesView,
+    RaftGroupSummary, RaftGroupsView, Readiness, SagaRecordView,
+};
 pub use types::{
     AckBatchAccepted, AckBatchBody, EnqueueAccepted, EnqueueBatchAccepted, EnqueueBatchBody,
     EnqueueBatchJobBody, EnqueueJsonBody, JobListResponse, JobStatusResponse, JobsApiError,
@@ -368,4 +385,44 @@ pub async fn spawn_workflows_server(
         }
     });
     Ok(())
+}
+
+/// Shared Axum state for introspection routes.
+pub struct IntrospectApiState {
+    pub(crate) observer: Arc<dyn Observer>,
+    pub(crate) auth: Option<AuthFn>,
+}
+
+/// HTTP cluster introspection API (read-only Observer snapshots).
+#[derive(Clone)]
+pub struct IntrospectApi {
+    observer: Arc<dyn Observer>,
+}
+
+impl IntrospectApi {
+    /// Build from an [`Observer`] implementation (typically [`TrembitaApp::introspect_observer`]).
+    #[must_use]
+    pub fn new(observer: Arc<dyn Observer>) -> Self {
+        Self { observer }
+    }
+
+    /// Axum routes for introspection snapshots. Merge into your app and call [`Self::into_state`].
+    pub fn router(&self) -> Router<Arc<IntrospectApiState>> {
+        introspect_routes::introspect_router()
+    }
+
+    /// State handle for [`Self::router`].
+    #[must_use]
+    pub fn into_state(self) -> IntrospectApiState {
+        self.into_state_with_auth(None)
+    }
+
+    /// State handle with an optional gateway auth hook.
+    #[must_use]
+    pub fn into_state_with_auth(self, auth: Option<AuthFn>) -> IntrospectApiState {
+        IntrospectApiState {
+            observer: self.observer,
+            auth,
+        }
+    }
 }

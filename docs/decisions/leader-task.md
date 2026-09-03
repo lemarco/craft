@@ -1,6 +1,6 @@
 # Leader task primitive
 
-**Status:** Proposed  
+**Status:** Accepted (implemented)  
 **Date:** 2026-09-03  
 **Epic:** [B-18](../backlog.md#b-18--leader-task-primitive)
 
@@ -140,12 +140,13 @@ Replace ad-hoc loops with `run_leader_loop` + thin `tick` closures:
 
 | Current | After |
 |---------|-------|
-| `run_backlog_feeder` body | `tick` closure; keep function as thin wrapper for stable public path |
+| `run_backlog_feeder` | [`LeaderSession::gate`](../../crates/trembita-runtime/src/leader_task.rs) inline (stable public path; avoids `FnMut` feed state in `run_leader_loop`) |
 | `run_backlog_settle_drainer` | same |
-| `run_queue_autoscaler` / membership | same + add `watch` stop wired from cluster shutdown |
-| inline supervisor interval in builder | `on_leader("supervisor", …)` calling `reconcile()` |
-| inline topic bootstrap loop | `on_leader` with `first_in_term` bootstrap |
-| `run_queue_schedule_ticker` | either wrap service calls or move gate to loop (prefer one style per crate) |
+| `run_queue_autoscaler` / membership | `run_leader_loop` + mutex-held loop state |
+| inline supervisor interval in builder | `run_leader_loop` → `reconcile()` |
+| inline topic bootstrap loop | `run_leader_loop` + `first_in_term` bootstrap |
+| `run_queue_schedule_ticker` / actor-store GC | `run_leader_loop` |
+| `run_event_outbox_drainer` | `run_leader_loop` |
 
 Wire-handler leader checks (`QueueService`, etc.) **stay** — they are request-scoped, not periodic.
 

@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use tokio::task::JoinHandle;
 use trembita_core::StateMachine;
-use trembita_dashboard::{EventBus, Metrics, StopReason, TraceOpts, TrembitaEvent};
+use trembita_dashboard::{EventBus, Metrics, Observer, StopReason, TraceOpts, TrembitaEvent};
 use trembita_net::RemoteError;
 use trembita_net::transport::RequestHandler;
 use trembita_net::{Transport, send_catalog_add_request, send_leave_request};
@@ -523,6 +523,12 @@ impl<M: StateMachine> TrembitaCluster<M> {
     #[must_use]
     pub fn event_topic(&self, name: &str) -> Option<Arc<dyn trembita_events::EventTopic>> {
         self.event_topics.get(name).cloned()
+    }
+
+    /// Read-only observability port for admin and gateway introspection routes.
+    #[must_use]
+    pub fn introspect_observer(&self) -> Arc<dyn Observer> {
+        crate::observer::build_introspect_observer(self)
     }
 
     /// Enqueue many jobs in one leader transaction (job queue batch path).

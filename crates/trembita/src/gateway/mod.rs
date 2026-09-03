@@ -44,6 +44,7 @@ pub struct GatewayOpts {
     jobs_api: bool,
     actors_api: bool,
     workflows_api: bool,
+    introspect_api: bool,
     identity: Option<Arc<dyn identity::DynGatewayIdentity>>,
     routes: Option<GatewayRoutesFn>,
     drain_timeout: Duration,
@@ -58,6 +59,7 @@ impl fmt::Debug for GatewayOpts {
             .field("jobs_api", &self.jobs_api)
             .field("actors_api", &self.actors_api)
             .field("workflows_api", &self.workflows_api)
+            .field("introspect_api", &self.introspect_api)
             .field("identity", &self.identity.as_ref().map(|_| "<extractor>"))
             .field("routes", &self.routes.as_ref().map(|_| "<router>"))
             .field("drain_timeout", &self.drain_timeout)
@@ -76,6 +78,7 @@ impl GatewayOpts {
             jobs_api: false,
             actors_api: false,
             workflows_api: false,
+            introspect_api: false,
             identity: None,
             routes: None,
             drain_timeout: DEFAULT_GATEWAY_DRAIN_TIMEOUT,
@@ -153,7 +156,14 @@ impl GatewayOpts {
         self
     }
 
-    /// Require [`Self::identity`] on built-in `/jobs/*`, `/actors/*`, and `/workflows/*` routes.
+    /// Enable or disable read-only `/introspect/*` routes ([`IntrospectApi`](trembita_http::IntrospectApi)).
+    #[must_use]
+    pub fn with_introspect_api(mut self, enabled: bool) -> Self {
+        self.introspect_api = enabled;
+        self
+    }
+
+    /// Require [`Self::identity`] on built-in `/jobs/*`, `/actors/*`, `/workflows/*`, and `/introspect/*` routes.
     ///
     /// Custom routes from [`.routes`](Self::routes) are unchanged — attach auth there explicitly.
     #[must_use]
@@ -198,6 +208,7 @@ impl GatewayOpts {
             jobs_api: self.jobs_api,
             actors_api: self.actors_api,
             workflows_api: self.workflows_api,
+            introspect_api: self.introspect_api,
             identity: self.identity,
             routes: self.routes,
             drain_timeout: self.drain_timeout,
@@ -394,6 +405,8 @@ pub struct GatewayConfig {
     pub routes: Option<GatewayRoutesFn>,
     /// Mount `/workflows/*` routes when a plan builder is configured.
     pub workflows_api: bool,
+    /// Mount read-only `/introspect/*` routes ([`IntrospectApi`](trembita_http::IntrospectApi)).
+    pub introspect_api: bool,
     /// Optional identity extractor ([`GatewayOpts::identity`]).
     pub(crate) identity: Option<Arc<dyn identity::DynGatewayIdentity>>,
     /// Graceful drain timeout for active connections.
@@ -426,6 +439,7 @@ fn build_gateway_router_with_tracker(
         jobs_api,
         actors_api,
         workflows_api,
+        introspect_api,
         identity,
         routes,
         drain_timeout: _,
@@ -461,7 +475,15 @@ fn build_gateway_router_with_tracker(
         }
 
         if jobs_api {
-            let api = TrembitaApp::jobs_api(app);
+            let api = TrembitaApp::jobs_api(Arc::clone(&app));
+            router = router.merge(
+                api.router()
+                    .with_state(Arc::new(api.into_state_with_auth(auth.clone()))),
+            );
+        }
+
+        if introspect_api {
+            let api = trembita_http::IntrospectApi::new(app.introspect_observer());
             router = router.merge(
                 api.router()
                     .with_state(Arc::new(api.into_state_with_auth(auth.clone()))),
@@ -470,7 +492,7 @@ fn build_gateway_router_with_tracker(
     }
     #[cfg(not(feature = "http-jobs"))]
     {
-        let _ = (jobs_api, actors_api, workflows_api, app);
+        let _ = (jobs_api, actors_api, workflows_api, introspect_api, app);
     }
 
     if let Some(connections) = connections {

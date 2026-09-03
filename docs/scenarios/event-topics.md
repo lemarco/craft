@@ -11,7 +11,8 @@ cursors. See [event-topics](../decisions/event-topics.md).
 ## When not to use
 
 - Point-to-point work distribution → [background jobs](background-jobs.md) (`JobQueue`).
-- Atomic “update DB + emit event” → transactional outbox in **your** database, not the topic alone.
+- Atomic “update DB + emit event” → transactional outbox in **your** database, then wire
+  [`EventOutboxSource`](../decisions/event-outbox.md) — not the topic alone.
 
 ## Setup
 
@@ -32,6 +33,22 @@ TrembitaAppBuilder::new()
 ```rust
 app.publish("platform.events", postcard::to_allocvec(&event)?).await?;
 ```
+
+### Transactional outbox
+
+When domain writes and events must commit atomically, persist rows in your database and register
+[`EventOutboxSource`](../decisions/event-outbox.md):
+
+```rust
+use trembita::{EventOutboxDrainOpts, TopicOpts};
+
+TopicOpts::topic("platform.events")
+    .subscriptions(["analytics"])
+    .outbox(Arc::new(pg_outbox), EventOutboxDrainOpts::default())
+```
+
+The leader drainer polls unpublished rows, publishes to the topic, and calls `mark_published`.
+Subscribers remain at-least-once — handlers must be idempotent.
 
 ## Subscribe
 

@@ -99,6 +99,11 @@ pub use ready::ReadyOpts;
 pub use topic_opts::TopicOpts;
 pub use trembita_actor_store::InMemoryStore;
 pub use trembita_events::TopicContext;
+pub use trembita_events::{
+    EventOutboxCursor, EventOutboxDrainOpts, EventOutboxError, EventOutboxPoll, EventOutboxSource,
+    InMemoryEventOutboxCursor, InMemoryEventOutboxSource, OutboxEvent, RedbEventOutboxCursor,
+    run_event_outbox_drainer,
+};
 pub use trembita_jobs::JobContext;
 pub use trembita_jobs::WorkloadOpts;
 pub use trembita_jobs::{
@@ -114,7 +119,9 @@ pub use workflow_opts::WorkflowOpts;
 pub use workload::WorkloadRuntime;
 
 #[cfg(feature = "http-jobs")]
-pub use trembita_http::{HostRouter, is_local_dev_host, normalize_host};
+pub use trembita_http::{
+    HostRouter, IntrospectApi, IntrospectApiError, Observer, is_local_dev_host, normalize_host,
+};
 pub use upgrade::upgrade_api;
 pub use upgrade::{
     ArtifactManifest, UpgradeCommand, UpgradeError, UpgradeMachine, UpgradeOpts, UpgradePhase,

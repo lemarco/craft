@@ -99,6 +99,11 @@ path = "tests/http_actors.rs"
 required-features = ["http-jobs"]
 
 [[test]]
+name = "gateway_introspect_http"
+path = "tests/gateway_introspect_http.rs"
+required-features = ["http-jobs"]
+
+[[test]]
 name = "app_workflow"
 path = "tests/app_workflow.rs"
 required-features = ["http-jobs"]

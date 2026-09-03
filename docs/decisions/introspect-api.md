@@ -1,6 +1,6 @@
 # Introspect API as a mountable gateway router
 
-**Status:** Proposed  
+**Status:** Accepted (implemented)  
 **Date:** 2026-09-03  
 **Epic:** [B-19](../backlog.md#b-19--introspect-api-gateway-router)
 

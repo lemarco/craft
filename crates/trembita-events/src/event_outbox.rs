@@ -7,10 +7,11 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
-use trembita_runtime::{ClusterState, LeaderLoopOpts, run_leader_loop};
+use redb::{Database, ReadableDatabase, TableDefinition};
+use trembita_actor_store::BoxFuture;
+use trembita_runtime::{ClusterState, LeaderSession};
 
-use crate::{BoxFuture, EventTopic, TopicError};
+use crate::{EventTopic, TopicError};
 
 const CURSORS: TableDefinition<&str, &[u8]> = TableDefinition::new("event_outbox_cursors");
 
@@ -168,18 +169,18 @@ impl RedbEventOutboxCursor {
     /// # Errors
     /// Returns [`EventOutboxError::Backend`] when the file cannot be opened.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, EventOutboxError> {
-        let db = Database::create(path.as_ref()).map_err(|e| backend(e))?;
+        let db = Database::create(path.as_ref()).map_err(backend)?;
         let store = Self { db };
         store.bootstrap()?;
         Ok(store)
     }
 
     fn bootstrap(&self) -> Result<(), EventOutboxError> {
-        let write = self.db.begin_write().map_err(|e| backend(e))?;
+        let write = self.db.begin_write().map_err(backend)?;
         {
-            let _ = write.open_table(CURSORS).map_err(|e| backend(e))?;
+            let _ = write.open_table(CURSORS).map_err(backend)?;
         }
-        write.commit().map_err(|e| backend(e))?;
+        write.commit().map_err(backend)?;
         Ok(())
     }
 }
@@ -188,11 +189,11 @@ impl EventOutboxCursor for RedbEventOutboxCursor {
     fn load(&self, topic: &str) -> BoxFuture<'_, Result<Option<Vec<u8>>, EventOutboxError>> {
         let topic = topic.to_string();
         Box::pin(async move {
-            let read = self.db.begin_read().map_err(|e| backend(e))?;
-            let table = read.open_table(CURSORS).map_err(|e| backend(e))?;
+            let read = self.db.begin_read().map_err(backend)?;
+            let table = read.open_table(CURSORS).map_err(backend)?;
             Ok(table
                 .get(topic.as_str())
-                .map_err(|e| backend(e))?
+                .map_err(backend)?
                 .map(|v| v.value().to_vec()))
         })
     }
@@ -201,14 +202,14 @@ impl EventOutboxCursor for RedbEventOutboxCursor {
         let topic = topic.to_string();
         let cursor = cursor.to_vec();
         Box::pin(async move {
-            let write = self.db.begin_write().map_err(|e| backend(e))?;
+            let write = self.db.begin_write().map_err(backend)?;
             {
-                let mut table = write.open_table(CURSORS).map_err(|e| backend(e))?;
+                let mut table = write.open_table(CURSORS).map_err(backend)?;
                 table
                     .insert(topic.as_str(), cursor.as_slice())
-                    .map_err(|e| backend(e))?;
+                    .map_err(backend)?;
             }
-            write.commit().map_err(|e| backend(e))?;
+            write.commit().map_err(backend)?;
             Ok(())
         })
     }
@@ -222,36 +223,34 @@ pub async fn run_event_outbox_drainer(
     cursor: std::sync::Arc<dyn EventOutboxCursor>,
     state: std::sync::Arc<dyn ClusterState>,
     opts: EventOutboxDrainOpts,
-    stop: tokio::sync::watch::Receiver<bool>,
+    mut stop: tokio::sync::watch::Receiver<bool>,
 ) {
-    let topic_tick = topic_name.clone();
-    let topic_client = std::sync::Arc::clone(&topic);
-    let source_tick = std::sync::Arc::clone(&source);
-    let cursor_tick = std::sync::Arc::clone(&cursor);
-    let opts_tick = opts.clone();
-    run_leader_loop(
-        state,
-        LeaderLoopOpts::new(opts.poll_interval),
-        stop,
-        move |_| {
-            let topic_name = topic_tick.clone();
-            let topic = std::sync::Arc::clone(&topic_client);
-            let source = std::sync::Arc::clone(&source_tick);
-            let cursor = std::sync::Arc::clone(&cursor_tick);
-            let opts = opts_tick.clone();
-            async move {
-                drain_event_outbox_once(
-                    &topic_name,
-                    topic.as_ref(),
-                    source.as_ref(),
-                    cursor.as_ref(),
-                    &opts,
-                )
-                .await;
+    let mut session = LeaderSession::new();
+    let mut interval = tokio::time::interval(opts.poll_interval);
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {}
+            _ = stop.changed() => {
+                if *stop.borrow() {
+                    break;
+                }
             }
-        },
-    )
-    .await;
+        }
+        if *stop.borrow() {
+            break;
+        }
+        if !session.gate(state.as_ref()).is_active() {
+            continue;
+        }
+        drain_event_outbox_once(
+            &topic_name,
+            topic.as_ref(),
+            source.as_ref(),
+            cursor.as_ref(),
+            &opts,
+        )
+        .await;
+    }
 }
 
 async fn drain_event_outbox_once(
@@ -276,8 +275,7 @@ async fn drain_event_outbox_once(
                 published_ids.push(event.id.clone());
                 last_id = Some(event.id);
             }
-            Err(TopicError::NotLeader) => break,
-            Err(_) => break,
+            Err(TopicError::NotLeader) | Err(_) => break,
         }
     }
     if published_ids.is_empty() {
@@ -352,6 +350,7 @@ impl EventOutboxSource for InMemoryEventOutboxSource {
         after: Option<&[u8]>,
         max: usize,
     ) -> BoxFuture<'_, Result<Vec<OutboxEvent>, EventOutboxError>> {
+        let after = after.map(<[u8]>::to_vec);
         Box::pin(async move {
             let inner = self
                 .inner
@@ -362,7 +361,10 @@ impl EventOutboxSource for InMemoryEventOutboxSource {
                 if row.published {
                     continue;
                 }
-                if after.is_some_and(|cursor| id.as_slice() <= cursor) {
+                if after
+                    .as_deref()
+                    .is_some_and(|cursor| id.as_slice() <= cursor)
+                {
                     continue;
                 }
                 out.push(OutboxEvent {
@@ -480,8 +482,8 @@ mod tests {
         drainer.abort();
     }
 
-    #[test]
-    fn redb_cursor_survives_reopen() {
+    #[tokio::test]
+    async fn redb_cursor_survives_reopen() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("cursors.redb");
         {

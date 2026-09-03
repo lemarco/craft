@@ -52,7 +52,7 @@ Optional adapter: [`trembita-backlog-postgres`](../../crates/trembita-backlog-po
 
 ## Related
 
-- [leader-task.md](leader-task.md) — proposed execution primitive shared by feeder and drainer loops
+- [leader-task.md](leader-task.md) — leader task primitive shared by feeder and drainer loops
 
 ## Alternatives considered
 

@@ -60,6 +60,33 @@ Fire-and-forget message to a worker group. Same body rules as above.
 
 Returns **`202 Accepted`**.
 
+## Introspect API
+
+Mount read-only cluster snapshots (same JSON as the admin port):
+
+```rust
+use std::sync::Arc;
+use trembita_http::{IntrospectApi, Observer};
+
+let observer: Arc<dyn Observer> = app.introspect_observer();
+let api = IntrospectApi::new(observer);
+let app = axum::Router::new()
+    .merge(api.router())
+    .with_state(Arc::new(api.into_state_with_auth(Some(auth_fn))));
+```
+
+Or via the facade gateway:
+
+```rust
+GatewayOpts::new(addr)
+    .with_introspect_api(true)
+    .with_jobs_api(true) // list / requeue for operator queue pages
+    .identity(MySessionIdentity)
+    .protect_product_apis(true)
+```
+
+Routes: `GET /introspect/cluster`, `/actors`, `/queues`, `/sagas`, `/raft-groups`, `/actors/{id}`, `/node/{id}`.
+
 ## Virtual hosts (`HostRouter`)
 
 Several hostnames on one port — strict by default (unknown host → **404**):

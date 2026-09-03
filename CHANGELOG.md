@@ -11,6 +11,20 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ## [Unreleased]
 
+### Added
+
+- **Leader task primitive** — [`LeaderSession`](crates/trembita-runtime/src/leader_task.rs),
+  [`run_leader_loop`](crates/trembita-runtime/src/leader_task.rs), and
+  [`TrembitaClusterBuilder::on_leader`](crates/trembita/src/builder.rs) for periodic
+  leader-only work with `first_in_term` ([`leader-task`](docs/decisions/leader-task.md));
+  internal feeder, drainer, autoscaler, supervisor, schedule, GC, and topic loops migrated.
+
+- **`EventOutboxSource` port** — leader drainer from application transactional outbox into
+  [`EventTopic`](crates/trembita-events/src/topic.rs)
+  ([`event-outbox`](docs/decisions/event-outbox.md)); [`TopicOpts::outbox`](crates/trembita/src/topic_opts.rs),
+  [`.event_outbox_source()`](crates/trembita/src/app.rs), cursor checkpoint at
+  `{data_dir}/event-outbox-cursors.redb`.
+
 ## [0.2.1] — 2026-09-03
 
 ### Changed (breaking)
