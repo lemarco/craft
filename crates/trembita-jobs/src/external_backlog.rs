@@ -646,7 +646,8 @@ mod tests {
         });
         let claimed = backlog.claim(1).await.unwrap();
         assert_eq!(claimed.len(), 1);
-        backlog.settle(b"order-1", Settlement::Done { attempts: 0 })
+        backlog
+            .settle(b"order-1", Settlement::Done { attempts: 0 })
             .await
             .unwrap();
         assert_eq!(backlog.depth().await.unwrap(), 0);
@@ -733,23 +734,13 @@ mod tests {
         });
         backlog.claim(1).await.unwrap();
         backlog
-            .settle(
-                b"row-1",
-                Settlement::Done {
-                    attempts: 1,
-                },
-            )
+            .settle(b"row-1", Settlement::Done { attempts: 1 })
             .await
             .unwrap();
         assert!(backlog.settled().is_empty());
         assert_eq!(backlog.depth().await.unwrap(), 1);
         backlog
-            .settle(
-                b"row-1",
-                Settlement::Done {
-                    attempts: 0,
-                },
-            )
+            .settle(b"row-1", Settlement::Done { attempts: 0 })
             .await
             .unwrap();
         assert_eq!(

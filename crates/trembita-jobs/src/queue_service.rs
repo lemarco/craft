@@ -301,11 +301,7 @@ impl QueueService {
 
     async fn peek_lease_meta(&self, stream: &str, lease_id: LeaseId) -> (Option<Vec<u8>>, u32) {
         match self.local_stream(stream) {
-            Ok(queue) => queue
-                .peek_lease_meta(lease_id)
-                .await
-                .map(|(dedup, attempts)| (dedup, attempts))
-                .unwrap_or((None, 0)),
+            Ok(queue) => queue.peek_lease_meta(lease_id).await.unwrap_or((None, 0)),
             Err(_) => (None, 0),
         }
     }
@@ -1073,10 +1069,7 @@ impl QueueService {
             let lease_ids: Vec<LeaseId> = request.lease_ids.iter().map(|id| LeaseId(*id)).collect();
             let mut lease_metas = Vec::with_capacity(lease_ids.len());
             for lease_id in &lease_ids {
-                lease_metas.push(
-                    self.peek_lease_meta(&request.stream, *lease_id)
-                        .await,
-                );
+                lease_metas.push(self.peek_lease_meta(&request.stream, *lease_id).await);
             }
             if let Some(sharded) = self.sharded_stream(&request.stream) {
                 match sharded
