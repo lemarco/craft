@@ -11,6 +11,8 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-09-03
+
 ### Changed (breaking)
 
 - **`Settlement::Done` / `BacklogSettleOutcome::Done`** — now carry `attempts` (queue attempt counter at ack). [`PgBacklog`](crates/trembita-backlog-postgres/src/lib.rs) applies `Done` only when the row is still `claimed` and `attempts` matches, ignoring stale settle-outbox entries after key reuse.
@@ -492,5 +494,6 @@ tested; APIs are still evolving toward a 1.0 stabilization.
 
 - Bounded `ask` timeout (30s); at-most-once side-effecting `ask` dedup; reply-encode errors surfaced; actor-stream backpressure on QUIC.
 
-[Unreleased]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.0...HEAD
+[Unreleased]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.1...HEAD
+[0.2.1]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.0...v0.2.1
 [0.2.0]: https://gitlab.com/lemarco/trembita/-/tags/v0.2.0

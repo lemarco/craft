@@ -26,13 +26,13 @@ For new feature epics, use the next **B-NN** id and link the scenario + ADR.
 
 ### CF-010 — `dedup_key` lifecycle docs
 
-**Status:** Shipped (0.2.x unreleased).
+**Status:** Shipped (`0.2.1`).
 
 **Acceptance:** [`EnqueueOptions::dedup_key`](../crates/trembita-jobs/src/queue.rs) rustdoc states the key is held while a job exists and released after ack; [background-jobs § lifecycle](scenarios/background-jobs.md#dedup_key-lifecycle) remains the scenario reference.
 
 ### CF-017 — Stale external backlog `Done` settle
 
-**Status:** Shipped (0.2.x unreleased, breaking).
+**Status:** Shipped (`0.2.1`, breaking).
 
 **Acceptance:** `Settlement::Done { attempts }` / `BacklogSettleOutcome::Done { attempts }`; ack path passes queue attempt counter; [`PgBacklog`](../crates/trembita-backlog-postgres/src/lib.rs) updates only `claimed` rows with matching `attempts`; regression test for ignored stale `Done`.
 
