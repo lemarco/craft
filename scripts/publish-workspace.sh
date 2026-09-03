@@ -47,10 +47,13 @@ PUBLISH_ORDER=(
     trembita-storage
     trembita-net
     trembita-runtime
+    trembita-actor-store
+    trembita-jobs
+    trembita-events
     trembita-client
+    trembita-sim
     trembita-dashboard
     trembita-http
-    trembita-sim
     trembita-store-redis
     trembita-backlog-postgres
     trembita
