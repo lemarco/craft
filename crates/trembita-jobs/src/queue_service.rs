@@ -467,6 +467,12 @@ impl QueueService {
         !self.schedule_sources.lock().expect("poisoned").is_empty()
     }
 
+    /// Shared cluster facts for leader-only background loops.
+    #[must_use]
+    pub fn cluster_state(&self) -> Arc<dyn ClusterState> {
+        Arc::clone(&self.state)
+    }
+
     /// Fire due recurring schedules on the leader and replicate mutations.
     ///
     /// # Errors

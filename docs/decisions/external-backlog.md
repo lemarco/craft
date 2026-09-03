@@ -50,6 +50,10 @@ Optional adapter: [`trembita-backlog-postgres`](../../crates/trembita-backlog-po
 - **`dedup_key = item.key`** ties each claimed row to one in-flight queue job. On ack the queue **releases** the dedup slot (job removed) and the drainer settles `Done` — the source row can be claimed again. On **dead letter** the external source is settled, but the queue **still holds** the dedup key until the dead-letter job is requeued or removed; see [background-jobs § `dedup_key` lifecycle](../scenarios/background-jobs.md#dedup_key-lifecycle)
 - `consumer_instances` defaults to [`ConsumerCount::Live`](../../crates/trembita-jobs/src/external_backlog.rs) — `reachable_nodes × per_node`, where `per_node` comes from `JobOpts::instances()` at registration. Use `ConsumerCount::Fixed(n)` to pin a static cluster-wide count
 
+## Related
+
+- [leader-task.md](leader-task.md) — proposed execution primitive shared by feeder and drainer loops
+
 ## Alternatives considered
 
 | Option | Verdict |

@@ -58,6 +58,6 @@ pub use trembita_net::PeerDirectory;
 pub use trembita_net::{CertPaths, load_pem_material};
 pub use trembita_runtime::{
     ActorSession, ComputeTokenPool, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy, DirectoryRetry,
-    ExternalLoad, InMemoryMailboxSpool, MailboxSpool, ManualExternalLoad, RedbMailboxSpool,
-    ResourceProfile, VpsResources,
+    ExternalLoad, InMemoryMailboxSpool, LeaderGate, LeaderLoopOpts, LeaderSession, MailboxSpool,
+    ManualExternalLoad, RedbMailboxSpool, ResourceProfile, VpsResources, run_leader_loop,
 };

@@ -56,6 +56,12 @@ impl StoreService {
         }
     }
 
+    /// Shared cluster facts for leader-only background loops.
+    #[must_use]
+    pub fn cluster_state(&self) -> Arc<dyn ClusterState> {
+        Arc::clone(&self.state)
+    }
+
     async fn forward_leader<R>(
         &self,
         send: impl FnOnce(NodeId) -> BoxFuture<'static, Result<R, TransportError>>,
@@ -429,20 +435,20 @@ pub async fn run_actor_store_gc_ticker(
     service: Arc<StoreService>,
     poll_interval: Duration,
     max_keys: usize,
-    mut stop: tokio::sync::watch::Receiver<bool>,
+    stop: tokio::sync::watch::Receiver<bool>,
 ) {
-    loop {
-        if *stop.borrow() {
-            break;
-        }
-        let _ = service.gc_expired_ttl(max_keys).await;
-        tokio::select! {
-            () = tokio::time::sleep(poll_interval) => {}
-            _ = stop.changed() => {
-                if *stop.borrow() {
-                    break;
-                }
+    let state = service.cluster_state();
+    let service_tick = Arc::clone(&service);
+    trembita_runtime::run_leader_loop(
+        state,
+        trembita_runtime::LeaderLoopOpts::new(poll_interval),
+        stop,
+        move |_| {
+            let service = Arc::clone(&service_tick);
+            async move {
+                let _ = service.gc_expired_ttl(max_keys).await;
             }
-        }
-    }
+        },
+    )
+    .await;
 }

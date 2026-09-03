@@ -9,7 +9,9 @@ use trembita_proto::{
 };
 
 use crate::{ExternalBacklog, JobQueue, effective_queue_depth};
-use trembita_runtime::{ActorDirectory, ClusterScaleError, ClusterState};
+use trembita_runtime::{
+    ActorDirectory, ClusterScaleError, ClusterState, LeaderLoopOpts, run_leader_loop,
+};
 
 /// Tunables for [`run_queue_autoscaler`].
 #[derive(Debug, Clone)]
@@ -153,8 +155,7 @@ pub struct MembershipAutoscalePolicy {
 /// Leader-only loop: read queue metrics → scale worker group.
 ///
 /// `scale` performs the actual placement (typically `ClusterControl::scale_cluster`).
-#[allow(clippy::too_many_arguments)]
-pub async fn run_queue_autoscaler<F, Fut>(
+struct QueueAutoscalerLoop<F> {
     queue: Arc<dyn JobQueue>,
     directory: Arc<ActorDirectory>,
     state: Arc<dyn ClusterState>,
@@ -162,30 +163,26 @@ pub async fn run_queue_autoscaler<F, Fut>(
     stream: String,
     fallback: AutoscalePolicy,
     backlog: Option<Arc<dyn ExternalBacklog>>,
-    mut scale: F,
-) where
+    last_scale: Instant,
+    scale: F,
+}
+
+impl<F, Fut> QueueAutoscalerLoop<F>
+where
     F: FnMut(usize) -> Fut + Send,
     Fut: std::future::Future<Output = Result<(), ClusterScaleError>> + Send,
 {
-    let fallback0 = fallback.clone();
-    let mut last_scale = Instant::now()
-        .checked_sub(fallback0.cooldown)
-        .unwrap_or_else(Instant::now);
-    let mut interval = tokio::time::interval(fallback0.poll_interval);
-    loop {
-        interval.tick().await;
-        if !state.is_leader() {
-            continue;
-        }
-        let policy = registry
-            .worker_policy(&stream)
-            .unwrap_or_else(|| fallback.clone());
-        let depth = effective_queue_depth(queue.as_ref(), backlog.as_deref()).await;
-        let reachable = state.reachable_nodes().len();
+    async fn tick(&mut self) {
+        let policy = self
+            .registry
+            .worker_policy(&self.stream)
+            .unwrap_or_else(|| self.fallback.clone());
+        let depth = effective_queue_depth(self.queue.as_ref(), self.backlog.as_deref()).await;
+        let reachable = self.state.reachable_nodes().len();
         if reachable == 0 {
-            continue;
+            return;
         }
-        let current = directory.lookup(&policy.worker_group).len();
+        let current = self.directory.lookup(&policy.worker_group).len();
         let desired_raw = if policy.target_pending_per_worker == 0 {
             policy.min_workers
         } else {
@@ -195,19 +192,97 @@ pub async fn run_queue_autoscaler<F, Fut>(
             .clamp(policy.min_workers, policy.max_workers)
             .min(reachable);
         if desired == current {
-            continue;
+            return;
         }
-        if last_scale.elapsed() < policy.cooldown {
-            continue;
+        if self.last_scale.elapsed() < policy.cooldown {
+            return;
         }
-        if scale(desired).await.is_ok() {
-            last_scale = Instant::now();
+        if (self.scale)(desired).await.is_ok() {
+            self.last_scale = Instant::now();
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+pub async fn run_queue_autoscaler<F, Fut>(
+    queue: Arc<dyn JobQueue>,
+    directory: Arc<ActorDirectory>,
+    state: Arc<dyn ClusterState>,
+    registry: Arc<QueueAutoscaleRegistry>,
+    stream: String,
+    fallback: AutoscalePolicy,
+    backlog: Option<Arc<dyn ExternalBacklog>>,
+    scale: F,
+) where
+    F: FnMut(usize) -> Fut + Send,
+    Fut: std::future::Future<Output = Result<(), ClusterScaleError>> + Send,
+{
+    let poll_interval = fallback.poll_interval;
+    let cooldown = fallback.cooldown;
+    let mut inner = QueueAutoscalerLoop {
+        queue,
+        directory,
+        state: Arc::clone(&state),
+        registry,
+        stream,
+        fallback,
+        backlog,
+        last_scale: Instant::now()
+            .checked_sub(cooldown)
+            .unwrap_or_else(Instant::now),
+        scale,
+    };
+    let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+    run_leader_loop(
+        state,
+        LeaderLoopOpts::new(poll_interval),
+        stop_rx,
+        move |_| inner.tick(),
+    )
+    .await;
+}
+
 /// Leader-only loop: when queue depth per live node exceeds a threshold and
 /// worker autoscale is capped at `live_nodes`, invoke `join` to add a VPS.
+struct QueueMembershipAutoscalerLoop<F> {
+    queue: Arc<dyn JobQueue>,
+    state: Arc<dyn ClusterState>,
+    registry: Arc<QueueAutoscaleRegistry>,
+    stream: String,
+    fallback: MembershipAutoscalePolicy,
+    backlog: Option<Arc<dyn ExternalBacklog>>,
+    last_join: Instant,
+    join: F,
+}
+
+impl<F, Fut> QueueMembershipAutoscalerLoop<F>
+where
+    F: FnMut() -> Fut + Send,
+    Fut: std::future::Future<Output = Result<(), ClusterScaleError>> + Send,
+{
+    async fn tick(&mut self) {
+        let policy = self
+            .registry
+            .membership_policy(&self.stream)
+            .unwrap_or_else(|| self.fallback.clone());
+        let reachable = self.state.reachable_nodes().len();
+        if reachable == 0 || reachable >= policy.max_nodes {
+            return;
+        }
+        let depth = effective_queue_depth(self.queue.as_ref(), self.backlog.as_deref()).await;
+        let per_node = depth / reachable as u64;
+        if per_node <= policy.pending_per_node_threshold {
+            return;
+        }
+        if self.last_join.elapsed() < policy.cooldown {
+            return;
+        }
+        if (self.join)().await.is_ok() {
+            self.last_join = Instant::now();
+        }
+    }
+}
+
 pub async fn run_queue_membership_autoscaler<F, Fut>(
     queue: Arc<dyn JobQueue>,
     state: Arc<dyn ClusterState>,
@@ -215,40 +290,33 @@ pub async fn run_queue_membership_autoscaler<F, Fut>(
     stream: String,
     fallback: MembershipAutoscalePolicy,
     backlog: Option<Arc<dyn ExternalBacklog>>,
-    mut join: F,
+    join: F,
 ) where
     F: FnMut() -> Fut + Send,
     Fut: std::future::Future<Output = Result<(), ClusterScaleError>> + Send,
 {
-    let fallback0 = fallback.clone();
-    let mut last_join = Instant::now()
-        .checked_sub(fallback0.cooldown)
-        .unwrap_or_else(Instant::now);
-    let mut interval = tokio::time::interval(fallback0.poll_interval);
-    loop {
-        interval.tick().await;
-        if !state.is_leader() {
-            continue;
-        }
-        let policy = registry
-            .membership_policy(&stream)
-            .unwrap_or_else(|| fallback.clone());
-        let reachable = state.reachable_nodes().len();
-        if reachable == 0 || reachable >= policy.max_nodes {
-            continue;
-        }
-        let depth = effective_queue_depth(queue.as_ref(), backlog.as_deref()).await;
-        let per_node = depth / reachable as u64;
-        if per_node <= policy.pending_per_node_threshold {
-            continue;
-        }
-        if last_join.elapsed() < policy.cooldown {
-            continue;
-        }
-        if join().await.is_ok() {
-            last_join = Instant::now();
-        }
-    }
+    let poll_interval = fallback.poll_interval;
+    let cooldown = fallback.cooldown;
+    let mut inner = QueueMembershipAutoscalerLoop {
+        queue,
+        state: Arc::clone(&state),
+        registry,
+        stream,
+        fallback,
+        backlog,
+        last_join: Instant::now()
+            .checked_sub(cooldown)
+            .unwrap_or_else(Instant::now),
+        join,
+    };
+    let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+    run_leader_loop(
+        state,
+        LeaderLoopOpts::new(poll_interval),
+        stop_rx,
+        move |_| inner.tick(),
+    )
+    .await;
 }
 
 #[cfg(test)]

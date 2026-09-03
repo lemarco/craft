@@ -36,6 +36,7 @@ Architecture and decision records for the distributive Raft actor system.
 | Elasticity, workers, auto-spawn & supervisor | [cluster-elasticity](decisions/cluster-elasticity.md) |
 | Membership, discovery, join/leave & liveness | [cluster-membership](decisions/cluster-membership.md) |
 | Self-update coordinator (leader + SM, no orchestrator) | [upgrade-coordinator](decisions/upgrade-coordinator.md) |
+| Leader task primitive (`LeaderSession`, `run_leader_loop`) | [leader-task](decisions/leader-task.md) |
 
 ### Actors
 

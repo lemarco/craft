@@ -6,8 +6,10 @@
 //! background loops that keep them current.
 
 use std::collections::{BTreeMap, HashMap};
+use std::future::Future;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -53,9 +55,9 @@ use trembita_jobs::{
 use trembita_runtime::{
     ActorDirectory, ActorRegistry, ClusterControl, ClusterMessaging, ClusterState,
     ClusterSupervisor, ComputeTokenPool, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy, DirectoryRetry,
-    DirectorySync, MailboxSpool, NodeService, RaftDriver, RedbMailboxSpool, ResourceProfile,
-    RuntimeConfig, UserActor, VpsResources, run_mailbox_spool_drainer, spawn_multi_raft_node,
-    spawn_node,
+    DirectorySync, LeaderGate, LeaderLoopOpts, MailboxSpool, NodeService, RaftDriver,
+    RedbMailboxSpool, ResourceProfile, RuntimeConfig, UserActor, VpsResources, run_leader_loop,
+    run_mailbox_spool_drainer, spawn_multi_raft_node, spawn_node,
 };
 
 use crate::certs::{CertReloadHandle, PemSecurity, cert_paths_for_node};
@@ -115,6 +117,15 @@ pub enum StartError {
 type RegisterFn = Box<dyn FnOnce(&ClusterControl) + Send>;
 /// Type-erased "declare this managed group on the supervisor" step.
 type ManageFn = Box<dyn FnOnce(&ClusterSupervisor<Arc<ClusterFacts>>) + Send>;
+/// Type-erased user leader task registered via [`TrembitaClusterBuilder::on_leader`].
+type UserLeaderTask =
+    Arc<dyn Fn(LeaderGate) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+
+struct UserLeaderTaskSpec {
+    opts: LeaderLoopOpts,
+    tick: UserLeaderTask,
+}
+
 /// Type-erased queue autoscale background task spawned at node start.
 type AutoscaleTask = Box<
     dyn FnOnce(
@@ -232,6 +243,8 @@ pub struct TrembitaClusterBuilder<M: StateMachine> {
     workload: Option<WorkloadOpts>,
     /// Persist cross-node `/actor/deliver` envelopes to redb outbox/inbox.
     durable_mailbox: bool,
+    /// User-defined leader-only periodic tasks ([`Self::on_leader`]).
+    leader_tasks: Vec<UserLeaderTaskSpec>,
 }
 
 impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
@@ -284,6 +297,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             schedule_sources: Vec::new(),
             workload: None,
             durable_mailbox: false,
+            leader_tasks: Vec::new(),
         }
     }
 
@@ -625,6 +639,23 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     #[must_use]
     pub fn reconcile_period(mut self, period: Duration) -> Self {
         self.reconcile_period = period;
+        self
+    }
+
+    /// Register a leader-only periodic task ([leader-task](../../docs/decisions/leader-task.md)).
+    ///
+    /// The closure runs on each tick while this node holds Raft leadership.
+    /// Use [`LeaderGate::first_in_term`] for one-shot work after election.
+    #[must_use]
+    pub fn on_leader<F, Fut>(mut self, opts: LeaderLoopOpts, f: F) -> Self
+    where
+        F: Fn(LeaderGate) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.leader_tasks.push(UserLeaderTaskSpec {
+            opts,
+            tick: Arc::new(move |gate| Box::pin(f(gate))),
+        });
         self
     }
 
@@ -2024,12 +2055,26 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
         {
             let supervisor = Arc::clone(&supervisor);
             let period = self.reconcile_period;
+            let state = Arc::clone(&facts) as Arc<dyn ClusterState>;
+            let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
             tasks.push(tokio::spawn(async move {
-                let mut interval = tokio::time::interval(period);
-                loop {
-                    interval.tick().await;
-                    let _ = supervisor.reconcile().await;
-                }
+                run_leader_loop(state, LeaderLoopOpts::new(period), stop_rx, move |_| {
+                    let supervisor = Arc::clone(&supervisor);
+                    async move {
+                        let _ = supervisor.reconcile().await;
+                    }
+                })
+                .await;
+            }));
+        }
+
+        for spec in self.leader_tasks {
+            let state = Arc::clone(&facts) as Arc<dyn ClusterState>;
+            let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            let tick = spec.tick;
+            let opts = spec.opts;
+            tasks.push(tokio::spawn(async move {
+                run_leader_loop(state, opts, stop_rx, move |gate| tick(gate)).await;
             }));
         }
 
@@ -2109,26 +2154,42 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
         if let Some(service) = topic_service.as_ref() {
             let service = Arc::clone(service);
             let specs = topic_bootstrap_specs;
-            let facts = Arc::clone(&facts) as Arc<dyn ClusterState>;
-            tasks.push(tokio::spawn(async move {
-                let mut interval = tokio::time::interval(Duration::from_millis(200));
-                let mut bootstrapped = false;
-                loop {
-                    interval.tick().await;
-                    if facts.is_leader() {
-                        if !bootstrapped {
-                            for spec in &specs {
-                                if !spec.subscriptions.is_empty() {
-                                    let _ = service
-                                        .bootstrap_subscriptions(&spec.name, &spec.subscriptions)
-                                        .await;
-                                }
+            let state = Arc::clone(&facts) as Arc<dyn ClusterState>;
+            let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            struct TopicLeaderLoop {
+                bootstrapped: bool,
+                service: Arc<TopicService>,
+                specs: Vec<TopicStreamSpec>,
+            }
+            impl TopicLeaderLoop {
+                async fn tick(&mut self, gate: LeaderGate) {
+                    if gate.first_in_term() && !self.bootstrapped {
+                        for spec in &self.specs {
+                            if !spec.subscriptions.is_empty() {
+                                let _ = self
+                                    .service
+                                    .bootstrap_subscriptions(&spec.name, &spec.subscriptions)
+                                    .await;
                             }
-                            bootstrapped = true;
                         }
-                        let _ = service.enforce_retention_all().await;
+                        self.bootstrapped = true;
                     }
+                    let _ = self.service.enforce_retention_all().await;
                 }
+            }
+            let mut topic_loop = TopicLeaderLoop {
+                bootstrapped: false,
+                service,
+                specs,
+            };
+            tasks.push(tokio::spawn(async move {
+                run_leader_loop(
+                    state,
+                    LeaderLoopOpts::new(Duration::from_millis(200)),
+                    stop_rx,
+                    move |gate| topic_loop.tick(gate),
+                )
+                .await;
             }));
         }
 

@@ -10,10 +10,11 @@ Product and implementation backlog for trembita. Shipped capabilities stay in [s
 
 ## Open work
 
-Epics **B-01 … B-17** are **shipped** (see [Shipped epics](#shipped-epics-archive) below). Remaining items are optional integrations and maintenance — not blockers for product scenarios.
+Epics **B-01 … B-17** are **shipped** (see [Shipped epics](#shipped-epics-archive) below). **B-18** is the next product epic. Remaining items are optional integrations and maintenance — not blockers for product scenarios.
 
 | Id | Item | Status | Notes |
 |----|------|--------|-------|
+| B-18 | Leader task primitive | 🔲 | [ADR](decisions/leader-task.md) — `LeaderSession` + `run_leader_loop` + facade `on_leader` |
 | CF-010 | `dedup_key` lifecycle docs | shipped | Rustdoc on [`EnqueueOptions::dedup_key`](../crates/trembita-jobs/src/queue.rs); scenario table already in [background-jobs](scenarios/background-jobs.md) |
 | CF-017 | Stale external backlog `Done` settle | shipped | `Settlement::Done { attempts }`; [`PgBacklog`](../crates/trembita-backlog-postgres/src/lib.rs) guards on `claimed` + attempts |
 | O-01 | `trembita-store-redis` maintenance | ongoing | Keep as optional adapter |
@@ -23,6 +24,40 @@ Epics **B-01 … B-17** are **shipped** (see [Shipped epics](#shipped-epics-arch
 
 
 For new feature epics, use the next **B-NN** id and link the scenario + ADR.
+
+### B-18 — Leader task primitive
+
+**Priority:** P1  
+**Scenario:** all — any custom leader-only reconcile (DB schedules, external systems, placement)  
+**ADR:** [leader-task](decisions/leader-task.md)
+
+`is_leader()` is a snapshot; operators and internal loops need a **session**: periodic work while holding Raft leadership, correct idle on step-down, optional one-shot on acquire. Today the library implements this six-plus times (feeder, drainer, autoscaler, schedule ticker, supervisor, topic bootstrap) with divergent stop/term semantics.
+
+
+| Subtask | Wave | Description | Status |
+| ------- | ---- | ----------- | ------ |
+| B-18a   | 1 | **ADR** — `LeaderSession`, `LeaderGate`, `run_leader_loop`, facade sketch | ✅ |
+| B-18b   | 1 | **`LeaderSession` + `LeaderGate`** — pure transition state machine in `trembita-runtime` | 🔲 |
+| B-18c   | 1 | **`run_leader_loop`** — interval + `watch` stop + `run_on_acquire` | 🔲 |
+| B-18d   | 1 | **Facade** — `TrembitaClusterBuilder::on_leader` + task tracked in shutdown bundle | 🔲 |
+| B-18e   | 2 | **Migrate internal loops** — feeder, drainer, autoscalers, supervisor tick, topic bootstrap, GC/schedule wrappers | 🔲 |
+| B-18f   | 2 | **Tests** — unit transitions; sim failover; integration `first_in_term` (topic bootstrap) | 🔲 |
+| B-18g   | 2 | **Docs** — rustdoc, cross-refs in [schedule-source](decisions/schedule-source.md) / [external-backlog](decisions/external-backlog.md); [testing-coverage.md](testing-coverage.md) | 🔲 |
+
+
+**Suggested MR slices**
+
+| MR | Subtasks | Wave | Effort |
+| -- | -------- | ---- | ------ |
+| **MR-1** (primitive + facade) | B-18a–d | 1 | ~2–3 days |
+| **MR-2** (migration + tests) | B-18e–f | 2 | ~3–4 days |
+| **MR-3** (docs polish) | B-18g | 2 | ~1 day |
+
+
+**Acceptance:** User registers `on_leader` and body runs only on leader, stops within one facts-refresh period after step-down; `first_in_term` fires once per leadership term; internal feeder + supervisor loops use `run_leader_loop`; sim regression on A→B election.
+
+
+---
 
 ### CF-010 — `dedup_key` lifecycle docs
 
@@ -44,7 +79,7 @@ For new feature epics, use the next **B-NN** id and link the scenario + ADR.
 | Priority     | Count | Items                           |
 | ------------ | ----- | ------------------------------- |
 | **P0**       | 2     | B-01 ✅, B-02 ✅                  |
-| **P1**       | 6     | B-03 ✅ … B-06 ✅, B-14 ✅, B-16 ✅ |
+| **P1**       | 7     | B-03 ✅ … B-06 ✅, B-14 ✅, B-16 ✅, B-18 🔲 |
 | **P2**       | 4     | B-07 ✅ … B-09 ✅, B-13 ✅        |
 | **P3**       | 3     | B-10 ✅ … B-12 ✅                 |
 | **Optional** | 4 open | O-01 … O-04 (O-05 ✅ shipped) |

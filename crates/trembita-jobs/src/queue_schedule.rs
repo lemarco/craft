@@ -226,23 +226,23 @@ impl RedbJobQueue {
 pub async fn run_queue_schedule_ticker(
     service: Arc<crate::QueueService>,
     poll_interval: Duration,
-    mut stop: tokio::sync::watch::Receiver<bool>,
+    stop: tokio::sync::watch::Receiver<bool>,
 ) {
-    loop {
-        if *stop.borrow() {
-            break;
-        }
-        let _ = service.poll_schedule_sources().await;
-        let _ = service.tick_schedules().await;
-        tokio::select! {
-            () = tokio::time::sleep(poll_interval) => {}
-            _ = stop.changed() => {
-                if *stop.borrow() {
-                    break;
-                }
+    let state = service.cluster_state();
+    let service_tick = Arc::clone(&service);
+    trembita_runtime::run_leader_loop(
+        state,
+        trembita_runtime::LeaderLoopOpts::new(poll_interval),
+        stop,
+        move |_| {
+            let service = Arc::clone(&service_tick);
+            async move {
+                let _ = service.poll_schedule_sources().await;
+                let _ = service.tick_schedules().await;
             }
-        }
-    }
+        },
+    )
+    .await;
 }
 
 /// Fire due cron schedules on a single-node [`RedbJobQueue`] (tests / dev).

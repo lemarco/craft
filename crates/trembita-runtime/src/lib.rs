@@ -15,6 +15,7 @@ mod driver;
 mod external_load;
 mod group_membership;
 mod group_rebalance;
+mod leader_task;
 mod mailbox_spool;
 mod messaging;
 mod meta;
@@ -39,6 +40,7 @@ pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
 pub use external_load::{ExternalLoad, ManualExternalLoad};
 pub use group_membership::{GroupMembershipSyncReport, sync_hosted_group_membership};
 pub use group_rebalance::{GroupRebalanceReport, RaftGroupReconciler};
+pub use leader_task::{LeaderGate, LeaderLoopOpts, LeaderSession, run_leader_loop};
 pub use mailbox_spool::{
     InMemoryMailboxSpool, MailboxSpool, MailboxSpoolError, MailboxSpoolId, RedbMailboxSpool,
 };
