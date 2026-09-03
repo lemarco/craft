@@ -449,6 +449,8 @@ pub struct TrembitaCluster<M: StateMachine> {
     pub(crate) cert_reload: Option<Arc<CertReloadHandle>>,
     pub(crate) drain_timeout: Duration,
     pub(crate) tasks: Mutex<Vec<JoinHandle<()>>>,
+    /// Keeps leader-loop stop senders alive for the node's lifetime.
+    pub(crate) leader_loop_stops: Vec<tokio::sync::watch::Sender<bool>>,
     pub(crate) workload: Option<Arc<crate::workload::WorkloadRuntime>>,
 }
 
@@ -1411,6 +1413,9 @@ impl<M: StateMachine> TrembitaCluster<M> {
         }
         for task in self.tasks.lock().unwrap().drain(..) {
             task.abort();
+        }
+        for tx in &self.leader_loop_stops {
+            let _ = tx.send(true);
         }
     }
 

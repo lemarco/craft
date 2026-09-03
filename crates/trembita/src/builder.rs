@@ -1962,6 +1962,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
 
         // --- Background loops --------------------------------------------
         let mut tasks = Vec::new();
+        let mut leader_loop_stops: Vec<tokio::sync::watch::Sender<bool>> = Vec::new();
 
         // Facts refresher + consensus telemetry: mirror consensus status into
         // the supervisor's view, publish Raft gauges / leader + membership
@@ -2145,7 +2146,8 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             let supervisor = Arc::clone(&supervisor);
             let period = self.reconcile_period;
             let state = Arc::clone(&facts) as Arc<dyn ClusterState>;
-            let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            leader_loop_stops.push(stop_tx);
             tasks.push(tokio::spawn(async move {
                 run_leader_loop(state, LeaderLoopOpts::new(period), stop_rx, move |_| {
                     let supervisor = Arc::clone(&supervisor);
@@ -2159,7 +2161,8 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
 
         for spec in self.leader_tasks {
             let state = Arc::clone(&facts) as Arc<dyn ClusterState>;
-            let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            leader_loop_stops.push(stop_tx);
             let tick = spec.tick;
             let opts = spec.opts;
             tasks.push(tokio::spawn(async move {
@@ -2244,7 +2247,8 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             let service = Arc::clone(service);
             let specs = topic_bootstrap_specs;
             let state = Arc::clone(&facts) as Arc<dyn ClusterState>;
-            let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            leader_loop_stops.push(stop_tx);
             let topic_loop = TopicLeaderLoop {
                 bootstrapped: false,
                 service,
@@ -2461,6 +2465,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             cert_reload: None,
             drain_timeout: self.drain_timeout,
             tasks: Mutex::new(tasks),
+            leader_loop_stops,
             workload,
         };
         (cluster, router)

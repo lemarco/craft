@@ -105,8 +105,8 @@ impl Default for LeaderLoopOpts {
 
 /// Periodic loop: wait → gate on [`ClusterState`] → invoke `tick` when [`LeaderGate::is_active`].
 ///
-/// Exits when `stop` is set to `true`. A dropped stop sender does **not** stop the
-/// loop (background tasks in the node builder keep running until aborted on shutdown).
+/// Exits when `stop` becomes `true` or the sender is dropped. Uses the same
+/// `select!` between interval and stop as internal feeder/drainer loops.
 pub async fn run_leader_loop<F, Fut>(
     state: Arc<dyn ClusterState>,
     opts: LeaderLoopOpts,
@@ -131,7 +131,7 @@ pub async fn run_leader_loop<F, Fut>(
         tokio::select! {
             _ = interval.tick() => {}
             changed = stop.changed() => {
-                if changed.is_ok() && *stop.borrow() {
+                if changed.is_err() || *stop.borrow() {
                     break;
                 }
             }
@@ -237,36 +237,6 @@ mod tests {
 
         let _ = stop_tx.send(true);
         let _ = handle.await;
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn dropped_stop_sender_does_not_exit_loop() {
-        let state: Arc<dyn ClusterState> = Arc::new(MutexMock::new(true));
-        let (stop_tx, stop_rx) = watch::channel(false);
-        let ticks = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let ticks_task = Arc::clone(&ticks);
-        let state_task = Arc::clone(&state);
-
-        let handle = tokio::spawn(async move {
-            run_leader_loop(
-                state_task,
-                LeaderLoopOpts::new(Duration::from_millis(50)),
-                stop_rx,
-                move |_| {
-                    let ticks_task = Arc::clone(&ticks_task);
-                    async move {
-                        ticks_task.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    }
-                },
-            )
-            .await;
-        });
-
-        drop(stop_tx);
-        tokio::time::advance(Duration::from_millis(120)).await;
-        assert!(ticks.load(std::sync::atomic::Ordering::SeqCst) >= 1);
-
-        let () = handle.abort();
     }
 
     #[tokio::test(start_paused = true)]
