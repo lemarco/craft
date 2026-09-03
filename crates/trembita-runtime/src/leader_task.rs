@@ -266,7 +266,7 @@ mod tests {
         tokio::time::advance(Duration::from_millis(120)).await;
         assert!(ticks.load(std::sync::atomic::Ordering::SeqCst) >= 1);
 
-        let _ = handle.abort();
+        let () = handle.abort();
     }
 
     #[tokio::test(start_paused = true)]
