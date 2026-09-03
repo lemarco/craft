@@ -275,7 +275,7 @@ async fn drain_event_outbox_once(
                 published_ids.push(event.id.clone());
                 last_id = Some(event.id);
             }
-            Err(TopicError::NotLeader) | Err(_) => break,
+            Err(TopicError::NotLeader | _) => break,
         }
     }
     if published_ids.is_empty() {
