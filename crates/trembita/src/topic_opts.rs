@@ -18,7 +18,10 @@ pub struct TopicOpts {
     /// Retention limits; lagging subscriptions are force-advanced when exceeded.
     pub retention: TopicRetentionOpts,
     /// Optional transactional outbox drainer ([event-outbox](../../docs/decisions/event-outbox.md)).
-    pub outbox: Option<(Arc<dyn trembita_events::EventOutboxSource>, trembita_events::EventOutboxDrainOpts)>,
+    pub outbox: Option<(
+        Arc<dyn trembita_events::EventOutboxSource>,
+        trembita_events::EventOutboxDrainOpts,
+    )>,
 }
 
 impl TopicOpts {
@@ -39,6 +42,7 @@ impl TopicOpts {
                 max_event_age: DEFAULT_MAX_EVENT_AGE,
                 max_retained_events: DEFAULT_MAX_RETAINED,
             },
+            outbox: None,
         }
     }
 
@@ -91,6 +95,17 @@ impl TopicOpts {
     #[must_use]
     pub fn max_retained_events(mut self, max: u64) -> Self {
         self.retention.max_retained_events = max;
+        self
+    }
+
+    /// Wire a transactional outbox drainer ([`EventOutboxSource`](trembita_events::EventOutboxSource)).
+    #[must_use]
+    pub fn outbox(
+        mut self,
+        source: Arc<dyn trembita_events::EventOutboxSource>,
+        opts: trembita_events::EventOutboxDrainOpts,
+    ) -> Self {
+        self.outbox = Some((source, opts));
         self
     }
 }

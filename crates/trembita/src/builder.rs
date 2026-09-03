@@ -40,8 +40,9 @@ use trembita_actor_store::{
     RedbActorStateStore, StoreService, run_actor_store_gc_ticker,
 };
 use trembita_events::{
-    ClusterEventTopic, EventTopic, RedbEventTopic, TopicRetentionOpts, TopicService,
-    TopicSubscriptionDef,
+    ClusterEventTopic, EventOutboxCursor, EventOutboxDrainOpts, EventOutboxPoll, EventOutboxSource,
+    EventTopic, InMemoryEventOutboxCursor, RedbEventOutboxCursor, RedbEventTopic,
+    TopicRetentionOpts, TopicService, TopicSubscriptionDef, run_event_outbox_drainer,
 };
 use trembita_jobs::{
     AutoscalePolicy, BacklogFeedOpts, BacklogRegistry, BacklogSettleOutbox,
@@ -193,6 +194,13 @@ struct ScheduleSourceSpec {
     poll: Duration,
 }
 
+#[derive(Clone)]
+struct EventOutboxFeedSpec {
+    topic: String,
+    source: Arc<dyn EventOutboxSource>,
+    opts: EventOutboxDrainOpts,
+}
+
 /// A fluent builder for a single trembita node (deployment-model). Create it with
 /// [`TrembitaCluster::builder`](crate::cluster::TrembitaCluster::builder).
 pub struct TrembitaClusterBuilder<M: StateMachine> {
@@ -239,6 +247,7 @@ pub struct TrembitaClusterBuilder<M: StateMachine> {
     queue_autoscale_meta: BTreeMap<String, QueueAutoscalePolicyCommand>,
     backlog_feeds: Vec<BacklogFeedSpec>,
     schedule_sources: Vec<ScheduleSourceSpec>,
+    event_outbox_feeds: Vec<EventOutboxFeedSpec>,
     /// Per-node workload governor ([workload-governor](../../docs/decisions/workload-governor.md)).
     workload: Option<WorkloadOpts>,
     /// Persist cross-node `/actor/deliver` envelopes to redb outbox/inbox.
@@ -295,6 +304,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             queue_autoscale_meta: BTreeMap::new(),
             backlog_feeds: Vec::new(),
             schedule_sources: Vec::new(),
+            event_outbox_feeds: Vec::new(),
             workload: None,
             durable_mailbox: false,
             leader_tasks: Vec::new(),
@@ -943,6 +953,43 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             stream: stream.to_string(),
             source,
             poll: poll.duration(),
+        });
+        self
+    }
+
+    /// Register a transactional outbox drainer for `topic`
+    /// ([event-outbox](../../docs/decisions/event-outbox.md)).
+    ///
+    /// Requires [`event_topic`](Self::event_topic) on the same name. The leader polls
+    /// [`EventOutboxSource::poll`], publishes to the topic, then
+    /// [`EventOutboxSource::mark_published`].
+    #[must_use]
+    pub fn event_outbox_source(
+        mut self,
+        topic: &str,
+        source: Arc<dyn EventOutboxSource>,
+        poll: EventOutboxPoll,
+    ) -> Self {
+        self.event_outbox_feeds.push(EventOutboxFeedSpec {
+            topic: topic.to_string(),
+            source,
+            opts: EventOutboxDrainOpts::default().poll(poll.duration()),
+        });
+        self
+    }
+
+    /// Like [`event_outbox_source`](Self::event_outbox_source) with explicit drain tunables.
+    #[must_use]
+    pub fn event_outbox_source_with_opts(
+        mut self,
+        topic: &str,
+        source: Arc<dyn EventOutboxSource>,
+        opts: EventOutboxDrainOpts,
+    ) -> Self {
+        self.event_outbox_feeds.push(EventOutboxFeedSpec {
+            topic: topic.to_string(),
+            source,
+            opts,
         });
         self
     }

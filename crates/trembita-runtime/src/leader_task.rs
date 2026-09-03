@@ -201,9 +201,12 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn loop_ticks_only_while_leader() {
-        let mock = Arc::new(MutexMock::new(false));
-        let state: Arc<dyn ClusterState> = mock;
-        let mock_toggle = Arc::clone(&state);
+        let leader = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let state: Arc<dyn ClusterState> = Arc::new(AtomicLeader(Arc::clone(&leader)));
+        let (stop_tx, stop_rx) = watch::channel(false);
+        let ticks = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let ticks_task = Arc::clone(&ticks);
+        let state_task = Arc::clone(&state);
 
         let handle = tokio::spawn(async move {
             run_leader_loop(
@@ -223,11 +226,11 @@ mod tests {
         tokio::time::advance(Duration::from_millis(250)).await;
         assert_eq!(ticks.load(std::sync::atomic::Ordering::SeqCst), 0);
 
-        mock_toggle.set(true);
+        leader.store(true, std::sync::atomic::Ordering::SeqCst);
         tokio::time::advance(Duration::from_millis(250)).await;
         assert!(ticks.load(std::sync::atomic::Ordering::SeqCst) >= 1);
 
-        mock_toggle.set(false);
+        leader.store(false, std::sync::atomic::Ordering::SeqCst);
         let before = ticks.load(std::sync::atomic::Ordering::SeqCst);
         tokio::time::advance(Duration::from_millis(250)).await;
         assert_eq!(ticks.load(std::sync::atomic::Ordering::SeqCst), before);
@@ -265,6 +268,18 @@ mod tests {
 
         let _ = stop_tx.send(true);
         let _ = handle.await;
+    }
+
+    struct AtomicLeader(Arc<std::sync::atomic::AtomicBool>);
+
+    impl ClusterState for AtomicLeader {
+        fn is_leader(&self) -> bool {
+            self.0.load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        fn live_nodes(&self) -> Vec<NodeId> {
+            vec![NodeId(1)]
+        }
     }
 
     struct MutexMock {
