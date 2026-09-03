@@ -1,5 +1,7 @@
 //! [`TrembitaAppBuilder`] boot-time validation (queue / cron / consumer / workflows).
 
+#![allow(clippy::large_futures)] // boot_for_test future grows with product builder surface
+
 use std::time::Duration;
 
 use trembita::cluster::RecurringJob;

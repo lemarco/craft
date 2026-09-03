@@ -1,5 +1,7 @@
 //! HTTP gateway end-to-end: identity → session → cast (POST + GET).
 
+#![allow(clippy::large_futures)] // boot_local_app future grows with product builder surface
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -184,7 +186,7 @@ async fn http_post_chat_with_query_auth() {
 
     let app = boot_with_workers(&base).await;
     let router = build_gateway_router(
-        Arc::clone(&app),
+        &app,
         GatewayOpts::new("127.0.0.1:0".parse().unwrap())
             .identity(FixedToken)
             .routes(gateway_routes)
@@ -246,7 +248,7 @@ async fn http_get_me_route() {
 
     let app = boot_with_workers(&base).await;
     let router = build_gateway_router(
-        Arc::clone(&app),
+        &app,
         GatewayOpts::new("127.0.0.1:0".parse().unwrap())
             .identity(FixedToken)
             .routes(gateway_routes)
@@ -280,7 +282,7 @@ async fn http_post_chat_with_bearer_auth() {
 
     let app = boot_with_workers(&base).await;
     let router = build_gateway_router(
-        Arc::clone(&app),
+        &app,
         GatewayOpts::new("127.0.0.1:0".parse().unwrap())
             .identity(FixedToken)
             .routes(gateway_routes)
@@ -317,7 +319,7 @@ async fn http_post_without_auth_returns_401() {
 
     let app = boot_with_workers(&base).await;
     let router = build_gateway_router(
-        Arc::clone(&app),
+        &app,
         GatewayOpts::new("127.0.0.1:0".parse().unwrap())
             .identity(FixedToken)
             .routes(gateway_routes)

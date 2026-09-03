@@ -49,7 +49,7 @@ Custom [`StateMachine`](https://docs.rs/trembita-core/latest/trembita_core/trait
 ## Learn more
 
 - Product showcases: `./scripts/run-example.sh background-jobs` — full index in [examples/README.md](../../examples/README.md).
-- The reference runner binary: [`trembita-node`](../trembita-node) (repo only, not on crates.io).
+- The reference runner binary: [`trembita-node`](../trembita-tools) (repo only, not on crates.io).
 - Architecture, ADRs, and the wire protocol: [repository docs](https://gitlab.com/lemarco/trembita/-/tree/master/docs)
 
 ## License

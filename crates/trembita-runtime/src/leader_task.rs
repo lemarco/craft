@@ -292,10 +292,6 @@ mod tests {
                 leader: std::sync::Mutex::new(leader),
             }
         }
-
-        fn set(&self, leader: bool) {
-            *self.leader.lock().unwrap() = leader;
-        }
     }
 
     impl ClusterState for MutexMock {

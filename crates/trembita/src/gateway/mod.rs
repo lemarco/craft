@@ -421,7 +421,7 @@ pub struct GatewayConfig {
 ///
 /// Installs connection-tracking middleware on the merged router so HTTP handlers
 /// do not need to call [`TrembitaGatewayState::track_connection`] manually.
-pub fn build_gateway_router(app: Arc<TrembitaApp>, config: GatewayConfig) -> Router {
+pub fn build_gateway_router(app: &Arc<TrembitaApp>, config: GatewayConfig) -> Router {
     let connections = app.cluster().workload_runtime().map_or_else(
         || Arc::new(ConnectionTracker::default()),
         |w| w.connections(),
@@ -430,7 +430,7 @@ pub fn build_gateway_router(app: Arc<TrembitaApp>, config: GatewayConfig) -> Rou
 }
 
 fn build_gateway_router_with_tracker(
-    app: Arc<TrembitaApp>,
+    app: &Arc<TrembitaApp>,
     config: GatewayConfig,
     connections: Option<Arc<ConnectionTracker>>,
 ) -> Router {
@@ -453,13 +453,13 @@ fn build_gateway_router_with_tracker(
         None
     };
 
-    let state = TrembitaGatewayState::from_parts(Arc::clone(&app), identity, connections.clone());
+    let state = TrembitaGatewayState::from_parts(Arc::clone(app), identity, connections.clone());
     let mut router = routes.map_or_else(Router::new, |f| f(state));
 
     #[cfg(feature = "http-jobs")]
     {
         if workflows_api {
-            let api = TrembitaApp::workflows_api(Arc::clone(&app));
+            let api = TrembitaApp::workflows_api(Arc::clone(app));
             router = router.merge(
                 api.router()
                     .with_state(Arc::new(api.into_state_with_auth(auth.clone()))),
@@ -467,7 +467,7 @@ fn build_gateway_router_with_tracker(
         }
 
         if actors_api {
-            let api = TrembitaApp::actors_api(Arc::clone(&app));
+            let api = TrembitaApp::actors_api(Arc::clone(app));
             router = router.merge(
                 api.router()
                     .with_state(Arc::new(api.into_state_with_auth(auth.clone()))),
@@ -475,7 +475,7 @@ fn build_gateway_router_with_tracker(
         }
 
         if jobs_api {
-            let api = TrembitaApp::jobs_api(Arc::clone(&app));
+            let api = TrembitaApp::jobs_api(Arc::clone(app));
             router = router.merge(
                 api.router()
                     .with_state(Arc::new(api.into_state_with_auth(auth.clone()))),
@@ -526,7 +526,7 @@ pub async fn spawn_gateway(
         |w| w.connections(),
     );
     let mut router =
-        build_gateway_router_with_tracker(Arc::clone(&app), config, Some(Arc::clone(&connections)));
+        build_gateway_router_with_tracker(&app, config, Some(Arc::clone(&connections)));
     if let Some(wl) = &workload {
         router = router.layer(axum::middleware::from_fn_with_state(
             wl.pool(),

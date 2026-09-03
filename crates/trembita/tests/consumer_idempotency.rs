@@ -1,4 +1,7 @@
 //! B-13 acceptance: a redelivered job runs its side effect exactly once.
+
+#![allow(clippy::large_futures)] // boot_local_app future grows with product builder surface
+
 //!
 //! The queue is at-least-once by design, so this exercises the guard, not the
 //! queue: the handler fails *after* its side effect, forcing a redelivery, and

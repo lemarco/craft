@@ -1,5 +1,7 @@
 //! [`TrembitaApp`] smoke tests (B-02).
 
+#![allow(clippy::large_futures)] // boot_local_app future grows with product builder surface
+
 use std::time::Duration;
 
 use trembita::{QueueOpts, TrembitaApp, TrembitaConfigure};

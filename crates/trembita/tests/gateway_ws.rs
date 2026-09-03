@@ -1,6 +1,7 @@
 //! WebSocket gateway end-to-end: identity → session → cast.
 
-use std::sync::Arc;
+#![allow(clippy::large_futures)] // boot_local_app future grows with product builder surface
+
 use std::time::Duration;
 
 use axum::Router;
@@ -167,7 +168,7 @@ async fn websocket_gateway_casts_to_worker() {
         .routes(gateway_routes)
         .build_config();
 
-    let router = build_gateway_router(Arc::clone(&app), config);
+    let router = build_gateway_router(&app, config);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {

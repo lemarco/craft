@@ -1,5 +1,7 @@
 //! [`TrembitaApp`] workflow integration (coordination machinery, not Raft state machine).
 
+#![allow(clippy::large_futures)] // boot_local_app future grows with product builder surface
+
 use trembita::client::SagaOutcome;
 use trembita::{
     GatewayOpts, ReadyOpts, TrembitaApp, TrembitaConfigure, WorkflowBuilder, WorkflowOpts,
@@ -99,7 +101,7 @@ mod gateway_merge {
         .await;
 
         let router = build_gateway_router(
-            app,
+            &app,
             GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
                 .with_workflows_api(true)
                 .build_config(),

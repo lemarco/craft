@@ -7,9 +7,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with all
 
 Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases may include breaking changes on minor bumps; each is noted here.
 
-**Crates.io:** [`0.2.0`](https://crates.io/crates/trembita) (2026-09-03) is the first published trembita release. Git tags `v0.1.0`–`v0.6.1` from the prior **crafty**-era development were removed on 2026-09-03; they were never on crates.io. Historical notes for those internal milestones live under [Archive](#archive--pre-cratesio-development-crafty-era) below.
+**Crates.io:** [`0.2.1`](https://crates.io/crates/trembita) (2026-09-03). See [0.2.2](#022--2026-09-03) below for the latest release notes draft.
 
 ## [Unreleased]
+
+## [0.2.2] — 2026-09-03
 
 ### Added
 
@@ -24,6 +26,15 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
   ([`event-outbox`](docs/decisions/event-outbox.md)); [`TopicOpts::outbox`](crates/trembita/src/topic_opts.rs),
   [`.event_outbox_source()`](crates/trembita/src/app.rs), cursor checkpoint at
   `{data_dir}/event-outbox-cursors.redb`.
+
+- **`IntrospectApi` on product gateway** — mount read-only `/introspect/*` beside
+  `JobsApi` / `ActorsApi` / `WorkflowsApi` with [`AuthFn`](crates/trembita-http/src/lib.rs)
+  ([`introspect-api`](docs/decisions/introspect-api.md)); [`GatewayOpts::with_introspect_api`](crates/trembita/src/gateway/mod.rs),
+  [`TrembitaApp::introspect_observer`](crates/trembita/src/app.rs).
+
+### Fixed
+
+- **Event outbox drainer** — settlement errors no longer advance the cursor; failed publishes retry on the next leader tick.
 
 ## [0.2.1] — 2026-09-03
 

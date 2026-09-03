@@ -1,6 +1,7 @@
 //! B-14c: HTTP jobs through the product gateway router (batch + auth + metadata).
 
-use std::sync::Arc;
+#![allow(clippy::large_futures)] // boot_local_app future grows with product builder surface
+
 use std::time::Duration;
 
 use axum::body::Body;
@@ -77,7 +78,7 @@ async fn gateway_jobs_batch_and_job_status_metadata() {
     advance(Duration::from_millis(200)).await;
 
     let router = build_gateway_router(
-        Arc::clone(&app),
+        &app,
         GatewayOpts::new("127.0.0.1:0".parse().unwrap())
             .with_jobs_api(true)
             .identity(BearerSecret)

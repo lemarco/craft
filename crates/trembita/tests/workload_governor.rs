@@ -1,5 +1,7 @@
 //! Workload governor: ingress signals tune consumers and token ceiling.
 
+#![allow(clippy::large_futures)] // boot_local_app future grows with product builder surface
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;

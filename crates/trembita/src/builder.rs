@@ -158,6 +158,29 @@ struct TopicStreamSpec {
     subscriptions: Vec<TopicSubscriptionDef>,
 }
 
+struct TopicLeaderLoop {
+    bootstrapped: bool,
+    service: Arc<TopicService>,
+    specs: Vec<TopicStreamSpec>,
+}
+
+impl TopicLeaderLoop {
+    async fn tick(&mut self, gate: LeaderGate) {
+        if gate.first_in_term() && !self.bootstrapped {
+            for spec in &self.specs {
+                if !spec.subscriptions.is_empty() {
+                    let _ = self
+                        .service
+                        .bootstrap_subscriptions(&spec.name, &spec.subscriptions)
+                        .await;
+                }
+            }
+            self.bootstrapped = true;
+        }
+        let _ = self.service.enforce_retention_all().await;
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ShardedJobSpec {
     name: String,
@@ -2222,27 +2245,6 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             let specs = topic_bootstrap_specs;
             let state = Arc::clone(&facts) as Arc<dyn ClusterState>;
             let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
-            struct TopicLeaderLoop {
-                bootstrapped: bool,
-                service: Arc<TopicService>,
-                specs: Vec<TopicStreamSpec>,
-            }
-            impl TopicLeaderLoop {
-                async fn tick(&mut self, gate: LeaderGate) {
-                    if gate.first_in_term() && !self.bootstrapped {
-                        for spec in &self.specs {
-                            if !spec.subscriptions.is_empty() {
-                                let _ = self
-                                    .service
-                                    .bootstrap_subscriptions(&spec.name, &spec.subscriptions)
-                                    .await;
-                            }
-                        }
-                        self.bootstrapped = true;
-                    }
-                    let _ = self.service.enforce_retention_all().await;
-                }
-            }
             let topic_loop = TopicLeaderLoop {
                 bootstrapped: false,
                 service,

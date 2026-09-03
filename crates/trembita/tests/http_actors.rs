@@ -1,5 +1,7 @@
 //! HTTP actor ask / cast routes (B-04f).
 
+#![allow(clippy::large_futures)] // boot_local_app future grows with product builder surface
+
 use std::sync::Arc;
 use std::time::Duration;
 

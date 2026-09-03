@@ -16,7 +16,7 @@ the mTLS QUIC cluster wire.
 | `/dashboard/events` | SSE event feed |
 
 Enable via `TrembitaCluster::builder(...).admin_addr(...)` or run
-[`trembita-node`](../trembita-node) from the repository with `TREMBITA_ADMIN` set.
+[`trembita-node`](../trembita-tools) from the repository with `TREMBITA_ADMIN` set.
 
 ## Documentation
 

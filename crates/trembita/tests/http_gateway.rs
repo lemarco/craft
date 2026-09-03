@@ -1,6 +1,7 @@
 //! [`TrembitaApp`] gateway integration (HTTP + WebSocket product surface).
 
-use std::sync::Arc;
+#![allow(clippy::large_futures)] // boot_local_app future grows with product builder surface
+
 use std::time::Duration;
 
 use axum::body::Body;
@@ -41,7 +42,7 @@ async fn gateway_serves_jobs_api_on_configured_addr() {
     advance(Duration::from_millis(200)).await;
 
     let router = build_gateway_router(
-        Arc::clone(&app),
+        &app,
         GatewayOpts::new("127.0.0.1:0".parse().unwrap())
             .with_jobs_api(true)
             .with_actors_api(true)
