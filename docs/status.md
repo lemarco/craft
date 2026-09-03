@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Version** | `0.2.1` |
+| **Version** | `0.2.2` |
 | **MSRV** | 1.90 |
 | **Distribution** | Published on [crates.io](https://crates.io/crates/trembita) — full test pyramid, E2E/chaos |
 
@@ -121,7 +121,7 @@ Capabilities we deliberately do **not** provide — not missing work:
 
 ## Release & ops (process, not missing code)
 
-- **crates.io / docs.rs publish** — v0.2.1 (see [CHANGELOG.md](../CHANGELOG.md))
+- **crates.io / docs.rs publish** — v0.2.2 (see [CHANGELOG.md](../CHANGELOG.md))
 - **Public API docs** — `missing_docs = "deny"` on published crates; `publish = false` crates exempt via crate lint override. Audit: `./scripts/docs-missing-audit.sh`
 - **Real-world soak** — scenario harness in `benchmarks/` (`soak`, `soak_queue`, `soak_multi_raft`, `soak_actor_store`, `soak_saga`, `soak_session`); scheduled CI `bench` job (60–120s budgets); long-running production soak is operator responsibility
 - **Heavy integration tests** — Redis/docker tests gated `#[ignore]` in fast CI; scheduled heavy lane
