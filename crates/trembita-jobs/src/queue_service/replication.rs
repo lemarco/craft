@@ -4,8 +4,10 @@ use std::sync::Arc;
 
 use trembita_net::send_queue_replicate;
 use trembita_net::transport::{BoxFuture, TransportError};
-use trembita_proto::{NodeId, QueueReplicateReply, QueueReplicateRequest};
-use trembita_runtime::{authorize_replicate_leader, fanout_replicate, replication_peers};
+use trembita_proto::{NodeId, ProductWireError, QueueReplicateReply, QueueReplicateRequest};
+use trembita_runtime::{
+    authorize_replicate_leader, fanout_product_replicate, forward_to_leader, replicate_reply_err,
+};
 
 use super::wire::shard_stream_name;
 use crate::{JobQueue, QueueReplicationOps, ShardedReplication};
@@ -15,27 +17,23 @@ use super::QueueService;
 pub(super) const REPLICATE_NOT_LEADER: &str = "queue replicate rejected: caller is not raft leader";
 
 impl QueueService {
-    pub(super) fn local_stream(&self, stream: &str) -> Result<Arc<dyn JobQueue>, String> {
+    pub(super) fn local_stream(&self, stream: &str) -> Result<Arc<dyn JobQueue>, ProductWireError> {
         self.registry
             .lock()
             .expect("poisoned")
             .streams
             .get(stream)
             .cloned()
-            .ok_or_else(|| format!("unknown queue stream {stream:?}"))
+            .ok_or_else(|| ProductWireError::UnknownStream {
+                stream: stream.to_string(),
+            })
     }
 
     pub(super) async fn forward_leader<R>(
         &self,
         send: impl FnOnce(NodeId) -> BoxFuture<'static, Result<R, TransportError>>,
-    ) -> Result<R, String> {
-        let leader = self
-            .state
-            .leader_id()
-            .ok_or_else(|| "no raft leader elected".to_string())?;
-        send(leader)
-            .await
-            .map_err(|e| format!("forward to leader {leader:?} failed: {e}"))
+    ) -> Result<R, ProductWireError> {
+        forward_to_leader(self.state.as_ref(), send).await
     }
 
     /// Push `ops` to every other **reachable** voter in parallel; all must ack
@@ -44,28 +42,24 @@ impl QueueService {
         &self,
         stream: &str,
         ops: &QueueReplicationOps,
-    ) -> Result<(), String> {
+    ) -> Result<(), ProductWireError> {
         if ops.is_empty() {
             return Ok(());
         }
-        let peers = replication_peers(self.state.as_ref(), self.node_id)?;
         let request = QueueReplicateRequest {
             stream: stream.to_string(),
             ops: ops.clone(),
             leader_id: self.node_id.0,
         };
         let transport = Arc::clone(&self.transport);
-        fanout_replicate(&peers, move |peer| {
+        fanout_product_replicate(self.state.as_ref(), self.node_id, move |peer| {
             let transport = Arc::clone(&transport);
             let request = request.clone();
             Box::pin(async move {
                 let reply = send_queue_replicate(transport.as_ref(), peer, &request)
                     .await
                     .map_err(|e| e.to_string())?;
-                if let Some(err) = reply.error {
-                    return Err(err);
-                }
-                Ok(())
+                replicate_reply_err(reply.error).map_err(|e| e.to_string())
             })
         })
         .await
@@ -75,7 +69,7 @@ impl QueueService {
         &self,
         base: &str,
         reps: &[ShardedReplication],
-    ) -> Result<(), String> {
+    ) -> Result<(), ProductWireError> {
         for rep in reps {
             if rep.ops.is_empty() {
                 continue;
@@ -86,7 +80,10 @@ impl QueueService {
         Ok(())
     }
 
-    pub(super) fn authorize_replicate(&self, declared_leader: NodeId) -> Result<(), String> {
+    pub(super) fn authorize_replicate(
+        &self,
+        declared_leader: NodeId,
+    ) -> Result<(), ProductWireError> {
         authorize_replicate_leader(self.state.as_ref(), declared_leader, REPLICATE_NOT_LEADER)
     }
 
@@ -104,7 +101,7 @@ impl QueueService {
                 for op in &request.ops {
                     if let Err(e) = queue.apply_replicate(op).await {
                         return QueueReplicateReply {
-                            error: Some(e.to_string()),
+                            error: Some(ProductWireError::ReplicateApply(e.to_string())),
                         };
                     }
                 }

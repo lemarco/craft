@@ -6,7 +6,7 @@ use trembita_proto::{QueueLeasedJobWire, QueueReplicateOp};
 use trembita_storage::now_ms;
 
 use super::wire::shard_stream_name;
-use crate::queue_prefetch::{CachedPendingJob, DEFAULT_QUEUE_BATCH_MAX, QueuePrefetchCache};
+use crate::queue_prefetch::CachedPendingJob;
 use crate::sharded_queue::{decode_global_id, encode_global_id};
 use crate::{
     JobId, JobQueue, LeaseId, LeasedJob, QueueError, QueueReplicationOps, RedbJobQueue,
@@ -158,21 +158,21 @@ impl QueueService {
                 (redb, prefetched)
             };
 
-            if let Some(redb) = redb {
-                if !prefetched.is_empty() {
-                    let (leased, step) = redb.lease_prefetched(worker, &prefetched)?;
-                    need = need.saturating_sub(leased.len());
-                    if !step.is_empty() {
-                        replications.push(ShardedReplication { shard, ops: step });
-                    }
-                    out.extend(leased.into_iter().map(|job| LeasedJob {
-                        lease_id: LeaseId(encode_global_id(shard, job.lease_id.0)),
-                        job_id: JobId(encode_global_id(shard, job.job_id.0)),
-                        payload: job.payload,
-                        attempts: job.attempts,
-                        dedup_key: job.dedup_key,
-                    }));
+            if let Some(redb) = redb
+                && !prefetched.is_empty()
+            {
+                let (leased, step) = redb.lease_prefetched(worker, &prefetched)?;
+                need = need.saturating_sub(leased.len());
+                if !step.is_empty() {
+                    replications.push(ShardedReplication { shard, ops: step });
                 }
+                out.extend(leased.into_iter().map(|job| LeasedJob {
+                    lease_id: LeaseId(encode_global_id(shard, job.lease_id.0)),
+                    job_id: JobId(encode_global_id(shard, job.job_id.0)),
+                    payload: job.payload,
+                    attempts: job.attempts,
+                    dedup_key: job.dedup_key,
+                }));
             }
 
             if need > 0 {

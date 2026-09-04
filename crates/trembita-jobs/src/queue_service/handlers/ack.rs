@@ -19,11 +19,11 @@ impl QueueService {
     ) -> QueueAckBatchReply {
         if request.lease_ids.len() > DEFAULT_QUEUE_BATCH_MAX {
             return QueueAckBatchReply {
-                error: Some(format!(
+                error: Some(trembita_proto::ProductWireError::backend(format!(
                     "batch size {} exceeds max {}",
                     request.lease_ids.len(),
                     DEFAULT_QUEUE_BATCH_MAX
-                )),
+                ))),
             };
         }
         if self.state.is_leader() {
@@ -60,7 +60,7 @@ impl QueueService {
                     }
                     Err(e) => {
                         return QueueAckBatchReply {
-                            error: Some(e.to_string()),
+                            error: Some(trembita_proto::ProductWireError::backend(e)),
                         };
                     }
                 }
@@ -87,7 +87,7 @@ impl QueueService {
                         }
                     }
                     Err(e) => QueueAckBatchReply {
-                        error: Some(e.to_string()),
+                        error: Some(trembita_proto::ProductWireError::backend(e)),
                     },
                 },
             }
@@ -147,7 +147,7 @@ impl QueueService {
                     }
                     Err(e) => {
                         return QueueAckReply {
-                            error: Some(e.to_string()),
+                            error: Some(trembita_proto::ProductWireError::backend(e)),
                         };
                     }
                 }
@@ -172,7 +172,7 @@ impl QueueService {
                         QueueAckReply { error: None }
                     }
                     Err(e) => QueueAckReply {
-                        error: Some(e.to_string()),
+                        error: Some(trembita_proto::ProductWireError::backend(e)),
                     },
                 },
             }
@@ -221,7 +221,7 @@ impl QueueService {
                     }
                     Err(e) => {
                         return QueueNackReply {
-                            error: Some(e.to_string()),
+                            error: Some(trembita_proto::ProductWireError::backend(e)),
                         };
                     }
                 }
@@ -247,7 +247,7 @@ impl QueueService {
                             QueueNackReply { error: None }
                         }
                         Err(e) => QueueNackReply {
-                            error: Some(e.to_string()),
+                            error: Some(trembita_proto::ProductWireError::backend(e)),
                         },
                     }
                 }

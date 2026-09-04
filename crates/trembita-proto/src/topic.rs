@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::product::ProductWireError;
+
 /// Monotonic event id within a topic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TopicEventId(pub u64);
@@ -27,7 +29,7 @@ pub struct TopicPublishReply {
     /// Assigned event id when successful.
     pub event_id: u64,
     /// Set when publish failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Lease events for a subscription (`POST /raft/v1/topic/lease`).
@@ -64,7 +66,7 @@ pub struct TopicLeaseReply {
     /// Leased events (may be empty).
     pub events: Vec<TopicLeasedEventWire>,
     /// Set when lease failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Acknowledge a leased event (`POST /raft/v1/topic/ack`).
@@ -86,7 +88,7 @@ pub struct TopicAckRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TopicAckReply {
     /// Set when ack failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Negative-acknowledge a leased event (`POST /raft/v1/topic/nack`).
@@ -108,7 +110,7 @@ pub struct TopicNackRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TopicNackReply {
     /// Set when nack failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Per-subscription gauges in [`TopicMetricsReply`].
@@ -149,7 +151,7 @@ pub struct TopicMetricsReply {
     /// Per-subscription lag and counters.
     pub subscriptions: Vec<TopicSubscriptionMetricsWire>,
     /// Set when metrics collection failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Idempotent topic mutation replicated from the leader (`POST /raft/v1/topic/replicate`).
@@ -267,7 +269,7 @@ pub struct TopicReplicateRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TopicReplicateReply {
     /// Set when apply failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Default retention when not configured (7 days).

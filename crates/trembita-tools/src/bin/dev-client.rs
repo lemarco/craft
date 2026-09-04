@@ -185,11 +185,11 @@ async fn enqueue_via_leader(
         match reply {
             Ok(r) => {
                 if let Some(err) = r.error {
-                    if err.contains("not raft leader") {
-                        last_err = err;
+                    if err.to_string().contains("not raft leader") {
+                        last_err = err.to_string();
                         continue;
                     }
-                    return Err(err);
+                    return Err(err.to_string());
                 }
                 let job_id = r
                     .job_id
@@ -224,7 +224,7 @@ async fn queue_metrics(transport: &dyn Transport, stream: &str) -> Result<QueueS
             }
             Ok(QueueMetricsReply {
                 error: Some(err), ..
-            }) => last_err = err,
+            }) => last_err = err.to_string(),
             Err(e) => last_err = format!("metrics on {peer:?}: {e}"),
         }
     }
@@ -258,7 +258,7 @@ async fn lease_jobs(
     .await
     .map_err(|e| format!("lease: {e}"))?;
     if let Some(err) = lease.error {
-        return Err(err);
+        return Err(err.to_string());
     }
     Ok(lease.jobs)
 }
@@ -277,7 +277,7 @@ async fn ack_job(transport: &dyn Transport, cfg: &DemoConfig, lease_id: u64) -> 
     .await
     .map_err(|e| format!("ack: {e}"))?;
     if let Some(err) = reply.error {
-        return Err(err);
+        return Err(err.to_string());
     }
     Ok(())
 }

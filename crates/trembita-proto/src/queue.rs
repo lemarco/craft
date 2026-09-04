@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::product::ProductWireError;
+
 /// Enqueue a job on stream `stream` (`POST /raft/v1/queue/enqueue`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueEnqueueRequest {
@@ -32,7 +34,7 @@ pub struct QueueEnqueueReply {
     /// Assigned job id when enqueue succeeded.
     pub job_id: Option<u64>,
     /// Human-readable error when enqueue failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// One job in a batch enqueue (`POST /raft/v1/queue/enqueue-batch`).
@@ -72,7 +74,7 @@ pub struct QueueEnqueueBatchReply {
     /// Assigned ids in the same order as the request (dedup hits echo existing ids).
     pub job_ids: Vec<u64>,
     /// Set when the batch failed before any job was committed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Lease jobs for a worker (`POST /raft/v1/queue/lease`).
@@ -109,7 +111,7 @@ pub struct QueueLeaseReply {
     /// Leased jobs (may be empty when the queue is idle).
     pub jobs: Vec<QueueLeasedJobWire>,
     /// Set when the lease RPC failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Acknowledge successful processing (`POST /raft/v1/queue/ack`).
@@ -129,7 +131,7 @@ pub struct QueueAckRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueAckReply {
     /// Set when ack failed (unknown lease, wrong worker, etc.).
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Acknowledge many leased jobs in one leader transaction
@@ -150,7 +152,7 @@ pub struct QueueAckBatchRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueAckBatchReply {
     /// Set when the batch ack failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Return a leased job to pending immediately (`POST /raft/v1/queue/nack`).
@@ -170,7 +172,7 @@ pub struct QueueNackRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueNackReply {
     /// Set when nack failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Extend a live lease visibility timeout (`POST /raft/v1/queue/extend-lease`).
@@ -190,7 +192,7 @@ pub struct QueueExtendLeaseRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueExtendLeaseReply {
     /// Set when extend failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Read queue depth gauges (`POST /raft/v1/queue/metrics`).
@@ -214,7 +216,7 @@ pub struct QueueMetricsReply {
     /// Jobs that have already failed at least one attempt (idempotency smell).
     pub redelivered: u64,
     /// Set when metrics collection failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Job lifecycle returned by [`QueueJobStatusReply`].
@@ -265,7 +267,7 @@ pub struct QueueJobStatusReply {
     #[serde(default)]
     pub dedup_key: Option<Vec<u8>>,
     /// Set when lookup failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 const fn default_true() -> bool {
@@ -432,7 +434,7 @@ pub struct QueueReplicateRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueReplicateReply {
     /// Set when replication apply failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Requeue a dead-letter job for another delivery attempt
@@ -449,7 +451,7 @@ pub struct QueueRequeueDeadLetterRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueRequeueDeadLetterReply {
     /// Set when requeue failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// List jobs in a stream with optional filters (`POST /raft/v1/queue/list-jobs`).
@@ -508,7 +510,7 @@ pub struct QueueListJobsReply {
     /// `true` when more rows exist beyond this page.
     pub has_more: bool,
     /// Set when listing failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Requeue many dead-letter jobs (`POST /raft/v1/queue/requeue-dead-letter-batch`).
@@ -537,5 +539,5 @@ pub struct QueueRequeueDeadLetterBatchReply {
     /// Per-id failures (not dead letter, unknown id, …).
     pub failures: Vec<QueueRequeueFailureWire>,
     /// Set when the whole request failed before per-id processing.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }

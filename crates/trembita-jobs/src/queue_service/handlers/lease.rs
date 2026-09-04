@@ -11,6 +11,7 @@ use crate::{LeaseId, WorkerId};
 use super::super::QueueService;
 
 impl QueueService {
+    #[allow(clippy::too_many_lines)]
     pub(in crate::queue_service) async fn handle_lease(
         &self,
         request: QueueLeaseRequest,
@@ -65,7 +66,7 @@ impl QueueService {
                     Err(e) => {
                         return QueueLeaseReply {
                             jobs: Vec::new(),
-                            error: Some(e.to_string()),
+                            error: Some(trembita_proto::ProductWireError::backend(e)),
                         };
                     }
                 }
@@ -121,7 +122,7 @@ impl QueueService {
                         }
                         Err(e) => QueueLeaseReply {
                             jobs: Vec::new(),
-                            error: Some(e.to_string()),
+                            error: Some(trembita_proto::ProductWireError::backend(e)),
                         },
                     }
                 }
@@ -168,7 +169,7 @@ impl QueueService {
                     }
                     Err(e) => {
                         return QueueExtendLeaseReply {
-                            error: Some(e.to_string()),
+                            error: Some(trembita_proto::ProductWireError::backend(e)),
                         };
                     }
                 }
@@ -187,7 +188,7 @@ impl QueueService {
                             QueueExtendLeaseReply { error: None }
                         }
                         Err(e) => QueueExtendLeaseReply {
-                            error: Some(e.to_string()),
+                            error: Some(trembita_proto::ProductWireError::backend(e)),
                         },
                     }
                 }

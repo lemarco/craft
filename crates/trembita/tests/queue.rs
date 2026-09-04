@@ -732,7 +732,10 @@ async fn queue_replicate_rejects_non_leader_caller() {
     .await
     .expect("wire round trip");
     let err = reply.error.expect("replicate should fail");
-    assert!(err.contains("not raft leader"), "unexpected error: {err}");
+    assert!(
+        matches!(err, trembita_proto::ProductWireError::ReplicateNotLeader),
+        "unexpected error: {err}"
+    );
 }
 
 /// Matches `trembita-actor::redb_queue::COMPACT_EVERY_ACKS`.

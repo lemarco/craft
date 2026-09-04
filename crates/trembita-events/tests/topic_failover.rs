@@ -8,10 +8,10 @@ use trembita_events::{
     ClusterEventTopic, EventTopic, RedbEventTopic, SubscriptionStart, TopicService,
     TopicSubscriptionDef,
 };
-use trembita_jobs::WorkerId;
 use trembita_net::transport::{Body, BoxFuture as NetBoxFuture, RequestHandler};
 use trembita_net::{LocalNetwork, LocalTransport, Route, Transport, TransportError};
 use trembita_proto::NodeId;
+use trembita_proto::WorkerId;
 use trembita_runtime::ClusterState;
 
 struct MockState {

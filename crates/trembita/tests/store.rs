@@ -150,7 +150,10 @@ async fn store_replicate_rejects_non_leader_caller() {
     .await
     .expect("wire round trip");
     let err = reply.error.expect("replicate should fail");
-    assert!(err.contains("not raft leader"), "unexpected: {err}");
+    assert!(
+        matches!(err, trembita_proto::ProductWireError::ReplicateNotLeader),
+        "unexpected: {err}"
+    );
 
     for c in clusters {
         c.shutdown();

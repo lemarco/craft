@@ -43,8 +43,8 @@ pub use external_load::{ExternalLoad, ManualExternalLoad};
 pub use group_membership::{GroupMembershipSyncReport, sync_hosted_group_membership};
 pub use group_rebalance::{GroupRebalanceReport, RaftGroupReconciler};
 pub use leader_replicate::{
-    REPLICATION_NO_REACHABLE_VOTERS, authorize_replicate_leader, fanout_replicate,
-    replication_peers,
+    REPLICATION_NO_REACHABLE_VOTERS, authorize_replicate_leader, fanout_product_replicate,
+    fanout_replicate, forward_to_leader, replicate_reply_err, replication_peers,
 };
 pub use leader_task::{LeaderGate, LeaderLoopOpts, LeaderSession, run_leader_loop};
 pub use mailbox_spool::{

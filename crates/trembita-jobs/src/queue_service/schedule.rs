@@ -8,7 +8,7 @@ use trembita_runtime::ClusterState;
 
 use super::QueueService;
 
-pub(super) struct ScheduleSourceEntry {
+pub(crate) struct ScheduleSourceEntry {
     source: Arc<dyn ScheduleSource>,
     poll: Duration,
     last_good: Option<Vec<RecurringJob>>,
@@ -113,7 +113,9 @@ impl QueueService {
             .reconcile_schedules(desired)
             .map_err(|e| e.to_string())?;
         if !ops.is_empty() {
-            self.replicate_ops(stream, &ops).await?;
+            self.replicate_ops(stream, &ops)
+                .await
+                .map_err(|e| e.to_string())?;
         }
         Ok(())
     }
@@ -185,7 +187,9 @@ impl QueueService {
         for (stream, queue) in backends {
             let ops = queue.tick_schedules().await.map_err(|e| e.to_string())?;
             if !ops.is_empty() {
-                self.replicate_ops(&stream, &ops).await?;
+                self.replicate_ops(&stream, &ops)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
         }
         Ok(())

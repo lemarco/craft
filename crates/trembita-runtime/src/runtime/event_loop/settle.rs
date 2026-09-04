@@ -1,17 +1,15 @@
-use std::collections::HashMap;
-
-use trembita_core::{ReadId, StateMachine};
+use trembita_core::StateMachine;
 use trembita_proto::{
-    CatalogAddResponse, CatalogCommand, JoinResponse, LeaveResponse, LogIndex, NodeId,
-    QueueAutoscalePolicyCommand, RaftRpcReply, SagaJournalCommand, TwoPhaseJournalCommand,
+    CatalogAddResponse, CatalogCommand, JoinResponse, LeaveResponse, LogIndex, NodeId, RaftRpcReply,
 };
 
-use crate::{DriverError, NetEffect, ReadOutcome, Step};
+use crate::{NetEffect, ReadOutcome, Step};
 
 use super::super::types::ClientError;
 use super::Runtime;
 
 impl<M: StateMachine> Runtime<M> {
+    #[allow(clippy::too_many_lines)]
     pub(in crate::runtime::event_loop) fn settle(
         &mut self,
         step: Step<M>,

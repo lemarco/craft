@@ -31,7 +31,7 @@ impl QueueService {
                             }
                         }
                         Err(e) => trembita_proto::QueueRequeueDeadLetterReply {
-                            error: Some(e.to_string()),
+                            error: Some(trembita_proto::ProductWireError::backend(e)),
                         },
                     }
                 }
@@ -58,6 +58,7 @@ impl QueueService {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub(in crate::queue_service) async fn handle_requeue_dead_letter_batch(
         &self,
         request: QueueRequeueDeadLetterBatchRequest,
@@ -66,10 +67,10 @@ impl QueueService {
             return QueueRequeueDeadLetterBatchReply {
                 requeued: Vec::new(),
                 failures: Vec::new(),
-                error: Some(format!(
+                error: Some(trembita_proto::ProductWireError::backend(format!(
                     "batch size {} exceeds max {DEFAULT_QUEUE_BATCH_MAX}",
                     request.job_ids.len()
-                )),
+                ))),
             };
         }
         if self.state.is_leader() {
@@ -103,7 +104,7 @@ impl QueueService {
                         return QueueRequeueDeadLetterBatchReply {
                             requeued: Vec::new(),
                             failures: Vec::new(),
-                            error: Some(e.to_string()),
+                            error: Some(trembita_proto::ProductWireError::backend(e)),
                         };
                     }
                 }
@@ -138,7 +139,7 @@ impl QueueService {
                     Err(e) => QueueRequeueDeadLetterBatchReply {
                         requeued: Vec::new(),
                         failures: Vec::new(),
-                        error: Some(e.to_string()),
+                        error: Some(trembita_proto::ProductWireError::backend(e)),
                     },
                 },
             }

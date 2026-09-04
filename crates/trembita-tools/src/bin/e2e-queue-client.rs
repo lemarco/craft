@@ -77,7 +77,7 @@ async fn metrics_pending(
     .await
     .map_err(|e| format!("metrics on {peer:?}: {e}"))?;
     if let Some(err) = reply.error {
-        return Err(err);
+        return Err(err.to_string());
     }
     Ok(reply.pending)
 }
@@ -126,7 +126,7 @@ async fn before_failover(
         .await
         .map_err(|e| format!("enqueue: {e}"))?;
         if let Some(err) = reply.error {
-            return Err(err);
+            return Err(err.to_string());
         }
         reply
             .job_id
@@ -146,7 +146,7 @@ async fn before_failover(
     .await
     .map_err(|e| format!("lease: {e}"))?;
     if let Some(err) = lease.error {
-        return Err(err);
+        return Err(err.to_string());
     }
     if lease.jobs.len() != 2 {
         return Err(format!(
@@ -169,7 +169,7 @@ async fn before_failover(
         .await
         .map_err(|e| format!("ack: {e}"))?;
         if let Some(err) = reply.error {
-            return Err(err);
+            return Err(err.to_string());
         }
     }
 
@@ -208,7 +208,7 @@ async fn after_failover(
     .await
     .map_err(|e| format!("lease after failover: {e}"))?;
     if let Some(err) = lease.error {
-        return Err(err);
+        return Err(err.to_string());
     }
     if lease.jobs.len() != 3 {
         return Err(format!(
@@ -231,7 +231,7 @@ async fn after_failover(
         .await
         .map_err(|e| format!("ack after failover: {e}"))?;
         if let Some(err) = reply.error {
-            return Err(err);
+            return Err(err.to_string());
         }
     }
 

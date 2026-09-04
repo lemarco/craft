@@ -7,8 +7,8 @@ use std::time::Duration;
 
 use axum::http::{HeaderMap, Method, Uri};
 use trembita::{
-    GatewayIdentity, GatewayOpts, GatewayRequest, GatewayTokenIdentity, IdentityError,
-    IdentityTypeError, SessionHandle, SessionKey, TrembitaGatewayState,
+    GatewayBearerIdentity, GatewayIdentity, GatewayOpts, GatewayRequest, GatewayTokenIdentity,
+    IdentityError, IdentityTypeError, SessionHandle, SessionKey, TrembitaGatewayState,
 };
 use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};
 
@@ -165,4 +165,45 @@ fn gateway_opts_build_config_includes_drain_timeout() {
 #[test]
 fn gateway_token_identity_from_env_type() {
     let _ = GatewayTokenIdentity::from_env();
+}
+
+#[tokio::test]
+async fn bearer_identity_requires_user_header() {
+    let identity = GatewayBearerIdentity::with_static_token("secret");
+
+    let uri: axum::http::Uri = "/api?user=alice".parse().expect("uri");
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        axum::http::header::AUTHORIZATION,
+        axum::http::HeaderValue::from_static("Bearer secret"),
+    );
+    let req = GatewayRequest::from_parts(&axum::http::Method::GET, &uri, &headers);
+    assert_eq!(
+        identity.extract(&req).await,
+        Err(IdentityError::Unauthorized)
+    );
+
+    headers.insert(
+        "x-trembita-user",
+        axum::http::HeaderValue::from_static("alice"),
+    );
+    let req = GatewayRequest::from_parts(&axum::http::Method::GET, &uri, &headers);
+    assert_eq!(identity.extract(&req).await, Ok("alice".into()));
+}
+
+#[tokio::test]
+async fn bearer_identity_rejects_query_token() {
+    let identity = GatewayBearerIdentity::with_static_token("secret");
+
+    let uri: axum::http::Uri = "/ws?user=alice&token=secret".parse().expect("uri");
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        "x-trembita-user",
+        axum::http::HeaderValue::from_static("alice"),
+    );
+    let req = GatewayRequest::from_parts(&axum::http::Method::GET, &uri, &headers);
+    assert_eq!(
+        identity.extract(&req).await,
+        Err(IdentityError::Unauthorized)
+    );
 }

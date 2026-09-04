@@ -27,6 +27,7 @@ where
     Box::new(move || A::start(config.clone()).ok())
 }
 
+#[allow(clippy::struct_field_names)]
 struct Instance<A: UserActor> {
     instance: u32,
     tx: mpsc::UnboundedSender<Mailbox<A>>,

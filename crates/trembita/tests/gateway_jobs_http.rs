@@ -141,3 +141,76 @@ async fn gateway_jobs_batch_and_job_status_metadata() {
         JobLifecycle::Pending | JobLifecycle::Leased
     ));
 }
+
+#[tokio::test(start_paused = true)]
+async fn gateway_rate_limit_returns_429() {
+    let base = std::env::temp_dir().join(format!(
+        "trembita-gateway-rate-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+
+    let app = boot_local_app(
+        || {
+            TrembitaApp::builder()
+                .data_dir(&base)
+                .queue([
+                    QueueOpts::new("gateway-jobs", Duration::from_secs(60)).default_max_attempts(3)
+                ])
+                .gateway(
+                    GatewayOpts::new("127.0.0.1:0".parse().unwrap())
+                        .with_jobs_api(true)
+                        .identity(BearerSecret)
+                        .protect_product_apis(true)
+                        .rate_limit_per_sec(1),
+                )
+                .configure(TrembitaConfigure {
+                    tick_period: Duration::from_millis(5),
+                    ..TrembitaConfigure::default()
+                })
+        },
+        None,
+    )
+    .await;
+
+    wait_for_trembita_app_leader(&app).await;
+
+    let router = build_gateway_router(
+        &app,
+        GatewayOpts::new("127.0.0.1:0".parse().unwrap())
+            .with_jobs_api(true)
+            .identity(BearerSecret)
+            .protect_product_apis(true)
+            .rate_limit_per_sec(1)
+            .build_config(),
+    )
+    .expect("gateway config");
+
+    let ok = Request::builder()
+        .method("GET")
+        .uri("/jobs/gateway-jobs")
+        .header(header::AUTHORIZATION, "Bearer secret")
+        .header("x-trembita-user", "alice")
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        router.clone().oneshot(ok).await.unwrap().status(),
+        StatusCode::OK
+    );
+
+    let limited = Request::builder()
+        .method("GET")
+        .uri("/jobs/gateway-jobs")
+        .header(header::AUTHORIZATION, "Bearer secret")
+        .header("x-trembita-user", "alice")
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        router.oneshot(limited).await.unwrap().status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+}

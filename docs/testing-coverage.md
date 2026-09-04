@@ -224,16 +224,16 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 
 | Priority | Gap | Suggested test location | Effort |
 |----------|-----|-------------------------|--------|
-| Medium | Topic wire + voter replicate auth (integration) | `trembita/tests/topic.rs` or `trembita-events/tests/` | M |
 | Medium | Actor store redb contract at crate level | `trembita-actor-store/tests/redb_contract.rs` | S |
-| Low | Gateway rate limit HTTP integration | `trembita/tests/gateway_jobs_http.rs` | S |
-| Low | Typed wire error enums (queue/topic/store) | `trembita-proto` + service migration | L |
 
 ### Closed gaps
 
 | Closed | What | Where |
 |--------|------|-------|
-| 2026-09 | Event topics facade integration (`TrembitaApp::publish`, metrics) | `trembita/tests/topic.rs` |
+| 2026-09 | Topic replicate auth rejects non-leader caller | `trembita/tests/topic.rs` |
+| 2026-09 | Gateway rate limit HTTP integration (`429`) | `trembita/tests/gateway_jobs_http.rs` |
+| 2026-09 | Typed product wire errors (`ProductWireError` on queue/topic/store replies) | `trembita-proto/src/product.rs`, service handlers |
+| 2026-09 | Gateway bearer identity header-only user + no query token | `trembita/src/gateway/identity.rs` (unit) |
 | 2026-09 | Actor store in-memory contract tests | `trembita-actor-store/tests/memory_contract.rs` |
 | 2026-08 | Scenario soak per product path (actor store, saga resume, session restart) | `benchmarks/soak_{actor_store,saga,session}.rs`, `.gitlab-ci.yml` `bench` |
 | 2026-08 | Gateway identity, `SessionHandle`, WS + HTTP E2E, gateway drain | `trembita/src/gateway/`, `trembita/tests/{gateway_identity,gateway_ws,gateway_http}.rs`, `examples/{realtime,stateful-workers}/`, `docs/decisions/gateway-identity.md` |

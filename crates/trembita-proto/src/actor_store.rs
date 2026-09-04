@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::product::ProductWireError;
+
 /// Set a workflow key on the leader (`POST /raft/v1/actor-store/set`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoreSetRequest {
@@ -18,7 +20,7 @@ pub struct StoreSetRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoreSetReply {
     /// Set when the mutation failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Delete a workflow key on the leader (`POST /raft/v1/actor-store/delete`).
@@ -32,7 +34,7 @@ pub struct StoreDeleteRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoreDeleteReply {
     /// Set when the mutation failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Compare-and-set on the leader (`POST /raft/v1/actor-store/compare-and-set`).
@@ -55,7 +57,7 @@ pub struct StoreCompareAndSetReply {
     /// Whether the swap happened.
     pub applied: bool,
     /// Set when the RPC failed (not when the precondition did not hold).
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }
 
 /// Idempotent mutation replicated from the store leader to every voter.
@@ -91,5 +93,5 @@ pub struct StoreReplicateRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoreReplicateReply {
     /// Set when replication apply failed.
-    pub error: Option<String>,
+    pub error: Option<ProductWireError>,
 }

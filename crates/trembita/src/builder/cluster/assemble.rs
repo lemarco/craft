@@ -66,6 +66,7 @@ fn metric_u64(v: u64) -> f64 {
 }
 
 impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
+    #[allow(clippy::too_many_lines)]
     pub(super) async fn assemble(
         mut self,
         transport: Arc<dyn Transport>,

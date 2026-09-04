@@ -8,13 +8,14 @@ use trembita_net::{
     send_queue_job_status, send_queue_lease, send_queue_list_jobs, send_queue_metrics,
     send_queue_nack, send_queue_requeue_dead_letter_batch,
 };
+use trembita_proto::ProductWireError;
 use trembita_proto::{
     NodeId, QueueAckBatchRequest, QueueBatchEnqueueJob, QueueEnqueueBatchRequest,
     QueueEnqueueRequest, QueueExtendLeaseRequest, QueueJobLifecycleWire, QueueJobStatusRequest,
     QueueLeaseRequest, QueueListJobsRequest, QueueMetricsRequest, QueueNackRequest,
     QueueReplicateOp, QueueRequeueDeadLetterBatchRequest,
 };
-use trembita_runtime::{ClusterState, NOT_LEADER_REASON};
+use trembita_runtime::ClusterState;
 
 use crate::{
     EnqueueOptions, JobId, JobLifecycle, JobListFilter, JobQueue, JobStatus, LeaseId, LeasedJob,
@@ -147,10 +148,10 @@ impl JobQueue for ClusterJobQueue {
             .await
             .map_err(|e| QueueError::Backend(e.to_string()))?;
             if let Some(err) = reply.error {
-                if err == NOT_LEADER_REASON {
-                    return Err(QueueError::Backend(err));
+                if matches!(err, ProductWireError::NotLeader) {
+                    return Err(QueueError::Backend(err.to_string()));
                 }
-                return Err(QueueError::Backend(err));
+                return Err(QueueError::Backend(err.to_string()));
             }
             reply
                 .job_id
@@ -212,7 +213,7 @@ impl JobQueue for ClusterJobQueue {
             .await
             .map_err(|e| QueueError::Backend(e.to_string()))?;
             if let Some(err) = reply.error {
-                return Err(QueueError::Backend(err));
+                return Err(QueueError::Backend(err.to_string()));
             }
             Ok((reply.job_ids.into_iter().map(JobId).collect(), Vec::new()))
         })
@@ -238,7 +239,7 @@ impl JobQueue for ClusterJobQueue {
             .await
             .map_err(|e| QueueError::Backend(e.to_string()))?;
             if let Some(err) = reply.error {
-                return Err(QueueError::Backend(err));
+                return Err(QueueError::Backend(err.to_string()));
             }
             Ok(reply
                 .jobs
@@ -284,7 +285,7 @@ impl JobQueue for ClusterJobQueue {
             .await
             .map_err(|e| QueueError::Backend(e.to_string()))?;
             if let Some(err) = reply.error {
-                return Err(QueueError::Backend(err));
+                return Err(QueueError::Backend(err.to_string()));
             }
             Ok(Vec::new())
         })
@@ -306,7 +307,7 @@ impl JobQueue for ClusterJobQueue {
             .await
             .map_err(|e| QueueError::Backend(e.to_string()))?;
             if let Some(err) = reply.error {
-                return Err(QueueError::Backend(err));
+                return Err(QueueError::Backend(err.to_string()));
             }
             Ok(())
         })
@@ -332,7 +333,7 @@ impl JobQueue for ClusterJobQueue {
             .await
             .map_err(|e| QueueError::Backend(e.to_string()))?;
             if let Some(err) = reply.error {
-                return Err(QueueError::Backend(err));
+                return Err(QueueError::Backend(err.to_string()));
             }
             Ok(())
         })
@@ -351,7 +352,7 @@ impl JobQueue for ClusterJobQueue {
             .await
             .map_err(|e| QueueError::Backend(e.to_string()))?;
             if let Some(err) = reply.error {
-                return Err(QueueError::Backend(err));
+                return Err(QueueError::Backend(err.to_string()));
             }
             Ok(QueueMetrics {
                 pending: reply.pending,
@@ -377,7 +378,7 @@ impl JobQueue for ClusterJobQueue {
             .await
             .map_err(|e| QueueError::Backend(e.to_string()))?;
             if let Some(err) = reply.error {
-                return Err(QueueError::Backend(err));
+                return Err(QueueError::Backend(err.to_string()));
             }
             if !reply.found {
                 return Ok(None);
@@ -435,7 +436,7 @@ impl JobQueue for ClusterJobQueue {
             .await
             .map_err(|e| QueueError::Backend(e.to_string()))?;
             if let Some(err) = reply.error {
-                return Err(QueueError::Backend(err));
+                return Err(QueueError::Backend(err.to_string()));
             }
             Ok(crate::JobListPage {
                 jobs: reply
@@ -496,7 +497,7 @@ impl JobQueue for ClusterJobQueue {
             .await
             .map_err(|e| QueueError::Backend(e.to_string()))?;
             if let Some(err) = reply.error {
-                return Err(QueueError::Backend(err));
+                return Err(QueueError::Backend(err.to_string()));
             }
             Ok(())
         })
@@ -520,7 +521,7 @@ impl JobQueue for ClusterJobQueue {
             .await
             .map_err(|e| QueueError::Backend(e.to_string()))?;
             if let Some(err) = reply.error {
-                return Err(QueueError::Backend(err));
+                return Err(QueueError::Backend(err.to_string()));
             }
             Ok(crate::BatchRequeueResult {
                 requeued: reply.requeued.into_iter().map(JobId).collect(),

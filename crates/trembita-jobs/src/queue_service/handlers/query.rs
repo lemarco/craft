@@ -51,7 +51,7 @@ impl QueueService {
                     dead_letter: 0,
                     oldest_pending_age_ms: 0,
                     redelivered: 0,
-                    error: Some(e.to_string()),
+                    error: Some(trembita_proto::ProductWireError::backend(e)),
                 },
             }
         } else {
@@ -118,7 +118,7 @@ impl QueueService {
                     attempts: 0,
                     max_attempts: 0,
                     dedup_key: None,
-                    error: Some(e.to_string()),
+                    error: Some(trembita_proto::ProductWireError::backend(e)),
                 },
             }
         } else {
@@ -184,7 +184,7 @@ impl QueueService {
                 Err(e) => QueueListJobsReply {
                     jobs: Vec::new(),
                     has_more: false,
-                    error: Some(e.to_string()),
+                    error: Some(trembita_proto::ProductWireError::backend(e)),
                 },
             }
         } else {

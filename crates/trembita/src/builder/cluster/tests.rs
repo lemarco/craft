@@ -5,10 +5,10 @@ mod merge_app_config_tests {
     use trembita_net::{LocalNetwork, PeerDirectory};
     use trembita_runtime::DEFAULT_DRAIN_TIMEOUT;
 
-    use trembita_proto::NodeId;
+    use trembita_proto::{JoinRole, NodeId};
 
-    use super::TrembitaClusterBuilder;
     use crate::app::EmptyStateMachine;
+    use crate::cluster::TrembitaClusterBuilder;
     use crate::env_config::{AppConfig, EnvOverrides};
     use crate::security::Security;
 

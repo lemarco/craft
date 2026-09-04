@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use trembita_net::transport::{Body, BoxFuture, Transport, TransportError};
+use trembita_net::transport::{Body, BoxFuture, TransportError};
 use trembita_net::{Route, decode_body, encode_body};
 use trembita_proto::{
     NodeId, QueueAckBatchRequest, QueueAckRequest, QueueEnqueueBatchRequest, QueueEnqueueRequest,

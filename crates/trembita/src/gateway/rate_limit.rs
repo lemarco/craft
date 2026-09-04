@@ -62,6 +62,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::unchecked_time_subtraction)]
     fn limiter_resets_after_window() {
         let limiter = GatewayRateLimiter::new(2);
         assert!(limiter.try_acquire());

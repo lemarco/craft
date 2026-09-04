@@ -12,15 +12,15 @@ use trembita_net::{
     send_store_replicate, send_store_set,
 };
 use trembita_proto::{
-    BoxFuture as StoreBoxFuture, NodeId, StoreCompareAndSetReply, StoreCompareAndSetRequest,
-    StoreDeleteReply, StoreDeleteRequest, StoreReplicateReply, StoreReplicateRequest,
-    StoreSetReply, StoreSetRequest,
+    BoxFuture as StoreBoxFuture, NodeId, ProductWireError, StoreCompareAndSetReply,
+    StoreCompareAndSetRequest, StoreDeleteReply, StoreDeleteRequest, StoreReplicateReply,
+    StoreReplicateRequest, StoreSetReply, StoreSetRequest,
 };
 
 use crate::store::{ActorStateStore, StoreError};
 use trembita_runtime::{
-    ClusterState, NOT_LEADER_REASON, authorize_replicate_leader, fanout_replicate,
-    replication_peers,
+    ClusterState, authorize_replicate_leader, fanout_product_replicate, forward_to_leader,
+    replicate_reply_err,
 };
 
 use crate::{RedbActorStateStore, StoreReplicationOps};
@@ -65,43 +65,33 @@ impl StoreService {
     async fn forward_leader<R>(
         &self,
         send: impl FnOnce(NodeId) -> BoxFuture<'static, Result<R, TransportError>>,
-    ) -> Result<R, String> {
-        let leader = self
-            .state
-            .leader_id()
-            .ok_or_else(|| "no raft leader elected".to_string())?;
-        send(leader)
-            .await
-            .map_err(|e| format!("forward to leader {leader:?} failed: {e}"))
+    ) -> Result<R, ProductWireError> {
+        forward_to_leader(self.state.as_ref(), send).await
     }
 
-    async fn replicate_ops(&self, ops: &StoreReplicationOps) -> Result<(), String> {
+    async fn replicate_ops(&self, ops: &StoreReplicationOps) -> Result<(), ProductWireError> {
         if ops.is_empty() {
             return Ok(());
         }
-        let peers = replication_peers(self.state.as_ref(), self.node_id)?;
         let request = StoreReplicateRequest {
             ops: ops.clone(),
             leader_id: self.node_id.0,
         };
         let transport = Arc::clone(&self.transport);
-        fanout_replicate(&peers, move |peer| {
+        fanout_product_replicate(self.state.as_ref(), self.node_id, move |peer| {
             let transport = Arc::clone(&transport);
             let request = request.clone();
             Box::pin(async move {
                 let reply = send_store_replicate(transport.as_ref(), peer, &request)
                     .await
                     .map_err(|e| e.to_string())?;
-                if let Some(err) = reply.error {
-                    return Err(err);
-                }
-                Ok(())
+                replicate_reply_err(reply.error).map_err(|e| e.to_string())
             })
         })
         .await
     }
 
-    fn authorize_replicate(&self, declared_leader: NodeId) -> Result<(), String> {
+    fn authorize_replicate(&self, declared_leader: NodeId) -> Result<(), ProductWireError> {
         authorize_replicate_leader(self.state.as_ref(), declared_leader, REPLICATE_NOT_LEADER)
     }
 
@@ -119,7 +109,7 @@ impl StoreService {
                     StoreSetReply { error: None }
                 }
                 Err(e) => StoreSetReply {
-                    error: Some(e.to_string()),
+                    error: Some(ProductWireError::backend(e)),
                 },
             }
         } else {
@@ -149,7 +139,7 @@ impl StoreService {
                     StoreDeleteReply { error: None }
                 }
                 Err(e) => StoreDeleteReply {
-                    error: Some(e.to_string()),
+                    error: Some(ProductWireError::backend(e)),
                 },
             }
         } else {
@@ -195,7 +185,7 @@ impl StoreService {
                 }
                 Err(e) => StoreCompareAndSetReply {
                     applied: false,
-                    error: Some(e.to_string()),
+                    error: Some(ProductWireError::backend(e)),
                 },
             }
         } else {
@@ -229,7 +219,7 @@ impl StoreService {
         for op in &request.ops {
             if let Err(e) = self.local.apply_replicate(op) {
                 return StoreReplicateReply {
-                    error: Some(e.to_string()),
+                    error: Some(ProductWireError::backend(e)),
                 };
             }
         }
@@ -246,7 +236,7 @@ impl StoreService {
         }
         let (removed, ops) = self.local.gc_expired(max_keys).map_err(|e| e.to_string())?;
         if removed > 0 {
-            self.replicate_ops(&ops).await?;
+            self.replicate_ops(&ops).await.map_err(|e| e.to_string())?;
         }
         Ok(removed)
     }
@@ -351,10 +341,10 @@ impl ActorStateStore for ClusterActorStateStore {
             .await
             .map_err(|e| StoreError::Backend(e.to_string()))?;
             if let Some(err) = reply.error {
-                if err == NOT_LEADER_REASON {
-                    return Err(StoreError::Backend(err));
+                if matches!(err, ProductWireError::NotLeader) {
+                    return Err(StoreError::Backend(err.to_string()));
                 }
-                return Err(StoreError::Backend(err));
+                return Err(StoreError::Backend(err.to_string()));
             }
             Ok(())
         })
@@ -373,7 +363,7 @@ impl ActorStateStore for ClusterActorStateStore {
             .await
             .map_err(|e| StoreError::Backend(e.to_string()))?;
             if let Some(err) = reply.error {
-                return Err(StoreError::Backend(err));
+                return Err(StoreError::Backend(err.to_string()));
             }
             Ok(())
         })
@@ -402,7 +392,7 @@ impl ActorStateStore for ClusterActorStateStore {
             .await
             .map_err(|e| StoreError::Backend(e.to_string()))?;
             if let Some(err) = reply.error {
-                return Err(StoreError::Backend(err));
+                return Err(StoreError::Backend(err.to_string()));
             }
             Ok(reply.applied)
         })

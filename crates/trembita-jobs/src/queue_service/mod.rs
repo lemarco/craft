@@ -14,7 +14,6 @@ mod schedule;
 mod wire;
 
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use trembita_net::transport::Transport;
 use trembita_proto::NodeId;
@@ -23,7 +22,7 @@ use trembita_runtime::ClusterState;
 use crate::backlog_settle_outbox::BacklogSettleOutbox;
 use crate::queue_lifecycle::QueueLifecycleEvent;
 use crate::queue_prefetch::QueuePrefetchCache;
-use crate::{JobQueue, RecurringJob, RedbJobQueue, ScheduleSource, ShardedJobQueue};
+use crate::{JobQueue, RedbJobQueue, ShardedJobQueue};
 
 use registry::QueueStreamRegistry;
 

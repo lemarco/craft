@@ -21,6 +21,7 @@ pub mod group;
 pub mod group_migrate;
 pub mod join;
 pub mod leave;
+pub mod product;
 pub mod queue;
 pub mod queue_autoscale;
 pub mod raft;
@@ -48,6 +49,7 @@ pub use group_migrate::{
 };
 pub use join::{JoinRejection, JoinRequest, JoinResponse, JoinRole, PeerBook, PeerEntry};
 pub use leave::{LeaveRejection, LeaveRequest, LeaveResponse};
+pub use product::ProductWireError;
 pub use queue::{
     QueueAckBatchReply, QueueAckBatchRequest, QueueAckReply, QueueAckRequest, QueueBatchEnqueueJob,
     QueueEnqueueBatchReply, QueueEnqueueBatchRequest, QueueEnqueueReply, QueueEnqueueRequest,

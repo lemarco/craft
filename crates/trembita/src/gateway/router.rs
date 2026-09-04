@@ -38,6 +38,7 @@ pub fn build_gateway_router(
     build_gateway_router_with_tracker(app, config, Some(connections))
 }
 
+#[allow(clippy::unnecessary_wraps)]
 pub(super) fn build_gateway_router_with_tracker(
     app: &Arc<TrembitaApp>,
     config: GatewayConfig,

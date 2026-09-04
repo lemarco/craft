@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use trembita_core::StateMachine;
 use trembita_net::{Transport, send_peer_rpc};
-use trembita_proto::{NodeId, RaftRpc, RaftRpcReply};
+use trembita_proto::{NodeId, RaftRpc};
 
 use crate::RaftDriver;
 

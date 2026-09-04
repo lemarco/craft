@@ -1,8 +1,8 @@
 use tokio::sync::oneshot;
 use trembita_core::{CatalogProposeError, StateMachine, plan_catalog_expansion};
 use trembita_proto::{
-    CatalogAddRequest, CatalogAddResponse, CatalogCommand, CatalogRejection, NodeId,
-    PROTOCOL_VERSION, QueueAutoscalePolicyCommand, SagaJournalCommand, TwoPhaseJournalCommand,
+    CatalogAddRequest, CatalogAddResponse, CatalogCommand, CatalogRejection, PROTOCOL_VERSION,
+    QueueAutoscalePolicyCommand, SagaJournalCommand, TwoPhaseJournalCommand,
     protocol_version_compatible,
 };
 

@@ -5,7 +5,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use tokio::task::JoinSet;
-use trembita_proto::NodeId;
+use trembita_net::transport::{BoxFuture, TransportError};
+use trembita_proto::{NodeId, ProductWireError};
 
 use crate::supervisor::ClusterState;
 
@@ -19,6 +20,9 @@ type ReplicateSendFuture = Pin<Box<dyn Future<Output = Result<(), String>> + Sen
 ///
 /// Returns an empty vec when this node is the sole voter (single-node cluster).
 /// Returns an error when other voters exist but none are reachable.
+///
+/// # Errors
+/// When other voters are configured but none are currently reachable.
 pub fn replication_peers(state: &dyn ClusterState, node_id: NodeId) -> Result<Vec<NodeId>, String> {
     let other_voters: Vec<NodeId> = state
         .live_nodes()
@@ -40,6 +44,9 @@ pub fn replication_peers(state: &dyn ClusterState, node_id: NodeId) -> Result<Ve
 }
 
 /// Run `send` against every peer in parallel; all must succeed.
+///
+/// # Errors
+/// Propagates the first peer failure or join error.
 pub async fn fanout_replicate(
     peers: &[NodeId],
     send: impl Fn(NodeId) -> ReplicateSendFuture + Send + Sync + 'static,
@@ -64,18 +71,65 @@ pub async fn fanout_replicate(
 }
 
 /// Verify `declared_leader` matches the current Raft leader hint.
+///
+/// # Errors
+/// When no leader is elected or `declared_leader` does not match.
 pub fn authorize_replicate_leader(
     state: &dyn ClusterState,
     declared_leader: NodeId,
     not_leader_msg: &str,
-) -> Result<(), String> {
+) -> Result<(), ProductWireError> {
     let Some(leader) = state.leader_id() else {
-        return Err("no raft leader elected".to_string());
+        return Err(ProductWireError::NoLeaderElected);
     };
     if declared_leader != leader {
-        return Err(not_leader_msg.to_string());
+        let _ = not_leader_msg;
+        return Err(ProductWireError::ReplicateNotLeader);
     }
     Ok(())
+}
+
+/// Forward an RPC to the current Raft leader.
+///
+/// # Errors
+/// When no leader is elected or the transport call fails.
+pub async fn forward_to_leader<R>(
+    state: &dyn ClusterState,
+    send: impl FnOnce(NodeId) -> BoxFuture<'static, Result<R, TransportError>>,
+) -> Result<R, ProductWireError> {
+    let leader = state.leader_id().ok_or(ProductWireError::NoLeaderElected)?;
+    send(leader)
+        .await
+        .map_err(|e| ProductWireError::ForwardFailed {
+            leader,
+            reason: e.to_string(),
+        })
+}
+
+/// Resolve replication peers and fan out; maps string errors to [`ProductWireError`].
+///
+/// # Errors
+/// When peer resolution or any fan-out RPC fails.
+pub async fn fanout_product_replicate(
+    state: &dyn ClusterState,
+    node_id: NodeId,
+    send: impl Fn(NodeId) -> ReplicateSendFuture + Send + Sync + 'static,
+) -> Result<(), ProductWireError> {
+    let peers = replication_peers(state, node_id).map_err(ProductWireError::classify)?;
+    fanout_replicate(&peers, send)
+        .await
+        .map_err(ProductWireError::classify)
+}
+
+/// Extract optional wire error from a replicate reply and map to fanout failure.
+///
+/// # Errors
+/// When the replicate reply carries an error payload.
+pub fn replicate_reply_err(error: Option<ProductWireError>) -> Result<(), ProductWireError> {
+    match error {
+        None => Ok(()),
+        Some(err) => Err(err),
+    }
 }
 
 #[cfg(test)]

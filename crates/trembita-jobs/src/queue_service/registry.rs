@@ -9,7 +9,7 @@ use crate::{JobQueue, RedbJobQueue, ShardedJobQueue};
 use super::schedule::ScheduleSourceEntry;
 
 /// Leader-local queue stream registry (streams, prefetch, schedules).
-pub(super) struct QueueStreamRegistry {
+pub(crate) struct QueueStreamRegistry {
     pub streams: HashMap<String, Arc<dyn JobQueue>>,
     pub redb_streams: HashMap<String, Arc<RedbJobQueue>>,
     pub prefetch: HashMap<String, QueuePrefetchCache>,

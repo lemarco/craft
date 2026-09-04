@@ -1,5 +1,5 @@
 use tokio::sync::oneshot;
-use trembita_core::{CatalogProposeError, Command as _, StateMachine};
+use trembita_core::{Command as _, StateMachine};
 
 use crate::DriverError;
 

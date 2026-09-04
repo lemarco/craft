@@ -280,27 +280,45 @@ impl GatewayIdentity for GatewayTokenIdentity {
 
     #[allow(clippy::unused_async_trait_impl)]
     async fn extract(&self, req: &GatewayRequest<'_>) -> Result<String, IdentityError> {
-        let user = req.query("user").ok_or(IdentityError::Unauthorized)?;
         let expected = std::env::var(&self.env_var).unwrap_or_default();
         if expected.is_empty() {
             return Err(IdentityError::NotConfigured);
         }
-        let token = req.query("token").ok_or(IdentityError::Unauthorized)?;
-        if constant_time_eq(&token, &expected) {
-            Ok(user)
+
+        let token = if let Some(bearer) = req.bearer_token() {
+            bearer.to_string()
         } else {
-            Err(IdentityError::Unauthorized)
+            req.query("token").ok_or(IdentityError::Unauthorized)?
+        };
+        if !constant_time_eq(&token, &expected) {
+            return Err(IdentityError::Unauthorized);
         }
+
+        if let Some(user) = req
+            .headers
+            .get("x-trembita-user")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+        {
+            return Ok(user);
+        }
+        req.query("user").ok_or(IdentityError::Unauthorized)
     }
 }
 
-/// Production-friendly extractor: `Authorization: Bearer` + `X-Trembita-User` or `?user=`.
+/// Production-friendly extractor: `Authorization: Bearer` + `X-Trembita-User` header.
 ///
 /// Requires a non-empty token in `env_var` (`GATEWAY_TOKEN` by default). When unset,
 /// returns [`IdentityError::NotConfigured`] — configure identity only when a token is set.
+///
+/// User identity is taken **only** from the `X-Trembita-User` header (never from query
+/// strings, which leak via logs and referrers). Query-string tokens are not accepted;
+/// use [`GatewayTokenIdentity`] for dev/demo WebSocket URLs only.
 #[derive(Debug, Clone)]
 pub struct GatewayBearerIdentity {
     token_env: String,
+    /// When set, skips environment lookup (integration tests only).
+    static_token: Option<&'static str>,
 }
 
 impl GatewayBearerIdentity {
@@ -315,13 +333,27 @@ impl GatewayBearerIdentity {
     pub fn new(token_env: impl Into<String>) -> Self {
         Self {
             token_env: token_env.into(),
+            static_token: None,
         }
     }
 
-    fn user_from_parts(req: &GatewayRequest<'_>) -> Result<String, IdentityError> {
-        if let Some(user) = req.query("user") {
-            return Ok(user);
+    /// Fixed expected token (for tests and examples that must not mutate the process environment).
+    #[must_use]
+    pub fn with_static_token(token: &'static str) -> Self {
+        Self {
+            token_env: String::new(),
+            static_token: Some(token),
         }
+    }
+
+    fn expected_token(&self) -> String {
+        if let Some(token) = self.static_token {
+            return token.to_string();
+        }
+        std::env::var(&self.token_env).unwrap_or_default()
+    }
+
+    fn user_from_header(req: &GatewayRequest<'_>) -> Result<String, IdentityError> {
         req.headers
             .get("x-trembita-user")
             .and_then(|v| v.to_str().ok())
@@ -335,7 +367,7 @@ impl GatewayIdentity for GatewayBearerIdentity {
 
     #[allow(clippy::unused_async_trait_impl)]
     async fn extract(&self, req: &GatewayRequest<'_>) -> Result<String, IdentityError> {
-        let expected = std::env::var(&self.token_env).unwrap_or_default();
+        let expected = self.expected_token();
         if expected.is_empty() {
             return Err(IdentityError::NotConfigured);
         }
@@ -344,16 +376,10 @@ impl GatewayIdentity for GatewayBearerIdentity {
             if !constant_time_eq(bearer, &expected) {
                 return Err(IdentityError::Unauthorized);
             }
-            return Self::user_from_parts(req);
+            return Self::user_from_header(req);
         }
 
-        let user = req.query("user").ok_or(IdentityError::Unauthorized)?;
-        let token = req.query("token").ok_or(IdentityError::Unauthorized)?;
-        if constant_time_eq(&token, &expected) {
-            Ok(user)
-        } else {
-            Err(IdentityError::Unauthorized)
-        }
+        Err(IdentityError::Unauthorized)
     }
 }
 

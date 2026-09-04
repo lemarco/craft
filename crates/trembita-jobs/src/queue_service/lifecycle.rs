@@ -1,7 +1,5 @@
 //! Lifecycle hooks and backlog settle emission for queue handlers.
 
-use std::sync::Arc;
-
 use trembita_proto::QueueReplicateOp;
 
 use super::wire::shard_stream_name;

@@ -28,6 +28,10 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 ### Changed
 
 - **Typed client wire errors** — `ClientResponse::Error(String)` replaced with `ClientResponse::Err(ClientWireError)` in `trembita-proto` (breaking wire/API change for 0.3.0).
+- **Typed product wire errors** — queue/topic/actor-store reply `error` fields use [`ProductWireError`](crates/trembita-proto/src/product.rs) instead of plain strings (breaking wire change for 0.3.0).
+- **Shared leader replication** — [`forward_to_leader`](crates/trembita-runtime/src/leader_replicate.rs), [`fanout_product_replicate`](crates/trembita-runtime/src/leader_replicate.rs), [`replicate_reply_err`](crates/trembita-runtime/src/leader_replicate.rs); queue/topic/store services deduplicated.
+- **Topic service split** — [`topic_service.rs`](crates/trembita-events/src/topic_service/mod.rs) → `topic_service/{replication,handlers,dispatch,cluster_topic}.rs`.
+- **Gateway identity hardening** — [`GatewayBearerIdentity`](crates/trembita/src/gateway/identity.rs) requires `Authorization: Bearer` + `X-Trembita-User` header (no query `?token=` / `?user=`); [`GatewayTokenIdentity`](crates/trembita/src/gateway/identity.rs) accepts Bearer or query token.
 
 ### Added
 

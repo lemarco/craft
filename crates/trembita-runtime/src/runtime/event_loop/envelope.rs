@@ -1,4 +1,4 @@
-use trembita_core::{Command as _, ReadId, StateMachine};
+use trembita_core::{ReadId, StateMachine};
 
 use crate::DriverError;
 
@@ -6,6 +6,7 @@ use super::super::types::{ClientError, Envelope, NodeStatus};
 use super::Runtime;
 
 impl<M: StateMachine> Runtime<M> {
+    #[allow(clippy::too_many_lines)]
     pub(in crate::runtime::event_loop) fn on_envelope(
         &mut self,
         env: Envelope<M>,

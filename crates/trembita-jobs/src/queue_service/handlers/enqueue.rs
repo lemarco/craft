@@ -12,6 +12,7 @@ use crate::queue_prefetch::DEFAULT_QUEUE_BATCH_MAX;
 use super::super::QueueService;
 
 impl QueueService {
+    #[allow(clippy::too_many_lines)]
     pub(in crate::queue_service) async fn handle_enqueue(
         &self,
         request: QueueEnqueueRequest,
@@ -53,7 +54,7 @@ impl QueueService {
                     Err(e) => {
                         return QueueEnqueueReply {
                             job_id: None,
-                            error: Some(e.to_string()),
+                            error: Some(trembita_proto::ProductWireError::backend(e)),
                         };
                     }
                 }
@@ -99,7 +100,7 @@ impl QueueService {
                         }
                         Err(e) => QueueEnqueueReply {
                             job_id: None,
-                            error: Some(e.to_string()),
+                            error: Some(trembita_proto::ProductWireError::backend(e)),
                         },
                     }
                 }
@@ -125,6 +126,7 @@ impl QueueService {
     }
 
     #[allow(clippy::too_many_lines)] // leader sharded + local + follower forward
+    #[allow(clippy::too_many_lines)]
     pub(in crate::queue_service) async fn handle_enqueue_batch(
         &self,
         request: QueueEnqueueBatchRequest,
@@ -132,11 +134,11 @@ impl QueueService {
         if request.jobs.len() > DEFAULT_QUEUE_BATCH_MAX {
             return QueueEnqueueBatchReply {
                 job_ids: Vec::new(),
-                error: Some(format!(
+                error: Some(trembita_proto::ProductWireError::backend(format!(
                     "batch size {} exceeds max {}",
                     request.jobs.len(),
                     DEFAULT_QUEUE_BATCH_MAX
-                )),
+                ))),
             };
         }
         if self.state.is_leader() {
@@ -179,7 +181,7 @@ impl QueueService {
                     Err(e) => {
                         return QueueEnqueueBatchReply {
                             job_ids: Vec::new(),
-                            error: Some(e.to_string()),
+                            error: Some(trembita_proto::ProductWireError::backend(e)),
                         };
                     }
                 }
@@ -228,7 +230,7 @@ impl QueueService {
                         }
                         Err(e) => QueueEnqueueBatchReply {
                             job_ids: Vec::new(),
-                            error: Some(e.to_string()),
+                            error: Some(trembita_proto::ProductWireError::backend(e)),
                         },
                     }
                 }
