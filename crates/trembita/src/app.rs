@@ -420,7 +420,7 @@ impl TrembitaAppBuilder {
         self
     }
 
-    /// Accept [`JoinRole::Voter`] on `/cluster/join`. Default is learner-only elastic
+    /// Accept [`trembita_proto::JoinRole::Voter`] on `/cluster/join`. Default is learner-only elastic
     /// join; enable on the seed when expanding the voter set ([cluster-elasticity](../../docs/decisions/cluster-elasticity.md)).
     #[must_use]
     pub fn allow_voter_join(mut self, allow: bool) -> Self {
