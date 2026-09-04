@@ -7,9 +7,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with all
 
 Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases may include breaking changes on minor bumps; each is noted here.
 
-**Crates.io:** [`0.2.2`](https://crates.io/crates/trembita) (2026-09-03). See [0.2.3](#023--2026-09-04) below for the latest release.
+**Crates.io:** [`0.3.0`](https://crates.io/crates/trembita) (2026-09-04). See [0.3.0](#030--2026-09-04) below for the latest release.
 
 ## [Unreleased]
+
+## [0.3.0] — 2026-09-04
 
 ### Fixed
 
@@ -25,10 +27,12 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 - **Store replicate auth** — `StoreReplicateRequest` now carries `leader_id` (aligned with queue/topic).
 - **Admin bind default** — reference `trembita-node` admin listens on `127.0.0.1:8080` instead of `0.0.0.0:8080`.
 
-### Changed
+### Changed (breaking)
 
-- **Typed client wire errors** — `ClientResponse::Error(String)` replaced with `ClientResponse::Err(ClientWireError)` in `trembita-proto` (breaking wire/API change for 0.3.0).
-- **Typed product wire errors** — queue/topic/actor-store reply `error` fields use [`ProductWireError`](crates/trembita-proto/src/product.rs) instead of plain strings (breaking wire change for 0.3.0).
+- **Typed client wire errors** — `ClientResponse::Error(String)` replaced with `ClientResponse::Err(ClientWireError)` in `trembita-proto`.
+- **Typed product wire errors** — queue/topic/actor-store reply `error` fields use [`ProductWireError`](crates/trembita-proto/src/product.rs) instead of plain strings.
+
+### Changed
 - **Shared leader replication** — [`forward_to_leader`](crates/trembita-runtime/src/leader_replicate.rs), [`fanout_product_replicate`](crates/trembita-runtime/src/leader_replicate.rs), [`replicate_reply_err`](crates/trembita-runtime/src/leader_replicate.rs); queue/topic/store services deduplicated.
 - **Topic service split** — [`topic_service.rs`](crates/trembita-events/src/topic_service/mod.rs) → `topic_service/{replication,handlers,dispatch,cluster_topic}.rs`.
 - **Gateway identity hardening** — [`GatewayBearerIdentity`](crates/trembita/src/gateway/identity.rs) requires `Authorization: Bearer` + `X-Trembita-User` header (no query `?token=` / `?user=`); [`GatewayTokenIdentity`](crates/trembita/src/gateway/identity.rs) accepts Bearer or query token.
@@ -236,7 +240,8 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
   backpressure on QUIC.
 
 
-[Unreleased]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.3...HEAD
+[Unreleased]: https://gitlab.com/lemarco/trembita/-/compare/v0.3.0...HEAD
+[0.3.0]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.3...v0.3.0
 [0.2.3]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.2...v0.2.3
 [0.2.2]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.1...v0.2.2
 [0.2.1]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.0...v0.2.1
