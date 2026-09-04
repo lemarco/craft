@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderMap, Method, Uri};
 use trembita_dashboard::AdminTlsPaths;
 
@@ -30,6 +31,60 @@ pub use identity::{
     GatewayTokenIdentity, IdentityError, IdentityTypeError, SessionKey,
 };
 pub use session::{NoWorkerError, OpenActorSessionError, SessionHandle};
+
+/// Maximum HTTP request body size on the product gateway (matches QUIC wire cap).
+pub const GATEWAY_MAX_BODY_BYTES: usize = 16 * 1024 * 1024;
+
+/// Invalid gateway wiring collected at router build / spawn time.
+#[derive(Debug, thiserror::Error)]
+pub enum GatewayConfigError {
+    /// [`GatewayOpts::protect_product_apis`] without [`GatewayOpts::identity`].
+    #[error("protect_product_apis(true) requires GatewayOpts::identity")]
+    ProtectApisWithoutIdentity,
+    /// Product APIs are enabled but no identity extractor is configured.
+    #[error("gateway product APIs require GatewayOpts::identity")]
+    ProductApisWithoutIdentity,
+}
+
+/// Returns `true` when built-in product routes would be mounted.
+#[must_use]
+pub fn gateway_has_product_apis(config: &GatewayConfig) -> bool {
+    config.jobs_api || config.actors_api || config.workflows_api || config.introspect_api
+}
+
+/// Validate gateway wiring before bind.
+///
+/// # Errors
+/// [`GatewayConfigError`] when auth is required but identity is missing.
+pub fn validate_gateway_config(config: &GatewayConfig) -> Result<(), GatewayConfigError> {
+    if config.protect_apis && config.identity.is_none() {
+        return Err(GatewayConfigError::ProtectApisWithoutIdentity);
+    }
+    if gateway_has_product_apis(config) && config.identity.is_none() {
+        return Err(GatewayConfigError::ProductApisWithoutIdentity);
+    }
+    Ok(())
+}
+
+/// Read `GATEWAY_TOKEN` or `TREMBITA_GATEWAY_TOKEN` when non-empty.
+#[must_use]
+pub fn gateway_token_from_env() -> Option<String> {
+    ["GATEWAY_TOKEN", "TREMBITA_GATEWAY_TOKEN"]
+        .into_iter()
+        .find_map(|key| {
+            std::env::var(key)
+                .ok()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+        })
+}
+
+/// Bearer auth hook for product/upgrade HTTP when a gateway token env var is set.
+#[must_use]
+pub fn bearer_auth_from_env() -> Option<trembita_http::AuthFn> {
+    gateway_token_from_env()
+        .map(|_| identity_auth_fn(identity::erase_identity(GatewayBearerIdentity::from_env())))
+}
 
 /// Default gateway drain when [`GatewayOpts::drain_timeout`] is omitted.
 pub const DEFAULT_GATEWAY_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
@@ -421,19 +476,30 @@ pub struct GatewayConfig {
 ///
 /// Installs connection-tracking middleware on the merged router so HTTP handlers
 /// do not need to call [`TrembitaGatewayState::track_connection`] manually.
-pub fn build_gateway_router(app: &Arc<TrembitaApp>, config: GatewayConfig) -> Router {
+///
+/// # Errors
+/// [`GatewayConfigError`] when product APIs or `protect_apis` require identity.
+pub fn build_gateway_router(
+    app: &Arc<TrembitaApp>,
+    config: GatewayConfig,
+) -> Result<Router, GatewayConfigError> {
+    validate_gateway_config(&config)?;
     let connections = app.cluster().workload_runtime().map_or_else(
         || Arc::new(ConnectionTracker::default()),
         |w| w.connections(),
     );
-    build_gateway_router_with_tracker(app, config, Some(connections))
+    Ok(build_gateway_router_with_tracker(
+        app,
+        config,
+        Some(connections),
+    )?)
 }
 
 fn build_gateway_router_with_tracker(
     app: &Arc<TrembitaApp>,
     config: GatewayConfig,
     connections: Option<Arc<ConnectionTracker>>,
-) -> Router {
+) -> Result<Router, GatewayConfigError> {
     let GatewayConfig {
         addr: _,
         jobs_api,
@@ -447,7 +513,8 @@ fn build_gateway_router_with_tracker(
         protect_apis,
     } = config;
 
-    let auth = if protect_apis {
+    let needs_auth = protect_apis || jobs_api || actors_api || workflows_api || introspect_api;
+    let auth = if needs_auth {
         identity.clone().map(identity_auth_fn)
     } else {
         None
@@ -502,7 +569,9 @@ fn build_gateway_router_with_tracker(
         ));
     }
 
-    router
+    router = router.layer(DefaultBodyLimit::max(GATEWAY_MAX_BODY_BYTES));
+
+    Ok(router)
 }
 
 /// Spawn the gateway HTTP server; returns a [`GatewayHandle`] for graceful drain.
@@ -511,12 +580,12 @@ fn build_gateway_router_with_tracker(
 /// [`ConnectionTracker`] for drain, ingress counting, and compute-token middleware.
 ///
 /// # Errors
-/// Returns [`std::io::Error`] when the listen socket cannot be bound or TLS PEM
-/// material is invalid.
+/// Returns [`GatewayConfigError`] when product APIs require identity, or
+/// [`std::io::Error`] when the listen socket cannot be bound or TLS PEM material is invalid.
 pub async fn spawn_gateway(
     app: Arc<TrembitaApp>,
     config: GatewayConfig,
-) -> std::io::Result<GatewayHandle> {
+) -> Result<GatewayHandle, GatewaySpawnError> {
     let addr = config.addr;
     let drain_timeout = config.drain_timeout;
     let tls_paths = config.tls.clone();
@@ -526,7 +595,7 @@ pub async fn spawn_gateway(
         |w| w.connections(),
     );
     let mut router =
-        build_gateway_router_with_tracker(&app, config, Some(Arc::clone(&connections)));
+        build_gateway_router_with_tracker(&app, config, Some(Arc::clone(&connections)))?;
     if let Some(wl) = &workload {
         router = router.layer(axum::middleware::from_fn_with_state(
             wl.pool(),
@@ -537,8 +606,12 @@ pub async fn spawn_gateway(
         .as_ref()
         .map(trembita_dashboard::admin_tls_config)
         .transpose()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+        .map_err(|e| {
+            GatewaySpawnError::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, e))
+        })?;
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .map_err(GatewaySpawnError::Io)?;
     let scheme = if tls.is_some() { "https" } else { "http" };
     eprintln!("trembita: gateway listening on {scheme}://{addr}");
     Ok(drain::spawn_serve(
@@ -550,8 +623,21 @@ pub async fn spawn_gateway(
     ))
 }
 
+/// Gateway spawn failures (config validation or I/O).
+#[derive(Debug, thiserror::Error)]
+pub enum GatewaySpawnError {
+    /// Invalid gateway wiring.
+    #[error(transparent)]
+    Config(#[from] GatewayConfigError),
+    /// Listen/bind or TLS load failure.
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+}
+
 #[cfg(feature = "http-jobs")]
-fn identity_auth_fn(extractor: Arc<dyn identity::DynGatewayIdentity>) -> trembita_http::AuthFn {
+pub(crate) fn identity_auth_fn(
+    extractor: Arc<dyn identity::DynGatewayIdentity>,
+) -> trembita_http::AuthFn {
     Arc::new(move |method, uri, headers| {
         let extractor = Arc::clone(&extractor);
         Box::pin(async move {
@@ -563,4 +649,51 @@ fn identity_auth_fn(extractor: Arc<dyn identity::DynGatewayIdentity>) -> trembit
             Ok(())
         })
     })
+}
+
+#[cfg(all(test, feature = "http-jobs"))]
+mod tests {
+    use super::*;
+
+    struct TestIdentity;
+
+    impl GatewayIdentity for TestIdentity {
+        type Identity = String;
+
+        #[allow(clippy::unused_async_trait_impl)]
+        async fn extract(&self, _: &GatewayRequest<'_>) -> Result<String, IdentityError> {
+            Ok("test".into())
+        }
+    }
+
+    #[test]
+    fn validate_rejects_product_apis_without_identity() {
+        let config = GatewayOpts::new("127.0.0.1:1".parse().expect("addr"))
+            .with_jobs_api(true)
+            .build_config();
+        assert!(matches!(
+            validate_gateway_config(&config),
+            Err(GatewayConfigError::ProductApisWithoutIdentity)
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_protect_apis_without_identity() {
+        let config = GatewayOpts::new("127.0.0.1:1".parse().expect("addr"))
+            .protect_product_apis(true)
+            .build_config();
+        assert!(matches!(
+            validate_gateway_config(&config),
+            Err(GatewayConfigError::ProtectApisWithoutIdentity)
+        ));
+    }
+
+    #[test]
+    fn validate_accepts_product_apis_with_identity() {
+        let config = GatewayOpts::new("127.0.0.1:1".parse().expect("addr"))
+            .with_jobs_api(true)
+            .identity(TestIdentity)
+            .build_config();
+        assert!(validate_gateway_config(&config).is_ok());
+    }
 }

@@ -230,7 +230,7 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
     let admin = match env("TREMBITA_ADMIN").as_deref() {
         Some("-") => None,
         Some(a) => Some(a.parse()?),
-        None => Some("0.0.0.0:8080".parse()?),
+        None => Some("127.0.0.1:8080".parse()?),
     };
 
     let join_seeds = match env("TREMBITA_JOIN_SEEDS") {

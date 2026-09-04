@@ -33,6 +33,9 @@ impl From<SetDesiredBody> for ArtifactManifest {
 /// Upgrade API errors.
 #[derive(Debug, thiserror::Error)]
 pub enum UpgradeApiError {
+    /// Missing or invalid credentials.
+    #[error("unauthorized: {0}")]
+    Unauthorized(String),
     /// Invalid JSON body.
     #[error("bad request: {0}")]
     BadRequest(String),
@@ -44,6 +47,7 @@ pub enum UpgradeApiError {
 impl IntoResponse for UpgradeApiError {
     fn into_response(self) -> Response {
         let status = match &self {
+            Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::Backend(_) => StatusCode::SERVICE_UNAVAILABLE,
         };

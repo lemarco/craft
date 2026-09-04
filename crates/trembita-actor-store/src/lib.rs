@@ -9,6 +9,7 @@ pub use redb_store::{
     DEFAULT_ACTOR_STORE_GC_MAX_KEYS, DEFAULT_ACTOR_STORE_GC_PERIOD, RedbActorStateStore,
     StoreReplicationOps,
 };
-pub use store::{ActorStateStore, BoxFuture, InMemoryStore, StoreError};
+pub use store::{ActorStateStore, InMemoryStore, StoreError};
 pub use store_codec::{store_get, store_set};
 pub use store_service::{ClusterActorStateStore, StoreService, run_actor_store_gc_ticker};
+pub use trembita_proto::BoxFuture;

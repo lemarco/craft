@@ -6,26 +6,26 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::task::JoinSet;
-
 use trembita_net::transport::{Body, BoxFuture, Transport, TransportError};
 use trembita_net::{
     Route, decode_body, encode_body, send_store_compare_and_set, send_store_delete,
     send_store_replicate, send_store_set,
 };
 use trembita_proto::{
-    NodeId, StoreCompareAndSetReply, StoreCompareAndSetRequest, StoreDeleteReply,
-    StoreDeleteRequest, StoreReplicateReply, StoreReplicateRequest, StoreSetReply, StoreSetRequest,
+    BoxFuture as StoreBoxFuture, NodeId, StoreCompareAndSetReply, StoreCompareAndSetRequest,
+    StoreDeleteReply, StoreDeleteRequest, StoreReplicateReply, StoreReplicateRequest,
+    StoreSetReply, StoreSetRequest,
 };
 
-use crate::store::{ActorStateStore, BoxFuture as StoreBoxFuture, StoreError};
-use trembita_runtime::ClusterState;
-use trembita_runtime::NOT_LEADER_REASON;
+use crate::store::{ActorStateStore, StoreError};
+use trembita_runtime::{
+    ClusterState, NOT_LEADER_REASON, authorize_replicate_leader, fanout_replicate,
+    replication_peers,
+};
 
 use crate::{RedbActorStateStore, StoreReplicationOps};
 
 const REPLICATE_NOT_LEADER: &str = "actor store replicate rejected: caller is not raft leader";
-const REPLICATE_UNAUTHENTICATED: &str = "actor store replicate rejected: unknown caller";
 
 fn ttl_from_secs(secs: u64) -> Option<Duration> {
     (secs != 0).then(|| Duration::from_secs(secs))
@@ -79,21 +79,16 @@ impl StoreService {
         if ops.is_empty() {
             return Ok(());
         }
-        let peers: Vec<NodeId> = self
-            .state
-            .reachable_nodes()
-            .into_iter()
-            .filter(|id| *id != self.node_id)
-            .collect();
-        if peers.is_empty() {
-            return Ok(());
-        }
-        let request = StoreReplicateRequest { ops: ops.clone() };
-        let mut set = JoinSet::new();
-        for peer in peers {
-            let transport = Arc::clone(&self.transport);
+        let peers = replication_peers(self.state.as_ref(), self.node_id)?;
+        let request = StoreReplicateRequest {
+            ops: ops.clone(),
+            leader_id: self.node_id.0,
+        };
+        let transport = Arc::clone(&self.transport);
+        fanout_replicate(&peers, move |peer| {
+            let transport = Arc::clone(&transport);
             let request = request.clone();
-            set.spawn(async move {
+            Box::pin(async move {
                 let reply = send_store_replicate(transport.as_ref(), peer, &request)
                     .await
                     .map_err(|e| e.to_string())?;
@@ -101,29 +96,13 @@ impl StoreService {
                     return Err(err);
                 }
                 Ok(())
-            });
-        }
-        while let Some(result) = set.join_next().await {
-            match result {
-                Ok(Ok(())) => {}
-                Ok(Err(e)) => return Err(e),
-                Err(e) => return Err(e.to_string()),
-            }
-        }
-        Ok(())
+            })
+        })
+        .await
     }
 
-    fn authorize_replicate(&self, from: Option<NodeId>) -> Result<(), String> {
-        let Some(from) = from else {
-            return Err(REPLICATE_UNAUTHENTICATED.to_string());
-        };
-        let Some(leader) = self.state.leader_id() else {
-            return Err("no raft leader elected".to_string());
-        };
-        if from != leader {
-            return Err(REPLICATE_NOT_LEADER.to_string());
-        }
-        Ok(())
+    fn authorize_replicate(&self, declared_leader: NodeId) -> Result<(), String> {
+        authorize_replicate_leader(self.state.as_ref(), declared_leader, REPLICATE_NOT_LEADER)
     }
 
     async fn handle_set(&self, request: StoreSetRequest) -> StoreSetReply {
@@ -241,10 +220,10 @@ impl StoreService {
 
     fn handle_replicate(
         &self,
-        from: Option<NodeId>,
+        _from: Option<NodeId>,
         request: &StoreReplicateRequest,
     ) -> StoreReplicateReply {
-        if let Err(e) = self.authorize_replicate(from) {
+        if let Err(e) = self.authorize_replicate(NodeId(request.leader_id)) {
             return StoreReplicateReply { error: Some(e) };
         }
         for op in &request.ops {

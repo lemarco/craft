@@ -191,7 +191,8 @@ async fn http_post_chat_with_query_auth() {
             .identity(FixedToken)
             .routes(gateway_routes)
             .build_config(),
-    );
+    )
+    .expect("gateway config");
 
     let req = Request::builder()
         .method("POST")
@@ -253,7 +254,8 @@ async fn http_get_me_route() {
             .identity(FixedToken)
             .routes(gateway_routes)
             .build_config(),
-    );
+    )
+    .expect("gateway config");
 
     let req = Request::builder()
         .method("GET")
@@ -287,7 +289,8 @@ async fn http_post_chat_with_bearer_auth() {
             .identity(FixedToken)
             .routes(gateway_routes)
             .build_config(),
-    );
+    )
+    .expect("gateway config");
 
     let req = Request::builder()
         .method("POST")
@@ -324,7 +327,8 @@ async fn http_post_without_auth_returns_401() {
             .identity(FixedToken)
             .routes(gateway_routes)
             .build_config(),
-    );
+    )
+    .expect("gateway config");
 
     let req = Request::builder()
         .method("POST")

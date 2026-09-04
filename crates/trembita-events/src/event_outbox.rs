@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use redb::{Database, ReadableDatabase, TableDefinition};
-use trembita_actor_store::BoxFuture;
+use trembita_proto::BoxFuture;
 use trembita_runtime::{ClusterState, LeaderSession};
 
 use crate::{EventTopic, TopicError};

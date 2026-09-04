@@ -160,12 +160,27 @@ impl TrembitaAppBuilder {
         if self.gateway.is_none()
             && let Some(addr) = cfg.gateway
         {
+            let any_api = cfg.gateway_jobs_api
+                || cfg.gateway_actors_api
+                || cfg.gateway_workflows_api
+                || cfg.gateway_introspect_api;
             let mut opts = GatewayOpts::new(addr)
                 .with_jobs_api(cfg.gateway_jobs_api)
                 .with_actors_api(cfg.gateway_actors_api)
                 .with_workflows_api(cfg.gateway_workflows_api)
                 .with_introspect_api(cfg.gateway_introspect_api)
                 .drain_timeout(cfg.gateway_drain_timeout);
+            if any_api {
+                opts = opts.protect_product_apis(true);
+                if crate::gateway::gateway_token_from_env().is_some() {
+                    opts = opts.identity(crate::gateway::GatewayBearerIdentity::from_env());
+                } else {
+                    self.config_errors.push(
+                        "gateway product APIs require GATEWAY_TOKEN or TREMBITA_GATEWAY_TOKEN"
+                            .into(),
+                    );
+                }
+            }
             if let Some((cert, key)) = cfg.gateway_tls.clone() {
                 opts = opts.tls(cert, key);
             }
@@ -1202,11 +1217,11 @@ impl TrembitaApp {
     /// Requires an [`Arc`] handle so routes can call into the app.
     ///
     /// # Errors
-    /// Returns [`std::io::Error`] when the listen socket cannot be bound.
+    /// Returns [`GatewaySpawnError`] when config is invalid or the listen socket cannot be bound.
     pub async fn spawn_gateway(
         app: Arc<Self>,
         config: GatewayConfig,
-    ) -> std::io::Result<GatewayHandle> {
+    ) -> Result<GatewayHandle, crate::gateway::GatewaySpawnError> {
         crate::gateway::spawn_gateway(app, config).await
     }
 

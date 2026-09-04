@@ -2,8 +2,18 @@
 
 use trembita::{GatewayIdentity, GatewayRequest, IdentityError};
 
-/// Showcase auth: `?user=` (+ optional `?token=` when `GATEWAY_TOKEN` is set) or
-/// `Authorization: Bearer` + `X-Trembita-User` / `?user=`.
+/// Constant-time string equality for shared API tokens.
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.bytes()
+        .zip(b.bytes())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
+}
+
+/// Showcase auth: `?user=` + `?token=` or `Authorization: Bearer` + `X-Trembita-User` / `?user=`.
 #[derive(Debug, Clone, Default)]
 pub struct ShowcaseGatewayIdentity {
     token_env: String,
@@ -46,20 +56,20 @@ impl GatewayIdentity for ShowcaseGatewayIdentity {
     #[allow(clippy::unused_async_trait_impl)]
     async fn extract(&self, req: &GatewayRequest<'_>) -> Result<String, IdentityError> {
         let expected = self.expected_token();
+        if expected.is_empty() {
+            return Err(IdentityError::NotConfigured);
+        }
 
         if let Some(bearer) = req.bearer_token() {
-            if !expected.is_empty() && bearer != expected {
+            if !constant_time_eq(bearer, &expected) {
                 return Err(IdentityError::Unauthorized);
             }
             return Self::user_from_parts(req);
         }
 
         let user = req.query("user").ok_or(IdentityError::Unauthorized)?;
-        if expected.is_empty() {
-            return Ok(user);
-        }
         let token = req.query("token").ok_or(IdentityError::Unauthorized)?;
-        if token == expected {
+        if constant_time_eq(&token, &expected) {
             Ok(user)
         } else {
             Err(IdentityError::Unauthorized)

@@ -21,8 +21,14 @@ pub fn workflows_router() -> Router<Arc<WorkflowsApiState>> {
         .route("/workflows/resume", post(post_resume))
 }
 
-async fn get_health() -> impl IntoResponse {
-    (StatusCode::OK, "ok")
+async fn get_health(
+    State(state): State<Arc<WorkflowsApiState>>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, WorkflowsApiError> {
+    authorize(&state, &method, &uri, &headers).await?;
+    Ok((StatusCode::OK, "ok"))
 }
 
 async fn authorize(

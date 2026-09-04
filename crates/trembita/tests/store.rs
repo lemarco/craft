@@ -144,6 +144,7 @@ async fn store_replicate_rejects_non_leader_caller() {
                 value: b"v".to_vec(),
                 expires_at_ms: 0,
             }],
+            leader_id: NodeId(3).0,
         },
     )
     .await

@@ -4,8 +4,14 @@
 //! cluster join handshakes, and actor messaging. All bodies are encoded with
 //! `postcard` (wire-transport, serialization). Nothing here performs I/O.
 
+use std::future::Future;
+use std::pin::Pin;
+
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+
+/// A boxed, `Send` future — object-safe return type for port traits.
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 pub mod actor;
 pub mod actor_store;
@@ -22,6 +28,7 @@ pub mod saga_journal;
 pub mod topic;
 pub mod two_phase;
 pub mod two_phase_journal;
+pub mod worker;
 
 pub use actor::{
     ActorEnvelope, ActorId, ActorRef, ActorRegistration, ActorTypeId, DeliverAck, DirectoryUpdate,
@@ -69,6 +76,7 @@ pub use topic::{
 };
 pub use two_phase::{TwoPhaseAbortCommand, TwoPhasePrepareCommand};
 pub use two_phase_journal::TwoPhaseJournalCommand;
+pub use worker::WorkerId;
 
 /// Wire/protocol version negotiated on join (join-version-skew: hard reject on mismatch).
 pub const PROTOCOL_VERSION: u32 = 1;

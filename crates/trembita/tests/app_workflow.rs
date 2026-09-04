@@ -4,8 +4,8 @@
 
 use trembita::client::SagaOutcome;
 use trembita::{
-    GatewayOpts, ReadyOpts, TrembitaApp, TrembitaConfigure, WorkflowBuilder, WorkflowOpts,
-    journal_workflow,
+    GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError, ReadyOpts, TrembitaApp,
+    TrembitaConfigure, WorkflowBuilder, WorkflowOpts, journal_workflow,
 };
 use trembita_test_support::{TICK_PERIOD, boot_local_app, fast_raft_config_with_seed};
 
@@ -16,6 +16,17 @@ fn noop_plan(saga_id: &str) -> trembita_client::SagaPlan {
         .compensate("checkpoint", trembita::proto::encode(&()).unwrap())
         .build()
         .unwrap()
+}
+
+struct TestGatewayIdentity;
+
+impl GatewayIdentity for TestGatewayIdentity {
+    type Identity = String;
+
+    #[allow(clippy::unused_async_trait_impl)]
+    async fn extract(&self, _: &GatewayRequest<'_>) -> Result<String, IdentityError> {
+        Ok("test".into())
+    }
 }
 
 #[tokio::test]
@@ -32,7 +43,9 @@ async fn trembita_app_runs_workflow_locally() {
                 })
                 .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
                 .gateway(
-                    GatewayOpts::new("127.0.0.1:0".parse().expect("addr")).with_workflows_api(true),
+                    GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
+                        .with_workflows_api(true)
+                        .identity(TestGatewayIdentity),
                 )
         },
         Some(ReadyOpts::default()),
@@ -57,7 +70,9 @@ async fn trembita_app_workflows_api_on_gateway() {
                 })
                 .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
                 .gateway(
-                    GatewayOpts::new("127.0.0.1:0".parse().expect("addr")).with_workflows_api(true),
+                    GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
+                        .with_workflows_api(true)
+                        .identity(TestGatewayIdentity),
                 )
         },
         Some(ReadyOpts::default()),
@@ -72,7 +87,8 @@ async fn trembita_app_workflows_api_on_gateway() {
 mod gateway_merge {
     use trembita::cluster::build_gateway_router;
     use trembita::{
-        GatewayOpts, ReadyOpts, TrembitaApp, TrembitaConfigure, WorkflowOpts, journal_workflow,
+        GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError, ReadyOpts, TrembitaApp,
+        TrembitaConfigure, WorkflowOpts, journal_workflow,
     };
     use trembita_test_support::{TICK_PERIOD, boot_local_app, fast_raft_config_with_seed};
 
@@ -93,7 +109,8 @@ mod gateway_merge {
                     .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
                     .gateway(
                         GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
-                            .with_workflows_api(true),
+                            .with_workflows_api(true)
+                            .identity(super::TestGatewayIdentity),
                     )
             },
             Some(ReadyOpts::default()),
@@ -104,8 +121,10 @@ mod gateway_merge {
             &app,
             GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
                 .with_workflows_api(true)
+                .identity(super::TestGatewayIdentity)
                 .build_config(),
-        );
+        )
+        .expect("gateway config");
         let _ = router;
     }
 }

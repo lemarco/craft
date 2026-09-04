@@ -15,6 +15,7 @@ mod driver;
 mod external_load;
 mod group_membership;
 mod group_rebalance;
+mod leader_replicate;
 mod leader_task;
 mod mailbox_spool;
 mod messaging;
@@ -23,6 +24,7 @@ mod placement;
 pub mod rebalance_log;
 mod registry;
 mod resources;
+mod retry;
 mod ring;
 mod runtime;
 mod session;
@@ -40,6 +42,10 @@ pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
 pub use external_load::{ExternalLoad, ManualExternalLoad};
 pub use group_membership::{GroupMembershipSyncReport, sync_hosted_group_membership};
 pub use group_rebalance::{GroupRebalanceReport, RaftGroupReconciler};
+pub use leader_replicate::{
+    REPLICATION_NO_REACHABLE_VOTERS, authorize_replicate_leader, fanout_replicate,
+    replication_peers,
+};
 pub use leader_task::{LeaderGate, LeaderLoopOpts, LeaderSession, run_leader_loop};
 pub use mailbox_spool::{
     InMemoryMailboxSpool, MailboxSpool, MailboxSpoolError, MailboxSpoolId, RedbMailboxSpool,
@@ -59,6 +65,7 @@ pub use registry::{
     ScaleError, SendError, SnapshotError, SpawnError, StopError, UserActor, WireReplyPort,
 };
 pub use resources::{ResourceProfile, VpsResources};
+pub use retry::{AttemptOutcome, after_failed_attempt};
 pub use ring::{VIRTUAL_NODES, group_salt, hash_bytes, hash_key as ring_hash_key, pick_index};
 pub use runtime::{
     ClientError, NodeHandle, NodeService, NodeStatus, QueueAutoscalePolicyAppliedFn, RuntimeConfig,

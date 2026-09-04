@@ -17,7 +17,7 @@ use super::{
     LeasedJob, QueueError, QueueMetrics, QueueReplicationOps, WorkerId, after_failed_attempt,
     job_status_matches_filter,
 };
-use trembita_actor_store::BoxFuture;
+use trembita_proto::BoxFuture;
 
 const JOBS: TableDefinition<u64, &[u8]> = TableDefinition::new("queue_jobs");
 const PENDING: TableDefinition<u64, &[u8]> = TableDefinition::new("queue_pending");

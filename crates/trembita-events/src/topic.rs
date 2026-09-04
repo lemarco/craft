@@ -12,9 +12,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use trembita_proto::{NodeId, TopicReplicateOp};
 
-pub use trembita_actor_store::BoxFuture;
-pub use trembita_jobs::WorkerId;
-use trembita_jobs::after_failed_attempt;
+pub use trembita_proto::BoxFuture;
+pub use trembita_proto::WorkerId;
+pub use trembita_runtime::after_failed_attempt;
 
 /// Monotonic event id within a topic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

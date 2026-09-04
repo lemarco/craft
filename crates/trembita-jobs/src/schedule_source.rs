@@ -8,7 +8,7 @@ use std::time::Duration;
 use trembita_proto::RecurringScheduleWire;
 
 use crate::{QueueError, QueueReplicationOps, RecurringJob, RedbJobQueue};
-use trembita_actor_store::BoxFuture;
+use trembita_proto::BoxFuture;
 
 /// Why a [`ScheduleSource`] poll failed.
 #[derive(Debug, thiserror::Error)]

@@ -26,8 +26,8 @@ pub use external_backlog::{
 pub use queue::{
     BatchRequeueResult, EnqueueOptions, InMemoryJobQueue, JobContext, JobId, JobLifecycle,
     JobListFilter, JobListPage, JobQueue, JobStatus, LIST_JOBS_DEFAULT_LIMIT, LeaseId, LeasedJob,
-    QueueConsumerWorkload, QueueError, QueueMetrics, QueueReplicateOp, QueueReplicationOps,
-    WorkerId, after_failed_attempt, job_status_matches_filter, run_queue_consumer,
+    QueueConsumerWorkload, QueueError, QueueMetrics, QueueReplicationOps,
+    job_status_matches_filter, run_queue_consumer,
 };
 pub use queue_autoscale::{
     AutoscalePolicy, MembershipAutoscalePolicy, QueueAutoscaleRegistry, run_queue_autoscaler,
@@ -45,6 +45,8 @@ pub use schedule_source::{
     StaticScheduleSource, plan_schedule_reconcile, wire_to_recurring_job,
 };
 pub use sharded_queue::{ShardedJobQueue, ShardedReplication};
+pub use trembita_proto::WorkerId;
+pub use trembita_runtime::{AttemptOutcome, after_failed_attempt};
 pub use workload::{
     ConsumerTune, WorkloadMetricsHook, WorkloadMetricsSnapshot, WorkloadOpts, run_workload_governor,
 };

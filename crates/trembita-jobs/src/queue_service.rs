@@ -39,7 +39,10 @@ use crate::{
     QueueError, QueueMetrics, QueueReplicationOps, RecurringJob, RedbJobQueue, ScheduleSource,
     ShardedJobQueue, ShardedReplication, WorkerId,
 };
-use trembita_runtime::{ClusterState, NOT_LEADER_REASON};
+use trembita_runtime::{
+    ClusterState, NOT_LEADER_REASON, authorize_replicate_leader, fanout_replicate,
+    replication_peers,
+};
 
 use std::time::{Duration, Instant};
 
@@ -551,25 +554,17 @@ impl QueueService {
         if ops.is_empty() {
             return Ok(());
         }
-        let peers: Vec<NodeId> = self
-            .state
-            .reachable_nodes()
-            .into_iter()
-            .filter(|id| *id != self.node_id)
-            .collect();
-        if peers.is_empty() {
-            return Ok(());
-        }
+        let peers = replication_peers(self.state.as_ref(), self.node_id)?;
         let request = QueueReplicateRequest {
             stream: stream.to_string(),
             ops: ops.clone(),
             leader_id: self.node_id.0,
         };
-        let mut set = JoinSet::new();
-        for peer in peers {
-            let transport = Arc::clone(&self.transport);
+        let transport = Arc::clone(&self.transport);
+        fanout_replicate(&peers, move |peer| {
+            let transport = Arc::clone(&transport);
             let request = request.clone();
-            set.spawn(async move {
+            Box::pin(async move {
                 let reply = send_queue_replicate(transport.as_ref(), peer, &request)
                     .await
                     .map_err(|e| e.to_string())?;
@@ -577,16 +572,9 @@ impl QueueService {
                     return Err(err);
                 }
                 Ok(())
-            });
-        }
-        while let Some(result) = set.join_next().await {
-            match result {
-                Ok(Ok(())) => {}
-                Ok(Err(e)) => return Err(e),
-                Err(e) => return Err(e.to_string()),
-            }
-        }
-        Ok(())
+            })
+        })
+        .await
     }
 
     async fn replicate_sharded(
@@ -605,13 +593,7 @@ impl QueueService {
     }
 
     fn authorize_replicate(&self, declared_leader: NodeId) -> Result<(), String> {
-        let Some(leader) = self.state.leader_id() else {
-            return Err("no raft leader elected".to_string());
-        };
-        if declared_leader != leader {
-            return Err(REPLICATE_NOT_LEADER.to_string());
-        }
-        Ok(())
+        authorize_replicate_leader(self.state.as_ref(), declared_leader, REPLICATE_NOT_LEADER)
     }
 
     async fn handle_replicate(

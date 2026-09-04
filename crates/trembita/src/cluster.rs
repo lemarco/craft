@@ -12,7 +12,11 @@ pub use crate::certs::{
 pub use crate::cluster_handle::{
     AddRaftGroupsError, ClusterFacts, LeaveError, ScaleClusterError, TrembitaCluster,
 };
-pub use crate::gateway::{GatewayConfig, GatewayHandle, build_gateway_router, spawn_gateway};
+pub use crate::gateway::{
+    GATEWAY_MAX_BODY_BYTES, GatewayConfig, GatewayConfigError, GatewayHandle, GatewaySpawnError,
+    build_gateway_router, gateway_has_product_apis, gateway_token_from_env, spawn_gateway,
+    validate_gateway_config,
+};
 pub use crate::saga::{
     CompositeSagaJournal, Group0SagaJournal, MetaRaftSagaJournal, SagaRegistry, StoreSagaJournal,
     record_saga_metrics, saga_metrics_callback,

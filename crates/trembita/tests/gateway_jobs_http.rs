@@ -84,7 +84,8 @@ async fn gateway_jobs_batch_and_job_status_metadata() {
             .identity(BearerSecret)
             .protect_product_apis(true)
             .build_config(),
-    );
+    )
+    .expect("gateway config");
 
     let unauth = Request::builder()
         .method("POST")

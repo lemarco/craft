@@ -13,6 +13,29 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ### Fixed
 
+- **Gateway fail-closed auth** — product APIs require [`GatewayOpts::identity`](crates/trembita/src/gateway/mod.rs);
+  `protect_product_apis(true)` without identity fails at router build; env-enabled gateway APIs require
+  `GATEWAY_TOKEN` / `TREMBITA_GATEWAY_TOKEN`.
+- **Gateway token bypass** — empty token env returns [`IdentityError::NotConfigured`](crates/trembita/src/gateway/identity.rs)
+  instead of accepting arbitrary Bearer/query credentials.
+- **Upgrade API auth** — [`UpgradeApi`](crates/trembita-http/src/upgrade_routes.rs) supports [`AuthFn`]; facade wires Bearer
+  auth when a gateway token env var is set.
+- **Voter replication safety** — queue/topic/store leaders error when other voters exist but none are reachable
+  ([`replication_peers`](crates/trembita-runtime/src/leader_replicate.rs)).
+- **Store replicate auth** — `StoreReplicateRequest` now carries `leader_id` (aligned with queue/topic).
+- **Admin bind default** — reference `trembita-node` admin listens on `127.0.0.1:8080` instead of `0.0.0.0:8080`.
+
+### Added
+
+- **Shared replication helpers** — [`fanout_replicate`](crates/trembita-runtime/src/leader_replicate.rs),
+  [`after_failed_attempt`](crates/trembita-runtime/src/retry.rs), [`WorkerId`](crates/trembita-proto/src/worker.rs) and
+  [`BoxFuture`](crates/trembita-proto/src/lib.rs) in proto (decouples `trembita-events` from `trembita-jobs`).
+- **Gateway HTTP body limit** — 16 MiB [`DefaultBodyLimit`](crates/trembita/src/gateway/mod.rs) on product router.
+- **Gateway validation API** — [`validate_gateway_config`](crates/trembita/src/gateway/mod.rs),
+  [`GatewayConfigError`](crates/trembita/src/gateway/mod.rs).
+
+### Fixed
+
 - **Env merge precedence** — [`merge_app_config`](crates/trembita/src/builder.rs) applies env only for unset
   builder fields; code-set [`.members`](crates/trembita/src/app.rs), [`.join_as`](crates/trembita/src/app.rs),
   [`.configure({ node_id })`](crates/trembita/src/configure.rs), etc. win over `TREMBITA_*` on [`.run`](crates/trembita/src/app.rs).

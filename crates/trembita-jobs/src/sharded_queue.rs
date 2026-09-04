@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use trembita_actor_store::BoxFuture;
+use trembita_proto::BoxFuture;
 
 use super::{
     EnqueueOptions, JobId, JobListFilter, JobListPage, JobQueue, JobStatus, LeaseId, LeasedJob,

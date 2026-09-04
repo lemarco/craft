@@ -168,7 +168,7 @@ async fn websocket_gateway_casts_to_worker() {
         .routes(gateway_routes)
         .build_config();
 
-    let router = build_gateway_router(&app, config);
+    let router = build_gateway_router(&app, config).expect("gateway config");
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {

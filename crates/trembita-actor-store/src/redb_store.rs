@@ -8,7 +8,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use trembita_proto::{StoreReplicateOp, decode, encode};
 
-use super::store::{ActorStateStore, BoxFuture, StoreError};
+use trembita_proto::BoxFuture;
+
+use super::store::{ActorStateStore, StoreError};
 
 const KV: TableDefinition<&str, &[u8]> = TableDefinition::new("actor_store_kv");
 

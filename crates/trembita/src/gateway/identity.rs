@@ -9,6 +9,17 @@ use std::sync::Arc;
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 
+/// Constant-time string equality for shared API tokens.
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.bytes()
+        .zip(b.bytes())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
+}
+
 /// Minimal view of an incoming HTTP or WebSocket-upgrade request.
 pub struct GatewayRequest<'a> {
     /// HTTP method (`GET` for WebSocket upgrade, …).
@@ -272,10 +283,10 @@ impl GatewayIdentity for GatewayTokenIdentity {
         let user = req.query("user").ok_or(IdentityError::Unauthorized)?;
         let expected = std::env::var(&self.env_var).unwrap_or_default();
         if expected.is_empty() {
-            return Ok(user);
+            return Err(IdentityError::NotConfigured);
         }
         let token = req.query("token").ok_or(IdentityError::Unauthorized)?;
-        if token == expected {
+        if constant_time_eq(&token, &expected) {
             Ok(user)
         } else {
             Err(IdentityError::Unauthorized)
@@ -285,8 +296,8 @@ impl GatewayIdentity for GatewayTokenIdentity {
 
 /// Production-friendly extractor: `Authorization: Bearer` + `X-Trembita-User` or `?user=`.
 ///
-/// When `env_var` is unset or empty, Bearer is accepted without a token check (dev only).
-/// When set, the Bearer token must match the environment value.
+/// Requires a non-empty token in `env_var` (`GATEWAY_TOKEN` by default). When unset,
+/// returns [`IdentityError::NotConfigured`] — configure identity only when a token is set.
 #[derive(Debug, Clone)]
 pub struct GatewayBearerIdentity {
     token_env: String,
@@ -325,20 +336,20 @@ impl GatewayIdentity for GatewayBearerIdentity {
     #[allow(clippy::unused_async_trait_impl)]
     async fn extract(&self, req: &GatewayRequest<'_>) -> Result<String, IdentityError> {
         let expected = std::env::var(&self.token_env).unwrap_or_default();
+        if expected.is_empty() {
+            return Err(IdentityError::NotConfigured);
+        }
 
         if let Some(bearer) = req.bearer_token() {
-            if !expected.is_empty() && bearer != expected {
+            if !constant_time_eq(bearer, &expected) {
                 return Err(IdentityError::Unauthorized);
             }
             return Self::user_from_parts(req);
         }
 
         let user = req.query("user").ok_or(IdentityError::Unauthorized)?;
-        if expected.is_empty() {
-            return Ok(user);
-        }
         let token = req.query("token").ok_or(IdentityError::Unauthorized)?;
-        if token == expected {
+        if constant_time_eq(&token, &expected) {
             Ok(user)
         } else {
             Err(IdentityError::Unauthorized)

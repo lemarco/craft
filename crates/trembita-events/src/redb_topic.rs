@@ -15,10 +15,9 @@ use super::topic::{
     TopicMetrics, TopicReplicationOps, TopicRetentionOpts, TopicSubscriptionDef,
     TopicSubscriptionMetrics,
 };
-use {
-    trembita_actor_store::BoxFuture,
-    trembita_jobs::{WorkerId, after_failed_attempt},
-};
+use trembita_proto::BoxFuture;
+use trembita_proto::WorkerId;
+use trembita_runtime::after_failed_attempt;
 
 const EVENTS: TableDefinition<u64, &[u8]> = TableDefinition::new("topic_events");
 const SUBS: TableDefinition<&str, &[u8]> = TableDefinition::new("topic_subs");

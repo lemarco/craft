@@ -20,13 +20,10 @@
 //! transport port).
 
 use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-/// A boxed, `Send` future — the return type of the object-safe store trait.
-pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+use trembita_proto::BoxFuture;
 
 /// Why a store operation failed.
 #[derive(Debug, thiserror::Error)]

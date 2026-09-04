@@ -70,7 +70,8 @@ async fn gateway_introspect_requires_auth_and_returns_cluster_json() {
             .identity(BearerSecret)
             .protect_product_apis(true)
             .build_config(),
-    );
+    )
+    .expect("gateway config");
 
     let unauth = Request::builder()
         .method("GET")

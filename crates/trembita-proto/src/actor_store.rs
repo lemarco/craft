@@ -83,6 +83,8 @@ pub enum StoreReplicateOp {
 pub struct StoreReplicateRequest {
     /// Idempotent mutations to apply in order.
     pub ops: Vec<StoreReplicateOp>,
+    /// Declared Raft leader id (must match the receiver's leader hint).
+    pub leader_id: u64,
 }
 
 /// Response to [`StoreReplicateRequest`].

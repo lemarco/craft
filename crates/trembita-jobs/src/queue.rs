@@ -11,9 +11,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use trembita_proto::NodeId;
-pub use trembita_proto::QueueReplicateOp;
-
-pub use trembita_actor_store::BoxFuture;
+pub use trembita_proto::{BoxFuture, QueueReplicateOp, WorkerId};
+pub use trembita_runtime::{AttemptOutcome, after_failed_attempt};
 
 /// Opaque job identifier (monotonic per queue stream).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -31,15 +30,6 @@ pub struct JobId(pub u64);
 /// semantics](../../../docs/scenarios/background-jobs.md#delivery-semantics).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LeaseId(pub u64);
-
-/// Identifies a queue consumer (actor instance on a node).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct WorkerId {
-    /// Hosting cluster node.
-    pub node: NodeId,
-    /// Worker actor instance id on that node.
-    pub instance: u32,
-}
 
 /// A job handed to a worker under lease.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -605,35 +595,6 @@ struct JobEntry {
     attempts: u32,
     max_attempts: u32,
     dead_letter: bool,
-}
-
-pub struct AttemptOutcome {
-    /// Attempt count after this failure.
-    pub attempts: u32,
-    /// Whether the item should move to dead-letter.
-    pub dead_letter: bool,
-    /// Earliest retry time (unix ms).
-    pub not_before_ms: u64,
-}
-
-/// Compute retry timing after a failed lease attempt (shared with event topics).
-#[must_use]
-pub fn after_failed_attempt(attempts: u32, max_attempts: u32, now_ms: u64) -> AttemptOutcome {
-    let attempts = attempts.saturating_add(1);
-    if max_attempts > 0 && attempts >= max_attempts {
-        AttemptOutcome {
-            attempts,
-            dead_letter: true,
-            not_before_ms: now_ms,
-        }
-    } else {
-        let delay_ms = (1000u64 * u64::from(attempts)).min(300_000);
-        AttemptOutcome {
-            attempts,
-            dead_letter: false,
-            not_before_ms: now_ms.saturating_add(delay_ms),
-        }
-    }
 }
 
 #[derive(Debug)]

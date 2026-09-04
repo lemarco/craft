@@ -9,7 +9,7 @@ use super::backlog_settle_outbox::{
     BacklogSettleOutbox, BacklogSettleOutboxOpts, push_backlog_settle,
 };
 use crate::{EnqueueOptions, JobId, JobQueue};
-use trembita_actor_store::BoxFuture;
+use trembita_proto::BoxFuture;
 use trembita_proto::QueueReplicateOp;
 use trembita_runtime::ClusterState;
 

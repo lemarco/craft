@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use trembita_actor_store::BoxFuture;
 use trembita_jobs::{
     DEFAULT_QUEUE_PREFETCH, QueueService, RecurringJob, RedbJobQueue, ScheduleError, SchedulePoll,
     ScheduleSource, StaticScheduleSource,
@@ -13,6 +12,7 @@ use trembita_net::transport::{Body, BoxFuture as NetBoxFuture};
 use trembita_net::{
     LocalNetwork, LocalTransport, RequestHandler, Route, Transport, TransportError,
 };
+use trembita_proto::BoxFuture;
 use trembita_proto::NodeId;
 use trembita_runtime::ClusterState;
 
