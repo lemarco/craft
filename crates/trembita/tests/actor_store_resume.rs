@@ -16,10 +16,7 @@ use trembita::core::{Config, StateMachine};
 use trembita::net::LocalNetwork;
 use trembita::proto::{self, LogIndex};
 use trembita_runtime::{ConfigCodecError, UserActor};
-use trembita_test_support::{
-    POLL_STEP, eventually_async,
-    eventually_async_default,
-};
+use trembita_test_support::{POLL_STEP, eventually_async, eventually_async_default};
 
 // --- Minimal KV state machine (cluster consensus only) ----------------------
 

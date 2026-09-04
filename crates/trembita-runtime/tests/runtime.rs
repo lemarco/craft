@@ -690,6 +690,7 @@ async fn unreachable_voter_is_replaced_by_caught_up_learner() {
     assert!(caught_up.is_ok(), "learner failed to catch up");
 
     assert!(cluster.net.detach(victim), "partition victim");
+    cluster.handles[&victim].shutdown();
 
     let replaced = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
