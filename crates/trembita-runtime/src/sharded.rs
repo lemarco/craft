@@ -14,7 +14,7 @@ use trembita_core::{
 };
 use trembita_net::transport::{Body, BoxFuture, RequestHandler};
 use trembita_net::{Route, Transport, TransportError, decode_body, encode_body};
-use trembita_proto::{ClientRequest, ClientResponse, GroupPeerEnvelope, NodeId};
+use trembita_proto::{ClientRequest, ClientResponse, ClientWireError, GroupPeerEnvelope, NodeId};
 use trembita_storage::{GroupRedbLayout, RaftStorage, StorageError};
 
 use crate::RuntimeConfig;
@@ -277,17 +277,13 @@ impl ShardedNodeService {
             }
             ClientRequest::ProposeKeyed { key, command } => {
                 let Some(group) = self.group_for_key(&key) else {
-                    return Err(ClientResponse::Error(
-                        "key outside active shard range".into(),
-                    ));
+                    return Err(ClientResponse::Err(ClientWireError::KeyOutsideShardRange));
                 };
                 Ok((group.0, ClientRequest::Propose(command)))
             }
             ClientRequest::QueryKeyed { key, query } => {
                 let Some(group) = self.group_for_key(&key) else {
-                    return Err(ClientResponse::Error(
-                        "key outside active shard range".into(),
-                    ));
+                    return Err(ClientResponse::Err(ClientWireError::KeyOutsideShardRange));
                 };
                 Ok((group.0, ClientRequest::Query(query)))
             }
@@ -297,9 +293,7 @@ impl ShardedNodeService {
                 command,
             } => {
                 let Some(group) = self.group_for_key(&key) else {
-                    return Err(ClientResponse::Error(
-                        "key outside active shard range".into(),
-                    ));
+                    return Err(ClientResponse::Err(ClientWireError::KeyOutsideShardRange));
                 };
                 Ok((
                     group.0,
@@ -312,17 +306,13 @@ impl ShardedNodeService {
             }
             ClientRequest::TwoPhaseCommit { tx_id, key } => {
                 let Some(group) = self.group_for_key(&key) else {
-                    return Err(ClientResponse::Error(
-                        "key outside active shard range".into(),
-                    ));
+                    return Err(ClientResponse::Err(ClientWireError::KeyOutsideShardRange));
                 };
                 Ok((group.0, ClientRequest::TwoPhaseCommit { tx_id, key }))
             }
             ClientRequest::TwoPhaseAbort { tx_id, key } => {
                 let Some(group) = self.group_for_key(&key) else {
-                    return Err(ClientResponse::Error(
-                        "key outside active shard range".into(),
-                    ));
+                    return Err(ClientResponse::Err(ClientWireError::KeyOutsideShardRange));
                 };
                 Ok((group.0, ClientRequest::TwoPhaseAbort { tx_id, key }))
             }
@@ -334,9 +324,7 @@ impl ShardedNodeService {
                 route_key: Some(key),
             } => {
                 let Some(group) = self.group_for_key(&key) else {
-                    return Err(ClientResponse::Error(
-                        "key outside active shard range".into(),
-                    ));
+                    return Err(ClientResponse::Err(ClientWireError::KeyOutsideShardRange));
                 };
                 Ok((
                     group.0,

@@ -60,8 +60,8 @@ pub enum ClientRequest {
 | Status | When | Body |
 |--------|------|------|
 | `200` | Handled locally (leader) or proxied from leader ([client-and-routing](decisions/client-and-routing.md)) | `postcard(ClientResponse)` |
-| `503` | No leader elected / forward target unknown | `postcard(ClientResponse::Error)` |
-| `504` | Forward to leader timed out | `postcard(ClientResponse::Error)` |
+| `503` | No leader elected / forward target unknown | `postcard(ClientResponse::Err(ClientWireError::NoLeaderElected))` |
+| `504` | Forward to leader timed out | `postcard(ClientResponse::Err(ClientWireError::ForwardTimeout { .. }))` |
 | `400` / `500` | Bad request / server fault | optional error body |
 
 **Follower behavior:** if this node is not the leader, forward the same `ClientRequest` to the leader via `POST /raft/v1/client/wire` on the leader’s address and return the leader’s response. Clients do **not** need to retry on another node for normal leader changes.

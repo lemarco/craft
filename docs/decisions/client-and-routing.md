@@ -53,7 +53,7 @@ Client → Follower → Leader → RaftCore → response proxied back
 ```
 
 - Leader address from Raft state (`leader_id` + cluster config).
-- No leader known → `503` with `ClientResponse::Error { code: NO_LEADER }`.
+- No leader known → `503` with `ClientResponse::Err(ClientWireError::NoLeaderElected)`.
 - `req_id` preserved; leader deduplicates via bounded cache.
 - Combined client deadline covers follower + leader hop.
 - Same rule for in-process `ClientHandle`.

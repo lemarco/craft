@@ -10,7 +10,7 @@ use trembita_runtime::trembita_core::ShardRoutingKind;
 use trembita_runtime::trembita_net::{
     LocalNetwork, RequestHandler, Transport, send_client_request,
 };
-use trembita_runtime::trembita_proto::{ClientRequest, ClientResponse, NodeId};
+use trembita_runtime::trembita_proto::{ClientRequest, ClientResponse, ClientWireError, NodeId};
 use trembita_runtime::{
     RuntimeConfig, ShardedNodeService, spawn_multi_raft_node, spawn_raft_group,
 };
@@ -339,7 +339,10 @@ async fn stable_shard_activation_rejects_inactive_keys() {
     .await
     .expect("propose inactive key");
     assert!(
-        matches!(resp, ClientResponse::Error(ref e) if e.contains("active shard")),
+        matches!(
+            resp,
+            ClientResponse::Err(ClientWireError::KeyOutsideShardRange)
+        ),
         "unexpected response: {resp:?}"
     );
 

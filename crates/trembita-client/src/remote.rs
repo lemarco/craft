@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use trembita_net::send_client_request;
 use trembita_net::transport::Transport;
-use trembita_proto::{ClientRequest, ClientResponse, NodeId};
+use trembita_proto::{ClientRequest, ClientResponse, ClientWireError, NodeId};
 
 use crate::error::ClientError;
 
@@ -138,12 +138,13 @@ impl RemoteClient {
                         .and_then(|l| self.targets.iter().position(|t| *t == l))
                         .unwrap_or(idx + 1);
                 }
-                Ok(Ok(ClientResponse::Error(msg))) => {
-                    // The runtime returns `Error` for "no leader elected" during
-                    // an election as well as for definitive failures; retry, and
-                    // surface the last message if every attempt fails.
-                    last = ClientError::Server(msg);
-                    idx += 1;
+                Ok(Ok(ClientResponse::Err(err))) => {
+                    if err.is_retryable() || matches!(err, ClientWireError::ForwardFailed { .. }) {
+                        last = ClientError::NoLeader { attempts };
+                        idx += 1;
+                    } else {
+                        return Err(ClientError::Server(err.to_string()));
+                    }
                 }
                 Ok(Ok(ClientResponse::ReadIndexConfirmed { .. })) => {
                     last =

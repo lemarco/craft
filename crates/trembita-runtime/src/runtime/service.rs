@@ -9,13 +9,13 @@ use trembita_net::{
 };
 use trembita_proto::{
     CatalogAddRequest, CatalogAddResponse, CatalogRejection, ClientRequest, ClientResponse,
-    JoinRejection, JoinRequest, JoinResponse, LeaveRejection, LeaveRequest, LeaveResponse, NodeId,
-    RaftRpc,
+    ClientWireError, JoinRejection, JoinRequest, JoinResponse, LeaveRejection, LeaveRequest,
+    LeaveResponse, NodeId, RaftRpc,
 };
 
 use super::handle::NodeHandle;
 use super::types::ClientError;
-use super::wire::{encode_client_ok, rpc_sender};
+use super::wire::{encode_client_ok, rpc_sender, runtime_error_to_wire};
 
 /// A [`trembita_net`] [`RequestHandler`] that bridges inbound `/peer/wire` and
 /// `/client/wire` requests into a running node via its [`NodeHandle`].
@@ -25,7 +25,7 @@ use super::wire::{encode_client_ok, rpc_sender};
 /// a non-leader proxies the request to the current leader over the same
 /// `transport` and returns the leader's response, so clients can connect to any
 /// node without leader discovery. If no leader is known the request fails with
-/// a [`ClientResponse::Error`]; forward attempts are bounded by
+/// a [`ClientResponse::Err`] (`ClientWireError::NoLeaderElected`); forward attempts are bounded by
 /// `forward_timeout` (elections converge quickly, so stale-hint hops are rare
 /// and time-bounded rather than looping).
 pub struct NodeService<M: StateMachine> {
@@ -160,7 +160,7 @@ async fn route_two_phase_prepare<M: StateMachine>(
             .await
         }
         Err(ClientError::NotLeader { leader }) => ClientResponse::NotLeader { leader },
-        Err(e) => ClientResponse::Error(e.to_string()),
+        Err(e) => ClientResponse::Err(runtime_error_to_wire(e)),
     }
 }
 
@@ -191,7 +191,7 @@ async fn route_two_phase_commit<M: StateMachine>(
             .await
         }
         Err(ClientError::NotLeader { leader }) => ClientResponse::NotLeader { leader },
-        Err(e) => ClientResponse::Error(e.to_string()),
+        Err(e) => ClientResponse::Err(runtime_error_to_wire(e)),
     }
 }
 
@@ -222,7 +222,7 @@ async fn route_two_phase_abort<M: StateMachine>(
             .await
         }
         Err(ClientError::NotLeader { leader }) => ClientResponse::NotLeader { leader },
-        Err(e) => ClientResponse::Error(e.to_string()),
+        Err(e) => ClientResponse::Err(runtime_error_to_wire(e)),
     }
 }
 
@@ -237,7 +237,7 @@ async fn route_query<M: StateMachine>(
 ) -> ClientResponse {
     let query = match <M::Query as trembita_core::Query>::from_bytes(&bytes) {
         Ok(q) => q,
-        Err(e) => return ClientResponse::Error(format!("decode query: {e}")),
+        Err(e) => return ClientResponse::Err(ClientWireError::DecodeQuery(e.to_string())),
     };
     match handle.query(query).await {
         Ok(response) => encode_client_ok(&response),
@@ -249,11 +249,11 @@ async fn route_query<M: StateMachine>(
                 .await
             {
                 Ok(response) => encode_client_ok(&response),
-                Err(e) => ClientResponse::Error(e.to_string()),
+                Err(e) => ClientResponse::Err(ClientWireError::FollowerRead(e.to_string())),
             }
         }
         Err(ClientError::NotLeader { leader }) => ClientResponse::NotLeader { leader },
-        Err(e) => ClientResponse::Error(e.to_string()),
+        Err(e) => ClientResponse::Err(runtime_error_to_wire(e)),
     }
 }
 
@@ -272,7 +272,7 @@ async fn route_write_client<M: StateMachine>(
         Some(leader) if leader != handle.id() => {
             forward_to_leader(transport, forward_timeout, leader, request).await
         }
-        _ => ClientResponse::Error("no leader elected".to_string()),
+        _ => ClientResponse::Err(ClientWireError::NoLeaderElected),
     }
 }
 
@@ -285,8 +285,11 @@ async fn forward_to_leader(
 ) -> ClientResponse {
     match tokio::time::timeout(timeout, send_client_request(&**transport, leader, &request)).await {
         Ok(Ok(response)) => response,
-        Ok(Err(e)) => ClientResponse::Error(format!("forward to leader {leader:?} failed: {e}")),
-        Err(_) => ClientResponse::Error(format!("forward to leader {leader:?} timed out")),
+        Ok(Err(e)) => ClientResponse::Err(ClientWireError::ForwardFailed {
+            leader,
+            reason: e.to_string(),
+        }),
+        Err(_) => ClientResponse::Err(ClientWireError::ForwardTimeout { leader }),
     }
 }
 
@@ -422,34 +425,36 @@ async fn serve_locally<M: StateMachine>(
         ClientRequest::Propose(bytes) | ClientRequest::ProposeKeyed { command: bytes, .. } => {
             let command = match M::Command::from_bytes(&bytes) {
                 Ok(c) => c,
-                Err(e) => return ClientResponse::Error(format!("decode command: {e}")),
+                Err(e) => {
+                    return ClientResponse::Err(ClientWireError::DecodeCommand(e.to_string()));
+                }
             };
             match handle.propose(command).await {
                 Ok(response) => encode_client_ok(&response),
                 Err(ClientError::NotLeader { leader }) => ClientResponse::NotLeader { leader },
-                Err(e) => ClientResponse::Error(e.to_string()),
+                Err(e) => ClientResponse::Err(runtime_error_to_wire(e)),
             }
         }
         ClientRequest::Query(bytes) | ClientRequest::QueryKeyed { query: bytes, .. } => {
             let query = match <M::Query as trembita_core::Query>::from_bytes(&bytes) {
                 Ok(q) => q,
-                Err(e) => return ClientResponse::Error(format!("decode query: {e}")),
+                Err(e) => return ClientResponse::Err(ClientWireError::DecodeQuery(e.to_string())),
             };
             match handle.query(query).await {
                 Ok(response) => encode_client_ok(&response),
                 Err(ClientError::NotLeader { leader }) => ClientResponse::NotLeader { leader },
-                Err(e) => ClientResponse::Error(e.to_string()),
+                Err(e) => ClientResponse::Err(runtime_error_to_wire(e)),
             }
         }
         ClientRequest::ReadIndexConfirm { .. } => match handle.confirm_read_index().await {
             Ok((index, term)) => ClientResponse::ReadIndexConfirmed { index, term },
             Err(ClientError::NotLeader { leader }) => ClientResponse::NotLeader { leader },
-            Err(e) => ClientResponse::Error(e.to_string()),
+            Err(e) => ClientResponse::Err(runtime_error_to_wire(e)),
         },
         ClientRequest::TwoPhasePrepare { .. }
         | ClientRequest::TwoPhaseCommit { .. }
         | ClientRequest::TwoPhaseAbort { .. } => {
-            ClientResponse::Error("two-phase request misrouted".into())
+            ClientResponse::Err(ClientWireError::TwoPhaseMisrouted)
         }
     }
 }

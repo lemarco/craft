@@ -531,7 +531,7 @@ mod tests {
     use std::sync::Mutex;
 
     use trembita_net::{Route, Transport, TransportError, decode_body, encode_body};
-    use trembita_proto::{ClientRequest, ClientResponse, NodeId};
+    use trembita_proto::{ClientRequest, ClientResponse, ClientWireError, NodeId};
 
     use super::*;
     use crate::{RemoteClient, RetryPolicy};
@@ -569,9 +569,9 @@ mod tests {
                         if prepared.lock().expect("lock").contains(&(tx_id, key)) {
                             encode_body(&ClientResponse::Ok(vec![1])).map_err(TransportError::Wire)
                         } else {
-                            encode_body(&ClientResponse::Error(
+                            encode_body(&ClientResponse::Err(ClientWireError::Driver(
                                 "no prepared command for transaction key".into(),
-                            ))
+                            )))
                             .map_err(TransportError::Wire)
                         }
                     }

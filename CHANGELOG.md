@@ -25,6 +25,10 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 - **Store replicate auth** — `StoreReplicateRequest` now carries `leader_id` (aligned with queue/topic).
 - **Admin bind default** — reference `trembita-node` admin listens on `127.0.0.1:8080` instead of `0.0.0.0:8080`.
 
+### Changed
+
+- **Typed client wire errors** — `ClientResponse::Error(String)` replaced with `ClientResponse::Err(ClientWireError)` in `trembita-proto` (breaking wire/API change for 0.3.0).
+
 ### Added
 
 - **Shared replication helpers** — [`fanout_replicate`](crates/trembita-runtime/src/leader_replicate.rs),

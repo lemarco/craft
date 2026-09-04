@@ -1,5 +1,7 @@
 //! Client API wire types sent over `/client/wire` (client-api, client-routing, read-consistency).
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{LogIndex, NodeId, Term};
@@ -56,6 +58,63 @@ pub enum ClientRequest {
     },
 }
 
+/// Typed failure codes for [`ClientResponse::Err`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ClientWireError {
+    /// No Raft leader is currently elected.
+    NoLeaderElected,
+    /// The node runtime stopped before completing the request.
+    Stopped,
+    /// Application command body could not be decoded.
+    DecodeCommand(String),
+    /// Application query body could not be decoded.
+    DecodeQuery(String),
+    /// Successful response could not be encoded for the wire.
+    EncodeResponse(String),
+    /// Core driver or state machine rejected the request.
+    Driver(String),
+    /// Follower could not complete a delegated linearizable read.
+    FollowerRead(String),
+    /// Proxy to the leader failed (transport or wire error).
+    ForwardFailed {
+        /// Target leader node.
+        leader: NodeId,
+        /// Transport or decode failure detail.
+        reason: String,
+    },
+    /// Proxy to the leader exceeded the forward deadline.
+    ForwardTimeout {
+        /// Target leader node.
+        leader: NodeId,
+    },
+    /// Two-phase client request reached the generic propose/query path.
+    TwoPhaseMisrouted,
+    /// Routing key is outside the active shard range.
+    KeyOutsideShardRange,
+}
+
+impl fmt::Display for ClientWireError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoLeaderElected => write!(f, "no leader elected"),
+            Self::Stopped => write!(f, "node runtime stopped"),
+            Self::DecodeCommand(e) => write!(f, "decode command: {e}"),
+            Self::DecodeQuery(e) => write!(f, "decode query: {e}"),
+            Self::EncodeResponse(e) => write!(f, "encode response: {e}"),
+            Self::Driver(e) => f.write_str(e),
+            Self::FollowerRead(e) => write!(f, "follower read: {e}"),
+            Self::ForwardFailed { leader, reason } => {
+                write!(f, "forward to leader {leader:?} failed: {reason}")
+            }
+            Self::ForwardTimeout { leader } => {
+                write!(f, "forward to leader {leader:?} timed out")
+            }
+            Self::TwoPhaseMisrouted => write!(f, "two-phase request misrouted"),
+            Self::KeyOutsideShardRange => write!(f, "key outside active shard range"),
+        }
+    }
+}
+
 /// The cluster's response to a [`ClientRequest`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClientResponse {
@@ -75,6 +134,30 @@ pub enum ClientResponse {
         /// Best-known current leader, if any.
         leader: Option<NodeId>,
     },
-    /// A processing error, human-readable.
-    Error(String),
+    /// A typed processing error ([`ClientWireError`]).
+    Err(ClientWireError),
+}
+
+impl ClientResponse {
+    /// Returns `true` when the response is a retryable cluster-side failure
+    /// (no leader yet, forward timeout, runtime stopped mid-election).
+    #[must_use]
+    pub fn is_retryable_cluster_error(&self) -> bool {
+        matches!(
+            self,
+            Self::Err(err) if err.is_retryable()
+        )
+    }
+}
+
+impl ClientWireError {
+    /// Returns `true` when a client may retry against another node or after a
+    /// short backoff (election in flight, stale leader hint, forward timeout).
+    #[must_use]
+    pub fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::NoLeaderElected | Self::ForwardTimeout { .. } | Self::Stopped
+        )
+    }
 }
