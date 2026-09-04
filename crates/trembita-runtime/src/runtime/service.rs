@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita_core::{Command as _, Query as _, StateMachine};
+use trembita_core::{Command as _, StateMachine};
 use trembita_net::transport::{Body, BoxFuture};
 use trembita_net::{
     RequestHandler, Route, Transport, TransportError, decode_body, encode_body,

@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::{mpsc, oneshot};
-use trembita_core::{Command as _, Query as _, StateMachine};
+use trembita_core::{Query as _, StateMachine};
 use trembita_net::{Transport, send_client_request};
 use trembita_proto::{
     CatalogAddRequest, CatalogAddResponse, ClientRequest, ClientResponse, JoinRequest,
