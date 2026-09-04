@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use trembita_net::transport::{BoxFuture, Transport};
 use trembita_net::{
-    send_queue_ack, send_queue_ack_batch, send_queue_enqueue, send_queue_enqueue_batch,
-    send_queue_extend_lease, send_queue_job_status, send_queue_lease, send_queue_list_jobs,
-    send_queue_metrics, send_queue_nack, send_queue_requeue_dead_letter_batch,
+    send_queue_ack_batch, send_queue_enqueue, send_queue_enqueue_batch, send_queue_extend_lease,
+    send_queue_job_status, send_queue_lease, send_queue_list_jobs, send_queue_metrics,
+    send_queue_nack, send_queue_requeue_dead_letter_batch,
 };
 use trembita_proto::{
     NodeId, QueueAckBatchRequest, QueueBatchEnqueueJob, QueueEnqueueBatchRequest,

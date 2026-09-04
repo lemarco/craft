@@ -5,10 +5,11 @@
 
 use std::path::Path;
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use trembita_proto::{TopicReplicateOp, decode, encode};
+use trembita_storage::{now_ms, open_mutex_database};
 
 use super::topic::{
     EventId, EventTopic, LeasedEvent, SubscriptionStart, TopicContext, TopicError, TopicLeaseId,
@@ -75,16 +76,6 @@ fn parse_pending_key(key: &[u8]) -> Option<(String, u64)> {
     Some((sub, u64::from_be_bytes(id_bytes)))
 }
 
-fn now_ms() -> u64 {
-    u64::try_from(
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis(),
-    )
-    .unwrap_or(u64::MAX)
-}
-
 /// Crash-safe [`EventTopic`] in a dedicated `redb` file.
 #[derive(Debug)]
 pub struct RedbEventTopic {
@@ -99,7 +90,7 @@ impl RedbEventTopic {
     /// # Errors
     /// Returns [`TopicError::Backend`] if the file cannot be opened.
     pub fn open(path: impl AsRef<Path>, lease_timeout: Duration) -> Result<Self, TopicError> {
-        let db = Mutex::new(Database::create(path).map_err(backend)?);
+        let db = open_mutex_database(path).map_err(backend)?;
         let topic = Self {
             lease_timeout,
             retention: TopicRetentionOpts::default(),

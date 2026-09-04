@@ -9,7 +9,6 @@ mod queue_lifecycle;
 mod queue_prefetch;
 mod queue_schedule;
 mod queue_service;
-mod queue_service_wire;
 mod redb_queue;
 mod schedule_source;
 mod sharded_queue;
