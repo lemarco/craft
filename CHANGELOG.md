@@ -40,6 +40,7 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 - **Gateway rate limiting** — optional [`GatewayOpts::rate_limit_per_sec`](crates/trembita/src/gateway/mod.rs)
   (`429 Too Many Requests` when exceeded).
 - **Queue module split** — [`queue.rs`](crates/trembita-jobs/src/queue/mod.rs) split into `queue/{types,port,in_memory,consumer,time}.rs`.
+- **Raft node split** — [`node.rs`](crates/trembita-core/src/node/mod.rs) split into `node/{types,struct}.rs` and focused `*.inc.rs` impl sections (bootstrap, accessors, events, vote, append, replicate, read, …).
 - **Queue handlers split** — [`handlers.rs`](crates/trembita-jobs/src/queue_service/handlers/mod.rs) split into `queue_service/handlers/{enqueue,lease,ack,query,dead_letter}.rs`.
 - **Runtime event loop split** — [`event_loop.rs`](crates/trembita-runtime/src/runtime/event_loop/mod.rs) split into `runtime/event_loop/{core,settle,envelope,two_phase,membership,catalog}.rs`.
 - **App module split** — [`app.rs`](crates/trembita/src/app/mod.rs) split into `app/{types,shutdown,builder,runtime,workflow}.rs`.
