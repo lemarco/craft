@@ -25,8 +25,7 @@ pub struct EmbeddedAssets {
 impl EmbeddedAssets {
     /// Register one file.
     pub fn insert(&mut self, path: impl AsRef<str>, file: EmbeddedFile) {
-        self.files
-            .insert(normalize_embed_path(path.as_ref()), file);
+        self.files.insert(normalize_embed_path(path.as_ref()), file);
     }
 }
 
