@@ -148,44 +148,24 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 - **Auto node id** — seed `NodeId(1)`, joiner assignment, `{data_dir}/node-id` persistence.
 - **Certificate tooling**, **testing pyramid** (sim, QUIC integration, e2e compose), **scenario guides**,
   **production runbook**, **`scripts/trembita-init.sh`** + app template, **soak benchmarks**.
-
-### Changed
-
-- **`trembita-node`** — not published on crates.io; build from [`trembita-tools`](crates/trembita-tools/) or repo.
+- **Homogeneous cluster nodes** — no role-split env vars; gateway, consumer, and workload tuning via
+  the product builder and opt-in `TREMBITA_GATEWAY_*=1` flags.
 - **`BacklogFeedOpts::consumer_instances`** — defaults to [`ConsumerCount::Live`](crates/trembita-jobs/src/external_backlog.rs).
 - **`QueueLifecycleEvent::Leased` carries `attempts`**; queue metrics expose `redelivered`.
-- **Exactly-once explicitly not planned** — documented in [job-queue ADR](docs/decisions/job-queue.md).
-- **Worker registration examples** — prefer `workers!(…)` call syntax.
-- **`spawn_gateway`** returns [`GatewayHandle`](crates/trembita/src/gateway/drain.rs); default gateway drain on shutdown.
-- **`.consumers(ConsumerGroup)`**, **`.workflows([WorkflowOpts::…])`** — batch registration helpers.
+- **Delivery semantics documented** — exactly-once explicitly out of scope ([job-queue ADR](docs/decisions/job-queue.md)).
+- **`spawn_gateway` returns [`GatewayHandle`](crates/trembita/src/gateway/drain.rs)** — default gateway drain on shutdown.
+- **Batch registration** — `.consumers(ConsumerGroup)`, `.workflows([WorkflowOpts::…])`.
 - **`trembita::prelude` / `trembita::cluster` / `trembita::env`** module layout.
-- **`http-jobs` default feature** — built-in product HTTP routes available when enabled.
-- **Showcases + template** — unified `TrembitaApp::builder()…run(RunOpts::default())` pattern.
-- **Dashboard** — queue/saga introspection panels, msg/s column, redelivery highlighting.
+- **`http-jobs` default feature** — built-in product HTTP routes when enabled.
+- **Showcases + template** — `TrembitaApp::builder()…run(RunOpts::default())` pattern.
+- **Dashboard** — queue/saga introspection, msg/s column, redelivery highlighting.
 - **Documentation** — contributor guide, doc link checker, scenario ADRs, messaging layer naming.
 - **MSRV 1.90**, **release/CI gates** (`gate.sh`, lefthook, `ci-fast-lane.sh`).
-- **Workspace `missing_docs = "deny"`** on published crates.
-- **Pre-push publish dry-run** — dependency-order crate validation.
+- **Workspace `missing_docs = "deny"`** on published crates; pre-push publish dry-run in dependency order.
 - **Shared `trembita_net::RemoteError`** across actor/cluster APIs.
 - **Leader-gated forwarded scale** — deposed nodes cannot double-place against the real leader.
-
-### Removed
-
-- **Product builder shortcuts** — `from_config`, `from_env`, `members`, `.http_routes`, per-flag gateway API
-  toggles, `.recurring_job` (use `.cron`), separate actor registration helpers.
-- **`TREMBITA_ROLE`**, **`TREMBITA_GATEWAY_ONLY`**, **`TREMBITA_NO_CONSUMER`** — homogeneous nodes + `.workload()`.
-- **`TREMBITA_GATEWAY_NO_*`** — replaced by opt-in `TREMBITA_GATEWAY_*=1` flags.
-- **`members`** from `TrembitaConfigure` / product env (cluster builder still supports membership).
-
-### Fixed
-
-- **MSRV gate** — `check-msrv.sh` no longer silently skips on rustup CLI mismatch.
-- **Node router** — `Route::QueueJobStatus` wired through `NodeRouter`.
-- **Examples** — websocket session key sizing; workflow resume CLI saga id type.
-- **Intra-doc links** for docs.rs builds across facade and adapter crates.
-- **`QueueJobStatusReply::dedup_key`** — always serialized on the wire.
-- Bounded **`ask` timeout**; at-most-once side-effecting `ask` dedup; reply-encode errors surfaced;
-  actor-stream backpressure on QUIC.
+- **Actor messaging** — bounded `ask` timeout, at-most-once side-effecting `ask` dedup, actor-stream
+  backpressure on QUIC.
 
 
 [Unreleased]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.3...HEAD
