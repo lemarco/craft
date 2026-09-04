@@ -1,11 +1,10 @@
 //! Simple per-gateway request rate limiting (fixed one-second window).
 
-use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::body::Body;
-use axum::extract::{ConnectInfo, State};
+use axum::extract::State;
 use axum::http::{Request, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -48,7 +47,6 @@ impl GatewayRateLimiter {
 /// Reject with `429 Too Many Requests` when the per-second budget is exhausted.
 pub async fn rate_limit_middleware(
     State(limiter): State<Arc<GatewayRateLimiter>>,
-    _connect: Option<ConnectInfo<SocketAddr>>,
     request: Request<Body>,
     next: Next,
 ) -> Response {

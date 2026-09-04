@@ -87,8 +87,7 @@ async fn trembita_app_workflows_api_on_gateway() {
 mod gateway_merge {
     use trembita::cluster::build_gateway_router;
     use trembita::{
-        GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError, ReadyOpts, TrembitaApp,
-        TrembitaConfigure, WorkflowOpts, journal_workflow,
+        GatewayOpts, ReadyOpts, TrembitaApp, TrembitaConfigure, WorkflowOpts, journal_workflow,
     };
     use trembita_test_support::{TICK_PERIOD, boot_local_app, fast_raft_config_with_seed};
 

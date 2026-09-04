@@ -26,11 +26,9 @@ use trembita_dashboard::{
 use trembita_net::transport::RequestHandler;
 use trembita_net::{
     BackoffPolicy, LocalNetwork, LocalTransport, PeerDirectory, QuicServer, QuicTransport,
-    TrafficPolicy, Transport, TransportError, client_config, fetch_peers, server_config,
+    TrafficPolicy, Transport, client_config, fetch_peers, server_config,
 };
-use trembita_proto::{
-    CatalogCommand, JoinRole, Membership, NodeId, PROTOCOL_VERSION, QueueAutoscalePolicyCommand,
-};
+use trembita_proto::{CatalogCommand, JoinRole, NodeId, QueueAutoscalePolicyCommand};
 use trembita_storage::GroupRedbLayout;
 
 use trembita_actor_store::{
