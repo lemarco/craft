@@ -8,11 +8,11 @@ mod dispatch;
 mod handlers;
 mod lifecycle;
 mod prefetch;
+mod registry;
 mod replication;
 mod schedule;
 mod wire;
 
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -25,14 +25,12 @@ use crate::queue_lifecycle::QueueLifecycleEvent;
 use crate::queue_prefetch::QueuePrefetchCache;
 use crate::{JobQueue, RecurringJob, RedbJobQueue, ScheduleSource, ShardedJobQueue};
 
+use registry::QueueStreamRegistry;
+
 /// Serves `/raft/v1/queue/*` on the leader; followers transparently forward.
 pub struct QueueService {
     pub(super) node_id: NodeId,
-    pub(super) streams: Mutex<HashMap<String, Arc<dyn JobQueue>>>,
-    pub(super) redb_streams: Mutex<HashMap<String, Arc<RedbJobQueue>>>,
-    pub(super) prefetch: Mutex<HashMap<String, QueuePrefetchCache>>,
-    pub(super) sharded: Mutex<HashMap<String, Arc<ShardedJobQueue>>>,
-    pub(super) schedule_sources: Mutex<HashMap<String, schedule::ScheduleSourceEntry>>,
+    pub(super) registry: Mutex<QueueStreamRegistry>,
     pub(super) state: Arc<dyn ClusterState>,
     pub(super) transport: Arc<dyn Transport>,
     pub(super) lifecycle_hook: Option<Arc<dyn Fn(QueueLifecycleEvent) + Send + Sync>>,
@@ -49,11 +47,7 @@ impl QueueService {
     ) -> Self {
         Self {
             node_id,
-            streams: Mutex::new(HashMap::new()),
-            redb_streams: Mutex::new(HashMap::new()),
-            prefetch: Mutex::new(HashMap::new()),
-            sharded: Mutex::new(HashMap::new()),
-            schedule_sources: Mutex::new(HashMap::new()),
+            registry: Mutex::new(QueueStreamRegistry::new()),
             state,
             transport,
             lifecycle_hook: None,
@@ -94,18 +88,16 @@ impl QueueService {
         prefetch: usize,
     ) {
         let name = name.into();
-        self.streams
-            .lock()
-            .expect("poisoned")
+        let mut registry = self.registry.lock().expect("poisoned");
+        registry
+            .streams
             .insert(name.clone(), Arc::clone(queue) as Arc<dyn JobQueue>);
-        self.redb_streams
-            .lock()
-            .expect("poisoned")
+        registry
+            .redb_streams
             .insert(name.clone(), Arc::clone(queue));
         if prefetch > 0 {
-            self.prefetch
-                .lock()
-                .expect("poisoned")
+            registry
+                .prefetch
                 .insert(name, QueuePrefetchCache::new(prefetch));
         }
     }
@@ -115,9 +107,10 @@ impl QueueService {
     /// # Panics
     /// If an internal mutex is poisoned.
     pub fn register_sharded_stream(&self, name: impl Into<String>, queue: Arc<ShardedJobQueue>) {
-        self.sharded
+        self.registry
             .lock()
             .expect("poisoned")
+            .sharded
             .insert(name.into(), queue);
     }
 
@@ -127,9 +120,10 @@ impl QueueService {
     /// # Panics
     /// If an internal mutex is poisoned.
     pub fn register_stream(&self, stream: impl Into<String>, queue: Arc<dyn JobQueue>) {
-        self.streams
+        self.registry
             .lock()
             .expect("poisoned")
+            .streams
             .insert(stream.into(), queue);
     }
 }

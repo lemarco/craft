@@ -17,7 +17,12 @@ use super::QueueService;
 
 impl QueueService {
     pub(super) fn sharded_stream(&self, stream: &str) -> Option<Arc<ShardedJobQueue>> {
-        self.sharded.lock().expect("poisoned").get(stream).cloned()
+        self.registry
+            .lock()
+            .expect("poisoned")
+            .sharded
+            .get(stream)
+            .cloned()
     }
 
     pub(super) fn cache_enqueued(
@@ -29,8 +34,8 @@ impl QueueService {
         not_before_ms: u64,
         dedup_key: Option<Vec<u8>>,
     ) {
-        let mut prefetch = self.prefetch.lock().expect("poisoned");
-        let Some(cache) = prefetch.get_mut(stream) else {
+        let mut registry = self.registry.lock().expect("poisoned");
+        let Some(cache) = registry.prefetch.get_mut(stream) else {
             return;
         };
         let effective_not_before = if not_before_ms == 0 {
@@ -48,8 +53,8 @@ impl QueueService {
     }
 
     pub(super) fn evict_prefetch(&self, stream: &str, job_ids: impl IntoIterator<Item = u64>) {
-        let mut prefetch = self.prefetch.lock().expect("poisoned");
-        let Some(cache) = prefetch.get_mut(stream) else {
+        let mut registry = self.registry.lock().expect("poisoned");
+        let Some(cache) = registry.prefetch.get_mut(stream) else {
             return;
         };
         for job_id in job_ids {
@@ -102,9 +107,10 @@ impl QueueService {
     ) -> Result<(Vec<LeasedJob>, QueueReplicationOps), QueueError> {
         let now = now_ms();
         let prefetched = self
-            .prefetch
+            .registry
             .lock()
             .expect("poisoned")
+            .prefetch
             .get_mut(stream)
             .map(|cache| cache.select_for_lease(max, now))
             .unwrap_or_default();
@@ -141,22 +147,18 @@ impl QueueService {
                 break;
             }
             let stream = shard_stream_name(base, shard);
-            let redb = self
-                .redb_streams
-                .lock()
-                .expect("poisoned")
-                .get(&stream)
-                .cloned();
-
-            if let Some(redb) = redb {
-                let prefetched = self
+            let (redb, prefetched) = {
+                let mut registry = self.registry.lock().expect("poisoned");
+                let redb = registry.redb_streams.get(&stream).cloned();
+                let prefetched = registry
                     .prefetch
-                    .lock()
-                    .expect("poisoned")
                     .get_mut(&stream)
                     .map(|cache| cache.select_for_lease(need, now))
                     .unwrap_or_default();
+                (redb, prefetched)
+            };
 
+            if let Some(redb) = redb {
                 if !prefetched.is_empty() {
                     let (leased, step) = redb.lease_prefetched(worker, &prefetched)?;
                     need = need.saturating_sub(leased.len());

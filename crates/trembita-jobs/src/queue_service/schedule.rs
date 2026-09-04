@@ -31,9 +31,10 @@ impl QueueService {
         }
         let now = Instant::now();
         let due: Vec<String> = self
-            .schedule_sources
+            .registry
             .lock()
             .expect("poisoned")
+            .schedule_sources
             .iter()
             .filter(|(_, entry)| entry.next_poll_at.is_none_or(|at| now >= at))
             .map(|(stream, _)| stream.clone())
@@ -46,9 +47,10 @@ impl QueueService {
 
     pub(super) async fn poll_schedule_source(&self, stream: &str) -> Result<(), String> {
         let source = {
-            self.schedule_sources
+            self.registry
                 .lock()
                 .expect("poisoned")
+                .schedule_sources
                 .get(stream)
                 .map(|entry| Arc::clone(&entry.source))
         };
@@ -65,8 +67,8 @@ impl QueueService {
         };
 
         let apply = {
-            let mut map = self.schedule_sources.lock().expect("poisoned");
-            let Some(entry) = map.get_mut(stream) else {
+            let mut registry = self.registry.lock().expect("poisoned");
+            let Some(entry) = registry.schedule_sources.get_mut(stream) else {
                 return Ok(());
             };
             entry.next_poll_at = Some(Instant::now() + entry.poll);
@@ -100,9 +102,10 @@ impl QueueService {
             return Ok(());
         }
         let queue = self
-            .redb_streams
+            .registry
             .lock()
             .expect("poisoned")
+            .redb_streams
             .get(stream)
             .cloned()
             .ok_or_else(|| format!("unknown queue stream {stream:?}"))?;
@@ -126,15 +129,19 @@ impl QueueService {
         poll: Duration,
     ) {
         let stream = stream.into();
-        self.schedule_sources.lock().expect("poisoned").insert(
-            stream,
-            ScheduleSourceEntry {
-                source,
-                poll,
-                last_good: None,
-                next_poll_at: None,
-            },
-        );
+        self.registry
+            .lock()
+            .expect("poisoned")
+            .schedule_sources
+            .insert(
+                stream,
+                ScheduleSourceEntry {
+                    source,
+                    poll,
+                    last_good: None,
+                    next_poll_at: None,
+                },
+            );
     }
 
     /// Whether any [`ScheduleSource`] is registered.
@@ -142,7 +149,12 @@ impl QueueService {
     /// # Panics
     /// If an internal mutex is poisoned.
     pub fn has_schedule_sources(&self) -> bool {
-        !self.schedule_sources.lock().expect("poisoned").is_empty()
+        !self
+            .registry
+            .lock()
+            .expect("poisoned")
+            .schedule_sources
+            .is_empty()
     }
 
     /// Shared cluster facts for leader-only background loops.
@@ -163,9 +175,10 @@ impl QueueService {
             return Ok(());
         }
         let backends: Vec<(String, Arc<RedbJobQueue>)> = self
-            .redb_streams
+            .registry
             .lock()
             .expect("poisoned")
+            .redb_streams
             .iter()
             .map(|(k, v)| (k.clone(), Arc::clone(v)))
             .collect();

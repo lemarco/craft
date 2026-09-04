@@ -16,9 +16,10 @@ pub(super) const REPLICATE_NOT_LEADER: &str = "queue replicate rejected: caller 
 
 impl QueueService {
     pub(super) fn local_stream(&self, stream: &str) -> Result<Arc<dyn JobQueue>, String> {
-        self.streams
+        self.registry
             .lock()
             .expect("poisoned")
+            .streams
             .get(stream)
             .cloned()
             .ok_or_else(|| format!("unknown queue stream {stream:?}"))
