@@ -14,8 +14,8 @@ use trembita::net::LocalNetwork;
 use trembita::proto;
 use trembita_runtime::{ConfigCodecError, UserActor};
 use trembita_test_support::{
-    Cmd, Kv, Qry, Resp, TICK_PERIOD, advance, await_trembita_leader, eventually_async_default,
-    eventually_default, fast_raft_config,
+    Cmd, Kv, POLL_STEP, Qry, Resp, TICK_PERIOD, advance, await_trembita_leader, eventually_async,
+    eventually_async_default, eventually_default, fast_raft_config,
 };
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -100,6 +100,19 @@ async fn pick_follower(clusters: &[Arc<TrembitaCluster<Kv>>]) -> Arc<TrembitaClu
     panic!("no follower found");
 }
 
+/// Leader on a node still attached to `net` (ignores split-brain minority partitions).
+async fn find_attached_leader(
+    net: &LocalNetwork,
+    clusters: &[Arc<TrembitaCluster<Kv>>],
+) -> Option<Arc<TrembitaCluster<Kv>>> {
+    for c in clusters {
+        if net.is_reachable(c.node_id()) && c.is_leader().await {
+            return Some(Arc::clone(c));
+        }
+    }
+    None
+}
+
 fn reachability_raft_config() -> Config {
     Config {
         election_timeout_min: 3,
@@ -137,19 +150,28 @@ async fn spawn_reachability_cluster_with(
     let net = LocalNetwork::new();
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = TrembitaCluster::builder(id, Kv::default())
-            .members(ids)
-            .raft_config(raft.clone())
+        clusters.push(spawn_reachability_node(&net, id, raft.clone()).await);
+    }
+    (net, clusters)
+}
+
+async fn spawn_reachability_node(
+    net: &LocalNetwork,
+    id: NodeId,
+    raft: Config,
+) -> Arc<TrembitaCluster<Kv>> {
+    Arc::new(
+        TrembitaCluster::builder(id, Kv::default())
+            .members([NodeId(1), NodeId(2), NodeId(3)])
+            .raft_config(raft)
             .tick_period(Duration::from_millis(5))
             .refresh_period(Duration::from_millis(15))
             .reconcile_period(Duration::from_millis(15))
             .directory_publish_period(Duration::from_millis(20))
             .manage_auto::<Worker>("w", 0)
-            .start_local(&net)
-            .await;
-        clusters.push(Arc::new(cluster));
-    }
-    (net, clusters)
+            .start_local(net)
+            .await,
+    )
 }
 
 async fn wait_for_workers_on_every_node(clusters: &[Arc<TrembitaCluster<Kv>>]) {
@@ -598,11 +620,21 @@ async fn crash_driven_reconcile_reacts_to_reachability_not_membership() {
 
     let victim = pick_follower(&clusters).await.node_id();
     assert!(net.detach(victim), "victim was attached");
+    for c in &clusters {
+        if c.node_id() == victim {
+            c.shutdown();
+            break;
+        }
+    }
 
-    eventually_async_default(
+    eventually_async(
         "leader marks the victim unreachable while it remains a voter",
+        2000,
+        POLL_STEP,
         || async {
-            let l = await_trembita_leader(&clusters).await;
+            let Some(l) = find_attached_leader(&net, &clusters).await else {
+                return false;
+            };
             let Some(status) = l.status().await else {
                 return false;
             };
@@ -612,7 +644,9 @@ async fn crash_driven_reconcile_reacts_to_reachability_not_membership() {
     .await;
 
     eventually_async_default("supervisor reconciles to two reachable workers", || async {
-        let l = await_trembita_leader(&clusters).await;
+        let Some(l) = find_attached_leader(&net, &clusters).await else {
+            return false;
+        };
         let report = l.supervisor().reconcile().await;
         report.is_ok() && report.groups[0].total == 2
     })
@@ -645,8 +679,12 @@ async fn healed_node_gets_auto_worker_respawned_after_partition() {
     let victim = healed.node_id();
 
     assert!(net.detach(victim));
-    eventually_async_default("victim unreachable on leader", || async {
-        let l = await_trembita_leader(&clusters).await;
+    healed.shutdown();
+
+    eventually_async("victim unreachable on leader", 2000, POLL_STEP, || async {
+        let Some(l) = find_attached_leader(&net, &clusters).await else {
+            return false;
+        };
         let Some(status) = l.status().await else {
             return false;
         };
@@ -654,11 +692,13 @@ async fn healed_node_gets_auto_worker_respawned_after_partition() {
     })
     .await;
 
-    net.attach(victim, healed.wire_handler());
+    let respawned = spawn_reachability_node(&net, victim, reachability_raft_config()).await;
     eventually_async_default(
         "victim reachable again without membership change",
         || async {
-            let l = await_trembita_leader(&clusters).await;
+            let Some(l) = find_attached_leader(&net, &clusters).await else {
+                return false;
+            };
             let Some(status) = l.status().await else {
                 return false;
             };
@@ -670,7 +710,9 @@ async fn healed_node_gets_auto_worker_respawned_after_partition() {
     eventually_async_default(
         "supervisor reconciles back to three reachable workers",
         || async {
-            let l = await_trembita_leader(&clusters).await;
+            let Some(l) = find_attached_leader(&net, &clusters).await else {
+                return false;
+            };
             let report = l.supervisor().reconcile().await;
             report.is_ok() && report.groups[0].total == 3
         },
@@ -678,13 +720,14 @@ async fn healed_node_gets_auto_worker_respawned_after_partition() {
     .await;
 
     eventually_default("worker present on the healed node", || {
-        healed.registry().contains("w")
+        respawned.registry().contains("w")
     })
     .await;
 
-    for c in &clusters {
+    for c in clusters.iter().filter(|c| c.node_id() != victim) {
         c.shutdown();
     }
+    respawned.shutdown();
 }
 
 #[tokio::test(start_paused = true)]
@@ -698,18 +741,33 @@ async fn phi_accrual_reachability_triggers_supervisor_shrink_under_silence() {
 
     let victim = pick_follower(&clusters).await.node_id();
     assert!(net.detach(victim));
+    for c in &clusters {
+        if c.node_id() == victim {
+            c.shutdown();
+            break;
+        }
+    }
 
-    eventually_async_default("phi-accrual marks victim unreachable on leader", || async {
-        let l = await_trembita_leader(&clusters).await;
-        let Some(status) = l.status().await else {
-            return false;
-        };
-        status.voters.contains(&victim) && !status.reachable.contains(&victim)
-    })
+    eventually_async(
+        "phi-accrual marks victim unreachable on leader",
+        2000,
+        POLL_STEP,
+        || async {
+            let Some(l) = find_attached_leader(&net, &clusters).await else {
+                return false;
+            };
+            let Some(status) = l.status().await else {
+                return false;
+            };
+            status.voters.contains(&victim) && !status.reachable.contains(&victim)
+        },
+    )
     .await;
 
     eventually_async_default("supervisor shrinks to reachable workers", || async {
-        let l = await_trembita_leader(&clusters).await;
+        let Some(l) = find_attached_leader(&net, &clusters).await else {
+            return false;
+        };
         let report = l.supervisor().reconcile().await;
         report.is_ok() && report.groups[0].total == 2
     })

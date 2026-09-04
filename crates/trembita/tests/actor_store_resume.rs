@@ -16,7 +16,10 @@ use trembita::core::{Config, StateMachine};
 use trembita::net::LocalNetwork;
 use trembita::proto::{self, LogIndex};
 use trembita_runtime::{ConfigCodecError, UserActor};
-use trembita_test_support::{await_trembita_leader, eventually_async_default};
+use trembita_test_support::{
+    POLL_STEP, eventually_async,
+    eventually_async_default,
+};
 
 // --- Minimal KV state machine (cluster consensus only) ----------------------
 
@@ -261,6 +264,18 @@ async fn actor_store_redelivery_is_idempotent_on_one_node() {
     }
 }
 
+async fn find_attached_leader(
+    net: &LocalNetwork,
+    clusters: &[Arc<TrembitaCluster<Kv>>],
+) -> Option<Arc<TrembitaCluster<Kv>>> {
+    for c in clusters {
+        if net.is_reachable(c.node_id()) && c.is_leader().await {
+            return Some(Arc::clone(c));
+        }
+    }
+    None
+}
+
 #[tokio::test(start_paused = true)]
 async fn actor_store_survives_unreachable_node_and_resumes_on_survivor() {
     let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
@@ -280,13 +295,26 @@ async fn actor_store_survives_unreachable_node_and_resumes_on_survivor() {
     wait_for_order_done(store.as_ref(), 42).await;
 
     assert!(net.detach(victim), "victim was attached");
-    eventually_async_default("leader marks victim unreachable", || async {
-        let l = await_trembita_leader(&clusters).await;
-        let Some(status) = l.status().await else {
-            return false;
-        };
-        status.voters.contains(&victim) && !status.reachable.contains(&victim)
-    })
+    for c in &clusters {
+        if c.node_id() == victim {
+            c.shutdown();
+            break;
+        }
+    }
+    eventually_async(
+        "leader marks victim unreachable",
+        2000,
+        POLL_STEP,
+        || async {
+            let Some(l) = find_attached_leader(&net, &clusters).await else {
+                return false;
+            };
+            let Some(status) = l.status().await else {
+                return false;
+            };
+            status.voters.contains(&victim) && !status.reachable.contains(&victim)
+        },
+    )
     .await;
 
     let survivor_worker = cluster_by_id(&clusters, survivor)
