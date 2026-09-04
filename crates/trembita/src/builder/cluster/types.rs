@@ -1,6 +1,5 @@
 //! Internal builder spec types and override flags.
 
-use std::collections::BTreeMap;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -14,7 +13,6 @@ use trembita_jobs::{
     BacklogFeedOpts, BacklogRegistry, ExternalBacklog, JobQueue, QueueAutoscaleRegistry,
     RecurringJob, ScheduleSource,
 };
-use trembita_proto::QueueAutoscalePolicyCommand;
 use trembita_runtime::{ActorDirectory, ClusterControl, ClusterState, LeaderGate, LeaderLoopOpts};
 
 /// Type-erased "register this actor type on the control plane" step.

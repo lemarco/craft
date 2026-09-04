@@ -4,17 +4,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita_core::StateMachine;
 use trembita_events::{
     EventOutboxDrainOpts, EventOutboxPoll, EventOutboxSource, TopicRetentionOpts,
     TopicSubscriptionDef,
 };
 use trembita_jobs::{
-    AutoscalePolicy, BacklogFeedOpts, BacklogRegistry, DEFAULT_QUEUE_PREFETCH, ExternalBacklog,
-    MembershipAutoscalePolicy, QueueAutoscaleRegistry, RecurringJob, SchedulePoll, ScheduleSource,
-    WorkloadOpts, run_queue_autoscaler, run_queue_membership_autoscaler,
+    AutoscalePolicy, BacklogFeedOpts, DEFAULT_QUEUE_PREFETCH, ExternalBacklog,
+    MembershipAutoscalePolicy, RecurringJob, SchedulePoll, ScheduleSource, WorkloadOpts,
+    run_queue_autoscaler, run_queue_membership_autoscaler,
 };
-use trembita_runtime::{ClusterControl, ClusterSupervisor, LeaderLoopOpts, UserActor};
+use trembita_runtime::{ClusterControl, ClusterSupervisor, UserActor};
 
 use crate::builder::autoscale::upsert_queue_autoscale_meta;
 use crate::cluster_handle::ClusterFacts;

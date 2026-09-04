@@ -1,20 +1,18 @@
 //! Assemble runtime components and spawn background loops.
 
 use std::collections::{BTreeMap, HashMap};
-use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio::net::TcpListener;
-use trembita_core::{RaftNode, StateMachine};
+use trembita_core::RaftNode;
 use trembita_dashboard::{
     AdminServer, EventBus, Metrics, Observer, TrembitaEvent, admin_tls_config,
 };
 use trembita_net::Transport;
 use trembita_net::transport::RequestHandler;
-use trembita_proto::{CatalogCommand, NodeId, QueueAutoscalePolicyCommand};
+use trembita_proto::CatalogCommand;
 use trembita_storage::GroupRedbLayout;
 
 use trembita_actor_store::{
@@ -22,40 +20,34 @@ use trembita_actor_store::{
     RedbActorStateStore, StoreService, run_actor_store_gc_ticker,
 };
 use trembita_events::{
-    ClusterEventTopic, EventOutboxCursor, EventOutboxPoll, EventTopic, InMemoryEventOutboxCursor,
+    ClusterEventTopic, EventOutboxCursor, EventTopic, InMemoryEventOutboxCursor,
     RedbEventOutboxCursor, RedbEventTopic, TopicService, run_event_outbox_drainer,
 };
 use trembita_jobs::{
     BacklogRegistry, BacklogSettleOutbox, BacklogSettleOutboxOpts, ClusterJobQueue,
     CompositeScheduleSource, InMemoryBacklogSettleOutbox, JobQueue, QueueAutoscaleRegistry,
-    QueueService, RecurringJob, RedbBacklogSettleOutbox, RedbJobQueue, SchedulePoll,
-    ScheduleSource, ShardedJobQueue, StaticScheduleSource, WorkloadMetricsSnapshot, WorkloadOpts,
-    run_backlog_feeder, run_backlog_settle_drainer, run_queue_autoscaler,
-    run_queue_membership_autoscaler, run_queue_schedule_ticker, run_workload_governor,
+    QueueService, RecurringJob, RedbBacklogSettleOutbox, RedbJobQueue, ScheduleSource,
+    ShardedJobQueue, StaticScheduleSource, WorkloadMetricsSnapshot, run_backlog_feeder,
+    run_backlog_settle_drainer, run_queue_schedule_ticker, run_workload_governor,
 };
 use trembita_runtime::{
     ActorDirectory, ActorRegistry, ClusterControl, ClusterMessaging, ClusterState,
     ClusterSupervisor, ComputeTokenPool, DirectorySync, MailboxSpool, NodeService, RaftDriver,
-    RedbMailboxSpool, ResourceProfile, run_leader_loop, run_mailbox_spool_drainer,
-    spawn_multi_raft_node, spawn_node,
+    RedbMailboxSpool, run_leader_loop, run_mailbox_spool_drainer, spawn_multi_raft_node,
+    spawn_node,
 };
 
-use crate::certs::{CertReloadHandle, cert_paths_for_node};
 use crate::cluster_handle::{ClusterFacts, TrembitaCluster};
 use crate::gateway::ConnectionTracker;
-use crate::handler::{NodeRouter, PeerSource, QuicPeers};
+use crate::handler::{NodeRouter, PeerSource};
 use crate::multi_raft::{ArcGroupMigrate, GroupMigratePort, MultiRaftState};
-use crate::node_id;
 use crate::observer::TrembitaObserver;
 use crate::workload::WorkloadRuntime;
 
 use super::TrembitaClusterBuilder;
 use super::topic_leader::TopicLeaderLoop;
-use super::types::{
-    AutoscaleTask, BacklogFeedSpec, EventOutboxFeedSpec, JobStreamSpec, ManageFn, RegisterFn,
-    ScheduleSourceSpec, ShardedJobSpec, TopicStreamSpec, UserLeaderTaskSpec,
-};
-use crate::builder::autoscale::{propose_queue_autoscale_policies, upsert_queue_autoscale_meta};
+use super::types::ScheduleSourceSpec;
+use crate::builder::autoscale::propose_queue_autoscale_policies;
 use crate::builder::join::consensus_bootstrap_voters;
 use trembita_net::fetch_peers;
 use trembita_runtime::{LeaderLoopOpts, VpsResources};
