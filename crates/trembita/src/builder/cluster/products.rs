@@ -20,8 +20,8 @@ use crate::cluster_handle::ClusterFacts;
 
 use super::TrembitaClusterBuilder;
 use super::types::{
-    AutoscaleTask, BacklogFeedSpec, EventOutboxFeedSpec, JobStreamSpec, MembershipAutoscaleTask,
-    RecurringJobSpec, ScheduleSourceSpec, ShardedJobSpec, TopicStreamSpec, UserLeaderTask,
+    BacklogFeedSpec, EventOutboxFeedSpec, JobStreamSpec, RecurringJobSpec, ScheduleSourceSpec,
+    ShardedJobSpec, TopicStreamSpec,
 };
 
 impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<M> {

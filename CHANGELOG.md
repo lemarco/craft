@@ -35,7 +35,7 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
   [`GatewayConfigError`](crates/trembita/src/gateway/mod.rs).
 - **Gateway rate limiting** — optional [`GatewayOpts::rate_limit_per_sec`](crates/trembita/src/gateway/mod.rs)
   (`429 Too Many Requests` when exceeded).
-- **Builder module split** — join/autoscale/error helpers extracted from [`builder/mod.rs`](crates/trembita/src/builder/mod.rs); [`TrembitaClusterBuilder`](crates/trembita/src/builder/cluster/mod.rs) split into `builder/cluster/{assemble,products,start,types,topic_leader}.rs`.
+- **Builder module split** — join/autoscale/error helpers extracted from [`builder/mod.rs`](crates/trembita/src/builder/mod.rs); [`TrembitaClusterBuilder`](crates/trembita/src/builder/cluster/mod.rs) split into `builder/cluster/{config,assemble,products,start,types,topic_leader}.rs`.
 - **Runtime module split** — [`runtime.rs`](crates/trembita-runtime/src/runtime/mod.rs) split into `runtime/{types,handle,event_loop,spawn,service,wire}.rs`.
 - **Shared redb adapter helpers** — [`redb_util`](crates/trembita-storage/src/redb_util.rs) (`now_ms`, `open_database`, `open_mutex_database`); migrated queue/topic/actor-store/mailbox spool, event-outbox cursors, backlog-settle outbox, and queue schedules.
 
