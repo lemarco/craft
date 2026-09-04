@@ -37,9 +37,9 @@ use thiserror::Error;
 
 pub use embedded::{EmbeddedAssets, EmbeddedFile, embedded_from_dir};
 pub use env::StaticSiteEnvError;
-pub use serve::StaticResponse;
 #[cfg(feature = "static-s3")]
 pub use object_store::{ObjectStoreConfig, S3Delivery};
+pub use serve::StaticResponse;
 
 /// Where static bytes come from.
 #[derive(Clone, Debug)]
@@ -60,9 +60,7 @@ impl StaticSource {
     /// Serve from `root` on the local filesystem.
     #[must_use]
     pub fn filesystem(root: impl Into<PathBuf>) -> Self {
-        Self::Filesystem {
-            root: root.into(),
-        }
+        Self::Filesystem { root: root.into() }
     }
 
     /// Serve compile-time embedded assets.
@@ -166,7 +164,6 @@ impl StaticSite {
     }
 
     /// Axum router that serves all methods/paths from this site (use as host router or fallback).
-    #[must_use]
     pub fn router(self) -> Router {
         let state = Arc::new(StaticSiteState::from(self));
         Router::new().fallback(move |req: Request<Body>| {
@@ -232,7 +229,11 @@ impl StaticSiteState {
                 self.spa_fallback,
             ),
             Ok(None) if self.spa_fallback && !path.starts_with("/assets/") => {
-                match self.backend.resolve("/index.html", self.precompressed).await {
+                match self
+                    .backend
+                    .resolve("/index.html", self.precompressed)
+                    .await
+                {
                     Ok(Some(response)) => response.into_response(
                         "/index.html",
                         &self.index_cache_control,
@@ -240,11 +241,11 @@ impl StaticSiteState {
                         false,
                     ),
                     Ok(None) => serve::not_found(),
-                    Err(err) => serve::internal_error(err),
+                    Err(err) => serve::internal_error(&err),
                 }
             }
             Ok(None) => serve::not_found(),
-            Err(err) => serve::internal_error(err),
+            Err(err) => serve::internal_error(&err),
         }
     }
 }
@@ -258,7 +259,7 @@ pub enum StaticSiteError {
     /// Object store operation failed.
     #[cfg(feature = "static-s3")]
     #[error("object store: {0}")]
-    ObjectStore(#[from] object_store::ObjectStoreError),
+    ObjectStore(#[from] Box<object_store::ObjectStoreError>),
     /// Embedded asset missing.
     #[error("embedded asset not found: {path}")]
     NotFound {
@@ -275,9 +276,7 @@ impl StaticBackend {
     ) -> Result<Option<StaticResponse>, StaticSiteError> {
         match self {
             Self::Embedded(assets) => Ok(embedded::resolve(assets, path, precompressed)),
-            Self::Filesystem { root } => {
-                filesystem::resolve(root, path, precompressed).await
-            }
+            Self::Filesystem { root } => filesystem::resolve(root, path, precompressed).await,
             #[cfg(feature = "static-s3")]
             Self::ObjectStore(store) => store.resolve(path, precompressed).await,
         }
@@ -342,9 +341,7 @@ mod tests {
     #[tokio::test]
     async fn host_router_static_site_integration() {
         let site = StaticSite::new(StaticSource::embedded(sample_assets())).router();
-        let app = HostRouter::new()
-            .host("app.example.com", site)
-            .build();
+        let app = HostRouter::new().host("app.example.com", site).build();
 
         let req = Request::builder()
             .uri("/assets/app.js")

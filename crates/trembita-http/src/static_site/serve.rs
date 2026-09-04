@@ -63,7 +63,7 @@ pub fn not_found() -> Response<Body> {
 }
 
 /// 500 helper.
-pub fn internal_error(err: StaticSiteError) -> Response<Body> {
+pub fn internal_error(err: &StaticSiteError) -> Response<Body> {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
         format!("static site error: {err}"),

@@ -32,7 +32,9 @@ pub enum StaticSiteEnvError {
         value: String,
     },
     /// Embedded source cannot be selected purely from runtime env.
-    #[error("{prefix}_SOURCE=embedded requires compile-time EmbeddedAssets; use filesystem or s3 in env, or StaticSite::new(StaticSource::embedded(...))")]
+    #[error(
+        "{prefix}_SOURCE=embedded requires compile-time EmbeddedAssets; use filesystem or s3 in env, or StaticSite::new(StaticSource::embedded(...))"
+    )]
     EmbeddedRequiresCompileTime {
         /// Env prefix.
         prefix: String,

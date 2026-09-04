@@ -24,8 +24,9 @@ pub struct EmbeddedAssets {
 
 impl EmbeddedAssets {
     /// Register one file.
-    pub fn insert(&mut self, path: impl Into<String>, file: EmbeddedFile) {
-        self.files.insert(normalize_embed_path(path.into()), file);
+    pub fn insert(&mut self, path: impl AsRef<str>, file: EmbeddedFile) {
+        self.files
+            .insert(normalize_embed_path(path.as_ref()), file);
     }
 }
 
@@ -62,7 +63,7 @@ pub fn resolve(
     path: &str,
     precompressed: Precompressed,
 ) -> Option<StaticResponse> {
-    let key = normalize_embed_path(path.trim_start_matches('/').to_string());
+    let key = normalize_embed_path(path.trim_start_matches('/'));
     if let Some(file) = assets.files.get(&key) {
         return Some(StaticResponse {
             body: file.bytes.to_vec(),
@@ -94,7 +95,7 @@ pub fn resolve(
     None
 }
 
-fn normalize_embed_path(path: String) -> String {
+fn normalize_embed_path(path: &str) -> String {
     path.trim_start_matches('/').replace('\\', "/")
 }
 
@@ -104,7 +105,7 @@ mod tests {
 
     #[test]
     fn normalize_strips_leading_slash() {
-        assert_eq!(normalize_embed_path("/assets/x.js".to_string()), "assets/x.js");
+        assert_eq!(normalize_embed_path("/assets/x.js"), "assets/x.js");
     }
 
     #[test]

@@ -18,14 +18,14 @@ pub enum S3Delivery {
     },
 }
 
-/// S3 / MinIO / R2 configuration.
+/// S3 / `MinIO` / R2 configuration.
 #[derive(Clone, Debug)]
 pub struct ObjectStoreConfig {
     /// Bucket name.
     pub bucket: String,
     /// Optional key prefix (`releases/v1/`).
     pub prefix: Option<String>,
-    /// Custom endpoint (MinIO, R2, …).
+    /// Custom endpoint (`MinIO`, R2, …).
     pub endpoint: Option<String>,
     /// AWS region.
     pub region: String,
@@ -73,11 +73,7 @@ impl ObjectStoreBackend {
         if self.prefix.is_empty() {
             rel.to_string()
         } else {
-            format!(
-                "{}/{}",
-                self.prefix.trim_end_matches('/'),
-                rel
-            )
+            format!("{}/{}", self.prefix.trim_end_matches('/'), rel)
         }
     }
 
@@ -89,11 +85,7 @@ impl ObjectStoreBackend {
     ) -> Result<Option<StaticResponse>, StaticSiteError> {
         if let S3Delivery::Redirect { cdn_base } = &self.delivery {
             let key = self.object_key(path);
-            let url = format!(
-                "{}/{}",
-                cdn_base.trim_end_matches('/'),
-                key
-            );
+            let url = format!("{}/{}", cdn_base.trim_end_matches('/'), key);
             return Ok(Some(StaticResponse {
                 body: Vec::new(),
                 content_type: "text/plain".to_string(),
@@ -123,11 +115,7 @@ impl ObjectStoreBackend {
                     for suffix in [".gz", ".br"] {
                         let alt = format!("{key}{suffix}");
                         if let Ok(body) = self.op.read(&alt).await {
-                            let encoding = if suffix == ".gz" {
-                                "gzip"
-                            } else {
-                                "br"
-                            };
+                            let encoding = if suffix == ".gz" { "gzip" } else { "br" };
                             return Ok(Some(StaticResponse {
                                 body: body.to_vec(),
                                 content_type: mime::from_path(path),
@@ -139,7 +127,9 @@ impl ObjectStoreBackend {
                 }
                 Ok(None)
             }
-            Err(err) => Err(StaticSiteError::ObjectStore(ObjectStoreError::OpenDal(err))),
+            Err(err) => Err(StaticSiteError::ObjectStore(Box::new(
+                ObjectStoreError::OpenDal(err),
+            ))),
         }
     }
 }
