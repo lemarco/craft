@@ -92,7 +92,7 @@ impl AckWindowLiveness {
             let silence = last_ack
                 .get(&peer)
                 .map_or(u64::MAX, |&t| now.saturating_sub(t));
-            let entry = self.latched.entry(peer).or_insert(true);
+            let entry = self.latched.entry(peer).or_insert(false);
             if *entry {
                 if silence > high {
                     *entry = false;
@@ -103,10 +103,10 @@ impl AckWindowLiveness {
         }
     }
 
-    /// Whether `peer` is currently considered reachable (defaults to true).
+    /// Whether `peer` is currently considered reachable (unknown peers are not).
     #[must_use]
     pub fn is_reachable(&self, peer: NodeId) -> bool {
-        self.latched.get(&peer).copied().unwrap_or(true)
+        self.latched.get(&peer).copied().unwrap_or(false)
     }
 
     /// Clear state on leadership change.
@@ -218,12 +218,12 @@ impl PhiAccrualLiveness {
             .record_heartbeat(now);
     }
 
-    /// Whether `peer` is reachable under phi-accrual.
+    /// Whether `peer` is reachable under phi-accrual (no samples ⇒ not reachable).
     #[must_use]
     pub fn is_reachable(&self, peer: NodeId, now: u64) -> bool {
         self.detectors
             .get(&peer)
-            .is_none_or(|d| d.is_available(now))
+            .is_some_and(|d| d.is_available(now))
     }
 
     /// Drop all per-peer phi-accrual state.
@@ -267,6 +267,28 @@ mod tests {
         acks.insert(NodeId(2), 25);
         live.update(30, NodeId(1), &voters, &acks, 40, 10);
         assert!(live.is_reachable(NodeId(2)));
+    }
+
+    #[test]
+    fn unknown_peer_is_not_reachable_by_default() {
+        let live = AckWindowLiveness::default();
+        assert!(!live.is_reachable(NodeId(2)));
+    }
+
+    #[test]
+    fn silent_peer_starts_unreachable_until_first_ack() {
+        let mut live = AckWindowLiveness::default();
+        let voters = [NodeId(1), NodeId(2), NodeId(3)];
+        let acks = BTreeMap::new();
+        live.update(10, NodeId(1), &voters, &acks, 40, 10);
+        assert!(!live.is_reachable(NodeId(2)));
+        assert!(!live.is_reachable(NodeId(3)));
+    }
+
+    #[test]
+    fn phi_unknown_peer_is_not_reachable() {
+        let live = PhiAccrualLiveness::new(8.0);
+        assert!(!live.is_reachable(NodeId(2), 100));
     }
 
     #[test]

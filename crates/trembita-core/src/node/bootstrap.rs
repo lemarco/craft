@@ -55,6 +55,7 @@ impl RaftNode {
             heartbeat_elapsed: 0,
             election_timeout,
             logical_clock: 0,
+            last_leader_contact: 0,
             rng,
             outbox: Vec::new(),
         }

@@ -96,7 +96,7 @@ impl RaftNode {
 
     pub(in crate::node) fn become_leader(&mut self) {
         self.set_role(Role::Leader);
-        self.leader_id = Some(self.id);
+        self.note_leader_contact(self.id);
         // A fresh term starts with no lease; it is earned once a heartbeat round
         // in this term is acked by a quorum (via `broadcast_append` below).
         self.lease_expiry = 0;
@@ -107,6 +107,8 @@ impl RaftNode {
         // Reachability is earned afresh each term from this leader's own acks;
         // stale observations from a prior leadership must not count (liveness-vs-membership).
         self.last_ack_clock.clear();
+        self.ack_liveness.clear();
+        self.phi_liveness.clear();
         for p in self.peers() {
             self.next_index.insert(p, next);
             self.match_index.insert(p, LogIndex::ZERO);
@@ -116,6 +118,7 @@ impl RaftNode {
         self.heartbeat_elapsed = 0;
         self.broadcast_append();
         self.maybe_advance_commit();
+        self.update_liveness();
     }
 
     pub(in crate::node) fn reset_election_timer(&mut self) {
@@ -124,5 +127,11 @@ impl RaftNode {
             self.config.election_timeout_min,
             self.config.election_timeout_max,
         );
+    }
+
+    /// Record that `leader_id` contacted us at the current logical tick.
+    pub(in crate::node) fn note_leader_contact(&mut self, leader_id: NodeId) {
+        self.leader_id = Some(leader_id);
+        self.last_leader_contact = self.logical_clock;
     }
 }

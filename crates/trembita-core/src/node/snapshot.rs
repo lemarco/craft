@@ -14,7 +14,7 @@ impl RaftNode {
         } else if self.role != Role::Follower {
             self.set_role(Role::Follower);
         }
-        self.leader_id = Some(is.leader_id);
+        self.note_leader_contact(is.leader_id);
         self.reset_election_timer();
 
         let last = is.last_included;

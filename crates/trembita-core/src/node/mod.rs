@@ -123,6 +123,11 @@ pub struct RaftNode {
     /// Monotonic logical clock (never reset): the tick count since construction,
     /// used as the time base for the leader lease.
     logical_clock: u64,
+    /// `logical_clock` tick at which this node last accepted a valid
+    /// `AppendEntries` / `InstallSnapshot` from the current leader. Pre-vote
+    /// `leader_recent` uses this instead of the election timer, which is reset
+    /// when campaigning and would otherwise livelock elections after leader loss.
+    last_leader_contact: u64,
     rng: Rng,
 
     outbox: Vec<Output>,

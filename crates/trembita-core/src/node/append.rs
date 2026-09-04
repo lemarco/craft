@@ -15,7 +15,7 @@ impl RaftNode {
         } else if self.role != Role::Follower {
             self.set_role(Role::Follower);
         }
-        self.leader_id = Some(ae.leader_id);
+        self.note_leader_contact(ae.leader_id);
         self.reset_election_timer();
 
         // Log-matching check on the entry preceding the new ones.

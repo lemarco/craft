@@ -1,7 +1,7 @@
 //! `trembita-node` — reference runner for a single trembita cluster node (backlog
 //! J3). It reads its configuration from the environment, builds the mTLS
 //! [`trembita::cluster::Security`], and starts a node over the live QUIC transport with a built-in
-//! demo state machine, then runs until `SIGINT`/Ctrl-C.
+//! demo state machine, then runs until SIGINT (Ctrl-C) or SIGTERM.
 //!
 //! It exists to smoke-test deployments and to serve as a copyable template —
 //! real applications embed [`trembita::cluster::TrembitaCluster`] in their own binary with
@@ -146,9 +146,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .map(|a| format!(", admin http://{a}"))
             .unwrap_or_default()
     );
-    println!("ready; press Ctrl-C to stop.");
+    println!("ready; press Ctrl-C or send SIGTERM to stop.");
 
-    tokio::signal::ctrl_c().await?;
+    trembita::wait_for_int_or_term().await;
     println!("\nshutting down…");
     if cfg.graceful_leave && cfg.members.len() > 1 {
         match cluster.leave().await {

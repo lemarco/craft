@@ -170,6 +170,14 @@ pub trait ExternalBacklog: Send + Sync {
     fn reclaim_abandoned_claims(&self) -> BoxFuture<'_, Result<u64, BacklogError>> {
         Box::pin(async { Ok(0) })
     }
+
+    /// Return one claimed row to the pending pool when enqueue into the job queue fails
+    /// after [`ExternalBacklog::claim`]. Prevents orphaned `claimed` rows when replication
+    /// is temporarily unavailable (same leader or otherwise).
+    fn release_claim(&self, key: &[u8]) -> BoxFuture<'_, Result<(), BacklogError>> {
+        let _ = key;
+        Box::pin(async { Ok(()) })
+    }
 }
 
 /// Maps queue stream names to external backlogs (settlement + autoscale wiring).
@@ -355,8 +363,18 @@ async fn feed_backlog_once(
     let target_in_flight = opts
         .pending_target_per_consumer
         .saturating_mul(consumer_instances);
-    let Ok(metrics) = queue.metrics().await else {
-        return;
+    let metrics = match queue.metrics().await {
+        Ok(metrics) => metrics,
+        Err(error) => {
+            tracing::warn!(
+                target: "trembita::leader",
+                task = "backlog_feeder",
+                stream = %stream,
+                error = %error,
+                "failed to read queue metrics for external backlog feed"
+            );
+            return;
+        }
     };
     let in_flight = metrics.pending.saturating_add(metrics.leased);
     if in_flight >= target_in_flight {
@@ -368,10 +386,22 @@ async fn feed_backlog_once(
     if need == 0 {
         return;
     }
-    let Ok(items) = backlog.claim(need).await else {
-        return;
+    let items = match backlog.claim(need).await {
+        Ok(items) => items,
+        Err(error) => {
+            tracing::warn!(
+                target: "trembita::leader",
+                task = "backlog_feeder",
+                stream = %stream,
+                need,
+                error = %error,
+                "failed to claim external backlog items"
+            );
+            return;
+        }
     };
     for item in items {
+        let claim_key = item.key.clone();
         let options = EnqueueOptions {
             priority: item.priority,
             dedup_key: Some(item.key),
@@ -379,6 +409,23 @@ async fn feed_backlog_once(
         };
         let Ok((_, replicate_ops)) = queue.enqueue_opts_replicated(&item.payload, options).await
         else {
+            tracing::warn!(
+                target: "trembita::leader",
+                task = "backlog_feeder",
+                stream = %stream,
+                key = ?claim_key,
+                "enqueue from external backlog failed; releasing claim"
+            );
+            if let Err(error) = backlog.release_claim(&claim_key).await {
+                tracing::warn!(
+                    target: "trembita::leader",
+                    task = "backlog_feeder",
+                    stream = %stream,
+                    key = ?claim_key,
+                    error = %error,
+                    "failed to release external backlog claim after enqueue failure"
+                );
+            }
             continue;
         };
         if let Some(outbox) = settle_outbox {
@@ -589,6 +636,20 @@ impl ExternalBacklog for InMemoryExternalBacklog {
                 inner.pending.push_back(row.item);
             }
             Ok(n)
+        })
+    }
+
+    fn release_claim(&self, key: &[u8]) -> BoxFuture<'_, Result<(), BacklogError>> {
+        let key = key.to_vec();
+        Box::pin(async move {
+            let mut inner = self
+                .inner
+                .lock()
+                .map_err(|_| BacklogError::Backend("poisoned InMemoryExternalBacklog".into()))?;
+            if let Some(row) = inner.claimed.remove(&key) {
+                inner.pending.push_front(row.item);
+            }
+            Ok(())
         })
     }
 
@@ -982,5 +1043,23 @@ mod tests {
             backlog.claim(1).await.unwrap().is_empty(),
             "claimed rows should not be re-claimable until settled"
         );
+    }
+
+    #[tokio::test]
+    async fn release_claim_returns_row_to_pending_pool() {
+        let backlog = Arc::new(InMemoryExternalBacklog::new());
+        backlog.push(BacklogItem {
+            key: b"row-1".to_vec(),
+            payload: b"payload".to_vec(),
+            priority: 0,
+        });
+        let claimed = backlog.claim(1).await.unwrap();
+        assert_eq!(claimed.len(), 1);
+        assert_eq!(backlog.depth().await.unwrap(), 1);
+
+        backlog.release_claim(b"row-1").await.unwrap();
+        let again = backlog.claim(1).await.unwrap();
+        assert_eq!(again.len(), 1);
+        assert_eq!(again[0].key, b"row-1");
     }
 }

@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use trembita_net::send_queue_replicate;
 use trembita_net::transport::{BoxFuture, TransportError};
-use trembita_proto::{NodeId, ProductWireError, QueueReplicateReply, QueueReplicateRequest};
+use trembita_proto::{
+    NodeId, ProductWireError, QueueReplicateOp, QueueReplicateReply, QueueReplicateRequest,
+};
 use trembita_runtime::{
     authorize_replicate_leader, fanout_product_replicate, forward_to_leader, replicate_reply_err,
 };
@@ -15,6 +17,31 @@ use crate::{JobQueue, QueueReplicationOps, ShardedReplication};
 use super::QueueService;
 
 pub(super) const REPLICATE_NOT_LEADER: &str = "queue replicate rejected: caller is not raft leader";
+
+/// Undo local queue mutations when voter replication fails after the leader applied ops.
+pub(super) async fn rollback_local_ops(queue: &dyn JobQueue, ops: &QueueReplicationOps) {
+    for op in ops {
+        let Some(rollback) = local_rollback_op(op) else {
+            continue;
+        };
+        let _ = queue.apply_replicate(&rollback).await;
+    }
+}
+
+fn local_rollback_op(op: &QueueReplicateOp) -> Option<QueueReplicateOp> {
+    match op {
+        QueueReplicateOp::Lease {
+            lease_id, job_id, ..
+        } => Some(QueueReplicateOp::Reclaim {
+            lease_id: *lease_id,
+            job_id: *job_id,
+            attempts: 0,
+            dead_letter: false,
+            not_before_ms: 0,
+        }),
+        _ => None,
+    }
+}
 
 impl QueueService {
     pub(super) fn local_stream(&self, stream: &str) -> Result<Arc<dyn JobQueue>, ProductWireError> {

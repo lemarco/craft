@@ -47,6 +47,7 @@ mod queue_opts;
 mod ready;
 mod saga;
 mod security;
+mod shutdown_signal;
 mod topic_opts;
 mod two_phase;
 mod worker_opts;
@@ -96,6 +97,7 @@ pub use gateway::{
 pub use job_opts::JobOpts;
 pub use queue_opts::QueueOpts;
 pub use ready::ReadyOpts;
+pub use shutdown_signal::wait_for_int_or_term;
 pub use topic_opts::TopicOpts;
 pub use trembita_actor_store::InMemoryStore;
 pub use trembita_events::TopicContext;

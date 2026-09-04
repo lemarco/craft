@@ -7,9 +7,32 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with all
 
 Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases may include breaking changes on minor bumps; each is noted here.
 
-**Crates.io:** [`0.3.0`](https://crates.io/crates/trembita) (2026-09-04). See [0.3.0](#030--2026-09-04) below for the latest release.
+**Crates.io:** [`0.3.0`](https://crates.io/crates/trembita) (2026-09-04). See [0.3.1](#031--2026-09-04) below for the latest release.
 
 ## [Unreleased]
+
+## [0.3.1] — 2026-09-04
+
+### Fixed
+
+- **Pre-vote election livelock (CF-028)** — [`leader_recent`](crates/trembita-core/src/node/vote.rs) now uses
+  `last_leader_contact` (refreshed only on append/snapshot from a leader), not the election timer reset by
+  campaigns; clusters elect promptly after leader loss.
+- **Job plane stall with a dead voter (CF-026)** — unknown peers default to unreachable in
+  [`AckWindowLiveness`](crates/trembita-core/src/failure_detector.rs); liveness maps clear on
+  [`become_leader`](crates/trembita-core/src/node/role.rs); failed queue replicate rolls back local ops;
+  failed lease replicate rolls back; [`ExternalBacklog::release_claim`](crates/trembita-jobs/src/external_backlog.rs)
+  on enqueue failure so Postgres rows do not stay `claimed`.
+- **Graceful shutdown on SIGTERM (CF-029)** — [`wait_for_int_or_term`](crates/trembita/src/shutdown_signal.rs)
+  waits on SIGINT and SIGTERM; wired into [`TrembitaApp::wait_for_shutdown`](crates/trembita/src/app/runtime.rs)
+  and `trembita-node`. Custom embedders can use [`RunOpts::with_shutdown_signal`](crates/trembita/src/app_opts.rs).
+- **External backlog feeder observability (CF-027)** — [`feed_backlog_once`](crates/trembita-jobs/src/external_backlog.rs)
+  logs `tracing::warn!` at `trembita::leader` on metrics, claim, enqueue, and release failures.
+
+### Added
+
+- **Tests** — election livelock regression tests; reachability / replication unit tests;
+  `queue_enqueue_and_lease_with_one_unreachable_voter` integration test.
 
 ## [0.3.0] — 2026-09-04
 
@@ -240,7 +263,8 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
   backpressure on QUIC.
 
 
-[Unreleased]: https://gitlab.com/lemarco/trembita/-/compare/v0.3.0...HEAD
+[Unreleased]: https://gitlab.com/lemarco/trembita/-/compare/v0.3.1...HEAD
+[0.3.1]: https://gitlab.com/lemarco/trembita/-/compare/v0.3.0...v0.3.1
 [0.3.0]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.3...v0.3.0
 [0.2.3]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.2...v0.2.3
 [0.2.2]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.1...v0.2.2

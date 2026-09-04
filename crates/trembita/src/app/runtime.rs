@@ -51,12 +51,19 @@ impl TrembitaApp {
         *self.gateway.lock().await = Some(handle);
     }
 
-    /// Block until Ctrl-C / SIGINT, then [`Self::shutdown_graceful`].
+    /// Block until SIGINT/SIGTERM (or a custom signal from [`RunOpts::with_shutdown_signal`]),
+    /// then [`Self::shutdown_graceful`].
     pub(crate) async fn wait_for_shutdown(
         self: Arc<Self>,
         opts: ShutdownOpts,
+        shutdown_signal: Option<crate::app_opts::ShutdownSignal>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        tokio::signal::ctrl_c().await?;
+        if let Some(signal) = shutdown_signal {
+            signal.await;
+        } else {
+            crate::shutdown_signal::wait_for_int_or_term().await;
+        }
+        tracing::info!(target: "trembita::app", "shutdown signal received; draining");
         self.shutdown_graceful(opts).await;
         Ok(())
     }

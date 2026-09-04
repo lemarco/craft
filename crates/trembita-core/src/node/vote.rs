@@ -15,9 +15,12 @@ impl RaftNode {
         if rv.pre_vote {
             // Pre-vote never changes our term or vote. Refuse if we still
             // believe a leader is alive (heard from it within the min timeout),
-            // which is what neutralizes disruptive removed servers.
-            let leader_recent =
-                self.leader_id.is_some() && self.elapsed < self.config.election_timeout_min;
+            // which is what neutralizes disruptive removed servers. Use
+            // `last_leader_contact`, not the election timer: the timer resets
+            // when campaigning and would otherwise livelock elections.
+            let leader_recent = self.leader_id.is_some()
+                && self.logical_clock.saturating_sub(self.last_leader_contact)
+                    < self.config.election_timeout_min;
             let granted = rv.term >= self.current_term && up_to_date && !leader_recent;
             if !granted {
                 tracing::debug!(

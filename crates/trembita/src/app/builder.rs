@@ -556,7 +556,7 @@ impl TrembitaAppBuilder {
         .await
     }
 
-    /// Boot, spawn registered [`Self::consumer`] loops, block on Ctrl-C, graceful shutdown.
+    /// Boot, spawn registered [`Self::consumer`] loops, block on shutdown signal, graceful shutdown.
     ///
     /// Always starts a QUIC cluster member (seed or joiner) from `TREMBITA_*` env.
     ///
@@ -573,7 +573,8 @@ impl TrembitaAppBuilder {
                 .collect();
             opts.shutdown.consumers = Some((stop_tx, handles));
         }
-        app.wait_for_shutdown(opts.shutdown).await
+        app.wait_for_shutdown(opts.shutdown, opts.shutdown_signal)
+            .await
     }
 
     /// Test-only boot without blocking on Ctrl-C ([`trembita_test_support::boot_local_app`]).

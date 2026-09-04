@@ -161,6 +161,26 @@ fn reachability_is_earned_fresh_each_term() {
         ids(&[1]),
         "no prior-term ack counts toward this term's liveness"
     );
+    assert_eq!(
+        n.reachable_now(),
+        ids(&[1]),
+        "reachable_now must not carry stale ack_liveness across terms"
+    );
+}
+
+#[test]
+fn reachable_now_drops_silent_voter_after_window() {
+    let mut n = leader(&[1, 2, 3], &[2, 3]);
+    ack(&mut n, 2, 1, 1000);
+    ack(&mut n, 3, 1, 1000);
+    for _ in 0..250 {
+        n.tick();
+        let _ = n.take_outputs();
+        ack(&mut n, 2, 1, 1000);
+    }
+    let mut got = n.reachable_now();
+    got.sort();
+    assert_eq!(got, ids(&[1, 2]));
 }
 
 #[test]

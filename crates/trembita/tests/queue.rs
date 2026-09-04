@@ -699,6 +699,43 @@ async fn membership_autoscale_invokes_join_hook() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn queue_enqueue_and_lease_with_one_unreachable_voter() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (net, clusters) = spawn_queue_cluster(&dir, false).await;
+    let _leader = await_trembita_leader(&clusters).await;
+    advance(Duration::from_millis(200)).await;
+
+    let dead_id = NodeId(3);
+    for cluster in &clusters {
+        if cluster.node_id() == dead_id {
+            wait_for_trembita_stopped(cluster.as_ref()).await;
+        }
+    }
+    let _ = net.detach(dead_id);
+    let survivors: Vec<_> = clusters
+        .into_iter()
+        .filter(|c| c.node_id() != dead_id)
+        .collect();
+    let leader = await_trembita_leader(&survivors).await;
+    advance(Duration::from_millis(500)).await;
+
+    let queue = leader.job_queue("jobs").expect("queue");
+    eventually_async_default("enqueue with one dead voter", || {
+        let queue = leader.job_queue("jobs").expect("queue");
+        async move { queue.enqueue(b"work").await.is_ok() }
+    })
+    .await;
+
+    let worker = WorkerId {
+        node: leader.node_id(),
+        instance: 1,
+    };
+    let leased = queue.lease(worker, 1).await.expect("lease");
+    assert_eq!(leased.len(), 1);
+    assert_eq!(leased[0].payload, b"work");
+}
+
+#[tokio::test(start_paused = true)]
 async fn queue_replicate_rejects_non_leader_caller() {
     use std::sync::Arc;
     use trembita::net::{LocalTransport, send_queue_replicate};

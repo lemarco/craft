@@ -2,7 +2,8 @@
 
 use trembita_core::{Config, Output, RaftNode, Role};
 use trembita_proto::{
-    AppendEntries, LogId, LogIndex, NodeId, RaftRpc, RaftRpcReply, RequestVoteReply, Round, Term,
+    AppendEntries, LogId, LogIndex, NodeId, RaftRpc, RaftRpcReply, RequestVote, RequestVoteReply,
+    Round, Term,
 };
 
 fn cfg() -> Config {
@@ -56,6 +57,42 @@ fn count_vote_requests(outs: &[Output]) -> usize {
     outs.iter()
         .filter(|o| matches!(o, Output::Send(_, RaftRpc::RequestVote(_))))
         .count()
+}
+
+fn heartbeat(n: &mut RaftNode, leader: u64, term: u64) {
+    let ae = AppendEntries {
+        term: Term(term),
+        leader_id: NodeId(leader),
+        prev_log: LogId::ZERO,
+        entries: vec![],
+        leader_commit: LogIndex(0),
+        round: Round::ZERO,
+    };
+    n.receive(NodeId(leader), RaftRpc::AppendEntries(ae));
+    let _ = n.take_outputs();
+}
+
+fn pre_vote_reply(
+    n: &mut RaftNode,
+    from: u64,
+    term: u64,
+    last_term: u64,
+    last_index: u64,
+) -> RequestVoteReply {
+    let rv = RequestVote {
+        term: Term(term),
+        candidate_id: NodeId(from),
+        last_log: LogId::new(Term(last_term), LogIndex(last_index)),
+        pre_vote: true,
+    };
+    n.receive(NodeId(from), RaftRpc::RequestVote(rv));
+    n.take_outputs()
+        .into_iter()
+        .find_map(|o| match o {
+            Output::Reply(_, RaftRpcReply::RequestVote(r)) => Some(r),
+            _ => None,
+        })
+        .expect("expected a RequestVote reply")
 }
 
 #[test]
@@ -218,4 +255,66 @@ fn new_leader_append_ends_candidacy() {
     n.receive(NodeId(2), RaftRpc::AppendEntries(ae));
     assert_eq!(n.role(), Role::Follower);
     assert_eq!(n.leader_id(), Some(NodeId(2)));
+}
+
+#[test]
+fn prevote_rejects_while_leader_contact_is_recent() {
+    let mut voter = node(2, &[1, 2, 3]);
+    heartbeat(&mut voter, 1, 1);
+    for _ in 0..5 {
+        voter.tick();
+    }
+    let reply = pre_vote_reply(&mut voter, 3, 2, 0, 0);
+    assert!(
+        !reply.vote_granted,
+        "pre-vote must be rejected while leader contact is still fresh"
+    );
+}
+
+#[test]
+fn prevote_grants_after_stale_leader_contact_even_if_election_timer_just_reset() {
+    let mut voter = node(2, &[1, 2, 3]);
+    heartbeat(&mut voter, 1, 1);
+    for _ in 0..100 {
+        voter.tick();
+    }
+    assert_eq!(voter.role(), Role::PreCandidate, "timed out into pre-vote");
+    let reply = pre_vote_reply(&mut voter, 3, 2, 0, 0);
+    assert!(
+        reply.vote_granted,
+        "stale leader contact must not block pre-vote after election timeout"
+    );
+}
+
+#[test]
+fn two_survivors_elect_after_leader_loss_via_prevote() {
+    let mut n2 = node(2, &[1, 2, 3]);
+    let mut n3 = node(3, &[1, 2, 3]);
+    heartbeat(&mut n2, 1, 1);
+    heartbeat(&mut n3, 1, 1);
+
+    for _ in 0..100 {
+        n2.tick();
+        n3.tick();
+    }
+    assert_eq!(n2.role(), Role::PreCandidate);
+    assert_eq!(n3.role(), Role::PreCandidate);
+
+    let r23 = pre_vote_reply(&mut n3, 2, 2, 0, 0);
+    assert!(r23.vote_granted, "node 3 should grant node 2's pre-vote");
+    let r32 = pre_vote_reply(&mut n2, 3, 2, 0, 0);
+    assert!(r32.vote_granted, "node 2 should grant node 3's pre-vote");
+
+    pre_grant(&mut n2, 3, 0);
+    assert_eq!(
+        n2.role(),
+        Role::Candidate,
+        "node 2 promotes on pre-vote quorum"
+    );
+    pre_grant(&mut n3, 2, 0);
+    assert_eq!(
+        n3.role(),
+        Role::Candidate,
+        "node 3 promotes on pre-vote quorum"
+    );
 }

@@ -9,6 +9,8 @@ use trembita_proto::{
 use crate::{LeaseId, WorkerId};
 
 use super::super::QueueService;
+use super::super::replication::rollback_local_ops;
+use super::super::wire::shard_stream_name;
 
 impl QueueService {
     #[allow(clippy::too_many_lines)]
@@ -28,6 +30,13 @@ impl QueueService {
                 {
                     Ok((jobs, reps)) => {
                         if let Err(e) = self.replicate_sharded(&request.stream, &reps).await {
+                            for rep in &reps {
+                                if let Ok(queue) = self
+                                    .local_stream(&shard_stream_name(&request.stream, rep.shard))
+                                {
+                                    rollback_local_ops(queue.as_ref(), &rep.ops).await;
+                                }
+                            }
                             return QueueLeaseReply {
                                 jobs: Vec::new(),
                                 error: Some(e),
@@ -93,6 +102,7 @@ impl QueueService {
                     match lease_result {
                         Ok((jobs, ops)) => {
                             if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
+                                rollback_local_ops(queue.as_ref(), &ops).await;
                                 return QueueLeaseReply {
                                     jobs: Vec::new(),
                                     error: Some(e),
