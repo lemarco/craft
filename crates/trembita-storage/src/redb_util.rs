@@ -25,6 +25,14 @@ pub fn error_string(e: impl Display) -> String {
     e.to_string()
 }
 
+/// Open or create a redb database (single-threaded / sync adapter pattern).
+///
+/// # Errors
+/// Returns the backend error string when `Database::create` fails.
+pub fn open_database(path: impl AsRef<Path>) -> Result<Database, String> {
+    Database::create(path.as_ref()).map_err(error_string)
+}
+
 /// Open or create a redb database wrapped in [`Mutex`] (async adapter pattern).
 ///
 /// # Errors

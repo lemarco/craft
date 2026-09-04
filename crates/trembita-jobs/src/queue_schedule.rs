@@ -2,12 +2,13 @@
 
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use chrono::{TimeZone, Utc};
 use cron::Schedule;
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use trembita_proto::{QueueReplicateOp, RecurringScheduleWire, decode, encode};
+use trembita_storage::now_ms;
 
 use super::redb_queue::RedbJobQueue;
 use super::{EnqueueOptions, JobQueue, QueueError, QueueReplicationOps};
@@ -23,16 +24,6 @@ fn backend(e: impl std::fmt::Display) -> QueueError {
 
 fn codec(e: impl std::fmt::Display) -> QueueError {
     QueueError::Codec(e.to_string())
-}
-
-fn now_ms() -> u64 {
-    u64::try_from(
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis(),
-    )
-    .unwrap_or(u64::MAX)
 }
 
 /// User-facing recurring job registration.

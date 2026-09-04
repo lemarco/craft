@@ -7,8 +7,9 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use redb::{Database, ReadableDatabase, ReadableTable, ReadableTableMetadata, TableDefinition};
+use redb::{ReadableDatabase, ReadableTable, ReadableTableMetadata, TableDefinition};
 use trembita_proto::{decode, encode};
+use trembita_storage::{error_string, open_mutex_database};
 
 use super::external_backlog::BacklogSettleEvent;
 
@@ -33,11 +34,11 @@ pub enum BacklogSettleOutboxError {
 }
 
 fn backend(e: impl std::fmt::Display) -> BacklogSettleOutboxError {
-    BacklogSettleOutboxError::Backend(e.to_string())
+    BacklogSettleOutboxError::Backend(error_string(e))
 }
 
 fn codec(e: impl std::fmt::Display) -> BacklogSettleOutboxError {
-    BacklogSettleOutboxError::Codec(e.to_string())
+    BacklogSettleOutboxError::Codec(error_string(e))
 }
 
 /// Tunables for [`crate::run_backlog_settle_drainer`].
@@ -194,7 +195,7 @@ impl BacklogSettleOutbox for InMemoryBacklogSettleOutbox {
 /// Crash-safe settle outbox in `{data_dir}/backlog-settle-outbox.redb`.
 #[derive(Debug)]
 pub struct RedbBacklogSettleOutbox {
-    db: Mutex<Database>,
+    db: Mutex<redb::Database>,
 }
 
 impl RedbBacklogSettleOutbox {
@@ -203,7 +204,7 @@ impl RedbBacklogSettleOutbox {
     /// # Errors
     /// Returns [`BacklogSettleOutboxError::Backend`] when the file cannot be opened.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, BacklogSettleOutboxError> {
-        let db = Mutex::new(Database::create(path).map_err(backend)?);
+        let db = open_mutex_database(path).map_err(backend)?;
         let outbox = Self { db };
         outbox.bootstrap()?;
         Ok(outbox)

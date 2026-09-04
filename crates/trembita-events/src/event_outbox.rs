@@ -7,9 +7,10 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use redb::{Database, ReadableDatabase, TableDefinition};
+use redb::{ReadableDatabase, TableDefinition};
 use trembita_proto::BoxFuture;
 use trembita_runtime::{ClusterState, LeaderSession};
+use trembita_storage::{error_string, open_database};
 
 use crate::{EventTopic, TopicError};
 
@@ -24,7 +25,7 @@ pub enum EventOutboxError {
 }
 
 fn backend(e: impl std::fmt::Display) -> EventOutboxError {
-    EventOutboxError::Backend(e.to_string())
+    EventOutboxError::Backend(error_string(e))
 }
 
 /// One row from the application outbox store.
@@ -160,7 +161,7 @@ impl EventOutboxCursor for InMemoryEventOutboxCursor {
 
 /// Crash-safe cursor checkpoint at `{data_dir}/event-outbox-cursors.redb`.
 pub struct RedbEventOutboxCursor {
-    db: Database,
+    db: redb::Database,
 }
 
 impl RedbEventOutboxCursor {
@@ -169,7 +170,7 @@ impl RedbEventOutboxCursor {
     /// # Errors
     /// Returns [`EventOutboxError::Backend`] when the file cannot be opened.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, EventOutboxError> {
-        let db = Database::create(path.as_ref()).map_err(backend)?;
+        let db = open_database(path).map_err(backend)?;
         let store = Self { db };
         store.bootstrap()?;
         Ok(store)

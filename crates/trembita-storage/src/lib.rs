@@ -41,6 +41,6 @@ pub use migration::{
 pub use namespaced::{GroupRedbLayout, group_redb_path};
 pub use null::NullStorage;
 pub use redb_store::RedbStorage;
-pub use redb_util::{error_string, now_ms, open_mutex_database};
+pub use redb_util::{error_string, now_ms, open_database, open_mutex_database};
 pub use traits::{HardStateStore, LogStore, RaftStorage, SnapshotStore};
 pub use types::{HardState, Snapshot, SnapshotMeta};
