@@ -1,7 +1,5 @@
-use std::time::Duration;
-
 use super::errors::{ConfigCodecError, MessageDecodeError, MigrationError};
-use super::reply::{RpcReplyPort, WireReplyPort};
+use super::reply::WireReplyPort;
 
 /// A user-defined actor: state built from a `Config`, driven by a serial
 /// mailbox of `Message`s.

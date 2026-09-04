@@ -1,8 +1,5 @@
 use std::time::Duration;
 
-use super::ASK_TIMEOUT;
-use super::actor::UserActor;
-
 /// Why a spawn failed.
 #[derive(Debug, thiserror::Error)]
 pub enum SpawnError {

@@ -45,6 +45,6 @@ pub use handle::NodeHandle;
 pub use service::NodeService;
 pub use spawn::spawn;
 pub use types::{
-    CatalogAppliedFn, CatalogSnapshotFn, ClientError, NodeStatus, QueueAutoscalePolicyAppliedFn,
-    RuntimeConfig, SagaJournalAppliedFn, TwoPhaseGcAbortedFn, TwoPhaseJournalAppliedFn,
+    ClientError, NodeStatus, QueueAutoscalePolicyAppliedFn, RuntimeConfig, SagaJournalAppliedFn,
+    TwoPhaseGcAbortedFn, TwoPhaseJournalAppliedFn,
 };

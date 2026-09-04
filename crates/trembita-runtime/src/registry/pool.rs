@@ -4,15 +4,12 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
-use trembita_net::transport::BoxFuture;
 
 use super::actor::UserActor;
 use super::errors::{
-    ConfigCodecError, DeliverError, DrainOutcome, MessageDecodeError, MigrationError,
-    RestartPolicy, SendError, SnapshotError, SpawnError,
+    DeliverError, DrainOutcome, MigrationError, RestartPolicy, SendError, SnapshotError, SpawnError,
 };
-use super::observer::{ComputeTokenHook, ObserverHook};
-use super::reply::{RpcReplyPort, WireReply, WireReplyPort};
+use super::observer::ObserverHook;
 
 /// An item on an instance's serial mailbox: either a user message or a control
 /// request to capture the actor's migration snapshot (E12).

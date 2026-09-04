@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use tokio::sync::oneshot;
 
 /// A one-shot reply channel embedded in a message to implement "ask"

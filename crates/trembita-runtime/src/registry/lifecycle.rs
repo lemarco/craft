@@ -1,14 +1,11 @@
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use tokio::sync::oneshot;
 use trembita_net::transport::BoxFuture;
 
 use super::actor::UserActor;
-use super::errors::{
-    DeliverError, DrainOutcome, MessageDecodeError, MigrationError, SnapshotError,
-};
+use super::errors::{DeliverError, DrainOutcome, SnapshotError};
 use super::pool::PoolInner;
 use super::reply::{WireReply, WireReplyPort};
 

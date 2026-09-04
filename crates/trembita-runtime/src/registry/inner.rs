@@ -1,18 +1,14 @@
 use std::any::Any;
 use std::collections::HashMap;
-use std::hash::Hash;
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use tokio::sync::oneshot;
-use trembita_net::transport::BoxFuture;
 use trembita_proto::{ActorId, ActorRegistration, ActorTypeId, NodeId};
 
 use super::actor::UserActor;
 use super::errors::{
-    AskError, ConfigCodecError, DeliverError, DrainOutcome, MessageDecodeError, MigrationError,
-    RestartPolicy, ScaleError, SendError, SnapshotError, SpawnError, StopError,
+    DeliverError, DrainOutcome, RestartPolicy, ScaleError, SnapshotError, SpawnError, StopError,
 };
 use super::lifecycle::{GroupLifecycle, WireIngress};
 use super::observer::{
@@ -21,8 +17,7 @@ use super::observer::{
 };
 use super::pool::PoolInner;
 use super::refs::{ActorRef, PoolRef};
-use super::reply::{WireReply, WireReplyPort};
-use super::{ASK_TIMEOUT, DEFAULT_DRAIN_TIMEOUT};
+use super::reply::WireReply;
 
 struct GroupEntry {
     /// `Arc<PoolInner<A>>` erased for typed downcast in `pool`/`get`/`scale`.
