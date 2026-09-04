@@ -835,7 +835,8 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
 
         if let Some(outbox) = backlog_settle_outbox.as_ref() {
             let state = Arc::clone(&facts) as Arc<dyn ClusterState>;
-            let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            leader_loop_stops.push(stop_tx);
             let outbox = Arc::clone(outbox);
             tasks.push(tokio::spawn(async move {
                 run_backlog_settle_drainer(
@@ -861,7 +862,8 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
             let stream = feed.stream.clone();
             let opts = feed.opts.clone();
             let settle_outbox = backlog_settle_outbox.clone();
-            let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            leader_loop_stops.push(stop_tx);
             tasks.push(tokio::spawn(async move {
                 run_backlog_feeder(stream, local, backlog, state, opts, settle_outbox, stop_rx)
                     .await;
@@ -870,7 +872,8 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
 
         if messaging.has_mailbox_spool() {
             let messaging = Arc::clone(&messaging);
-            let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            leader_loop_stops.push(stop_tx);
             tasks.push(tokio::spawn(async move {
                 run_mailbox_spool_drainer(messaging, Duration::from_millis(500), stop_rx).await;
             }));
@@ -880,7 +883,8 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
             && service.has_schedule_sources()
         {
             let service = Arc::clone(service);
-            let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            leader_loop_stops.push(stop_tx);
             tasks.push(tokio::spawn(async move {
                 run_queue_schedule_ticker(service, Duration::from_secs(1), stop_rx).await;
             }));
@@ -924,7 +928,8 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
                 let topic_name = feed.topic.clone();
                 let opts = feed.opts.clone();
                 let cursor = Arc::clone(cursor);
-                let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+                let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+                leader_loop_stops.push(stop_tx);
                 tasks.push(tokio::spawn(async move {
                     run_event_outbox_drainer(
                         topic_name, topic, source, cursor, state, opts, stop_rx,
@@ -936,7 +941,8 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
 
         if let Some(service) = store_service.as_ref() {
             let service = Arc::clone(service);
-            let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            leader_loop_stops.push(stop_tx);
             tasks.push(tokio::spawn(async move {
                 run_actor_store_gc_ticker(
                     service,

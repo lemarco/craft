@@ -10,8 +10,12 @@ use trembita::{
     BacklogFeedOpts, ConsumerOpts, ExternalBacklog, JobOpts, TrembitaApp, TrembitaConfigure,
     consumer,
 };
-use trembita_jobs::{BacklogItem, EnqueueOptions, InMemoryExternalBacklog, Settlement};
-use trembita_test_support::boot_local_app;
+use trembita_jobs::{
+    BacklogItem, ConsumerCount, EnqueueOptions, InMemoryExternalBacklog, Settlement,
+};
+use trembita_test_support::{
+    advance, boot_local_app, eventually_async_default, wait_for_trembita_app_leader,
+};
 
 static PROCESSED: AtomicUsize = AtomicUsize::new(0);
 
@@ -23,7 +27,7 @@ async fn import_row(payload: &[u8]) -> Result<(), ()> {
     Ok(())
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn external_backlog_feeds_consumer_and_settles() {
     PROCESSED.store(0, Ordering::SeqCst);
     let backlog = Arc::new(InMemoryExternalBacklog::new());
@@ -55,9 +59,9 @@ async fn external_backlog_feeds_consumer_and_settles() {
                         Arc::clone(&backlog) as Arc<dyn ExternalBacklog>,
                         BacklogFeedOpts::default()
                             .pending_target_per_consumer(1)
-                            .poll(Duration::from_millis(20)),
-                    )
-                    .consumer(&ImportRowConsumer)])
+                            .poll(Duration::from_millis(20))
+                            .consumer_instances(ConsumerCount::Fixed(1)),
+                    )])
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     ..TrembitaConfigure::default()
@@ -67,13 +71,8 @@ async fn external_backlog_feeds_consumer_and_settles() {
     )
     .await;
 
-    for _ in 0..200 {
-        if app.is_leader().await {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-    assert!(app.is_leader().await);
+    wait_for_trembita_app_leader(&app).await;
+    advance(Duration::from_millis(200)).await;
 
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     let consumer = app.spawn_consumer(
@@ -84,21 +83,17 @@ async fn external_backlog_feeds_consumer_and_settles() {
         stop_rx,
     );
 
-    for i in 0..100 {
-        if PROCESSED.load(Ordering::SeqCst) >= 1 {
-            break;
-        }
-        if i == 99 {
-            let metrics = app.job_queue("imports").unwrap().metrics().await;
-            let claim_probe = backlog.claim(1).await;
-            eprintln!(
-                "DEBUG metrics={metrics:?} depth={:?} claim_probe={claim_probe:?} settled={:?}",
-                backlog.depth().await,
-                backlog.settled()
-            );
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    eventually_async_default("external backlog row processed", || async {
+        PROCESSED.load(Ordering::SeqCst) >= 1
+    })
+    .await;
+
+    eventually_async_default("external backlog settled", || async {
+        backlog.depth().await.is_ok_and(|d| d == 0)
+            && backlog.settled().contains_key(b"row-1".as_slice())
+    })
+    .await;
+
     stop_tx.send(true).ok();
     let _ = consumer.await;
 
@@ -112,4 +107,7 @@ async fn external_backlog_feeds_consumer_and_settles() {
     app.enqueue_opts("imports", b"direct", EnqueueOptions::dedup_key("direct-1"))
         .await
         .unwrap();
+
+    app.shutdown();
+    let _ = std::fs::remove_dir_all(base);
 }
