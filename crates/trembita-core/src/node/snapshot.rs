@@ -1,7 +1,10 @@
+use super::prelude::*;
+use super::{RaftNode, StoredSnapshot};
+
 impl RaftNode {
     // ---- InstallSnapshot (Raft §7) ---------------------------------------
 
-    fn handle_install_snapshot(&mut self, from: NodeId, is: InstallSnapshot) {
+    pub(in crate::node) fn handle_install_snapshot(&mut self, from: NodeId, is: InstallSnapshot) {
         if is.term < self.current_term {
             self.reply_snapshot(from);
             return;
@@ -52,7 +55,11 @@ impl RaftNode {
             .push(Output::Reply(to, RaftRpcReply::InstallSnapshot(reply)));
     }
 
-    fn handle_snapshot_reply(&mut self, from: NodeId, reply: &InstallSnapshotReply) {
+    pub(in crate::node) fn handle_snapshot_reply(
+        &mut self,
+        from: NodeId,
+        reply: &InstallSnapshotReply,
+    ) {
         if self.role != Role::Leader || reply.term != self.current_term {
             return;
         }

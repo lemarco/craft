@@ -1,7 +1,10 @@
+use super::RaftNode;
+use super::prelude::*;
+
 impl RaftNode {
     // ---- RequestVote -----------------------------------------------------
 
-    fn handle_request_vote(&mut self, from: NodeId, rv: &RequestVote) {
+    pub(in crate::node) fn handle_request_vote(&mut self, from: NodeId, rv: &RequestVote) {
         if !self.is_voter(self.id) {
             self.reply_vote(from, false, rv.pre_vote);
             return;
@@ -58,7 +61,7 @@ impl RaftNode {
             .push(Output::Reply(to, RaftRpcReply::RequestVote(reply)));
     }
 
-    fn handle_vote_reply(&mut self, from: NodeId, reply: &RequestVoteReply) {
+    pub(in crate::node) fn handle_vote_reply(&mut self, from: NodeId, reply: &RequestVoteReply) {
         if reply.pre_vote {
             if self.role == Role::PreCandidate && reply.vote_granted {
                 self.votes.insert(from);

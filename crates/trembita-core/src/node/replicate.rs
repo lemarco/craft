@@ -1,7 +1,10 @@
+use super::RaftNode;
+use super::prelude::*;
+
 impl RaftNode {
     // ---- Replication helpers --------------------------------------------
 
-    fn broadcast_append(&mut self) {
+    pub(in crate::node) fn broadcast_append(&mut self) {
         // Each broadcast opens a new heartbeat round; acks echoing this round
         // (or later) confirm leadership for any read registered before it.
         self.heartbeat_round = self.heartbeat_round.next();
@@ -18,7 +21,7 @@ impl RaftNode {
         }
     }
 
-    fn send_append(&mut self, peer: NodeId) {
+    pub(in crate::node) fn send_append(&mut self, peer: NodeId) {
         let ni = self
             .next_index
             .get(&peer)
@@ -65,7 +68,7 @@ impl RaftNode {
             .push(Output::Send(peer, RaftRpc::InstallSnapshot(is)));
     }
 
-    fn maybe_advance_commit(&mut self) {
+    pub(in crate::node) fn maybe_advance_commit(&mut self) {
         if self.role != Role::Leader {
             return;
         }
@@ -97,7 +100,7 @@ impl RaftNode {
         }
     }
 
-    fn apply_committed(&mut self) {
+    pub(in crate::node) fn apply_committed(&mut self) {
         while self.last_applied < self.commit_index {
             let next = self.last_applied.next();
             match self.log.get(next).map(|e| &e.payload) {

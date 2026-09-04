@@ -1,9 +1,12 @@
+use super::RaftNode;
+use super::prelude::*;
+
 impl RaftNode {
     // ---- ReadIndex (read-consistency) --------------------------------------------
 
     /// Record that `from` acked a heartbeat at `round`, confirming leadership
     /// for every pending read registered no later than that round.
-    fn confirm_reads(&mut self, from: NodeId, round: Round) {
+    pub(in crate::node) fn confirm_reads(&mut self, from: NodeId, round: Round) {
         for r in &mut self.pending_reads {
             if round >= r.round {
                 r.acks.insert(from);
@@ -15,7 +18,7 @@ impl RaftNode {
     /// read's round) and applied (`last_applied >= index`). A read is only
     /// served once the leader has committed an entry of its current term, so
     /// its commit index is authoritative.
-    fn try_complete_reads(&mut self) {
+    pub(in crate::node) fn try_complete_reads(&mut self) {
         if self.role != Role::Leader || self.pending_reads.is_empty() {
             return;
         }
@@ -38,7 +41,7 @@ impl RaftNode {
         }
     }
 
-    fn fail_pending_reads(&mut self) {
+    pub(in crate::node) fn fail_pending_reads(&mut self) {
         for r in std::mem::take(&mut self.pending_reads) {
             self.outbox.push(Output::ReadFailed { id: r.id });
         }
@@ -57,7 +60,7 @@ impl RaftNode {
     /// Extend the leader lease if a quorum has acked the current lease round.
     /// Measured from when the round was broadcast (`lease_round_clock`), so the
     /// lease is always conservative relative to when followers last heard us.
-    fn maybe_extend_lease(&mut self) {
+    pub(in crate::node) fn maybe_extend_lease(&mut self) {
         if self.role != Role::Leader {
             return;
         }
@@ -197,7 +200,7 @@ impl RaftNode {
         }
     }
 
-    fn update_liveness(&mut self) {
+    pub(in crate::node) fn update_liveness(&mut self) {
         if self.role != Role::Leader {
             return;
         }

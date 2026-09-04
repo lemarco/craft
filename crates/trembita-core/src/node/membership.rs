@@ -1,9 +1,12 @@
+use super::RaftNode;
+use super::prelude::*;
+
 impl RaftNode {
     // ---- Membership finalization (membership-early) ------------------------------
 
     /// Once a joint `C_old,new` entry commits, the leader appends the final
     /// `C_new` to leave the transitional configuration.
-    fn maybe_finalize_membership(&mut self) {
+    pub(in crate::node) fn maybe_finalize_membership(&mut self) {
         if self.role != Role::Leader {
             return;
         }
@@ -21,7 +24,7 @@ impl RaftNode {
     }
 
     /// If a committed, non-joint configuration excludes this leader, step down.
-    fn maybe_step_down_if_removed(&mut self) {
+    pub(in crate::node) fn maybe_step_down_if_removed(&mut self) {
         if self.role != Role::Leader {
             return;
         }

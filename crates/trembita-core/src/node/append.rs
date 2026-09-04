@@ -1,7 +1,10 @@
+use super::RaftNode;
+use super::prelude::*;
+
 impl RaftNode {
     // ---- AppendEntries ---------------------------------------------------
 
-    fn handle_append_entries(&mut self, from: NodeId, ae: &AppendEntries) {
+    pub(in crate::node) fn handle_append_entries(&mut self, from: NodeId, ae: &AppendEntries) {
         if ae.term < self.current_term {
             self.reply_append(from, false, None, None, ae.round);
             return;
@@ -82,7 +85,11 @@ impl RaftNode {
             .push(Output::Reply(to, RaftRpcReply::AppendEntries(reply)));
     }
 
-    fn handle_append_reply(&mut self, from: NodeId, reply: &AppendEntriesReply) {
+    pub(in crate::node) fn handle_append_reply(
+        &mut self,
+        from: NodeId,
+        reply: &AppendEntriesReply,
+    ) {
         if self.role != Role::Leader || reply.term != self.current_term {
             return;
         }

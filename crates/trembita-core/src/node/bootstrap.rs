@@ -1,3 +1,6 @@
+use super::prelude::*;
+use super::{RaftNode, StoredSnapshot};
+
 impl RaftNode {
     /// Create a node whose initial voting set is `members` (including `id`).
     #[must_use]

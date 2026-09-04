@@ -1,3 +1,6 @@
+use super::RaftNode;
+use super::prelude::*;
+
 impl RaftNode {
     // ---- Accessors -------------------------------------------------------
 

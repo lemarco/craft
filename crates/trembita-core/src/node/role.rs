@@ -1,7 +1,10 @@
+use super::RaftNode;
+use super::prelude::*;
+
 impl RaftNode {
     // ---- Role transitions ------------------------------------------------
 
-    fn set_role(&mut self, role: Role) {
+    pub(in crate::node) fn set_role(&mut self, role: Role) {
         if self.role != role {
             tracing::debug!(
                 target: "trembita::raft",
@@ -15,7 +18,7 @@ impl RaftNode {
         }
     }
 
-    fn become_follower(&mut self, term: Term) {
+    pub(in crate::node) fn become_follower(&mut self, term: Term) {
         if term > self.current_term {
             self.current_term = term;
             self.voted_for = None;
@@ -32,7 +35,7 @@ impl RaftNode {
     /// Pre-vote round: probe whether a real election could succeed *without*
     /// bumping our term, so an isolated/removed node cannot disrupt a live
     /// leader by forcing term inflation (Raft thesis §9.6).
-    fn start_pre_election(&mut self) {
+    pub(in crate::node) fn start_pre_election(&mut self) {
         if !self.is_voter(self.id) {
             self.reset_election_timer();
             return;
@@ -57,7 +60,7 @@ impl RaftNode {
         self.send_vote_requests(&rv);
     }
 
-    fn start_real_election(&mut self) {
+    pub(in crate::node) fn start_real_election(&mut self) {
         if !self.is_voter(self.id) {
             self.reset_election_timer();
             return;
@@ -91,7 +94,7 @@ impl RaftNode {
         }
     }
 
-    fn become_leader(&mut self) {
+    pub(in crate::node) fn become_leader(&mut self) {
         self.set_role(Role::Leader);
         self.leader_id = Some(self.id);
         // A fresh term starts with no lease; it is earned once a heartbeat round
@@ -115,7 +118,7 @@ impl RaftNode {
         self.maybe_advance_commit();
     }
 
-    fn reset_election_timer(&mut self) {
+    pub(in crate::node) fn reset_election_timer(&mut self) {
         self.elapsed = 0;
         self.election_timeout = self.rng.range(
             self.config.election_timeout_min,
