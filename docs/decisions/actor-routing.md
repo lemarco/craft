@@ -27,11 +27,11 @@ Obtain via `ClusterRef::session_keyed` or `ActorSession::new`; deliver with
 
 ### Per-actor drain override
 
-Cluster default remains **60s** ([`DEFAULT_DRAIN_TIMEOUT`](../../crates/trembita-runtime/src/registry.rs)).
+Cluster default remains **60s** ([`DEFAULT_DRAIN_TIMEOUT`](../../crates/trembita-runtime/src/registry/mod.rs)).
 [`ActorRegistry::set_group_drain_timeout`] overrides per group; [`stop_graceful`]
 uses override when set, else the caller's default (facade:
 [`TrembitaCluster::drain_timeout`](../../crates/trembita/src/cluster.rs),
-[`TrembitaClusterBuilder::drain_timeout`](../../crates/trembita/src/builder.rs),
+[`TrembitaClusterBuilder::drain_timeout`](../../crates/trembita/src/builder/cluster/mod.rs),
 `TREMBITA_DRAIN_TIMEOUT` in `trembita-node`).
 
 ### Linearizable ask (optional)

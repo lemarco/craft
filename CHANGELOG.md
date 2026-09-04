@@ -58,19 +58,19 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ### Fixed
 
-- **Env merge precedence** — [`merge_app_config`](crates/trembita/src/builder.rs) applies env only for unset
-  builder fields; code-set [`.members`](crates/trembita/src/app.rs), [`.join_as`](crates/trembita/src/app.rs),
-  [`.configure({ node_id })`](crates/trembita/src/configure.rs), etc. win over `TREMBITA_*` on [`.run`](crates/trembita/src/app.rs).
-- **Dynamic join role** — joiners now send the role from [`.join_as`](crates/trembita/src/builder.rs) /
+- **Env merge precedence** — [`merge_app_config`](crates/trembita/src/builder/cluster/mod.rs) applies env only for unset
+  builder fields; code-set [`.members`](crates/trembita/src/app/mod.rs), [`.join_as`](crates/trembita/src/app/mod.rs),
+  [`.configure({ node_id })`](crates/trembita/src/configure.rs), etc. win over `TREMBITA_*` on [`.run`](crates/trembita/src/app/mod.rs).
+- **Dynamic join role** — joiners now send the role from [`.join_as`](crates/trembita/src/builder/cluster/mod.rs) /
   `TREMBITA_JOIN_ROLE` instead of always requesting `JoinRole::Learner`; seed-side
-  [`allow_voter_join`](crates/trembita/src/app.rs) / `TREMBITA_ALLOW_VOTER_JOIN` is wired from env.
+  [`allow_voter_join`](crates/trembita/src/app/mod.rs) / `TREMBITA_ALLOW_VOTER_JOIN` is wired from env.
 
 ### Added
 
-- **Product builder parity** — [`TrembitaAppBuilder::allow_join`](crates/trembita/src/app.rs),
-  [`allow_leave`](crates/trembita/src/app.rs), [`join`](crates/trembita/src/app.rs) /
-  [`join_seeds`](crates/trembita/src/app.rs), [`cert_watch`](crates/trembita/src/app.rs),
-  [`voters(n)`](crates/trembita/src/app.rs); `TREMBITA_GATEWAY_INTROSPECT`, `TREMBITA_CERT_WATCH_SECS`,
+- **Product builder parity** — [`TrembitaAppBuilder::allow_join`](crates/trembita/src/app/mod.rs),
+  [`allow_leave`](crates/trembita/src/app/mod.rs), [`join`](crates/trembita/src/app/mod.rs) /
+  [`join_seeds`](crates/trembita/src/app/mod.rs), [`cert_watch`](crates/trembita/src/app/mod.rs),
+  [`voters(n)`](crates/trembita/src/app/mod.rs); `TREMBITA_GATEWAY_INTROSPECT`, `TREMBITA_CERT_WATCH_SECS`,
   `TREMBITA_VOTER_REPLACEMENT*`, and `TREMBITA_ADMIN` opt-in (disabled unless set).
 - **Join / TLS diagnostics** — debug pre-vote rejections (`trembita::raft`) and warn on QUIC handshake
   failures (`trembita::net`).
@@ -83,17 +83,17 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ### Fixed
 
-- **`TrembitaApp` env node id** — [`merge_app_config`](crates/trembita/src/builder.rs) now applies
+- **`TrembitaApp` env node id** — [`merge_app_config`](crates/trembita/src/builder/cluster/mod.rs) now applies
   `AppConfig::node_id`, so `TREMBITA_NODE_ID` and joiner assignment (`NodeId(0)`) work without
   `.configure(TrembitaConfigure { node_id: … })`.
 
 ### Added
 
-- **Product cluster membership API** — [`TrembitaAppBuilder::members`](crates/trembita/src/app.rs),
-  [`allow_voter_join`](crates/trembita/src/app.rs),
-  [`voter_replacement`](crates/trembita/src/app.rs),
-  [`voter_replacement_grace_ticks`](crates/trembita/src/app.rs), and
-  [`on_leader`](crates/trembita/src/app.rs) forward to the inner cluster builder.
+- **Product cluster membership API** — [`TrembitaAppBuilder::members`](crates/trembita/src/app/mod.rs),
+  [`allow_voter_join`](crates/trembita/src/app/mod.rs),
+  [`voter_replacement`](crates/trembita/src/app/mod.rs),
+  [`voter_replacement_grace_ticks`](crates/trembita/src/app/mod.rs), and
+  [`on_leader`](crates/trembita/src/app/mod.rs) forward to the inner cluster builder.
 
 ## [0.2.2] — 2026-09-03
 
@@ -101,20 +101,20 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 - **Leader task primitive** — [`LeaderSession`](crates/trembita-runtime/src/leader_task.rs),
   [`run_leader_loop`](crates/trembita-runtime/src/leader_task.rs), and
-  [`TrembitaClusterBuilder::on_leader`](crates/trembita/src/builder.rs) for periodic
+  [`TrembitaClusterBuilder::on_leader`](crates/trembita/src/builder/cluster/mod.rs) for periodic
   leader-only work with `first_in_term` ([`leader-task`](docs/decisions/leader-task.md));
   internal feeder, drainer, autoscaler, supervisor, schedule, GC, and topic loops migrated.
 
 - **`EventOutboxSource` port** — leader drainer from application transactional outbox into
   [`EventTopic`](crates/trembita-events/src/topic.rs)
   ([`event-outbox`](docs/decisions/event-outbox.md)); [`TopicOpts::outbox`](crates/trembita/src/topic_opts.rs),
-  [`.event_outbox_source()`](crates/trembita/src/app.rs), cursor checkpoint at
+  [`.event_outbox_source()`](crates/trembita/src/app/mod.rs), cursor checkpoint at
   `{data_dir}/event-outbox-cursors.redb`.
 
 - **`IntrospectApi` on product gateway** — mount read-only `/introspect/*` beside
   `JobsApi` / `ActorsApi` / `WorkflowsApi` with [`AuthFn`](crates/trembita-http/src/lib.rs)
   ([`introspect-api`](docs/decisions/introspect-api.md)); [`GatewayOpts::with_introspect_api`](crates/trembita/src/gateway/mod.rs),
-  [`TrembitaApp::introspect_observer`](crates/trembita/src/app.rs).
+  [`TrembitaApp::introspect_observer`](crates/trembita/src/app/mod.rs).
 
 ### Fixed
 
@@ -148,7 +148,7 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 - **`ConsumerOpts`** — `Clone` with optional idempotency config.
 - **Queue lease wire format** — `LeasedJob` carries `attempts` and `dedup_key`.
 - **Product API surface** — cluster types under `trembita::cluster` (not root re-exports);
-  [`TrembitaApp`](crates/trembita/src/app.rs) as the primary entry; cluster internals
+  [`TrembitaApp`](crates/trembita/src/app/mod.rs) as the primary entry; cluster internals
   `#[doc(hidden)]` on `TrembitaApp::cluster`, `into_cluster`, `TrembitaAppBuilder::inner_mut`.
 - **`GatewayOpts::new(addr)`** — listen address at construction; `.gateway(opts)` takes a single argument;
   `.routes` receives [`TrembitaGatewayState`](crates/trembita/src/gateway/mod.rs) (use
@@ -156,7 +156,7 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 - **Always-on cluster** — `RunOpts::default()` boots a QUIC member (seed or joiner) from `TREMBITA_*` env.
 - **Gateway security defaults** — built-in `/jobs/*`, `/actors/*`, `/workflows/*` disabled unless opted in.
 - **Root re-exports narrowed** — cluster/journal/queue internals under [`trembita::cluster`](crates/trembita/src/cluster.rs);
-  [`lib.rs`](crates/trembita/src/lib.rs) rustdoc centers on [`TrembitaApp`](crates/trembita/src/app.rs).
+  [`lib.rs`](crates/trembita/src/lib.rs) rustdoc centers on [`TrembitaApp`](crates/trembita/src/app/mod.rs).
 - **`trembita` facade** — `TrembitaCluster` + `TrembitaClusterBuilder`; `start_local` and `start_quic`.
 - **Consensus (`trembita-core`)** — pure Raft FSM: election, replication, membership, `ReadIndex` reads.
 - **Storage (`trembita-storage`)** — durable Raft log, hard state, snapshots.

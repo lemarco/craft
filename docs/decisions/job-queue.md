@@ -137,12 +137,12 @@ Wire routes (under `/raft/v1/queue/`):
 
 ### Priority and delayed jobs (v2)
 
-- [`EnqueueOptions`](../../crates/trembita-jobs/src/queue.rs): `priority` (higher first), `not_before_ms` / `EnqueueOptions::delayed`.
+- [`EnqueueOptions`](../../crates/trembita-jobs/src/queue/mod.rs): `priority` (higher first), `not_before_ms` / `EnqueueOptions::delayed`.
 - Wire: optional fields on `QueueEnqueueRequest`; replicated in `QueueReplicateOp::Enqueue`.
 
 ### Membership autoscale (v2)
 
-- [`MembershipAutoscalePolicy`](../../crates/trembita-jobs/src/queue_autoscale.rs) + [`job_queue_membership_autoscale`](../../crates/trembita/src/builder.rs): when `(pending + leased) / live_nodes` exceeds threshold and `live_nodes < max_nodes`, invoke user `join` hook (deploy VPS + dynamic join).
+- [`MembershipAutoscalePolicy`](../../crates/trembita-jobs/src/queue_autoscale.rs) + [`job_queue_membership_autoscale`](../../crates/trembita/src/builder/cluster/mod.rs): when `(pending + leased) / live_nodes` exceeds threshold and `live_nodes < max_nodes`, invoke user `join` hook (deploy VPS + dynamic join).
 - Complements worker [`AutoscalePolicy`](../../crates/trembita-jobs/src/queue_autoscale.rs) capped at `reachable_nodes`.
 
 ### Worker consumption model
@@ -167,7 +167,7 @@ TrembitaCluster::builder(node_id, machine)
     }, WorkerConfig { .. })
 ```
 
-Use [`job_queue_at`](../../crates/trembita/src/builder.rs) when the redb path is not under `data_dir`.
+Use [`job_queue_at`](../../crates/trembita/src/builder/cluster/mod.rs) when the redb path is not under `data_dir`.
 
 ### Queue-driven autoscale (leader)
 

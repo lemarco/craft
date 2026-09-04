@@ -10,8 +10,8 @@ Raft leadership is the cluster-wide **mutex** for side-effecting control-plane w
 
 The public API exposes a **snapshot**:
 
-- [`TrembitaCluster::is_leader`](../../crates/trembita/src/cluster_handle.rs)
-- [`ClusterState::is_leader`](../../crates/trembita-runtime/src/supervisor.rs) on [`ClusterFacts`](../../crates/trembita/src/cluster_handle.rs)
+- [`TrembitaCluster::is_leader`](../../crates/trembita/src/cluster_handle/mod.rs)
+- [`ClusterState::is_leader`](../../crates/trembita-runtime/src/supervisor.rs) on [`ClusterFacts`](../../crates/trembita/src/cluster_handle/mod.rs)
 
 There is **no primitive for “run this loop while I am leader”**. Every product feature that needs periodic leader work reimplements the same state machine:
 
@@ -24,7 +24,7 @@ There is **no primitive for “run this loop while I am leader”**. Every produ
 | Schedule ticker | [`run_queue_schedule_ticker`](../../crates/trembita-jobs/src/queue_schedule.rs) | in `QueueService` | `watch` | loop unaware of leadership |
 | Actor-store GC | [`run_actor_store_gc_ticker`](../../crates/trembita-actor-store/src/store_service.rs) | in `StoreService` | `watch` | same |
 | Supervisor reconcile | [`ClusterSupervisor::reconcile`](../../crates/trembita-runtime/src/supervisor.rs) | in method | none | + immediate call from facts-refresher |
-| Topic bootstrap / retention | inline in [`builder.rs`](../../crates/trembita/src/builder.rs) | in loop | none | `bootstrapped` flag — one-shot per process |
+| Topic bootstrap / retention | inline in [`builder.rs`](../../crates/trembita/src/builder/cluster/mod.rs) | in loop | none | `bootstrapped` flag — one-shot per process |
 | Upgrade coordinator | [`spawn_upgrade_coordinator`](../../crates/trembita/src/upgrade/coordinator.rs) | in `tick` | abort | leader vs local executor split |
 
 Leadership checks also appear on **RPC hot paths** (`QueueService`, `StoreService`, `runtime.rs`) — leader-local apply vs forward-to-leader. That is a related but separate helper (see [Out of scope](#out-of-scope)).
@@ -126,7 +126,7 @@ TrembitaClusterBuilder::on_leader(
 )
 ```
 
-Returns a task handle tracked in the cluster shutdown bundle (same as other background loops in [`builder.rs`](../../crates/trembita/src/builder.rs)).
+Returns a task handle tracked in the cluster shutdown bundle (same as other background loops in [`builder.rs`](../../crates/trembita/src/builder/cluster/mod.rs)).
 
 For apps holding `Arc<ClusterFacts>` / `Arc<dyn ClusterState>` directly:
 

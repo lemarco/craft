@@ -1,6 +1,6 @@
 # Getting started — product apps (no Redis)
 
-Quick path for **product teams** using [`TrembitaApp`](../crates/trembita/src/app.rs) — actors, jobs, and durable workflow keys on **embedded redb**, no Kubernetes, no mandatory Redis.
+Quick path for **product teams** using [`TrembitaApp`](../crates/trembita/src/app/mod.rs) — actors, jobs, and durable workflow keys on **embedded redb**, no Kubernetes, no mandatory Redis.
 
 **Scenarios:** [scenarios/README.md](scenarios/README.md) · **Showcases:** [examples/README.md](../examples/README.md) · **Backlog:** [backlog.md](backlog.md)
 
@@ -130,7 +130,7 @@ TrembitaApp::builder()
     .await?;
 ```
 
-Legacy [`.actors()`](../crates/trembita/src/app.rs) + [`ActorGroupOpts`](../crates/trembita/src/actor_group.rs) remain supported.
+Legacy [`.actors()`](../crates/trembita/src/app/mod.rs) + [`ActorGroupOpts`](../crates/trembita/src/actor_group.rs) remain supported.
 
 Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store_set`](../crates/trembita-actor-store/src/store_codec.rs) — backed by redb when `data_dir` is set.
 
@@ -164,7 +164,7 @@ TrembitaApp::builder()
 // POST /jobs/{stream} → 202 { "job_id": … }
 ```
 
-Lower-level [`.queue()`](../crates/trembita/src/app.rs) + [`.consumer()`](../crates/trembita/src/app.rs) remain available. See [trembita-http README](../crates/trembita-http/README.md) and [background-jobs](scenarios/background-jobs.md).
+Lower-level [`.queue()`](../crates/trembita/src/app/mod.rs) + [`.consumer()`](../crates/trembita/src/app/mod.rs) remain available. See [trembita-http README](../crates/trembita-http/README.md) and [background-jobs](scenarios/background-jobs.md).
 
 ## 7. Workflows (sagas)
 
@@ -240,13 +240,13 @@ Generates a `TrembitaApp` stub, docker-compose for 3-node local dev, and links t
 | Live dashboard | `.configure(TrembitaConfigure { admin_addr: Some(...), ..Default::default() })` or `TREMBITA_ADMIN` |
 | Queue / workflow panels | Dashboard polls `/introspect/queues` and `/introspect/sagas` |
 | Prometheus | Scrape `GET /metrics` (includes `trembita_queue_*`, `trembita_saga_*`) |
-| Push export | `.metrics_sink(Arc::new(my_sink))` on [`TrembitaAppBuilder`](../crates/trembita/src/app.rs) — see [`MetricsSink`](../crates/trembita-dashboard/src/metrics_sink.rs) |
+| Push export | `.metrics_sink(Arc::new(my_sink))` on [`TrembitaAppBuilder`](../crates/trembita/src/app/mod.rs) — see [`MetricsSink`](../crates/trembita-dashboard/src/metrics_sink.rs) |
 | Live events | `cluster.events().subscribe()` — forward [`TrembitaEvent`](../crates/trembita-dashboard/src/telemetry.rs) to your sink |
 | Production checklist | [ops/production-runbook.md](ops/production-runbook.md) |
 
 ## 11. Cluster APIs
 
-Most apps stay on `TrembitaApp`. For custom state machines, multi-Raft, or direct supervisor/queue access, use [`trembita::cluster`](../crates/trembita/src/cluster.rs) or the [`TrembitaApp`](../crates/trembita/src/app.rs) methods (`control`, `registry`, `supervisor`, …).
+Most apps stay on `TrembitaApp`. For custom state machines, multi-Raft, or direct supervisor/queue access, use [`trembita::cluster`](../crates/trembita/src/cluster.rs) or the [`TrembitaApp`](../crates/trembita/src/app/mod.rs) methods (`control`, `registry`, `supervisor`, …).
 
 | Need | Doc |
 |------|-----|

@@ -105,7 +105,7 @@ Disable: `.auto_workers([])` and manage manually.
 
 When a voter is permanently unreachable, the leader **replaces** it: remove the dead voter, promote the **lowest-id caught-up learner** (deterministic). Brief reboots do not trigger replacement — grace is `6 ×` the reachability silence window.
 
-Builder: `allow_voter_join(false)` (default), `voter_replacement(true)` (default). Wire: `JoinRole::Learner` (default on `/cluster/join`). Joiners request the role via [`join_as`](../../crates/trembita/src/builder.rs) / `TREMBITA_JOIN_ROLE`; the seed must opt in with `allow_voter_join` / `TREMBITA_ALLOW_VOTER_JOIN=1`.
+Builder: `allow_voter_join(false)` (default), `voter_replacement(true)` (default). Wire: `JoinRole::Learner` (default on `/cluster/join`). Joiners request the role via [`join_as`](../../crates/trembita/src/builder/cluster/mod.rs) / `TREMBITA_JOIN_ROLE`; the seed must opt in with `allow_voter_join` / `TREMBITA_ALLOW_VOTER_JOIN=1`.
 
 ## Supervisor — leader-only reconciliation
 

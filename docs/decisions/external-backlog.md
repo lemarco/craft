@@ -4,7 +4,7 @@
 
 ## Context
 
-The job queue ([`JobQueue`](../../crates/trembita-jobs/src/queue.rs)) is an **in-flight window**: durable lease/ack semantics, leader replication, autoscale hooks. Many teams already store the **authoritative backlog** in Postgres or MySQL (`status = pending`, business columns, operator dashboards).
+The job queue ([`JobQueue`](../../crates/trembita-jobs/src/queue/mod.rs)) is an **in-flight window**: durable lease/ack semantics, leader replication, autoscale hooks. Many teams already store the **authoritative backlog** in Postgres or MySQL (`status = pending`, business columns, operator dashboards).
 
 Today each such team reimplements the same glue:
 

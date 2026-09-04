@@ -77,5 +77,5 @@ Auth is **never** prescribed (no JWT crate, no cookie store in trembita).
 [`IntoResponse`]: https://docs.rs/axum/latest/axum/response/trait.IntoResponse.html
 [`spawn_gateway`]: ../../crates/trembita/src/gateway/mod.rs
 [`GatewayHandle`]: ../../crates/trembita/src/gateway/drain.rs
-[`ShutdownOpts::drain_gateway`]: ../../crates/trembita/src/app.rs
+[`ShutdownOpts::drain_gateway`]: ../../crates/trembita/src/app/mod.rs
 [`GatewayOpts::drain_timeout`]: ../../crates/trembita/src/gateway/mod.rs

@@ -23,7 +23,7 @@ All five compose on the same runtime. No separate job server, workflow server, o
 
 ### Positioning
 
-> **Trembita** — a **distributed coordination runtime**: cache hooks, job queue, actors, workflow machinery, cron. **Same [`TrembitaApp`](../../crates/trembita/src/app.rs) API** on one laptop or N VPSes. Domain data stays in **your** Postgres / services — trembita is not an application database. Cluster membership is **automatic** (seed + join); graceful shutdown drains actors and can leave the cluster. No Kubernetes. No mandatory Redis.
+> **Trembita** — a **distributed coordination runtime**: cache hooks, job queue, actors, workflow machinery, cron. **Same [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) API** on one laptop or N VPSes. Domain data stays in **your** Postgres / services — trembita is not an application database. Cluster membership is **automatic** (seed + join); graceful shutdown drains actors and can leave the cluster. No Kubernetes. No mandatory Redis.
 
 ### Coordination vs domain data
 
@@ -34,7 +34,7 @@ All five compose on the same runtime. No separate job server, workflow server, o
 | Saga / workflow **journal** | Long-running side effects via enqueue / HTTP / cast |
 | `ActorStateStore` (idempotency, step keys) | Mandatory Redis |
 
-Advanced teams may embed a custom [`StateMachine`](../../crates/trembita-core/src/lib.rs) via [`TrembitaCluster`](../../crates/trembita/src/cluster.rs) — that is **not** the default [`TrembitaApp`](../../crates/trembita/src/app.rs) product path.
+Advanced teams may embed a custom [`StateMachine`](../../crates/trembita-core/src/lib.rs) via [`TrembitaCluster`](../../crates/trembita/src/cluster.rs) — that is **not** the default [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) product path.
 
 ### Three messaging layers (product view)
 
@@ -69,7 +69,7 @@ See [workload-governor](workload-governor.md). Static role env vars (`TREMBITA_R
 
 ### Unified product surface (0.3.0+)
 
-[`TrembitaApp`](../../crates/trembita/src/app.rs) wraps the same runtime as `TrembitaClusterBuilder`:
+[`TrembitaApp`](../../crates/trembita/src/app/mod.rs) wraps the same runtime as `TrembitaClusterBuilder`:
 
 ```rust
 use std::time::Duration;
@@ -91,7 +91,7 @@ TrembitaApp::builder()
     .await?;
 ```
 
-Declarative [`.jobs()`](../../crates/trembita/src/job_opts.rs) registers queue + consumer (+ optional HTTP enqueue). [`.workers()`](../../crates/trembita/src/worker_opts.rs) registers actor groups with explicit [`WorkerScale`](../../crates/trembita/src/worker_opts.rs) (`Fixed` / `PerNode` / queue `Auto`). Legacy [`.actors()`](../../crates/trembita/src/app.rs) + [`ActorGroupOpts`](../../crates/trembita/src/actor_group.rs) remain supported ([examples/](../../examples/README.md)).
+Declarative [`.jobs()`](../../crates/trembita/src/job_opts.rs) registers queue + consumer (+ optional HTTP enqueue). [`.workers()`](../../crates/trembita/src/worker_opts.rs) registers actor groups with explicit [`WorkerScale`](../../crates/trembita/src/worker_opts.rs) (`Fixed` / `PerNode` / queue `Auto`). Legacy [`.actors()`](../../crates/trembita/src/app/mod.rs) + [`ActorGroupOpts`](../../crates/trembita/src/actor_group.rs) remain supported ([examples/](../../examples/README.md)).
 
 ### Scenario composition
 

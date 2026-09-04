@@ -65,7 +65,7 @@ TrembitaApp::builder()
     .await?;
 ```
 
-Lower-level [`.queue()`](../../crates/trembita/src/app.rs) + [`.consumer()`](../../crates/trembita/src/app.rs) remain available. Cluster-level autoscale, sharded streams, priority, dedup: see [background-jobs showcase](../../examples/background-jobs/) and [job-queue](../decisions/job-queue.md).
+Lower-level [`.queue()`](../../crates/trembita/src/app/mod.rs) + [`.consumer()`](../../crates/trembita/src/app/mod.rs) remain available. Cluster-level autoscale, sharded streams, priority, dedup: see [background-jobs showcase](../../examples/background-jobs/) and [job-queue](../decisions/job-queue.md).
 
 #### Dynamic schedules (`ScheduleSource`)
 
@@ -146,7 +146,7 @@ let worker = app.spawn_consumer(
 // … later: stop_tx.send(true)?; worker.await?;
 ```
 
-**Lower level:** [`run_queue_consumer`](../../crates/trembita-jobs/src/queue.rs) on `cluster.job_queue("stream")` when you need a custom loop. See [background-jobs showcase](../../examples/background-jobs/) or `./e2e/queue.sh` for QUIC failover.
+**Lower level:** [`run_queue_consumer`](../../crates/trembita-jobs/src/queue/mod.rs) on `cluster.job_queue("stream")` when you need a custom loop. See [background-jobs showcase](../../examples/background-jobs/) or `./e2e/queue.sh` for QUIC failover.
 
 **Idempotency:** use `EnqueueOptions::dedup_key` and/or store processed ids in your `StateMachine` or `ActorStateStore`.
 
@@ -233,8 +233,8 @@ node before the ack will charge again on redelivery unless you guard it.
 
 ### Lease tokens (`lease_id`)
 
-Each [`lease`](../../crates/trembita-jobs/src/queue.rs) assigns an opaque
-[`LeaseId`](../../crates/trembita-jobs/src/queue.rs) required for ack/nack/extend.
+Each [`lease`](../../crates/trembita-jobs/src/queue/mod.rs) assigns an opaque
+[`LeaseId`](../../crates/trembita-jobs/src/queue/mod.rs) required for ack/nack/extend.
 Within a stream the counter is **monotonic**: every new lease gets a strictly
 larger id, including after **leader failover** (the counter replicates via
 `QueueReplicateOp::Lease` with a `max()` bump on followers).
@@ -258,7 +258,7 @@ for that. Monotonicity is **per stream**, not global across streams or shards.
 | pending, leased, delayed | **held** — duplicate enqueue returns the same `JobId` |
 | ack (success) | **released** — job row removed; same key can enqueue a new job |
 | nack / reclaim (retries left) | **held** — same job, same `JobId` |
-| dead letter | **held** — duplicate enqueue still returns the dead-letter `JobId`; use [`requeue_dead_letter`](../../crates/trembita-jobs/src/queue.rs) or operator cleanup before re-submitting |
+| dead letter | **held** — duplicate enqueue still returns the dead-letter `JobId`; use [`requeue_dead_letter`](../../crates/trembita-jobs/src/queue/mod.rs) or operator cleanup before re-submitting |
 
 For [external backlog](#external-backlog-postgres--existing-work-table) the
 feeder enqueues with `dedup_key = item.key`. On successful ack the queue releases
@@ -310,7 +310,7 @@ Worked implementations:
 
 ### Knowing you are a redelivery
 
-A handler can take a second argument to receive [`JobContext`](../../crates/trembita-jobs/src/queue.rs):
+A handler can take a second argument to receive [`JobContext`](../../crates/trembita-jobs/src/queue/mod.rs):
 
 ```rust
 #[consumer("emails")]
@@ -328,7 +328,7 @@ the enqueue-time `dedup_key`. Single-argument handlers keep working unchanged.
 ### Long handlers — extend the lease
 
 Set a **short** stream lease (e.g. 60s via [`JobOpts::lease`](../../crates/trembita/src/job_opts.rs))
-and call [`JobContext::keep_alive`](../../crates/trembita-jobs/src/queue.rs) periodically from
+and call [`JobContext::keep_alive`](../../crates/trembita-jobs/src/queue/mod.rs) periodically from
 inside the handler. Each call resets visibility to the full stream lease duration, so
 another worker cannot reclaim the job while you are still working:
 
@@ -414,7 +414,7 @@ $ curl -s localhost:9080/introspect/queues | jq '.streams[]'
 ### Attempt ceilings
 
 `max_attempts` bounds redelivery. Per job it is an
-[`EnqueueOptions`](../../crates/trembita-jobs/src/queue.rs) field; per stream it is
+[`EnqueueOptions`](../../crates/trembita-jobs/src/queue/mod.rs) field; per stream it is
 a default, which is what HTTP enqueues and cron ticks get since they cannot pass
 per-job options:
 

@@ -57,7 +57,7 @@ Runtime behaviour ([`run_event_outbox_drainer`](../../crates/trembita-events/src
 ## Consequences
 
 - Event-driven apps stop copying leader-elected outbox drainers
-- Direct [`TrembitaApp::publish`](../../crates/trembita/src/app.rs) and outbox drainer can coexist on the same topic
+- Direct [`TrembitaApp::publish`](../../crates/trembita/src/app/mod.rs) and outbox drainer can coexist on the same topic
 - Cursor checkpoint is an optimization; source `mark_published` is the source of truth for unpublished rows
 
 ## Related

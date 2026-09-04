@@ -66,7 +66,7 @@ lefthook install
 ./e2e/chaos.sh    # partition + heal
 ```
 
-**Read next:** [docs/status.md](docs/status.md) → [docs/architecture.md](docs/architecture.md) → [crates/trembita/src/builder.rs](crates/trembita/src/builder.rs)
+**Read next:** [docs/status.md](docs/status.md) → [docs/architecture.md](docs/architecture.md) → [crates/trembita/src/builder/cluster/mod.rs](crates/trembita/src/builder/cluster/mod.rs)
 
 **`trembita-node` env:** `TREMBITA_NODE_ID`, `TREMBITA_LISTEN` (`:7443`), `TREMBITA_ADMIN` (`:8080`), `TREMBITA_PEERS`, `TREMBITA_JOIN_SEEDS`, `TREMBITA_DISCOVERY` — [docs/certs.md](docs/certs.md)
 

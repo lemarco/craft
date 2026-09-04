@@ -64,12 +64,12 @@ Details below ↓
 - **Durable mailbox spool** — redb outbox/inbox for cross-node `/actor/deliver` (`.durable_mailbox(true)` + `data_dir`)
 - **Durable actor workflow store** — `RedbActorStateStore` + voter replication; auto with `.data_dir()` ([actor-state-store](decisions/actor-state-store.md))
 - **Actor store TTL + GC** — per-key TTL on `set`/`set_with_ttl`; periodic leader GC ticker replicates expired-key deletes to voters
-- **Product API** — [`TrembitaApp`](../crates/trembita/src/app.rs), [getting-started.md](getting-started.md)
+- **Product API** — [`TrembitaApp`](../crates/trembita/src/app/mod.rs), [getting-started.md](getting-started.md)
 - Redis-backed `ActorStateStore` (`trembita-store-redis`); actor migration RPC
 
 **Job queue** ([job-queue](decisions/job-queue.md)): `RedbJobQueue`, batch enqueue/ack, prefetch, DLQ, cron, `ClusterJobQueue`, `#[trembita::consumer]`, autoscale; **`ExternalBacklog`** ([external-backlog](decisions/external-backlog.md), [`trembita-backlog-postgres`](../crates/trembita-backlog-postgres/)); **`ScheduleSource`** ([schedule-source](decisions/schedule-source.md)).
 
-**Event topics** ([event-topics](decisions/event-topics.md)): durable pub/sub, named subscriptions, voter replication; [`TopicOpts`](../crates/trembita/src/topic_opts.rs), [`.topics()`](../crates/trembita/src/app.rs); **`EventOutboxSource`** ([event-outbox](decisions/event-outbox.md)) for transactional outbox drain.
+**Event topics** ([event-topics](decisions/event-topics.md)): durable pub/sub, named subscriptions, voter replication; [`TopicOpts`](../crates/trembita/src/topic_opts.rs), [`.topics()`](../crates/trembita/src/app/mod.rs); **`EventOutboxSource`** ([event-outbox](decisions/event-outbox.md)) for transactional outbox drain.
 
 **Gateway & HTTP** ([`trembita-http`](../crates/trembita-http/README.md), [gateway-identity](decisions/gateway-identity.md)): separate listener, opt-in `/jobs/*`, `/actors/*`, `/workflows/*`, bearer auth, custom Axum/WebSocket, `HostRouter`.
 

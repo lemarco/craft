@@ -4,7 +4,7 @@
 
 ## Context
 
-Recurring jobs ([`RecurringJob`](../../crates/trembita-jobs/src/queue_schedule.rs)) were registered only at build time via [`.cron()`](../../crates/trembita/src/app.rs). Operators who store schedules in Postgres (admin UI toggles) had to reimplement the leader-only ticker, replication, and restart survival trembita already provides for job queues.
+Recurring jobs ([`RecurringJob`](../../crates/trembita-jobs/src/queue_schedule.rs)) were registered only at build time via [`.cron()`](../../crates/trembita/src/app/mod.rs). Operators who store schedules in Postgres (admin UI toggles) had to reimplement the leader-only ticker, replication, and restart survival trembita already provides for job queues.
 
 This mirrors the gap [`ExternalBacklog`](external-backlog.md) closed for job backlogs: **data assumed static config** instead of a port.
 
@@ -38,7 +38,7 @@ Runtime behaviour:
 - Apps with DB-backed schedules avoid bespoke leader-elected tickers
 - trembita does not depend on Postgres — adapters live in application code
 - Imperative `TrembitaApp::upsert_schedule` deferred; the port covers the “notify trembita after DB write” case via polling
-- Custom leader-only loops beyond schedules use [`TrembitaClusterBuilder::on_leader`](../../crates/trembita/src/builder.rs) / [`run_leader_loop`](../../crates/trembita-runtime/src/leader_task.rs) ([leader-task](leader-task.md))
+- Custom leader-only loops beyond schedules use [`TrembitaClusterBuilder::on_leader`](../../crates/trembita/src/builder/cluster/mod.rs) / [`run_leader_loop`](../../crates/trembita-runtime/src/leader_task.rs) ([leader-task](leader-task.md))
 
 ## Related
 

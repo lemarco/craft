@@ -161,7 +161,7 @@ TrembitaApp::builder()
     .await?;
 ```
 
-Legacy [`.actors()`](../../crates/trembita/src/app.rs) + [`ActorGroupOpts`](../../crates/trembita/src/actor_group.rs) remain supported.
+Legacy [`.actors()`](../../crates/trembita/src/app/mod.rs) + [`ActorGroupOpts`](../../crates/trembita/src/actor_group.rs) remain supported.
 
 See [examples/stateful-workers/](../../examples/stateful-workers/).
 

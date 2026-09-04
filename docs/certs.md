@@ -200,7 +200,7 @@ CN is free-form.
 ### Automatic (cert-automation)
 
 When `TREMBITA_NODE_CERT` / `TREMBITA_NODE_KEY` / `TREMBITA_CA_CERT` are set, `trembita-node`
-uses [`start_quic_pem`](../crates/trembita/src/builder.rs) and **polls** those files
+uses [`start_quic_pem`](../crates/trembita/src/builder/cluster/mod.rs) and **polls** those files
 every `TREMBITA_CERT_WATCH_SECS` (default **60**). When a renewer (`step ca renew`
 or `generate.sh`) rewrites the PEMs, trembita reloads TLS **without exiting**:
 

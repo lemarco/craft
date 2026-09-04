@@ -2,7 +2,7 @@
 
 Multi-step onboarding with compensators; journal in `group-meta.redb`.
 
-Uses [`TrembitaApp`](../../crates/trembita/src/app.rs) — same onboarding path as the other product showcases.
+Uses [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) — same onboarding path as the other product showcases.
 
 ## What you run
 

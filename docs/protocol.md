@@ -179,7 +179,7 @@ Content-Type: application/x-postcard
 
 Local reads use `ClusterActorStateStore::get` on the voter's redb file (no RPC).
 
-Types live in `trembita-proto` (`queue.rs`). Facade client: [`ClusterJobQueue`](../crates/trembita-jobs/src/queue_service.rs) via [`TrembitaCluster::job_queue`](../crates/trembita/src/cluster.rs).
+Types live in `trembita-proto` (`queue.rs`). Facade client: [`ClusterJobQueue`](../crates/trembita-jobs/src/queue_service/mod.rs) via [`TrembitaCluster::job_queue`](../crates/trembita/src/cluster.rs).
 
 ### Actor mailbox spool (durable delivery)
 
@@ -191,7 +191,7 @@ Optional write-ahead **`MailboxSpool`** (`RedbMailboxSpool` at `{data_dir}/mailb
 | **Inbox** | Envelope persisted before local mailbox enqueue; removed after accept |
 | **Recovery** | Background drainer + startup replay of pending rows |
 
-Enable via [`TrembitaClusterBuilder::durable_mailbox`](../crates/trembita/src/builder.rs)(`true`) with [`data_dir`](../crates/trembita/src/builder.rs).
+Enable via [`TrembitaClusterBuilder::durable_mailbox`](../crates/trembita/src/builder/cluster/mod.rs)(`true`) with [`data_dir`](../crates/trembita/src/builder/cluster/mod.rs).
 
 ## Connections
 

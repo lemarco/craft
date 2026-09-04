@@ -5,7 +5,7 @@ One page for choosing between trembita storage layers. See scenario guides for f
 | Data | Store | API | Durability | Example |
 |------|-------|-----|------------|---------|
 | **Authoritative business facts** (orders, balances, config you audit) | Raft state machine | `propose` / `query` | Replicated log | Order total, account balance |
-| **Async work backlog** (emails, exports, retries) | [`JobQueue`](../../crates/trembita-jobs/src/queue.rs) | `enqueue` / `lease` / `ack` | `queue-*.redb` | `POST /jobs/emails` → worker |
+| **Async work backlog** (emails, exports, retries) | [`JobQueue`](../../crates/trembita-jobs/src/queue/mod.rs) | `enqueue` / `lease` / `ack` | `queue-*.redb` | `POST /jobs/emails` → worker |
 | **Hot session / handler cache** (loss on crash OK) | Actor struct + [`ActorSession`](../../crates/trembita-runtime/src/session.rs) | `cast` / `ask` | In-memory | Chat history in RAM |
 | **Idempotency / step progress** (survive worker crash) | [`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs) | `get` / `set` / CAS | `actor-store.redb` (default) | "order-42 processed" marker |
 | **Multi-step workflow journal** | Meta-Raft saga journal | `run_saga` / `resume_saga` | Meta-Raft log | Onboarding saga steps |
