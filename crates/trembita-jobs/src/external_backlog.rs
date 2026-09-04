@@ -164,7 +164,7 @@ pub trait ExternalBacklog: Send + Sync {
     fn settle(&self, key: &[u8], outcome: Settlement) -> BoxFuture<'_, Result<(), BacklogError>>;
 
     /// Release in-flight claims from a prior leader epoch so a newly elected leader can
-    /// re-feed. Called on leadership acquire ([`LeaderGate::first_in_term`]).
+    /// re-feed. Called on leadership acquire ([`trembita_runtime::LeaderGate::first_in_term`]).
     ///
     /// Default: no-op. Postgres adapters typically reset `claimed` rows to `pending`.
     fn reclaim_abandoned_claims(&self) -> BoxFuture<'_, Result<u64, BacklogError>> {

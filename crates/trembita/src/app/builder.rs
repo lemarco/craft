@@ -312,7 +312,7 @@ impl TrembitaAppBuilder {
 
     /// Register workflow plans and runners for HTTP `/workflows/*` and [`TrembitaApp::run_workflow_id`].
     ///
-    /// Use [`WorkflowOpts::new`] + [`journal_workflow`] when the default keyed client is enough.
+    /// Use [`WorkflowOpts::new`] + [`crate::journal_workflow`] when the default keyed client is enough.
     ///
     /// # Errors
     /// [`Self::run`] / [`Self::boot_for_test`] fail at boot unless [`.gateway`](Self::gateway)

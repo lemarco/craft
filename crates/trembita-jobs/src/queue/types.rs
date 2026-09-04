@@ -158,7 +158,7 @@ pub struct EnqueueOptions {
     /// Maximum delivery attempts before dead letter.
     ///
     /// `None` inherits the stream default set via
-    /// [`InMemoryJobQueue::default_max_attempts`] (or `QueueOpts`/`JobOpts` at the
+    /// [`crate::InMemoryJobQueue::default_max_attempts`] (or `QueueOpts`/`JobOpts` at the
     /// app layer). `Some(0)` is an explicit request for unlimited retries and
     /// overrides the stream default.
     pub max_attempts: Option<u32>,

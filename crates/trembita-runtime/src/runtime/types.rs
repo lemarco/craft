@@ -168,10 +168,10 @@ pub struct RuntimeConfig {
     pub tick_period: Duration,
     /// Whether this node accepts cluster joins (`--allow-join`, join-rpc). When
     /// `false`, `/cluster/join` requests are rejected with
-    /// [`JoinRejection::JoinsDisabled`].
+    /// [`trembita_proto::JoinRejection::JoinsDisabled`].
     pub allow_join: bool,
-    /// Whether join requests with [`JoinRole::Voter`] are accepted. Elastic
-    /// scale-out uses [`JoinRole::Learner`] (default); voter joins are for rare
+    /// Whether join requests with [`trembita_proto::JoinRole::Voter`] are accepted. Elastic
+    /// scale-out uses [`trembita_proto::JoinRole::Learner`] (default); voter joins are for rare
     /// control-plane expansion only.
     pub allow_voter_join: bool,
     /// When `true`, the leader replaces a voter unreachable beyond the grace
@@ -182,7 +182,7 @@ pub struct RuntimeConfig {
     pub voter_replacement_grace_ticks: Option<u64>,
     /// Whether this node accepts cluster leaves (`--allow-leave`). When `false`,
     /// `/cluster/leave` requests are rejected with
-    /// [`LeaveRejection::LeavesDisabled`].
+    /// [`trembita_proto::LeaveRejection::LeavesDisabled`].
     pub allow_leave: bool,
     /// Live catalog for [`CatalogAddRequest`] planning (group 0 multi-Raft only).
     pub catalog_snapshot: Option<CatalogSnapshotFn>,

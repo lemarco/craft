@@ -140,7 +140,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     }
 
     /// Use stable virtual shard routing (stable virtual default). Keys outside the active
-    /// prefix are rejected; use [`TrembitaCluster::activate_shards`] to grow capacity
+    /// prefix are rejected; use [`crate::cluster::TrembitaCluster::activate_shards`] to grow capacity
     /// without remapping existing keys.
     #[must_use]
     pub fn stable_shards(mut self, enabled: bool) -> Self {
@@ -471,7 +471,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
 
     /// How much of this VPS the single worker should use (one-worker-per-vps). Defaults to
     /// [`ResourceProfile::UseAllAvailable`]; retrieve the detected capacity from
-    /// [`TrembitaCluster::vps_resources`] after start.
+    /// [`crate::cluster::TrembitaCluster::vps_resources`] after start.
     #[must_use]
     pub fn resource_profile(mut self, profile: ResourceProfile) -> Self {
         self.resource_profile = profile;
@@ -549,7 +549,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
         self
     }
 
-    /// Capacity of the telemetry [`EventBus`] ring buffer per subscriber.
+    /// Capacity of the telemetry [`crate::EventBus`] ring buffer per subscriber.
     #[must_use]
     pub fn event_capacity(mut self, capacity: usize) -> Self {
         self.event_capacity = capacity.max(1);

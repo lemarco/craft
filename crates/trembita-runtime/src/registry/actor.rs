@@ -108,7 +108,7 @@ pub trait UserActor: Send + Sized + 'static {
     /// Decode a cross-node **ask** into a message carrying a reply port (E8,
     /// cross-node-actors, cluster-routing `/actor/deliver` with `reply_expected`). Build your ask
     /// message variant, converting the supplied [`WireReplyPort`] into the typed
-    /// [`RpcReplyPort<R>`](RpcReplyPort) it expects via
+    /// [`RpcReplyPort<R>`](super::RpcReplyPort) it expects via
     /// [`WireReplyPort::reply_port`]; whatever the handler replies is
     /// `postcard`-encoded back to the caller. The default rejects remote asks
     /// with [`MessageDecodeError::NotAddressable`].

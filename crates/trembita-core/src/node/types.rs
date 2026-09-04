@@ -137,7 +137,7 @@ pub enum Output {
     },
 }
 
-/// Returned by [`RaftNode::propose`] / [`RaftNode::read_index`] when the node
+/// Returned by [`super::RaftNode::propose`] / [`super::RaftNode::read_index`] when the node
 /// is not the leader.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NotLeader {
@@ -173,7 +173,7 @@ pub enum CatalogProposeError {
 /// acting on any network effect drained from the same step (Raft §5.1–§5.3):
 /// a follower persists appended entries before ack'ing them, and a node
 /// persists its term/vote before replying to a vote. Produced by
-/// [`RaftNode::take_persist`]; it is the delta since the previous call.
+/// [`super::RaftNode::take_persist`]; it is the delta since the previous call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Persist {
     /// Current term to record in the hard state.
@@ -192,9 +192,9 @@ pub struct Persist {
 
 /// A read-only view of this node's most recent snapshot (Raft §7): its
 /// boundary `(term, index)`, the configuration in effect there, and the opaque
-/// application bytes. Returned by [`RaftNode::stored_snapshot`] so a runtime can
+/// application bytes. Returned by [`super::RaftNode::stored_snapshot`] so a runtime can
 /// persist the snapshot durably and purge the compacted log prefix (backlog
-/// A6), and fed back to [`RaftNode::restore_with_snapshot`] on restart.
+/// A6), and fed back to [`super::RaftNode::restore_with_snapshot`] on restart.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SnapshotState {
     /// `(term, index)` of the last log entry the snapshot includes.

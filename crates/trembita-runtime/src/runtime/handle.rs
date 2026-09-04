@@ -162,7 +162,7 @@ impl<M: StateMachine> NodeHandle<M> {
     }
 
     /// Deliver an inbound peer request RPC and await the reply to send back.
-    /// Used by [`NodeService`]; rarely called directly.
+    /// Used by [`crate::NodeService`]; rarely called directly.
     ///
     /// # Errors
     /// [`ClientError::Stopped`] if the runtime shut down before replying.
@@ -180,7 +180,7 @@ impl<M: StateMachine> NodeHandle<M> {
 
     /// Submit a cluster [`JoinRequest`] (join-rpc). On the leader this triggers a
     /// membership change and resolves once it commits; on a follower it returns
-    /// [`JoinResponse::Redirect`] (the [`NodeService`] proxies for remote
+    /// [`JoinResponse::Redirect`] (the [`crate::NodeService`] proxies for remote
     /// callers).
     ///
     /// # Errors
@@ -195,7 +195,7 @@ impl<M: StateMachine> NodeHandle<M> {
 
     /// Submit a cluster [`LeaveRequest`]. On the leader this triggers a
     /// membership change and resolves once it commits; on a follower it returns
-    /// [`LeaveResponse::Redirect`] (the [`NodeService`] proxies for remote
+    /// [`LeaveResponse::Redirect`] (the [`crate::NodeService`] proxies for remote
     /// callers).
     ///
     /// # Errors

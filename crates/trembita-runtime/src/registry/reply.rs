@@ -2,13 +2,13 @@ use tokio::sync::oneshot;
 
 /// A one-shot reply channel embedded in a message to implement "ask"
 /// (request/response). The handler calls [`reply`](RpcReplyPort::reply) with
-/// the response; the caller awaits it via [`ActorRef::ask`] / [`PoolRef::ask`].
+/// the response; the caller awaits it via [`crate::ActorRef::ask`] / [`crate::PoolRef::ask`].
 ///
 /// A port is backed either by an **in-process** channel (local `ask`) or, for a
 /// cross-node `ask` arriving over `/actor/deliver`, by a **wire** channel that
 /// `postcard`-encodes the reply and returns it in the [`DeliverAck`]
 /// (cross-node-actors, cluster-routing). A [`WireReplyPort`] is turned into a typed one via
-/// [`WireReplyPort::reply_port`] inside [`UserActor::decode_ask`].
+/// [`WireReplyPort::reply_port`] inside [`crate::UserActor::decode_ask`].
 ///
 /// [`DeliverAck`]: trembita_proto::DeliverAck
 pub struct RpcReplyPort<R> {
@@ -67,7 +67,7 @@ impl<R> RpcReplyPort<R> {
 }
 
 /// An opaque reply channel for a cross-node `ask`, handed to
-/// [`UserActor::decode_ask`]. Convert it to the typed [`RpcReplyPort`] your
+/// [`crate::UserActor::decode_ask`]. Convert it to the typed [`RpcReplyPort`] your
 /// message variant expects with [`reply_port`](WireReplyPort::reply_port); the
 /// reply is `postcard`-encoded and returned in the `DeliverAck`.
 pub struct WireReplyPort {

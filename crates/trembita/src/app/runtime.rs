@@ -528,7 +528,7 @@ impl TrembitaApp {
     /// Requires an [`Arc`] handle so routes can call into the app.
     ///
     /// # Errors
-    /// Returns [`GatewaySpawnError`] when config is invalid or the listen socket cannot be bound.
+    /// Returns [`crate::gateway::GatewaySpawnError`] when config is invalid or the listen socket cannot be bound.
     pub async fn spawn_gateway(
         app: Arc<Self>,
         config: GatewayConfig,

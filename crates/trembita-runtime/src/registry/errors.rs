@@ -26,10 +26,10 @@ pub enum SpawnError {
     /// The actor's config could not be decoded for a remote spawn (E9).
     #[error(transparent)]
     Config(#[from] ConfigCodecError),
-    /// [`UserActor::start`] failed while constructing an instance.
+    /// [`crate::UserActor::start`] failed while constructing an instance.
     #[error("actor start failed: {0}")]
     Start(Box<dyn std::error::Error + Send + Sync>),
-    /// [`UserActor::restore_migration`] failed while installing a migration
+    /// [`crate::UserActor::restore_migration`] failed while installing a migration
     /// snapshot on the target node (E12).
     #[error("migration restore failed: {0}")]
     Restore(MigrationError),
@@ -68,10 +68,10 @@ pub enum ScaleError {
         /// The number of live nodes available.
         nodes: usize,
     },
-    /// The requested instance count was zero (use [`ActorRegistry::stop`]).
+    /// The requested instance count was zero (use [`crate::ActorRegistry::stop`]).
     #[error("instance count must be at least 1 (use `stop` to remove the group)")]
     ZeroCount,
-    /// [`UserActor::start`] failed while growing the pool.
+    /// [`crate::UserActor::start`] failed while growing the pool.
     #[error("actor start failed: {0}")]
     Start(Box<dyn std::error::Error + Send + Sync>),
 }
@@ -100,12 +100,12 @@ pub enum SendError {
 }
 
 /// OTP-style supervision policy for an actor instance whose
-/// [`handle`](UserActor::handle) returns an error (E14,
+/// [`handle`](crate::UserActor::handle) returns an error (E14,
 /// [observability](../../../docs/decisions/observability.md) §5).
 ///
 /// A handler error is trembita's notion of an actor *failure*. The policy decides
 /// what the runtime does with the failing instance; a fresh instance is rebuilt
-/// with [`UserActor::start`] from the original config (so supervised actors
+/// with [`crate::UserActor::start`] from the original config (so supervised actors
 /// require `Config: Clone`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RestartPolicy {
@@ -145,7 +145,7 @@ pub enum SnapshotError {
     /// The instance stopped before it could produce a snapshot.
     #[error("actor mailbox is closed")]
     Closed,
-    /// [`UserActor::migration_snapshot`] failed.
+    /// [`crate::UserActor::migration_snapshot`] failed.
     #[error(transparent)]
     Migration(#[from] MigrationError),
 }
@@ -166,8 +166,8 @@ impl MigrationError {
 /// Why an actor's config could not be (de)serialized for a remote spawn (E9).
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ConfigCodecError {
-    /// The actor did not override [`UserActor::encode_config`] /
-    /// [`decode_config`](UserActor::decode_config), so it can only be spawned
+    /// The actor did not override [`crate::UserActor::encode_config`] /
+    /// [`decode_config`](crate::UserActor::decode_config), so it can only be spawned
     /// locally.
     #[error("actor is not remotely spawnable")]
     NotSpawnable,
@@ -179,7 +179,7 @@ pub enum ConfigCodecError {
 /// Why a wire payload could not be turned into a message (E8).
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum MessageDecodeError {
-    /// The actor did not override [`UserActor::decode_message`], so it accepts
+    /// The actor did not override [`crate::UserActor::decode_message`], so it accepts
     /// only in-process messages.
     #[error("actor is not remotely addressable")]
     NotAddressable,
@@ -217,7 +217,7 @@ pub enum AskError {
     /// The actor handled (or dropped) the message without replying.
     #[error("actor dropped the reply")]
     NoReply,
-    /// The message was delivered but no reply arrived within [`ASK_TIMEOUT`], so
+    /// The message was delivered but no reply arrived within [`crate::ASK_TIMEOUT`], so
     /// the caller stops waiting rather than blocking forever on a wedged handler.
     #[error("actor did not reply within {0:?}")]
     Timeout(Duration),
