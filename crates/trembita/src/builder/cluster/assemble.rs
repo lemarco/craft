@@ -26,9 +26,10 @@ use trembita_events::{
     RedbEventOutboxCursor, RedbEventTopic, TopicService, run_event_outbox_drainer,
 };
 use trembita_jobs::{
-    BacklogSettleOutbox, BacklogSettleOutboxOpts, ClusterJobQueue, CompositeScheduleSource,
-    InMemoryBacklogSettleOutbox, JobQueue, QueueService, RedbBacklogSettleOutbox, RedbJobQueue,
-    SchedulePoll, ShardedJobQueue, StaticScheduleSource, WorkloadMetricsSnapshot, WorkloadOpts,
+    BacklogRegistry, BacklogSettleOutbox, BacklogSettleOutboxOpts, ClusterJobQueue,
+    CompositeScheduleSource, InMemoryBacklogSettleOutbox, JobQueue, QueueAutoscaleRegistry,
+    QueueService, RecurringJob, RedbBacklogSettleOutbox, RedbJobQueue, SchedulePoll,
+    ScheduleSource, ShardedJobQueue, StaticScheduleSource, WorkloadMetricsSnapshot, WorkloadOpts,
     run_backlog_feeder, run_backlog_settle_drainer, run_queue_autoscaler,
     run_queue_membership_autoscaler, run_queue_schedule_ticker, run_workload_governor,
 };
@@ -42,7 +43,7 @@ use trembita_runtime::{
 use crate::certs::{CertReloadHandle, cert_paths_for_node};
 use crate::cluster_handle::{ClusterFacts, TrembitaCluster};
 use crate::gateway::ConnectionTracker;
-use crate::handler::{NodeRouter, QuicPeers};
+use crate::handler::{NodeRouter, PeerSource, QuicPeers};
 use crate::multi_raft::{ArcGroupMigrate, GroupMigratePort, MultiRaftState};
 use crate::node_id;
 use crate::observer::TrembitaObserver;
@@ -73,7 +74,7 @@ fn metric_u64(v: u64) -> f64 {
 }
 
 impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
-    async fn assemble(
+    pub(super) async fn assemble(
         mut self,
         transport: Arc<dyn Transport>,
         peers: Arc<dyn PeerSource>,

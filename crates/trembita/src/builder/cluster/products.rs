@@ -6,12 +6,13 @@ use std::time::Duration;
 
 use trembita_core::StateMachine;
 use trembita_events::{
-    EventOutboxDrainOpts, EventOutboxSource, TopicRetentionOpts, TopicSubscriptionDef,
+    EventOutboxDrainOpts, EventOutboxPoll, EventOutboxSource, TopicRetentionOpts,
+    TopicSubscriptionDef,
 };
 use trembita_jobs::{
     AutoscalePolicy, BacklogFeedOpts, BacklogRegistry, DEFAULT_QUEUE_PREFETCH, ExternalBacklog,
-    MembershipAutoscalePolicy, QueueAutoscaleRegistry, RecurringJob, ScheduleSource, WorkloadOpts,
-    run_queue_autoscaler, run_queue_membership_autoscaler,
+    MembershipAutoscalePolicy, QueueAutoscaleRegistry, RecurringJob, SchedulePoll, ScheduleSource,
+    WorkloadOpts, run_queue_autoscaler, run_queue_membership_autoscaler,
 };
 use trembita_runtime::{ClusterControl, ClusterSupervisor, LeaderLoopOpts, UserActor};
 

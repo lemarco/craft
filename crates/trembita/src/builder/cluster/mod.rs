@@ -5,72 +5,29 @@
 //! leader-only supervisor, telemetry, and the admin server, and wires the
 //! background loops that keep them current.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::atomic::AtomicU32;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::net::TcpListener;
 use trembita_core::{
-    Config, DEFAULT_GROUP_LEARNER_FACTOR, DEFAULT_GROUP_REPLICATION_FACTOR, RaftNode,
-    ReachabilityConfig, StateMachine,
+    Config, DEFAULT_GROUP_LEARNER_FACTOR, DEFAULT_GROUP_REPLICATION_FACTOR, ReachabilityConfig,
+    StateMachine,
 };
-use trembita_dashboard::{
-    AdminServer, AdminTlsPaths, EventBus, Metrics, MetricsSink, Observer, TrembitaEvent,
-    admin_tls_config,
-};
-use trembita_net::transport::RequestHandler;
-use trembita_net::{
-    BackoffPolicy, LocalNetwork, LocalTransport, PeerDirectory, QuicServer, QuicTransport,
-    TrafficPolicy, Transport, client_config, fetch_peers, server_config,
-};
-use trembita_proto::{CatalogCommand, JoinRole, NodeId, QueueAutoscalePolicyCommand};
-use trembita_storage::GroupRedbLayout;
-
-use trembita_actor_store::{
-    ClusterActorStateStore, DEFAULT_ACTOR_STORE_GC_MAX_KEYS, DEFAULT_ACTOR_STORE_GC_PERIOD,
-    RedbActorStateStore, StoreService, run_actor_store_gc_ticker,
-};
-use trembita_events::{
-    ClusterEventTopic, EventOutboxCursor, EventOutboxDrainOpts, EventOutboxPoll, EventOutboxSource,
-    EventTopic, InMemoryEventOutboxCursor, RedbEventOutboxCursor, RedbEventTopic,
-    TopicRetentionOpts, TopicService, TopicSubscriptionDef, run_event_outbox_drainer,
-};
-use trembita_jobs::{
-    AutoscalePolicy, BacklogFeedOpts, BacklogRegistry, BacklogSettleOutbox,
-    BacklogSettleOutboxOpts, ClusterJobQueue, CompositeScheduleSource, DEFAULT_QUEUE_PREFETCH,
-    ExternalBacklog, InMemoryBacklogSettleOutbox, JobQueue, MembershipAutoscalePolicy,
-    QueueAutoscaleRegistry, QueueService, RecurringJob, RedbBacklogSettleOutbox, RedbJobQueue,
-    SchedulePoll, ScheduleSource, ShardedJobQueue, StaticScheduleSource, WorkloadMetricsSnapshot,
-    WorkloadOpts, run_backlog_feeder, run_backlog_settle_drainer, run_queue_autoscaler,
-    run_queue_membership_autoscaler, run_queue_schedule_ticker, run_workload_governor,
-};
+use trembita_dashboard::{AdminTlsPaths, MetricsSink};
+use trembita_jobs::WorkloadOpts;
+use trembita_net::TrafficPolicy;
+use trembita_proto::{JoinRole, NodeId, QueueAutoscalePolicyCommand};
 use trembita_runtime::{
-    ActorDirectory, ActorRegistry, ClusterControl, ClusterMessaging, ClusterState,
-    ClusterSupervisor, ComputeTokenPool, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy, DirectoryRetry,
-    DirectorySync, LeaderGate, LeaderLoopOpts, MailboxSpool, NodeService, RaftDriver,
-    RedbMailboxSpool, ResourceProfile, RuntimeConfig, UserActor, VpsResources, run_leader_loop,
-    run_mailbox_spool_drainer, spawn_multi_raft_node, spawn_node,
+    ClusterControl, ClusterSupervisor, DEFAULT_DRAIN_TIMEOUT, DirectoryPolicy, DirectoryRetry,
+    LeaderGate, LeaderLoopOpts, ResourceProfile, RuntimeConfig, UserActor,
 };
 
-use crate::certs::{CertReloadHandle, PemSecurity, cert_paths_for_node};
-use crate::cluster_handle::{ClusterFacts, TrembitaCluster};
+use crate::cluster_handle::ClusterFacts;
 use crate::discovery::Seed;
-use crate::gateway::ConnectionTracker;
-use crate::handler::{NoPeers, NodeRouter, PeerSource, QuicPeers};
-use crate::multi_raft::{ArcGroupMigrate, GroupMigratePort, MultiRaftState};
-use crate::node_id;
-use crate::observer::TrembitaObserver;
-use crate::security::Security;
-use crate::workload::WorkloadRuntime;
-
-use super::autoscale::{propose_queue_autoscale_policies, upsert_queue_autoscale_meta};
-use super::error::StartError;
-use super::join::{consensus_bootstrap_voters, join_cluster, join_cluster_auto};
 
 mod assemble;
 mod products;
@@ -84,7 +41,7 @@ mod tests;
 use types::{
     AutoscaleTask, BacklogFeedSpec, BuilderOverrides, EventOutboxFeedSpec, JobStreamSpec, ManageFn,
     MembershipAutoscaleTask, RecurringJobSpec, RegisterFn, ScheduleSourceSpec, ShardedJobSpec,
-    TopicStreamSpec, UserLeaderTask, UserLeaderTaskSpec,
+    TopicStreamSpec, UserLeaderTaskSpec,
 };
 
 /// A fluent builder for a single trembita node (deployment-model). Create it with

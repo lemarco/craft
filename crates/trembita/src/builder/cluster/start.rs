@@ -3,8 +3,8 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
-use trembita_core::StateMachine;
 use trembita_net::{
     LocalNetwork, LocalTransport, PeerDirectory, QuicServer, QuicTransport, Transport,
     client_config, server_config,
@@ -14,13 +14,15 @@ use trembita_proto::NodeId;
 use super::TrembitaClusterBuilder;
 use crate::builder::error::StartError;
 use crate::builder::join::{join_cluster, join_cluster_auto};
-use crate::certs::PemSecurity;
+use crate::certs::{CertReloadHandle, PemSecurity, cert_paths_for_node};
 use crate::cluster_handle::TrembitaCluster;
-use crate::handler::{NoPeers, PeerSource};
+use crate::handler::{NoPeers, PeerSource, QuicPeers};
+use crate::node_id;
 use crate::security::Security;
 use trembita_net::BackoffPolicy;
 
 impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
+    /// Start the node on an in-process [`LocalNetwork`] (tests, examples, single-process demos).
     pub async fn start_local(self, net: &LocalNetwork) -> TrembitaCluster<M> {
         let node_id = self.node_id;
         let transport: Arc<dyn Transport> = Arc::new(LocalTransport::new(net.clone(), node_id));
