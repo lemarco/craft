@@ -35,6 +35,7 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
   [`GatewayConfigError`](crates/trembita/src/gateway/mod.rs).
 - **Gateway rate limiting** — optional [`GatewayOpts::rate_limit_per_sec`](crates/trembita/src/gateway/mod.rs)
   (`429 Too Many Requests` when exceeded).
+- **Cluster handle module split** — [`cluster_handle.rs`](crates/trembita/src/cluster_handle/mod.rs) split into `cluster_handle/{facts,telemetry,cluster,errors}.rs`.
 - **Gateway module split** — [`gateway/mod.rs`](crates/trembita/src/gateway/mod.rs) split into `gateway/{config,opts,state,router,spawn}.rs`.
 - **Builder module split** — join/autoscale/error helpers extracted from [`builder/mod.rs`](crates/trembita/src/builder/mod.rs); [`TrembitaClusterBuilder`](crates/trembita/src/builder/cluster/mod.rs) split into `builder/cluster/{config,assemble,products,start,types,topic_leader}.rs`.
 - **Runtime module split** — [`runtime.rs`](crates/trembita-runtime/src/runtime/mod.rs) split into `runtime/{types,handle,event_loop,spawn,service,wire}.rs`.
