@@ -34,6 +34,7 @@ JobOpts::new("imports")
 Runtime behaviour ([`run_backlog_feeder`](../../crates/trembita-jobs/src/external_backlog.rs)):
 
 - **Leader only** — same gate as cron schedules and queue mutations
+- On **leadership acquire** (`first_in_term`), calls [`ExternalBacklog::reclaim_abandoned_claims`](../../crates/trembita-jobs/src/external_backlog.rs) so rows left `claimed` by a dead leader become claimable again (`PgBacklog`: `claimed → pending`)
 - Target in-flight: `pending_target_per_consumer × consumer_instances` (recomputed each poll)
 - Top-up: `claim(need)` → `enqueue_opts(dedup_key = item.key)`
 - **Settle** on ack, nack, and lease-timeout **reclaim** when a dedup key is present — durable **outbox** at `{data_dir}/backlog-settle-outbox.redb` + leader [`run_backlog_settle_drainer`](../../crates/trembita-jobs/src/external_backlog.rs)

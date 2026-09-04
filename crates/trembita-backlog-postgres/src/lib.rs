@@ -241,6 +241,24 @@ impl ExternalBacklog for PgBacklog {
             Ok(())
         })
     }
+
+    fn reclaim_abandoned_claims(&self) -> BoxFuture<'_, Result<u64, BacklogError>> {
+        let pool = self.pool.clone();
+        let schema = self.schema.clone();
+        Box::pin(async move {
+            let table = Self::ident(&schema.table)?;
+            let status = Self::ident(&schema.status_column)?;
+            let pending = schema.pending_status.replace('\'', "''");
+            let claimed = schema.claimed_status.replace('\'', "''");
+            let sql =
+                format!("UPDATE {table} SET {status} = '{pending}' WHERE {status} = '{claimed}'");
+            let result = sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(|e| BacklogError::Backend(e.to_string()))?;
+            Ok(u64::try_from(result.rows_affected()).unwrap_or(u64::MAX))
+        })
+    }
 }
 
 /// Shared handle for [`JobOpts::backlog`](https://docs.rs/trembita/latest/trembita/struct.JobOpts.html#method.backlog).

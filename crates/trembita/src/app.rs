@@ -164,16 +164,21 @@ impl TrembitaAppBuilder {
                 .with_jobs_api(cfg.gateway_jobs_api)
                 .with_actors_api(cfg.gateway_actors_api)
                 .with_workflows_api(cfg.gateway_workflows_api)
+                .with_introspect_api(cfg.gateway_introspect_api)
                 .drain_timeout(cfg.gateway_drain_timeout);
             if let Some((cert, key)) = cfg.gateway_tls.clone() {
                 opts = opts.tls(cert, key);
             }
             self.gateway = Some(opts.into_config());
-        } else if let Some(gateway) = self.gateway.as_mut()
-            && gateway.tls.is_none()
-            && let Some((cert, key)) = cfg.gateway_tls.clone()
-        {
-            gateway.tls = Some(crate::gateway::GatewayTlsPaths { cert, key });
+        } else if let Some(gateway) = self.gateway.as_mut() {
+            if gateway.tls.is_none()
+                && let Some((cert, key)) = cfg.gateway_tls.clone()
+            {
+                gateway.tls = Some(crate::gateway::GatewayTlsPaths { cert, key });
+            }
+            if cfg.env.gateway_introspect {
+                gateway.introspect_api = cfg.gateway_introspect_api;
+            }
         }
         self
     }
@@ -420,11 +425,62 @@ impl TrembitaAppBuilder {
         self
     }
 
-    /// Accept [`trembita_proto::JoinRole::Voter`] on `/cluster/join`. Default is learner-only elastic
-    /// join; enable on the seed when expanding the voter set ([cluster-elasticity](../../docs/decisions/cluster-elasticity.md)).
+    /// Static voter bootstrap for the first `count` nodes (`NodeId(1)` … `NodeId(count)`).
+    #[must_use]
+    pub fn voters(mut self, count: u32) -> Self {
+        self.inner = self.inner.voters(count);
+        self
+    }
+
+    /// Accept dynamic cluster joins on this node (seed-side).
+    #[must_use]
+    pub fn allow_join(mut self, allow: bool) -> Self {
+        self.inner = self.inner.allow_join(allow);
+        self
+    }
+
+    /// Accept cluster leave RPC on this node.
+    #[must_use]
+    pub fn allow_leave(mut self, allow: bool) -> Self {
+        self.inner = self.inner.allow_leave(allow);
+        self
+    }
+
+    /// Join an existing cluster via a single seed (`TREMBITA_JOIN_SEEDS` equivalent).
+    #[must_use]
+    pub fn join(mut self, seed: NodeId, addr: std::net::SocketAddr) -> Self {
+        self.inner = self.inner.join(seed, addr);
+        self
+    }
+
+    /// Join via multiple seeds (deduped at boot).
+    #[must_use]
+    pub fn join_seeds(mut self, seeds: impl IntoIterator<Item = crate::discovery::Seed>) -> Self {
+        self.inner = self.inner.join_seeds(seeds);
+        self
+    }
+
+    /// PEM hot-reload poll interval when TLS paths are configured (default 60s).
+    #[must_use]
+    pub fn cert_watch(mut self, period: std::time::Duration) -> Self {
+        self.inner = self.inner.cert_watch(period);
+        self
+    }
+
+    /// Accept [`trembita_proto::JoinRole::Voter`] on `/cluster/join` (seed-side).
+    /// Joiners must request voter role via [`.join_as`](Self::join_as) or
+    /// `TREMBITA_JOIN_ROLE=voter`; default dynamic join is learner-only
+    /// ([cluster-elasticity](../../docs/decisions/cluster-elasticity.md)).
     #[must_use]
     pub fn allow_voter_join(mut self, allow: bool) -> Self {
         self.inner = self.inner.allow_voter_join(allow);
+        self
+    }
+
+    /// Role requested when this node joins via `TREMBITA_JOIN_SEEDS` (default learner).
+    #[must_use]
+    pub fn join_as(mut self, role: trembita_proto::JoinRole) -> Self {
+        self.inner = self.inner.join_as(role);
         self
     }
 

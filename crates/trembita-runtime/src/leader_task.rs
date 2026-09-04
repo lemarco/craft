@@ -77,6 +77,8 @@ pub struct LeaderLoopOpts {
     /// When true and the node is leader at loop start, invoke `tick` once before
     /// the first interval wait.
     pub run_on_acquire: bool,
+    /// Label for [`tracing`] leader acquire / step-down lines.
+    pub name: &'static str,
 }
 
 impl LeaderLoopOpts {
@@ -86,6 +88,7 @@ impl LeaderLoopOpts {
         Self {
             period,
             run_on_acquire: false,
+            name: "leader task",
         }
     }
 
@@ -93,6 +96,13 @@ impl LeaderLoopOpts {
     #[must_use]
     pub fn run_on_acquire(mut self) -> Self {
         self.run_on_acquire = true;
+        self
+    }
+
+    /// Set the task name emitted on leadership transitions.
+    #[must_use]
+    pub fn with_name(mut self, name: &'static str) -> Self {
+        self.name = name;
         self
     }
 }
@@ -119,10 +129,19 @@ pub async fn run_leader_loop<F, Fut>(
     let mut session = LeaderSession::new();
     let mut interval = time::interval(opts.period);
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut was_active = false;
 
     if opts.run_on_acquire {
         let gate = session.gate(state.as_ref());
         if gate.is_active() {
+            if gate.first_in_term() {
+                tracing::info!(
+                    target: "trembita::leader",
+                    task = opts.name,
+                    "leader task acquired"
+                );
+            }
+            was_active = true;
             tick(gate).await;
         }
     }
@@ -132,16 +151,41 @@ pub async fn run_leader_loop<F, Fut>(
             _ = interval.tick() => {}
             changed = stop.changed() => {
                 if changed.is_err() || *stop.borrow() {
+                    tracing::debug!(
+                        target: "trembita::leader",
+                        task = opts.name,
+                        "leader task stopped"
+                    );
                     break;
                 }
             }
         }
         if *stop.borrow() {
+            tracing::debug!(
+                target: "trembita::leader",
+                task = opts.name,
+                "leader task stopped"
+            );
             break;
         }
         let gate = session.gate(state.as_ref());
         if gate.is_active() {
+            if gate.first_in_term() {
+                tracing::info!(
+                    target: "trembita::leader",
+                    task = opts.name,
+                    "leader task acquired"
+                );
+            }
+            was_active = true;
             tick(gate).await;
+        } else if was_active {
+            tracing::info!(
+                target: "trembita::leader",
+                task = opts.name,
+                "leader task stepped down"
+            );
+            was_active = false;
         }
     }
 }

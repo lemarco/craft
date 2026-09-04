@@ -170,3 +170,67 @@ async fn a_new_node_dynamically_joins_over_quic() {
         c.shutdown();
     }
 }
+
+#[tokio::test(start_paused = true)]
+async fn dynamic_voter_join_when_join_as_voter() {
+    let ids = [NodeId(1), NodeId(2), NodeId(3)];
+    let addrs: Vec<SocketAddr> = ids.iter().map(|_| free_udp()).collect();
+    let ca = ClusterCa::generate().expect("dev CA");
+    let peers: PeerDirectory = ids.iter().copied().zip(addrs.iter().copied()).collect();
+
+    let mut clusters = Vec::new();
+    for (i, &id) in ids.iter().enumerate() {
+        let security = Security::new(
+            ca.issue_node(id).expect("issue node cert"),
+            ca.root_store().expect("trust root"),
+        );
+        let cluster = TrembitaCluster::builder(id, Kv::default())
+            .members(ids)
+            .allow_join(true)
+            .allow_voter_join(true)
+            .raft_config(fast_raft_config())
+            .tick_period(TICK_PERIOD)
+            .start_quic(security, addrs[i], peers.clone())
+            .await
+            .expect("start quic node");
+        clusters.push(Arc::new(cluster));
+    }
+
+    let _leader = await_trembita_leader(&clusters).await;
+
+    let joiner_id = NodeId(4);
+    let joiner_addr = free_udp();
+    let seed_only: PeerDirectory = [(NodeId(1), addrs[0])].into_iter().collect();
+    let security = Security::new(
+        ca.issue_node(joiner_id).expect("issue joiner cert"),
+        ca.root_store().expect("trust root"),
+    );
+    let joiner = TrembitaCluster::builder(joiner_id, Kv::default())
+        .members(ids)
+        .allow_join(true)
+        .raft_config(fast_raft_config())
+        .tick_period(TICK_PERIOD)
+        .join(NodeId(1), addrs[0])
+        .join_as(trembita::proto::JoinRole::Voter)
+        .start_quic(security, joiner_addr, seed_only)
+        .await
+        .expect("voter join over quic");
+    let joiner = Arc::new(joiner);
+
+    let mut joined_as_voter = false;
+    for _ in 0..1000 {
+        if let Some(status) = joiner.status().await
+            && status.voters.contains(&joiner_id)
+        {
+            joined_as_voter = true;
+            break;
+        }
+        advance(TICK_PERIOD).await;
+    }
+    assert!(joined_as_voter, "node 4 should join as a voter");
+
+    joiner.shutdown();
+    for c in &clusters {
+        c.shutdown();
+    }
+}

@@ -26,6 +26,14 @@ Operational checklist for running trembita on **N identical VPS or bare-metal no
 - New VPS gets the same binary, certs signed by the same CA, a new `TREMBITA_NODE_ID`, and join seeds / peer list.
 - Wait for `/ready` (HTTP 200) before sending traffic.
 
+### Join troubleshooting
+
+| Symptom | Likely cause |
+|---------|----------------|
+| Join succeeds but node stays in `learners`, not `voters` | Default dynamic join requests `learner`. Set joiner `TREMBITA_JOIN_ROLE=voter` **and** seed `TREMBITA_ALLOW_VOTER_JOIN=1`, or bootstrap voters with `TREMBITA_PEERS`. |
+| No leader for minutes after boot | Often mTLS mismatch (wrong CA, SAN, or cert for `TREMBITA_NODE_ID`). Check `RUST_LOG=trembita::net=warn,trembita::raft=debug` for QUIC handshake and pre-vote reject lines, then verify [certs.md](../certs.md), `/ready`, and UDP 7443 reachability. |
+| `cluster rejected join: VoterJoinDisabled` | Seed has not enabled `TREMBITA_ALLOW_VOTER_JOIN=1`. |
+
 ## Operations (deep dives)
 
 | Task | Guide |

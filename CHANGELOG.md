@@ -11,6 +11,29 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ## [Unreleased]
 
+### Fixed
+
+- **Env merge precedence** — [`merge_app_config`](crates/trembita/src/builder.rs) applies env only for unset
+  builder fields; code-set [`.members`](crates/trembita/src/app.rs), [`.join_as`](crates/trembita/src/app.rs),
+  [`.configure({ node_id })`](crates/trembita/src/configure.rs), etc. win over `TREMBITA_*` on [`.run`](crates/trembita/src/app.rs).
+- **Dynamic join role** — joiners now send the role from [`.join_as`](crates/trembita/src/builder.rs) /
+  `TREMBITA_JOIN_ROLE` instead of always requesting `JoinRole::Learner`; seed-side
+  [`allow_voter_join`](crates/trembita/src/app.rs) / `TREMBITA_ALLOW_VOTER_JOIN` is wired from env.
+
+### Added
+
+- **Product builder parity** — [`TrembitaAppBuilder::allow_join`](crates/trembita/src/app.rs),
+  [`allow_leave`](crates/trembita/src/app.rs), [`join`](crates/trembita/src/app.rs) /
+  [`join_seeds`](crates/trembita/src/app.rs), [`cert_watch`](crates/trembita/src/app.rs),
+  [`voters(n)`](crates/trembita/src/app.rs); `TREMBITA_GATEWAY_INTROSPECT`, `TREMBITA_CERT_WATCH_SECS`,
+  `TREMBITA_VOTER_REPLACEMENT*`, and `TREMBITA_ADMIN` opt-in (disabled unless set).
+- **Join / TLS diagnostics** — debug pre-vote rejections (`trembita::raft`) and warn on QUIC handshake
+  failures (`trembita::net`).
+- **External backlog after leader change (CF-026)** — [`ExternalBacklog::reclaim_abandoned_claims`](crates/trembita-jobs/src/external_backlog.rs)
+  runs on leadership acquire; [`PgBacklog`](crates/trembita-backlog-postgres/src/lib.rs) resets `claimed → pending`.
+- **Leader task observability** — [`run_leader_loop`](crates/trembita-runtime/src/leader_task.rs) logs acquire,
+  step-down, and stop at `trembita::leader` (feeder, drainer, supervisor, …).
+
 ## [0.2.3] — 2026-09-04
 
 ### Fixed

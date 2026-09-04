@@ -61,7 +61,7 @@ impl TrembitaConfigure {
         inner: TrembitaClusterBuilder<EmptyStateMachine>,
     ) -> TrembitaClusterBuilder<EmptyStateMachine> {
         let mut inner = if let Some(node_id) = self.node_id {
-            TrembitaClusterBuilder::new(node_id, EmptyStateMachine)
+            TrembitaClusterBuilder::new(node_id, EmptyStateMachine).with_explicit_node_id()
         } else {
             inner
         };

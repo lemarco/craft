@@ -162,6 +162,14 @@ pub trait ExternalBacklog: Send + Sync {
 
     /// Terminal outcome — called after ack or dead-letter before the job queue row is dropped.
     fn settle(&self, key: &[u8], outcome: Settlement) -> BoxFuture<'_, Result<(), BacklogError>>;
+
+    /// Release in-flight claims from a prior leader epoch so a newly elected leader can
+    /// re-feed. Called on leadership acquire ([`LeaderGate::first_in_term`]).
+    ///
+    /// Default: no-op. Postgres adapters typically reset `claimed` rows to `pending`.
+    fn reclaim_abandoned_claims(&self) -> BoxFuture<'_, Result<u64, BacklogError>> {
+        Box::pin(async { Ok(0) })
+    }
 }
 
 /// Maps queue stream names to external backlogs (settlement + autoscale wiring).
@@ -280,66 +288,108 @@ pub async fn run_backlog_feeder(
     state: Arc<dyn ClusterState>,
     opts: BacklogFeedOpts,
     settle_outbox: Option<Arc<dyn BacklogSettleOutbox>>,
-    mut stop: tokio::sync::watch::Receiver<bool>,
+    stop: tokio::sync::watch::Receiver<bool>,
 ) {
-    let mut session = trembita_runtime::LeaderSession::new();
-    let mut interval = tokio::time::interval(opts.poll_interval);
-    loop {
-        tokio::select! {
-            _ = interval.tick() => {}
-            _ = stop.changed() => {
-                if *stop.borrow() {
-                    break;
+    let stream_for_log = stream.clone();
+    let state_for_feed = Arc::clone(&state);
+    trembita_runtime::run_leader_loop(
+        state,
+        trembita_runtime::LeaderLoopOpts::new(opts.poll_interval)
+            .with_name("backlog_feeder")
+            .run_on_acquire(),
+        stop,
+        move |gate| {
+            let stream = stream.clone();
+            let queue = Arc::clone(&queue);
+            let backlog = Arc::clone(&backlog);
+            let state = Arc::clone(&state_for_feed);
+            let opts = opts.clone();
+            let settle_outbox = settle_outbox.clone();
+            let stream_log = stream_for_log.clone();
+            async move {
+                if gate.first_in_term() {
+                    match backlog.reclaim_abandoned_claims().await {
+                        Ok(n) if n > 0 => tracing::info!(
+                            target: "trembita::leader",
+                            task = "backlog_feeder",
+                            stream = %stream_log,
+                            reclaimed = n,
+                            "reclaimed abandoned external backlog claims after leadership change"
+                        ),
+                        Ok(_) => {}
+                        Err(e) => tracing::warn!(
+                            target: "trembita::leader",
+                            task = "backlog_feeder",
+                            stream = %stream_log,
+                            error = %e,
+                            "failed to reclaim abandoned external backlog claims"
+                        ),
+                    }
+                }
+                if gate.is_active() {
+                    feed_backlog_once(
+                        state.as_ref(),
+                        &stream,
+                        &queue,
+                        &backlog,
+                        opts,
+                        settle_outbox.as_deref(),
+                    )
+                    .await;
                 }
             }
-        }
-        if *stop.borrow() {
-            break;
-        }
-        if !session.gate(state.as_ref()).is_active() {
-            continue;
-        }
-        let consumer_instances = opts.consumer_instances.resolve(state.as_ref());
-        let target_in_flight = opts
-            .pending_target_per_consumer
-            .saturating_mul(consumer_instances);
-        let Ok(metrics) = queue.metrics().await else {
+        },
+    )
+    .await;
+}
+
+async fn feed_backlog_once(
+    state: &dyn ClusterState,
+    stream: &str,
+    queue: &Arc<dyn JobQueue>,
+    backlog: &Arc<dyn ExternalBacklog>,
+    opts: BacklogFeedOpts,
+    settle_outbox: Option<&dyn BacklogSettleOutbox>,
+) {
+    let consumer_instances = opts.consumer_instances.resolve(state);
+    let target_in_flight = opts
+        .pending_target_per_consumer
+        .saturating_mul(consumer_instances);
+    let Ok(metrics) = queue.metrics().await else {
+        return;
+    };
+    let in_flight = metrics.pending.saturating_add(metrics.leased);
+    if in_flight >= target_in_flight {
+        return;
+    }
+    let need = usize::try_from(target_in_flight.saturating_sub(in_flight))
+        .unwrap_or(usize::MAX)
+        .min(opts.max_claim_batch);
+    if need == 0 {
+        return;
+    }
+    let Ok(items) = backlog.claim(need).await else {
+        return;
+    };
+    for item in items {
+        let options = EnqueueOptions {
+            priority: item.priority,
+            dedup_key: Some(item.key),
+            ..EnqueueOptions::default()
+        };
+        let Ok((_, replicate_ops)) = queue.enqueue_opts_replicated(&item.payload, options).await
+        else {
             continue;
         };
-        let in_flight = metrics.pending.saturating_add(metrics.leased);
-        if in_flight >= target_in_flight {
-            continue;
-        }
-        let need = usize::try_from(target_in_flight.saturating_sub(in_flight))
-            .unwrap_or(usize::MAX)
-            .min(opts.max_claim_batch);
-        if need == 0 {
-            continue;
-        }
-        let Ok(items) = backlog.claim(need).await else {
-            continue;
-        };
-        for item in items {
-            let options = EnqueueOptions {
-                priority: item.priority,
-                dedup_key: Some(item.key),
-                ..EnqueueOptions::default()
-            };
-            let Ok((_, replicate_ops)) =
-                queue.enqueue_opts_replicated(&item.payload, options).await
-            else {
-                continue;
-            };
-            if let Some(outbox) = settle_outbox.as_deref() {
-                emit_backlog_settle_for_terminal_ops(
-                    &stream,
-                    queue.as_ref(),
-                    Some(outbox),
-                    &replicate_ops,
-                    "reclaim",
-                )
-                .await;
-            }
+        if let Some(outbox) = settle_outbox {
+            emit_backlog_settle_for_terminal_ops(
+                stream,
+                queue.as_ref(),
+                Some(outbox),
+                &replicate_ops,
+                "reclaim",
+            )
+            .await;
         }
     }
 }
@@ -350,48 +400,50 @@ pub async fn run_backlog_settle_drainer(
     outbox: Arc<dyn BacklogSettleOutbox>,
     state: Arc<dyn ClusterState>,
     opts: BacklogSettleOutboxOpts,
-    mut stop: tokio::sync::watch::Receiver<bool>,
+    stop: tokio::sync::watch::Receiver<bool>,
 ) {
-    let mut session = trembita_runtime::LeaderSession::new();
-    let mut interval = tokio::time::interval(opts.poll_interval);
-    loop {
-        tokio::select! {
-            _ = interval.tick() => {}
-            _ = stop.changed() => {
-                if *stop.borrow() {
-                    break;
+    trembita_runtime::run_leader_loop(
+        state,
+        trembita_runtime::LeaderLoopOpts::new(opts.poll_interval)
+            .with_name("backlog_settle_drainer"),
+        stop,
+        move |gate| {
+            let registry = Arc::clone(&registry);
+            let outbox = Arc::clone(&outbox);
+            let opts = opts.clone();
+            async move {
+                if !gate.is_active() {
+                    return;
+                }
+                let Ok(batch) = outbox.list_pending(opts.max_batch) else {
+                    return;
+                };
+                for (id, ev) in batch {
+                    let Some(backlog) = registry.get(&ev.stream) else {
+                        let _ = outbox.remove(id);
+                        continue;
+                    };
+                    let Some(key) = ev.dedup_key else {
+                        let _ = outbox.remove(id);
+                        continue;
+                    };
+                    let settlement = match ev.outcome {
+                        BacklogSettleOutcome::Done { attempts } => Settlement::Done { attempts },
+                        BacklogSettleOutcome::Failed { attempts, error } => {
+                            Settlement::Failed { attempts, error }
+                        }
+                        BacklogSettleOutcome::DeadLettered { attempts, error } => {
+                            Settlement::DeadLettered { attempts, error }
+                        }
+                    };
+                    if backlog.settle(&key, settlement).await.is_ok() {
+                        let _ = outbox.remove(id);
+                    }
                 }
             }
-        }
-        if *stop.borrow() || !session.gate(state.as_ref()).is_active() {
-            continue;
-        }
-        let Ok(batch) = outbox.list_pending(opts.max_batch) else {
-            continue;
-        };
-        for (id, ev) in batch {
-            let Some(backlog) = registry.get(&ev.stream) else {
-                let _ = outbox.remove(id);
-                continue;
-            };
-            let Some(key) = ev.dedup_key else {
-                let _ = outbox.remove(id);
-                continue;
-            };
-            let settlement = match ev.outcome {
-                BacklogSettleOutcome::Done { attempts } => Settlement::Done { attempts },
-                BacklogSettleOutcome::Failed { attempts, error } => {
-                    Settlement::Failed { attempts, error }
-                }
-                BacklogSettleOutcome::DeadLettered { attempts, error } => {
-                    Settlement::DeadLettered { attempts, error }
-                }
-            };
-            if let Ok(()) = backlog.settle(&key, settlement).await {
-                let _ = outbox.remove(id);
-            }
-        }
-    }
+        },
+    )
+    .await;
 }
 
 /// Terminal job queue outcome forwarded to [`ExternalBacklog::settle`].
@@ -438,9 +490,15 @@ pub struct InMemoryExternalBacklog {
 #[derive(Default)]
 struct Inner {
     pending: VecDeque<BacklogItem>,
-    /// Attempt counter for each claimed key (matches external row at claim time).
-    claimed: BTreeMap<Vec<u8>, u32>,
+    /// Items claimed by a leader but not yet settled (key → item + attempt counter).
+    claimed: BTreeMap<Vec<u8>, ClaimedRow>,
     settled: BTreeMap<Vec<u8>, Settlement>,
+}
+
+#[derive(Debug, Clone)]
+struct ClaimedRow {
+    item: BacklogItem,
+    attempts: u32,
 }
 
 impl InMemoryExternalBacklog {
@@ -465,6 +523,19 @@ impl InMemoryExternalBacklog {
     #[must_use]
     pub fn settled(&self) -> BTreeMap<Vec<u8>, Settlement> {
         self.inner.lock().expect("poisoned").settled.clone()
+    }
+
+    /// Simulate claims abandoned by a dead leader (test helper).
+    ///
+    /// # Panics
+    /// If an internal mutex is poisoned.
+    pub fn abandon_claims_for_test(&self, items: impl IntoIterator<Item = BacklogItem>) {
+        let mut inner = self.inner.lock().expect("poisoned");
+        for item in items {
+            inner
+                .claimed
+                .insert(item.key.clone(), ClaimedRow { item, attempts: 0 });
+        }
     }
 }
 
@@ -492,10 +563,32 @@ impl ExternalBacklog for InMemoryExternalBacklog {
                 let Some(item) = inner.pending.pop_front() else {
                     break;
                 };
-                inner.claimed.insert(item.key.clone(), 0);
+                inner.claimed.insert(
+                    item.key.clone(),
+                    ClaimedRow {
+                        item: item.clone(),
+                        attempts: 0,
+                    },
+                );
                 out.push(item);
             }
             Ok(out)
+        })
+    }
+
+    fn reclaim_abandoned_claims(&self) -> BoxFuture<'_, Result<u64, BacklogError>> {
+        Box::pin(async move {
+            let mut inner = self
+                .inner
+                .lock()
+                .map_err(|_| BacklogError::Backend("poisoned InMemoryExternalBacklog".into()))?;
+            let claimed = std::mem::take(&mut inner.claimed);
+            let rows: Vec<ClaimedRow> = claimed.into_values().collect();
+            let n = u64::try_from(rows.len()).unwrap_or(u64::MAX);
+            for row in rows {
+                inner.pending.push_back(row.item);
+            }
+            Ok(n)
         })
     }
 
@@ -508,8 +601,8 @@ impl ExternalBacklog for InMemoryExternalBacklog {
                 .map_err(|_| BacklogError::Backend("poisoned InMemoryExternalBacklog".into()))?;
             match &outcome {
                 Settlement::Done { attempts } => {
-                    if let Some(claimed_attempts) = inner.claimed.get(&key) {
-                        if *claimed_attempts != *attempts {
+                    if let Some(row) = inner.claimed.get(&key) {
+                        if row.attempts != *attempts {
                             return Ok(());
                         }
                         inner.claimed.remove(&key);
@@ -522,8 +615,8 @@ impl ExternalBacklog for InMemoryExternalBacklog {
                     inner.settled.insert(key, outcome);
                 }
                 Settlement::Failed { attempts, .. } | Settlement::DeadLettered { attempts, .. } => {
-                    if let Some(claimed_attempts) = inner.claimed.get_mut(&key) {
-                        *claimed_attempts = *attempts;
+                    if let Some(row) = inner.claimed.get_mut(&key) {
+                        row.attempts = *attempts;
                     }
                     inner.claimed.remove(&key);
                     inner.settled.insert(key, outcome);
@@ -827,5 +920,67 @@ mod tests {
             Some(&Settlement::Done { attempts: 0 })
         );
         assert_eq!(outbox.pending_count().unwrap(), 0);
+    }
+
+    struct AtomicLeader(Arc<std::sync::atomic::AtomicBool>);
+
+    impl ClusterState for AtomicLeader {
+        fn is_leader(&self) -> bool {
+            self.0.load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        fn live_nodes(&self) -> Vec<NodeId> {
+            vec![NodeId(1)]
+        }
+
+        fn reachable_nodes(&self) -> Vec<NodeId> {
+            vec![NodeId(1)]
+        }
+    }
+
+    #[tokio::test]
+    async fn feeder_reclaims_abandoned_claims_after_leadership_transfer() {
+        let backlog = Arc::new(InMemoryExternalBacklog::new());
+        backlog.abandon_claims_for_test([BacklogItem {
+            key: b"orphan".to_vec(),
+            payload: b"orphan".to_vec(),
+            priority: 0,
+        }]);
+        assert_eq!(backlog.depth().await.unwrap(), 1);
+
+        let queue = Arc::new(InMemoryJobQueue::new(Duration::from_secs(30)));
+        let leader = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let state: Arc<dyn ClusterState> = Arc::new(AtomicLeader(Arc::clone(&leader)));
+        let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+        let feeder = tokio::spawn(run_backlog_feeder(
+            "jobs".into(),
+            Arc::clone(&queue) as Arc<dyn JobQueue>,
+            backlog.clone(),
+            state,
+            BacklogFeedOpts::default()
+                .pending_target_per_consumer(1)
+                .consumer_instances(ConsumerCount::Fixed(1))
+                .poll(Duration::from_millis(20)),
+            None,
+            stop_rx,
+        ));
+
+        leader.store(true, std::sync::atomic::Ordering::SeqCst);
+        for _ in 0..50 {
+            let metrics = queue.metrics().await.unwrap();
+            if metrics.pending >= 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        stop_tx.send(true).unwrap();
+        feeder.await.unwrap();
+
+        let metrics = queue.metrics().await.unwrap();
+        assert!(metrics.pending >= 1, "feeder should enqueue after reclaim");
+        assert!(
+            backlog.claim(1).await.unwrap().is_empty(),
+            "claimed rows should not be re-claimable until settled"
+        );
     }
 }

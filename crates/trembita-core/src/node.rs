@@ -1145,6 +1145,18 @@ impl RaftNode {
             let leader_recent =
                 self.leader_id.is_some() && self.elapsed < self.config.election_timeout_min;
             let granted = rv.term >= self.current_term && up_to_date && !leader_recent;
+            if !granted {
+                tracing::debug!(
+                    target: "trembita::raft",
+                    node = self.id.0,
+                    from = from.0,
+                    term = self.current_term.0,
+                    candidate_term = rv.term.0,
+                    leader_recent,
+                    up_to_date,
+                    "pre-vote rejected"
+                );
+            }
             self.reply_vote(from, granted, true);
             return;
         }

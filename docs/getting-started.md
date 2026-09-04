@@ -53,13 +53,21 @@ Same code as above. [`cluster.sh`](../examples/background-jobs/cluster.sh) sets 
 | `TREMBITA_DATA_DIR` | redb + `node-id` file |
 | `TREMBITA_CERT_DIR` | Shared dir with `node-{id}.pem` + `ca.pem` |
 | `TREMBITA_JOIN_SEEDS` | Join existing cluster (`id@host:port`) |
+| `TREMBITA_JOIN_ROLE` | Role for dynamic join: `learner` (default) or `voter` (requires seed `TREMBITA_ALLOW_VOTER_JOIN=1`) |
 | `TREMBITA_ALLOW_JOIN` | Seed accepts joins (default `1` when not joining) |
+| `TREMBITA_ALLOW_VOTER_JOIN` | Seed accepts voter joins (default `0`; joiners need `TREMBITA_JOIN_ROLE=voter`) |
+| `TREMBITA_PEERS` | Static voter bootstrap (`id@host:port,...`) — use for a fixed voter set without dynamic join |
 | `TREMBITA_GATEWAY` | Product HTTP/WS bind |
+| `TREMBITA_GATEWAY_INTROSPECT` | Mount `/introspect/*` on the gateway when `TREMBITA_GATEWAY` is set |
+| `TREMBITA_CERT_WATCH_SECS` | PEM hot-reload poll interval (default `60`) |
+| `TREMBITA_ADMIN` | Admin dashboard bind (optional; unset = disabled; `-` = explicit off) |
 | `TREMBITA_GATEWAY_TLS_CERT` / `TREMBITA_GATEWAY_TLS_KEY` | Gateway HTTPS / WSS (optional; both required) |
 | `TREMBITA_ADMIN_TLS_CERT` / `TREMBITA_ADMIN_TLS_KEY` | Admin HTTPS (optional; both required) |
 | `TREMBITA_JOB_QUEUE` | Job stream name (optional) |
 
 Node id is **not** configured — seed gets `1`, joiners are assigned by the leader and persisted under `TREMBITA_DATA_DIR`.
+
+**Dynamic join is learner-only by default.** Joiners always request `learner` unless you set `TREMBITA_JOIN_ROLE=voter` (and the seed has `TREMBITA_ALLOW_VOTER_JOIN=1`). For a fixed multi-voter cluster at first boot, use `TREMBITA_PEERS` instead of join seeds.
 
 **Homogeneous nodes:** every VPS runs the same binary (gateway + consumers when configured). Local **API vs jobs** fairness uses [`.workload()`](../crates/trembita/src/workload.rs) compute tokens ([workload governor](decisions/workload-governor.md)) — not static node roles. Edge-only ingress without local consumers: omit `.jobs()` / `.workers()` on those nodes (deployment choice), not a role env var.
 

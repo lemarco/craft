@@ -243,6 +243,8 @@ pub struct TrembitaClusterBuilder<M: StateMachine> {
     admin_addr: Option<SocketAddr>,
     admin_tls: Option<AdminTlsPaths>,
     join_seeds: Vec<Seed>,
+    /// Role requested on dynamic join ([`Self::join_as`]).
+    join_role: JoinRole,
     traffic_policy: TrafficPolicy,
     raft_groups: u32,
     shard_count: u32,
@@ -277,6 +279,23 @@ pub struct TrembitaClusterBuilder<M: StateMachine> {
     durable_mailbox: bool,
     /// User-defined leader-only periodic tasks ([`Self::on_leader`]).
     leader_tasks: Vec<UserLeaderTaskSpec>,
+    /// Code-first settings that must not be overwritten by env merge.
+    overrides: BuilderOverrides,
+}
+
+/// Builder options set explicitly in code (not derived from env merge).
+#[derive(Debug, Clone, Copy, Default)]
+struct BuilderOverrides {
+    node_id: bool,
+    members: bool,
+    allow_join: bool,
+    allow_voter_join: bool,
+    join_role: bool,
+    allow_leave: bool,
+    voter_replacement: bool,
+    voter_replacement_grace_ticks: bool,
+    drain_timeout: bool,
+    cert_watch: bool,
 }
 
 impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
@@ -302,6 +321,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             admin_addr: None,
             admin_tls: None,
             join_seeds: Vec::new(),
+            join_role: JoinRole::Learner,
             traffic_policy: TrafficPolicy::unlimited(),
             raft_groups: 1,
             shard_count: 256,
@@ -331,7 +351,15 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             workload: None,
             durable_mailbox: false,
             leader_tasks: Vec::new(),
+            overrides: BuilderOverrides::default(),
         }
+    }
+
+    /// Mark [`node_id`](Self::new) as code-authoritative for env merge (used by [`TrembitaConfigure`](crate::configure::TrembitaConfigure)).
+    #[must_use]
+    pub(crate) fn with_explicit_node_id(mut self) -> Self {
+        self.overrides.node_id = true;
+        self
     }
 
     /// Set the initial cluster membership (voting nodes) to bootstrap with.
@@ -341,6 +369,19 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
         if self.members.is_empty() {
             self.members.push(self.node_id);
         }
+        self.overrides.members = true;
+        self
+    }
+
+    /// Static voter bootstrap for the first `count` nodes (`NodeId(1)` … `NodeId(count)`).
+    ///
+    /// Sugar for multi-node seeds without listing ids manually; prefer [`members`](Self::members)
+    /// or `TREMBITA_PEERS` when addresses differ per host.
+    #[must_use]
+    pub fn voters(mut self, count: u32) -> Self {
+        assert!(count >= 1, "voters(count) requires count >= 1");
+        self.members = (1..=count).map(|id| NodeId(u64::from(id))).collect();
+        self.overrides.members = true;
         self
     }
 
@@ -471,33 +512,60 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
         self
     }
 
-    /// Apply `TREMBITA_*` cluster settings without overwriting values set in code.
+    /// Apply `TREMBITA_*` cluster settings when not already set in code.
     pub(crate) fn merge_app_config(mut self, cfg: &crate::env_config::AppConfig) -> Self {
-        self.node_id = cfg.node_id;
-        if !cfg.members.is_empty() {
-            self = self.members(cfg.members.clone());
+        if !self.overrides.node_id {
+            self.node_id = cfg.node_id;
+        }
+        if !self.overrides.members && cfg.env.peers {
+            self.members = cfg.members.clone();
+            if self.members.is_empty() {
+                self.members.push(self.node_id);
+            }
         }
         if self.data_dir.is_none()
             && let Some(dir) = cfg.data_dir.clone()
         {
             self.data_dir = Some(dir);
         }
-        self = self
-            .allow_join(cfg.allow_join)
-            .allow_leave(cfg.allow_leave)
-            .drain_timeout(cfg.drain_timeout);
+        if !self.overrides.allow_join {
+            self.runtime.allow_join = cfg.allow_join;
+        }
+        if !self.overrides.allow_voter_join {
+            self.runtime.allow_voter_join = cfg.allow_voter_join;
+        }
+        if !self.overrides.allow_leave {
+            self.runtime.allow_leave = cfg.allow_leave;
+        }
+        if !self.overrides.join_role {
+            self.join_role = cfg.join_role;
+        }
+        if !self.overrides.voter_replacement {
+            self.runtime.voter_replacement = cfg.voter_replacement;
+        }
+        if !self.overrides.voter_replacement_grace_ticks
+            && let Some(ticks) = cfg.voter_replacement_grace_ticks
+        {
+            self.runtime.voter_replacement_grace_ticks = Some(ticks);
+        }
+        if !self.overrides.drain_timeout {
+            self.drain_timeout = cfg.drain_timeout;
+        }
+        if !self.overrides.cert_watch {
+            self.cert_watch = Some(cfg.cert_watch);
+        }
         if !cfg.join_seeds.is_empty() {
-            self = self.join_seeds(cfg.join_seeds.clone());
+            self.join_seeds = cfg.join_seeds.clone();
         }
         if self.admin_addr.is_none()
             && let Some(admin) = cfg.admin
         {
-            self = self.admin_addr(admin);
+            self.admin_addr = Some(admin);
         }
         if self.admin_tls.is_none()
             && let Some((cert, key)) = cfg.admin_tls.clone()
         {
-            self = self.admin_tls(cert, key);
+            self.admin_tls = Some(AdminTlsPaths { cert, key });
         }
         self
     }
@@ -556,14 +624,17 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     #[must_use]
     pub fn allow_join(mut self, allow: bool) -> Self {
         self.runtime.allow_join = allow;
+        self.overrides.allow_join = true;
         self
     }
 
     /// Accept [`JoinRole::Voter`] on `/cluster/join`. Default is learner-only
-    /// elastic join; enable for rare control-plane expansion.
+    /// elastic join; enable on the seed when joiners request voter role via
+    /// [`join_as`](Self::join_as) or `TREMBITA_JOIN_ROLE=voter`.
     #[must_use]
     pub fn allow_voter_join(mut self, allow: bool) -> Self {
         self.runtime.allow_voter_join = allow;
+        self.overrides.allow_voter_join = true;
         self
     }
 
@@ -572,6 +643,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     #[must_use]
     pub fn voter_replacement(mut self, enabled: bool) -> Self {
         self.runtime.voter_replacement = enabled;
+        self.overrides.voter_replacement = true;
         self
     }
 
@@ -580,6 +652,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     #[must_use]
     pub fn voter_replacement_grace_ticks(mut self, ticks: u64) -> Self {
         self.runtime.voter_replacement_grace_ticks = Some(ticks);
+        self.overrides.voter_replacement_grace_ticks = true;
         self
     }
 
@@ -589,6 +662,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     #[must_use]
     pub fn allow_leave(mut self, allow: bool) -> Self {
         self.runtime.allow_leave = allow;
+        self.overrides.allow_leave = true;
         self
     }
 
@@ -601,9 +675,9 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     /// so every node — including this one — learns how to reach the others.
     ///
     /// Set [`members`](Self::members) to the cluster's *current* voter set (which
-    /// does **not** include this new node); it starts as a non-voting follower
-    /// and becomes a voter once the join commits. `advertise_addr` defaults to
-    /// the QUIC `listen` address passed to `start_quic`.
+    /// does **not** include this new node). The committed role comes from
+    /// [`join_as`](Self::join_as) (default [`JoinRole::Learner`]). `advertise_addr`
+    /// defaults to the QUIC `listen` address passed to `start_quic`.
     #[must_use]
     pub fn join(mut self, seed: NodeId, addr: SocketAddr) -> Self {
         self.join_seeds = vec![Seed::new(seed, addr)];
@@ -623,6 +697,18 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     #[must_use]
     pub fn join_seeds(mut self, seeds: impl IntoIterator<Item = Seed>) -> Self {
         self.join_seeds = seeds.into_iter().collect();
+        self
+    }
+
+    /// Role requested when this node dynamically joins via [`join`](Self::join) /
+    /// [`join_seeds`](Self::join_seeds). Default [`JoinRole::Learner`] (elastic
+    /// scale-out). Use [`JoinRole::Voter`] only when the seed has
+    /// [`allow_voter_join`](Self::allow_voter_join). For a fixed voter set at
+    /// bootstrap, prefer static [`members`](Self::members) / `TREMBITA_PEERS`.
+    #[must_use]
+    pub fn join_as(mut self, role: JoinRole) -> Self {
+        self.join_role = role;
+        self.overrides.join_role = true;
         self
     }
 
@@ -705,6 +791,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     #[must_use]
     pub fn drain_timeout(mut self, timeout: Duration) -> Self {
         self.drain_timeout = timeout;
+        self.overrides.drain_timeout = true;
         self
     }
 
@@ -779,6 +866,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     #[must_use]
     pub fn cert_watch(mut self, period: Duration) -> Self {
         self.cert_watch = Some(period);
+        self.overrides.cert_watch = true;
         self
     }
 
@@ -1354,7 +1442,8 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
                 .as_ref()
                 .is_none_or(|dir| node_id::read_persisted(dir).is_none())
         {
-            let (assigned, membership) = join_cluster_auto(&quic, &seeds, listen).await?;
+            let (assigned, membership) =
+                join_cluster_auto(&quic, &seeds, listen, self.join_role).await?;
             self.node_id = assigned;
             self.members = membership.voters.clone();
             pre_joined = true;
@@ -1378,6 +1467,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
         }
 
         let node_id = self.node_id;
+        let join_role = self.join_role;
         quic.learn_peer(node_id, listen);
         let transport: Arc<dyn Transport> = quic.clone();
         let peer_source: Arc<dyn PeerSource> = Arc::new(QuicPeers(Arc::clone(&quic)));
@@ -1398,10 +1488,10 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
         // Blocks until the membership change commits or a deadline elapses
         // (discovery, join-rpc); tries every seed for resilience.
         if !seeds.is_empty() && !pre_joined {
-            join_cluster(&quic, node_id, &seeds, listen).await?;
+            join_cluster(&quic, node_id, &seeds, listen, join_role).await?;
         } else if pre_joined {
             // Confirm membership (Duplicate) after auto-assigned pre-join.
-            let _ = join_cluster(&quic, node_id, &seeds, listen).await;
+            let _ = join_cluster(&quic, node_id, &seeds, listen, join_role).await;
         }
 
         if let Some(paths) = pem_paths {
@@ -2150,12 +2240,17 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
             leader_loop_stops.push(stop_tx);
             tasks.push(tokio::spawn(async move {
-                run_leader_loop(state, LeaderLoopOpts::new(period), stop_rx, move |_| {
-                    let supervisor = Arc::clone(&supervisor);
-                    async move {
-                        let _ = supervisor.reconcile().await;
-                    }
-                })
+                run_leader_loop(
+                    state,
+                    LeaderLoopOpts::new(period).with_name("supervisor_reconcile"),
+                    stop_rx,
+                    move |_| {
+                        let supervisor = Arc::clone(&supervisor);
+                        async move {
+                            let _ = supervisor.reconcile().await;
+                        }
+                    },
+                )
                 .await;
             }));
         }
@@ -2259,7 +2354,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             tasks.push(tokio::spawn(async move {
                 run_leader_loop(
                     state,
-                    LeaderLoopOpts::new(Duration::from_millis(200)),
+                    LeaderLoopOpts::new(Duration::from_millis(200)).with_name("event_topic"),
                     stop_rx,
                     move |gate| {
                         let topic_loop = Arc::clone(&topic_loop);
@@ -2544,6 +2639,7 @@ async fn join_cluster(
     node_id: NodeId,
     seeds: &[Seed],
     advertise: SocketAddr,
+    role: JoinRole,
 ) -> Result<(), StartError> {
     debug_assert!(!seeds.is_empty(), "join_cluster requires at least one seed");
 
@@ -2582,7 +2678,7 @@ async fn join_cluster(
         protocol_version: PROTOCOL_VERSION,
         node_id: Some(node_id),
         advertise_addr: advertise.to_string(),
-        role: JoinRole::Learner,
+        role,
     };
     for attempt in 0..JOIN_ATTEMPTS {
         let last = attempt + 1 == JOIN_ATTEMPTS;
@@ -2626,6 +2722,7 @@ async fn join_cluster_auto(
     quic: &Arc<QuicTransport>,
     seeds: &[Seed],
     advertise: SocketAddr,
+    role: JoinRole,
 ) -> Result<(NodeId, Membership), StartError> {
     debug_assert!(
         !seeds.is_empty(),
@@ -2663,7 +2760,7 @@ async fn join_cluster_auto(
         protocol_version: PROTOCOL_VERSION,
         node_id: None,
         advertise_addr: advertise.to_string(),
-        role: JoinRole::Learner,
+        role,
     };
     for attempt in 0..JOIN_ATTEMPTS {
         let last = attempt + 1 == JOIN_ATTEMPTS;
@@ -2710,7 +2807,7 @@ mod merge_app_config_tests {
 
     use super::*;
     use crate::app::EmptyStateMachine;
-    use crate::env_config::AppConfig;
+    use crate::env_config::{AppConfig, EnvOverrides};
     use crate::security::Security;
 
     fn test_app_config(node_id: NodeId) -> AppConfig {
@@ -2724,12 +2821,17 @@ mod merge_app_config_tests {
             members: Vec::new(),
             join_seeds: Vec::new(),
             allow_join: true,
+            allow_voter_join: false,
+            join_role: JoinRole::Learner,
             allow_leave: true,
             graceful_leave: true,
+            voter_replacement: true,
+            voter_replacement_grace_ticks: None,
             security: Security::dev(&ca, node_id).expect("security"),
             pem_paths: None,
             cert_dir: None,
             drain_timeout: DEFAULT_DRAIN_TIMEOUT,
+            cert_watch: Duration::from_secs(60),
             data_dir: None,
             job_queue_stream: None,
             job_queue_lease: Duration::from_secs(60),
@@ -2737,8 +2839,10 @@ mod merge_app_config_tests {
             gateway_jobs_api: false,
             gateway_actors_api: false,
             gateway_workflows_api: false,
+            gateway_introspect_api: false,
             gateway_drain_timeout: crate::gateway::DEFAULT_GATEWAY_DRAIN_TIMEOUT,
             gateway_tls: None,
+            env: EnvOverrides::default(),
         }
     }
 
@@ -2758,5 +2862,50 @@ mod merge_app_config_tests {
             .start_local(&LocalNetwork::new())
             .await;
         assert_eq!(joiner.node_id(), NodeId(0));
+    }
+
+    #[test]
+    fn merge_app_config_applies_join_role_and_allow_voter_join_from_env() {
+        let mut cfg = test_app_config(NodeId(2));
+        cfg.join_role = JoinRole::Voter;
+        cfg.allow_voter_join = true;
+        let builder =
+            TrembitaClusterBuilder::new(NodeId(1), EmptyStateMachine).merge_app_config(&cfg);
+        assert_eq!(builder.join_role, JoinRole::Voter);
+        assert!(builder.runtime.allow_voter_join);
+    }
+
+    #[test]
+    fn merge_app_config_code_join_role_wins_over_env() {
+        let mut cfg = test_app_config(NodeId(2));
+        cfg.join_role = JoinRole::Voter;
+        let builder = TrembitaClusterBuilder::new(NodeId(1), EmptyStateMachine)
+            .join_as(JoinRole::Learner)
+            .merge_app_config(&cfg);
+        assert_eq!(builder.join_role, JoinRole::Learner);
+    }
+
+    #[test]
+    fn merge_app_config_explicit_node_id_wins_over_env() {
+        let builder = TrembitaClusterBuilder::new(NodeId(1), EmptyStateMachine)
+            .with_explicit_node_id()
+            .merge_app_config(&test_app_config(NodeId(7)));
+        assert_eq!(builder.node_id, NodeId(1));
+    }
+
+    #[test]
+    fn merge_app_config_members_from_env_only_when_peers_set() {
+        let mut cfg = test_app_config(NodeId(3));
+        cfg.members = vec![NodeId(1), NodeId(2), NodeId(3)];
+        cfg.env.peers = false;
+        let builder = TrembitaClusterBuilder::new(NodeId(5), EmptyStateMachine)
+            .members([NodeId(5)])
+            .merge_app_config(&cfg);
+        assert_eq!(builder.members, vec![NodeId(5)]);
+
+        cfg.env.peers = true;
+        let builder =
+            TrembitaClusterBuilder::new(NodeId(5), EmptyStateMachine).merge_app_config(&cfg);
+        assert_eq!(builder.members, vec![NodeId(1), NodeId(2), NodeId(3)]);
     }
 }

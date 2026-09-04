@@ -83,9 +83,15 @@ impl QuicServer {
         while let Some(incoming) = endpoint.accept().await {
             let handler = handler.clone();
             tokio::spawn(async move {
-                if let Ok(conn) = incoming.await {
-                    serve_connection(conn, handler).await;
-                } else { /* handshake failed (e.g. bad client cert) */
+                match incoming.await {
+                    Ok(conn) => serve_connection(conn, handler).await,
+                    Err(e) => {
+                        tracing::warn!(
+                            target: "trembita::net",
+                            error = %e,
+                            "quic inbound handshake failed (e.g. bad client cert or TLS mismatch)"
+                        );
+                    }
                 }
             });
         }
@@ -432,7 +438,16 @@ async fn dial(inner: &Inner, peer: NodeId) -> Result<ClientSender, TransportErro
         .endpoint
         .connect_with(client_cfg, addr, &server_name)
         .map_err(io)?;
-    let conn = connecting.await.map_err(io)?;
+    let conn = connecting.await.map_err(|e| {
+        tracing::warn!(
+            target: "trembita::net",
+            peer = peer.0,
+            %addr,
+            error = %e,
+            "quic outbound handshake failed (e.g. bad cert, CA mismatch, or unreachable peer)"
+        );
+        io(e)
+    })?;
 
     let (mut driver, sender) = h3::client::new(h3_quinn::Connection::new(conn))
         .await
