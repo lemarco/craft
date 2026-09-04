@@ -224,11 +224,17 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 
 | Priority | Gap | Suggested test location | Effort |
 |----------|-----|-------------------------|--------|
+| Medium | Topic wire + voter replicate auth (integration) | `trembita/tests/topic.rs` or `trembita-events/tests/` | M |
+| Medium | Actor store redb contract at crate level | `trembita-actor-store/tests/redb_contract.rs` | S |
+| Low | Gateway rate limit HTTP integration | `trembita/tests/gateway_jobs_http.rs` | S |
+| Low | Typed wire error enums (queue/topic/store) | `trembita-proto` + service migration | L |
 
 ### Closed gaps
 
 | Closed | What | Where |
 |--------|------|-------|
+| 2026-09 | Event topics facade integration (`TrembitaApp::publish`, metrics) | `trembita/tests/topic.rs` |
+| 2026-09 | Actor store in-memory contract tests | `trembita-actor-store/tests/memory_contract.rs` |
 | 2026-08 | Scenario soak per product path (actor store, saga resume, session restart) | `benchmarks/soak_{actor_store,saga,session}.rs`, `.gitlab-ci.yml` `bench` |
 | 2026-08 | Gateway identity, `SessionHandle`, WS + HTTP E2E, gateway drain | `trembita/src/gateway/`, `trembita/tests/{gateway_identity,gateway_ws,gateway_http}.rs`, `examples/{realtime,stateful-workers}/`, `docs/decisions/gateway-identity.md` |
 | 2026-09 | Introspect API on product gateway (`IntrospectApi`, `with_introspect_api`, `AuthFn`) | `trembita-http/src/introspect_routes.rs`, `trembita/tests/gateway_introspect_http.rs`, `docs/decisions/introspect-api.md` |

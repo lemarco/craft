@@ -1,6 +1,7 @@
 //! `trembita-jobs` — durable job queue port, redb adapter, and leader [`QueueService`].
 
 mod backlog_settle_outbox;
+mod cluster_job_queue;
 mod external_backlog;
 mod queue;
 mod queue_autoscale;
@@ -8,6 +9,7 @@ mod queue_lifecycle;
 mod queue_prefetch;
 mod queue_schedule;
 mod queue_service;
+mod queue_service_wire;
 mod redb_queue;
 mod schedule_source;
 mod sharded_queue;
@@ -17,6 +19,7 @@ pub use backlog_settle_outbox::{
     BacklogSettleOutbox, BacklogSettleOutboxError, BacklogSettleOutboxId, BacklogSettleOutboxOpts,
     InMemoryBacklogSettleOutbox, RedbBacklogSettleOutbox, push_backlog_settle,
 };
+pub use cluster_job_queue::ClusterJobQueue;
 pub use external_backlog::{
     BacklogError, BacklogFeedOpts, BacklogItem, BacklogRegistry, BacklogSettleEvent,
     BacklogSettleOutcome, ConsumerCount, ExternalBacklog, InMemoryExternalBacklog, Settlement,
@@ -38,7 +41,7 @@ pub use queue_prefetch::{DEFAULT_QUEUE_BATCH_MAX, DEFAULT_QUEUE_PREFETCH};
 pub use queue_schedule::{
     RecurringJob, parse_cron, run_queue_schedule_ticker, run_recurring_job_ticker,
 };
-pub use queue_service::{ClusterJobQueue, QueueService};
+pub use queue_service::QueueService;
 pub use redb_queue::RedbJobQueue;
 pub use schedule_source::{
     CompositeScheduleSource, ScheduleError, SchedulePoll, ScheduleReconcilePlan, ScheduleSource,

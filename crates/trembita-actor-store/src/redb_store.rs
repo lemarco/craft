@@ -3,10 +3,11 @@
 
 use std::path::Path;
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use trembita_proto::{StoreReplicateOp, decode, encode};
+use trembita_storage::{now_ms, open_mutex_database};
 
 use trembita_proto::BoxFuture;
 
@@ -43,16 +44,6 @@ fn codec(e: impl std::fmt::Display) -> StoreError {
     StoreError::Codec(e.to_string())
 }
 
-fn now_ms() -> u64 {
-    u64::try_from(
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis(),
-    )
-    .unwrap_or(u64::MAX)
-}
-
 fn ttl_to_expires_at_ms(ttl: Option<Duration>) -> u64 {
     ttl.map_or(0, |d| {
         now_ms().saturating_add(u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
@@ -71,7 +62,7 @@ impl RedbActorStateStore {
     /// # Errors
     /// Returns [`StoreError::Backend`] when the file cannot be opened.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
-        let db = Mutex::new(Database::create(path).map_err(backend)?);
+        let db = open_mutex_database(path).map_err(backend)?;
         let store = Self { db };
         store.bootstrap()?;
         Ok(store)

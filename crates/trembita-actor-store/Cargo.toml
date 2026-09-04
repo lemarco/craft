@@ -22,6 +22,7 @@ workspace = true
 trembita-proto.workspace = true
 trembita-core.workspace = true
 trembita-runtime.workspace = true
+trembita-storage.workspace = true
 trembita-net.workspace = true
 serde = { workspace = true, features = ["derive"] }
 postcard.workspace = true

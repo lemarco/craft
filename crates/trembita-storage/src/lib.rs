@@ -17,11 +17,13 @@
 pub use trembita_proto as proto;
 
 mod error;
+pub mod mailbox_spool;
 mod memory;
 mod migration;
 mod namespaced;
 mod null;
 mod redb_store;
+mod redb_util;
 mod traits;
 mod types;
 
@@ -29,6 +31,9 @@ mod types;
 pub mod test_util;
 
 pub use error::StorageError;
+pub use mailbox_spool::{
+    InMemoryMailboxSpool, MailboxSpool, MailboxSpoolError, MailboxSpoolId, RedbMailboxSpool,
+};
 pub use memory::MemoryStorage;
 pub use migration::{
     export_migration, import_migration, import_migration_boxed, import_migration_memory,
@@ -36,5 +41,6 @@ pub use migration::{
 pub use namespaced::{GroupRedbLayout, group_redb_path};
 pub use null::NullStorage;
 pub use redb_store::RedbStorage;
+pub use redb_util::{error_string, now_ms, open_mutex_database};
 pub use traits::{HardStateStore, LogStore, RaftStorage, SnapshotStore};
 pub use types::{HardState, Snapshot, SnapshotMeta};

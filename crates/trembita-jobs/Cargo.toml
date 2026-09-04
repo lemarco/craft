@@ -23,6 +23,7 @@ trembita-net.workspace = true
 trembita-proto.workspace = true
 trembita-core.workspace = true
 trembita-runtime.workspace = true
+trembita-storage.workspace = true
 serde = { workspace = true, features = ["derive"] }
 postcard.workspace = true
 cron = "0.15.0"

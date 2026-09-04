@@ -36,6 +36,8 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 - **Gateway rate limiting** — optional [`GatewayOpts::rate_limit_per_sec`](crates/trembita/src/gateway/mod.rs)
   (`429 Too Many Requests` when exceeded).
 - **Builder module split** — join/autoscale/error helpers extracted from [`builder.rs`](crates/trembita/src/builder/mod.rs).
+- **Shared redb adapter helpers** — [`redb_util`](crates/trembita-storage/src/redb_util.rs) (`now_ms`, `open_mutex_database`); mailbox spool moved to [`trembita-storage`](crates/trembita-storage/src/mailbox_spool.rs).
+- **Queue service split** — wire conversions and [`ClusterJobQueue`](crates/trembita-jobs/src/cluster_job_queue.rs) extracted from `queue_service.rs`.
 
 ### Fixed
 
