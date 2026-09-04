@@ -7,6 +7,7 @@
 mod compute;
 mod drain;
 mod identity;
+mod rate_limit;
 mod session;
 
 use std::fmt;
@@ -105,6 +106,7 @@ pub struct GatewayOpts {
     drain_timeout: Duration,
     tls: Option<GatewayTlsPaths>,
     protect_apis: bool,
+    rate_limit_per_sec: Option<u32>,
 }
 
 impl fmt::Debug for GatewayOpts {
@@ -120,6 +122,7 @@ impl fmt::Debug for GatewayOpts {
             .field("drain_timeout", &self.drain_timeout)
             .field("tls", &self.tls.as_ref().map(|_| "<pem>"))
             .field("protect_apis", &self.protect_apis)
+            .field("rate_limit_per_sec", &self.rate_limit_per_sec)
             .finish()
     }
 }
@@ -139,6 +142,7 @@ impl GatewayOpts {
             drain_timeout: DEFAULT_GATEWAY_DRAIN_TIMEOUT,
             tls: None,
             protect_apis: false,
+            rate_limit_per_sec: None,
         }
     }
 
@@ -227,6 +231,13 @@ impl GatewayOpts {
         self
     }
 
+    /// Cap gateway-wide HTTP throughput at `limit` requests per second (`429` when exceeded).
+    #[must_use]
+    pub fn rate_limit_per_sec(mut self, limit: u32) -> Self {
+        self.rate_limit_per_sec = Some(limit.max(1));
+        self
+    }
+
     /// Custom Axum routes (WebSocket, authenticated HTTP, …).
     /// Custom Axum routes merged after built-in APIs. Return a [`Router`] from
     /// [`HostRouter::build`](trembita_http::HostRouter::build) when dispatching
@@ -269,6 +280,7 @@ impl GatewayOpts {
             drain_timeout: self.drain_timeout,
             tls: self.tls,
             protect_apis: self.protect_apis,
+            rate_limit_per_sec: self.rate_limit_per_sec,
         }
     }
 }
@@ -470,6 +482,8 @@ pub struct GatewayConfig {
     pub tls: Option<GatewayTlsPaths>,
     /// When `true`, built-in product APIs require [`GatewayOpts::identity`].
     pub protect_apis: bool,
+    /// Optional gateway-wide requests-per-second cap ([`GatewayOpts::rate_limit_per_sec`]).
+    pub rate_limit_per_sec: Option<u32>,
 }
 
 /// Build the gateway router: custom routes first, then optional product APIs.
@@ -511,6 +525,7 @@ fn build_gateway_router_with_tracker(
         drain_timeout: _,
         tls: _,
         protect_apis,
+        rate_limit_per_sec,
     } = config;
 
     let needs_auth = protect_apis || jobs_api || actors_api || workflows_api || introspect_api;
@@ -566,6 +581,13 @@ fn build_gateway_router_with_tracker(
         router = router.layer(axum::middleware::from_fn_with_state(
             connections,
             drain::track_connection,
+        ));
+    }
+
+    if let Some(limit) = rate_limit_per_sec {
+        router = router.layer(axum::middleware::from_fn_with_state(
+            Arc::new(rate_limit::GatewayRateLimiter::new(limit)),
+            rate_limit::rate_limit_middleware,
         ));
     }
 

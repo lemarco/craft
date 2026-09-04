@@ -33,6 +33,9 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 - **Gateway HTTP body limit** — 16 MiB [`DefaultBodyLimit`](crates/trembita/src/gateway/mod.rs) on product router.
 - **Gateway validation API** — [`validate_gateway_config`](crates/trembita/src/gateway/mod.rs),
   [`GatewayConfigError`](crates/trembita/src/gateway/mod.rs).
+- **Gateway rate limiting** — optional [`GatewayOpts::rate_limit_per_sec`](crates/trembita/src/gateway/mod.rs)
+  (`429 Too Many Requests` when exceeded).
+- **Builder module split** — join/autoscale/error helpers extracted from [`builder.rs`](crates/trembita/src/builder/mod.rs).
 
 ### Fixed
 
