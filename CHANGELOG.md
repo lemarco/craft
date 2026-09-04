@@ -7,9 +7,24 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with all
 
 Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases may include breaking changes on minor bumps; each is noted here.
 
-**Crates.io:** [`0.3.0`](https://crates.io/crates/trembita) (2026-09-04). See [0.3.1](#031--2026-09-04) below for the latest release.
+**Crates.io:** [`0.3.2`](https://crates.io/crates/trembita) (2026-09-05). See [0.3.2](#032--2026-09-05) below for the latest release.
 
 ## [Unreleased]
+
+## [0.3.2] — 2026-09-05
+
+### Added
+
+- **`StaticSite` gateway helper** ([`trembita-http`](crates/trembita-http/README.md)) — serve SPAs from
+  three backends with one Axum router shape:
+  - [`StaticSource::Embedded`](crates/trembita-http/src/static_site/mod.rs) — compile-time bytes via
+    `include_dir!` / [`embedded_from_dir`](crates/trembita-http/src/static_site/embedded.rs)
+  - [`StaticSource::Filesystem`](crates/trembita-http/src/static_site/mod.rs) — directory on disk (dev/staging)
+  - [`StaticSource::ObjectStore`](crates/trembita-http/src/static_site/object_store.rs) — S3-compatible storage
+    (feature `static-s3`, proxy or CDN redirect)
+- SPA fallback, cache-control presets, precompressed `.gz`/`.br` siblings, env-based config
+  (`{PREFIX}_SOURCE`, `{PREFIX}_ROOT`, `{PREFIX}_BUCKET`, …).
+- [`HostRouter::static_site`](crates/trembita-http/src/host_router.rs) convenience for virtual-host mounting.
 
 ## [0.3.1] — 2026-09-04
 
@@ -263,7 +278,8 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
   backpressure on QUIC.
 
 
-[Unreleased]: https://gitlab.com/lemarco/trembita/-/compare/v0.3.1...HEAD
+[Unreleased]: https://gitlab.com/lemarco/trembita/-/compare/v0.3.2...HEAD
+[0.3.2]: https://gitlab.com/lemarco/trembita/-/compare/v0.3.1...v0.3.2
 [0.3.1]: https://gitlab.com/lemarco/trembita/-/compare/v0.3.0...v0.3.1
 [0.3.0]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.3...v0.3.0
 [0.2.3]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.2...v0.2.3

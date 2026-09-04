@@ -106,3 +106,44 @@ let app = HostRouter::new()
 
 Do **not** use a catch-all dev router in production — register every production
 hostname explicitly, or opt in to [`HostRouter::unmatched_fallback`] deliberately.
+
+## Static sites (`StaticSite`)
+
+Serve product SPAs from one of three backends — same router shape, switch via config:
+
+| Backend | Use case |
+|---------|----------|
+| [`StaticSource::Embedded`](src/static_site/mod.rs) | Release binary (`include_dir!("../fe/dist")`) |
+| [`StaticSource::Filesystem`](src/static_site/mod.rs) | Dev/staging (`TREMBITA_STATIC_CLIENT_ROOT=/path/to/dist`) |
+| [`StaticSource::ObjectStore`](src/static_site/object_store.rs) | S3/MinIO/R2 (feature `static-s3`) |
+
+```rust
+use trembita_http::{HostRouter, StaticSite, StaticSource, embedded_from_dir};
+
+static CLIENT: include_dir::Dir<'_> = include_dir!("../fe/client/dist");
+
+let site = StaticSite::new(StaticSource::embedded(embedded_from_dir(&CLIENT)))
+    .spa_fallback(true);
+
+let app = HostRouter::new()
+    .static_site("app.example.com", site)
+    .host("api.example.com", api_router)
+    .build();
+```
+
+Runtime env (filesystem example):
+
+```bash
+export TREMBITA_STATIC_CLIENT_SOURCE=filesystem
+export TREMBITA_STATIC_CLIENT_ROOT=/var/www/client/dist
+```
+
+S3 example:
+
+```bash
+export TREMBITA_STATIC_ADMIN_SOURCE=s3
+export TREMBITA_STATIC_ADMIN_BUCKET=quazala-fe-admin
+export TREMBITA_STATIC_ADMIN_PREFIX=releases/latest/
+export AWS_ACCESS_KEY_ID=…
+export AWS_SECRET_ACCESS_KEY=…
+```

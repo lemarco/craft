@@ -17,6 +17,11 @@
 //! [`HostRouter`] dispatches by HTTP `Host` on a single listen port (strict by default;
 //! opt-in [`HostRouter::local_dev_fallback`] for loopback only).
 //!
+//! # Static sites
+//!
+//! [`StaticSite`] serves SPAs from embedded bytes, a filesystem path, or S3-compatible
+//! storage — see [`StaticSource`].
+//!
 //! Wire it to [`TrembitaApp::jobs_api`](https://docs.rs/trembita/latest/trembita/struct.TrembitaApp.html#method.jobs_api)
 //! or custom enqueue / lookup closures.
 //!
@@ -55,6 +60,7 @@ mod host_router;
 mod introspect_routes;
 mod introspect_types;
 mod routes;
+mod static_site;
 mod types;
 mod upgrade_routes;
 mod upgrade_types;
@@ -75,6 +81,12 @@ use trembita_runtime::{CastError, ClusterAskError};
 
 pub use actor_types::{ActorsApiError, AskAccepted};
 pub use host_router::{HostRouter, is_local_dev_host, normalize_host};
+pub use static_site::{
+    EmbeddedAssets, EmbeddedFile, Precompressed, StaticSite, StaticSiteEnvError, StaticSiteError,
+    StaticSource, embedded_from_dir,
+};
+#[cfg(feature = "static-s3")]
+pub use static_site::{ObjectStoreConfig, S3Delivery};
 pub use introspect_types::IntrospectApiError;
 pub use routes::parse_enqueue_body;
 pub use trembita_dashboard::{

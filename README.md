@@ -24,9 +24,9 @@
 
 | | |
 |---|---|
-| **Version** | `0.3.1` |
+| **Version** | `0.3.2` |
 | **Distribution** | Published on [crates.io](https://crates.io/crates/trembita) — E2E/chaos, product showcases |
-| **Release** | v0.3.1 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/trembita/0.3.1](https://docs.rs/trembita/0.3.1) |
+| **Release** | v0.3.2 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/trembita/0.3.2](https://docs.rs/trembita/0.3.2) |
 | **Full status** | [docs/status.md](docs/status.md) |
 
 ### Highlights

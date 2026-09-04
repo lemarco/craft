@@ -103,6 +103,12 @@ impl HostRouter {
         self
     }
 
+    /// Route `hostname` to a [`StaticSite`] router (convenience for [`.host`](Self::host)).
+    #[must_use]
+    pub fn static_site(self, hostname: impl AsRef<str>, site: crate::StaticSite) -> Self {
+        self.host(hostname, site.router())
+    }
+
     /// Merge into one [`Router`] that dispatches by the `Host` header.
     pub fn build(self) -> Router {
         let dispatch = HostDispatch {

@@ -122,7 +122,9 @@ pub use workload::WorkloadRuntime;
 
 #[cfg(feature = "http-jobs")]
 pub use trembita_http::{
-    HostRouter, IntrospectApi, IntrospectApiError, Observer, is_local_dev_host, normalize_host,
+    EmbeddedAssets, EmbeddedFile, HostRouter, IntrospectApi, IntrospectApiError, Observer,
+    Precompressed, StaticSite, StaticSource, embedded_from_dir, is_local_dev_host,
+    normalize_host,
 };
 pub use upgrade::upgrade_api;
 pub use upgrade::{

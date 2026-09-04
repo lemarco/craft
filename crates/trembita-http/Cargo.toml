@@ -19,6 +19,8 @@ workspace = true
 axum = { version = "0.8", features = ["json"] }
 base64 = "0.22"
 bytes = "1"
+include_dir = "0.7"
+mime_guess = "2"
 trembita-dashboard.workspace = true
 trembita-runtime.workspace = true
 trembita-jobs.workspace = true
@@ -29,9 +31,15 @@ http = "1"
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1"
 thiserror.workspace = true
-tokio = { version = "1", features = ["rt", "net", "macros"] }
+tokio = { version = "1", features = ["rt", "net", "macros", "fs", "io-util"] }
 tower = "0.5"
+opendal = { version = "0.52", features = ["services-s3"], optional = true }
+
+[features]
+default = ["static-s3"]
+static-s3 = ["dep:opendal"]
 
 [dev-dependencies]
+tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 tower = { version = "0.5", features = ["util"] }
