@@ -281,6 +281,15 @@ impl<A: UserActor> PoolInner<A> {
         self.restarts.load(Ordering::Relaxed)
     }
 
+    pub(super) fn runtime_stats(&self) -> (usize, u64, u64, i64) {
+        (
+            self.len(),
+            self.messages.load(Ordering::Relaxed),
+            self.handle_nanos.load(Ordering::Relaxed),
+            self.queued.load(Ordering::Relaxed),
+        )
+    }
+
     /// A clone of the round-robin-selected instance's sender and depth counter.
     pub(super) fn pick_rr(&self) -> Option<(mpsc::UnboundedSender<Mailbox<A>>, Arc<AtomicI64>)> {
         let instances = self.instances.lock().unwrap();

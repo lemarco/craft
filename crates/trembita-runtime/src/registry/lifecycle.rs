@@ -54,12 +54,7 @@ impl<A: UserActor> GroupLifecycle for PoolInner<A> {
         PoolInner::signal_stop(self);
     }
     fn runtime_stats(&self) -> (usize, u64, u64, i64) {
-        (
-            self.len(),
-            self.messages.load(Ordering::Relaxed),
-            self.handle_nanos.load(Ordering::Relaxed),
-            self.queued.load(Ordering::Relaxed),
-        )
+        PoolInner::runtime_stats(self)
     }
     fn instance_introspection(&self) -> Vec<(u32, u64, i64)> {
         PoolInner::instance_introspection(self)
@@ -108,7 +103,7 @@ impl<A: UserActor> WireIngress for PoolInner<A> {
         payload: &[u8],
     ) -> Result<oneshot::Receiver<WireReply>, DeliverError> {
         let (tx, rx) = oneshot::channel();
-        let msg = A::decode_ask(payload, WireReplyPort { tx })?;
+        let msg = A::decode_ask(payload, WireReplyPort::new(tx))?;
         self.send_to_instance(instance, msg)?;
         Ok(rx)
     }

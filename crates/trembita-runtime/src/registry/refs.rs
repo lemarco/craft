@@ -28,9 +28,19 @@ where
     .await
 }
 
+/// A handle to a single named actor (a group of one). Cheap to clone.
 pub struct ActorRef<A: UserActor> {
     pool: Arc<PoolInner<A>>,
     compute_tokens: ComputeTokenHook,
+}
+
+impl<A: UserActor> ActorRef<A> {
+    pub(super) fn from_pool(pool: Arc<PoolInner<A>>, compute_tokens: ComputeTokenHook) -> Self {
+        Self {
+            pool,
+            compute_tokens,
+        }
+    }
 }
 
 impl<A: UserActor> std::fmt::Debug for ActorRef<A> {
@@ -98,6 +108,15 @@ impl<A: UserActor> ActorRef<A> {
 pub struct PoolRef<A: UserActor> {
     pool: Arc<PoolInner<A>>,
     compute_tokens: ComputeTokenHook,
+}
+
+impl<A: UserActor> PoolRef<A> {
+    pub(super) fn from_pool(pool: Arc<PoolInner<A>>, compute_tokens: ComputeTokenHook) -> Self {
+        Self {
+            pool,
+            compute_tokens,
+        }
+    }
 }
 
 impl<A: UserActor> std::fmt::Debug for PoolRef<A> {

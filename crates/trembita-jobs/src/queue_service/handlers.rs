@@ -429,9 +429,10 @@ impl QueueService {
                 },
                 Ok(queue) => {
                     let redb = self
-                        .redb_streams
+                        .registry
                         .lock()
                         .expect("poisoned")
+                        .redb_streams
                         .get(&request.stream)
                         .cloned();
                     let lease_result = if let Some(redb) = redb {

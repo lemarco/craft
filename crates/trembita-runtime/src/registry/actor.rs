@@ -3,6 +3,8 @@ use std::time::Duration;
 use super::errors::{ConfigCodecError, MessageDecodeError, MigrationError};
 use super::reply::{RpcReplyPort, WireReplyPort};
 
+/// A user-defined actor: state built from a `Config`, driven by a serial
+/// mailbox of `Message`s.
 pub trait UserActor: Send + Sized + 'static {
     /// Immutable configuration used to construct the actor's initial state.
     type Config: Send + 'static;

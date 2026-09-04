@@ -77,6 +77,10 @@ pub struct WireReplyPort {
 }
 
 impl WireReplyPort {
+    pub(super) fn new(tx: oneshot::Sender<WireReply>) -> Self {
+        Self { tx }
+    }
+
     /// Adapt this wire channel into a typed [`RpcReplyPort<R>`] to embed in a
     /// message. `R` must be serializable so the reply can cross the node
     /// boundary.

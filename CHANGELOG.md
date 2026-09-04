@@ -37,6 +37,8 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
   (`429 Too Many Requests` when exceeded).
 - **Builder module split** — join/autoscale/error helpers extracted from [`builder/mod.rs`](crates/trembita/src/builder/mod.rs); [`TrembitaClusterBuilder`](crates/trembita/src/builder/cluster/mod.rs) split into `builder/cluster/{config,assemble,products,start,types,topic_leader}.rs`.
 - **Runtime module split** — [`runtime.rs`](crates/trembita-runtime/src/runtime/mod.rs) split into `runtime/{types,handle,event_loop,spawn,service,wire}.rs`.
+- **Registry module split** — [`registry.rs`](crates/trembita-runtime/src/registry/mod.rs) split into `registry/{actor,errors,reply,pool,lifecycle,refs,inner,observer}.rs`.
+- **Queue stream registry** — `QueueService` holds one `Mutex<QueueStreamRegistry>` instead of five separate mutex maps.
 - **Shared redb adapter helpers** — [`redb_util`](crates/trembita-storage/src/redb_util.rs) (`now_ms`, `open_database`, `open_mutex_database`); migrated queue/topic/actor-store/mailbox spool, event-outbox cursors, backlog-settle outbox, and queue schedules.
 
 ### Fixed

@@ -238,10 +238,7 @@ impl ActorRegistry {
             return Err(SpawnError::Start(Box::new(e)));
         }
         self.insert(name, &pool);
-        Ok(ActorRef {
-            pool,
-            compute_tokens: Arc::clone(&self.compute_tokens),
-        })
+        Ok(ActorRef::from_pool(pool, Arc::clone(&self.compute_tokens)))
     }
 
     /// Spawn a supervised singleton whose handler errors are governed by
@@ -267,10 +264,7 @@ impl ActorRegistry {
             return Err(SpawnError::Start(Box::new(e)));
         }
         self.insert(name, &pool);
-        Ok(ActorRef {
-            pool,
-            compute_tokens: Arc::clone(&self.compute_tokens),
-        })
+        Ok(ActorRef::from_pool(pool, Arc::clone(&self.compute_tokens)))
     }
 
     /// Spawn a single named actor and restore migratable state into it from a
@@ -291,10 +285,7 @@ impl ActorRegistry {
         let pool = PoolInner::<A>::new(name, self.observer.clone());
         pool.spawn_instance_restoring(config, snapshot)?;
         self.insert(name, &pool);
-        Ok(ActorRef {
-            pool,
-            compute_tokens: Arc::clone(&self.compute_tokens),
-        })
+        Ok(ActorRef::from_pool(pool, Arc::clone(&self.compute_tokens)))
     }
 
     /// Spawn a pool of `count` identical actors under `name`.
@@ -328,10 +319,7 @@ impl ActorRegistry {
             }
         }
         self.insert(name, &pool);
-        Ok(PoolRef {
-            pool,
-            compute_tokens: Arc::clone(&self.compute_tokens),
-        })
+        Ok(PoolRef::from_pool(pool, Arc::clone(&self.compute_tokens)))
     }
 
     /// Grow or shrink the pool `name` to exactly `count` instances.
@@ -360,28 +348,21 @@ impl ActorRegistry {
         pool.scale_to(count, &config)
             .await
             .map_err(|e| ScaleError::Start(Box::new(e)))?;
-        Ok(PoolRef {
-            pool,
-            compute_tokens: Arc::clone(&self.compute_tokens),
-        })
+        Ok(PoolRef::from_pool(pool, Arc::clone(&self.compute_tokens)))
     }
 
     /// Get a handle to the singleton actor `name`, if registered as `A`.
     #[must_use]
     pub fn get<A: UserActor>(&self, name: &str) -> Option<ActorRef<A>> {
-        self.downcast::<A>(name).map(|pool| ActorRef {
-            pool,
-            compute_tokens: Arc::clone(&self.compute_tokens),
-        })
+        self.downcast::<A>(name)
+            .map(|pool| ActorRef::from_pool(pool, Arc::clone(&self.compute_tokens)))
     }
 
     /// Get a handle to the pool `name`, if registered as `A`.
     #[must_use]
     pub fn pool<A: UserActor>(&self, name: &str) -> Option<PoolRef<A>> {
-        self.downcast::<A>(name).map(|pool| PoolRef {
-            pool,
-            compute_tokens: Arc::clone(&self.compute_tokens),
-        })
+        self.downcast::<A>(name)
+            .map(|pool| PoolRef::from_pool(pool, Arc::clone(&self.compute_tokens)))
     }
 
     /// Stop and remove the actor group `name`.

@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+/// Observes actor lifecycle transitions (E14 / observability Track H).
 pub trait ActorObserver: Send + Sync {
     /// A fresh instance of `name` started (plain, supervised, or restored).
     fn on_spawned(&self, _name: &str, _instance: u32) {}
