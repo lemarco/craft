@@ -17,6 +17,7 @@ use trembita_proto::JoinRole;
 use trembita_runtime::DEFAULT_DRAIN_TIMEOUT;
 
 /// Which `TREMBITA_*` variables were explicitly set (vs derived defaults).
+#[allow(clippy::struct_excessive_bools)] // one flag per env toggle.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct EnvOverrides {
     /// `TREMBITA_PEERS` was set.

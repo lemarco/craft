@@ -256,7 +256,7 @@ impl ExternalBacklog for PgBacklog {
                 .execute(&pool)
                 .await
                 .map_err(|e| BacklogError::Backend(e.to_string()))?;
-            Ok(u64::try_from(result.rows_affected()).unwrap_or(u64::MAX))
+            Ok(result.rows_affected())
         })
     }
 }

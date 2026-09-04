@@ -284,6 +284,7 @@ pub struct TrembitaClusterBuilder<M: StateMachine> {
 }
 
 /// Builder options set explicitly in code (not derived from env merge).
+#[allow(clippy::struct_excessive_bools)] // one flag per merge field.
 #[derive(Debug, Clone, Copy, Default)]
 struct BuilderOverrides {
     node_id: bool,
@@ -377,6 +378,9 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     ///
     /// Sugar for multi-node seeds without listing ids manually; prefer [`members`](Self::members)
     /// or `TREMBITA_PEERS` when addresses differ per host.
+    ///
+    /// # Panics
+    /// Panics when `count < 1`.
     #[must_use]
     pub fn voters(mut self, count: u32) -> Self {
         assert!(count >= 1, "voters(count) requires count >= 1");
@@ -518,7 +522,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             self.node_id = cfg.node_id;
         }
         if !self.overrides.members && cfg.env.peers {
-            self.members = cfg.members.clone();
+            self.members.clone_from(&cfg.members);
             if self.members.is_empty() {
                 self.members.push(self.node_id);
             }
@@ -555,7 +559,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             self.cert_watch = Some(cfg.cert_watch);
         }
         if !cfg.join_seeds.is_empty() {
-            self.join_seeds = cfg.join_seeds.clone();
+            self.join_seeds.clone_from(&cfg.join_seeds);
         }
         if self.admin_addr.is_none()
             && let Some(admin) = cfg.admin
