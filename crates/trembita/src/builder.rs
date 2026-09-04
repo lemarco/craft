@@ -473,6 +473,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
 
     /// Apply `TREMBITA_*` cluster settings without overwriting values set in code.
     pub(crate) fn merge_app_config(mut self, cfg: &crate::env_config::AppConfig) -> Self {
+        self.node_id = cfg.node_id;
         if !cfg.members.is_empty() {
             self = self.members(cfg.members.clone());
         }
@@ -2697,4 +2698,65 @@ async fn join_cluster_auto(
     Err(StartError::Join(
         "auto join did not commit before the retry budget elapsed".to_string(),
     ))
+}
+
+#[cfg(all(test, feature = "dev-certs"))]
+mod merge_app_config_tests {
+    use std::net::SocketAddr;
+    use std::time::Duration;
+
+    use trembita_net::{LocalNetwork, PeerDirectory};
+    use trembita_runtime::DEFAULT_DRAIN_TIMEOUT;
+
+    use super::*;
+    use crate::app::EmptyStateMachine;
+    use crate::env_config::AppConfig;
+    use crate::security::Security;
+
+    fn test_app_config(node_id: NodeId) -> AppConfig {
+        let ca = trembita_net::tls::ClusterCa::generate().expect("ca");
+        AppConfig {
+            node_id,
+            listen: "127.0.0.1:7443".parse::<SocketAddr>().expect("addr"),
+            admin: None,
+            admin_tls: None,
+            peers: PeerDirectory::new(),
+            members: Vec::new(),
+            join_seeds: Vec::new(),
+            allow_join: true,
+            allow_leave: true,
+            graceful_leave: true,
+            security: Security::dev(&ca, node_id).expect("security"),
+            pem_paths: None,
+            cert_dir: None,
+            drain_timeout: DEFAULT_DRAIN_TIMEOUT,
+            data_dir: None,
+            job_queue_stream: None,
+            job_queue_lease: Duration::from_secs(60),
+            gateway: None,
+            gateway_jobs_api: false,
+            gateway_actors_api: false,
+            gateway_workflows_api: false,
+            gateway_drain_timeout: crate::gateway::DEFAULT_GATEWAY_DRAIN_TIMEOUT,
+            gateway_tls: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn merge_app_config_applies_node_id_from_env_cfg() {
+        let net = LocalNetwork::new();
+        let cluster = TrembitaClusterBuilder::new(NodeId(1), EmptyStateMachine)
+            .merge_app_config(&test_app_config(NodeId(7)))
+            .tick_period(Duration::from_millis(5))
+            .start_local(&net)
+            .await;
+        assert_eq!(cluster.node_id(), NodeId(7));
+
+        let joiner = TrembitaClusterBuilder::new(NodeId(1), EmptyStateMachine)
+            .merge_app_config(&test_app_config(NodeId(0)))
+            .tick_period(Duration::from_millis(5))
+            .start_local(&LocalNetwork::new())
+            .await;
+        assert_eq!(joiner.node_id(), NodeId(0));
+    }
 }

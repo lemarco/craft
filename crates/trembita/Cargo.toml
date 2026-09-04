@@ -107,3 +107,7 @@ required-features = ["http-jobs"]
 name = "app_workflow"
 path = "tests/app_workflow.rs"
 required-features = ["http-jobs"]
+
+[[test]]
+name = "app_cluster"
+path = "tests/app_cluster.rs"

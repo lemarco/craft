@@ -63,6 +63,14 @@ impl RunOpts {
             ..Self::default()
         }
     }
+
+    /// Integration tests only — boot on an existing in-memory network (multi-node local cluster).
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_local_net(mut self, net: LocalNetwork) -> Self {
+        self.local_net = Some(net);
+        self
+    }
 }
 
 impl ShutdownOpts {

@@ -3,6 +3,7 @@
 
 use std::collections::HashSet;
 use std::convert::Infallible;
+use std::future::Future;
 use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
@@ -15,7 +16,7 @@ use trembita_jobs::{EnqueueOptions, JobId, JobQueue, JobStatus, LeaseId, WorkerI
 use trembita_proto::LogIndex;
 use trembita_runtime::{
     ActorRegistry, ActorSession, CastError, ClientError, ClusterAskError, ClusterControl,
-    ClusterRef, ClusterSupervisor, NodeHandle, UserActor,
+    ClusterRef, ClusterSupervisor, LeaderGate, LeaderLoopOpts, NodeHandle, UserActor,
 };
 
 use crate::NodeId;
@@ -409,6 +410,50 @@ impl TrembitaAppBuilder {
     #[must_use]
     pub fn workload(mut self, opts: trembita_jobs::WorkloadOpts) -> Self {
         self.inner = self.inner.workload(opts);
+        self
+    }
+
+    /// Initial cluster membership (voting nodes) for static multi-node bootstrap.
+    #[must_use]
+    pub fn members(mut self, members: impl IntoIterator<Item = NodeId>) -> Self {
+        self.inner = self.inner.members(members);
+        self
+    }
+
+    /// Accept [`JoinRole::Voter`] on `/cluster/join`. Default is learner-only elastic
+    /// join; enable on the seed when expanding the voter set ([cluster-elasticity](../../docs/decisions/cluster-elasticity.md)).
+    #[must_use]
+    pub fn allow_voter_join(mut self, allow: bool) -> Self {
+        self.inner = self.inner.allow_voter_join(allow);
+        self
+    }
+
+    /// When `true` (default), the leader replaces a permanently unreachable voter by
+    /// promoting the lowest-id caught-up learner.
+    #[must_use]
+    pub fn voter_replacement(mut self, enabled: bool) -> Self {
+        self.inner = self.inner.voter_replacement(enabled);
+        self
+    }
+
+    /// Override the logical-tick grace period before an unreachable voter is replaced.
+    #[must_use]
+    pub fn voter_replacement_grace_ticks(mut self, ticks: u64) -> Self {
+        self.inner = self.inner.voter_replacement_grace_ticks(ticks);
+        self
+    }
+
+    /// Register a leader-only periodic task ([leader-task](../../docs/decisions/leader-task.md)).
+    ///
+    /// The closure runs on each tick while this node holds Raft leadership.
+    /// Use [`LeaderGate::first_in_term`] for one-shot work after election.
+    #[must_use]
+    pub fn on_leader<F, Fut>(mut self, opts: LeaderLoopOpts, f: F) -> Self
+    where
+        F: Fn(LeaderGate) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.inner = self.inner.on_leader(opts, f);
         self
     }
 
