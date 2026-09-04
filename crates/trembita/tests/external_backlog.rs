@@ -84,9 +84,18 @@ async fn external_backlog_feeds_consumer_and_settles() {
         stop_rx,
     );
 
-    for _ in 0..100 {
+    for i in 0..100 {
         if PROCESSED.load(Ordering::SeqCst) >= 1 {
             break;
+        }
+        if i == 99 {
+            let metrics = app.job_queue("imports").unwrap().metrics().await;
+            let claim_probe = backlog.claim(1).await;
+            eprintln!(
+                "DEBUG metrics={metrics:?} depth={:?} claim_probe={claim_probe:?} settled={:?}",
+                backlog.depth().await,
+                backlog.settled()
+            );
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
