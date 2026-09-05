@@ -182,8 +182,8 @@ fn generate_cargo_toml(opts: &NewProjectOpts) -> String {
     let mut feature_lines = String::new();
     for f in &features {
         let deps = match f {
-            AppFeature::ExternalBacklog => "dep:trembita-backlog-postgres".to_string(),
-            AppFeature::DomainOutbox => "dep:trembita-events-postgres".to_string(),
+            AppFeature::ExternalBacklog => "trembita/external-backlog".to_string(),
+            AppFeature::DomainOutbox => "trembita/domain-outbox".to_string(),
             _ => String::new(),
         };
         if deps.is_empty() {

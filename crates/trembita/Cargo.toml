@@ -31,6 +31,9 @@ trembita-client.workspace = true
 trembita-macros.workspace = true
 trembita-dashboard.workspace = true
 trembita-http = { workspace = true, optional = true }
+trembita-store-redis = { workspace = true, optional = true }
+trembita-backlog-postgres = { workspace = true, optional = true }
+trembita-events-postgres = { workspace = true, optional = true }
 hyper.workspace = true
 hyper-util.workspace = true
 http.workspace = true
@@ -59,6 +62,14 @@ json-wire = ["trembita-proto/json-wire"]
 # Built-in `/jobs/*`, `/actors/*`, `/workflows/*` gateway routes via `trembita-http`.
 # Custom gateway routes (WebSocket, native HTTP) work without this feature.
 http-jobs = ["dep:trembita-http"]
+# Redis-backed [`ActorStateStore`](trembita_actor_store::ActorStateStore) for stateful actors.
+redis-store = ["dep:trembita-store-redis"]
+# PostgreSQL [`ExternalBacklog`](trembita_jobs::ExternalBacklog) adapter.
+external-backlog = ["dep:trembita-backlog-postgres"]
+# PostgreSQL [`EventOutboxSource`](trembita_events::EventOutboxSource) adapter.
+domain-outbox = ["dep:trembita-events-postgres"]
+# All optional integrations — used by docs.rs (`all-features = true`).
+full = ["http-jobs", "redis-store", "external-backlog", "domain-outbox"]
 
 [dev-dependencies]
 trembita-http.workspace = true

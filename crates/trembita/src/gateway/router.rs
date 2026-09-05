@@ -72,7 +72,7 @@ pub(super) fn build_gateway_service_with_tracker(
     let mut gateway = surfaces.map_or_else(|| Gateway::new(false), |f| f(state));
     gateway = gateway.merge_routes(collect_builtin_routes(
         app,
-        auth,
+        auth.clone(),
         jobs_api,
         actors_api,
         workflows_api,
@@ -196,9 +196,9 @@ impl tower::Service<http::Request<hyper::body::Incoming>> for WrappedGatewayServ
 fn too_many_requests()
 -> http::Response<http_body_util::combinators::BoxBody<bytes::Bytes, std::convert::Infallible>> {
     use bytes::Bytes;
-    use http_body_util::Full;
+    use http_body_util::{BodyExt, Full};
     let body = Full::new(Bytes::from_static(b"rate limit exceeded"));
-    let mut resp = http::Response::new(body.map_err(|never| match never {}).boxed_unsync());
+    let mut resp = http::Response::new(body.map_err(|never| match never {}).boxed());
     *resp.status_mut() = http::StatusCode::TOO_MANY_REQUESTS;
     resp
 }

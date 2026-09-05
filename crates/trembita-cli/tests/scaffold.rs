@@ -62,3 +62,29 @@ fn optional_modules_for_extra_features() {
     let cargo = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
     assert!(cargo.contains("path = \"/tmp/trembita/crates/trembita\""));
 }
+
+#[test]
+fn postgres_adapters_forward_through_trembita_features() {
+    let dir = tempdir().unwrap();
+    let opts = NewProjectOpts {
+        name: "backlog-app".into(),
+        output: dir.path().to_path_buf(),
+        features: vec![
+            AppFeature::Jobs,
+            AppFeature::Gateway,
+            AppFeature::ExternalBacklog,
+            AppFeature::DomainOutbox,
+        ],
+        trembita_version: "0.3.2".into(),
+        trembita_path: None,
+    };
+    let root = scaffold_project(&opts).unwrap();
+    let cargo = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
+    assert!(cargo.contains(
+        "features = [\"dev-certs\", \"http-jobs\", \"external-backlog\", \"domain-outbox\"]"
+    ));
+    assert!(cargo.contains("external-backlog = [\"trembita/external-backlog\"]"));
+    assert!(cargo.contains("domain-outbox = [\"trembita/domain-outbox\"]"));
+    assert!(!cargo.contains("trembita-backlog-postgres"));
+    assert!(!cargo.contains("trembita-events-postgres"));
+}

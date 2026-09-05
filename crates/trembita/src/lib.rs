@@ -90,10 +90,10 @@ pub use consumer::{ConsumerGroup, ConsumerOpts, IdempotencyKeyFn, IdempotencyOpt
 pub use cron_opts::CronOpts;
 pub use gateway::{
     ConnectionGuard, ConnectionTracker, DEFAULT_GATEWAY_DRAIN_TIMEOUT, ExtractedIdentity,
-    GatewayBearerIdentity, GatewayHandle, GatewayIdentity, GatewayOpts, GatewayRequest,
-    GatewayTlsPaths, GatewayTokenIdentity, IdentityError, IdentityTypeError, NoWorkerError,
-    OpenActorSessionError, SessionHandle, SessionKey, TrembitaGatewayState, WrappedGatewayService,
-    build_gateway_router, build_gateway_service, spawn_gateway,
+    GatewayBearerIdentity, GatewayConfig, GatewayHandle, GatewayIdentity, GatewayOpts,
+    GatewayRequest, GatewayTlsPaths, GatewayTokenIdentity, IdentityError, IdentityTypeError,
+    NoWorkerError, OpenActorSessionError, SessionHandle, SessionKey, TrembitaGatewayState,
+    WrappedGatewayService, build_gateway_router, build_gateway_service, spawn_gateway,
 };
 pub use job_opts::JobOpts;
 pub use queue_opts::QueueOpts;
@@ -128,6 +128,27 @@ pub use trembita_http::{
     StaticSite, StaticSource, Surface, UpgradeStream, accept_websocket, embedded_from_dir,
     is_local_dev_host, normalize_host, routing_to_http_response,
 };
+
+#[cfg(feature = "redis-store")]
+#[doc(inline)]
+pub use trembita_store_redis as store_redis;
+
+#[cfg(feature = "redis-store")]
+pub use trembita_store_redis::{RedisStore, RedisTlsConfig};
+
+#[cfg(feature = "external-backlog")]
+#[doc(inline)]
+pub use trembita_backlog_postgres as backlog_postgres;
+
+#[cfg(feature = "external-backlog")]
+pub use trembita_backlog_postgres::{PgBacklog, PgBacklogSchema, SharedPgBacklog};
+
+#[cfg(feature = "domain-outbox")]
+#[doc(inline)]
+pub use trembita_events_postgres as events_postgres;
+
+#[cfg(feature = "domain-outbox")]
+pub use trembita_events_postgres::{PgEventOutboxSchema, PgEventOutboxSource};
 pub use upgrade::upgrade_api;
 pub use upgrade::{
     ArtifactManifest, UpgradeCommand, UpgradeError, UpgradeMachine, UpgradeOpts, UpgradePhase,

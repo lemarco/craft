@@ -62,8 +62,8 @@ Scaffolded apps expose trembita capabilities as **app features** (mapped to depe
 | `topics` | Event topics + subscriptions |
 | `workflows` | Saga journal + `/workflows/*` API |
 | `actors` | Stateful worker groups |
-| `external-backlog` | `trembita-backlog-postgres` adapter |
-| `domain-outbox` | `trembita-events-postgres` adapter |
+| `external-backlog` | `trembita/external-backlog` → `trembita::backlog_postgres` |
+| `domain-outbox` | `trembita/domain-outbox` → `trembita::events_postgres` |
 
 Future CLI subcommands (`trembita add`, `trembita doctor`) operate on this layout — **shipped** in [`trembita-cli`](../../crates/trembita-cli/) (`trembita add consumer|topic|actor|http-surface|static-site`, `trembita doctor`).
 

@@ -22,11 +22,7 @@ pub async fn spawn_gateway(
         || Arc::new(ConnectionTracker::default()),
         |w| w.connections(),
     );
-    let mut service =
-        build_gateway_service_with_tracker(&app, config, Some(Arc::clone(&connections)))?;
-    if let Some(wl) = &workload {
-        service.compute_pool = Some(wl.pool());
-    }
+    let service = build_gateway_service_with_tracker(&app, config, Some(Arc::clone(&connections)))?;
     let tls = tls_paths
         .as_ref()
         .map(trembita_dashboard::admin_tls_config)

@@ -43,8 +43,19 @@ Custom [`StateMachine`](https://docs.rs/trembita-core/latest/trembita_core/trait
 
 ## Features
 
-- `http-jobs` — product HTTP gateway helpers (`GatewayOpts`, `/jobs/*`, `/actors/*`, `/workflows/*`)
+- `http-jobs` (default) — product HTTP gateway helpers (`GatewayOpts`, `/jobs/*`, `/actors/*`, `/workflows/*`)
 - `dev-certs` — ephemeral mTLS for solo local seeds without PEM files
+- `redis-store` — Redis [`ActorStateStore`](https://docs.rs/trembita-store-redis) via `trembita::store_redis`
+- `external-backlog` — Postgres [`ExternalBacklog`](https://docs.rs/trembita-backlog-postgres) via `trembita::backlog_postgres`
+- `domain-outbox` — Postgres [`EventOutboxSource`](https://docs.rs/trembita-events-postgres) via `trembita::events_postgres`
+
+Optional integrations are enabled on the single `trembita` dependency — no separate adapter crates in your `Cargo.toml`:
+
+```toml
+trembita = { version = "0.3", features = ["http-jobs", "external-backlog", "redis-store"] }
+```
+
+Direct `trembita-*` crate dependencies remain available for advanced use.
 
 ## Learn more
 

@@ -29,6 +29,12 @@ impl NewProjectOpts {
         {
             feats.push("http-jobs");
         }
+        if self.features.contains(&AppFeature::ExternalBacklog) {
+            feats.push("external-backlog");
+        }
+        if self.features.contains(&AppFeature::DomainOutbox) {
+            feats.push("domain-outbox");
+        }
         let feat_list = feats
             .iter()
             .map(|f| format!("\"{f}\""))
@@ -65,30 +71,10 @@ impl NewProjectOpts {
         }
     }
 
-    /// Optional postgres adapter dependency lines.
+    /// Optional adapter dependency lines (none — adapters are enabled via `trembita` features).
     #[must_use]
     pub fn optional_adapter_lines(&self) -> String {
-        let mut lines = String::new();
-        let dep = |name: &str| {
-            if let Some(path) = &self.trembita_path {
-                format!(
-                    "{name} = {{ path = \"{}/crates/{name}\", optional = true }}\n",
-                    path.display()
-                )
-            } else {
-                format!(
-                    "{name} = {{ version = \"{}\", optional = true }}\n",
-                    self.trembita_version
-                )
-            }
-        };
-        if self.features.contains(&AppFeature::ExternalBacklog) {
-            lines.push_str(&dep("trembita-backlog-postgres"));
-        }
-        if self.features.contains(&AppFeature::DomainOutbox) {
-            lines.push_str(&dep("trembita-events-postgres"));
-        }
-        lines
+        String::new()
     }
 }
 
