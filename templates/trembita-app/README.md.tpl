@@ -1,17 +1,30 @@
-# {{PROJECT_NAME}} — local 3-node trembita cluster (dev)
+# {{PROJECT_TITLE}}
 
-Three VPS-equivalent nodes sharing a dev CA. Generate certs first:
+trembita product app — scaffolded with [`trembita new`](../../docs/decisions/framework-conventions.md).
 
-```bash
-../dev/certs/generate.sh --ca-only --out ./certs
-for id in 1 2 3; do
-  ../dev/certs/generate.sh --node-id "$id" --out ./certs \
-    --ca ./certs/ca.pem --ca-key ./certs/ca.key
-done
+## Layout
+
+```
+src/
+  main.rs       boot
+  app.rs        TrembitaApp wiring
+  config.rs     env config
+  consumers/    job handlers
+  domain/       business logic (no trembita imports)
 ```
 
-Then: `docker compose up`
+## Run locally
 
-Each node uses embedded **redb** (`data_dir`) — no Redis.
+```bash
+cargo run
+```
 
-See [getting-started](../../docs/getting-started.md) and [product scenarios](../../docs/scenarios/README.md). Runnable showcases: [examples/](../../examples/README.md).
+Gateway (when enabled): `http://127.0.0.1:8090` · Admin: `http://127.0.0.1:8080`
+
+Set `GATEWAY_TOKEN` (or `TREMBITA_GATEWAY_TOKEN`) before calling protected APIs.
+
+## 3-node cluster
+
+See `deploy/docker-compose.yml` and `deploy/.env.example`.
+
+Docs: [getting-started](../../docs/getting-started.md) · [scenarios](../../docs/scenarios/README.md)

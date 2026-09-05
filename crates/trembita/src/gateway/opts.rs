@@ -4,15 +4,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Router;
+use trembita_http::Gateway;
 
 use super::super::app::TrembitaApp;
 use super::GatewayTlsPaths;
-use super::config::{DEFAULT_GATEWAY_DRAIN_TIMEOUT, GatewayConfig, GatewayRoutesFn};
+use super::config::{DEFAULT_GATEWAY_DRAIN_TIMEOUT, GatewayConfig, GatewaySurfacesFn};
 use super::identity::{self, GatewayIdentity, SessionKey};
 use super::state::TrembitaGatewayState;
 
-/// Product HTTP gateway: listen address, custom Axum routes, optional built-in APIs.
+/// Product HTTP gateway: listen address, custom surfaces, optional built-in APIs.
 #[allow(clippy::struct_excessive_bools)] // feature toggles map 1:1 to optional product APIs.
 pub struct GatewayOpts {
     addr: SocketAddr,
@@ -21,7 +21,7 @@ pub struct GatewayOpts {
     workflows_api: bool,
     introspect_api: bool,
     identity: Option<Arc<dyn identity::DynGatewayIdentity>>,
-    routes: Option<GatewayRoutesFn>,
+    surfaces: Option<GatewaySurfacesFn>,
     drain_timeout: Duration,
     tls: Option<GatewayTlsPaths>,
     protect_apis: bool,
@@ -37,7 +37,7 @@ impl fmt::Debug for GatewayOpts {
             .field("workflows_api", &self.workflows_api)
             .field("introspect_api", &self.introspect_api)
             .field("identity", &self.identity.as_ref().map(|_| "<extractor>"))
-            .field("routes", &self.routes.as_ref().map(|_| "<router>"))
+            .field("surfaces", &self.surfaces.as_ref().map(|_| "<gateway>"))
             .field("drain_timeout", &self.drain_timeout)
             .field("tls", &self.tls.as_ref().map(|_| "<pem>"))
             .field("protect_apis", &self.protect_apis)
@@ -57,7 +57,7 @@ impl GatewayOpts {
             workflows_api: false,
             introspect_api: false,
             identity: None,
-            routes: None,
+            surfaces: None,
             drain_timeout: DEFAULT_GATEWAY_DRAIN_TIMEOUT,
             tls: None,
             protect_apis: false,
@@ -102,8 +102,6 @@ impl GatewayOpts {
     }
 
     /// Serve the gateway over **TLS** (server-only) using PEM `cert` and `key`.
-    ///
-    /// WebSocket upgrades on this listener use **WSS** automatically.
     #[must_use]
     pub fn tls(mut self, cert: impl Into<PathBuf>, key: impl Into<PathBuf>) -> Self {
         self.tls = Some(GatewayTlsPaths {
@@ -134,16 +132,14 @@ impl GatewayOpts {
         self
     }
 
-    /// Enable or disable read-only `/introspect/*` routes ([`IntrospectApi`](trembita_http::IntrospectApi)).
+    /// Enable or disable read-only `/introspect/*` routes.
     #[must_use]
     pub fn with_introspect_api(mut self, enabled: bool) -> Self {
         self.introspect_api = enabled;
         self
     }
 
-    /// Require [`Self::identity`] on built-in `/jobs/*`, `/actors/*`, `/workflows/*`, and `/introspect/*` routes.
-    ///
-    /// Custom routes from [`.routes`](Self::routes) are unchanged — attach auth there explicitly.
+    /// Require [`Self::identity`] on built-in product API routes.
     #[must_use]
     pub fn protect_product_apis(mut self, enabled: bool) -> Self {
         self.protect_apis = enabled;
@@ -157,30 +153,17 @@ impl GatewayOpts {
         self
     }
 
-    /// Custom Axum routes (WebSocket, authenticated HTTP, …).
-    /// Custom Axum routes merged after built-in APIs. Return a [`Router`] from
-    /// [`HostRouter::build`](trembita_http::HostRouter::build) when dispatching
-    /// several hostnames on one listen port.
+    /// Custom gateway surfaces (WebSocket, authenticated HTTP, multi-host, …).
     #[must_use]
-    pub fn routes<F>(mut self, routes: F) -> Self
+    pub fn surfaces<F>(mut self, surfaces: F) -> Self
     where
-        F: FnOnce(TrembitaGatewayState) -> Router + Send + 'static,
+        F: FnOnce(TrembitaGatewayState) -> Gateway + Send + 'static,
     {
-        self.routes = Some(Box::new(routes));
+        self.surfaces = Some(Box::new(surfaces));
         self
     }
 
-    /// Convenience: custom routes with only [`TrembitaApp`] (no identity on state).
-    #[must_use]
-    pub fn routes_with_app<F>(mut self, routes: F) -> Self
-    where
-        F: FnOnce(Arc<TrembitaApp>) -> Router + Send + 'static,
-    {
-        self.routes = Some(Box::new(move |state| routes(state.app)));
-        self
-    }
-
-    /// Collect gateway wiring for [`super::build_gateway_router`] / [`super::spawn_gateway`].
+    /// Collect gateway wiring for [`super::build_gateway_service`] / [`super::spawn_gateway`].
     #[must_use]
     pub fn build_config(self) -> GatewayConfig {
         self.into_config()
@@ -195,7 +178,7 @@ impl GatewayOpts {
             workflows_api: self.workflows_api,
             introspect_api: self.introspect_api,
             identity: self.identity,
-            routes: self.routes,
+            surfaces: self.surfaces,
             drain_timeout: self.drain_timeout,
             tls: self.tls,
             protect_apis: self.protect_apis,

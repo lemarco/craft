@@ -1,8 +1,7 @@
 //! Product HTTP / WebSocket gateway for [`TrembitaApp`](super::app::TrembitaApp).
 //!
-//! Several hostnames on one listen port: use [`HostRouter`] (re-exported from
-//! `trembita-http`) in [`GatewayOpts::routes`] — strict by default, opt-in
-//! [`HostRouter::local_dev_fallback`] for loopback only.
+//! Declare host surfaces with [`GatewayOpts::surfaces`] — see
+//! [gateway-routing-v2](../../docs/decisions/gateway-routing-v2.md).
 
 mod compute;
 mod config;
@@ -34,7 +33,14 @@ pub use identity::{
     GatewayTokenIdentity, IdentityError, IdentityTypeError, SessionKey,
 };
 pub use opts::GatewayOpts;
-pub use router::{bearer_auth_from_env, build_gateway_router};
+pub use router::{WrappedGatewayService, bearer_auth_from_env, build_gateway_router, build_gateway_service};
 pub use session::{NoWorkerError, OpenActorSessionError, SessionHandle};
 pub use spawn::{GatewaySpawnError, spawn_gateway};
 pub use state::TrembitaGatewayState;
+
+#[cfg(feature = "http-jobs")]
+pub use trembita_http::{
+    ArcHandler, AuthMode, CorsPolicy, Gateway, GatewayBuildError, GatewayService, Handler,
+    HttpError, PathParams, PathPattern, RequestCtx, Response, ResponseBody, RouteEntry, RouteTable,
+    SessionGate, Surface,
+};

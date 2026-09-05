@@ -1,8 +1,9 @@
 //! HTTP response assembly for static files.
 
-use axum::body::Body;
-use axum::http::{Response, StatusCode, header};
-use axum::response::IntoResponse;
+use http::header;
+use http::StatusCode;
+
+use crate::routing::{HttpError, Response, ResponseBody};
 
 use super::StaticSiteError;
 
@@ -20,20 +21,22 @@ pub struct StaticResponse {
 }
 
 impl StaticResponse {
-    /// Build an Axum response with cache policy derived from the request path.
-    pub fn into_response(
+    /// Build a gateway response with cache policy derived from the request path.
+    pub fn into_gateway_response(
         self,
         path: &str,
         index_cache_control: &str,
         asset_cache_control: &str,
         _spa_fallback: bool,
-    ) -> Response<Body> {
+    ) -> Response {
         if let Some(location) = self.redirect_to {
-            return Response::builder()
-                .status(StatusCode::FOUND)
-                .header(header::LOCATION, location)
-                .body(Body::empty())
-                .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
+            let mut resp = Response::status(StatusCode::FOUND);
+            resp.headers_mut().insert(
+                header::LOCATION,
+                http::HeaderValue::from_str(&location)
+                    .unwrap_or_else(|_| http::HeaderValue::from_static("/")),
+            );
+            return resp;
         }
 
         let cache = if path.ends_with("index.html") || !path.contains('.') {
@@ -42,31 +45,38 @@ impl StaticResponse {
             asset_cache_control
         };
 
-        let mut builder = Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, self.content_type)
-            .header(header::CACHE_CONTROL, cache);
-
+        let mut resp = Response::text(StatusCode::OK, String::new());
+        *resp.body_mut() = ResponseBody::Bytes(bytes::Bytes::from(self.body));
+        resp.headers_mut().insert(
+            header::CONTENT_TYPE,
+            http::HeaderValue::from_str(&self.content_type)
+                .unwrap_or_else(|_| http::HeaderValue::from_static("application/octet-stream")),
+        );
+        resp.headers_mut().insert(
+            header::CACHE_CONTROL,
+            http::HeaderValue::from_str(cache)
+                .unwrap_or_else(|_| http::HeaderValue::from_static("no-cache")),
+        );
         if let Some(encoding) = self.content_encoding {
-            builder = builder.header(header::CONTENT_ENCODING, encoding);
+            resp.headers_mut().insert(
+                header::CONTENT_ENCODING,
+                http::HeaderValue::from_str(&encoding)
+                    .unwrap_or_else(|_| http::HeaderValue::from_static("gzip")),
+            );
         }
-
-        builder
-            .body(Body::from(self.body))
-            .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        resp
     }
 }
 
 /// 404 helper.
-pub fn not_found() -> Response<Body> {
-    StatusCode::NOT_FOUND.into_response()
+pub fn not_found() -> Response {
+    Response::text(StatusCode::NOT_FOUND, "not found")
 }
 
 /// 500 helper.
-pub fn internal_error(err: &StaticSiteError) -> Response<Body> {
-    (
+pub fn internal_error(err: &StaticSiteError) -> Response {
+    Response::text(
         StatusCode::INTERNAL_SERVER_ERROR,
         format!("static site error: {err}"),
     )
-        .into_response()
 }

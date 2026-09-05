@@ -1,18 +1,16 @@
-//! Axum routes for job enqueue and lookup.
+//! Route table for job enqueue and lookup.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::Router;
-use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, Method, StatusCode, Uri, header};
-use axum::response::IntoResponse;
-use axum::routing::{get, post};
-use bytes::Bytes;
+use http::header;
+use http::{Method, StatusCode, Uri};
 use trembita_jobs::{
     DEFAULT_QUEUE_BATCH_MAX, EnqueueOptions, JobLifecycle, JobListFilter, LeaseId, WorkerId,
 };
 
 use crate::JobsApiState;
+use crate::routing::{HttpError, RequestCtx, Response, RouteTable};
 use crate::types::{
     AckBatchAccepted, AckBatchBody, EnqueueAccepted, EnqueueBatchAccepted, EnqueueBatchBody,
     EnqueueBatchJobBody, EnqueueJsonBody, JobListResponse, JobStatusResponse, JobsApiError,
@@ -46,61 +44,149 @@ pub struct ListJobsQuery {
     pub after: Option<u64>,
 }
 
-/// Axum sub-router for job queue routes.
-pub fn jobs_router() -> Router<Arc<JobsApiState>> {
-    Router::new()
-        .route("/jobs/{stream}", post(post_job).get(list_jobs))
-        .route("/jobs/{stream}/batch", post(post_job_batch))
-        .route("/jobs/{stream}/ack-batch", post(post_ack_batch))
-        .route("/jobs/{stream}/requeue-batch", post(post_requeue_batch))
-        .route("/jobs/{stream}/{job_id}/requeue", post(post_requeue))
-        .route("/jobs/{stream}/{job_id}", get(get_job))
+/// Route table for job queue routes.
+#[must_use]
+pub fn route_table(state: Arc<JobsApiState>) -> RouteTable {
+    let s1 = Arc::clone(&state);
+    let s2 = Arc::clone(&state);
+    let s3 = Arc::clone(&state);
+    let s4 = Arc::clone(&state);
+    let s5 = Arc::clone(&state);
+    let s6 = Arc::clone(&state);
+    let s7 = Arc::clone(&state);
+    RouteTable::new()
+        .route(
+            Method::POST,
+            "/jobs/{stream}",
+            crate::routing::AuthMode::Open,
+            move |ctx| {
+                let state = Arc::clone(&s1);
+                async move { post_job(state, ctx).await }
+            },
+        )
+        .route(
+            Method::GET,
+            "/jobs/{stream}",
+            crate::routing::AuthMode::Open,
+            move |ctx| {
+                let state = Arc::clone(&s2);
+                async move { list_jobs(state, ctx).await }
+            },
+        )
+        .post("/jobs/{stream}/batch", move |ctx| {
+            let state = Arc::clone(&s3);
+            async move { post_job_batch(state, ctx).await }
+        })
+        .post("/jobs/{stream}/ack-batch", move |ctx| {
+            let state = Arc::clone(&s4);
+            async move { post_ack_batch(state, ctx).await }
+        })
+        .post("/jobs/{stream}/requeue-batch", move |ctx| {
+            let state = Arc::clone(&s5);
+            async move { post_requeue_batch(state, ctx).await }
+        })
+        .post("/jobs/{stream}/{job_id}/requeue", move |ctx| {
+            let state = Arc::clone(&s6);
+            async move { post_requeue(state, ctx).await }
+        })
+        .get("/jobs/{stream}/{job_id}", move |ctx| {
+            let state = Arc::clone(&s7);
+            async move { get_job(state, ctx).await }
+        })
+}
+
+fn ctx_uri(ctx: &RequestCtx) -> Uri {
+    let mut path = ctx.path().to_string();
+    if !ctx.query().is_empty() {
+        let qs: Vec<String> = ctx
+            .query()
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect();
+        path.push('?');
+        path.push_str(&qs.join("&"));
+    }
+    path.parse().unwrap_or_else(|_| Uri::from_static("/"))
+}
+
+fn parse_query<T: serde::de::DeserializeOwned>(
+    ctx: &RequestCtx,
+) -> Result<T, JobsApiError> {
+    let map: HashMap<String, String> = ctx.query().clone();
+    serde_json::from_value(serde_json::json!(map))
+        .map_err(|e| JobsApiError::BadRequest(format!("invalid query: {e}")))
 }
 
 async fn authorize(
     state: &JobsApiState,
-    method: &Method,
-    uri: &Uri,
-    headers: &HeaderMap,
+    ctx: &RequestCtx,
 ) -> Result<(), JobsApiError> {
     if let Some(auth) = &state.auth {
-        auth(method.clone(), uri.clone(), headers.clone()).await?;
+        auth(
+            ctx.method().clone(),
+            ctx_uri(ctx),
+            ctx.headers().clone(),
+        )
+        .await?;
     }
     Ok(())
 }
 
 async fn post_job(
-    State(state): State<Arc<JobsApiState>>,
-    Path(stream): Path<String>,
-    Query(query): Query<EnqueueQuery>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<impl IntoResponse, JobsApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
-    let payload = parse_enqueue_body(&headers, &body)?;
+    state: Arc<JobsApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match post_job_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn post_job_inner(
+    state: &JobsApiState,
+    ctx: RequestCtx,
+) -> Result<Response, JobsApiError> {
+    authorize(state, &ctx).await?;
+    let stream = ctx
+        .params()
+        .get("stream")
+        .ok_or_else(|| JobsApiError::BadRequest("missing stream".into()))?
+        .to_string();
+    let query: EnqueueQuery = parse_query(&ctx)?;
+    let payload = parse_enqueue_body(ctx.headers(), ctx.body())?;
     let opts = enqueue_options_from_query(&query);
     let job_id = (state.enqueue)(stream, payload, opts)
         .await
         .map_err(|e| JobsApiError::Queue(e.to_string()))?;
-    Ok((
+    json_response(
         StatusCode::ACCEPTED,
-        axum::Json(EnqueueAccepted { job_id: job_id.0 }),
-    ))
+        EnqueueAccepted { job_id: job_id.0 },
+    )
 }
 
 async fn post_job_batch(
-    State(state): State<Arc<JobsApiState>>,
-    Path(stream): Path<String>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<impl IntoResponse, JobsApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
-    let batch: EnqueueBatchBody = serde_json::from_slice(&body)
-        .map_err(|e| JobsApiError::BadRequest(format!("invalid json body: {e}")))?;
+    state: Arc<JobsApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match post_job_batch_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn post_job_batch_inner(
+    state: &JobsApiState,
+    ctx: RequestCtx,
+) -> Result<Response, JobsApiError> {
+    authorize(state, &ctx).await?;
+    let stream = ctx
+        .params()
+        .get("stream")
+        .ok_or_else(|| JobsApiError::BadRequest("missing stream".into()))?
+        .to_string();
+    let batch: EnqueueBatchBody = ctx
+        .json()
+        .map_err(|e| JobsApiError::BadRequest(e.message().to_string()))?;
     if batch.jobs.is_empty() {
         return Err(JobsApiError::BadRequest("jobs must not be empty".into()));
     }
@@ -118,25 +204,37 @@ async fn post_job_batch(
     let ids = (state.enqueue_batch)(stream, jobs)
         .await
         .map_err(|e| JobsApiError::Queue(e.to_string()))?;
-    Ok((
+    json_response(
         StatusCode::ACCEPTED,
-        axum::Json(EnqueueBatchAccepted {
+        EnqueueBatchAccepted {
             job_ids: ids.into_iter().map(|id| id.0).collect(),
-        }),
-    ))
+        },
+    )
 }
 
 async fn post_ack_batch(
-    State(state): State<Arc<JobsApiState>>,
-    Path(stream): Path<String>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<impl IntoResponse, JobsApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
-    let req: AckBatchBody = serde_json::from_slice(&body)
-        .map_err(|e| JobsApiError::BadRequest(format!("invalid json body: {e}")))?;
+    state: Arc<JobsApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match post_ack_batch_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn post_ack_batch_inner(
+    state: &JobsApiState,
+    ctx: RequestCtx,
+) -> Result<Response, JobsApiError> {
+    authorize(state, &ctx).await?;
+    let stream = ctx
+        .params()
+        .get("stream")
+        .ok_or_else(|| JobsApiError::BadRequest("missing stream".into()))?
+        .to_string();
+    let req: AckBatchBody = ctx
+        .json()
+        .map_err(|e| JobsApiError::BadRequest(e.message().to_string()))?;
     if req.lease_ids.is_empty() {
         return Err(JobsApiError::BadRequest(
             "lease_ids must not be empty".into(),
@@ -157,74 +255,137 @@ async fn post_ack_batch(
     (state.ack_batch)(stream, worker, lease_ids)
         .await
         .map_err(|e| JobsApiError::Queue(e.to_string()))?;
-    Ok((StatusCode::OK, axum::Json(AckBatchAccepted { acked })))
+    json_response(StatusCode::OK, AckBatchAccepted { acked })
 }
 
 async fn get_job(
-    State(state): State<Arc<JobsApiState>>,
-    Path((stream, job_id)): Path<(String, u64)>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Result<impl IntoResponse, JobsApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
+    state: Arc<JobsApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match get_job_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn get_job_inner(
+    state: &JobsApiState,
+    ctx: RequestCtx,
+) -> Result<Response, JobsApiError> {
+    authorize(state, &ctx).await?;
+    let stream = ctx
+        .params()
+        .get("stream")
+        .ok_or_else(|| JobsApiError::BadRequest("missing stream".into()))?
+        .to_string();
+    let job_id: u64 = ctx
+        .params()
+        .get("job_id")
+        .ok_or_else(|| JobsApiError::BadRequest("missing job_id".into()))?
+        .parse()
+        .map_err(|_| JobsApiError::BadRequest("invalid job_id".into()))?;
     let status = (state.job_status)(stream, job_id)
         .await
         .map_err(|e| JobsApiError::Queue(e.to_string()))?;
     let Some(status) = status else {
         return Err(JobsApiError::NotFound);
     };
-    Ok(axum::Json(status_to_response(&status)))
+    json_response(StatusCode::OK, status_to_response(&status))
 }
 
 async fn list_jobs(
-    State(state): State<Arc<JobsApiState>>,
-    Path(stream): Path<String>,
-    Query(query): Query<ListJobsQuery>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Result<impl IntoResponse, JobsApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
+    state: Arc<JobsApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match list_jobs_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn list_jobs_inner(
+    state: &JobsApiState,
+    ctx: RequestCtx,
+) -> Result<Response, JobsApiError> {
+    authorize(state, &ctx).await?;
+    let stream = ctx
+        .params()
+        .get("stream")
+        .ok_or_else(|| JobsApiError::BadRequest("missing stream".into()))?
+        .to_string();
+    let query: ListJobsQuery = parse_query(&ctx)?;
     let filter = list_filter_from_query(&query)?;
     let page = (state.list_jobs)(stream, filter)
         .await
         .map_err(|e| JobsApiError::Queue(e.to_string()))?;
-    Ok(axum::Json(JobListResponse {
-        jobs: page
-            .jobs
-            .into_iter()
-            .map(|j| status_to_response(&j))
-            .collect(),
-        has_more: page.has_more,
-    }))
+    json_response(
+        StatusCode::OK,
+        JobListResponse {
+            jobs: page
+                .jobs
+                .into_iter()
+                .map(|j| status_to_response(&j))
+                .collect(),
+            has_more: page.has_more,
+        },
+    )
 }
 
 async fn post_requeue(
-    State(state): State<Arc<JobsApiState>>,
-    Path((stream, job_id)): Path<(String, u64)>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Result<impl IntoResponse, JobsApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
+    state: Arc<JobsApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match post_requeue_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn post_requeue_inner(
+    state: &JobsApiState,
+    ctx: RequestCtx,
+) -> Result<Response, JobsApiError> {
+    authorize(state, &ctx).await?;
+    let stream = ctx
+        .params()
+        .get("stream")
+        .ok_or_else(|| JobsApiError::BadRequest("missing stream".into()))?
+        .to_string();
+    let job_id: u64 = ctx
+        .params()
+        .get("job_id")
+        .ok_or_else(|| JobsApiError::BadRequest("missing job_id".into()))?
+        .parse()
+        .map_err(|_| JobsApiError::BadRequest("invalid job_id".into()))?;
     (state.requeue_dead_letter)(stream, job_id)
         .await
         .map_err(|e| JobsApiError::Queue(e.to_string()))?;
-    Ok((StatusCode::OK, axum::Json(RequeueAccepted { job_id })))
+    json_response(StatusCode::OK, RequeueAccepted { job_id })
 }
 
 async fn post_requeue_batch(
-    State(state): State<Arc<JobsApiState>>,
-    Path(stream): Path<String>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<impl IntoResponse, JobsApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
-    let req: RequeueBatchBody = serde_json::from_slice(&body)
-        .map_err(|e| JobsApiError::BadRequest(format!("invalid json body: {e}")))?;
+    state: Arc<JobsApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match post_requeue_batch_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn post_requeue_batch_inner(
+    state: &JobsApiState,
+    ctx: RequestCtx,
+) -> Result<Response, JobsApiError> {
+    authorize(state, &ctx).await?;
+    let stream = ctx
+        .params()
+        .get("stream")
+        .ok_or_else(|| JobsApiError::BadRequest("missing stream".into()))?
+        .to_string();
+    let req: RequeueBatchBody = ctx
+        .json()
+        .map_err(|e| JobsApiError::BadRequest(e.message().to_string()))?;
     if req.job_ids.is_empty() {
         return Err(JobsApiError::BadRequest("job_ids must not be empty".into()));
     }
@@ -237,9 +398,9 @@ async fn post_requeue_batch(
     let result = (state.requeue_dead_letter_batch)(stream, req.job_ids)
         .await
         .map_err(|e| JobsApiError::Queue(e.to_string()))?;
-    Ok((
+    json_response(
         StatusCode::OK,
-        axum::Json(RequeueBatchAccepted {
+        RequeueBatchAccepted {
             requeued: result.requeued.into_iter().map(|id| id.0).collect(),
             failures: result
                 .failures
@@ -249,8 +410,17 @@ async fn post_requeue_batch(
                     error: err.to_string(),
                 })
                 .collect(),
-        }),
-    ))
+        },
+    )
+}
+
+fn json_response<T: serde::Serialize>(
+    status: StatusCode,
+    value: T,
+) -> Result<Response, JobsApiError> {
+    let json = serde_json::to_value(value)
+        .map_err(|e| JobsApiError::BadRequest(format!("json encode: {e}")))?;
+    Ok(Response::json(status, json))
 }
 
 const fn lifecycle_name(lifecycle: JobLifecycle) -> &'static str {
@@ -351,7 +521,10 @@ fn parse_batch_job(job: EnqueueBatchJobBody) -> Result<(Vec<u8>, EnqueueOptions)
 ///
 /// # Errors
 /// Returns [`JobsApiError::BadRequest`] when JSON is invalid or both payload fields are set.
-pub fn parse_enqueue_body(headers: &HeaderMap, body: &Bytes) -> Result<Vec<u8>, JobsApiError> {
+pub fn parse_enqueue_body(
+    headers: &http::HeaderMap,
+    body: &bytes::Bytes,
+) -> Result<Vec<u8>, JobsApiError> {
     let ct = headers
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
@@ -381,10 +554,9 @@ pub fn parse_enqueue_body(headers: &HeaderMap, body: &Bytes) -> Result<Vec<u8>, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::body::Body;
-    use axum::http::Request;
+    use bytes::Bytes;
+    use http::Method;
     use std::future;
-    use tower::ServiceExt;
     use trembita_jobs::{JobId, JobLifecycle, JobStatus};
 
     fn test_state(
@@ -432,6 +604,25 @@ mod tests {
         Arc::new(|_, _, _| Box::pin(future::ready(Ok(()))))
     }
 
+    async fn dispatch(
+        table: &RouteTable,
+        method: Method,
+        path: &str,
+        body: Bytes,
+    ) -> http::StatusCode {
+        table
+            .dispatch(
+                &method,
+                path,
+                HashMap::new(),
+                http::HeaderMap::new(),
+                body,
+            )
+            .await
+            .expect("dispatch")
+            .status_code()
+    }
+
     #[tokio::test]
     async fn post_job_returns_202_with_id() {
         let state = test_state(
@@ -447,15 +638,15 @@ mod tests {
             noop_requeue(),
             noop_requeue_batch(),
         );
-        let app = jobs_router().with_state(state);
-        let req = Request::builder()
-            .method("POST")
-            .uri("/jobs/emails")
-            .header(header::CONTENT_TYPE, "application/octet-stream")
-            .body(Body::from("hello"))
-            .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+        let table = route_table(state);
+        let status = dispatch(
+            &table,
+            Method::POST,
+            "/jobs/emails",
+            Bytes::from("hello"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED);
     }
 
     #[tokio::test]
@@ -473,79 +664,15 @@ mod tests {
             noop_requeue(),
             noop_requeue_batch(),
         );
-        let app = jobs_router().with_state(state);
-        let req = Request::builder()
-            .method("POST")
-            .uri("/jobs/emails/batch")
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(r#"{"jobs":[{"payload":"a"},{"payload":"b"}]}"#))
-            .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::ACCEPTED);
-    }
-
-    #[tokio::test]
-    async fn post_ack_batch_returns_ok() {
-        let state = test_state(
-            Arc::new(|_, _, _| Box::pin(future::ready(Ok(JobId(1))))),
-            noop_batch(),
-            Arc::new(|stream, worker, lease_ids| {
-                assert_eq!(stream, "emails");
-                assert_eq!(worker.node.0, 1);
-                assert_eq!(worker.instance, 0);
-                assert_eq!(lease_ids.len(), 2);
-                Box::pin(future::ready(Ok(())))
-            }),
-            Arc::new(|_, _| Box::pin(future::ready(Ok(None)))),
-            noop_list(),
-            noop_requeue(),
-            noop_requeue_batch(),
-        );
-        let app = jobs_router().with_state(state);
-        let req = Request::builder()
-            .method("POST")
-            .uri("/jobs/emails/ack-batch")
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(
-                r#"{"worker_node":1,"worker_instance":0,"lease_ids":[100,101]}"#,
-            ))
-            .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
-
-    #[tokio::test]
-    async fn get_job_returns_metadata() {
-        let state = test_state(
-            Arc::new(|_, _, _| Box::pin(future::ready(Ok(JobId(1))))),
-            noop_batch(),
-            noop_ack(),
-            Arc::new(|stream, job_id| {
-                assert_eq!(stream, "emails");
-                assert_eq!(job_id, 7);
-                Box::pin(future::ready(Ok(Some(JobStatus {
-                    job_id: JobId(7),
-                    lifecycle: JobLifecycle::Pending,
-                    payload_len: 5,
-                    priority: 2,
-                    leased_by: None,
-                    attempts: 0,
-                    max_attempts: 0,
-                    dedup_key: None,
-                }))))
-            }),
-            noop_list(),
-            noop_requeue(),
-            noop_requeue_batch(),
-        );
-        let app = jobs_router().with_state(state);
-        let req = Request::builder()
-            .method("GET")
-            .uri("/jobs/emails/7")
-            .body(Body::empty())
-            .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
+        let table = route_table(state);
+        let status = dispatch(
+            &table,
+            Method::POST,
+            "/jobs/emails/batch",
+            Bytes::from(r#"{"jobs":[{"payload":"a"},{"payload":"b"}]}"#),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED);
     }
 
     #[tokio::test]
@@ -559,44 +686,14 @@ mod tests {
             noop_requeue(),
             noop_requeue_batch(),
         );
-        let app = jobs_router().with_state(state);
-        let req = Request::builder()
-            .method("GET")
-            .uri("/jobs/emails/99")
-            .body(Body::empty())
-            .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    }
-
-    #[tokio::test]
-    async fn post_requeue_returns_ok() {
-        let state = test_state(
-            Arc::new(|_, _, _| Box::pin(future::ready(Ok(JobId(1))))),
-            noop_batch(),
-            noop_ack(),
-            Arc::new(|_, _| Box::pin(future::ready(Ok(None)))),
-            noop_list(),
-            Arc::new(|stream, job_id| {
-                assert_eq!(stream, "emails");
-                assert_eq!(job_id, 9);
-                Box::pin(future::ready(Ok(())))
-            }),
-            noop_requeue_batch(),
-        );
-        let app = jobs_router().with_state(state);
-        let req = Request::builder()
-            .method("POST")
-            .uri("/jobs/emails/9/requeue")
-            .body(Body::empty())
-            .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
+        let table = route_table(state);
+        let status = dispatch(&table, Method::GET, "/jobs/emails/99", Bytes::new()).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 
     #[test]
     fn json_payload_string() {
-        let mut headers = HeaderMap::new();
+        let mut headers = http::HeaderMap::new();
         headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
         let body = Bytes::from(r#"{"payload":"hi"}"#);
         assert_eq!(parse_enqueue_body(&headers, &body).unwrap(), b"hi".to_vec());

@@ -1,84 +1,115 @@
-//! Axum routes for actor cast / ask.
+//! Route table for actor cast / ask.
 
 use std::sync::Arc;
 
-use axum::Router;
-use axum::extract::{Path, State};
-use axum::http::{HeaderMap, Method, StatusCode, Uri, header};
-use axum::response::IntoResponse;
-use axum::routing::post;
 use base64::Engine;
-use bytes::Bytes;
-use trembita_runtime::{CastError, ClusterAskError};
+use http::header;
+use http::{Method, StatusCode, Uri};
 
 use crate::ActorsApiState;
 use crate::actor_types::{ActorsApiError, AskAccepted};
 use crate::routes::parse_enqueue_body;
+use crate::routing::{HttpError, RequestCtx, Response, RouteTable};
 use crate::types::JobsApiError;
 
-/// Axum sub-router for actor cast / ask routes.
-pub fn actors_router() -> Router<Arc<ActorsApiState>> {
-    Router::new()
-        .route("/actors/{group}/ask", post(post_ask))
-        .route("/actors/{group}/cast", post(post_cast))
+fn ctx_uri(ctx: &RequestCtx) -> Uri {
+    ctx.path()
+        .parse()
+        .unwrap_or_else(|_| Uri::from_static("/"))
 }
 
-async fn authorize(
-    state: &ActorsApiState,
-    method: &Method,
-    uri: &Uri,
-    headers: &HeaderMap,
-) -> Result<(), ActorsApiError> {
+async fn authorize(state: &ActorsApiState, ctx: &RequestCtx) -> Result<(), ActorsApiError> {
     if let Some(auth) = &state.auth {
-        auth(method.clone(), uri.clone(), headers.clone())
-            .await
-            .map_err(|e| match e {
-                JobsApiError::Unauthorized(m) => ActorsApiError::Unauthorized(m),
-                other => ActorsApiError::BadRequest(other.to_string()),
-            })?;
+        auth(
+            ctx.method().clone(),
+            ctx_uri(ctx),
+            ctx.headers().clone(),
+        )
+        .await
+        .map_err(|e| match e {
+            JobsApiError::Unauthorized(m) => ActorsApiError::Unauthorized(m),
+            other => ActorsApiError::BadRequest(other.to_string()),
+        })?;
     }
     Ok(())
 }
 
+/// Route table for actor cast / ask routes.
+#[must_use]
+pub fn route_table(state: Arc<ActorsApiState>) -> RouteTable {
+    let ask_state = Arc::clone(&state);
+    let cast_state = state;
+    RouteTable::new()
+        .post("/actors/{group}/ask", move |ctx| {
+            let state = Arc::clone(&ask_state);
+            async move { post_ask(state, ctx).await }
+        })
+        .post("/actors/{group}/cast", move |ctx| {
+            let state = Arc::clone(&cast_state);
+            async move { post_cast(state, ctx).await }
+        })
+}
+
 async fn post_ask(
-    State(state): State<Arc<ActorsApiState>>,
-    Path(group): Path<String>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<axum::response::Response, ActorsApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
-    let payload = parse_enqueue_body(&headers, &body).map_err(map_body_error)?;
+    state: Arc<ActorsApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match post_ask_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn post_ask_inner(
+    state: &ActorsApiState,
+    ctx: RequestCtx,
+) -> Result<Response, ActorsApiError> {
+    authorize(state, &ctx).await?;
+    let group = ctx
+        .params()
+        .get("group")
+        .ok_or_else(|| ActorsApiError::BadRequest("missing group".into()))?
+        .to_string();
+    let payload = parse_enqueue_body(ctx.headers(), ctx.body()).map_err(map_body_error)?;
     let reply = (state.ask)(group, payload).await.map_err(map_ask_error)?;
-    let ct = headers
+    let ct = ctx
+        .headers()
         .get(header::ACCEPT)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     if ct.starts_with("application/octet-stream") {
-        return Ok((StatusCode::OK, reply).into_response());
+        return Ok(Response::text(StatusCode::OK, String::from_utf8_lossy(&reply)));
     }
-    Ok((
-        StatusCode::OK,
-        axum::Json(AskAccepted {
-            reply_b64: base64::engine::general_purpose::STANDARD.encode(reply),
-        }),
-    )
-        .into_response())
+    let json = serde_json::to_value(AskAccepted {
+        reply_b64: base64::engine::general_purpose::STANDARD.encode(reply),
+    })
+    .map_err(|e| ActorsApiError::BadRequest(format!("json encode: {e}")))?;
+    Ok(Response::json(StatusCode::OK, json))
 }
 
 async fn post_cast(
-    State(state): State<Arc<ActorsApiState>>,
-    Path(group): Path<String>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<impl IntoResponse, ActorsApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
-    let payload = parse_enqueue_body(&headers, &body).map_err(map_body_error)?;
+    state: Arc<ActorsApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match post_cast_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn post_cast_inner(
+    state: &ActorsApiState,
+    ctx: RequestCtx,
+) -> Result<Response, ActorsApiError> {
+    authorize(state, &ctx).await?;
+    let group = ctx
+        .params()
+        .get("group")
+        .ok_or_else(|| ActorsApiError::BadRequest("missing group".into()))?
+        .to_string();
+    let payload = parse_enqueue_body(ctx.headers(), ctx.body()).map_err(map_body_error)?;
     (state.cast)(group, payload).await.map_err(map_cast_error)?;
-    Ok(StatusCode::ACCEPTED)
+    Ok(Response::status(StatusCode::ACCEPTED))
 }
 
 fn map_body_error(err: JobsApiError) -> ActorsApiError {
@@ -89,19 +120,21 @@ fn map_body_error(err: JobsApiError) -> ActorsApiError {
     }
 }
 
-fn map_ask_error(err: ClusterAskError) -> ActorsApiError {
+fn map_ask_error(err: trembita_runtime::ClusterAskError) -> ActorsApiError {
     match err {
-        ClusterAskError::NoTarget(g) => {
+        trembita_runtime::ClusterAskError::NoTarget(g) => {
             ActorsApiError::NoTarget(format!("no live instance of group `{g}`"))
         }
-        ClusterAskError::Timeout(_) | ClusterAskError::NoReply => ActorsApiError::Timeout,
+        trembita_runtime::ClusterAskError::Timeout(_) | trembita_runtime::ClusterAskError::NoReply => {
+            ActorsApiError::Timeout
+        }
         other => ActorsApiError::Actor(other.to_string()),
     }
 }
 
-fn map_cast_error(err: CastError) -> ActorsApiError {
+fn map_cast_error(err: trembita_runtime::CastError) -> ActorsApiError {
     match err {
-        CastError::NoTarget(g) => {
+        trembita_runtime::CastError::NoTarget(g) => {
             ActorsApiError::NoTarget(format!("no live instance of group `{g}`"))
         }
         other => ActorsApiError::Actor(other.to_string()),
@@ -111,10 +144,11 @@ fn map_cast_error(err: CastError) -> ActorsApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::body::Body;
-    use axum::http::Request;
+    use bytes::Bytes;
+    use http::Method;
+    use std::collections::HashMap;
     use std::future;
-    use tower::ServiceExt;
+    use trembita_runtime::{CastError, ClusterAskError};
 
     fn test_state(ask: crate::AskFn, cast: crate::CastFn) -> Arc<ActorsApiState> {
         Arc::new(ActorsApiState {
@@ -134,36 +168,18 @@ mod tests {
             }),
             Arc::new(|_, _| Box::pin(future::ready(Ok(())))),
         );
-        let app = actors_router().with_state(state);
-        let req = Request::builder()
-            .method("POST")
-            .uri("/actors/workers/ask")
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(r#"{"payload":"ping"}"#))
-            .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
-
-    #[tokio::test]
-    async fn post_cast_returns_202() {
-        let state = test_state(
-            Arc::new(|_, _| Box::pin(future::ready(Ok(Vec::new())))),
-            Arc::new(|group, payload| {
-                assert_eq!(group, "workers");
-                assert_eq!(payload, b"hi");
-                Box::pin(future::ready(Ok(())))
-            }),
-        );
-        let app = actors_router().with_state(state);
-        let req = Request::builder()
-            .method("POST")
-            .uri("/actors/workers/cast")
-            .header(header::CONTENT_TYPE, "application/octet-stream")
-            .body(Body::from("hi"))
-            .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+        let table = route_table(state);
+        let resp = table
+            .dispatch(
+                &Method::POST,
+                "/actors/workers/ask",
+                HashMap::new(),
+                http::HeaderMap::new(),
+                Bytes::from(r#"{"payload":"ping"}"#),
+            )
+            .await
+            .expect("dispatch");
+        assert_eq!(resp.status_code(), StatusCode::OK);
     }
 
     #[tokio::test]
@@ -176,14 +192,17 @@ mod tests {
             }),
             Arc::new(|_, _| Box::pin(future::ready(Ok(())))),
         );
-        let app = actors_router().with_state(state);
-        let req = Request::builder()
-            .method("POST")
-            .uri("/actors/workers/ask")
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(r#"{"payload":"x"}"#))
-            .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let table = route_table(state);
+        let resp = table
+            .dispatch(
+                &Method::POST,
+                "/actors/workers/ask",
+                HashMap::new(),
+                http::HeaderMap::new(),
+                Bytes::from(r#"{"payload":"x"}"#),
+            )
+            .await
+            .expect("dispatch");
+        assert_eq!(resp.status_code(), StatusCode::SERVICE_UNAVAILABLE);
     }
 }

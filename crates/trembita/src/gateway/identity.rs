@@ -6,8 +6,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use axum::http::{HeaderMap, Method, StatusCode, Uri};
-use axum::response::{IntoResponse, Response};
+use http::{HeaderMap, Method, StatusCode, Uri};
+use trembita_http::Response;
 
 /// Constant-time string equality for shared API tokens.
 fn constant_time_eq(a: &str, b: &str) -> bool {
@@ -31,7 +31,7 @@ pub struct GatewayRequest<'a> {
 }
 
 impl<'a> GatewayRequest<'a> {
-    /// Build from axum/http request parts.
+    /// Build from HTTP request parts.
     #[must_use]
     pub fn from_parts(method: &'a Method, uri: &'a Uri, headers: &'a HeaderMap) -> Self {
         Self {
@@ -41,9 +41,9 @@ impl<'a> GatewayRequest<'a> {
         }
     }
 
-    /// Build from any axum/http request (ignores body).
+    /// Build from any HTTP request (ignores body).
     #[must_use]
-    pub fn from_http<B>(req: &'a axum::http::Request<B>) -> Self {
+    pub fn from_http<B>(req: &'a http::Request<B>) -> Self {
         Self::from_parts(req.method(), req.uri(), req.headers())
     }
 
@@ -59,7 +59,7 @@ impl<'a> GatewayRequest<'a> {
     pub fn cookie(&self, name: &str) -> Option<&str> {
         let header = self
             .headers
-            .get(axum::http::header::COOKIE)?
+            .get(http::header::COOKIE)?
             .to_str()
             .ok()?;
         parse_cookie(header, name)
@@ -70,7 +70,7 @@ impl<'a> GatewayRequest<'a> {
     pub fn bearer_token(&self) -> Option<&str> {
         let header = self
             .headers
-            .get(axum::http::header::AUTHORIZATION)?
+            .get(http::header::AUTHORIZATION)?
             .to_str()
             .ok()?;
         header.strip_prefix("Bearer ")
@@ -122,11 +122,11 @@ impl IdentityError {
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
-}
 
-impl IntoResponse for IdentityError {
-    fn into_response(self) -> Response {
-        (self.status_code(), self.to_string()).into_response()
+    /// Map to a gateway [`Response`].
+    #[must_use]
+    pub fn into_http_response(self) -> Response {
+        Response::text(self.status_code(), self.to_string())
     }
 }
 
@@ -420,7 +420,7 @@ fn parse_cookie<'a>(header: &'a str, name: &str) -> Option<&'a str> {
 
 #[cfg(test)]
 mod tests {
-    use axum::http::{HeaderMap, HeaderValue, Method, Uri};
+    use http::{HeaderMap, HeaderValue, Method, Uri};
 
     use super::*;
 
@@ -429,7 +429,7 @@ mod tests {
         let uri: Uri = "/ws?user=alice&token=secret".parse().expect("uri");
         let mut headers = HeaderMap::new();
         headers.insert(
-            axum::http::header::COOKIE,
+            http::header::COOKIE,
             HeaderValue::from_static("session_id=abc; other=1"),
         );
         let req = GatewayRequest::from_parts(&Method::GET, &uri, &headers);

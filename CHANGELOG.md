@@ -11,6 +11,21 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ## [Unreleased]
 
+### Added
+
+- **Framework conventions** ([`framework-conventions`](docs/decisions/framework-conventions.md)) — standard product app layout
+  (`main.rs` / `app.rs` / `config.rs` / `consumers/` / `domain/`) and app-level Cargo features.
+- **`trembita` CLI** ([`trembita-tools`](crates/trembita-tools/)) — `trembita new`, `trembita add consumer|topic|actor`, `trembita doctor`.
+- **`trembita-events-postgres`** — [`PgEventOutboxSource`](crates/trembita-events-postgres/src/source.rs) for
+  transactional domain outbox drain (`poll` + `mark_published`, configurable [`PgEventOutboxSchema`](crates/trembita-events-postgres/src/schema.rs)).
+- **[`DepthCache`](crates/trembita-jobs/src/depth_cache.rs) / [`CachedDepth`](crates/trembita-jobs/src/depth_cache.rs)** — TTL cache wrapper for expensive
+  [`ExternalBacklog::depth`](crates/trembita-jobs/src/external_backlog.rs) queries; invalidates on claim/settle.
+- **OTLP tracing bootstrap** ([`trembita-runtime`](crates/trembita-runtime/src/tracing_otlp.rs), feature `otlp`) —
+  [`init_tracing_with_otlp`](crates/trembita-runtime/src/tracing_otlp.rs) + [`TracingOpts`](crates/trembita-runtime/src/tracing_otlp.rs).
+- **[`MultiHostBuilder`](crates/trembita-http/src/multi_host.rs) / [`HostSurface`](crates/trembita-http/src/multi_host.rs)** — declarative multi-hostname
+  gateway assembly on [`HostRouter`](crates/trembita-http/src/host_router.rs) with production-gated local dev fallback.
+- **[`CookieConfig::from_env`](crates/trembita-http/src/cookie_config.rs)** — session cookie attributes from `{PREFIX}_COOKIE_*` env vars.
+
 ## [0.3.2] — 2026-09-05
 
 ### Added

@@ -7,59 +7,30 @@
 //! - `POST /jobs/{stream}` → `202 Accepted` + `{ "job_id": … }`
 //! - `POST /jobs/{stream}/batch` → `202 Accepted` + `{ "job_ids": […] }`
 //! - `POST /jobs/{stream}/ack-batch` → `200 OK` + `{ "acked": N }`
-//! - `GET /jobs/{stream}` → list jobs with optional filters (`state`, `min_attempts`, `dedup`, `limit`, `after`)
+//! - `GET /jobs/{stream}` → list jobs with optional filters
 //! - `POST /jobs/{stream}/requeue-batch` → `200 OK` + `{ "requeued": […], "failures": […] }`
-//! - `POST /jobs/{stream}/{id}/requeue` → `200 OK` + `{ "job_id": … }` (dead-letter retry)
+//! - `POST /jobs/{stream}/{id}/requeue` → `200 OK` + `{ "job_id": … }`
 //! - `GET /jobs/{stream}/{id}` → job metadata when the queue supports lookup
 //!
-//! # Virtual hosts
+//! # Gateway surfaces
 //!
-//! [`HostRouter`] dispatches by HTTP `Host` on a single listen port (strict by default;
-//! opt-in [`HostRouter::local_dev_fallback`] for loopback only).
+//! [`Gateway`] and [`Surface`] declare host-based product HTTP in 0.4.0 — see
+//! [gateway-routing-v2](../../docs/decisions/gateway-routing-v2.md).
 //!
 //! # Static sites
 //!
 //! [`StaticSite`] serves SPAs from embedded bytes, a filesystem path, or S3-compatible
 //! storage — see [`StaticSource`].
-//!
-//! Wire it to [`TrembitaApp::jobs_api`](https://docs.rs/trembita/latest/trembita/struct.TrembitaApp.html#method.jobs_api)
-//! or custom enqueue / lookup closures.
-//!
-//! # Actors API
-//!
-//! [`ActorsApi`] exposes:
-//!
-//! - `POST /actors/{group}/ask` → `200 OK` + `{ "reply_b64": … }` (or raw bytes with `Accept: application/octet-stream`)
-//! - `POST /actors/{group}/cast` → `202 Accepted`
-//!
-//! Wire it to [`TrembitaApp::actors_api`](https://docs.rs/trembita/latest/trembita/struct.TrembitaApp.html#method.actors_api).
-//!
-//! # Introspect API
-//!
-//! [`IntrospectApi`] exposes read-only cluster snapshots (same JSON as the admin port):
-//!
-//! - `GET /introspect/cluster`, `/actors`, `/queues`, `/sagas`, `/raft-groups`
-//! - `GET /introspect/actors/{id}`, `/introspect/node/{id}`
-//!
-//! Wire it to [`TrembitaApp::introspect_api`](https://docs.rs/trembita/latest/trembita/struct.TrembitaApp.html#method.introspect_api)
-//! or any [`Observer`] implementation.
-//!
-//! # Workflows API
-//!
-//! [`WorkflowsApi`] exposes:
-//!
-//! - `GET /health` → `200 OK`
-//! - `POST /workflows/run` → `200 OK` + `{ "saga_id", "outcome" }`
-//! - `POST /workflows/resume` → `200 OK` + `{ "saga_id", "outcome" }`
-//!
-//! Wire custom run/resume hooks for saga coordination (requires in-process journal).
 
 mod actor_routes;
 mod actor_types;
-mod host_router;
+mod cookie_config;
+mod gateway;
+mod host;
 mod introspect_routes;
 mod introspect_types;
 mod routes;
+mod routing;
 mod static_site;
 mod types;
 mod upgrade_routes;
@@ -71,8 +42,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use axum::Router;
-use axum::http::{HeaderMap, Method, Uri};
+use http::{HeaderMap, Method, Uri};
 use trembita_jobs::{
     BatchRequeueResult, EnqueueOptions, JobId, JobListFilter, JobListPage, JobStatus, LeaseId,
     QueueError, WorkerId,
@@ -80,7 +50,13 @@ use trembita_jobs::{
 use trembita_runtime::{CastError, ClusterAskError};
 
 pub use actor_types::{ActorsApiError, AskAccepted};
-pub use host_router::{HostRouter, is_local_dev_host, normalize_host};
+pub use cookie_config::CookieConfig;
+pub use gateway::{CorsPolicy, Gateway, GatewayBuildError, GatewayService, Surface};
+pub use host::{is_local_dev_host, normalize_host};
+pub use routing::{
+    ArcHandler, AuthMode, Handler, HttpError, PathParams, PathPattern, PathSegment, RequestCtx,
+    Response, ResponseBody, RouteEntry, RouteTable, SessionGate,
+};
 pub use introspect_types::IntrospectApiError;
 pub use routes::parse_enqueue_body;
 pub use static_site::{
@@ -99,7 +75,7 @@ pub use types::{
     LeasedByResponse, RequeueAccepted, RequeueBatchAccepted, RequeueBatchBody,
     RequeueFailureResponse,
 };
-pub use upgrade_routes::{UpgradeApi, UpgradeApiState, upgrade_router};
+pub use upgrade_routes::{UpgradeApi, UpgradeApiState, upgrade_route_table};
 pub use upgrade_types::{SetDesiredBody, UpgradeApiError, UpgradeStatusResponse};
 
 /// Async enqueue hook used by [`JobsApi`].
@@ -178,7 +154,7 @@ pub type AuthFn = Arc<
         + Sync,
 >;
 
-/// Shared Axum state for job routes.
+/// Shared state for job routes.
 pub struct JobsApiState {
     pub(crate) enqueue: EnqueueFn,
     pub(crate) enqueue_batch: EnqueueBatchFn,
@@ -225,12 +201,12 @@ impl JobsApi {
         }
     }
 
-    /// Axum routes for job enqueue and lookup. Merge into your app and call [`Self::into_state`].
-    pub fn router(&self) -> Router<Arc<JobsApiState>> {
-        routes::jobs_router()
+    /// Route table for job enqueue and lookup.
+    pub fn route_table(&self) -> RouteTable {
+        routes::route_table(Arc::new(self.clone_state()))
     }
 
-    /// State handle for [`Self::router`].
+    /// State handle for [`Self::route_table`].
     #[must_use]
     pub fn into_state(self) -> JobsApiState {
         self.into_state_with_auth(None)
@@ -248,6 +224,19 @@ impl JobsApi {
             requeue_dead_letter: self.requeue_dead_letter,
             requeue_dead_letter_batch: self.requeue_dead_letter_batch,
             auth,
+        }
+    }
+
+    fn clone_state(&self) -> JobsApiState {
+        JobsApiState {
+            enqueue: Arc::clone(&self.enqueue),
+            enqueue_batch: Arc::clone(&self.enqueue_batch),
+            ack_batch: Arc::clone(&self.ack_batch),
+            job_status: Arc::clone(&self.job_status),
+            list_jobs: Arc::clone(&self.list_jobs),
+            requeue_dead_letter: Arc::clone(&self.requeue_dead_letter),
+            requeue_dead_letter_batch: Arc::clone(&self.requeue_dead_letter_batch),
+            auth: None,
         }
     }
 }
@@ -269,7 +258,7 @@ pub type CastFn = Arc<
         + Sync,
 >;
 
-/// Shared Axum state for actor routes.
+/// Shared state for actor routes.
 pub struct ActorsApiState {
     pub(crate) ask: AskFn,
     pub(crate) cast: CastFn,
@@ -290,12 +279,12 @@ impl ActorsApi {
         Self { ask, cast }
     }
 
-    /// Axum routes for actor cast and ask. Merge into your app and call [`Self::into_state`].
-    pub fn router(&self) -> Router<Arc<ActorsApiState>> {
-        actor_routes::actors_router()
+    /// Route table for actor cast and ask.
+    pub fn route_table(&self) -> RouteTable {
+        actor_routes::route_table(Arc::new(self.clone_state()))
     }
 
-    /// State handle for [`Self::router`].
+    /// State handle for [`Self::route_table`].
     #[must_use]
     pub fn into_state(self) -> ActorsApiState {
         self.into_state_with_auth(None)
@@ -308,6 +297,14 @@ impl ActorsApi {
             ask: self.ask,
             cast: self.cast,
             auth,
+        }
+    }
+
+    fn clone_state(&self) -> ActorsApiState {
+        ActorsApiState {
+            ask: Arc::clone(&self.ask),
+            cast: Arc::clone(&self.cast),
+            auth: None,
         }
     }
 }
@@ -334,7 +331,7 @@ pub type ResumeWorkflowFn = Arc<
         + Sync,
 >;
 
-/// Shared Axum state for workflow routes.
+/// Shared state for workflow routes.
 pub struct WorkflowsApiState {
     pub(crate) run: RunWorkflowFn,
     pub(crate) resume: ResumeWorkflowFn,
@@ -355,12 +352,12 @@ impl WorkflowsApi {
         Self { run, resume }
     }
 
-    /// Axum routes for workflow run/resume. Merge into your app and call [`Self::into_state`].
-    pub fn router(&self) -> Router<Arc<WorkflowsApiState>> {
-        workflow_routes::workflows_router()
+    /// Route table for workflow run/resume.
+    pub fn route_table(&self) -> RouteTable {
+        workflow_routes::route_table(Arc::new(self.clone_state()))
     }
 
-    /// State handle for [`Self::router`].
+    /// State handle for [`Self::route_table`].
     #[must_use]
     pub fn into_state(self) -> WorkflowsApiState {
         self.into_state_with_auth(None)
@@ -375,12 +372,17 @@ impl WorkflowsApi {
             auth,
         }
     }
+
+    fn clone_state(&self) -> WorkflowsApiState {
+        WorkflowsApiState {
+            run: Arc::clone(&self.run),
+            resume: Arc::clone(&self.resume),
+            auth: None,
+        }
+    }
 }
 
 /// Bind and serve workflow routes on `addr` (background task).
-///
-/// Used by workflows showcases when saga coordination must stay in-process on node 1
-/// (`TREMBITA_TRIGGER` listener).
 ///
 /// # Errors
 /// Returns [`std::io::Error`] when the listen socket cannot be bound.
@@ -388,18 +390,39 @@ pub async fn spawn_workflows_server(
     api: WorkflowsApi,
     addr: std::net::SocketAddr,
 ) -> std::io::Result<()> {
-    let router = api.router().with_state(Arc::new(api.into_state()));
+    use http::header::HOST;
+
+    let routes = api.route_table();
+    let gateway = Gateway::new(false).dev_fallback(routes);
+    let service = gateway
+        .build_service()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()))?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     eprintln!("trembita: workflows API listening on http://{addr}");
     tokio::spawn(async move {
-        if let Err(e) = axum::serve(listener, router).await {
-            eprintln!("trembita: workflows API on {addr} failed: {e}");
+        use hyper::server::conn::http1;
+        use hyper_util::rt::TokioIo;
+        use hyper_util::service::TowerToHyperService;
+        loop {
+            let Ok((stream, _)) = listener.accept().await else {
+                break;
+            };
+            let mut service = service.clone();
+            tokio::spawn(async move {
+                let io = TokioIo::new(stream);
+                let hyper_service = TowerToHyperService::new(&mut service);
+                let _ = http1::Builder::new()
+                    .serve_connection(io, hyper_service)
+                    .with_upgrades()
+                    .await;
+            });
         }
     });
+    let _ = HOST; // workflows listener accepts any Host via dev_fallback
     Ok(())
 }
 
-/// Shared Axum state for introspection routes.
+/// Shared state for introspection routes.
 pub struct IntrospectApiState {
     pub(crate) observer: Arc<dyn Observer>,
     pub(crate) auth: Option<AuthFn>,
@@ -412,18 +435,18 @@ pub struct IntrospectApi {
 }
 
 impl IntrospectApi {
-    /// Build from an [`Observer`] implementation (typically [`TrembitaApp::introspect_observer`](https://docs.rs/trembita/latest/trembita/struct.TrembitaApp.html#method.introspect_observer)).
+    /// Build from an [`Observer`] implementation.
     #[must_use]
     pub fn new(observer: Arc<dyn Observer>) -> Self {
         Self { observer }
     }
 
-    /// Axum routes for introspection snapshots. Merge into your app and call [`Self::into_state`].
-    pub fn router(&self) -> Router<Arc<IntrospectApiState>> {
-        introspect_routes::introspect_router()
+    /// Route table for introspection snapshots.
+    pub fn route_table(&self) -> RouteTable {
+        introspect_routes::route_table(Arc::new(self.clone_state()))
     }
 
-    /// State handle for [`Self::router`].
+    /// State handle for [`Self::route_table`].
     #[must_use]
     pub fn into_state(self) -> IntrospectApiState {
         self.into_state_with_auth(None)
@@ -437,4 +460,14 @@ impl IntrospectApi {
             auth,
         }
     }
+
+    fn clone_state(&self) -> IntrospectApiState {
+        IntrospectApiState {
+            observer: Arc::clone(&self.observer),
+            auth: None,
+        }
+    }
 }
+
+/// Alias for [`upgrade_routes::route_table`].
+pub use upgrade_routes::route_table as upgrade_route_table;

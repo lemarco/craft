@@ -1,84 +1,133 @@
-//! Axum routes for keyed saga run / resume.
+//! Route table for keyed saga run / resume.
 
 use std::sync::Arc;
 
-use axum::Json;
-use axum::Router;
-use axum::extract::State;
-use axum::http::{HeaderMap, Method, StatusCode, Uri};
-use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use http::{Method, StatusCode, Uri};
 
 use crate::WorkflowsApiState;
+use crate::routing::{HttpError, RequestCtx, Response, RouteTable};
 use crate::types::JobsApiError;
 use crate::workflow_types::{SagaBody, WorkflowAccepted, WorkflowsApiError};
 
-/// Axum sub-router for workflow trigger routes.
-pub fn workflows_router() -> Router<Arc<WorkflowsApiState>> {
-    Router::new()
-        .route("/health", get(get_health))
-        .route("/workflows/run", post(post_run))
-        .route("/workflows/resume", post(post_resume))
-}
-
-async fn get_health(
-    State(state): State<Arc<WorkflowsApiState>>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Result<impl IntoResponse, WorkflowsApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
-    Ok((StatusCode::OK, "ok"))
+fn ctx_uri(ctx: &RequestCtx) -> Uri {
+    ctx.path()
+        .parse()
+        .unwrap_or_else(|_| Uri::from_static("/"))
 }
 
 async fn authorize(
     state: &WorkflowsApiState,
-    method: &Method,
-    uri: &Uri,
-    headers: &HeaderMap,
+    ctx: &RequestCtx,
 ) -> Result<(), WorkflowsApiError> {
     if let Some(auth) = &state.auth {
-        auth(method.clone(), uri.clone(), headers.clone())
-            .await
-            .map_err(|e| match e {
-                JobsApiError::Unauthorized(m) => WorkflowsApiError::Unauthorized(m),
-                other => WorkflowsApiError::BadRequest(other.to_string()),
-            })?;
+        auth(
+            ctx.method().clone(),
+            ctx_uri(ctx),
+            ctx.headers().clone(),
+        )
+        .await
+        .map_err(|e| match e {
+            JobsApiError::Unauthorized(m) => WorkflowsApiError::Unauthorized(m),
+            other => WorkflowsApiError::BadRequest(other.to_string()),
+        })?;
     }
     Ok(())
 }
 
+/// Route table for workflow trigger routes.
+#[must_use]
+pub fn route_table(state: Arc<WorkflowsApiState>) -> RouteTable {
+    let health_state = Arc::clone(&state);
+    let run_state = Arc::clone(&state);
+    let resume_state = state;
+    RouteTable::new()
+        .get("/health", move |ctx| {
+            let state = Arc::clone(&health_state);
+            async move { get_health(state, ctx).await }
+        })
+        .post("/workflows/run", move |ctx| {
+            let state = Arc::clone(&run_state);
+            async move { post_run(state, ctx).await }
+        })
+        .post("/workflows/resume", move |ctx| {
+            let state = Arc::clone(&resume_state);
+            async move { post_resume(state, ctx).await }
+        })
+}
+
+async fn get_health(
+    state: Arc<WorkflowsApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match get_health_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn get_health_inner(
+    state: &WorkflowsApiState,
+    ctx: RequestCtx,
+) -> Result<Response, WorkflowsApiError> {
+    authorize(state, &ctx).await?;
+    Ok(Response::text(StatusCode::OK, "ok"))
+}
+
 async fn post_run(
-    State(state): State<Arc<WorkflowsApiState>>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    Json(body): Json<SagaBody>,
-) -> Result<Json<WorkflowAccepted>, WorkflowsApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
+    state: Arc<WorkflowsApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match post_run_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn post_run_inner(
+    state: &WorkflowsApiState,
+    ctx: RequestCtx,
+) -> Result<Response, WorkflowsApiError> {
+    authorize(state, &ctx).await?;
+    let body: SagaBody = ctx
+        .json()
+        .map_err(|e| WorkflowsApiError::BadRequest(e.message().to_string()))?;
     let result = (state.run)(body.saga_id.clone()).await?;
-    Ok(Json(result))
+    let json = serde_json::to_value(result)
+        .map_err(|e| WorkflowsApiError::BadRequest(format!("json encode: {e}")))?;
+    Ok(Response::json(StatusCode::OK, json))
 }
 
 async fn post_resume(
-    State(state): State<Arc<WorkflowsApiState>>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    Json(body): Json<SagaBody>,
-) -> Result<Json<WorkflowAccepted>, WorkflowsApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
+    state: Arc<WorkflowsApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match post_resume_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn post_resume_inner(
+    state: &WorkflowsApiState,
+    ctx: RequestCtx,
+) -> Result<Response, WorkflowsApiError> {
+    authorize(state, &ctx).await?;
+    let body: SagaBody = ctx
+        .json()
+        .map_err(|e| WorkflowsApiError::BadRequest(e.message().to_string()))?;
     let result = (state.resume)(body.saga_id.clone()).await?;
-    Ok(Json(result))
+    let json = serde_json::to_value(result)
+        .map_err(|e| WorkflowsApiError::BadRequest(format!("json encode: {e}")))?;
+    Ok(Response::json(StatusCode::OK, json))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::body::Body;
-    use axum::http::Request;
+    use bytes::Bytes;
+    use http::Method;
+    use std::collections::HashMap;
     use std::future;
-    use tower::ServiceExt;
 
     fn test_state(
         run: crate::RunWorkflowFn,
@@ -107,30 +156,17 @@ mod tests {
                 })))
             }),
         );
-        let app = workflows_router().with_state(state);
-        let req = Request::builder()
-            .method("POST")
-            .uri("/workflows/run")
-            .header("content-type", "application/json")
-            .body(Body::from(r#"{"saga_id":"onboard-1"}"#))
-            .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
-
-    #[tokio::test]
-    async fn get_health_returns_ok() {
-        let state = test_state(
-            Arc::new(|_| Box::pin(future::ready(Err(WorkflowsApiError::Failed("x".into()))))),
-            Arc::new(|_| Box::pin(future::ready(Err(WorkflowsApiError::Failed("x".into()))))),
-        );
-        let app = workflows_router().with_state(state);
-        let req = Request::builder()
-            .method("GET")
-            .uri("/health")
-            .body(Body::from(""))
-            .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
+        let table = route_table(state);
+        let resp = table
+            .dispatch(
+                &Method::POST,
+                "/workflows/run",
+                HashMap::new(),
+                http::HeaderMap::new(),
+                Bytes::from(r#"{"saga_id":"onboard-1"}"#),
+            )
+            .await
+            .expect("dispatch");
+        assert_eq!(resp.status_code(), StatusCode::OK);
     }
 }

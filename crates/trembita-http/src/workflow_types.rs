@@ -1,8 +1,9 @@
 //! JSON wire types for the workflows HTTP API.
 
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use http::StatusCode;
 use serde::{Deserialize, Serialize};
+
+use crate::routing::Response;
 
 /// Request body for run / resume workflow endpoints.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -34,13 +35,15 @@ pub enum WorkflowsApiError {
     Unauthorized(String),
 }
 
-impl IntoResponse for WorkflowsApiError {
-    fn into_response(self) -> Response {
+impl WorkflowsApiError {
+    /// Map to a gateway [`Response`].
+    #[must_use]
+    pub fn into_http_response(self) -> Response {
         let (status, msg) = match &self {
             Self::BadRequest(m) => (StatusCode::BAD_REQUEST, m.clone()),
             Self::Failed(m) => (StatusCode::INTERNAL_SERVER_ERROR, m.clone()),
             Self::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m.clone()),
         };
-        (status, msg).into_response()
+        Response::text(status, msg)
     }
 }

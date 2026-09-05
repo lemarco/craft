@@ -14,8 +14,8 @@ pub use crate::cluster_handle::{
 };
 pub use crate::gateway::{
     GATEWAY_MAX_BODY_BYTES, GatewayConfig, GatewayConfigError, GatewayHandle, GatewaySpawnError,
-    build_gateway_router, gateway_has_product_apis, gateway_token_from_env, spawn_gateway,
-    validate_gateway_config,
+    WrappedGatewayService, build_gateway_router, build_gateway_service, gateway_has_product_apis,
+    gateway_token_from_env, spawn_gateway, validate_gateway_config,
 };
 pub use crate::saga::{
     CompositeSagaJournal, Group0SagaJournal, MetaRaftSagaJournal, SagaRegistry, StoreSagaJournal,
@@ -46,7 +46,7 @@ pub use trembita_core::upgrade::{
 pub use trembita_core::{CompactionPolicy, DEFAULT_COMPACT_BYTES, DEFAULT_COMPACT_ENTRIES};
 #[cfg(feature = "http-jobs")]
 pub use trembita_http::{
-    ActorView, ClusterView, HostRouter, IntrospectApi, IntrospectApiError, NodeSummary, NodeView,
+    ActorView, ClusterView, IntrospectApi, IntrospectApiError, NodeSummary, NodeView,
     Observer, QueueStreamView, QueuesView, RaftGroupSummary, RaftGroupsView, SagaBody,
     SagaRecordView, WorkflowAccepted, WorkflowsApi, WorkflowsApiError, is_local_dev_host,
     normalize_host, spawn_workflows_server,

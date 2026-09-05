@@ -24,10 +24,10 @@ trembita-core.workspace = true
 trembita-net.workspace = true
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
-tokio = { version = "1", features = ["time"] }
+tokio.workspace = true
 
 [dev-dependencies]
 trembita-runtime.workspace = true
 trembita-test-support = { path = "../trembita-test-support" }
 serde = { workspace = true, features = ["derive"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "test-util"] }
+tokio.workspace = true

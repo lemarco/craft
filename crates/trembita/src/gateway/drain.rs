@@ -4,12 +4,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use axum::Router;
-use axum::body::Body;
-use axum::extract::State;
-use axum::http::Request;
-use axum::middleware::Next;
-use axum::response::Response;
 use hyper::server::conn::http1;
 use hyper_util::rt::TokioIo;
 use hyper_util::service::TowerToHyperService;
@@ -17,6 +11,8 @@ use rustls::ServerConfig;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio_rustls::TlsAcceptor;
+
+use super::router::WrappedGatewayService;
 
 /// Tracks live gateway connections (WebSocket, long-poll, …).
 #[derive(Debug, Default)]
@@ -26,9 +22,6 @@ pub struct ConnectionTracker {
 
 impl ConnectionTracker {
     /// Increment active connection count; decrements when the guard drops.
-    ///
-    /// Short HTTP handlers are tracked automatically by gateway middleware;
-    /// call this for long-lived work (WebSocket, SSE, …).
     #[must_use]
     pub fn track(&self) -> ConnectionGuard<'_> {
         self.active.fetch_add(1, Ordering::SeqCst);
@@ -40,16 +33,6 @@ impl ConnectionTracker {
     pub fn active(&self) -> usize {
         self.active.load(Ordering::SeqCst)
     }
-}
-
-/// Axum middleware: hold a connection slot for the duration of each HTTP request.
-pub async fn track_connection(
-    State(connections): State<Arc<ConnectionTracker>>,
-    request: Request<Body>,
-    next: Next,
-) -> Response {
-    let _guard = connections.track();
-    next.run(request).await
 }
 
 /// RAII guard — decrements [`ConnectionTracker`] on drop.
@@ -102,7 +85,7 @@ impl GatewayHandle {
 
 pub(crate) fn spawn_serve(
     listener: tokio::net::TcpListener,
-    router: Router,
+    service: WrappedGatewayService,
     connections: Arc<ConnectionTracker>,
     drain_timeout: Duration,
     tls: Option<Arc<ServerConfig>>,
@@ -113,8 +96,8 @@ pub(crate) fn spawn_serve(
             .local_addr()
             .map_or_else(|_| "?".into(), |a| a.to_string());
         let result = match tls {
-            Some(tls) => serve_tls(listener, router, tls, shutdown_rx).await,
-            None => serve_plain(listener, router, shutdown_rx).await,
+            Some(tls) => serve_tls(listener, service, tls, shutdown_rx).await,
+            None => serve_plain(listener, service, shutdown_rx).await,
         };
         if let Err(e) = result {
             eprintln!("trembita: gateway server on {addr} failed: {e}");
@@ -130,23 +113,36 @@ pub(crate) fn spawn_serve(
 
 async fn serve_plain(
     listener: tokio::net::TcpListener,
-    router: Router,
+    service: WrappedGatewayService,
     mut shutdown_rx: watch::Receiver<bool>,
 ) -> Result<(), std::io::Error> {
-    axum::serve(listener, router)
-        .with_graceful_shutdown(async move {
-            while !*shutdown_rx.borrow_and_update() {
-                if shutdown_rx.changed().await.is_err() {
+    loop {
+        tokio::select! {
+            changed = shutdown_rx.changed() => {
+                if changed.is_err() || *shutdown_rx.borrow() {
                     break;
                 }
             }
-        })
-        .await
+            accept = listener.accept() => {
+                let (stream, _) = accept?;
+                let service = service.clone();
+                tokio::spawn(async move {
+                    let io = TokioIo::new(stream);
+                    let hyper_service = TowerToHyperService::new(service);
+                    let _ = http1::Builder::new()
+                        .serve_connection(io, hyper_service)
+                        .with_upgrades()
+                        .await;
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 async fn serve_tls(
     listener: tokio::net::TcpListener,
-    router: Router,
+    service: WrappedGatewayService,
     tls: Arc<ServerConfig>,
     mut shutdown_rx: watch::Receiver<bool>,
 ) -> Result<(), std::io::Error> {
@@ -162,15 +158,15 @@ async fn serve_tls(
                 match accept {
                     Ok((stream, _)) => {
                         let acceptor = acceptor.clone();
-                        let router = router.clone();
+                        let service = service.clone();
                         tokio::spawn(async move {
                             let Ok(tls_stream) = acceptor.accept(stream).await else {
                                 return;
                             };
                             let io = TokioIo::new(tls_stream);
-                            let service = TowerToHyperService::new(router);
+                            let hyper_service = TowerToHyperService::new(service);
                             let _ = http1::Builder::new()
-                                .serve_connection(io, service)
+                                .serve_connection(io, hyper_service)
                                 .with_upgrades()
                                 .await;
                         });
@@ -185,41 +181,40 @@ async fn serve_tls(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::collections::HashMap;
 
-    use axum::Router;
-    use axum::body::Body;
-    use axum::http::Request;
-    use axum::routing::get;
+    use bytes::Bytes;
+    use http::header::HOST;
+    use http::{Method, StatusCode};
+    use hyper::body::Incoming;
     use tower::ServiceExt;
+    use trembita_http::{Gateway, GatewayService, RequestCtx, Response, RouteTable};
 
-    use super::{ConnectionTracker, track_connection};
+    use super::ConnectionTracker;
+    use crate::gateway::router::WrappedGatewayService;
 
     #[tokio::test]
-    async fn track_connection_middleware_holds_slot_for_request() {
+    async fn wrapped_service_holds_connection_slot_for_request() {
         let connections = Arc::new(ConnectionTracker::default());
-        let during = Arc::clone(&connections);
-        let router = Router::new()
-            .route(
-                "/",
-                get(move || {
-                    let during = Arc::clone(&during);
-                    async move {
-                        assert_eq!(during.active(), 1);
-                        "ok"
-                    }
-                }),
-            )
-            .layer(axum::middleware::from_fn_with_state(
-                Arc::clone(&connections),
-                track_connection,
-            ));
+        let gateway = Gateway::new(false).dev_fallback(RouteTable::new().get("/health", |_: RequestCtx| async {
+            Ok(Response::text(StatusCode::OK, "ok"))
+        }));
+        let inner = GatewayService::build(&gateway).expect("build");
+        let mut service = WrappedGatewayService {
+            inner,
+            connections: Some(Arc::clone(&connections)),
+            rate_limiter: None,
+            compute_pool: None,
+        };
 
-        let response = router
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
+        let req = http::Request::builder()
+            .method(Method::GET)
+            .uri("/health")
+            .header(HOST, "127.0.0.1")
+            .body(Incoming::default())
             .unwrap();
-        assert!(response.status().is_success());
+        let resp = service.ready().await.unwrap().call(req).await.unwrap();
+        assert!(resp.status().is_success());
         assert_eq!(connections.active(), 0);
     }
 }

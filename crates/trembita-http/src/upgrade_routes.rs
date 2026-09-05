@@ -1,18 +1,14 @@
-//! Axum routes for rolling self-update.
+//! Route table for rolling self-update.
 
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use axum::Json;
-use axum::Router;
-use axum::extract::State;
-use axum::http::{HeaderMap, Method, StatusCode, Uri};
-use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use http::{Method, StatusCode, Uri};
 use trembita_core::ArtifactManifest;
 
 use crate::AuthFn;
+use crate::routing::{HttpError, RequestCtx, Response, RouteTable};
 use crate::upgrade_types::{SetDesiredBody, UpgradeApiError, UpgradeStatusResponse};
 
 /// Async view hook for [`UpgradeApi`].
@@ -64,12 +60,13 @@ impl UpgradeApi {
         self
     }
 
-    /// Axum sub-router (`GET/POST /cluster/upgrade…`).
-    pub fn router(&self) -> Router<Arc<UpgradeApiState>> {
-        upgrade_router()
+    /// Route table (`GET/POST /cluster/upgrade…`).
+    #[must_use]
+    pub fn route_table(&self) -> RouteTable {
+        route_table(Arc::new(self.clone_state()))
     }
 
-    /// State handle for [`Self::router`].
+    /// State handle for [`Self::route_table`].
     #[must_use]
     pub fn into_state(self) -> UpgradeApiState {
         UpgradeApiState {
@@ -88,59 +85,104 @@ impl UpgradeApi {
             auth,
         }
     }
+
+    fn clone_state(&self) -> UpgradeApiState {
+        UpgradeApiState {
+            view: Arc::clone(&self.view),
+            set_desired: Arc::clone(&self.set_desired),
+            auth: self.auth.clone(),
+        }
+    }
 }
 
-/// Axum sub-router for upgrade routes.
-pub fn upgrade_router() -> Router<Arc<UpgradeApiState>> {
-    Router::new()
-        .route("/cluster/upgrade", get(get_upgrade))
-        .route("/cluster/upgrade/desired", post(post_desired))
+fn ctx_uri(ctx: &RequestCtx) -> Uri {
+    ctx.path()
+        .parse()
+        .unwrap_or_else(|_| Uri::from_static("/"))
 }
 
 async fn authorize(
     state: &UpgradeApiState,
-    method: &Method,
-    uri: &Uri,
-    headers: &HeaderMap,
+    ctx: &RequestCtx,
 ) -> Result<(), UpgradeApiError> {
     if let Some(auth) = &state.auth {
-        auth(method.clone(), uri.clone(), headers.clone())
-            .await
-            .map_err(|e| UpgradeApiError::Unauthorized(e.to_string()))?;
+        auth(
+            ctx.method().clone(),
+            ctx_uri(ctx),
+            ctx.headers().clone(),
+        )
+        .await
+        .map_err(|e| UpgradeApiError::Unauthorized(e.to_string()))?;
     }
     Ok(())
 }
 
+/// Route table for upgrade routes.
+#[must_use]
+pub fn route_table(state: Arc<UpgradeApiState>) -> RouteTable {
+    let get_state = Arc::clone(&state);
+    let post_state = state;
+    RouteTable::new()
+        .get("/cluster/upgrade", move |ctx| {
+            let state = Arc::clone(&get_state);
+            async move { get_upgrade(state, ctx).await }
+        })
+        .post("/cluster/upgrade/desired", move |ctx| {
+            let state = Arc::clone(&post_state);
+            async move { post_desired(state, ctx).await }
+        })
+}
+
 async fn get_upgrade(
-    State(state): State<Arc<UpgradeApiState>>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Result<Json<UpgradeStatusResponse>, UpgradeApiError> {
-    authorize(state.as_ref(), &method, &uri, &headers).await?;
+    state: Arc<UpgradeApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match get_upgrade_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn get_upgrade_inner(
+    state: &UpgradeApiState,
+    ctx: RequestCtx,
+) -> Result<Response, UpgradeApiError> {
+    authorize(state, &ctx).await?;
     let view = (state.view)().await?;
-    Ok(Json(view))
+    let json = serde_json::to_value(view)
+        .map_err(|e| UpgradeApiError::BadRequest(format!("json encode: {e}")))?;
+    Ok(Response::json(StatusCode::OK, json))
 }
 
 async fn post_desired(
-    State(state): State<Arc<UpgradeApiState>>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    Json(parsed): Json<SetDesiredBody>,
-) -> Result<impl IntoResponse, UpgradeApiError> {
-    authorize(state.as_ref(), &method, &uri, &headers).await?;
+    state: Arc<UpgradeApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match post_desired_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn post_desired_inner(
+    state: &UpgradeApiState,
+    ctx: RequestCtx,
+) -> Result<Response, UpgradeApiError> {
+    authorize(state, &ctx).await?;
+    let parsed: SetDesiredBody = ctx
+        .json()
+        .map_err(|e| UpgradeApiError::BadRequest(e.message().to_string()))?;
     (state.set_desired)(parsed.into()).await?;
-    Ok(StatusCode::ACCEPTED)
+    Ok(Response::status(StatusCode::ACCEPTED))
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::sync::atomic::Ordering;
 
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
-    use tower::ServiceExt;
+    use bytes::Bytes;
+    use http::Method;
     use trembita_core::UpgradeView;
 
     use std::collections::BTreeSet;
@@ -169,7 +211,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_upgrade_returns_view_json() {
-        let state = Arc::new(UpgradeApiState {
+        let table = route_table(Arc::new(UpgradeApiState {
             view: Arc::new(|| {
                 Box::pin(async {
                     Ok(UpgradeView {
@@ -184,42 +226,43 @@ mod tests {
             }),
             set_desired: Arc::new(|_| Box::pin(async { Ok(()) })),
             auth: None,
-        });
-        let app = upgrade_router().with_state(state);
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/cluster/upgrade")
-                    .body(Body::empty())
-                    .unwrap(),
+        }));
+        let resp = table
+            .dispatch(
+                &Method::GET,
+                "/cluster/upgrade",
+                HashMap::new(),
+                http::HeaderMap::new(),
+                Bytes::new(),
             )
             .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+            .expect("dispatch");
+        assert_eq!(resp.status_code(), StatusCode::OK);
     }
 
     #[tokio::test]
     async fn get_upgrade_rejects_without_auth_when_configured() {
         let auth: AuthFn =
             Arc::new(|_, _, _| Box::pin(async { Err(JobsApiError::Unauthorized("nope".into())) }));
-        let app = upgrade_router().with_state(state_with_auth(auth));
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/cluster/upgrade")
-                    .body(Body::empty())
-                    .unwrap(),
+        let table = route_table(state_with_auth(auth));
+        let resp = table
+            .dispatch(
+                &Method::GET,
+                "/cluster/upgrade",
+                HashMap::new(),
+                http::HeaderMap::new(),
+                Bytes::new(),
             )
             .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            .expect("dispatch");
+        assert_eq!(resp.status_code(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
     async fn post_desired_accepts_manifest() {
         let called = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let flag = Arc::clone(&called);
-        let state = Arc::new(UpgradeApiState {
+        let table = route_table(Arc::new(UpgradeApiState {
             view: Arc::new(|| Box::pin(async { Err(UpgradeApiError::Backend("unused".into())) })),
             set_desired: Arc::new(move |_| {
                 let flag = Arc::clone(&flag);
@@ -229,21 +272,19 @@ mod tests {
                 })
             }),
             auth: None,
-        });
-        let app = upgrade_router().with_state(state);
+        }));
         let body = r#"{"app_version":"1.0.0","url":"file:///x","sha256_hex":"00"}"#;
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/cluster/upgrade/desired")
-                    .header("content-type", "application/json")
-                    .body(Body::from(body))
-                    .unwrap(),
+        let resp = table
+            .dispatch(
+                &Method::POST,
+                "/cluster/upgrade/desired",
+                HashMap::new(),
+                http::HeaderMap::new(),
+                Bytes::from(body),
             )
             .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::ACCEPTED);
+            .expect("dispatch");
+        assert_eq!(resp.status_code(), StatusCode::ACCEPTED);
         assert!(called.load(Ordering::SeqCst));
     }
 }

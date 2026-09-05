@@ -1,21 +1,21 @@
 //! Static asset serving for product SPAs ([`StaticSite`]).
 //!
-//! Three backends share one Axum router shape:
+//! Three backends share one route-table shape:
 //!
 //! - [`StaticSource::Embedded`] — compile-time bytes (`include_dir!`, release artifact)
 //! - [`StaticSource::Filesystem`] — serve from a directory (dev / staging)
 //! - [`StaticSource::ObjectStore`] — fetch from S3-compatible storage (feature `static-s3`)
 //!
-//! Wire into [`HostRouter`](crate::HostRouter) or merge the router directly:
+//! Wire into a gateway [`Surface`](crate::gateway::Surface):
 //!
 //! ```rust
-//! use trembita_http::{HostRouter, StaticSite, StaticSource};
+//! use trembita_http::{Gateway, StaticSite, StaticSource};
 //!
 //! let site = StaticSite::new(StaticSource::filesystem("/var/www/client/dist"))
 //!     .spa_fallback(true);
-//! let app = HostRouter::new()
-//!     .host("app.example.com", site.router())
-//!     .build();
+//! let gateway = Gateway::new(false).surface(|s| {
+//!     s.hosts(["app.example.com"]).routes(site.route_table())
+//! });
 //! ```
 
 mod embedded;
@@ -30,9 +30,6 @@ mod object_store;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::Router;
-use axum::body::Body;
-use axum::http::{Request, Response};
 use thiserror::Error;
 
 pub use embedded::{EmbeddedAssets, EmbeddedFile, embedded_from_dir};
@@ -40,6 +37,8 @@ pub use env::StaticSiteEnvError;
 #[cfg(feature = "static-s3")]
 pub use object_store::{ObjectStoreConfig, S3Delivery};
 pub use serve::StaticResponse;
+
+use crate::routing::{HttpError, RequestCtx, Response, RouteTable};
 
 /// Where static bytes come from.
 #[derive(Clone, Debug)]
@@ -70,9 +69,6 @@ impl StaticSource {
     }
 
     /// Build from env vars prefixed with `prefix` (e.g. `TREMBITA_STATIC_CLIENT`).
-    ///
-    /// Reads `{prefix}_SOURCE` (`embedded` | `filesystem` | `s3`), plus backend-specific
-    /// keys documented on [`StaticSite::from_env`].
     ///
     /// # Errors
     /// Returns [`StaticSiteEnvError`] when required variables are missing or invalid.
@@ -116,19 +112,6 @@ impl StaticSite {
 
     /// Parse `{prefix}_*` env vars into a configured site.
     ///
-    /// | Variable | Values |
-    /// |----------|--------|
-    /// | `{prefix}_SOURCE` | `embedded` (default), `filesystem`, `s3` |
-    /// | `{prefix}_ROOT` | required for `filesystem` |
-    /// | `{prefix}_EMBED_DIR` | path to dist for compile-time embed (build script) |
-    /// | `{prefix}_BUCKET` | required for `s3` |
-    /// | `{prefix}_PREFIX` | optional object key prefix |
-    /// | `{prefix}_ENDPOINT` | optional S3 endpoint URL |
-    /// | `{prefix}_REGION` | optional region (default `us-east-1`) |
-    ///
-    /// Embedded source without `{prefix}_ROOT` requires assets passed to [`StaticSource::embedded`]
-    /// at compile time — env alone cannot load embedded bytes at runtime.
-    ///
     /// # Errors
     /// Returns [`StaticSiteEnvError`] when configuration is incomplete.
     pub fn from_env(prefix: &str) -> Result<Self, StaticSiteEnvError> {
@@ -163,12 +146,13 @@ impl StaticSite {
         self
     }
 
-    /// Axum router that serves all methods/paths from this site (use as host router or fallback).
-    pub fn router(self) -> Router {
+    /// Route table that serves all paths from this site (fallback handler).
+    #[must_use]
+    pub fn route_table(self) -> RouteTable {
         let state = Arc::new(StaticSiteState::from(self));
-        Router::new().fallback(move |req: Request<Body>| {
+        RouteTable::new().fallback(move |ctx: RequestCtx| {
             let state = Arc::clone(&state);
-            async move { state.serve(req).await }
+            async move { state.serve(ctx).await }
         })
     }
 }
@@ -219,33 +203,33 @@ impl StaticBackend {
 }
 
 impl StaticSiteState {
-    async fn serve(&self, req: Request<Body>) -> Response<Body> {
-        let path = req.uri().path();
+    async fn serve(&self, ctx: RequestCtx) -> Result<Response, HttpError> {
+        let path = ctx.path();
         match self.backend.resolve(path, self.precompressed).await {
-            Ok(Some(response)) => response.into_response(
+            Ok(Some(response)) => Ok(response.into_gateway_response(
                 path,
                 &self.index_cache_control,
                 &self.asset_cache_control,
                 self.spa_fallback,
-            ),
+            )),
             Ok(None) if self.spa_fallback && !path.starts_with("/assets/") => {
                 match self
                     .backend
                     .resolve("/index.html", self.precompressed)
                     .await
                 {
-                    Ok(Some(response)) => response.into_response(
+                    Ok(Some(response)) => Ok(response.into_gateway_response(
                         "/index.html",
                         &self.index_cache_control,
                         &self.asset_cache_control,
                         false,
-                    ),
-                    Ok(None) => serve::not_found(),
-                    Err(err) => serve::internal_error(&err),
+                    )),
+                    Ok(None) => Ok(serve::not_found()),
+                    Err(err) => Ok(serve::internal_error(&err)),
                 }
             }
-            Ok(None) => serve::not_found(),
-            Err(err) => serve::internal_error(&err),
+            Ok(None) => Ok(serve::not_found()),
+            Err(err) => Ok(serve::internal_error(&err)),
         }
     }
 }
@@ -287,12 +271,11 @@ impl StaticBackend {
 mod tests {
     use std::collections::HashMap;
 
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode, header};
-    use tower::ServiceExt;
+    use bytes::Bytes;
+    use http::{Method, StatusCode, header};
 
     use super::*;
-    use crate::HostRouter;
+    use crate::gateway::{Gateway, GatewayService};
 
     fn sample_assets() -> EmbeddedAssets {
         EmbeddedAssets {
@@ -319,35 +302,52 @@ mod tests {
 
     #[tokio::test]
     async fn embedded_serves_asset_and_spa_fallback() {
-        let app = StaticSite::new(StaticSource::embedded(sample_assets())).router();
+        let table = StaticSite::new(StaticSource::embedded(sample_assets())).route_table();
 
-        let asset = Request::builder()
-            .uri("/assets/app.js")
-            .body(Body::empty())
-            .unwrap();
-        assert_eq!(
-            app.clone().oneshot(asset).await.unwrap().status(),
-            StatusCode::OK
-        );
+        let asset = table
+            .dispatch(
+                &Method::GET,
+                "/assets/app.js",
+                HashMap::new(),
+                http::HeaderMap::new(),
+                Bytes::new(),
+            )
+            .await
+            .expect("asset");
+        assert_eq!(asset.status_code(), StatusCode::OK);
 
-        let deep = Request::builder()
-            .uri("/brands/123")
-            .body(Body::empty())
-            .unwrap();
-        let resp = app.oneshot(deep).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
+        let deep = table
+            .dispatch(
+                &Method::GET,
+                "/brands/123",
+                HashMap::new(),
+                http::HeaderMap::new(),
+                Bytes::new(),
+            )
+            .await
+            .expect("spa");
+        assert_eq!(deep.status_code(), StatusCode::OK);
     }
 
     #[tokio::test]
-    async fn host_router_static_site_integration() {
-        let site = StaticSite::new(StaticSource::embedded(sample_assets())).router();
-        let app = HostRouter::new().host("app.example.com", site).build();
-
-        let req = Request::builder()
+    async fn gateway_static_site_integration() {
+        let site = StaticSite::new(StaticSource::embedded(sample_assets())).route_table();
+        let gateway = Gateway::new(false).surface(|s| {
+            s.hosts(["app.example.com"]).routes(site)
+        });
+        let mut service = GatewayService::build(&gateway).expect("build");
+        let req = http::Request::builder()
+            .method(Method::GET)
             .uri("/assets/app.js")
             .header(header::HOST, "app.example.com")
-            .body(Body::empty())
+            .body(hyper::body::Incoming::default())
             .unwrap();
-        assert_eq!(app.oneshot(req).await.unwrap().status(), StatusCode::OK);
+        let resp = tower::ServiceExt::ready(&mut service)
+            .await
+            .expect("ready")
+            .call(req)
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 }

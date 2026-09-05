@@ -3,12 +3,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use http::StatusCode;
+use trembita_http::Response;
 use trembita_runtime::{ActorSession, CastError, ClusterAskError};
 
 use super::identity::{ExtractedIdentity, IdentityError};
 use crate::app::TrembitaApp;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
 
 /// No worker available for the session key in the requested group.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -26,13 +26,13 @@ pub enum OpenActorSessionError {
     NoWorker(#[from] NoWorkerError),
 }
 
-impl IntoResponse for OpenActorSessionError {
-    fn into_response(self) -> Response {
+impl OpenActorSessionError {
+    /// Map to a gateway [`Response`].
+    #[must_use]
+    pub fn into_http_response(self) -> Response {
         match self {
-            Self::Identity(err) => err.into_response(),
-            Self::NoWorker(err) => {
-                (StatusCode::SERVICE_UNAVAILABLE, err.to_string()).into_response()
-            }
+            Self::Identity(err) => err.into_http_response(),
+            Self::NoWorker(err) => Response::text(StatusCode::SERVICE_UNAVAILABLE, err.to_string()),
         }
     }
 }

@@ -37,6 +37,7 @@ members = [
     "crates/trembita-test-support",
     "crates/trembita-tools",
     "crates/trembita-backlog-postgres",
+    "crates/trembita-events-postgres",
 ]
 # `benchmarks/` and `examples/` are standalone crates (own workspace tables) so
 # criterion and demo binaries never compile in the fast lane. See backlog T10.
@@ -70,6 +71,50 @@ pretty_assertions = "1"
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
+# Single tokio feature set for the whole workspace — avoids duplicate compiles
+# when crates request different feature subsets.
+tokio = { version = "1", features = [
+    "rt",
+    "rt-multi-thread",
+    "macros",
+    "sync",
+    "time",
+    "net",
+    "io-util",
+    "fs",
+    "signal",
+    "test-util",
+] }
+tokio-rustls = "0.26"
+tokio-stream = "0.1"
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+redb = "4.2.0"
+tempfile = "3"
+rustls = { version = "0.23", default-features = false, features = [
+    "ring",
+    "std",
+    "tls12",
+] }
+rustls-pemfile = "2"
+rcgen = "0.14"
+http = "1"
+bytes = "1"
+http-body-util = "0.1"
+hyper = { version = "1.10", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+tower = { version = "0.5", features = ["util"] }
+axum = { version = "0.8", features = ["json", "ws"] }
+axum-extra = { version = "0.10", features = ["cookie"] }
+tower-http = { version = "0.6", features = ["cors"] }
+opendal = { version = "0.52", features = [
+    "services-s3",
+    "services-gcs",
+    "services-fs",
+] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "json"] }
+sha2 = "0.10"
+hex = "0.4"
 
 # Internal crates referenced by path within the workspace.
 trembita-proto = { path = "crates/trembita-proto", version = "0.3.2" }
@@ -89,6 +134,7 @@ trembita-sim = { path = "crates/trembita-sim", version = "0.3.2" }
 trembita = { path = "crates/trembita", version = "0.3.2" }
 trembita-test-support = { path = "crates/trembita-test-support", version = "0.3.2" }
 trembita-backlog-postgres = { path = "crates/trembita-backlog-postgres", version = "0.3.2" }
+trembita-events-postgres = { path = "crates/trembita-events-postgres", version = "0.3.2" }
 
 # Lints applied across the workspace (library-and-publishing).
 [workspace.lints.rust]

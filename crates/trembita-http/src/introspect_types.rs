@@ -1,7 +1,8 @@
 //! JSON wire errors for the introspection HTTP API.
 
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use http::StatusCode;
+
+use crate::routing::Response;
 
 /// HTTP-layer introspection failure mapped to status codes.
 #[derive(Debug, thiserror::Error)]
@@ -17,13 +18,15 @@ pub enum IntrospectApiError {
     Unauthorized(String),
 }
 
-impl IntoResponse for IntrospectApiError {
-    fn into_response(self) -> Response {
+impl IntrospectApiError {
+    /// Map to a gateway [`Response`].
+    #[must_use]
+    pub fn into_http_response(self) -> Response {
         let (status, msg) = match &self {
             Self::BadRequest(m) => (StatusCode::BAD_REQUEST, m.clone()),
             Self::NotFound(m) => (StatusCode::NOT_FOUND, m.clone()),
             Self::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m.clone()),
         };
-        (status, msg).into_response()
+        Response::text(status, msg)
     }
 }

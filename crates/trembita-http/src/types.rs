@@ -1,8 +1,9 @@
 //! JSON wire types for the jobs HTTP API.
 
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use http::StatusCode;
 use serde::{Deserialize, Serialize};
+
+use crate::routing::Response;
 
 /// Successful enqueue response (`202 Accepted`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -164,14 +165,16 @@ pub enum JobsApiError {
     Unauthorized(String),
 }
 
-impl IntoResponse for JobsApiError {
-    fn into_response(self) -> Response {
+impl JobsApiError {
+    /// Map to a gateway [`Response`].
+    #[must_use]
+    pub fn into_http_response(self) -> Response {
         let (status, msg) = match &self {
             Self::BadRequest(m) => (StatusCode::BAD_REQUEST, m.clone()),
             Self::Queue(m) => (StatusCode::SERVICE_UNAVAILABLE, m.clone()),
             Self::NotFound => (StatusCode::NOT_FOUND, self.to_string()),
             Self::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m.clone()),
         };
-        (status, msg).into_response()
+        Response::text(status, msg)
     }
 }

@@ -25,4 +25,4 @@ trembita = { workspace = true, optional = true }
 serde.workspace = true
 thiserror.workspace = true
 pretty_assertions.workspace = true
-tokio = { version = "1", features = ["time", "test-util", "rt", "macros"] }
+tokio.workspace = true

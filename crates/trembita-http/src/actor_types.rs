@@ -1,8 +1,9 @@
 //! JSON wire types for the actors HTTP API.
 
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use http::StatusCode;
 use serde::Serialize;
+
+use crate::routing::Response;
 
 /// Successful ask response (`200 OK`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -31,8 +32,10 @@ pub enum ActorsApiError {
     Unauthorized(String),
 }
 
-impl IntoResponse for ActorsApiError {
-    fn into_response(self) -> Response {
+impl ActorsApiError {
+    /// Map to a gateway [`Response`].
+    #[must_use]
+    pub fn into_http_response(self) -> Response {
         let (status, msg) = match &self {
             Self::BadRequest(m) => (StatusCode::BAD_REQUEST, m.clone()),
             Self::NoTarget(m) => (StatusCode::SERVICE_UNAVAILABLE, m.clone()),
@@ -40,6 +43,6 @@ impl IntoResponse for ActorsApiError {
             Self::Actor(m) => (StatusCode::BAD_GATEWAY, m.clone()),
             Self::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m.clone()),
         };
-        (status, msg).into_response()
+        Response::text(status, msg)
     }
 }

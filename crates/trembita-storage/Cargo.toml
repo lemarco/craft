@@ -23,7 +23,7 @@ trembita-proto.workspace = true
 serde.workspace = true
 postcard.workspace = true
 thiserror.workspace = true
-redb = "4.2.0"
+redb.workspace = true
 
 [dev-dependencies]
-tempfile = "3"
+tempfile.workspace = true

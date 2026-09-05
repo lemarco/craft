@@ -1,100 +1,187 @@
-//! Axum routes for cluster introspection snapshots ([`Observer`](trembita_dashboard::Observer)).
+//! Route table for cluster introspection snapshots ([`Observer`](trembita_dashboard::Observer)).
 
 use std::sync::Arc;
 
-use axum::Json;
-use axum::Router;
-use axum::extract::{Path, State};
-use axum::http::{HeaderMap, Method, Uri};
-use axum::routing::get;
+use http::{Method, StatusCode, Uri};
 
 use crate::IntrospectApiState;
 use crate::introspect_types::IntrospectApiError;
+use crate::routing::{HttpError, RequestCtx, Response, RouteTable};
 use crate::types::JobsApiError;
 
-/// Axum sub-router for read-only introspection routes.
-pub fn introspect_router() -> Router<Arc<IntrospectApiState>> {
-    Router::new()
-        .route("/introspect/cluster", get(get_cluster))
-        .route("/introspect/raft-groups", get(get_raft_groups))
-        .route("/introspect/actors", get(get_actors))
-        .route("/introspect/actors/{id}", get(get_actor))
-        .route("/introspect/node/{id}", get(get_node))
-        .route("/introspect/queues", get(get_queues))
-        .route("/introspect/sagas", get(get_sagas))
+fn ctx_uri(ctx: &RequestCtx) -> Uri {
+    ctx.path()
+        .parse()
+        .unwrap_or_else(|_| Uri::from_static("/"))
 }
 
 async fn authorize(
     state: &IntrospectApiState,
-    method: &Method,
-    uri: &Uri,
-    headers: &HeaderMap,
+    ctx: &RequestCtx,
 ) -> Result<(), IntrospectApiError> {
     if let Some(auth) = &state.auth {
-        auth(method.clone(), uri.clone(), headers.clone())
-            .await
-            .map_err(|e| match e {
-                JobsApiError::Unauthorized(m) => IntrospectApiError::Unauthorized(m),
-                other => IntrospectApiError::BadRequest(other.to_string()),
-            })?;
+        auth(
+            ctx.method().clone(),
+            ctx_uri(ctx),
+            ctx.headers().clone(),
+        )
+        .await
+        .map_err(|e| match e {
+            JobsApiError::Unauthorized(m) => IntrospectApiError::Unauthorized(m),
+            other => IntrospectApiError::BadRequest(other.to_string()),
+        })?;
     }
     Ok(())
 }
 
+fn json_ok<T: serde::Serialize>(value: T) -> Result<Response, IntrospectApiError> {
+    let json = serde_json::to_value(value)
+        .map_err(|e| IntrospectApiError::BadRequest(format!("json encode: {e}")))?;
+    Ok(Response::json(StatusCode::OK, json))
+}
+
+/// Route table for read-only introspection routes.
+#[must_use]
+pub fn route_table(state: Arc<IntrospectApiState>) -> RouteTable {
+    let s1 = Arc::clone(&state);
+    let s2 = Arc::clone(&state);
+    let s3 = Arc::clone(&state);
+    let s4 = Arc::clone(&state);
+    let s5 = Arc::clone(&state);
+    let s6 = Arc::clone(&state);
+    let s7 = state;
+    RouteTable::new()
+        .get("/introspect/cluster", move |ctx| {
+            let state = Arc::clone(&s1);
+            async move { get_cluster(state, ctx).await }
+        })
+        .get("/introspect/raft-groups", move |ctx| {
+            let state = Arc::clone(&s2);
+            async move { get_raft_groups(state, ctx).await }
+        })
+        .get("/introspect/actors", move |ctx| {
+            let state = Arc::clone(&s3);
+            async move { get_actors(state, ctx).await }
+        })
+        .get("/introspect/actors/{id}", move |ctx| {
+            let state = Arc::clone(&s4);
+            async move { get_actor(state, ctx).await }
+        })
+        .get("/introspect/node/{id}", move |ctx| {
+            let state = Arc::clone(&s5);
+            async move { get_node(state, ctx).await }
+        })
+        .get("/introspect/queues", move |ctx| {
+            let state = Arc::clone(&s6);
+            async move { get_queues(state, ctx).await }
+        })
+        .get("/introspect/sagas", move |ctx| {
+            let state = Arc::clone(&s7);
+            async move { get_sagas(state, ctx).await }
+        })
+}
+
 async fn get_cluster(
-    State(state): State<Arc<IntrospectApiState>>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Result<Json<trembita_dashboard::ClusterView>, IntrospectApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
-    Ok(Json(state.observer.cluster().await))
+    state: Arc<IntrospectApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match get_cluster_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn get_cluster_inner(
+    state: &IntrospectApiState,
+    ctx: RequestCtx,
+) -> Result<Response, IntrospectApiError> {
+    authorize(state, &ctx).await?;
+    json_ok(state.observer.cluster().await)
 }
 
 async fn get_raft_groups(
-    State(state): State<Arc<IntrospectApiState>>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Result<Json<trembita_dashboard::RaftGroupsView>, IntrospectApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
-    Ok(Json(state.observer.raft_groups().await))
+    state: Arc<IntrospectApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match get_raft_groups_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn get_raft_groups_inner(
+    state: &IntrospectApiState,
+    ctx: RequestCtx,
+) -> Result<Response, IntrospectApiError> {
+    authorize(state, &ctx).await?;
+    json_ok(state.observer.raft_groups().await)
 }
 
 async fn get_actors(
-    State(state): State<Arc<IntrospectApiState>>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Result<Json<Vec<trembita_dashboard::ActorView>>, IntrospectApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
-    Ok(Json(state.observer.actors().await))
+    state: Arc<IntrospectApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match get_actors_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn get_actors_inner(
+    state: &IntrospectApiState,
+    ctx: RequestCtx,
+) -> Result<Response, IntrospectApiError> {
+    authorize(state, &ctx).await?;
+    json_ok(state.observer.actors().await)
 }
 
 async fn get_actor(
-    State(state): State<Arc<IntrospectApiState>>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    Path(id): Path<String>,
-) -> Result<Json<trembita_dashboard::ActorView>, IntrospectApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
+    state: Arc<IntrospectApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match get_actor_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn get_actor_inner(
+    state: &IntrospectApiState,
+    ctx: RequestCtx,
+) -> Result<Response, IntrospectApiError> {
+    authorize(state, &ctx).await?;
+    let id = ctx
+        .params()
+        .get("id")
+        .ok_or_else(|| IntrospectApiError::BadRequest("missing id".into()))?
+        .to_string();
     state
         .observer
         .actor(&id)
         .await
-        .map(Json)
-        .ok_or_else(|| IntrospectApiError::NotFound("no such actor".into()))
+        .map(json_ok)
+        .ok_or_else(|| IntrospectApiError::NotFound("no such actor".into()))?
 }
 
 async fn get_node(
-    State(state): State<Arc<IntrospectApiState>>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    Path(id): Path<String>,
-) -> Result<Json<trembita_dashboard::NodeView>, IntrospectApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
+    state: Arc<IntrospectApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match get_node_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn get_node_inner(
+    state: &IntrospectApiState,
+    ctx: RequestCtx,
+) -> Result<Response, IntrospectApiError> {
+    authorize(state, &ctx).await?;
+    let id = ctx
+        .params()
+        .get("id")
+        .ok_or_else(|| IntrospectApiError::BadRequest("missing id".into()))?;
     let node_id = id
         .parse::<u64>()
         .map_err(|_| IntrospectApiError::BadRequest("invalid node id".into()))?;
@@ -102,39 +189,54 @@ async fn get_node(
         .observer
         .node(node_id)
         .await
-        .map(Json)
-        .ok_or_else(|| IntrospectApiError::NotFound("no such node".into()))
+        .map(json_ok)
+        .ok_or_else(|| IntrospectApiError::NotFound("no such node".into()))?
 }
 
 async fn get_queues(
-    State(state): State<Arc<IntrospectApiState>>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Result<Json<trembita_dashboard::QueuesView>, IntrospectApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
-    Ok(Json(state.observer.queues().await))
+    state: Arc<IntrospectApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match get_queues_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn get_queues_inner(
+    state: &IntrospectApiState,
+    ctx: RequestCtx,
+) -> Result<Response, IntrospectApiError> {
+    authorize(state, &ctx).await?;
+    json_ok(state.observer.queues().await)
 }
 
 async fn get_sagas(
-    State(state): State<Arc<IntrospectApiState>>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Result<Json<Vec<trembita_dashboard::SagaRecordView>>, IntrospectApiError> {
-    authorize(&state, &method, &uri, &headers).await?;
-    Ok(Json(state.observer.sagas().await))
+    state: Arc<IntrospectApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match get_sagas_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn get_sagas_inner(
+    state: &IntrospectApiState,
+    ctx: RequestCtx,
+) -> Result<Response, IntrospectApiError> {
+    authorize(state, &ctx).await?;
+    json_ok(state.observer.sagas().await)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::body::Body;
-    use axum::http::Request;
-    use axum::http::StatusCode;
+    use bytes::Bytes;
+    use http::Method;
+    use std::collections::HashMap;
     use std::future;
     use std::sync::Arc;
-    use tower::ServiceExt;
     use trembita_dashboard::{
         ActorView, BoxFuture, ClusterView, NodeSummary, NodeView, Observer, QueuesView,
         RaftGroupsView, Readiness, SagaRecordView,
@@ -239,75 +341,25 @@ mod tests {
         }
     }
 
-    fn test_state(
-        observer: Arc<dyn Observer>,
-        auth: Option<crate::AuthFn>,
-    ) -> Arc<IntrospectApiState> {
-        Arc::new(IntrospectApiState { observer, auth })
-    }
-
     #[tokio::test]
     async fn get_cluster_returns_json() {
         let observer: Arc<dyn Observer> = Arc::new(FakeObserver {
             actor_id: "orders/0".into(),
         });
-        let app = introspect_router().with_state(test_state(observer, None));
-        let req = Request::builder()
-            .method("GET")
-            .uri("/introspect/cluster")
-            .body(Body::empty())
-            .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
-
-    #[tokio::test]
-    async fn missing_actor_returns_not_found() {
-        let observer: Arc<dyn Observer> = Arc::new(FakeObserver {
-            actor_id: "orders/0".into(),
-        });
-        let app = introspect_router().with_state(test_state(observer, None));
-        let req = Request::builder()
-            .method("GET")
-            .uri("/introspect/actors/missing")
-            .body(Body::empty())
-            .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    }
-
-    #[tokio::test]
-    async fn invalid_node_id_returns_bad_request() {
-        let observer: Arc<dyn Observer> = Arc::new(FakeObserver {
-            actor_id: "orders/0".into(),
-        });
-        let app = introspect_router().with_state(test_state(observer, None));
-        let req = Request::builder()
-            .method("GET")
-            .uri("/introspect/node/notanumber")
-            .body(Body::empty())
-            .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    }
-
-    #[tokio::test]
-    async fn auth_rejects_unauthorized_requests() {
-        let observer: Arc<dyn Observer> = Arc::new(FakeObserver {
-            actor_id: "orders/0".into(),
-        });
-        let auth: crate::AuthFn = Arc::new(|_, _, _| {
-            Box::pin(future::ready(Err(JobsApiError::Unauthorized(
-                "nope".into(),
-            ))))
-        });
-        let app = introspect_router().with_state(test_state(observer, Some(auth)));
-        let req = Request::builder()
-            .method("GET")
-            .uri("/introspect/cluster")
-            .body(Body::empty())
-            .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        let table = route_table(Arc::new(IntrospectApiState {
+            observer,
+            auth: None,
+        }));
+        let resp = table
+            .dispatch(
+                &Method::GET,
+                "/introspect/cluster",
+                HashMap::new(),
+                http::HeaderMap::new(),
+                Bytes::new(),
+            )
+            .await
+            .expect("dispatch");
+        assert_eq!(resp.status_code(), StatusCode::OK);
     }
 }

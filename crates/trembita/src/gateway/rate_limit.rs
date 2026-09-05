@@ -3,15 +3,14 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use axum::body::Body;
-use axum::extract::State;
-use axum::http::{Request, StatusCode};
-use axum::middleware::Next;
-use axum::response::{IntoResponse, Response};
-
 /// Token-bucket-like limiter: at most `max_per_sec` acquisitions per rolling second.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GatewayRateLimiter {
+    inner: Arc<GatewayRateLimiterInner>,
+}
+
+#[derive(Debug)]
+struct GatewayRateLimiterInner {
     max_per_sec: u32,
     window_start: Mutex<Instant>,
     count: Mutex<u32>,
@@ -22,38 +21,29 @@ impl GatewayRateLimiter {
     #[must_use]
     pub fn new(max_per_sec: u32) -> Self {
         Self {
-            max_per_sec: max_per_sec.max(1),
-            window_start: Mutex::new(Instant::now()),
-            count: Mutex::new(0),
+            inner: Arc::new(GatewayRateLimiterInner {
+                max_per_sec: max_per_sec.max(1),
+                window_start: Mutex::new(Instant::now()),
+                count: Mutex::new(0),
+            }),
         }
     }
 
-    fn try_acquire(&self) -> bool {
+    /// Returns `false` when the per-second budget is exhausted.
+    pub(crate) fn try_acquire(&self) -> bool {
+        let inner = &self.inner;
         let now = Instant::now();
-        let mut window = self.window_start.lock().expect("poisoned");
-        let mut count = self.count.lock().expect("poisoned");
+        let mut window = inner.window_start.lock().expect("poisoned");
+        let mut count = inner.count.lock().expect("poisoned");
         if now.duration_since(*window) >= Duration::from_secs(1) {
             *window = now;
             *count = 0;
         }
-        if *count >= self.max_per_sec {
+        if *count >= inner.max_per_sec {
             return false;
         }
         *count += 1;
         true
-    }
-}
-
-/// Reject with `429 Too Many Requests` when the per-second budget is exhausted.
-pub async fn rate_limit_middleware(
-    State(limiter): State<Arc<GatewayRateLimiter>>,
-    request: Request<Body>,
-    next: Next,
-) -> Response {
-    if limiter.try_acquire() {
-        next.run(request).await
-    } else {
-        (StatusCode::TOO_MANY_REQUESTS, "rate limit exceeded").into_response()
     }
 }
 
@@ -69,7 +59,7 @@ mod tests {
         assert!(limiter.try_acquire());
         assert!(!limiter.try_acquire());
         {
-            let mut window = limiter.window_start.lock().expect("poisoned");
+            let mut window = limiter.inner.window_start.lock().expect("poisoned");
             *window = Instant::now() - Duration::from_secs(2);
         }
         assert!(limiter.try_acquire());

@@ -50,6 +50,7 @@ PUBLISH_ORDER=(
     trembita-actor-store
     trembita-jobs
     trembita-events
+    trembita-events-postgres
     trembita-client
     trembita-sim
     trembita-dashboard

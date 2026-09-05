@@ -78,3 +78,7 @@ pub use sharded::{
 };
 pub use supervisor::{ClusterState, ClusterSupervisor, GroupReconcile, ReconcileReport};
 pub use tracing_init::init_tracing;
+#[cfg(feature = "otlp")]
+mod tracing_otlp;
+#[cfg(feature = "otlp")]
+pub use tracing_otlp::{TracingOpts, init_tracing_with_otlp};

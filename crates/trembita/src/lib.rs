@@ -89,10 +89,11 @@ pub use configure::TrembitaConfigure;
 pub use consumer::{ConsumerGroup, ConsumerOpts, IdempotencyKeyFn, IdempotencyOpts, JobConsumer};
 pub use cron_opts::CronOpts;
 pub use gateway::{
-    ConnectionGuard, ConnectionTracker, DEFAULT_GATEWAY_DRAIN_TIMEOUT, ExtractedIdentity,
-    GatewayBearerIdentity, GatewayHandle, GatewayIdentity, GatewayOpts, GatewayRequest,
-    GatewayTlsPaths, GatewayTokenIdentity, IdentityError, IdentityTypeError, NoWorkerError,
-    OpenActorSessionError, SessionHandle, SessionKey, TrembitaGatewayState, spawn_gateway,
+    build_gateway_router, build_gateway_service, ConnectionGuard, ConnectionTracker,
+    DEFAULT_GATEWAY_DRAIN_TIMEOUT, ExtractedIdentity, GatewayBearerIdentity, GatewayHandle,
+    GatewayIdentity, GatewayOpts, GatewayRequest, GatewayTlsPaths, GatewayTokenIdentity,
+    IdentityError, IdentityTypeError, NoWorkerError, OpenActorSessionError, SessionHandle,
+    SessionKey, TrembitaGatewayState, WrappedGatewayService, spawn_gateway,
 };
 pub use job_opts::JobOpts;
 pub use queue_opts::QueueOpts;
@@ -110,9 +111,9 @@ pub use trembita_jobs::JobContext;
 pub use trembita_jobs::WorkloadOpts;
 pub use trembita_jobs::{
     BacklogFeedOpts, BacklogItem, BacklogRegistry, BacklogSettleOutbox, BacklogSettleOutboxOpts,
-    CompositeScheduleSource, ConsumerCount, ExternalBacklog, InMemoryBacklogSettleOutbox,
-    InMemoryExternalBacklog, ScheduleError, SchedulePoll, ScheduleSource, Settlement,
-    StaticScheduleSource,
+    CachedDepth, CompositeScheduleSource, ConsumerCount, DepthCache, ExternalBacklog,
+    InMemoryBacklogSettleOutbox, InMemoryExternalBacklog, ScheduleError, SchedulePoll,
+    ScheduleSource, Settlement, StaticScheduleSource,
 };
 pub use trembita_runtime::{ExternalLoad, ManualExternalLoad};
 pub use worker_opts::{WorkerGroup, WorkerOpts, WorkerScale};
@@ -122,8 +123,9 @@ pub use workload::WorkloadRuntime;
 
 #[cfg(feature = "http-jobs")]
 pub use trembita_http::{
-    EmbeddedAssets, EmbeddedFile, HostRouter, IntrospectApi, IntrospectApiError, Observer,
-    Precompressed, StaticSite, StaticSource, embedded_from_dir, is_local_dev_host, normalize_host,
+    CookieConfig, CorsPolicy, EmbeddedAssets, EmbeddedFile, Gateway, GatewayBuildError,
+    GatewayService, IntrospectApi, IntrospectApiError, Observer, Precompressed, RouteTable,
+    StaticSite, StaticSource, Surface, embedded_from_dir, is_local_dev_host, normalize_host,
 };
 pub use upgrade::upgrade_api;
 pub use upgrade::{

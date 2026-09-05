@@ -1,9 +1,10 @@
 //! JSON types for the cluster upgrade API.
 
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use trembita_core::{ArtifactManifest, UpgradeView};
+
+use crate::routing::Response;
 
 /// Body for `POST /cluster/upgrade/desired`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,14 +45,16 @@ pub enum UpgradeApiError {
     Backend(String),
 }
 
-impl IntoResponse for UpgradeApiError {
-    fn into_response(self) -> Response {
+impl UpgradeApiError {
+    /// Map to a gateway [`Response`].
+    #[must_use]
+    pub fn into_http_response(self) -> Response {
         let status = match &self {
             Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::Backend(_) => StatusCode::SERVICE_UNAVAILABLE,
         };
-        (status, self.to_string()).into_response()
+        Response::text(status, self.to_string())
     }
 }
 

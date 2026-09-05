@@ -226,12 +226,18 @@ See [realtime-sessions](scenarios/realtime-sessions.md) and [gateway-identity](d
 ## 9. Scaffold a new project
 
 ```bash
+# From the trembita repo (path dependency):
 ./scripts/trembita-init.sh my-app
-cd my-app
-cargo run
+# or:
+cargo run -p trembita-tools --bin trembita -- new my-app --trembita-path .
+
+# With feature selection:
+cargo run -p trembita-tools --bin trembita -- new my-app \
+  --features jobs,gateway,telemetry,topics,external-backlog
 ```
 
-Generates a `TrembitaApp` stub, docker-compose for 3-node local dev, and links to scenario guides.
+Generates the [framework layout](decisions/framework-conventions.md): `main.rs` (boot), `app.rs` (wiring),
+`config.rs`, `consumers/`, `domain/`, plus `deploy/` for local cluster. See [`trembita new --help`](../crates/trembita-tools/src/bin/trembita.rs).
 
 ## 10. Observability & ops
 

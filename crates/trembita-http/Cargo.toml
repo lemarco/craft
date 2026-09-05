@@ -8,7 +8,7 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 categories.workspace = true
-keywords = ["raft", "actor", "jobs", "http", "axum"]
+keywords = ["raft", "actor", "jobs", "http", "gateway"]
 readme = "README.md"
 homepage.workspace = true
 
@@ -16,9 +16,13 @@ homepage.workspace = true
 workspace = true
 
 [dependencies]
-axum = { version = "0.8", features = ["json"] }
+axum.workspace = true
+axum-extra.workspace = true
 base64 = "0.22"
-bytes = "1"
+bytes.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 include_dir = "0.7"
 mime_guess = "2"
 trembita-dashboard.workspace = true
@@ -27,19 +31,20 @@ trembita-jobs.workspace = true
 trembita-actor-store.workspace = true
 trembita-core.workspace = true
 trembita-proto.workspace = true
-http = "1"
+http.workspace = true
 serde = { workspace = true, features = ["derive"] }
-serde_json = "1"
+serde_json.workspace = true
 thiserror.workspace = true
-tokio = { version = "1", features = ["rt", "net", "macros", "fs", "io-util"] }
-tower = "0.5"
-opendal = { version = "0.52", features = ["services-s3"], optional = true }
+tokio.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+opendal = { workspace = true, optional = true }
 
 [features]
 default = ["static-s3"]
 static-s3 = ["dep:opendal"]
 
 [dev-dependencies]
-tempfile = "3"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
-tower = { version = "0.5", features = ["util"] }
+tempfile.workspace = true
+tokio.workspace = true
+tower.workspace = true

@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::http::{HeaderMap, Method, Uri};
+use http::{HeaderMap, Method, Uri};
 
 use super::super::app::TrembitaApp;
 use super::drain::{ConnectionGuard, ConnectionTracker};
@@ -72,7 +72,7 @@ impl TrembitaGatewayState {
     /// Same as [`Self::extract_session`].
     pub async fn extract_session_from<B>(
         &self,
-        req: &axum::http::Request<B>,
+        req: &http::Request<B>,
     ) -> Result<ExtractedIdentity, IdentityError> {
         let gw_req = GatewayRequest::from_http(req);
         self.extract_session(&gw_req).await
@@ -100,17 +100,14 @@ impl TrembitaGatewayState {
     pub async fn open_actor_session_from<B>(
         &self,
         group: &str,
-        req: &axum::http::Request<B>,
+        req: &http::Request<B>,
         ttl: Option<Duration>,
     ) -> Result<SessionHandle, OpenActorSessionError> {
         let gw_req = GatewayRequest::from_http(req);
         self.open_actor_session(group, &gw_req, ttl).await
     }
 
-    /// [`extract_session`](Self::extract_session) from axum **parts** (WebSocket upgrade handlers).
-    ///
-    /// Use with [`WebSocketUpgrade`](axum::extract::ws::WebSocketUpgrade) — do not also extract
-    /// [`Request`](axum::http::Request); the upgrade consumes the body.
+    /// [`extract_session`](Self::extract_session) from HTTP **parts** (WebSocket upgrade handlers).
     ///
     /// # Errors
     /// Same as [`Self::extract_session`].
@@ -124,7 +121,7 @@ impl TrembitaGatewayState {
         self.extract_session(&gw_req).await
     }
 
-    /// Like [`Self::open_actor_session`] from axum **parts** (WebSocket upgrade handlers).
+    /// Like [`Self::open_actor_session`] from HTTP **parts** (WebSocket upgrade handlers).
     ///
     /// # Errors
     /// Same as [`Self::open_actor_session`].

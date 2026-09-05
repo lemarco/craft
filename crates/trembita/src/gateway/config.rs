@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Router;
+use trembita_http::Gateway;
 
 use super::GatewayTlsPaths;
 use super::identity;
@@ -20,6 +20,9 @@ pub enum GatewayConfigError {
     /// Product APIs are enabled but no identity extractor is configured.
     #[error("gateway product APIs require GatewayOpts::identity")]
     ProductApisWithoutIdentity,
+    /// Surface wiring failed at build time.
+    #[error(transparent)]
+    Build(#[from] trembita_http::GatewayBuildError),
 }
 
 /// Returns `true` when built-in product routes would be mounted.
@@ -61,8 +64,8 @@ pub const DEFAULT_GATEWAY_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 /// Default wait for job queue consumers to finish in-flight work during shutdown.
 pub const DEFAULT_CONSUMER_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// User-supplied gateway router builder (captures [`TrembitaGatewayState`] in handlers).
-pub type GatewayRoutesFn = Box<dyn FnOnce(TrembitaGatewayState) -> Router + Send>;
+/// User-supplied gateway surface builder (captures [`TrembitaGatewayState`] in handlers).
+pub type GatewaySurfacesFn = Box<dyn FnOnce(TrembitaGatewayState) -> Gateway + Send>;
 
 /// Gateway listen address and route wiring collected on [`super::super::app::TrembitaAppBuilder`].
 #[allow(clippy::struct_excessive_bools)] // feature toggles map 1:1 to optional product APIs.
@@ -73,8 +76,8 @@ pub struct GatewayConfig {
     pub jobs_api: bool,
     /// Mount `/actors/*` cast + ask routes (requires `http-jobs` feature).
     pub actors_api: bool,
-    /// Optional custom routes (WebSocket, sync HTTP, etc.).
-    pub routes: Option<GatewayRoutesFn>,
+    /// Optional custom surfaces (WebSocket, sync HTTP, etc.).
+    pub surfaces: Option<GatewaySurfacesFn>,
     /// Mount `/workflows/*` routes when a plan builder is configured.
     pub workflows_api: bool,
     /// Mount read-only `/introspect/*` routes ([`IntrospectApi`](trembita_http::IntrospectApi)).

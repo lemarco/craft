@@ -2,6 +2,7 @@
 
 mod backlog_settle_outbox;
 mod cluster_job_queue;
+mod depth_cache;
 mod external_backlog;
 mod queue;
 mod queue_autoscale;
@@ -19,6 +20,7 @@ pub use backlog_settle_outbox::{
     InMemoryBacklogSettleOutbox, RedbBacklogSettleOutbox, push_backlog_settle,
 };
 pub use cluster_job_queue::ClusterJobQueue;
+pub use depth_cache::{CachedDepth, DepthCache};
 pub use external_backlog::{
     BacklogError, BacklogFeedOpts, BacklogItem, BacklogRegistry, BacklogSettleEvent,
     BacklogSettleOutcome, ConsumerCount, ExternalBacklog, InMemoryExternalBacklog, Settlement,

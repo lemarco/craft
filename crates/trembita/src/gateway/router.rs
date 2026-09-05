@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
-use axum::Router;
-use axum::extract::DefaultBodyLimit;
+use trembita_http::{Gateway, GatewayService, RouteTable};
+use trembita_runtime::ComputeTokenPool;
 
 use super::super::app::TrembitaApp;
-use super::config::{
-    GATEWAY_MAX_BODY_BYTES, GatewayConfig, GatewayConfigError, validate_gateway_config,
-};
-use super::drain::{self, ConnectionTracker};
+use super::config::{GatewayConfig, GatewayConfigError, validate_gateway_config};
+use super::drain::ConnectionTracker;
 use super::identity::{self, GatewayBearerIdentity, GatewayRequest};
-use super::rate_limit;
+use super::rate_limit::GatewayRateLimiter;
 use super::state::TrembitaGatewayState;
+
+use super::WrappedGatewayService;
 
 /// Bearer auth hook for product/upgrade HTTP when a gateway token env var is set.
 #[must_use]
@@ -19,31 +19,36 @@ pub fn bearer_auth_from_env() -> Option<trembita_http::AuthFn> {
         .map(|_| identity_auth_fn(identity::erase_identity(GatewayBearerIdentity::from_env())))
 }
 
-/// Build the gateway router: custom routes first, then optional product APIs.
-///
-/// Installs connection-tracking middleware on the merged router so HTTP handlers
-/// do not need to call [`TrembitaGatewayState::track_connection`] manually.
+/// Build the gateway hyper service: user surfaces + optional product APIs.
 ///
 /// # Errors
 /// [`GatewayConfigError`] when product APIs or `protect_apis` require identity.
-pub fn build_gateway_router(
+pub fn build_gateway_service(
     app: &Arc<TrembitaApp>,
     config: GatewayConfig,
-) -> Result<Router, GatewayConfigError> {
+) -> Result<WrappedGatewayService, GatewayConfigError> {
     validate_gateway_config(&config)?;
     let connections = app.cluster().workload_runtime().map_or_else(
         || Arc::new(ConnectionTracker::default()),
         |w| w.connections(),
     );
-    build_gateway_router_with_tracker(app, config, Some(connections))
+    build_gateway_service_with_tracker(app, config, Some(connections))
+}
+
+/// Alias retained for cluster re-exports.
+pub fn build_gateway_router(
+    app: &Arc<TrembitaApp>,
+    config: GatewayConfig,
+) -> Result<WrappedGatewayService, GatewayConfigError> {
+    build_gateway_service(app, config)
 }
 
 #[allow(clippy::unnecessary_wraps)]
-pub(super) fn build_gateway_router_with_tracker(
+pub(super) fn build_gateway_service_with_tracker(
     app: &Arc<TrembitaApp>,
     config: GatewayConfig,
     connections: Option<Arc<ConnectionTracker>>,
-) -> Result<Router, GatewayConfigError> {
+) -> Result<WrappedGatewayService, GatewayConfigError> {
     let GatewayConfig {
         addr: _,
         jobs_api,
@@ -51,7 +56,7 @@ pub(super) fn build_gateway_router_with_tracker(
         workflows_api,
         introspect_api,
         identity,
-        routes,
+        surfaces,
         drain_timeout: _,
         tls: _,
         protect_apis,
@@ -66,64 +71,132 @@ pub(super) fn build_gateway_router_with_tracker(
     };
 
     let state = TrembitaGatewayState::from_parts(Arc::clone(app), identity, connections.clone());
-    let mut router = routes.map_or_else(Router::new, |f| f(state));
+    let mut gateway = surfaces.map_or_else(|| Gateway::new(false), |f| f(state));
+    gateway = gateway.merge_routes(collect_builtin_routes(app, auth, jobs_api, actors_api, workflows_api, introspect_api));
 
+    let inner = GatewayService::build(&gateway)?;
+
+    let compute_pool = app.cluster().workload_runtime().map(|w| w.pool());
+
+    Ok(WrappedGatewayService {
+        inner,
+        connections,
+        rate_limiter: rate_limit_per_sec.map(GatewayRateLimiter::new),
+        compute_pool,
+    })
+}
+
+fn collect_builtin_routes(
+    app: &Arc<TrembitaApp>,
+    auth: Option<trembita_http::AuthFn>,
+    jobs_api: bool,
+    actors_api: bool,
+    workflows_api: bool,
+    introspect_api: bool,
+) -> RouteTable {
+    let mut table = RouteTable::new();
     #[cfg(feature = "http-jobs")]
     {
         if workflows_api {
             let api = TrembitaApp::workflows_api(Arc::clone(app));
-            router = router.merge(
-                api.router()
-                    .with_state(Arc::new(api.into_state_with_auth(auth.clone()))),
-            );
+            table = table.merge(trembita_http::workflow_routes::route_table(Arc::new(
+                api.into_state_with_auth(auth.clone()),
+            )));
         }
-
         if actors_api {
             let api = TrembitaApp::actors_api(Arc::clone(app));
-            router = router.merge(
-                api.router()
-                    .with_state(Arc::new(api.into_state_with_auth(auth.clone()))),
-            );
+            table = table.merge(trembita_http::actor_routes::route_table(Arc::new(
+                api.into_state_with_auth(auth.clone()),
+            )));
         }
-
         if jobs_api {
             let api = TrembitaApp::jobs_api(Arc::clone(app));
-            router = router.merge(
-                api.router()
-                    .with_state(Arc::new(api.into_state_with_auth(auth.clone()))),
-            );
+            table = table.merge(trembita_http::routes::route_table(Arc::new(
+                api.into_state_with_auth(auth.clone()),
+            )));
         }
-
         if introspect_api {
             let api = trembita_http::IntrospectApi::new(app.introspect_observer());
-            router = router.merge(
-                api.router()
-                    .with_state(Arc::new(api.into_state_with_auth(auth.clone()))),
-            );
+            table = table.merge(trembita_http::introspect_routes::route_table(Arc::new(
+                api.into_state_with_auth(auth.clone()),
+            )));
         }
     }
     #[cfg(not(feature = "http-jobs"))]
     {
-        let _ = (jobs_api, actors_api, workflows_api, introspect_api, app);
+        let _ = (app, auth, jobs_api, actors_api, workflows_api, introspect_api);
+    }
+    table
+}
+
+/// Gateway service with connection tracking, rate limiting, and compute tokens.
+#[derive(Clone)]
+pub struct WrappedGatewayService {
+    inner: GatewayService,
+    connections: Option<Arc<ConnectionTracker>>,
+    rate_limiter: Option<GatewayRateLimiter>,
+    compute_pool: Option<Arc<ComputeTokenPool>>,
+}
+
+impl WrappedGatewayService {
+    /// Underlying dispatch service (tests, route merging).
+    #[must_use]
+    pub fn inner(&self) -> &GatewayService {
+        &self.inner
+    }
+}
+
+impl tower::Service<http::Request<hyper::body::Incoming>> for WrappedGatewayService {
+    type Response = http::Response<
+        http_body_util::combinators::BoxBody<bytes::Bytes, std::convert::Infallible>,
+    >;
+    type Error = std::convert::Infallible;
+    type Future = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>,
+    >;
+
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
     }
 
-    if let Some(connections) = connections {
-        router = router.layer(axum::middleware::from_fn_with_state(
-            connections,
-            drain::track_connection,
-        ));
+    fn call(
+        &mut self,
+        req: http::Request<hyper::body::Incoming>,
+    ) -> Self::Future {
+        if let Some(limiter) = &self.rate_limiter
+            && !limiter.try_acquire()
+        {
+            return Box::pin(async move { Ok(too_many_requests()) });
+        }
+
+        let _guard = self.connections.as_ref().map(|c| c.track());
+        let compute = self.compute_pool.clone();
+        let mut inner = self.inner.clone();
+        Box::pin(async move {
+            let _compute = if let Some(pool) = compute {
+                Some(pool.acquire().await)
+            } else {
+                None
+            };
+            inner.call(req).await
+        })
     }
+}
 
-    if let Some(limit) = rate_limit_per_sec {
-        router = router.layer(axum::middleware::from_fn_with_state(
-            Arc::new(rate_limit::GatewayRateLimiter::new(limit)),
-            rate_limit::rate_limit_middleware,
-        ));
-    }
-
-    router = router.layer(DefaultBodyLimit::max(GATEWAY_MAX_BODY_BYTES));
-
-    Ok(router)
+fn too_many_requests(
+) -> http::Response<http_body_util::combinators::BoxBody<bytes::Bytes, std::convert::Infallible>> {
+    use bytes::Bytes;
+    use http_body_util::Full;
+    let body = Full::new(Bytes::from_static(b"rate limit exceeded"));
+    let mut resp = http::Response::new(
+        body.map_err(|never| match never {})
+            .boxed_unsync(),
+    );
+    *resp.status_mut() = http::StatusCode::TOO_MANY_REQUESTS;
+    resp
 }
 
 #[cfg(feature = "http-jobs")]

@@ -4,12 +4,9 @@ use super::super::app::TrembitaApp;
 use super::compute;
 use super::config::{GatewayConfig, GatewayConfigError};
 use super::drain::{self, ConnectionTracker, GatewayHandle};
-use super::router::build_gateway_router_with_tracker;
+use super::router::build_gateway_service_with_tracker;
 
 /// Spawn the gateway HTTP server; returns a [`GatewayHandle`] for graceful drain.
-///
-/// When a [`crate::WorkloadRuntime`] is configured on the cluster, reuses its
-/// [`ConnectionTracker`] for drain, ingress counting, and compute-token middleware.
 ///
 /// # Errors
 /// Returns [`GatewayConfigError`] when product APIs require identity, or
@@ -26,13 +23,11 @@ pub async fn spawn_gateway(
         || Arc::new(ConnectionTracker::default()),
         |w| w.connections(),
     );
-    let mut router =
-        build_gateway_router_with_tracker(&app, config, Some(Arc::clone(&connections)))?;
+    let mut service =
+        build_gateway_service_with_tracker(&app, config, Some(Arc::clone(&connections)))?;
     if let Some(wl) = &workload {
-        router = router.layer(axum::middleware::from_fn_with_state(
-            wl.pool(),
-            compute::acquire_compute_token,
-        ));
+        service.compute_pool = Some(wl.pool());
+        let _ = compute; // compute tokens wired via WrappedGatewayService
     }
     let tls = tls_paths
         .as_ref()
@@ -48,7 +43,7 @@ pub async fn spawn_gateway(
     eprintln!("trembita: gateway listening on {scheme}://{addr}");
     Ok(drain::spawn_serve(
         listener,
-        router,
+        service,
         connections,
         drain_timeout,
         tls,
@@ -61,6 +56,9 @@ pub enum GatewaySpawnError {
     /// Invalid gateway wiring.
     #[error(transparent)]
     Config(#[from] GatewayConfigError),
+    /// Invalid gateway surface wiring.
+    #[error(transparent)]
+    Build(#[from] trembita_http::GatewayBuildError),
     /// Listen/bind or TLS load failure.
     #[error(transparent)]
     Io(#[from] std::io::Error),

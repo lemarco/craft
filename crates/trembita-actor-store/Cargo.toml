@@ -26,11 +26,11 @@ trembita-storage.workspace = true
 trembita-net.workspace = true
 serde = { workspace = true, features = ["derive"] }
 postcard.workspace = true
-redb = "4.2.0"
+redb.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
+tokio.workspace = true
 
 [dev-dependencies]
-tempfile = "3"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "test-util"] }
+tempfile.workspace = true
+tokio.workspace = true
