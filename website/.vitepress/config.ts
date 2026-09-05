@@ -136,4 +136,7 @@ export default defineConfig({
   markdown: {
     lineNumbers: true,
   },
+
+  // Synced docs link to GitLab source trees and external ADR cross-refs.
+  ignoreDeadLinks: true,
 })

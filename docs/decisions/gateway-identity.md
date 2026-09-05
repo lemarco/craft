@@ -42,9 +42,10 @@ Auth is **never** prescribed (no JWT crate, no cookie store in trembita).
 
 ### Transport
 
-- Gateway remains **Axum** on a separate TCP listener (product edge).
-- [`GatewayRequest::from_http`] bridges axum requests.
-- [`IdentityError`] implements [`IntoResponse`] (401/403/500).
+- Gateway edge is **hyper** (HTTP/1 + WebSocket upgrade) on a separate TCP listener.
+- [`GatewayRequest::from_http`] bridges `http` crate requests.
+- [`IdentityError::into_http_response`] maps to 401/403/500 gateway responses.
+- Product routes are declared with [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) via [`GatewayOpts::surfaces`](../../crates/trembita/src/gateway/opts.rs).
 
 ### Shutdown
 
@@ -62,7 +63,7 @@ Auth is **never** prescribed (no JWT crate, no cookie store in trembita).
 
 **Positive:** Auth freedom; session key aligned with `session_str`; shorter realtime handlers; graceful gateway drain.
 
-**Negative:** Breaking change — `.routes(|state| …)` instead of `.routes(|app| …)`; users must implement [`GatewayIdentity`] for protected routes.
+**Negative:** Breaking change — `.surfaces(|state| …)` replaces axum `.routes()`; users must implement [`GatewayIdentity`] for protected routes.
 
 ## Related
 
@@ -74,7 +75,7 @@ Auth is **never** prescribed (no JWT crate, no cookie store in trembita).
 [`SessionKey`]: ../../crates/trembita/src/gateway/identity.rs
 [`GatewayRequest::from_http`]: ../../crates/trembita/src/gateway/identity.rs
 [`IdentityError`]: ../../crates/trembita/src/gateway/identity.rs
-[`IntoResponse`]: https://docs.rs/axum/latest/axum/response/trait.IntoResponse.html
+[`IdentityError::into_http_response`]: ../../crates/trembita/src/gateway/identity.rs
 [`spawn_gateway`]: ../../crates/trembita/src/gateway/mod.rs
 [`GatewayHandle`]: ../../crates/trembita/src/gateway/drain.rs
 [`ShutdownOpts::drain_gateway`]: ../../crates/trembita/src/app/mod.rs

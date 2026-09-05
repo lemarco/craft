@@ -32,7 +32,7 @@ my-app/
     ├── config.rs           # typed config from env
     ├── consumers/          # #[consumer] handlers (one file per stream)
     ├── actors/             # UserActor groups (when actors feature enabled)
-    ├── http/               # custom Axum routes (when gateway feature enabled)
+    ├── http/               # custom RouteTable surfaces (when gateway feature enabled)
     ├── workflows/          # saga steps (when workflows feature enabled)
     └── domain/             # business logic — no trembita imports
 ```
@@ -45,7 +45,7 @@ my-app/
 | All trembita wiring lives in `app.rs` | One file to patch when adding features |
 | `domain/` must not import `trembita::*` | Hexagon boundary ([architecture-style](architecture-style.md)) |
 | Consumers live in `consumers/`, actors in `actors/` | Predictable discovery; generators know target dirs |
-| HTTP ingress via [`MultiHostBuilder`](../../crates/trembita-http/src/multi_host.rs) / [`HostRouter`](../../crates/trembita-http/src/host_router.rs) | Virtual-host product surfaces |
+| HTTP ingress via [`Gateway`](../../crates/trembita-http/src/gateway/mod.rs) + [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) | Virtual-host product surfaces (0.4.0) |
 | Inter-node communication uses trembita QUIC only | No ad-hoc gRPC/HTTP between cluster members |
 | Domain data in Postgres (or your DB); coordination in redb | [product-scenarios](product-scenarios.md) |
 | [`TrembitaCluster`](../../crates/trembita/src/cluster.rs) is an escape hatch, not the default | Product path is [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) |
