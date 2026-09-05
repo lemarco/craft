@@ -1,4 +1,4 @@
-//! Gateway dispatch: SessionGate + CorsPolicy + identity hook together.
+//! Gateway dispatch: `SessionGate` + `CorsPolicy` + identity hook together.
 
 use std::sync::Arc;
 use std::time::Duration;

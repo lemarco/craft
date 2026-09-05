@@ -19,8 +19,7 @@ use trembita::{
     TrembitaGatewayState, spawn_gateway,
 };
 use trembita_http::{
-    Gateway, RequestCtx, Response, RouteTable, UpgradeStream, accept_websocket,
-    routing_to_http_response,
+    Gateway, Response, RouteTable, UpgradeStream, accept_websocket, routing_to_http_response,
 };
 use trembita_runtime::{UserActor, actor};
 use trembita_test_support::{
