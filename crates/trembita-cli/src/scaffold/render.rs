@@ -132,10 +132,22 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
     if features.contains(&AppFeature::Gateway) {
         write_file(
             &root.join("src/http/mod.rs"),
+            &generate_http_mod_rs(&features),
+        )?;
+        write_file(
+            &root.join("src/http/ops.rs"),
             &vars.apply(include_str!(
-                "../../../../templates/trembita-app/src/http/mod.rs.tpl"
+                "../../../../templates/trembita-app/src/http/ops.rs.tpl"
             )),
         )?;
+        if features.contains(&AppFeature::Jobs) {
+            write_file(
+                &root.join("src/http/jobs.rs"),
+                &vars.apply(include_str!(
+                    "../../../../templates/trembita-app/src/http/jobs.rs.tpl"
+                )),
+            )?;
+        }
     }
     if features.contains(&AppFeature::Workflows) {
         write_file(
@@ -147,6 +159,25 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
     }
 
     Ok(root)
+}
+
+fn generate_http_mod_rs(features: &HashSet<AppFeature>) -> String {
+    let mut mods = String::from("pub mod ops;\n");
+    if features.contains(&AppFeature::Jobs) {
+        mods.push_str("pub mod jobs;\n");
+    }
+    format!(
+        r"//! Custom HTTP surfaces — wired via `GatewayOpts::surfaces()` in `app.rs`.
+//!
+//! Add surfaces with:
+//! ```bash
+//! trembita add http-surface api --hosts api.example.com
+//! ```
+//!
+//! Each module exports `route_table() -> RouteTable`.
+
+{mods}"
+    )
 }
 
 fn validate_name(name: &str) -> Result<(), ScaffoldError> {
@@ -298,9 +329,10 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
 
     if features.contains(&AppFeature::Gateway) {
         imports.push(
-            "use trembita::{Gateway, GatewayBearerIdentity, GatewayOpts, RequestCtx, Response, RouteTable};"
+            "use trembita::{Gateway, GatewayBearerIdentity, GatewayOpts, TrembitaGatewayState};"
                 .to_string(),
         );
+        imports.push("use crate::http;".to_string());
     }
 
     if features.contains(&AppFeature::Topics) {
@@ -383,33 +415,41 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     }
 
     if features.contains(&AppFeature::Gateway) {
-        builder.push_str(
-            r#"            .gateway(
-                GatewayOpts::new(self.config.gateway_addr)
-                    .with_jobs_api(true)
+        if features.contains(&AppFeature::Jobs) {
+            builder.push_str(
+                r#"            .gateway(
+                GatewayOpts::new(self.config.http_addr)
                     .identity(GatewayBearerIdentity::from_env())
-                    .protect_product_apis(true)
-                    .surfaces(|_state| {
+                    .surfaces(|state| {
                         // trembita:surfaces
-                        Gateway::new(false)
-                            .surface(|s| {
-                                s.hosts(["localhost"])
-                                    .routes(
-                                        RouteTable::new().get("/health", |_ctx: RequestCtx| async move {
-                                            Ok(Response::text(http::StatusCode::OK, "ok"))
-                                        }),
-                                    )
-                            })
+                        Gateway::new(false).dev_fallback(
+                            http::jobs::route_table(&state)
+                                .merge(http::ops::route_table(&state)),
+                        )
                         // trembita:surfaces-end
                     }),
             )
 "#,
-        );
+            );
+        } else {
+            builder.push_str(
+                r#"            .gateway(
+                GatewayOpts::new(self.config.http_addr)
+                    .identity(GatewayBearerIdentity::from_env())
+                    .surfaces(|state| {
+                        // trembita:surfaces
+                        Gateway::new(false)
+                            .dev_fallback(http::ops::route_table(&state))
+                        // trembita:surfaces-end
+                    }),
+            )
+"#,
+            );
+        }
     }
 
     builder.push_str(
         r"            .configure(TrembitaConfigure {
-                admin_addr: Some(self.config.admin_addr),
                 ..TrembitaConfigure::default()
             })
 ",

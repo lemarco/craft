@@ -1,6 +1,5 @@
 //! Runtime / cluster tuning for [`TrembitaAppBuilder`](super::app::TrembitaAppBuilder).
 
-use std::net::SocketAddr;
 use std::time::Duration;
 
 use trembita_core::Config;
@@ -20,7 +19,6 @@ use crate::builder::TrembitaClusterBuilder;
 ///
 /// let _builder = TrembitaApp::builder().configure(TrembitaConfigure {
 ///     tick_period: Duration::from_millis(10),
-///     admin_addr: Some("127.0.0.1:8080".parse().expect("addr")),
 ///     ..TrembitaConfigure::default()
 /// });
 /// ```
@@ -36,8 +34,6 @@ pub struct TrembitaConfigure {
     pub reconcile_period: Duration,
     /// Actor directory publish interval.
     pub directory_publish_period: Duration,
-    /// Admin dashboard + `/metrics` bind. `None` = disabled unless `TREMBITA_ADMIN` at boot.
-    pub admin_addr: Option<SocketAddr>,
 }
 
 impl Default for TrembitaConfigure {
@@ -48,7 +44,6 @@ impl Default for TrembitaConfigure {
             tick_period: Duration::from_millis(50),
             reconcile_period: Duration::from_millis(250),
             directory_publish_period: Duration::from_millis(250),
-            admin_addr: None,
         }
     }
 }
@@ -65,14 +60,10 @@ impl TrembitaConfigure {
         } else {
             inner
         };
-        inner = inner
+        inner
             .raft_config(self.raft_config)
             .tick_period(self.tick_period)
             .reconcile_period(self.reconcile_period)
-            .directory_publish_period(self.directory_publish_period);
-        if let Some(addr) = self.admin_addr {
-            inner = inner.admin_addr(addr);
-        }
-        inner
+            .directory_publish_period(self.directory_publish_period)
     }
 }

@@ -71,41 +71,18 @@ impl TrembitaAppBuilder {
             self = self.queue([QueueOpts::new(stream, cfg.job_queue_lease)]);
         }
         if self.gateway.is_none()
-            && let Some(addr) = cfg.gateway
+            && let Some(addr) = cfg.http
         {
-            let any_api = cfg.gateway_jobs_api
-                || cfg.gateway_actors_api
-                || cfg.gateway_workflows_api
-                || cfg.gateway_introspect_api;
-            let mut opts = GatewayOpts::new(addr)
-                .with_jobs_api(cfg.gateway_jobs_api)
-                .with_actors_api(cfg.gateway_actors_api)
-                .with_workflows_api(cfg.gateway_workflows_api)
-                .with_introspect_api(cfg.gateway_introspect_api)
-                .drain_timeout(cfg.gateway_drain_timeout);
-            if any_api {
-                opts = opts.protect_product_apis(true);
-                if crate::gateway::gateway_token_from_env().is_some() {
-                    opts = opts.identity(crate::gateway::GatewayBearerIdentity::from_env());
-                } else {
-                    self.config_errors.push(
-                        "gateway product APIs require GATEWAY_TOKEN or TREMBITA_GATEWAY_TOKEN"
-                            .into(),
-                    );
-                }
-            }
-            if let Some((cert, key)) = cfg.gateway_tls.clone() {
+            let mut opts = GatewayOpts::new(addr).drain_timeout(cfg.http_drain_timeout);
+            if let Some((cert, key)) = cfg.http_tls.clone() {
                 opts = opts.tls(cert, key);
             }
             self.gateway = Some(opts.into_config());
         } else if let Some(gateway) = self.gateway.as_mut() {
             if gateway.tls.is_none()
-                && let Some((cert, key)) = cfg.gateway_tls.clone()
+                && let Some((cert, key)) = cfg.http_tls.clone()
             {
                 gateway.tls = Some(crate::gateway::GatewayTlsPaths { cert, key });
-            }
-            if cfg.env.gateway_introspect {
-                gateway.introspect_api = cfg.gateway_introspect_api;
             }
         }
         self
@@ -172,9 +149,6 @@ impl TrembitaAppBuilder {
             self.pending_consumers.extend(reg.spawners);
             if reg.http_enqueue {
                 self.gateway_api.jobs = true;
-                if let Some(gateway) = self.gateway.as_mut() {
-                    gateway.jobs_api = true;
-                }
             }
         }
         self
@@ -324,17 +298,10 @@ impl TrembitaAppBuilder {
         self
     }
 
-    /// Public HTTP gateway — custom routes and optional built-in APIs ([`GatewayOpts`]).
+    /// Public HTTP listener — declare routes in [`.surfaces`](GatewayOpts::surfaces).
     #[must_use]
     pub fn gateway(mut self, opts: GatewayOpts) -> Self {
-        let mut config = opts.into_config();
-        if self.gateway_api.jobs {
-            config.jobs_api = true;
-        }
-        if self.gateway_api.actors {
-            config.actors_api = true;
-        }
-        self.gateway = Some(config);
+        self.gateway = Some(opts.into_config());
         self
     }
 
@@ -480,22 +447,11 @@ impl TrembitaAppBuilder {
                 )));
             }
         }
-        if !self.workflows.is_empty() {
-            match self.gateway.as_ref() {
-                Some(g) if g.workflows_api => {}
-                Some(_) => {
-                    return Err(StartError::Config(
-                        "`.workflows([…])` requires `.gateway(GatewayOpts::new(addr).with_workflows_api(true))`"
-                            .into(),
-                    ));
-                }
-                None => {
-                    return Err(StartError::Config(
-                        "`.workflows([…])` requires `.gateway(GatewayOpts::new(addr).with_workflows_api(true))` (or `TREMBITA_GATEWAY` + `TREMBITA_GATEWAY_WORKFLOWS=1`)"
-                            .into(),
-                    ));
-                }
-            }
+        if !self.workflows.is_empty() && self.gateway.is_none() {
+            return Err(StartError::Config(
+                "`.workflows([…])` requires `.gateway(GatewayOpts::new(addr).surfaces(...))` with workflow routes"
+                    .into(),
+            ));
         }
         Ok(())
     }

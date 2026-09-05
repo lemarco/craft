@@ -100,6 +100,29 @@ struct WebSocketRoute {
     handler: UpgradeFn,
 }
 
+type SseFn = Arc<
+    dyn Fn() -> Pin<
+            Box<
+                dyn Future<
+                        Output = http::Response<
+                            http_body_util::combinators::BoxBody<
+                                bytes::Bytes,
+                                std::convert::Infallible,
+                            >,
+                        >,
+                    > + Send,
+            >,
+        > + Send
+        + Sync,
+>;
+
+/// Server-sent events route.
+#[derive(Clone)]
+struct SseRoute {
+    pattern: PathPattern,
+    handler: SseFn,
+}
+
 /// Declarative route collection — the primary product-app HTTP construct in 0.4.0.
 #[derive(Clone, Default)]
 pub struct RouteTable {
@@ -107,6 +130,7 @@ pub struct RouteTable {
     fallback: Option<ArcHandler>,
     fallback_auth: AuthMode,
     websocket: Option<WebSocketRoute>,
+    sse: Vec<SseRoute>,
 }
 
 type UpgradeFn = Arc<
@@ -136,6 +160,7 @@ impl RouteTable {
             fallback: None,
             fallback_auth: AuthMode::Open,
             websocket: None,
+            sse: Vec::new(),
         }
     }
 
@@ -293,6 +318,7 @@ impl RouteTable {
                 ws
             });
         }
+        self.sse.extend(other.sse);
         self
     }
 
@@ -412,6 +438,41 @@ impl RouteTable {
         Some((&ws.handler, ws.auth))
     }
 
+    /// Register a server-sent events stream at `path`.
+    #[must_use]
+    pub fn sse(
+        mut self,
+        path: &str,
+        handler: impl Fn() -> Pin<
+            Box<
+                dyn Future<
+                        Output = http::Response<
+                            http_body_util::combinators::BoxBody<
+                                bytes::Bytes,
+                                std::convert::Infallible,
+                            >,
+                        >,
+                    > + Send,
+            >,
+        > + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        self.sse.push(SseRoute {
+            pattern: PathPattern::new(path),
+            handler: Arc::new(handler),
+        });
+        self
+    }
+
+    /// Returns the SSE handler when `path` matches.
+    pub(crate) fn match_sse(&self, path: &str) -> Option<&SseFn> {
+        self.sse.iter().rev().find_map(|route| {
+            route.pattern.match_path(path)?;
+            Some(&route.handler)
+        })
+    }
+
     /// Run auth gates before a WebSocket upgrade handler.
     pub(crate) async fn authorize_websocket(
         &self,
@@ -434,6 +495,7 @@ impl RouteTable {
         if self.websocket.is_none() {
             self.websocket = other.websocket.clone();
         }
+        self.sse.extend(other.sse);
         self
     }
 

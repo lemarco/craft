@@ -10,7 +10,8 @@ use trembita::{
     TrembitaConfigure,
 };
 use trembita_test_support::{
-    advance, boot_local_app, spawn_test_gateway, wait_for_trembita_app_leader,
+    advance, boot_local_app, gateway_introspect_config_identity,
+    gateway_introspect_surfaces_identity, spawn_test_gateway, wait_for_trembita_app_leader,
 };
 
 struct BearerSecret;
@@ -25,14 +26,6 @@ impl GatewayIdentity for BearerSecret {
             _ => Err(IdentityError::Unauthorized),
         }
     }
-}
-
-fn gateway_config() -> trembita::GatewayConfig {
-    GatewayOpts::new("127.0.0.1:0".parse().unwrap())
-        .with_introspect_api(true)
-        .identity(BearerSecret)
-        .protect_product_apis(true)
-        .build_config()
 }
 
 #[tokio::test(start_paused = true)]
@@ -54,9 +47,8 @@ async fn gateway_introspect_requires_auth_and_returns_cluster_json() {
                 .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
                 .gateway(
                     GatewayOpts::new("127.0.0.1:0".parse().unwrap())
-                        .with_introspect_api(true)
                         .identity(BearerSecret)
-                        .protect_product_apis(true),
+                        .surfaces(gateway_introspect_surfaces_identity),
                 )
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
@@ -70,7 +62,7 @@ async fn gateway_introspect_requires_auth_and_returns_cluster_json() {
     wait_for_trembita_app_leader(&app).await;
     advance(Duration::from_millis(200)).await;
 
-    let addr = spawn_test_gateway(&app, gateway_config()).await;
+    let addr = spawn_test_gateway(&app, gateway_introspect_config_identity(BearerSecret)).await;
     let client = reqwest::Client::new();
 
     let unauth = client

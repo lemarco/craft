@@ -23,8 +23,7 @@ pub type GatewayTlsPaths = AdminTlsPaths;
 
 pub use config::{
     DEFAULT_CONSUMER_DRAIN_TIMEOUT, DEFAULT_GATEWAY_DRAIN_TIMEOUT, GATEWAY_MAX_BODY_BYTES,
-    GatewayConfig, GatewayConfigError, gateway_has_product_apis, gateway_token_from_env,
-    validate_gateway_config,
+    GatewayConfig, GatewayConfigError, gateway_token_from_env, validate_gateway_config,
 };
 pub use drain::{ConnectionGuard, ConnectionTracker, GatewayHandle};
 pub use identity::{

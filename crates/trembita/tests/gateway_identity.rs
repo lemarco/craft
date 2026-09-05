@@ -10,7 +10,9 @@ use trembita::{
     GatewayBearerIdentity, GatewayIdentity, GatewayOpts, GatewayRequest, GatewayTokenIdentity,
     IdentityError, IdentityTypeError, SessionHandle, SessionKey, TrembitaGatewayState,
 };
-use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_support::{
+    advance, boot_local_app, gateway_jobs_surfaces, wait_for_trembita_app_leader,
+};
 
 struct FixedToken;
 
@@ -155,10 +157,9 @@ fn identity_error_status_codes() {
 #[test]
 fn gateway_opts_build_config_includes_drain_timeout() {
     let config = GatewayOpts::new("127.0.0.1:8090".parse().unwrap())
-        .with_jobs_api(true)
+        .surfaces(gateway_jobs_surfaces)
         .drain_timeout(Duration::from_secs(5))
         .build_config();
-    assert!(config.jobs_api);
     assert_eq!(config.drain_timeout, Duration::from_secs(5));
 }
 

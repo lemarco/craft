@@ -40,9 +40,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut builder = TrembitaCluster::builder(cfg.node_id, UpgradeMachine::default())
         .members(cfg.members.iter().copied());
-    if let Some(admin) = cfg.admin {
-        builder = builder.admin_addr(admin);
-    }
     if cfg.allow_join {
         builder = builder.allow_join(true);
     }

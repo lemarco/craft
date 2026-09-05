@@ -11,19 +11,13 @@ use super::config::{DEFAULT_GATEWAY_DRAIN_TIMEOUT, GatewayConfig, GatewaySurface
 use super::identity::{self, GatewayIdentity, SessionKey};
 use super::state::TrembitaGatewayState;
 
-/// Product HTTP gateway: listen address, custom surfaces, optional built-in APIs.
-#[allow(clippy::struct_excessive_bools)] // feature toggles map 1:1 to optional product APIs.
+/// Product + ops HTTP listener: bind address, custom surfaces, optional TLS.
 pub struct GatewayOpts {
     addr: SocketAddr,
-    jobs_api: bool,
-    actors_api: bool,
-    workflows_api: bool,
-    introspect_api: bool,
     identity: Option<Arc<dyn identity::DynGatewayIdentity>>,
     surfaces: Option<GatewaySurfacesFn>,
     drain_timeout: Duration,
     tls: Option<GatewayTlsPaths>,
-    protect_apis: bool,
     rate_limit_per_sec: Option<u32>,
 }
 
@@ -31,40 +25,30 @@ impl fmt::Debug for GatewayOpts {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("GatewayOpts")
             .field("addr", &self.addr)
-            .field("jobs_api", &self.jobs_api)
-            .field("actors_api", &self.actors_api)
-            .field("workflows_api", &self.workflows_api)
-            .field("introspect_api", &self.introspect_api)
             .field("identity", &self.identity.as_ref().map(|_| "<extractor>"))
             .field("surfaces", &self.surfaces.as_ref().map(|_| "<gateway>"))
             .field("drain_timeout", &self.drain_timeout)
             .field("tls", &self.tls.as_ref().map(|_| "<pem>"))
-            .field("protect_apis", &self.protect_apis)
             .field("rate_limit_per_sec", &self.rate_limit_per_sec)
             .finish()
     }
 }
 
 impl GatewayOpts {
-    /// Bind address with no routes and no built-in APIs mounted.
+    /// Bind address with no routes — wire surfaces via [`.surfaces`](Self::surfaces).
     #[must_use]
     pub fn new(addr: SocketAddr) -> Self {
         Self {
             addr,
-            jobs_api: false,
-            actors_api: false,
-            workflows_api: false,
-            introspect_api: false,
             identity: None,
             surfaces: None,
             drain_timeout: DEFAULT_GATEWAY_DRAIN_TIMEOUT,
             tls: None,
-            protect_apis: false,
             rate_limit_per_sec: None,
         }
     }
 
-    /// Public HTTP bind address.
+    /// Public HTTP bind address (TCP).
     #[must_use]
     pub fn addr(&self) -> SocketAddr {
         self.addr
@@ -110,41 +94,6 @@ impl GatewayOpts {
         self
     }
 
-    /// Enable or disable job queue `/jobs/*` routes.
-    #[must_use]
-    pub fn with_jobs_api(mut self, enabled: bool) -> Self {
-        self.jobs_api = enabled;
-        self
-    }
-
-    /// Enable or disable `/actors/*` cast + ask routes.
-    #[must_use]
-    pub fn with_actors_api(mut self, enabled: bool) -> Self {
-        self.actors_api = enabled;
-        self
-    }
-
-    /// Enable or disable `/workflows/run` and `/workflows/resume`.
-    #[must_use]
-    pub fn with_workflows_api(mut self, enabled: bool) -> Self {
-        self.workflows_api = enabled;
-        self
-    }
-
-    /// Enable or disable read-only `/introspect/*` routes.
-    #[must_use]
-    pub fn with_introspect_api(mut self, enabled: bool) -> Self {
-        self.introspect_api = enabled;
-        self
-    }
-
-    /// Require [`Self::identity`] on built-in product API routes.
-    #[must_use]
-    pub fn protect_product_apis(mut self, enabled: bool) -> Self {
-        self.protect_apis = enabled;
-        self
-    }
-
     /// Cap gateway-wide HTTP throughput at `limit` requests per second (`429` when exceeded).
     #[must_use]
     pub fn rate_limit_per_sec(mut self, limit: u32) -> Self {
@@ -152,7 +101,7 @@ impl GatewayOpts {
         self
     }
 
-    /// Custom gateway surfaces (WebSocket, authenticated HTTP, multi-host, …).
+    /// Custom gateway surfaces (product routes, ops routes, WebSocket, multi-host, …).
     #[must_use]
     pub fn surfaces<F>(mut self, surfaces: F) -> Self
     where
@@ -172,15 +121,10 @@ impl GatewayOpts {
     pub(crate) fn into_config(self) -> GatewayConfig {
         GatewayConfig {
             addr: self.addr,
-            jobs_api: self.jobs_api,
-            actors_api: self.actors_api,
-            workflows_api: self.workflows_api,
-            introspect_api: self.introspect_api,
             identity: self.identity,
             surfaces: self.surfaces,
             drain_timeout: self.drain_timeout,
             tls: self.tls,
-            protect_apis: self.protect_apis,
             rate_limit_per_sec: self.rate_limit_per_sec,
         }
     }

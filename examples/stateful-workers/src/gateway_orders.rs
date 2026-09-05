@@ -33,13 +33,15 @@ fn ctx_uri(ctx: &RequestCtx) -> http::Uri {
     }
 }
 
+pub fn order_routes(state: TrembitaGatewayState) -> RouteTable {
+    RouteTable::new().post("/orders/submit", move |ctx: RequestCtx| {
+        let st = state.clone();
+        async move { submit_order(st, ctx).await }
+    })
+}
+
 pub fn surfaces(state: TrembitaGatewayState) -> Gateway {
-    Gateway::new(false).dev_fallback(
-        RouteTable::new().post("/orders/submit", move |ctx: RequestCtx| {
-            let st = state.clone();
-            async move { submit_order(st, ctx).await }
-        }),
-    )
+    Gateway::new(false).dev_fallback(order_routes(state))
 }
 
 /// `POST /orders/submit?user=<tenant>&token=…` — sticky cast to `orders` group.

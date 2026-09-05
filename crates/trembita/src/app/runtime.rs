@@ -647,6 +647,17 @@ impl TrembitaApp {
         trembita_http::IntrospectApi::new(self.introspect_observer())
     }
 
+    /// Operational HTTP API (`/health`, `/ready`, `/metrics`, `/dashboard`, `/introspect/*`).
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn ops_api(&self) -> trembita_http::OpsApi {
+        trembita_http::OpsApi::new(
+            self.introspect_observer(),
+            self.cluster.metrics().clone(),
+            self.cluster.events().clone(),
+        )
+    }
+
     /// Run a cross-shard workflow using the node's default saga journal.
     ///
     /// # Errors

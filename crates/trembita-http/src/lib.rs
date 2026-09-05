@@ -29,6 +29,7 @@ mod gateway;
 mod host;
 mod introspect_routes;
 mod introspect_types;
+mod ops_routes;
 mod routes;
 mod routing;
 mod static_site;
@@ -57,6 +58,7 @@ pub use gateway::{
 };
 pub use host::{is_local_dev_host, normalize_host};
 pub use introspect_types::IntrospectApiError;
+pub use ops_routes::{OpsApi, OpsApiState, ops_route_table};
 pub use routes::parse_enqueue_body;
 pub use routing::{
     ArcHandler, AuthMode, DispatchGates, Handler, HttpError, IdentityAuthFn, PathParams,

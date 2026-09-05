@@ -378,12 +378,29 @@ fn check_topics(app: &str, report: &mut DoctorReport) {
                 report.warn("gateway surface with hosts but no .routes(...) or route_table()");
             }
         }
+        if app.contains("with_jobs_api(true)")
+            || app.contains("with_actors_api(true)")
+            || app.contains("with_workflows_api(true)")
+            || app.contains("with_introspect_api(true)")
+        {
+            report.error(
+                "GatewayOpts::with_*_api removed in 0.5.0 — merge explicit route tables in .surfaces()",
+            );
+        }
         if app.contains("protect_product_apis(true)") {
-            if app.contains("GatewayBearerIdentity") || app.contains("identity(") {
-                report.ok("gateway has identity configured");
+            report.error(
+                "protect_product_apis removed in 0.5.0 — use RouteTable::with_auth_mode(AuthMode::Identity)",
+            );
+        }
+        if app.contains("AuthMode::Identity") {
+            if app.contains("GatewayBearerIdentity") || app.contains(".identity(") {
+                report.ok("gateway has identity for protected routes");
             } else {
-                report.warn("gateway protect_product_apis without identity — will fail at runtime");
+                report.warn("identity-protected routes without gateway identity");
             }
+        }
+        if app.contains("admin_addr") {
+            report.warn("admin_addr removed — merge http::ops::route_table in gateway surfaces");
         }
     }
 }

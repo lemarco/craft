@@ -25,7 +25,13 @@ pub use facade::{
     wait_for_trembita_leader, wait_for_trembita_stopped,
 };
 #[cfg(feature = "facade")]
-pub use gateway::spawn_test_gateway;
+pub use gateway::{
+    gateway_actors_surfaces, gateway_introspect_config_identity, gateway_introspect_surfaces,
+    gateway_introspect_surfaces_identity, gateway_jobs_config, gateway_jobs_config_identity,
+    gateway_jobs_surfaces, gateway_jobs_surfaces_identity, gateway_ops_config,
+    gateway_ops_surfaces, gateway_workflows_config, gateway_workflows_surfaces,
+    spawn_cluster_ops_gateway, spawn_test_gateway,
+};
 pub use harness::{
     TICK_PERIOD, fast_raft_config, fast_raft_config_with_seed, free_udp, test_setup,
 };

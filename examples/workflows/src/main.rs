@@ -4,9 +4,12 @@ mod debug;
 mod onboarding;
 
 use std::env;
+use std::sync::Arc;
 use std::time::Duration;
 
-use trembita::{TrembitaApp, TrembitaConfigure, GatewayOpts, ReadyOpts, RunOpts, WorkflowOpts};
+use trembita::{
+    Gateway, GatewayOpts, ReadyOpts, RunOpts, TrembitaApp, TrembitaConfigure, WorkflowOpts,
+};
 use trembita_tools::showcase_common::{data_dir, display_addr};
 
 use crate::onboarding::{apply_workers, build_plan, run_onboarding_plan};
@@ -27,10 +30,18 @@ fn server_builder() -> trembita::TrembitaAppBuilder {
             .configure(TrembitaConfigure {
                 tick_period: Duration::from_millis(10),
                 reconcile_period: Duration::from_millis(20),
-                admin_addr: Some("127.0.0.1:9480".parse().expect("admin")),
                 ..TrembitaConfigure::default()
             })
-            .gateway(GatewayOpts::new(gateway).with_workflows_api(true)),
+            .gateway(
+                GatewayOpts::new(gateway).surfaces(|state| {
+                    let app = Arc::clone(&state.app);
+                    Gateway::new(false).dev_fallback(
+                        TrembitaApp::workflows_api(app)
+                            .route_table()
+                            .merge(state.app.ops_api().route_table()),
+                    )
+                }),
+            ),
     )
 }
 
@@ -52,11 +63,7 @@ fn print_banner() {
     if env::var("TREMBITA_GATEWAY").is_ok_and(|g| g != "-") {
         let gw = env::var("TREMBITA_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8490".into());
         println!("  gateway  http://{}/workflows/run", display_addr(&gw));
-    }
-    if let Ok(admin) = env::var("TREMBITA_ADMIN") {
-        if admin != "-" {
-            println!("  admin    http://{}/dashboard", display_addr(&admin));
-        }
+        println!("  ops      http://{}/dashboard", display_addr(&gw));
     }
     if env::var("TREMBITA_JOIN_SEEDS").is_ok() {
         println!("  join     via TREMBITA_JOIN_SEEDS");

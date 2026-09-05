@@ -147,7 +147,8 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
                 })
                 .get_session("/me", move |ctx: RequestCtx| {
                     async move { gateway_session::get_me(ctx).await }
-                }),
+                })
+                .merge(state.app.ops_api().route_table()),
         )
 }
 
@@ -167,14 +168,9 @@ fn server_builder() -> trembita::TrembitaAppBuilder {
             ..TrembitaConfigure::default()
         })
         .data_dir(dir)
-        .configure(TrembitaConfigure {
-            admin_addr: Some("127.0.0.1:9380".parse().expect("admin")),
-            ..TrembitaConfigure::default()
-        })
         .gateway(
             GatewayOpts::new(gateway)
                 .identity(trembita::GatewayBearerIdentity::from_env())
-                .protect_product_apis(true)
                 .surfaces(gateway_surfaces),
         )
 }
@@ -201,12 +197,8 @@ fn print_banner() {
         println!("  login     POST http://{host}/login  (Bearer + X-Trembita-User → Set-Cookie)");
         println!("  chat      POST http://{host}/chat   (session cookie)");
         println!("  me        GET  http://{host}/me      (session cookie)");
+        println!("  ops       http://{host}/dashboard");
         let _ = CookieConfig::from_env("REALTIME", "sess");
-    }
-    if let Ok(admin) = env::var("TREMBITA_ADMIN") {
-        if admin != "-" {
-            println!("  admin    http://{}/dashboard", display_addr(&admin));
-        }
     }
     if env::var("TREMBITA_JOIN_SEEDS").is_ok() {
         println!("  join     via TREMBITA_JOIN_SEEDS");

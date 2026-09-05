@@ -7,7 +7,10 @@ use trembita::{
     GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError, ReadyOpts, TrembitaApp,
     TrembitaConfigure, WorkflowBuilder, WorkflowOpts, journal_workflow,
 };
-use trembita_test_support::{TICK_PERIOD, boot_local_app, fast_raft_config_with_seed};
+use trembita_test_support::{
+    TICK_PERIOD, boot_local_app, fast_raft_config_with_seed, gateway_workflows_config,
+    gateway_workflows_surfaces,
+};
 
 fn noop_plan(saga_id: &str) -> trembita_client::SagaPlan {
     let key = b"workflow".to_vec();
@@ -44,8 +47,8 @@ async fn trembita_app_runs_workflow_locally() {
                 .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
                 .gateway(
                     GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
-                        .with_workflows_api(true)
-                        .identity(TestGatewayIdentity),
+                        .identity(TestGatewayIdentity)
+                        .surfaces(gateway_workflows_surfaces),
                 )
         },
         Some(ReadyOpts::default()),
@@ -71,8 +74,8 @@ async fn trembita_app_workflows_api_on_gateway() {
                 .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
                 .gateway(
                     GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
-                        .with_workflows_api(true)
-                        .identity(TestGatewayIdentity),
+                        .identity(TestGatewayIdentity)
+                        .surfaces(gateway_workflows_surfaces),
                 )
         },
         Some(ReadyOpts::default()),
@@ -89,7 +92,10 @@ mod gateway_merge {
     use trembita::{
         GatewayOpts, ReadyOpts, TrembitaApp, TrembitaConfigure, WorkflowOpts, journal_workflow,
     };
-    use trembita_test_support::{TICK_PERIOD, boot_local_app, fast_raft_config_with_seed};
+    use trembita_test_support::{
+        TICK_PERIOD, boot_local_app, fast_raft_config_with_seed, gateway_workflows_config,
+        gateway_workflows_surfaces,
+    };
 
     use super::noop_plan;
 
@@ -108,22 +114,16 @@ mod gateway_merge {
                     .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
                     .gateway(
                         GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
-                            .with_workflows_api(true)
-                            .identity(super::TestGatewayIdentity),
+                            .identity(super::TestGatewayIdentity)
+                            .surfaces(gateway_workflows_surfaces),
                     )
             },
             Some(ReadyOpts::default()),
         )
         .await;
 
-        let router = build_gateway_service(
-            &app,
-            GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
-                .with_workflows_api(true)
-                .identity(super::TestGatewayIdentity)
-                .build_config(),
-        )
-        .expect("gateway config");
+        let router =
+            build_gateway_service(&app, gateway_workflows_config()).expect("gateway config");
         let _ = router;
     }
 }

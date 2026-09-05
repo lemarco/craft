@@ -8,10 +8,8 @@ use std::path::PathBuf;
 pub struct AppConfig {
     /// redb + snapshot directory (`TREMBITA_DATA_DIR`).
     pub data_dir: PathBuf,
-    /// Product HTTP gateway bind address (`TREMBITA_GATEWAY`).
-    pub gateway_addr: SocketAddr,
-    /// Admin / introspect bind address (`TREMBITA_ADMIN`).
-    pub admin_addr: SocketAddr,
+    /// Product + ops HTTP bind address (`TREMBITA_HTTP`, fallback `TREMBITA_GATEWAY`).
+    pub http_addr: SocketAddr,
 }
 
 impl AppConfig {
@@ -19,8 +17,7 @@ impl AppConfig {
     pub fn from_env() -> Self {
         Self {
             data_dir: env_path("TREMBITA_DATA_DIR", "/tmp/{{PROJECT_NAME}}"),
-            gateway_addr: env_addr("TREMBITA_GATEWAY", "127.0.0.1:8090"),
-            admin_addr: env_addr("TREMBITA_ADMIN", "127.0.0.1:8080"),
+            http_addr: env_addr("TREMBITA_HTTP", "127.0.0.1:443"),
         }
     }
 }
@@ -33,6 +30,7 @@ fn env_path(key: &str, default: &str) -> PathBuf {
 
 fn env_addr(key: &str, default: &str) -> SocketAddr {
     std::env::var(key)
+        .or_else(|_| std::env::var("TREMBITA_GATEWAY"))
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| default.parse().expect("valid default addr"))

@@ -27,6 +27,7 @@ mod telemetry;
 mod views;
 
 pub use admin_tls::{AdminTlsError, AdminTlsPaths, server_config as admin_tls_config};
+pub use dashboard::DASHBOARD_HTML;
 pub use metrics::Metrics;
 pub use metrics_sink::{
     MetricsSink, MultiMetricsSink, NoopMetricsSink, RecordedMetric, RecordingMetricsSink,

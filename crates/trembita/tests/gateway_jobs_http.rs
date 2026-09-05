@@ -11,7 +11,8 @@ use trembita::{
 };
 use trembita_jobs::JobLifecycle;
 use trembita_test_support::{
-    advance, boot_local_app, spawn_test_gateway, wait_for_trembita_app_leader,
+    advance, boot_local_app, gateway_jobs_config_identity, gateway_jobs_surfaces,
+    gateway_jobs_surfaces_identity, spawn_test_gateway, wait_for_trembita_app_leader,
 };
 
 static SIDE_EFFECTS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -37,14 +38,6 @@ async fn handle_job(_payload: &[u8]) -> Result<(), ()> {
     Ok(())
 }
 
-fn gateway_config() -> trembita::GatewayConfig {
-    GatewayOpts::new("127.0.0.1:0".parse().unwrap())
-        .with_jobs_api(true)
-        .identity(BearerSecret)
-        .protect_product_apis(true)
-        .build_config()
-}
-
 #[tokio::test(start_paused = true)]
 async fn gateway_jobs_batch_and_job_status_metadata() {
     SIDE_EFFECTS.store(0, std::sync::atomic::Ordering::SeqCst);
@@ -66,7 +59,10 @@ async fn gateway_jobs_batch_and_job_status_metadata() {
                     QueueOpts::new("gateway-jobs", Duration::from_secs(60)).default_max_attempts(3)
                 ])
                 .consumer(HandleJobConsumer, ConsumerOpts::default())
-                .gateway(GatewayOpts::new("127.0.0.1:0".parse().unwrap()).with_jobs_api(true))
+                .gateway(
+                    GatewayOpts::new("127.0.0.1:0".parse().unwrap())
+                        .surfaces(gateway_jobs_surfaces),
+                )
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     ..TrembitaConfigure::default()
@@ -79,7 +75,7 @@ async fn gateway_jobs_batch_and_job_status_metadata() {
     wait_for_trembita_app_leader(&app).await;
     advance(Duration::from_millis(200)).await;
 
-    let addr = spawn_test_gateway(&app, gateway_config()).await;
+    let addr = spawn_test_gateway(&app, gateway_jobs_config_identity(BearerSecret)).await;
     let client = reqwest::Client::new();
     let url = |path: &str| format!("http://{addr}{path}");
 
@@ -157,9 +153,8 @@ async fn gateway_rate_limit_returns_429() {
                 ])
                 .gateway(
                     GatewayOpts::new("127.0.0.1:0".parse().unwrap())
-                        .with_jobs_api(true)
                         .identity(BearerSecret)
-                        .protect_product_apis(true)
+                        .surfaces(gateway_jobs_surfaces_identity)
                         .rate_limit_per_sec(1),
                 )
                 .configure(TrembitaConfigure {
@@ -176,9 +171,8 @@ async fn gateway_rate_limit_returns_429() {
     let addr = spawn_test_gateway(
         &app,
         GatewayOpts::new("127.0.0.1:0".parse().unwrap())
-            .with_jobs_api(true)
             .identity(BearerSecret)
-            .protect_product_apis(true)
+            .surfaces(gateway_jobs_surfaces_identity)
             .rate_limit_per_sec(1)
             .build_config(),
     )

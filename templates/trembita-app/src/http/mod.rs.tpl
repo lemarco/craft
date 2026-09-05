@@ -6,3 +6,6 @@
 //! ```
 //!
 //! Each module exports `route_table() -> RouteTable`.
+
+pub mod jobs;
+pub mod ops;

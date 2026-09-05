@@ -21,8 +21,6 @@ pub struct NodeConfig {
     pub node_id: NodeId,
     /// QUIC listen address.
     pub listen: SocketAddr,
-    /// Optional admin HTTP.
-    pub admin: Option<SocketAddr>,
     /// Upgrade HTTP API.
     pub gateway: Option<SocketAddr>,
     /// Static membership list.
@@ -147,11 +145,6 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
     let listen: SocketAddr = env("TREMBITA_LISTEN")
         .unwrap_or_else(|| "0.0.0.0:7443".into())
         .parse()?;
-    let admin = match env("TREMBITA_ADMIN").as_deref() {
-        Some("-") => None,
-        Some(s) => Some(s.parse()?),
-        None => Some("127.0.0.1:8080".parse()?),
-    };
     let gateway = env("TREMBITA_GATEWAY").map(|s| s.parse()).transpose()?;
     let join_seeds = env("TREMBITA_JOIN_SEEDS")
         .map(|s| parse_seeds(&s))
@@ -168,7 +161,6 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
     Ok(NodeConfig {
         node_id,
         listen,
-        admin,
         gateway,
         members: members.to_vec(),
         join_seeds,

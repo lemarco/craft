@@ -131,19 +131,19 @@ impl AppRsPatch {
         if self.has_marker(names::SURFACES) {
             return Ok(());
         }
-        const NEEDLE: &str = ".protect_product_apis(true),";
-        const REPLACEMENT: &str = ".protect_product_apis(true)
-                    .surfaces(|_state| {
+        const NEEDLE: &str = ".identity(GatewayBearerIdentity::from_env())";
+        const REPLACEMENT: &str = ".identity(GatewayBearerIdentity::from_env())
+                    .surfaces(|state| {
                         // trembita:surfaces
                         Gateway::new(false)
                         // trembita:surfaces-end
-                    }),";
+                    })";
         if self.content.contains(NEEDLE) {
             self.content = self.content.replacen(NEEDLE, REPLACEMENT, 1);
             return Ok(());
         }
         Err(PatchError::MissingMarker {
-            marker: "gateway .protect_product_apis(true)".into(),
+            marker: "gateway .identity(...)".into(),
         })
     }
 

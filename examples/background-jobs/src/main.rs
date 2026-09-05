@@ -9,14 +9,16 @@ mod ledger;
 
 use std::collections::HashMap;
 use std::env;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use trembita::{
-    ActorGroupOpts, ConsumerOpts, TrembitaApp, TrembitaConfigure, GatewayBearerIdentity, GatewayOpts,
-    JobOpts, RunOpts, consumer,
+    ActorGroupOpts, ConsumerOpts, Gateway, GatewayBearerIdentity, GatewayOpts, JobOpts, RunOpts,
+    TrembitaApp, TrembitaConfigure, TrembitaGatewayState, consumer,
 };
+use trembita_http::AuthMode;
 use trembita_tools::showcase_common::{data_dir, display_addr};
 
 use crate::bridge::register as register_bridge;
@@ -113,6 +115,16 @@ fn worker_count() -> u32 {
         .max(1)
 }
 
+fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
+    let app = Arc::clone(&state.app);
+    Gateway::new(false).dev_fallback(
+        TrembitaApp::jobs_api(app)
+            .route_table()
+            .with_auth_mode(AuthMode::Identity)
+            .merge(state.app.ops_api().route_table()),
+    )
+}
+
 fn server_builder() -> trembita::TrembitaAppBuilder {
     let dir = data_dir(DATA_DIR_NAME);
     let _ = std::fs::create_dir_all(&dir);
@@ -130,14 +142,12 @@ fn server_builder() -> trembita::TrembitaAppBuilder {
         .configure(TrembitaConfigure {
             tick_period: Duration::from_millis(10),
             reconcile_period: Duration::from_millis(20),
-            admin_addr: Some("127.0.0.1:9080".parse().expect("admin")),
             ..TrembitaConfigure::default()
         })
         .gateway(
             GatewayOpts::new(gateway)
-                .with_jobs_api(true)
                 .identity(GatewayBearerIdentity::from_env())
-                .protect_product_apis(true),
+                .surfaces(gateway_surfaces),
         );
     for instance in 0..worker_count() {
         builder = builder.consumer(
@@ -170,11 +180,7 @@ fn print_banner() {
     if env::var("TREMBITA_GATEWAY").is_ok_and(|g| g != "-") {
         let gw = env::var("TREMBITA_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8090".into());
         println!("  gateway  http://{}/jobs/{STREAM}", display_addr(&gw));
-    }
-    if let Ok(admin) = env::var("TREMBITA_ADMIN") {
-        if admin != "-" {
-            println!("  admin    http://{}/dashboard", display_addr(&admin));
-        }
+        println!("  ops      http://{}/dashboard", display_addr(&gw));
     }
     if env::var("TREMBITA_JOIN_SEEDS").is_ok() {
         println!("  join     via TREMBITA_JOIN_SEEDS");

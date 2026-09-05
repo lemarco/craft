@@ -1,26 +1,29 @@
 use std::sync::Arc;
 
-use trembita_http::{Gateway, GatewayService, RouteTable};
+use trembita_http::{Gateway, GatewayService};
 use trembita_runtime::ComputeTokenPool;
 
 use super::super::app::TrembitaApp;
 use super::config::{GatewayConfig, GatewayConfigError, validate_gateway_config};
 use super::drain::ConnectionTracker;
-use super::identity::{self, GatewayBearerIdentity, GatewayRequest};
+use super::identity::{self, GatewayRequest};
 use super::rate_limit::GatewayRateLimiter;
 use super::state::TrembitaGatewayState;
 
-/// Bearer auth hook for product/upgrade HTTP when a gateway token env var is set.
+/// Bearer auth hook for product HTTP when a gateway token env var is set.
 #[must_use]
 pub fn bearer_auth_from_env() -> Option<trembita_http::AuthFn> {
-    super::config::gateway_token_from_env()
-        .map(|_| identity_auth_fn(identity::erase_identity(GatewayBearerIdentity::from_env())))
+    super::config::gateway_token_from_env().map(|_| {
+        identity_auth_fn(identity::erase_identity(
+            super::GatewayBearerIdentity::from_env(),
+        ))
+    })
 }
 
-/// Build the gateway hyper service: user surfaces + optional product APIs.
+/// Build the gateway hyper service from user-declared surfaces only.
 ///
 /// # Errors
-/// [`GatewayConfigError`] when product APIs or `protect_apis` require identity.
+/// [`GatewayConfigError`] when surface wiring is invalid.
 pub fn build_gateway_service(
     app: &Arc<TrembitaApp>,
     config: GatewayConfig,
@@ -41,36 +44,16 @@ pub(super) fn build_gateway_service_with_tracker(
 ) -> Result<WrappedGatewayService, GatewayConfigError> {
     let GatewayConfig {
         addr: _,
-        jobs_api,
-        actors_api,
-        workflows_api,
-        introspect_api,
         identity,
         surfaces,
         drain_timeout: _,
         tls: _,
-        protect_apis,
         rate_limit_per_sec,
     } = config;
 
     let identity_hook = identity.clone().map(identity_auth_fn);
-    let product_auth = if protect_apis || jobs_api || actors_api || workflows_api || introspect_api
-    {
-        identity_hook.clone()
-    } else {
-        None
-    };
-
     let state = TrembitaGatewayState::from_parts(Arc::clone(app), identity, connections.clone());
-    let mut gateway = surfaces.map_or_else(|| Gateway::new(false), |f| f(state));
-    gateway = gateway.merge_routes(collect_builtin_routes(
-        app,
-        product_auth,
-        jobs_api,
-        actors_api,
-        workflows_api,
-        introspect_api,
-    ));
+    let gateway = surfaces.map_or_else(|| Gateway::new(false), |f| f(state));
 
     let inner = {
         let mut svc = GatewayService::build(&gateway)?;
@@ -88,48 +71,6 @@ pub(super) fn build_gateway_service_with_tracker(
         rate_limiter: rate_limit_per_sec.map(GatewayRateLimiter::new),
         compute_pool,
     })
-}
-
-fn collect_builtin_routes(
-    app: &Arc<TrembitaApp>,
-    auth: Option<trembita_http::AuthFn>,
-    jobs_api: bool,
-    actors_api: bool,
-    workflows_api: bool,
-    introspect_api: bool,
-) -> RouteTable {
-    let mut table = RouteTable::new();
-    #[cfg(feature = "http-jobs")]
-    {
-        if workflows_api {
-            let api = TrembitaApp::workflows_api(Arc::clone(app));
-            table = table.merge(api.route_table_with_auth(auth.clone()));
-        }
-        if actors_api {
-            let api = TrembitaApp::actors_api(Arc::clone(app));
-            table = table.merge(api.route_table_with_auth(auth.clone()));
-        }
-        if jobs_api {
-            let api = TrembitaApp::jobs_api(Arc::clone(app));
-            table = table.merge(api.route_table_with_auth(auth.clone()));
-        }
-        if introspect_api {
-            let api = trembita_http::IntrospectApi::new(app.introspect_observer());
-            table = table.merge(api.route_table_with_auth(auth.clone()));
-        }
-    }
-    #[cfg(not(feature = "http-jobs"))]
-    {
-        let _ = (
-            app,
-            auth,
-            jobs_api,
-            actors_api,
-            workflows_api,
-            introspect_api,
-        );
-    }
-    table
 }
 
 /// Gateway service with connection tracking, rate limiting, and compute tokens.

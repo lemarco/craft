@@ -36,14 +36,12 @@ pub struct EnvOverrides {
     pub drain_timeout: bool,
     /// `TREMBITA_CERT_WATCH_SECS` was set.
     pub cert_watch: bool,
-    /// `TREMBITA_ADMIN` was set (including `-` to disable).
-    pub admin: bool,
     /// `TREMBITA_VOTER_REPLACEMENT` was set.
     pub voter_replacement: bool,
     /// `TREMBITA_VOTER_REPLACEMENT_GRACE_TICKS` was set.
     pub voter_replacement_grace_ticks: bool,
-    /// `TREMBITA_GATEWAY_INTROSPECT` was set.
-    pub gateway_introspect: bool,
+    /// `TREMBITA_HTTP_TLS_*` was set.
+    pub http_tls: bool,
 }
 
 /// Parsed product-app configuration from the environment.
@@ -51,12 +49,12 @@ pub struct EnvOverrides {
 pub struct AppConfig {
     /// This node's id.
     pub node_id: NodeId,
-    /// QUIC listen address.
+    /// QUIC listen address (UDP wire).
     pub listen: SocketAddr,
-    /// Admin HTTP listen address (`None` when disabled).
-    pub admin: Option<SocketAddr>,
-    /// Optional admin TLS PEM paths.
-    pub admin_tls: Option<(PathBuf, PathBuf)>,
+    /// Product + ops HTTP listen address (TCP). Defaults to [`Self::listen`] when unset.
+    pub http: Option<SocketAddr>,
+    /// Optional HTTP TLS PEM paths (`TREMBITA_HTTP_TLS_*`).
+    pub http_tls: Option<(PathBuf, PathBuf)>,
     /// Peer address book.
     pub peers: PeerDirectory,
     /// Static cluster members.
@@ -93,20 +91,8 @@ pub struct AppConfig {
     pub job_queue_stream: Option<String>,
     /// Job queue lease timeout.
     pub job_queue_lease: Duration,
-    /// Optional product gateway listen address (`None` when disabled).
-    pub gateway: Option<SocketAddr>,
-    /// Mount job queue `/jobs/*` on the gateway when `gateway` is set (`TREMBITA_GATEWAY_JOBS=1`).
-    pub gateway_jobs_api: bool,
-    /// Mount `/actors/*` cast + ask on the gateway when `gateway` is set (`TREMBITA_GATEWAY_ACTORS=1`).
-    pub gateway_actors_api: bool,
-    /// Mount `/workflows/*` on the gateway when `gateway` is set (`TREMBITA_GATEWAY_WORKFLOWS=1`).
-    pub gateway_workflows_api: bool,
-    /// Mount `/introspect/*` on the gateway when `gateway` is set (`TREMBITA_GATEWAY_INTROSPECT=1`).
-    pub gateway_introspect_api: bool,
-    /// Product gateway connection drain timeout (`TREMBITA_GATEWAY_DRAIN_TIMEOUT`).
-    pub gateway_drain_timeout: Duration,
-    /// Optional gateway TLS PEM paths (`TREMBITA_GATEWAY_TLS_*`).
-    pub gateway_tls: Option<(PathBuf, PathBuf)>,
+    /// HTTP connection drain timeout (`TREMBITA_HTTP_DRAIN_TIMEOUT`).
+    pub http_drain_timeout: Duration,
     /// Explicit env vars that were set for this parse.
     pub env: EnvOverrides,
 }
@@ -267,8 +253,9 @@ fn drain_timeout_from_env() -> Duration {
         .map_or(DEFAULT_DRAIN_TIMEOUT, Duration::from_secs)
 }
 
-fn gateway_drain_timeout_from_env() -> Duration {
-    env("TREMBITA_GATEWAY_DRAIN_TIMEOUT")
+fn http_drain_timeout_from_env() -> Duration {
+    env("TREMBITA_HTTP_DRAIN_TIMEOUT")
+        .or_else(|| env("TREMBITA_GATEWAY_DRAIN_TIMEOUT"))
         .and_then(|raw| raw.parse::<u64>().ok())
         .map_or(
             crate::gateway::DEFAULT_GATEWAY_DRAIN_TIMEOUT,
@@ -286,19 +273,16 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
 
     let listen: SocketAddr = env("TREMBITA_LISTEN")
         .as_deref()
-        .unwrap_or("0.0.0.0:7443")
+        .unwrap_or("0.0.0.0:443")
         .parse()?;
     let data_dir = env("TREMBITA_DATA_DIR").map(PathBuf::from);
-    let admin = match env("TREMBITA_ADMIN").as_deref() {
-        Some("-") => {
-            env_overrides.admin = true;
-            None
-        }
-        Some(a) => {
-            env_overrides.admin = true;
-            Some(a.parse()?)
-        }
+    let http = match env("TREMBITA_HTTP")
+        .or_else(|| env("TREMBITA_GATEWAY"))
+        .as_deref()
+    {
+        Some("-") => None,
         None => None,
+        Some(a) => Some(a.parse()?),
     };
     let join_seeds = match env("TREMBITA_JOIN_SEEDS") {
         Some(raw) => parse_seeds(&raw)?,
@@ -379,41 +363,18 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
     let job_queue_lease = env("TREMBITA_JOB_QUEUE_LEASE_SECS")
         .and_then(|v| v.parse::<u64>().ok())
         .map_or(Duration::from_secs(60), Duration::from_secs);
-    let gateway = match env("TREMBITA_GATEWAY").as_deref() {
-        Some("-") | None => None,
-        Some(a) => Some(a.parse()?),
-    };
-    let gateway_jobs_api = env_bool("TREMBITA_GATEWAY_JOBS");
-    let gateway_actors_api = env_bool("TREMBITA_GATEWAY_ACTORS");
-    let gateway_workflows_api = env_bool("TREMBITA_GATEWAY_WORKFLOWS");
-    let gateway_introspect_api = if env("TREMBITA_GATEWAY_INTROSPECT").is_some() {
-        env_overrides.gateway_introspect = true;
-        env_bool("TREMBITA_GATEWAY_INTROSPECT")
-    } else {
-        false
-    };
-    let gateway_tls = match (
-        env("TREMBITA_GATEWAY_TLS_CERT"),
-        env("TREMBITA_GATEWAY_TLS_KEY"),
+    let http_tls = match (
+        env("TREMBITA_HTTP_TLS_CERT").or_else(|| env("TREMBITA_GATEWAY_TLS_CERT")),
+        env("TREMBITA_HTTP_TLS_KEY").or_else(|| env("TREMBITA_GATEWAY_TLS_KEY")),
     ) {
-        (Some(cert), Some(key)) => Some((PathBuf::from(cert), PathBuf::from(key))),
-        (None, None) => None,
-        _ => {
-            return Err(
-                "TREMBITA_GATEWAY_TLS_CERT and TREMBITA_GATEWAY_TLS_KEY must both be set or both unset"
-                    .into(),
-            );
+        (Some(cert), Some(key)) => {
+            env_overrides.http_tls = true;
+            Some((PathBuf::from(cert), PathBuf::from(key)))
         }
-    };
-    let admin_tls = match (
-        env("TREMBITA_ADMIN_TLS_CERT"),
-        env("TREMBITA_ADMIN_TLS_KEY"),
-    ) {
-        (Some(cert), Some(key)) => Some((PathBuf::from(cert), PathBuf::from(key))),
         (None, None) => None,
         _ => {
             return Err(
-                "TREMBITA_ADMIN_TLS_CERT and TREMBITA_ADMIN_TLS_KEY must both be set or both unset"
+                "TREMBITA_HTTP_TLS_CERT and TREMBITA_HTTP_TLS_KEY must both be set or both unset"
                     .into(),
             );
         }
@@ -434,8 +395,8 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
     Ok(AppConfig {
         node_id,
         listen,
-        admin,
-        admin_tls,
+        http,
+        http_tls,
         peers,
         members,
         join_seeds,
@@ -454,13 +415,7 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         data_dir,
         job_queue_stream,
         job_queue_lease,
-        gateway,
-        gateway_jobs_api,
-        gateway_actors_api,
-        gateway_workflows_api,
-        gateway_introspect_api,
-        gateway_drain_timeout: gateway_drain_timeout_from_env(),
-        gateway_tls,
+        http_drain_timeout: http_drain_timeout_from_env(),
         env: env_overrides,
     })
 }

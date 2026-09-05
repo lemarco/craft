@@ -7,9 +7,7 @@ use std::time::Duration;
 
 use tokio::net::TcpListener;
 use trembita_core::RaftNode;
-use trembita_dashboard::{
-    AdminServer, EventBus, Metrics, Observer, TrembitaEvent, admin_tls_config,
-};
+use trembita_dashboard::{EventBus, Metrics, TrembitaEvent};
 use trembita_net::Transport;
 use trembita_net::transport::RequestHandler;
 use trembita_proto::CatalogCommand;
@@ -1029,52 +1027,8 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
             }
         }
 
-        // Admin/observability HTTP server.
+        // Ops HTTP routes are served on the unified TCP listener via GatewayOpts::surfaces.
         let catalog_version = Arc::new(AtomicU32::new(1));
-        if let Some(addr) = self.admin_addr {
-            let observer: Arc<dyn Observer> = Arc::new(TrembitaObserver::new(
-                node_id,
-                handle.clone(),
-                Arc::clone(&directory),
-                registry.clone(),
-                self.shard_count,
-                self.shard_routing,
-                self.raft_groups,
-                self.group_replication_factor,
-                self.group_learner_factor,
-                multi_raft.clone(),
-                Arc::clone(&catalog_version),
-                job_queues.clone(),
-                Arc::clone(&saga_registry),
-                metrics.clone(),
-            ));
-            let admin = AdminServer::new(observer, metrics.clone(), events.clone());
-            match TcpListener::bind(addr).await {
-                Ok(listener) => {
-                    if let Some(paths) = self.admin_tls.clone() {
-                        match admin_tls_config(&paths) {
-                            Ok(tls) => {
-                                tasks.push(tokio::spawn(async move {
-                                    let _ = admin.serve_tls(listener, tls).await;
-                                }));
-                            }
-                            Err(e) => {
-                                eprintln!("trembita: admin TLS config failed: {e}");
-                            }
-                        }
-                    } else {
-                        tasks.push(tokio::spawn(async move {
-                            let _ = admin.serve(listener).await;
-                        }));
-                    }
-                }
-                Err(e) => {
-                    // A bad admin bind must not take the node down; surface it
-                    // and carry on serving the trembita wire.
-                    eprintln!("trembita: admin server bind to {addr} failed: {e}");
-                }
-            }
-        }
 
         let cluster = TrembitaCluster {
             node_id,

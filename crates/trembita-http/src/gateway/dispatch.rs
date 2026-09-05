@@ -193,6 +193,12 @@ impl GatewayDispatch {
         }
 
         let path = parts.uri.path().to_string();
+        if parts.method == Method::GET
+            && let Some(handler) = surface.routes.match_sse(&path)
+        {
+            return handler().await;
+        }
+
         let query = parse_query_string(parts.uri.query());
         let started = std::time::Instant::now();
         let body_bytes = match read_body(body, crate::routing::MAX_BODY_BYTES).await {

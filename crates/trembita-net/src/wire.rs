@@ -17,7 +17,7 @@ pub const CONTENT_TYPE: &str = "application/x-postcard";
 pub const PROTOCOL_VERSION_HEADER: &str = "raft-protocol-version";
 
 /// Default QUIC listen port (`docs/protocol.md`; configurable).
-pub const DEFAULT_PORT: u16 = 7443;
+pub const DEFAULT_PORT: u16 = 443;
 
 /// Maximum accepted body size (16 MiB). Larger snapshots stream via chunked
 /// `InstallSnapshot` rather than a single frame (`docs/protocol.md` §Connections).

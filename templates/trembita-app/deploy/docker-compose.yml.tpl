@@ -11,7 +11,7 @@ services:
     environment:
       TREMBITA_NODE_ID: "1"
       TREMBITA_LISTEN: "0.0.0.0:7443"
-      TREMBITA_ADMIN: "0.0.0.0:8080"
+      TREMBITA_HTTP: "0.0.0.0:443"
       TREMBITA_DATA_DIR: /data
       TREMBITA_JOB_QUEUE: jobs
       TREMBITA_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
@@ -19,8 +19,7 @@ services:
       - node1-data:/data
     ports:
       - "7443:7443"
-      - "8080:8080"
-      - "8090:8090"
+      - "443:443"
 
   node2:
     image: {{PROJECT_NAME}}:local

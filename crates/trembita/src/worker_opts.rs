@@ -193,9 +193,6 @@ impl<A: UserActor> WorkerOpts<A> {
                 builder.registration.actors = true;
                 if http_cast {
                     builder.gateway_api.actors = true;
-                    if let Some(gateway) = builder.gateway.as_mut() {
-                        gateway.actors_api = true;
-                    }
                 }
                 match scale {
                     WorkerScale::Fixed(total) => {

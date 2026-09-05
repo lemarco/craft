@@ -21,6 +21,7 @@ facade = ["dep:trembita", "dep:hyper", "dep:hyper-util"]
 trembita-proto.workspace = true
 trembita-core.workspace = true
 trembita-runtime.workspace = true
+trembita-http.workspace = true
 trembita = { workspace = true, optional = true }
 hyper = { workspace = true, optional = true }
 hyper-util = { workspace = true, optional = true }

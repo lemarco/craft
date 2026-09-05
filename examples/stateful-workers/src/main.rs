@@ -20,12 +20,14 @@ mod migrate_http;
 mod processor;
 
 use std::env;
+use std::sync::Arc;
 use std::time::Duration;
 
 use trembita::{
-    TrembitaApp, TrembitaAppBuilder, TrembitaConfigure, GatewayOpts, ReadyOpts, RunOpts, WorkerOpts,
-    WorkerScale, workers,
+    Gateway, GatewayOpts, ReadyOpts, RunOpts, TrembitaApp, TrembitaAppBuilder, TrembitaConfigure,
+    TrembitaGatewayState, WorkerOpts, WorkerScale, workers,
 };
+use trembita_http::AuthMode;
 use trembita_tools::gateway_auth::ShowcaseGatewayIdentity;
 use trembita_tools::showcase_common::{data_dir, display_addr, env_flag};
 
@@ -61,14 +63,24 @@ fn apply_actors(builder: TrembitaAppBuilder) -> TrembitaAppBuilder {
     }
 }
 
+fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
+    let app = Arc::clone(&state.app);
+    Gateway::new(false).dev_fallback(
+        TrembitaApp::actors_api(app)
+            .route_table()
+            .with_auth_mode(AuthMode::Identity)
+            .merge(gateway_orders::order_routes(state.clone()))
+            .merge(state.app.ops_api().route_table()),
+    )
+}
+
 fn gateway_opts(addr: std::net::SocketAddr) -> GatewayOpts {
     let opts = GatewayOpts::new(addr);
     if migrate_demo_mode() {
         opts.surfaces(|state| migrate_http::surfaces(state))
     } else {
         opts.identity(ShowcaseGatewayIdentity::from_env())
-            .surfaces(|state| gateway_orders::surfaces(state))
-            .with_actors_api(true)
+            .surfaces(gateway_surfaces)
     }
 }
 
@@ -85,7 +97,6 @@ fn server_builder() -> TrembitaAppBuilder {
             .configure(TrembitaConfigure {
                 tick_period: Duration::from_millis(10),
                 reconcile_period: Duration::from_millis(20),
-                admin_addr: Some("127.0.0.1:9280".parse().expect("admin")),
                 ..TrembitaConfigure::default()
             }),
     )

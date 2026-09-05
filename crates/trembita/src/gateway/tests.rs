@@ -1,4 +1,4 @@
-use super::config::{GatewayConfigError, validate_gateway_config};
+use super::config::validate_gateway_config;
 use super::identity::{GatewayIdentity, GatewayRequest, IdentityError};
 use super::opts::GatewayOpts;
 
@@ -14,32 +14,16 @@ impl GatewayIdentity for TestIdentity {
 }
 
 #[test]
-fn validate_rejects_product_apis_without_identity() {
+fn validate_accepts_surfaces_with_identity() {
     let config = GatewayOpts::new("127.0.0.1:1".parse().expect("addr"))
-        .with_jobs_api(true)
-        .build_config();
-    assert!(matches!(
-        validate_gateway_config(&config),
-        Err(GatewayConfigError::ProductApisWithoutIdentity)
-    ));
-}
-
-#[test]
-fn validate_rejects_protect_apis_without_identity() {
-    let config = GatewayOpts::new("127.0.0.1:1".parse().expect("addr"))
-        .protect_product_apis(true)
-        .build_config();
-    assert!(matches!(
-        validate_gateway_config(&config),
-        Err(GatewayConfigError::ProtectApisWithoutIdentity)
-    ));
-}
-
-#[test]
-fn validate_accepts_product_apis_with_identity() {
-    let config = GatewayOpts::new("127.0.0.1:1".parse().expect("addr"))
-        .with_jobs_api(true)
         .identity(TestIdentity)
+        .surfaces(|_state| trembita_http::Gateway::new(false))
         .build_config();
+    assert!(validate_gateway_config(&config).is_ok());
+}
+
+#[test]
+fn validate_accepts_empty_gateway() {
+    let config = GatewayOpts::new("127.0.0.1:1".parse().expect("addr")).build_config();
     assert!(validate_gateway_config(&config).is_ok());
 }

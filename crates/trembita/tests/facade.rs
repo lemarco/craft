@@ -15,7 +15,7 @@ use trembita::proto;
 use trembita_runtime::{ConfigCodecError, UserActor};
 use trembita_test_support::{
     Cmd, Kv, POLL_STEP, Qry, Resp, TICK_PERIOD, advance, await_trembita_leader, eventually_async,
-    eventually_async_default, eventually_default, fast_raft_config,
+    eventually_async_default, eventually_default, fast_raft_config, spawn_cluster_ops_gateway,
 };
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -375,31 +375,27 @@ async fn follower_scale_cluster_forwards_to_leader() {
 async fn admin_endpoints_report_live_state() {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let net = LocalNetwork::new();
-    let admin_addr = free_port();
 
     let mut clusters = Vec::new();
     for &id in &ids {
-        let mut builder = TrembitaCluster::builder(id, Kv::default())
+        let builder = TrembitaCluster::builder(id, Kv::default())
             .members(ids)
             .raft_config(fast_raft_config())
             .tick_period(TICK_PERIOD)
             .reconcile_period(Duration::from_millis(20))
             .directory_publish_period(Duration::from_millis(20))
             .manage_auto::<Worker>("w", 0);
-        // Only node 1 serves the admin port in this test.
-        if id == NodeId(1) {
-            builder = builder.admin_addr(admin_addr);
-        }
         clusters.push(Arc::new(builder.start_local(&net).await));
     }
 
-    let _leader = await_trembita_leader(&clusters).await;
+    let leader = await_trembita_leader(&clusters).await;
+    let ops_addr = spawn_cluster_ops_gateway(leader.as_ref()).await;
 
     // Health is OK once the server is up (bind is awaited during start_local,
     // but the accept loop is spawned; retry briefly).
     let mut health = (0, String::new());
     for _ in 0..200 {
-        health = http_get(admin_addr, "/health").await;
+        health = http_get(ops_addr, "/health").await;
         if health.0 == 200 {
             break;
         }
@@ -410,7 +406,7 @@ async fn admin_endpoints_report_live_state() {
     // Cluster view eventually shows a leader and all three voters.
     let mut cluster_body = String::new();
     for _ in 0..500 {
-        let (s, b) = http_get(admin_addr, "/introspect/cluster").await;
+        let (s, b) = http_get(ops_addr, "/introspect/cluster").await;
         if s == 200 && b.contains("\"leader\"") && b.contains("\"id\":3") {
             cluster_body = b;
             break;
@@ -427,7 +423,7 @@ async fn admin_endpoints_report_live_state() {
     // Actors show up in introspection once the directory has published.
     let mut actors_body = String::new();
     for _ in 0..500 {
-        let (s, b) = http_get(admin_addr, "/introspect/actors").await;
+        let (s, b) = http_get(ops_addr, "/introspect/actors").await;
         if s == 200 && b.contains("w#") {
             actors_body = b;
             break;
@@ -440,7 +436,7 @@ async fn admin_endpoints_report_live_state() {
     );
 
     // Metrics endpoint renders Prometheus text (may be empty families).
-    let (status, _) = http_get(admin_addr, "/metrics").await;
+    let (status, _) = http_get(ops_addr, "/metrics").await;
     assert_eq!(status, 200);
 
     for c in &clusters {
@@ -450,23 +446,38 @@ async fn admin_endpoints_report_live_state() {
 
 #[tokio::test(start_paused = true)]
 async fn admin_serves_https_when_builder_tls_configured() {
-    let (_dir, cert_path, key_path, trust) = mint_admin_tls_files();
-    let admin_addr = free_port();
-    let net = LocalNetwork::new();
-    let cluster = TrembitaCluster::builder(NodeId(1), Kv::default())
-        .members([NodeId(1)])
-        .raft_config(fast_raft_config())
-        .tick_period(TICK_PERIOD)
-        .admin_addr(admin_addr)
-        .admin_tls(cert_path, key_path)
-        .start_local(&net)
-        .await;
+    use std::sync::Arc;
 
-    let (status, body) = https_get(admin_addr, "/ready", &trust).await;
+    use trembita::{GatewayOpts, TrembitaApp, spawn_gateway};
+    use trembita_test_support::{boot_local_app, gateway_ops_surfaces};
+
+    let (_dir, cert_path, key_path, trust) = mint_admin_tls_files();
+    let ops_addr = free_port();
+    let base = std::env::temp_dir().join(format!(
+        "trembita-facade-ops-tls-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+
+    let app = boot_local_app(|| TrembitaApp::builder().data_dir(&base), None).await;
+    let config = GatewayOpts::new(ops_addr)
+        .tls(cert_path, key_path)
+        .surfaces(gateway_ops_surfaces)
+        .build_config();
+    let _handle = spawn_gateway(Arc::clone(&app), config)
+        .await
+        .expect("spawn ops gateway tls");
+
+    let (status, body) = https_get(ops_addr, "/ready", &trust).await;
     assert_eq!(status, 200, "body: {body}");
     assert!(body.contains("\"member\":true"));
 
-    cluster.shutdown();
+    app.shutdown();
+    let _ = std::fs::remove_dir_all(base);
 }
 
 #[tokio::test(start_paused = true)]

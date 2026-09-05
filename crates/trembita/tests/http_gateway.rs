@@ -10,7 +10,8 @@ use trembita::{
     TrembitaConfigure,
 };
 use trembita_test_support::{
-    advance, boot_local_app, spawn_test_gateway, wait_for_trembita_app_leader,
+    advance, boot_local_app, gateway_jobs_surfaces, spawn_test_gateway,
+    wait_for_trembita_app_leader,
 };
 
 struct TestGatewayIdentity;
@@ -47,8 +48,8 @@ async fn gateway_serves_jobs_api_on_configured_addr() {
                 })
                 .gateway(
                     GatewayOpts::new("127.0.0.1:0".parse().unwrap())
-                        .with_jobs_api(true)
-                        .identity(TestGatewayIdentity),
+                        .identity(TestGatewayIdentity)
+                        .surfaces(gateway_jobs_surfaces),
                 )
         },
         None,
@@ -61,9 +62,8 @@ async fn gateway_serves_jobs_api_on_configured_addr() {
     let addr = spawn_test_gateway(
         &app,
         GatewayOpts::new("127.0.0.1:0".parse().unwrap())
-            .with_jobs_api(true)
-            .with_actors_api(true)
             .identity(TestGatewayIdentity)
+            .surfaces(gateway_jobs_surfaces)
             .build_config(),
     )
     .await;

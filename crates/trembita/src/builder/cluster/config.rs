@@ -287,16 +287,6 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
         if !cfg.join_seeds.is_empty() {
             self.join_seeds.clone_from(&cfg.join_seeds);
         }
-        if self.admin_addr.is_none()
-            && let Some(admin) = cfg.admin
-        {
-            self.admin_addr = Some(admin);
-        }
-        if self.admin_tls.is_none()
-            && let Some((cert, key)) = cfg.admin_tls.clone()
-        {
-            self.admin_tls = Some(AdminTlsPaths { cert, key });
-        }
         self
     }
 
