@@ -1,6 +1,9 @@
 //! Route table — declarative method + path → handler mapping.
 
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 
 use http::Method;
 
@@ -55,7 +58,26 @@ impl RouteEntry {
 pub struct RouteTable {
     routes: Vec<RouteEntry>,
     fallback: Option<ArcHandler>,
+    websocket: Option<(PathPattern, UpgradeFn)>,
 }
+
+type UpgradeFn = Arc<
+    dyn Fn(
+            http::Request<hyper::body::Incoming>,
+        ) -> Pin<
+            Box<
+                dyn Future<
+                        Output = http::Response<
+                            http_body_util::combinators::BoxBody<
+                                bytes::Bytes,
+                                std::convert::Infallible,
+                            >,
+                        >,
+                    > + Send,
+            >,
+        > + Send
+        + Sync,
+>;
 
 impl RouteTable {
     /// Empty route table.
@@ -64,6 +86,7 @@ impl RouteTable {
         Self {
             routes: Vec::new(),
             fallback: None,
+            websocket: None,
         }
     }
 

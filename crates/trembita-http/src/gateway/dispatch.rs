@@ -102,21 +102,40 @@ impl GatewayDispatch {
         self
     }
 
+    fn find_websocket(
+        &self,
+        path: &str,
+        req: http::Request<Incoming>,
+    ) -> Option<
+        Pin<
+            Box<
+                dyn Future<
+                        Output = HttpResponse<BoxBody>,
+                    > + Send,
+            >,
+        >,
+    > {
+        for surface in self.hosts.values() {
+            if let Some(future) = surface.routes.dispatch_websocket(path, req) {
+                return Some(future);
+            }
+        }
+        if let Some(dev) = &self.local_dev {
+            if let Some(future) = dev.routes.dispatch_websocket(path, req) {
+                return Some(future);
+            }
+        }
+        None
+    }
+
     async fn handle(
         &self,
         req: http::Request<Incoming>,
     ) -> HttpResponse<BoxBody> {
         if is_websocket_upgrade(req.headers()) {
-            let path = req.uri().path().to_string();
-            for surface in self.hosts.values() {
-                if let Some(future) = surface.routes.dispatch_websocket(&path, req) {
-                    return future.await;
-                }
-            }
-            if let Some(dev) = &self.local_dev {
-                if let Some(future) = dev.routes.dispatch_websocket(&path, req) {
-                    return future.await;
-                }
+            let path = req.uri().path();
+            if let Some(future) = self.find_websocket(&path, req) {
+                return future.await;
             }
         }
 
