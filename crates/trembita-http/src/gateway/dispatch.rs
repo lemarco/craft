@@ -259,9 +259,9 @@ fn to_http_response(response: Response) -> HttpResponse<BoxBody> {
     let body = match response.body() {
         ResponseBody::Empty => BoxBody::new(http_body_util::Empty::<Bytes>::new()
             .map_err(|never| match never {})),
-        ResponseBody::Bytes(b) => Full::new(b.clone())
-            .map_err(|never| match never {})
-            .boxed_unsync(),
+        ResponseBody::Bytes(b) => BoxBody::new(
+            Full::new(b.clone()).map_err(|never| match never {}),
+        ),
         ResponseBody::Json(_) => unreachable!("finalize converts JSON"),
     };
     let mut http = HttpResponse::new(body);

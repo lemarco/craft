@@ -272,12 +272,9 @@ mod tests {
     use std::collections::HashMap;
 
     use bytes::Bytes;
-    use http::{Method, StatusCode};
+    use http::Method;
 
     use super::*;
-    use crate::gateway::{Gateway, GatewayService};
-    use crate::routing::{RequestCtx, Response, RouteTable};
-    use http::StatusCode;
 
     fn sample_assets() -> EmbeddedAssets {
         EmbeddedAssets {
