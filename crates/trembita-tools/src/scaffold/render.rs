@@ -194,6 +194,9 @@ fn generate_cargo_toml(opts: &NewProjectOpts) -> String {
     }
 
     let mut extra_deps = opts.optional_adapter_lines();
+    if opts.features.iter().any(|f| *f == AppFeature::Gateway) {
+        extra_deps.push_str("http = \"1\"\n");
+    }
     if let Some(runtime) = opts.trembita_runtime_dependency_line() {
         extra_deps.push_str(&runtime);
         extra_deps.push('\n');
@@ -294,7 +297,7 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     }
 
     if features.contains(&AppFeature::Gateway) {
-        imports.push("use trembita::{GatewayBearerIdentity, GatewayOpts};".to_string());
+        imports.push("use trembita::{Gateway, GatewayBearerIdentity, GatewayOpts};".to_string());
     }
 
     if features.contains(&AppFeature::Topics) {
@@ -382,7 +385,12 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
                 GatewayOpts::new(self.config.gateway_addr)
                     .with_jobs_api(true)
                     .identity(GatewayBearerIdentity::from_env())
-                    .protect_product_apis(true),
+                    .protect_product_apis(true)
+                    .surfaces(|_state| {
+                        // trembita:surfaces
+                        Gateway::new(false)
+                        // trembita:surfaces-end
+                    }),
             )
 "#,
         );

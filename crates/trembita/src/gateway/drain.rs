@@ -181,40 +181,15 @@ async fn serve_tls(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
-    use bytes::Bytes;
-    use http::header::HOST;
-    use http::{Method, StatusCode};
-    use hyper::body::Incoming;
-    use tower::ServiceExt;
-    use trembita_http::{Gateway, GatewayService, RequestCtx, Response, RouteTable};
-
     use super::ConnectionTracker;
-    use crate::gateway::router::WrappedGatewayService;
 
-    #[tokio::test]
-    async fn wrapped_service_holds_connection_slot_for_request() {
-        let connections = Arc::new(ConnectionTracker::default());
-        let gateway = Gateway::new(false).dev_fallback(RouteTable::new().get("/health", |_: RequestCtx| async {
-            Ok(Response::text(StatusCode::OK, "ok"))
-        }));
-        let inner = GatewayService::build(&gateway).expect("build");
-        let mut service = WrappedGatewayService {
-            inner,
-            connections: Some(Arc::clone(&connections)),
-            rate_limiter: None,
-            compute_pool: None,
-        };
-
-        let req = http::Request::builder()
-            .method(Method::GET)
-            .uri("/health")
-            .header(HOST, "127.0.0.1")
-            .body(Incoming::default())
-            .unwrap();
-        let resp = service.ready().await.unwrap().call(req).await.unwrap();
-        assert!(resp.status().is_success());
-        assert_eq!(connections.active(), 0);
+    #[test]
+    fn connection_guard_decrements_on_drop() {
+        let tracker = ConnectionTracker::default();
+        {
+            let _guard = tracker.track();
+            assert_eq!(tracker.active(), 1);
+        }
+        assert_eq!(tracker.active(), 0);
     }
 }

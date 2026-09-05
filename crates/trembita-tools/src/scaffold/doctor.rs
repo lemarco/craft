@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::Path;
 
-use super::markers::names;
+use super::markers::{ensure_main_module, ensure_mod_declaration, names};
 use super::project::TrembitaProject;
 
 /// Single finding.
@@ -31,6 +31,13 @@ pub enum Level {
 pub struct DoctorReport {
     /// All findings.
     pub findings: Vec<Finding>,
+}
+
+/// Result of `doctor --fix`.
+#[derive(Debug, Default)]
+pub struct DoctorFixReport {
+    /// Number of auto-fixes applied.
+    pub fixes_applied: usize,
 }
 
 impl DoctorReport {
@@ -85,11 +92,50 @@ pub fn run_doctor(project: &TrembitaProject) -> DoctorReport {
         check_domain_boundary(project, &mut report);
         check_consumers(project, &app, &mut report);
         check_actors(project, &app, &mut report);
+        check_http(project, &app, &mut report);
         check_topics(&app, &mut report);
     } else {
         report.error(format!("missing {}", project.app_rs().display()));
     }
     report
+}
+
+/// Apply safe auto-fixes (missing `mod` declarations, `main.rs` modules).
+pub fn doctor_fix(project: &TrembitaProject) -> DoctorFixReport {
+    let mut fixes = 0usize;
+    fixes += fix_mod_declarations(&project.consumers_dir());
+    fixes += fix_mod_declarations(&project.actors_dir());
+    fixes += fix_mod_declarations(&project.http_dir());
+    if ensure_main_module(project, "consumers").unwrap_or(false) {
+        fixes += 1;
+    }
+    if ensure_main_module(project, "actors").unwrap_or(false) {
+        fixes += 1;
+    }
+    if project.http_dir().is_dir() && ensure_main_module(project, "http").unwrap_or(false) {
+        fixes += 1;
+    }
+    DoctorFixReport { fixes_applied: fixes }
+}
+
+fn fix_mod_declarations(dir: &Path) -> usize {
+    if !dir.is_dir() {
+        return 0;
+    }
+    let mod_rs = dir.join("mod.rs");
+    let mut count = 0usize;
+    for entry in walk_rs_files(dir) {
+        if entry.file_name().is_some_and(|n| n == "mod.rs") {
+            continue;
+        }
+        let Some(module) = entry.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if ensure_mod_declaration(&mod_rs, module).unwrap_or(false) {
+            count += 1;
+        }
+    }
+    count
 }
 
 fn check_layout(project: &TrembitaProject, report: &mut DoctorReport) {
@@ -116,6 +162,16 @@ fn check_markers(app: &str, report: &mut DoctorReport) {
         } else {
             report.warn(format!(
                 "marker `{marker}` missing — `trembita add` may not patch app.rs; re-run `trembita new` or add markers manually"
+            ));
+        }
+    }
+    if app.contains(".gateway(") {
+        if app.contains(&format!("// {}", names::SURFACES)) {
+            report.ok(format!("marker `{}` present", names::SURFACES));
+        } else {
+            report.warn(format!(
+                "marker `{}` missing — `trembita add http-surface` may not patch app.rs",
+                names::SURFACES
             ));
         }
     }
@@ -212,6 +268,8 @@ fn check_actors(project: &TrembitaProject, app: &str, report: &mut DoctorReport)
     if !actors_dir.is_dir() {
         return;
     }
+    let mod_rs = actors_dir.join("mod.rs");
+    let mod_content = fs::read_to_string(&mod_rs).unwrap_or_default();
     for entry in walk_rs_files(&actors_dir) {
         if entry.file_name().is_some_and(|n| n == "mod.rs") {
             continue;
@@ -219,6 +277,13 @@ fn check_actors(project: &TrembitaProject, app: &str, report: &mut DoctorReport)
         let Ok(content) = fs::read_to_string(&entry) else {
             continue;
         };
+        let module = entry
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+        if !mod_content.contains(&format!("pub mod {module};")) {
+            report.error(format!("actors/{module}.rs not declared in actors/mod.rs"));
+        }
         for group in extract_worker_groups(&content) {
             if app.contains(&format!("::new(\"{group}\")")) {
                 report.ok(format!("actor group `{group}` registered in app.rs"));
@@ -230,6 +295,44 @@ fn check_actors(project: &TrembitaProject, app: &str, report: &mut DoctorReport)
             }
         }
     }
+}
+
+fn check_http(project: &TrembitaProject, app: &str, report: &mut DoctorReport) {
+    let http_dir = project.http_dir();
+    if !http_dir.is_dir() {
+        return;
+    }
+    let mod_rs = http_dir.join("mod.rs");
+    let mod_content = fs::read_to_string(&mod_rs).unwrap_or_default();
+    let main = fs::read_to_string(project.main_rs()).unwrap_or_default();
+    if !main.contains("mod http;") {
+        report.warn("src/http/ exists but main.rs has no `mod http;` — run `trembita doctor --fix`");
+    }
+    for entry in walk_rs_files(&http_dir) {
+        if entry.file_name().is_some_and(|n| n == "mod.rs") {
+            continue;
+        }
+        let module = entry
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+        if !mod_content.contains(&format!("pub mod {module};")) {
+            report.error(format!("http/{module}.rs not declared in http/mod.rs"));
+        }
+        if app.contains(&format!("http::{module}::route_table()")) {
+            report.ok(format!("http surface `{module}` wired in app.rs"));
+        } else if content_has_route_table(&entry) {
+            report.warn(format!(
+                "http/{module}.rs defines route_table() but app.rs has no matching surface"
+            ));
+        }
+    }
+}
+
+fn content_has_route_table(path: &Path) -> bool {
+    fs::read_to_string(path)
+        .ok()
+        .is_some_and(|c| c.contains("pub fn route_table()"))
 }
 
 fn check_topics(app: &str, report: &mut DoctorReport) {
@@ -335,5 +438,34 @@ async fn handle_orphan(_: &[u8]) -> Result<(), ()> { Ok(()) }
         .unwrap();
         let report = run_doctor(&project);
         assert!(report.has_errors());
+    }
+
+    #[test]
+    fn doctor_fix_adds_missing_consumer_mod() {
+        let dir = tempdir().unwrap();
+        let opts = NewProjectOpts {
+            name: "fix-test".into(),
+            output: dir.path().to_path_buf(),
+            features: AppFeature::defaults(),
+            trembita_version: "0.3.2".into(),
+            trembita_path: None,
+        };
+        let root = scaffold_project(&opts).unwrap();
+        let project = TrembitaProject { root };
+        std::fs::write(
+            project.consumers_dir().join("extra.rs"),
+            r#"use trembita::consumer;
+
+#[consumer("extra")]
+async fn handle_extra(_: &[u8]) -> Result<(), ()> { Ok(()) }
+"#,
+        )
+        .unwrap();
+        let fix = doctor_fix(&project);
+        assert!(fix.fixes_applied >= 1);
+        let mod_rs = fs::read_to_string(project.consumers_dir().join("mod.rs")).unwrap();
+        assert!(mod_rs.contains("pub mod extra;"));
+        let report = run_doctor(&project);
+        assert!(!report.has_errors());
     }
 }

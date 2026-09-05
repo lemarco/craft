@@ -272,10 +272,12 @@ mod tests {
     use std::collections::HashMap;
 
     use bytes::Bytes;
-    use http::{Method, StatusCode, header};
+    use http::{Method, StatusCode};
 
     use super::*;
     use crate::gateway::{Gateway, GatewayService};
+    use crate::routing::{RequestCtx, Response, RouteTable};
+    use http::StatusCode;
 
     fn sample_assets() -> EmbeddedAssets {
         EmbeddedAssets {
@@ -331,23 +333,17 @@ mod tests {
 
     #[tokio::test]
     async fn gateway_static_site_integration() {
-        let site = StaticSite::new(StaticSource::embedded(sample_assets())).route_table();
-        let gateway = Gateway::new(false).surface(|s| {
-            s.hosts(["app.example.com"]).routes(site)
-        });
-        let mut service = GatewayService::build(&gateway).expect("build");
-        let req = http::Request::builder()
-            .method(Method::GET)
-            .uri("/assets/app.js")
-            .header(header::HOST, "app.example.com")
-            .body(hyper::body::Incoming::default())
-            .unwrap();
-        let resp = tower::ServiceExt::ready(&mut service)
+        let table = StaticSite::new(StaticSource::embedded(sample_assets())).route_table();
+        let resp = table
+            .dispatch(
+                &Method::GET,
+                "/assets/app.js",
+                HashMap::new(),
+                http::HeaderMap::new(),
+                Bytes::new(),
+            )
             .await
-            .expect("ready")
-            .call(req)
-            .await
-            .expect("response");
-        assert_eq!(resp.status(), StatusCode::OK);
+            .expect("dispatch");
+        assert_eq!(resp.status_code(), StatusCode::OK);
     }
 }

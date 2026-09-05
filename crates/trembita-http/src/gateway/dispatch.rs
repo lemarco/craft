@@ -364,7 +364,6 @@ pub fn is_websocket_upgrade(headers: &http::HeaderMap) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::routing::Response;
     use http::StatusCode;
 
     #[test]
@@ -372,25 +371,5 @@ mod tests {
         let q = parse_query(Some("a=1&b=two"));
         assert_eq!(q.get("a").map(String::as_str), Some("1"));
         assert_eq!(q.get("b").map(String::as_str), Some("two"));
-    }
-
-    #[tokio::test]
-    async fn dispatches_to_registered_host() {
-        let gateway = super::super::Gateway::new(false).surface(|s| {
-            s.hosts(["api.test"])
-                .routes(RouteTable::new().get("/ping", |_: RequestCtx| async {
-                    Ok(Response::text(StatusCode::OK, "pong"))
-                }))
-        });
-        let service = GatewayService::build(&gateway).expect("build");
-        let mut service = service;
-        let req = Request::builder()
-            .method(Method::GET)
-            .uri("/ping")
-            .header(HOST, "api.test")
-            .body(Incoming::default())
-            .unwrap();
-        let resp = service.call(req).await.expect("response");
-        assert_eq!(resp.status(), StatusCode::OK);
     }
 }

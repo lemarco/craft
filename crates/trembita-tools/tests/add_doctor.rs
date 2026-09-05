@@ -2,8 +2,9 @@
 
 use tempfile::tempdir;
 use trembita_tools::scaffold::{
-    AddActorOpts, AddConsumerOpts, AddTopicOpts, AppFeature, NewProjectOpts, TrembitaProject,
-    add_actor, add_consumer, add_topic, run_doctor, scaffold_project,
+    AddActorOpts, AddConsumerOpts, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts,
+    AppFeature, NewProjectOpts, StaticSiteSource, TrembitaProject, add_actor, add_consumer,
+    add_http_surface, add_static_site, add_topic, doctor_fix, run_doctor, scaffold_project,
 };
 
 #[test]
@@ -40,6 +41,27 @@ fn add_and_doctor_integration() {
         &AddActorOpts {
             group: "catalog".into(),
             type_name: None,
+        },
+    )
+    .unwrap();
+    add_http_surface(
+        &project,
+        &AddHttpSurfaceOpts {
+            name: "api".into(),
+            hosts: vec!["api.example.com".into()],
+            module: None,
+        },
+    )
+    .unwrap();
+    add_static_site(
+        &project,
+        &AddStaticSiteOpts {
+            name: "app".into(),
+            hosts: vec!["app.example.com".into()],
+            source: StaticSiteSource::Filesystem {
+                path: "fe/app/dist".into(),
+            },
+            module: None,
         },
     )
     .unwrap();

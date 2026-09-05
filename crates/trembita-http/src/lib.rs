@@ -75,7 +75,7 @@ pub use types::{
     LeasedByResponse, RequeueAccepted, RequeueBatchAccepted, RequeueBatchBody,
     RequeueFailureResponse,
 };
-pub use upgrade_routes::{UpgradeApi, UpgradeApiState, upgrade_route_table};
+pub use upgrade_routes::{UpgradeApi, UpgradeApiState, route_table as upgrade_route_table};
 pub use upgrade_types::{SetDesiredBody, UpgradeApiError, UpgradeStatusResponse};
 
 /// Async enqueue hook used by [`JobsApi`].
@@ -390,8 +390,6 @@ pub async fn spawn_workflows_server(
     api: WorkflowsApi,
     addr: std::net::SocketAddr,
 ) -> std::io::Result<()> {
-    use http::header::HOST;
-
     let routes = api.route_table();
     let gateway = Gateway::new(false).dev_fallback(routes);
     let service = gateway
@@ -407,10 +405,10 @@ pub async fn spawn_workflows_server(
             let Ok((stream, _)) = listener.accept().await else {
                 break;
             };
-            let mut service = service.clone();
+            let service = service.clone();
             tokio::spawn(async move {
                 let io = TokioIo::new(stream);
-                let hyper_service = TowerToHyperService::new(&mut service);
+                let hyper_service = TowerToHyperService::new(service);
                 let _ = http1::Builder::new()
                     .serve_connection(io, hyper_service)
                     .with_upgrades()
@@ -418,7 +416,6 @@ pub async fn spawn_workflows_server(
             });
         }
     });
-    let _ = HOST; // workflows listener accepts any Host via dev_fallback
     Ok(())
 }
 
@@ -468,6 +465,3 @@ impl IntrospectApi {
         }
     }
 }
-
-/// Alias for [`upgrade_routes::route_table`].
-pub use upgrade_routes::route_table as upgrade_route_table;

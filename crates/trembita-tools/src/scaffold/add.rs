@@ -3,7 +3,8 @@
 use std::fs;
 
 use super::markers::{
-    AppRsPatch, PatchError, consumer_type_name, ensure_mod_declaration, module_name, names,
+    AppRsPatch, PatchError, consumer_type_name, ensure_main_module, ensure_mod_declaration,
+    module_name, names,
 };
 use super::project::TrembitaProject;
 
@@ -49,6 +50,45 @@ pub struct AddActorOpts {
     pub group: String,
     /// Rust type name (default: `{Group}Worker` in PascalCase).
     pub type_name: Option<String>,
+}
+
+/// Static asset source for `add static-site`.
+#[derive(Debug, Clone)]
+pub enum StaticSiteSource {
+    /// Compile-time bytes via `include_dir!`.
+    Embedded {
+        /// Path relative to project root (e.g. `fe/app/dist`).
+        path: String,
+    },
+    /// Serve from a directory on disk.
+    Filesystem {
+        /// Absolute or project-relative path.
+        path: String,
+    },
+}
+
+/// Options for `add http-surface`.
+#[derive(Debug, Clone)]
+pub struct AddHttpSurfaceOpts {
+    /// Surface label (module name by default).
+    pub name: String,
+    /// Hostnames routed to this surface.
+    pub hosts: Vec<String>,
+    /// Rust module file name (default: derived from `name`).
+    pub module: Option<String>,
+}
+
+/// Options for `add static-site`.
+#[derive(Debug, Clone)]
+pub struct AddStaticSiteOpts {
+    /// Site label (module `{name}_static` by default).
+    pub name: String,
+    /// Hostnames serving the SPA.
+    pub hosts: Vec<String>,
+    /// Asset source (default: filesystem `fe/{name}/dist`).
+    pub source: StaticSiteSource,
+    /// Rust module file name (default: `{name}_static`).
+    pub module: Option<String>,
 }
 
 /// Add a job consumer: file + `app.rs` patch.
@@ -126,7 +166,7 @@ async fn {handler}(payload: &[u8]) -> Result<(), String> {{
     }
 
     app.save(&project.app_rs())?;
-    ensure_main_mod(project, "consumers")?;
+    ensure_main_module(project, "consumers").map_err(AddError::Patch)?;
     Ok(())
 }
 
@@ -254,7 +294,203 @@ impl UserActor for {type_name} {{
     }
 
     app.save(&project.app_rs())?;
-    ensure_main_mod(project, "actors")?;
+    ensure_main_module(project, "actors").map_err(AddError::Patch)?;
+    Ok(())
+}
+
+/// Add a custom HTTP surface (`src/http/` + gateway `.surface()`).
+pub fn add_http_surface(
+    project: &TrembitaProject,
+    opts: &AddHttpSurfaceOpts,
+) -> Result<(), AddError> {
+    validate_identifier(&opts.name)?;
+    validate_hosts(&opts.hosts)?;
+    let module = opts
+        .module
+        .clone()
+        .unwrap_or_else(|| module_name(&opts.name));
+    validate_identifier(&module)?;
+
+    fs::create_dir_all(project.http_dir())?;
+    let http_path = project.http_dir().join(format!("{module}.rs"));
+    if http_path.exists() {
+        return Err(AddError::Exists(http_path.display().to_string()));
+    }
+
+    ensure_cargo_dependency(project, "http", "1")?;
+
+    fs::write(
+        &http_path,
+        format!(
+            r#"//! `{name}` HTTP surface — custom [`RouteTable`](trembita::RouteTable).
+
+use trembita::{{RequestCtx, Response, RouteTable}};
+
+/// Routes for hosts: {hosts_comment}.
+#[must_use]
+pub fn route_table() -> RouteTable {{
+    RouteTable::new().get("/health", |_ctx: RequestCtx| async move {{
+        Ok(Response::text(http::StatusCode::OK, "{name} ok"))
+    }})
+}}
+"#,
+            name = opts.name,
+            hosts_comment = opts.hosts.join(", "),
+        ),
+    )?;
+
+    wire_http_surface(project, &module, &opts.hosts)?;
+    Ok(())
+}
+
+/// Add a static SPA surface (`StaticSite` + gateway `.surface()`).
+pub fn add_static_site(project: &TrembitaProject, opts: &AddStaticSiteOpts) -> Result<(), AddError> {
+    validate_identifier(&opts.name)?;
+    validate_hosts(&opts.hosts)?;
+    let module = opts.module.clone().unwrap_or_else(|| {
+        let base = module_name(&opts.name);
+        if base.ends_with("_static") {
+            base
+        } else {
+            format!("{base}_static")
+        }
+    });
+    validate_identifier(&module)?;
+
+    fs::create_dir_all(project.http_dir())?;
+    let http_path = project.http_dir().join(format!("{module}.rs"));
+    if http_path.exists() {
+        return Err(AddError::Exists(http_path.display().to_string()));
+    }
+
+    let source_body = match &opts.source {
+        StaticSiteSource::Embedded { path } => {
+            ensure_cargo_dependency(project, "include_dir", "0.7")?;
+            format!(
+                r#"static ASSETS: include_dir::Dir = include_dir::include_dir!("$CARGO_MANIFEST_DIR/{path}");
+
+StaticSite::new(StaticSource::embedded(embedded_from_dir(&ASSETS)))"#,
+                path = path.trim_start_matches("./")
+            )
+        }
+        StaticSiteSource::Filesystem { path } => {
+            if path.starts_with('/') {
+                format!(
+                    r#"StaticSite::new(StaticSource::filesystem("{path}"))"#,
+                    path = path
+                )
+            } else {
+                format!(
+                    r#"StaticSite::new(StaticSource::filesystem(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("{path}"),
+    ))"#,
+                    path = path.trim_start_matches("./")
+                )
+            }
+        }
+    };
+
+    fs::write(
+        &http_path,
+        format!(
+            r#"//! `{name}` static site (SPA).
+
+use trembita::{{RouteTable, StaticSite, StaticSource, embedded_from_dir}};
+
+/// Route table serving the `{name}` SPA on: {hosts_comment}.
+#[must_use]
+pub fn route_table() -> RouteTable {{
+    {source_body}
+        .spa_fallback(true)
+        .route_table()
+}}
+"#,
+            name = opts.name,
+            hosts_comment = opts.hosts.join(", "),
+            source_body = source_body,
+        ),
+    )?;
+
+    wire_http_surface(project, &module, &opts.hosts)?;
+    Ok(())
+}
+
+fn wire_http_surface(
+    project: &TrembitaProject,
+    module: &str,
+    hosts: &[String],
+) -> Result<(), AddError> {
+    let mod_rs = project.http_dir().join("mod.rs");
+    ensure_mod_declaration(&mod_rs, module)?;
+
+    let mut app = AppRsPatch::load(&project.app_rs())?;
+    if !app.contains(".gateway(") {
+        return Err(AddError::Patch(PatchError::MissingMarker {
+            marker: "gateway — enable `gateway` feature or add `.gateway(...)` to app.rs".into(),
+        }));
+    }
+    app.insert_import("use trembita::Gateway;")?;
+
+    let hosts_list = hosts
+        .iter()
+        .map(|h| format!("\"{h}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    app.insert_surface(&format!(
+        r#"
+                            .surface(|s| {{
+                                s.hosts([{hosts_list}])
+                                    .routes(http::{module}::route_table())
+                            }})"#,
+    ))?;
+
+    app.save(&project.app_rs())?;
+    ensure_main_module(project, "http").map_err(AddError::Patch)?;
+    Ok(())
+}
+
+fn ensure_cargo_dependency(
+    project: &TrembitaProject,
+    name: &str,
+    spec: &str,
+) -> Result<bool, AddError> {
+    let path = project.cargo_toml();
+    let content = fs::read_to_string(&path)?;
+    if content
+        .lines()
+        .any(|line| line.trim_start().starts_with(&format!("{name} =")))
+    {
+        return Ok(false);
+    }
+    let anchor = "[dependencies]";
+    let Some(idx) = content.find(anchor) else {
+        return Err(AddError::InvalidName(
+            "Cargo.toml has no [dependencies] section".into(),
+        ));
+    };
+    let insert_at = idx + anchor.len();
+    let mut out = content;
+    out.insert_str(insert_at, &format!("\n{name} = \"{spec}\""));
+    fs::write(path, out)?;
+    Ok(true)
+}
+
+fn validate_hosts(hosts: &[String]) -> Result<(), AddError> {
+    if hosts.is_empty() {
+        return Err(AddError::InvalidName(
+            "at least one --hosts value required".into(),
+        ));
+    }
+    for host in hosts {
+        let ok = !host.is_empty()
+            && host
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_');
+        if ok {
+            continue;
+        }
+        return Err(AddError::InvalidName(format!("host: {host}")));
+    }
     Ok(())
 }
 
@@ -267,32 +503,6 @@ fn validate_identifier(name: &str) -> Result<(), AddError> {
     } else {
         Err(AddError::InvalidName(name.to_string()))
     }
-}
-
-fn ensure_main_mod(project: &TrembitaProject, module: &str) -> Result<(), AddError> {
-    let main_path = project.main_rs();
-    let content = fs::read_to_string(&main_path).map_err(PatchError::Io)?;
-    let decl = format!("mod {module};");
-    if content.lines().any(|l| l.trim() == decl) {
-        return Ok(());
-    }
-    let needle = "mod app;";
-    let Some(idx) = content.find(needle) else {
-        return Ok(());
-    };
-    let insert_at = idx + needle.len();
-    let mut out = content;
-    out.insert_str(insert_at, &format!("\n{decl}"));
-    fs::write(main_path, out).map_err(PatchError::Io)?;
-    Ok(())
-}
-
-/// Validate topic name allows dots.
-fn _topic_ok(topic: &str) -> bool {
-    !topic.is_empty()
-        && topic
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
 }
 
 #[cfg(test)]
@@ -361,5 +571,43 @@ mod tests {
         assert!(project.actors_dir().join("catalog.rs").is_file());
         let app = fs::read_to_string(project.app_rs()).unwrap();
         assert!(app.contains("WorkerOpts::<CatalogWorker>::new(\"catalog\")"));
+    }
+
+    #[test]
+    fn add_http_surface_creates_routes_and_surface() {
+        let (_dir, project) = sample_project();
+        add_http_surface(
+            &project,
+            &AddHttpSurfaceOpts {
+                name: "api".into(),
+                hosts: vec!["api.example.com".into()],
+                module: None,
+            },
+        )
+        .unwrap();
+        assert!(project.http_dir().join("api.rs").is_file());
+        let app = fs::read_to_string(project.app_rs()).unwrap();
+        assert!(app.contains("http::api::route_table()"));
+        assert!(app.contains("\"api.example.com\""));
+    }
+
+    #[test]
+    fn add_static_site_filesystem() {
+        let (_dir, project) = sample_project();
+        add_static_site(
+            &project,
+            &AddStaticSiteOpts {
+                name: "app".into(),
+                hosts: vec!["app.example.com".into()],
+                source: StaticSiteSource::Filesystem {
+                    path: "fe/app/dist".into(),
+                },
+                module: None,
+            },
+        )
+        .unwrap();
+        assert!(project.http_dir().join("app_static.rs").is_file());
+        let app = fs::read_to_string(project.app_rs()).unwrap();
+        assert!(app.contains("http::app_static::route_table()"));
     }
 }

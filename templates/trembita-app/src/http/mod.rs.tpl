@@ -1,3 +1,1 @@
-//! Custom HTTP routes — merge into gateway via `GatewayOpts::routes` or `MultiHostBuilder`.
-
-// use trembita::{HostRouter, MultiHostBuilder};
+//! Custom HTTP surfaces — wired via `GatewayOpts::surfaces()` in `app.rs`.

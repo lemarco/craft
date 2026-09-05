@@ -10,6 +10,8 @@ pub mod names {
     pub const TOPICS: &str = "trembita:topics";
     /// Worker registrations inside `.workers(workers!(...))`.
     pub const WORKERS: &str = "trembita:workers";
+    /// Custom gateway surfaces inside `.surfaces(|…| { … })`.
+    pub const SURFACES: &str = "trembita:surfaces";
 }
 
 /// Patch failure.
@@ -122,6 +124,36 @@ impl AppRsPatch {
         Ok(())
     }
 
+    /// Ensure `.surfaces(|…| { // trembita:surfaces … })` exists on [`GatewayOpts`].
+    pub fn ensure_surfaces_block(&mut self) -> Result<(), PatchError> {
+        if self.has_marker(names::SURFACES) {
+            return Ok(());
+        }
+        const NEEDLE: &str = ".protect_product_apis(true),";
+        const REPLACEMENT: &str = ".protect_product_apis(true)
+                    .surfaces(|_state| {
+                        // trembita:surfaces
+                        Gateway::new(false)
+                        // trembita:surfaces-end
+                    }),";
+        if self.content.contains(NEEDLE) {
+            self.content = self.content.replacen(NEEDLE, REPLACEMENT, 1);
+            return Ok(());
+        }
+        Err(PatchError::MissingMarker {
+            marker: "gateway .protect_product_apis(true)".into(),
+        })
+    }
+
+    /// Insert a `.surface(...)` chain before `// trembita:surfaces-end`.
+    pub fn insert_surface(&mut self, surface_lines: &str) -> Result<(), PatchError> {
+        self.ensure_surfaces_block()?;
+        if self.contains(surface_lines.trim()) {
+            return Err(PatchError::Duplicate("surface already registered".into()));
+        }
+        self.insert_before_end(names::SURFACES, surface_lines)
+    }
+
     /// Write back to disk.
     pub fn save(&self, path: &std::path::Path) -> Result<(), PatchError> {
         std::fs::write(path, &self.content)?;
@@ -130,6 +162,8 @@ impl AppRsPatch {
 }
 
 /// Ensure `mod.rs` contains `pub mod {name};`.
+///
+/// Returns `true` when a new declaration was written.
 pub fn ensure_mod_declaration(mod_rs: &std::path::Path, module: &str) -> Result<bool, PatchError> {
     let decl = format!("pub mod {module};");
     if !mod_rs.is_file() {
@@ -151,6 +185,30 @@ pub fn ensure_mod_declaration(mod_rs: &std::path::Path, module: &str) -> Result<
     }
     out.push_str(&format!("{decl}\n"));
     std::fs::write(mod_rs, out)?;
+    Ok(true)
+}
+
+/// Ensure `src/main.rs` declares `mod {module};` after `mod app;`.
+///
+/// Returns `true` when a new declaration was written.
+pub fn ensure_main_module(
+    project: &super::project::TrembitaProject,
+    module: &str,
+) -> Result<bool, PatchError> {
+    let main_path = project.main_rs();
+    let content = std::fs::read_to_string(&main_path)?;
+    let decl = format!("mod {module};");
+    if content.lines().any(|l| l.trim() == decl) {
+        return Ok(false);
+    }
+    let needle = "mod app;";
+    let Some(idx) = content.find(needle) else {
+        return Ok(false);
+    };
+    let insert_at = idx + needle.len();
+    let mut out = content;
+    out.insert_str(insert_at, &format!("\n{decl}"));
+    std::fs::write(main_path, out)?;
     Ok(true)
 }
 

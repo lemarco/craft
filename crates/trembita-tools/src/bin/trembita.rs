@@ -7,8 +7,10 @@ use std::process;
 
 use clap::{Parser, Subcommand, ValueHint};
 use trembita_tools::scaffold::{
-    AddActorOpts, AddConsumerOpts, AddTopicOpts, NewProjectOpts, TrembitaProject, add_actor,
-    add_consumer, add_topic, default_output, parse_feature_list, run_doctor, scaffold_project,
+    AddActorOpts, AddConsumerOpts, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts,
+    NewProjectOpts, StaticSiteSource, TrembitaProject, add_actor, add_consumer, add_http_surface,
+    add_static_site, add_topic, default_output, doctor_fix, parse_feature_list, run_doctor,
+    scaffold_project,
 };
 
 #[derive(Parser)]
@@ -55,6 +57,9 @@ enum Command {
         /// Project root (default: discover from cwd).
         #[arg(long, value_hint = ValueHint::DirPath)]
         path: Option<PathBuf>,
+        /// Apply safe auto-fixes (missing mod declarations).
+        #[arg(long)]
+        fix: bool,
     },
 }
 
@@ -83,6 +88,34 @@ enum AddTarget {
         /// Rust worker type name (default: `{Group}Worker`).
         #[arg(long)]
         type_name: Option<String>,
+    },
+    /// Register a custom HTTP surface (`src/http/` + gateway `.surface()`).
+    HttpSurface {
+        /// Surface name (default module name).
+        name: String,
+        /// Comma-separated hostnames (e.g. `api.example.com,api.internal`).
+        #[arg(long)]
+        hosts: String,
+        /// Rust module file name (default: derived from `name`).
+        #[arg(long)]
+        module: Option<String>,
+    },
+    /// Register a static SPA site (`StaticSite` + gateway `.surface()`).
+    StaticSite {
+        /// Site name (default module `{name}_static`).
+        name: String,
+        /// Comma-separated hostnames.
+        #[arg(long)]
+        hosts: String,
+        /// Compile-time asset path relative to project root (`include_dir!`).
+        #[arg(long, conflicts_with = "filesystem")]
+        embedded: Option<String>,
+        /// Filesystem asset path (default: `fe/{name}/dist`).
+        #[arg(long, conflicts_with = "embedded")]
+        filesystem: Option<String>,
+        /// Rust module file name (default: `{name}_static`).
+        #[arg(long)]
+        module: Option<String>,
     },
 }
 
@@ -120,6 +153,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 root.file_name().unwrap().to_string_lossy()
             );
             eprintln!("  trembita add consumer <stream>  — register more job handlers");
+            eprintln!("  trembita add http-surface <name> --hosts … — custom HTTP routes");
             eprintln!("  trembita doctor                 — verify layout and wiring");
         }
         Command::Add { target, path } => {
@@ -154,11 +188,60 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     )?;
                     eprintln!("Added actor in {}", project.actors_dir().display());
                 }
+                AddTarget::HttpSurface {
+                    name,
+                    hosts,
+                    module,
+                } => {
+                    add_http_surface(
+                        &project,
+                        &AddHttpSurfaceOpts {
+                            name,
+                            hosts: parse_hosts(&hosts)?,
+                            module,
+                        },
+                    )?;
+                    eprintln!("Added HTTP surface in {}", project.http_dir().display());
+                }
+                AddTarget::StaticSite {
+                    name,
+                    hosts,
+                    embedded,
+                    filesystem,
+                    module,
+                } => {
+                    let source = match (embedded, filesystem) {
+                        (Some(path), None) => StaticSiteSource::Embedded { path },
+                        (None, Some(path)) => StaticSiteSource::Filesystem { path },
+                        (None, None) => StaticSiteSource::Filesystem {
+                            path: format!("fe/{name}/dist"),
+                        },
+                        _ => unreachable!("clap conflicts_with"),
+                    };
+                    add_static_site(
+                        &project,
+                        &AddStaticSiteOpts {
+                            name: name.clone(),
+                            hosts: parse_hosts(&hosts)?,
+                            source,
+                            module,
+                        },
+                    )?;
+                    eprintln!("Added static site in {}", project.http_dir().display());
+                }
             }
         }
-        Command::Doctor { path } => {
+        Command::Doctor { path, fix } => {
             let project = resolve_project(path.as_deref())?;
             eprintln!("Checking {} …", project.root.display());
+            if fix {
+                let fix_report = doctor_fix(&project);
+                if fix_report.fixes_applied > 0 {
+                    eprintln!("Applied {} fix(es)", fix_report.fixes_applied);
+                } else {
+                    eprintln!("No auto-fixes needed");
+                }
+            }
             let report = run_doctor(&project);
             let code = report.print_and_exit_code();
             if code != 0 {
@@ -174,4 +257,17 @@ fn resolve_project(path: Option<&std::path::Path>) -> Result<TrembitaProject, Bo
         .map(PathBuf::from)
         .unwrap_or_else(|| std::env::current_dir().expect("cwd"));
     Ok(TrembitaProject::discover(&start)?)
+}
+
+fn parse_hosts(raw: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let hosts: Vec<String> = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|h| !h.is_empty())
+        .map(String::from)
+        .collect();
+    if hosts.is_empty() {
+        return Err("at least one host required (--hosts)".into());
+    }
+    Ok(hosts)
 }

@@ -61,7 +61,10 @@ impl RouteTable {
     /// Empty route table.
     #[must_use]
     pub fn new() -> Self {
-        Self { routes: Vec::new() }
+        Self {
+            routes: Vec::new(),
+            fallback: None,
+        }
     }
 
     /// Register a route with explicit method, path, auth mode, and handler.
