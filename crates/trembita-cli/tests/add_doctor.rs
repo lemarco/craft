@@ -73,7 +73,7 @@ fn add_and_doctor_integration() {
         report
             .findings
             .iter()
-            .filter(|f| f.level == trembita_tools::scaffold::Level::Error)
+            .filter(|f| f.level == Level::Error)
             .collect::<Vec<_>>()
     );
 }

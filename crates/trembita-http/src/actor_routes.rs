@@ -169,12 +169,17 @@ mod tests {
             Arc::new(|_, _| Box::pin(future::ready(Ok(())))),
         );
         let table = route_table(state);
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::CONTENT_TYPE,
+            "application/json".parse().expect("ct"),
+        );
         let resp = table
             .dispatch(
                 &Method::POST,
                 "/actors/workers/ask",
                 HashMap::new(),
-                http::HeaderMap::new(),
+                headers,
                 Bytes::from(r#"{"payload":"ping"}"#),
             )
             .await

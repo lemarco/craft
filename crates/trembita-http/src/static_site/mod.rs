@@ -272,7 +272,7 @@ mod tests {
     use std::collections::HashMap;
 
     use bytes::Bytes;
-    use http::Method;
+    use http::{Method, StatusCode};
 
     use super::*;
 

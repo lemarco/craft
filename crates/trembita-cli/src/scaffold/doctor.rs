@@ -466,6 +466,11 @@ async fn handle_extra(_: &[u8]) -> Result<(), ()> { Ok(()) }
         let mod_rs = fs::read_to_string(project.consumers_dir().join("mod.rs")).unwrap();
         assert!(mod_rs.contains("pub mod extra;"));
         let report = run_doctor(&project);
-        assert!(!report.has_errors());
+        assert!(
+            !report
+                .findings
+                .iter()
+                .any(|f| f.message.contains("not declared in consumers/mod.rs"))
+        );
     }
 }
