@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use super::super::app::TrembitaApp;
-use super::compute;
 use super::config::{GatewayConfig, GatewayConfigError};
 use super::drain::{self, ConnectionTracker, GatewayHandle};
 use super::router::build_gateway_service_with_tracker;
@@ -27,7 +26,6 @@ pub async fn spawn_gateway(
         build_gateway_service_with_tracker(&app, config, Some(Arc::clone(&connections)))?;
     if let Some(wl) = &workload {
         service.compute_pool = Some(wl.pool());
-        let _ = compute; // compute tokens wired via WrappedGatewayService
     }
     let tls = tls_paths
         .as_ref()

@@ -10,8 +10,6 @@ use super::identity::{self, GatewayBearerIdentity, GatewayRequest};
 use super::rate_limit::GatewayRateLimiter;
 use super::state::TrembitaGatewayState;
 
-use super::WrappedGatewayService;
-
 /// Bearer auth hook for product/upgrade HTTP when a gateway token env var is set.
 #[must_use]
 pub fn bearer_auth_from_env() -> Option<trembita_http::AuthFn> {
@@ -99,27 +97,19 @@ fn collect_builtin_routes(
     {
         if workflows_api {
             let api = TrembitaApp::workflows_api(Arc::clone(app));
-            table = table.merge(trembita_http::workflow_routes::route_table(Arc::new(
-                api.into_state_with_auth(auth.clone()),
-            )));
+            table = table.merge(api.route_table_with_auth(auth.clone()));
         }
         if actors_api {
             let api = TrembitaApp::actors_api(Arc::clone(app));
-            table = table.merge(trembita_http::actor_routes::route_table(Arc::new(
-                api.into_state_with_auth(auth.clone()),
-            )));
+            table = table.merge(api.route_table_with_auth(auth.clone()));
         }
         if jobs_api {
             let api = TrembitaApp::jobs_api(Arc::clone(app));
-            table = table.merge(trembita_http::routes::route_table(Arc::new(
-                api.into_state_with_auth(auth.clone()),
-            )));
+            table = table.merge(api.route_table_with_auth(auth.clone()));
         }
         if introspect_api {
             let api = trembita_http::IntrospectApi::new(app.introspect_observer());
-            table = table.merge(trembita_http::introspect_routes::route_table(Arc::new(
-                api.into_state_with_auth(auth.clone()),
-            )));
+            table = table.merge(api.route_table_with_auth(auth.clone()));
         }
     }
     #[cfg(not(feature = "http-jobs"))]

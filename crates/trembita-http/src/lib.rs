@@ -203,10 +203,15 @@ impl JobsApi {
 
     /// Route table for job enqueue and lookup.
     pub fn route_table(&self) -> RouteTable {
-        routes::route_table(Arc::new(self.clone_state()))
+        self.route_table_with_auth(None)
     }
 
-    /// State handle for [`Self::route_table`].
+    /// Route table with optional gateway auth hook.
+    pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
+        routes::route_table(Arc::new(self.clone().into_state_with_auth(auth)))
+    }
+
+    /// State handle for route tables.
     #[must_use]
     pub fn into_state(self) -> JobsApiState {
         self.into_state_with_auth(None)
@@ -281,10 +286,15 @@ impl ActorsApi {
 
     /// Route table for actor cast and ask.
     pub fn route_table(&self) -> RouteTable {
-        actor_routes::route_table(Arc::new(self.clone_state()))
+        self.route_table_with_auth(None)
     }
 
-    /// State handle for [`Self::route_table`].
+    /// Route table with optional gateway auth hook.
+    pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
+        actor_routes::route_table(Arc::new(self.clone().into_state_with_auth(auth)))
+    }
+
+    /// State handle for route tables.
     #[must_use]
     pub fn into_state(self) -> ActorsApiState {
         self.into_state_with_auth(None)
@@ -354,10 +364,15 @@ impl WorkflowsApi {
 
     /// Route table for workflow run/resume.
     pub fn route_table(&self) -> RouteTable {
-        workflow_routes::route_table(Arc::new(self.clone_state()))
+        self.route_table_with_auth(None)
     }
 
-    /// State handle for [`Self::route_table`].
+    /// Route table with optional gateway auth hook.
+    pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
+        workflow_routes::route_table(Arc::new(self.clone().into_state_with_auth(auth)))
+    }
+
+    /// State handle for route tables.
     #[must_use]
     pub fn into_state(self) -> WorkflowsApiState {
         self.into_state_with_auth(None)
@@ -440,10 +455,15 @@ impl IntrospectApi {
 
     /// Route table for introspection snapshots.
     pub fn route_table(&self) -> RouteTable {
-        introspect_routes::route_table(Arc::new(self.clone_state()))
+        self.route_table_with_auth(None)
     }
 
-    /// State handle for [`Self::route_table`].
+    /// Route table with optional gateway auth hook.
+    pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
+        introspect_routes::route_table(Arc::new(self.clone().into_state_with_auth(auth)))
+    }
+
+    /// State handle for route tables.
     #[must_use]
     pub fn into_state(self) -> IntrospectApiState {
         self.into_state_with_auth(None)
