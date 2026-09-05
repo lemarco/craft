@@ -1,19 +1,16 @@
 # trembita-http
 
-Product HTTP helpers for [trembita](https://crates.io/crates/trembita) apps.
+Product HTTP helpers for [trembita](https://crates.io/crates/trembita) apps (0.4.0 native routing).
 
 ## Job enqueue API
 
-Mount on any Axum router:
+Mount via [`RouteTable`](src/routing/table.rs):
 
 ```rust
-use std::sync::Arc;
-use trembita_http::{JobsApi, JobsApiState};
+use trembita_http::{JobsApi, RouteTable};
 
 let api = JobsApi::new(/* enqueue closure from TrembitaApp */);
-let app = axum::Router::new()
-    .merge(api.router())
-    .with_state(Arc::new(api.into_state()));
+let routes = api.route_table();
 ```
 
 ### `POST /jobs/{stream}`
@@ -62,17 +59,15 @@ Returns **`202 Accepted`**.
 
 ## Introspect API
 
-Mount read-only cluster snapshots (same JSON as the admin port):
+Read-only cluster snapshots (same JSON as the admin port):
 
 ```rust
 use std::sync::Arc;
-use trembita_http::{IntrospectApi, Observer};
+use trembita_http::{IntrospectApi, Observer, RouteTable};
 
 let observer: Arc<dyn Observer> = app.introspect_observer();
 let api = IntrospectApi::new(observer);
-let app = axum::Router::new()
-    .merge(api.router())
-    .with_state(Arc::new(api.into_state_with_auth(Some(auth_fn))));
+let routes = api.route_table_with_auth(Some(auth_fn));
 ```
 
 Or via the facade gateway:
@@ -87,29 +82,43 @@ GatewayOpts::new(addr)
 
 Routes: `GET /introspect/cluster`, `/actors`, `/queues`, `/sagas`, `/raft-groups`, `/actors/{id}`, `/node/{id}`.
 
-## Virtual hosts (`HostRouter`)
+## Gateway surfaces (`Gateway` + `Surface`)
 
 Several hostnames on one port — strict by default (unknown host → **404**):
 
 ```rust
-use trembita_http::HostRouter;
+use http::StatusCode;
+use trembita_http::{CorsPolicy, Gateway, RequestCtx, Response, RouteTable, Surface};
 
-let api = axum::Router::new().route("/health", get(|| async { "ok" }));
-let ws = axum::Router::new().route("/ws", get(ws_upgrade));
+let gateway = Gateway::new(false)
+    .surface(|s| {
+        s.hosts(["api.example.com"])
+            .cors(CorsPolicy::allow_origins(["https://app.example.com"]))
+            .routes(
+                RouteTable::new().get("/health", |_: RequestCtx| async {
+                    Ok(Response::status(StatusCode::OK))
+                }),
+            )
+    })
+    .dev_fallback(
+        RouteTable::new().get("/health", |_: RequestCtx| async {
+            Ok(Response::status(StatusCode::OK))
+        }),
+    );
 
-let app = HostRouter::new()
-    .host("api.example.com", api)
-    .host("ws.example.com", ws)
-    .local_dev_fallback(single_host_router_for_local_dev) // localhost only
-    .build();
+let service = gateway.build_service()?;
 ```
 
-Do **not** use a catch-all dev router in production — register every production
-hostname explicitly, or opt in to [`HostRouter::unmatched_fallback`] deliberately.
+Register every production hostname explicitly. Loopback-only routes go in [`Gateway::dev_fallback`](src/gateway/mod.rs) (omitted when `is_production` is true).
+
+### Session and identity gates
+
+- [`SessionGate`](src/routing/auth.rs) on a surface — use `.post_session("/path", …)` for cookie-protected routes.
+- Gateway identity — use `.get_identity("/path", …)` plus `GatewayService::with_identity` (wired automatically when product APIs require auth).
 
 ## Static sites (`StaticSite`)
 
-Serve product SPAs from one of three backends — same router shape, switch via config:
+Serve product SPAs from one of three backends — same route table shape, switch via config:
 
 | Backend | Use case |
 |---------|----------|
@@ -118,17 +127,19 @@ Serve product SPAs from one of three backends — same router shape, switch via 
 | [`StaticSource::ObjectStore`](src/static_site/object_store.rs) | S3/MinIO/R2 (feature `static-s3`) |
 
 ```rust
-use trembita_http::{HostRouter, StaticSite, StaticSource, embedded_from_dir};
+use trembita_http::{Gateway, RouteTable, StaticSite, StaticSource, embedded_from_dir};
 
 static CLIENT: include_dir::Dir<'_> = include_dir!("../fe/client/dist");
 
 let site = StaticSite::new(StaticSource::embedded(embedded_from_dir(&CLIENT)))
     .spa_fallback(true);
 
-let app = HostRouter::new()
-    .static_site("app.example.com", site)
-    .host("api.example.com", api_router)
-    .build();
+let gateway = Gateway::new(false)
+    .surface(|s| {
+        s.hosts(["app.example.com"])
+            .routes(site.route_table())
+    })
+    .surface(|s| s.hosts(["api.example.com"]).routes(api_routes));
 ```
 
 Runtime env (filesystem example):
@@ -147,3 +158,5 @@ export TREMBITA_STATIC_ADMIN_PREFIX=releases/latest/
 export AWS_ACCESS_KEY_ID=…
 export AWS_SECRET_ACCESS_KEY=…
 ```
+
+See [gateway-routing-v2](../../docs/decisions/gateway-routing-v2.md) for the full 0.4.0 migration guide.

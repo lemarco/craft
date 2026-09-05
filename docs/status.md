@@ -71,7 +71,7 @@ Details below ↓
 
 **Event topics** ([event-topics](decisions/event-topics.md)): durable pub/sub, named subscriptions, voter replication; [`TopicOpts`](../crates/trembita/src/topic_opts.rs), [`.topics()`](../crates/trembita/src/app/mod.rs); **`EventOutboxSource`** ([event-outbox](decisions/event-outbox.md)) for transactional outbox drain.
 
-**Gateway & HTTP** ([`trembita-http`](../crates/trembita-http/README.md), [gateway-identity](decisions/gateway-identity.md)): separate listener, opt-in `/jobs/*`, `/actors/*`, `/workflows/*`, bearer auth, custom Axum/WebSocket, `HostRouter`.
+**Gateway & HTTP** ([`trembita-http`](../crates/trembita-http/README.md), [gateway-identity](decisions/gateway-identity.md), [gateway-routing-v2](decisions/gateway-routing-v2.md)): separate listener, opt-in `/jobs/*`, `/actors/*`, `/workflows/*`, bearer auth, native `Gateway`/`RouteTable` + hyper WebSocket.
 
 **Workload governor** ([workload-governor](decisions/workload-governor.md)): per-node compute tokens + consumer tuning from gateway load and queue depth.
 

@@ -84,19 +84,17 @@ GatewayOpts::new(addr)
     .with_introspect_api(true)    // cluster / actors / queues / sagas snapshots
     .identity(MySessionIdentity)
     .protect_product_apis(true)
-    .routes(|state| my_admin_ui_routes(state))
+    .surfaces(|state| my_admin_ui_routes(state))
 ```
 
-[`build_gateway_router`](../../crates/trembita/src/gateway/mod.rs) merges `IntrospectApi` when `introspect_api: true`, applying the same `auth` clone as jobs/actors/workflows.
+[`build_gateway_service`](../../crates/trembita/src/gateway/mod.rs) merges `IntrospectApi` when `introspect_api: true`, applying the same `auth` clone as jobs/actors/workflows.
 
-Manual mount (custom Axum app without full gateway):
+Manual mount (custom route table without full gateway):
 
 ```rust
 let observer: Arc<dyn Observer> = app.introspect_observer(); // or TrembitaObserver handle
 let api = IntrospectApi::new(observer);
-let app = Router::new()
-    .merge(api.router())
-    .with_state(Arc::new(api.into_state_with_auth(Some(my_auth))));
+let routes = api.route_table_with_auth(Some(my_auth));
 ```
 
 ### 3. Admin port unchanged

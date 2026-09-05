@@ -56,7 +56,7 @@ Auth is **never** prescribed (no JWT crate, no cookie store in trembita).
 ## Rejected
 
 - Mandatory URL presets (`/ws?user=`) as the only API — presets are examples only
-- Custom HTTP stack — hyper/axum at the edge is sufficient
+- Native hyper routing at the edge — trembita owns path matching and dispatch
 - Built-in JWT / OAuth — stays in user code via [`GatewayIdentity`]
 
 ## Consequences

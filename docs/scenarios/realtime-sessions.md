@@ -93,15 +93,15 @@ Same artifact on every VPS; LB round-robins **gateways only**. Workers communica
 
 Decision: [gateway-identity](../decisions/gateway-identity.md). Full example: [`examples/realtime/`](../../examples/realtime/).
 
-HTTP handlers are counted automatically by gateway middleware ([`build_gateway_router`](../../crates/trembita/src/gateway/mod.rs)). WebSocket sessions must call [`track_connection`](../../crates/trembita/src/gateway/mod.rs) inside the upgrade callback — the HTTP upgrade response returns before the socket closes.
+HTTP handlers are counted automatically by gateway middleware ([`build_gateway_service`](../../crates/trembita/src/gateway/mod.rs)). WebSocket sessions must call [`track_connection`](../../crates/trembita/src/gateway/mod.rs) inside the upgrade callback — the HTTP upgrade response returns before the socket closes.
 
 ```rust
 use std::time::Duration;
-use axum::http::{HeaderMap, Method, Uri};
-use axum::{Router, extract::State, routing::get};
 use trembita::{
-    TrembitaGatewayState, GatewayIdentity, GatewayOpts, GatewayRequest, SessionHandle, SessionKey,
+    Gateway, GatewayIdentity, GatewayOpts, GatewayRequest, SessionHandle, SessionKey,
+    TrembitaGatewayState,
 };
+use trembita_http::{RouteTable, accept_websocket, routing_to_http_response};
 
 // Your auth (JWT, cookie→DB, …) — trembita only calls extract().
 struct AppIdentity { /* db, jwt, … */ }
@@ -117,35 +117,36 @@ impl SessionKey for UserId {
     }
 }
 
-async fn ws(
-    ws: WebSocketUpgrade,
-    State(state): State<TrembitaGatewayState>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Response {
-    let mut handle = match state
-        .open_actor_session_parts("chat", &method, &uri, &headers, Some(Duration::from_secs(3600)))
-        .await
-    {
-        Ok(h) => h,
-        Err(e) => return e.into_response(),
-    };
-    ws.on_upgrade(move |socket| async move {
-        let _guard = state.track_connection();
-        while let Some(Ok(Message::Text(text))) = socket.recv().await {
-            let payload = trembita::proto::encode(&text).unwrap();
-            let _ = handle.cast(payload).await;
-            let _ = socket.send(Message::Text(format!("ok: {text}"))).await;
-        }
-    })
-    .into_response()
+fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
+    Gateway::new(false).dev_fallback(RouteTable::new().websocket("/ws", move |req| {
+        let st = state.clone();
+        Box::pin(async move {
+            match st
+                .open_actor_session_parts(
+                    "chat",
+                    req.method(),
+                    req.uri(),
+                    req.headers(),
+                    Some(Duration::from_secs(3600)),
+                )
+                .await
+            {
+                Ok(handle) => accept_websocket(req, move |stream| {
+                    let st = st.clone();
+                    async move {
+                        let _guard = st.track_connection();
+                        // tokio_tungstenite::WebSocketStream::from_raw_socket(stream, …)
+                        let _ = (stream, handle);
+                    }
+                }),
+                Err(e) => routing_to_http_response(e.into_http_response()),
+            }
+        })
+    }))
 }
 
 TrembitaApp::builder()
-    .gateway(GatewayOpts::new(addr).identity(AppIdentity { /* … */ }).routes(|state| {
-        Router::new().route("/ws", get(ws)).with_state(state)
-    }));
+    .gateway(GatewayOpts::new(addr).identity(AppIdentity { /* … */ }).surfaces(gateway_surfaces));
 ```
 
 Gateway does **not** hold conversation state — only the session handle ([`SessionHandle`](../../crates/trembita/src/gateway/session.rs)).
@@ -157,46 +158,45 @@ Use [`open_actor_session_parts`](../../crates/trembita/src/gateway/mod.rs) when 
 Showcases: [`examples/realtime/src/gateway_http.rs`](../../examples/realtime/src/gateway_http.rs) (`POST /chat`, `GET /me`), [`examples/stateful-workers/src/gateway_orders.rs`](../../examples/stateful-workers/src/gateway_orders.rs) (`POST /orders/submit` beside built-in `/actors/*`).
 
 ```rust
-use axum::extract::Json;
-use axum::http::{HeaderMap, Method, Request, Uri};
-use axum::response::IntoResponse;
+use http::StatusCode;
+use trembita_http::{RequestCtx, Response};
 
 #[derive(Deserialize)]
 struct ChatPost { message: String }
 
-async fn post_chat(
-    State(state): State<TrembitaGatewayState>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    Json(body): Json<ChatPost>,
-) -> Response {
+async fn post_chat(state: TrembitaGatewayState, ctx: RequestCtx) -> Result<Response, trembita_http::HttpError> {
+    let body: ChatPost = ctx.json()?;
     let mut handle = match state
-        .open_actor_session_parts("chat", &method, &uri, &headers, Some(Duration::from_secs(3600)))
+        .open_actor_session_parts(
+            "chat",
+            ctx.method(),
+            ctx.uri(),
+            ctx.headers(),
+            Some(Duration::from_secs(3600)),
+        )
         .await
     {
         Ok(h) => h,
-        Err(e) => return e.into_response(),
+        Err(e) => return Ok(e.into_http_response()),
     };
     let payload = trembita::proto::encode(&body.message).unwrap();
-    match handle.cast(payload).await {
-        Ok(()) => Json(json!({ "ok": true })).into_response(),
-        Err(e) => (StatusCode::BAD_GATEWAY, e.to_string()).into_response(),
-    }
+    handle
+        .cast(payload)
+        .await
+        .map_err(|e| trembita_http::HttpError::Internal(e.to_string()))?;
+    Ok(Response::json(StatusCode::OK, serde_json::json!({ "ok": true })))
 }
 
-async fn get_me(
-    State(state): State<TrembitaGatewayState>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Response {
+async fn get_me(state: TrembitaGatewayState, ctx: RequestCtx) -> Result<Response, trembita_http::HttpError> {
     match state
-        .extract_session_parts(&method, &uri, &headers)
+        .extract_session_parts(ctx.method(), ctx.uri(), ctx.headers())
         .await
     {
-        Ok(id) => Json(json!({ "user": id.session_key() })).into_response(),
-        Err(e) => e.into_response(),
+        Ok(id) => Ok(Response::json(
+            StatusCode::OK,
+            serde_json::json!({ "user": id.session_key() }),
+        )),
+        Err(e) => Ok(e.into_http_response()),
     }
 }
 ```

@@ -100,8 +100,7 @@ impl Default for Surface {
     }
 }
 
-/// Declarative multi-host gateway — replaces [`crate::HostRouter`] + [`crate::MultiHostBuilder`]
-/// in 0.4.0.
+/// Declarative multi-host gateway (trembita 0.4.0).
 #[derive(Debug, Default)]
 pub struct Gateway {
     surfaces: Vec<Surface>,

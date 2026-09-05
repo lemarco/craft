@@ -89,7 +89,7 @@ async fn handle_socket(
     let mut ws = WebSocketStream::from_raw_socket(stream, Role::Server, None).await;
     while let Some(Ok(msg)) = ws.next().await {
         if let WsMessage::Text(text) = msg {
-            let payload = trembita::proto::encode(&text).expect("encode");
+            let payload = trembita::proto::encode(&text.to_string()).expect("encode");
             if handle.cast(payload).await.is_ok() {
                 let _ = ws.send(WsMessage::Text(format!("ok: {text}").into())).await;
             }
