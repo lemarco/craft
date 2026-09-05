@@ -63,21 +63,18 @@ fn install(opts: MetricsOpts) {
 fn install_otlp(service_name: &str, endpoint: &str) -> Result<(), String> {
     use opentelemetry::KeyValue;
     use opentelemetry::global;
-    use opentelemetry_otlp::MetricExporterBuilder;
     use opentelemetry_otlp::WithExportConfig;
     use opentelemetry_sdk::Resource;
-    use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
+    use opentelemetry_sdk::metrics::SdkMeterProvider;
 
-    let exporter = MetricExporterBuilder::default()
+    let exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_tonic()
         .with_endpoint(endpoint)
         .build()
         .map_err(|e| format!("otlp metrics exporter: {e}"))?;
 
-    let reader = PeriodicReader::builder(exporter).build();
-
     let provider = SdkMeterProvider::builder()
-        .with_reader(reader)
+        .with_periodic_exporter(exporter)
         .with_resource(
             Resource::builder_empty()
                 .with_attributes([KeyValue::new("service.name", service_name.to_string())])
