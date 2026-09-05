@@ -14,7 +14,14 @@
 //!     TrembitaApp::builder()
 //!         .data_dir("/var/lib/trembita")
 //!         .queue([QueueOpts::new("jobs", Duration::from_secs(300))])
-//!         .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?).with_jobs_api(true))
+//!         .gateway(
+//!             GatewayOpts::new("127.0.0.1:8090".parse()?)
+//!                 .surfaces(|state| {
+//!                     Gateway::new(false).dev_fallback(
+//!                         TrembitaApp::jobs_api(std::sync::Arc::clone(&state.app)).route_table(),
+//!                     )
+//!                 }),
+//!         )
 //!         .run(RunOpts::default().with_wait_queue("jobs"))
 //!         .await
 //! }

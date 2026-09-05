@@ -122,17 +122,15 @@ mod workflows {
     }
 
     #[tokio::test]
-    async fn workflows_without_workflows_api_flag_fails_at_boot() {
+    async fn workflows_boot_without_workflow_http_routes() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let result = local_builder(dir.path())
+        let app = local_builder(dir.path())
             .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
             .gateway(GatewayOpts::new("127.0.0.1:0".parse().expect("addr")))
             .boot_for_test(RunOpts::local())
-            .await;
-        match result {
-            Ok(_) => panic!("expected boot failure for gateway without workflows_api"),
-            Err(err) => assert_config_err(err, "`.workflows([…])` requires"),
-        }
+            .await
+            .expect("workflows run without explicit HTTP routes until merged in surfaces");
+        app.shutdown();
     }
 }
 
