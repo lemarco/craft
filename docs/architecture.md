@@ -22,7 +22,7 @@ Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `trembita-core`,
 | Read consistency | ReadIndex / lease / follower reads | [client-and-routing](decisions/client-and-routing.md) |
 | Actor runtime | tokio tasks + supervision | [cross-node-actors](decisions/cross-node-actors.md) |
 | Job backlog | `JobQueue` port; default `redb`; leader `QueueService` + autoscale | [job-queue](decisions/job-queue.md) |
-| External backlog | `ExternalBacklog` port; optional [`trembita-backlog-postgres`](../crates/trembita-backlog-postgres/) | [external-backlog](decisions/external-backlog.md) |
+| External backlog | `ExternalBacklog` port; optional Postgres adapter via `trembita` feature `external-backlog` | [external-backlog](decisions/external-backlog.md) |
 | Event topics | `EventTopic` port; default `redb`; leader `TopicService` + voter replication; optional [`EventOutboxSource`](decisions/event-outbox.md) drainer | [event-topics](decisions/event-topics.md) |
 | Workload fairness | `ComputeTokenPool` + `WorkloadGovernor` on each node | [workload-governor](decisions/workload-governor.md) |
 | Persistence | redb (per-group files in multi-Raft) | — |
@@ -33,7 +33,7 @@ Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `trembita-core`,
 
 ```
 crates/
-├── trembita/              # facade — primary user dependency (TrembitaApp, TrembitaCluster)
+├── trembita/              # facade — primary user dependency (TrembitaApp, features → optional crates)
 ├── trembita-proto/        # IDs, log, wire types, encode/decode
 ├── trembita-core/         # pure Raft FSM + shard planners + reference `kv` StateMachine
 ├── trembita-storage/      # LogStore, HardState, Snapshot (+ redb)
@@ -46,19 +46,22 @@ crates/
 ├── trembita-macros/       # StateMachine + UserActor derives
 ├── trembita-tools/        # reference binaries (node, ops, e2e clients)
 ├── trembita-sim/          # deterministic sim harness + linearizability checker
-├── trembita-store-redis/  # optional ActorStateStore (Redis)
-├── trembita-backlog-postgres/  # optional ExternalBacklog (Postgres SKIP LOCKED)
+├── trembita-store-redis/  # optional ActorStateStore (Redis) — `trembita/redis-store`
+├── trembita-backlog-postgres/  # optional ExternalBacklog — `trembita/external-backlog`
+├── trembita-events-postgres/   # optional EventOutboxSource — `trembita/domain-outbox`
 ├── trembita-dashboard/    # admin HTTP + observability views
-├── trembita-http/         # product HTTP gateway routes
+├── trembita-http/         # product HTTP gateway — `trembita/http-jobs`
 └── trembita-test-support/ # shared test harness helpers
 
 examples/                # product showcases (standalone Cargo.toml each; not workspace members)
 dev/                     # certs, cluster-common.sh, compose/, 3-node trembita-node demo
 ```
 
+Embedders depend on **`trembita`** only; optional integrations compile in via [facade features](decisions/facade.md).
+
 Reference KV state machine: [`trembita_core::kv`](../crates/trembita-core/src/kv.rs) (re-exported as `trembita::kv`).
 
-See [naming](decisions/naming.md) and [examples/README.md](../examples/README.md).
+See [naming](decisions/naming.md), [facade](decisions/facade.md), and [examples/README.md](../examples/README.md).
 
 ## Node internals (single-Raft; multi-Raft stacks N drivers)
 

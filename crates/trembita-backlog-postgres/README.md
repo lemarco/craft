@@ -1,7 +1,21 @@
 # trembita-backlog-postgres
 
-PostgreSQL [`ExternalBacklog`](https://docs.rs/trembita-actor/latest/trembita_actor/trait.ExternalBacklog.html)
+PostgreSQL [`ExternalBacklog`](https://docs.rs/trembita-jobs/latest/trembita_jobs/trait.ExternalBacklog.html)
 adapter for trembita job queue streams.
+
+## Product apps — use the facade
+
+```toml
+trembita = { version = "0.3", features = ["external-backlog"] }
+```
+
+```rust
+use trembita::{PgBacklog, JobOpts, BacklogFeedOpts};
+```
+
+See [facade ADR](../../docs/decisions/facade.md) and [external-backlog](../../docs/decisions/external-backlog.md).
+
+Direct dependency on `trembita-backlog-postgres` is for advanced/workspace use.
 
 ## Expected schema (default)
 
@@ -27,5 +41,3 @@ JobOpts::new("imports")
     )
     .consumer(&ImportConsumer)
 ```
-
-See [external-backlog](../../docs/decisions/external-backlog.md).

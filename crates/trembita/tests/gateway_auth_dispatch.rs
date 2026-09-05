@@ -30,6 +30,7 @@ impl trembita::GatewayIdentity for BearerSecret {
 fn gateway_config() -> trembita::GatewayConfig {
     GatewayOpts::new("127.0.0.1:0".parse().unwrap())
         .identity(BearerSecret)
+        .rate_limit_per_sec(100)
         .surfaces(|_state| {
             Gateway::new(false).surface(|s| {
                 s.hosts(["api.example.com"])
@@ -132,4 +133,81 @@ async fn cors_session_and_identity_gates_on_one_surface() {
             .and_then(|v| v.to_str().ok()),
         Some(origin)
     );
+}
+
+#[tokio::test]
+async fn unknown_host_returns_not_found() {
+    let app = Arc::new(
+        boot_local_app(
+            || {
+                TrembitaApp::builder().configure(TrembitaConfigure {
+                    tick_period: Duration::from_millis(5),
+                    ..TrembitaConfigure::default()
+                })
+            },
+            None,
+        )
+        .await,
+    );
+    let addr = spawn_test_gateway(&app, gateway_config()).await;
+    let resp = reqwest::Client::new()
+        .get(format!("http://{addr}/me"))
+        .header("Host", "unknown.example.com")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn unknown_path_on_known_host_returns_not_found() {
+    let app = Arc::new(
+        boot_local_app(
+            || {
+                TrembitaApp::builder().configure(TrembitaConfigure {
+                    tick_period: Duration::from_millis(5),
+                    ..TrembitaConfigure::default()
+                })
+            },
+            None,
+        )
+        .await,
+    );
+    let addr = spawn_test_gateway(&app, gateway_config()).await;
+    let resp = reqwest::Client::new()
+        .get(format!("http://{addr}/missing"))
+        .header("Host", "api.example.com")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn rate_limit_returns_429() {
+    let mut config = gateway_config();
+    config.rate_limit_per_sec = Some(1);
+    let app = Arc::new(
+        boot_local_app(
+            || {
+                TrembitaApp::builder().configure(TrembitaConfigure {
+                    tick_period: Duration::from_millis(5),
+                    ..TrembitaConfigure::default()
+                })
+            },
+            None,
+        )
+        .await,
+    );
+    let addr = spawn_test_gateway(&app, config).await;
+    let client = reqwest::Client::new();
+    let url = format!("http://{addr}/me");
+    let headers = |req: reqwest::RequestBuilder| {
+        req.header("Host", "api.example.com")
+            .header("authorization", "Bearer secret")
+    };
+    let first = headers(client.get(&url)).send().await.unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    let second = headers(client.get(&url)).send().await.unwrap();
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
 }

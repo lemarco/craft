@@ -52,3 +52,11 @@ impl HttpError {
         }
     }
 }
+
+impl HttpError {
+    /// Convert to a gateway [`super::ctx::Response`].
+    #[must_use]
+    pub fn into_http_response(self) -> super::ctx::Response {
+        super::ctx::Response::text(self.status(), self.message())
+    }
+}

@@ -30,7 +30,8 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 | Client | `RemoteClient`, `run_saga`, `run_keyed_saga`, `KeyedClient` | Re-exported `trembita::client` |
 | Multi-Raft | `propose_keyed`, `add_raft_groups`, `RaftGroupsView` | Builder flags |
 | Saga / 2PC journals | `MetaRaftSagaJournal`, `CompositeSagaJournal`, `StoreTwoPhaseJournal` | Ops / recovery |
-| HTTP product | `trembita-http` crate, `TrembitaApp::jobs_api` (`http-jobs` feature) | Gateway layer |
+| HTTP product | `Gateway`, `RouteTable`, `GatewayOpts` (`http-jobs` feature) | Gateway layer — see [facade](facade.md) |
+| Optional adapters | `PgBacklog` (`external-backlog`), `PgEventOutboxSource` (`domain-outbox`), `RedisStore` (`redis-store`) | Feature-gated re-exports from facade |
 
 **Removed / hidden (0.4.1):** `trembita::advanced` module (renamed to `trembita::cluster`, no alias); root `use trembita::TrembitaCluster`; `TrembitaApp::cluster` / `into_cluster` / `TrembitaAppBuilder::inner_mut` (`#[doc(hidden)]`, tests only).
 
@@ -46,11 +47,13 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 
 ## Facade re-export audit (`crates/trembita/src/lib.rs`)
 
-**Intentionally public:** `actor`, `client`, `core`, `net`, `storage`, `proto`,
-`dashboard`, `macros`, cluster/app/workflow/saga/two_phase types listed above.
+**Intentionally public:** `actor_store`, `client`, `core`, `net`, `storage`, `proto`,
+`dashboard`, `macros`, `jobs`, `events`, `runtime`, cluster/app/workflow types listed above.
 
-**Not re-exported (use sub-crates deliberately):** `trembita-sim`, `trembita-ops`,
-`trembita-store-redis`, `trembita-http` (separate dependency for product HTTP).
+**Feature-gated re-exports** ([facade](facade.md)): `http-jobs` → HTTP gateway types;
+`redis-store` → `store_redis`; `external-backlog` → `backlog_postgres`; `domain-outbox` → `events_postgres`.
+
+**Not re-exported (use sub-crates deliberately):** `trembita-sim`, `trembita-ops`, `trembita-cli`.
 
 ## Maintenance checklist
 
@@ -62,5 +65,6 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 ## Related
 
 - [library-and-publishing.md](library-and-publishing.md)
+- [facade.md](facade.md)
 - [product-scenarios.md](product-scenarios.md)
 - [CHANGELOG.md](../../CHANGELOG.md)

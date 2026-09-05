@@ -39,6 +39,23 @@ impl CookieConfig {
             same_site: env_var(&format!("{prefix}_COOKIE_SAME_SITE"), "lax"),
         }
     }
+
+    /// Build the `Set-Cookie` header value for a session token.
+    #[must_use]
+    pub fn set_cookie_value(&self, token: &str) -> String {
+        let same_site = self.same_site.to_ascii_lowercase();
+        let mut value = format!(
+            "{}={token}; Max-Age={}; Path=/; SameSite={same_site}",
+            self.name, self.max_age
+        );
+        if self.http_only {
+            value.push_str("; HttpOnly");
+        }
+        if self.secure {
+            value.push_str("; Secure");
+        }
+        value
+    }
 }
 
 fn env_var(key: &str, default: &str) -> String {

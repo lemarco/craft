@@ -37,17 +37,23 @@ crates/
 
 ### User `Cargo.toml`
 
+One dependency; optional integrations via [facade features](facade.md):
+
 ```toml
 [dependencies]
-trembita = { path = "../trembita" }   # or crates.io when published
-trembita-macros = { path = "../trembita-macros" }
+trembita = { version = "0.3", features = ["http-jobs", "dev-certs"] }
+# optional:
+# trembita = { features = ["external-backlog", "redis-store", "domain-outbox"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 ```
 
 ```rust
 use trembita::{TrembitaApp, RunOpts};
 use trembita::cluster::{TrembitaCluster, ResourceProfile};
-use trembita_macros::{UserActor, StateMachine};
+use trembita_macros::{consumer, consumer_json};
 ```
+
+Macros are re-exported from `trembita` (`consumer!`, `consumer_json!`); a direct `trembita-macros` dependency is optional.
 
 ### Main cluster type
 
@@ -84,3 +90,4 @@ TrembitaCluster::builder()
 ## Related
 
 - [architecture.md](../architecture.md)
+- [facade.md](facade.md)

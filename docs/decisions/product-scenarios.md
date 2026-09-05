@@ -51,11 +51,12 @@ See [job-queue](job-queue.md) for why mailboxes and Raft logs are not misused as
 
 ### Infrastructure stance
 
-| Required | Optional |
+| Required | Optional (via `trembita` features — [facade](facade.md)) |
 |----------|----------|
-| VPS / bare metal (or containers as packaging only) | `trembita-store-redis` — integration with non-trembita services |
-| `data_dir` on disk (`group-*.redb`, `queue-*.redb`, `topic-*.redb`, …) | [`trembita-backlog-postgres`](../../crates/trembita-backlog-postgres/) — optional `ExternalBacklog` adapter; Valkey/other adapters as needed |
-| mTLS certs ([certificates](certificates.md)) | Load balancer in front of gateway nodes |
+| VPS / bare metal (or containers as packaging only) | `redis-store` — Redis `ActorStateStore` for non-trembita integration |
+| `data_dir` on disk (`group-*.redb`, `queue-*.redb`, `topic-*.redb`, …) | `external-backlog` — Postgres `ExternalBacklog`; Valkey/other adapters as needed |
+| mTLS certs ([certificates](certificates.md)) | `domain-outbox` — Postgres transactional outbox |
+| | Load balancer in front of gateway nodes |
 
 **Non-goals:** Kubernetes as core product, one-container-per-actor microservices, mandatory Redis/PostgreSQL/RabbitMQ, **static node roles** as the primary scaling model (removed — use homogeneous nodes + `.workload()`).
 

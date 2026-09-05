@@ -15,15 +15,18 @@
 
 | Crate | Published | Audience |
 |-------|-----------|----------|
-| `trembita` | **Yes** — primary | Framework users depend on this |
-| `trembita-macros` | Yes | Re-exported by `trembita`; also direct |
-| `trembita-proto`, `trembita-core`, `trembita-storage`, `trembita-net`, `trembita-actor`, `trembita-client` | Yes | Advanced users / composability |
-| `trembita-store-redis` | Yes (optional) | Redis `ActorStateStore` |
-| `trembita-dashboard` | Yes (optional) | Monitoring UI |
+| `trembita` | **Yes** — primary | Framework users depend on this; optional integrations via [Cargo features](facade.md) |
+| `trembita-macros` | Yes | Re-exported by `trembita`; direct dep optional |
+| `trembita-proto`, `trembita-core`, `trembita-storage`, `trembita-net`, `trembita-runtime`, `trembita-client` | Yes | Advanced users / composability |
+| `trembita-http` | Yes (optional) | Product HTTP — enabled via `trembita/http-jobs` |
+| `trembita-store-redis` | Yes (optional) | Redis `ActorStateStore` — `trembita/redis-store` |
+| `trembita-backlog-postgres` | Yes (optional) | Postgres `ExternalBacklog` — `trembita/external-backlog` |
+| `trembita-events-postgres` | Yes (optional) | Postgres outbox — `trembita/domain-outbox` |
+| `trembita-dashboard` | Yes (optional) | Monitoring UI (always linked by facade today) |
 | `trembita-sim` | Yes (dev) | Testing / simulation |
 | `trembita-node` | **No** (`publish = false`) | Reference/demo runner — build from repo or e2e Docker |
 
-`trembita` facade re-exports the stable public API so users typically add **one dependency**.
+`trembita` facade re-exports the stable public API so users typically add **one dependency** and enable integrations with features ([facade.md](facade.md)).
 
 ### Versioning
 
@@ -80,4 +83,5 @@
 
 - [deployment-model.md](deployment-model.md)
 - [naming.md](naming.md)
+- [facade.md](facade.md)
 - [cluster-membership.md#version-skew--hard-reject](cluster-membership.md#version-skew--hard-reject)

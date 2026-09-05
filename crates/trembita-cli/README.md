@@ -34,7 +34,7 @@ trembita doctor --fix
 ```
 
 See [`framework-conventions`](../../docs/decisions/framework-conventions.md) for the generated
-project layout.
+project layout and [facade ADR](../../docs/decisions/facade.md) for how adapter features map to `trembita`.
 
 ## Relation to `trembita-tools`
 

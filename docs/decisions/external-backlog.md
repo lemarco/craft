@@ -40,7 +40,15 @@ Runtime behaviour ([`run_backlog_feeder`](../../crates/trembita-jobs/src/externa
 - **Settle** on ack, nack, and lease-timeout **reclaim** when a dedup key is present — durable **outbox** at `{data_dir}/backlog-settle-outbox.redb` + leader [`run_backlog_settle_drainer`](../../crates/trembita-jobs/src/external_backlog.rs)
 - **Autoscale** reads `depth()` when a backlog is registered for the stream; otherwise falls back to queue `pending + leased`
 
-Optional adapter: [`trembita-backlog-postgres`](../../crates/trembita-backlog-postgres/) (`FOR UPDATE SKIP LOCKED`).
+Optional adapter: enable `external-backlog` on the `trembita` dependency ([facade](facade.md)) — [`PgBacklog`](../../crates/trembita-backlog-postgres/) (`FOR UPDATE SKIP LOCKED`). Direct `trembita-backlog-postgres` dep remains for advanced use.
+
+```toml
+trembita = { version = "0.3", features = ["external-backlog"] }
+```
+
+```rust
+use trembita::{PgBacklog, JobOpts, BacklogFeedOpts};
+```
 
 ## Consequences
 
@@ -54,6 +62,7 @@ Optional adapter: [`trembita-backlog-postgres`](../../crates/trembita-backlog-po
 ## Related
 
 - [leader-task.md](leader-task.md) — leader task primitive shared by feeder and drainer loops
+- [facade.md](facade.md) — `external-backlog` feature
 
 ## Alternatives considered
 

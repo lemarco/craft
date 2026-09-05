@@ -3,30 +3,14 @@
 use std::sync::Arc;
 
 use base64::Engine;
+use http::StatusCode;
 use http::header;
-use http::{StatusCode, Uri};
 
 use crate::ActorsApiState;
 use crate::actor_types::{ActorsApiError, AskAccepted};
 use crate::routes::parse_enqueue_body;
 use crate::routing::{HttpError, RequestCtx, Response, RouteTable};
 use crate::types::JobsApiError;
-
-fn ctx_uri(ctx: &RequestCtx) -> Uri {
-    ctx.path().parse().unwrap_or_else(|_| Uri::from_static("/"))
-}
-
-async fn authorize(state: &ActorsApiState, ctx: &RequestCtx) -> Result<(), ActorsApiError> {
-    if let Some(auth) = &state.auth {
-        auth(ctx.method().clone(), ctx_uri(ctx), ctx.headers().clone())
-            .await
-            .map_err(|e| match e {
-                JobsApiError::Unauthorized(m) => ActorsApiError::Unauthorized(m),
-                other => ActorsApiError::BadRequest(other.to_string()),
-            })?;
-    }
-    Ok(())
-}
 
 /// Route table for actor cast / ask routes.
 #[must_use]
@@ -55,7 +39,6 @@ async fn post_ask_inner(
     state: &ActorsApiState,
     ctx: RequestCtx,
 ) -> Result<Response, ActorsApiError> {
-    authorize(state, &ctx).await?;
     let group = ctx
         .params()
         .get("group")
@@ -92,7 +75,6 @@ async fn post_cast_inner(
     state: &ActorsApiState,
     ctx: RequestCtx,
 ) -> Result<Response, ActorsApiError> {
-    authorize(state, &ctx).await?;
     let group = ctx
         .params()
         .get("group")

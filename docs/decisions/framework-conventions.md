@@ -52,18 +52,24 @@ my-app/
 
 ### App-level Cargo features
 
-Scaffolded apps expose trembita capabilities as **app features** (mapped to dependencies):
+Scaffolded apps expose trembita capabilities as **app features** that forward to the [`trembita` facade](facade.md):
 
-| App feature | Enables |
-|-------------|---------|
-| `jobs` (default) | Job queue + `#[consumer]` handlers |
-| `gateway` (default) | HTTP gateway + product APIs |
+| App feature | Forwards to |
+|-------------|-------------|
+| `jobs` (default) | Job queue + `#[consumer]` handlers (core — no extra dep) |
+| `gateway` (default) | `trembita/http-jobs` — HTTP gateway + product APIs |
 | `telemetry` (default) | OTLP tracing via `trembita-runtime/otlp` |
 | `topics` | Event topics + subscriptions |
 | `workflows` | Saga journal + `/workflows/*` API |
 | `actors` | Stateful worker groups |
 | `external-backlog` | `trembita/external-backlog` → `trembita::backlog_postgres` |
 | `domain-outbox` | `trembita/domain-outbox` → `trembita::events_postgres` |
+
+Generated `Cargo.toml` keeps **one** runtime dependency:
+
+```toml
+trembita = { version = "0.3", features = ["dev-certs", "http-jobs", "external-backlog"] }
+```
 
 Future CLI subcommands (`trembita add`, `trembita doctor`) operate on this layout — **shipped** in [`trembita-cli`](../../crates/trembita-cli/) (`trembita add consumer|topic|actor|http-surface|static-site`, `trembita doctor`).
 
@@ -94,3 +100,4 @@ trembita doctor --fix
 - New projects start with consistent structure; less copy-paste from `examples/`.
 - [`trembita add`](../../docs/backlog.md) can patch known files instead of guessing layout.
 - Quazala becomes the first **migration target** to validate conventions under real complexity.
+- [facade.md](facade.md) — facade features vs app features

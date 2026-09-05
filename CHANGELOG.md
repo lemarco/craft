@@ -7,39 +7,51 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with all
 
 Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases may include breaking changes on minor bumps; each is noted here.
 
-**Crates.io:** [`0.3.2`](https://crates.io/crates/trembita) (2026-09-05). See [0.3.2](#032--2026-09-05) below for the latest release.
+**Crates.io:** [`0.4.0`](https://crates.io/crates/trembita) (2026-09-05). See [0.4.0](#040--2026-09-05) below for the latest release.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-09-05
+
 ### Added
 
-- **Gateway routing v2 (0.4.0)** — native [`Gateway`](crates/trembita-http/src/gateway/mod.rs) /
+- **Gateway routing v2** — native [`Gateway`](crates/trembita-http/src/gateway/mod.rs) /
   [`RouteTable`](crates/trembita-http/src/routing/table.rs) replace Axum; hyper edge for HTTP + WebSocket;
   [`GatewayOpts::surfaces`](crates/trembita/src/gateway/opts.rs); [`RouteTable::diff`](crates/trembita-http/src/routing/diff.rs)
   for parity tests; migration guide [gateway-0.4](docs/migration/gateway-0.4.md).
-- **Route auth helpers** — `get_session`, `post_identity`, `merge_authed` on [`RouteTable`](crates/trembita-http/src/routing/table.rs).
+- **Route auth at dispatch** — built-in product APIs use [`AuthMode::Identity`](crates/trembita-http/src/routing/auth.rs)
+  on the route table (no per-handler `authorize()`); `get_session`, `post_identity`, `merge_authed`,
+  `put`/`delete`/`patch` sugar, WebSocket auth modes (`websocket_session`, `websocket_identity`).
+- **`RequestCtx`** — `uri()`, `query_param()`, `cookie()`, `form()`, URL-decoded query in dispatch.
+- **`CorsPolicy::from_env`** and `*.example.com` origin wildcards.
+- **`SessionGate`** + [`CookieConfig`](crates/trembita-http/src/cookie_config.rs) — `with_cookie_config`, `set_session_cookie`.
 - **Framework conventions** ([`framework-conventions`](docs/decisions/framework-conventions.md)) — standard product app layout
   (`main.rs` / `app.rs` / `config.rs` / `consumers/` / `domain/`) and app-level Cargo features.
-- **`trembita-cli`** ([`trembita-cli`](crates/trembita-cli/)) — `trembita new`, `trembita add consumer|topic|actor|http-surface|static-site`, `trembita doctor [--fix]`.
+- **`trembita-cli`** ([`trembita-cli`](crates/trembita-cli/)) — `trembita new`, `trembita add consumer|topic|actor|http-surface|static-site`, `trembita doctor [--fix]`;
+  `add http-surface --session` / `--cors`.
 - **`trembita-events-postgres`** — [`PgEventOutboxSource`](crates/trembita-events-postgres/src/source.rs) for transactional domain outbox drain.
 - **[`DepthCache`](crates/trembita-jobs/src/depth_cache.rs)** — TTL cache for external backlog depth queries.
 - **OTLP tracing bootstrap** ([`init_tracing_with_otlp`](crates/trembita-runtime/src/tracing_otlp.rs), feature `otlp`).
-- **[`CookieConfig::from_env`](crates/trembita-http/src/cookie_config.rs)** — session cookie attributes from env.
 
 ### Changed
 
 - **Breaking:** `GatewayOpts::routes` and `build_gateway_router` removed; use `.surfaces()` and [`build_gateway_service`](crates/trembita/src/gateway/router.rs).
+- **Path matching** — trailing-slash normalization on route patterns.
 
 ### Removed
 
-- **`HostRouter`**, **`MultiHostBuilder`**, `trembita::axum` re-exports.
+- **`HostRouter`**, **`MultiHostBuilder`**, `host_router.rs`, `trembita::axum` re-exports (see [gateway-0.4](docs/migration/gateway-0.4.md)).
 
 ## [0.3.2] — 2026-09-05
+
+> **Superseded in 0.4.0:** This release used Axum [`HostRouter`](crates/trembita-http/src/host_router.rs) and
+> `host_router.rs`. Those APIs were **removed in 0.4.0** — migrate to [`Gateway`](crates/trembita-http/src/gateway/mod.rs) /
+> [`RouteTable`](crates/trembita-http/src/routing/table.rs) ([gateway-0.4](docs/migration/gateway-0.4.md)).
 
 ### Added
 
 - **`StaticSite` gateway helper** ([`trembita-http`](crates/trembita-http/README.md)) — serve SPAs from
-  three backends with one Axum router shape:
+  three backends (now via [`StaticSite`](crates/trembita-http/src/static_site/mod.rs) + [`RouteTable::fallback`](crates/trembita-http/src/routing/table.rs) in 0.4.0):
   - [`StaticSource::Embedded`](crates/trembita-http/src/static_site/mod.rs) — compile-time bytes via
     `include_dir!` / [`embedded_from_dir`](crates/trembita-http/src/static_site/embedded.rs)
   - [`StaticSource::Filesystem`](crates/trembita-http/src/static_site/mod.rs) — directory on disk (dev/staging)
@@ -47,7 +59,7 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
     (feature `static-s3`, proxy or CDN redirect)
 - SPA fallback, cache-control presets, precompressed `.gz`/`.br` siblings, env-based config
   (`{PREFIX}_SOURCE`, `{PREFIX}_ROOT`, `{PREFIX}_BUCKET`, …).
-- [`HostRouter::static_site`](crates/trembita-http/src/host_router.rs) convenience for virtual-host mounting.
+- Virtual-host static mounting via `HostRouter::static_site` *(removed in 0.4.0 — use `.surface()` + `StaticSite`)*.
 
 ## [0.3.1] — 2026-09-04
 

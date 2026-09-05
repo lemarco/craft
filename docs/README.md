@@ -18,6 +18,7 @@ Architecture and decision records for the distributive Raft actor system.
 | Client API, routing & read consistency | [client-and-routing](decisions/client-and-routing.md) |
 | Architecture style (ports & adapters) | [architecture-style](decisions/architecture-style.md) |
 | Naming (`trembita-*` + facade `trembita`) | [naming](decisions/naming.md) |
+| Facade crate + Cargo features | [facade](decisions/facade.md) |
 | Library distribution & publishing | [library-and-publishing](decisions/library-and-publishing.md) |
 
 ### Wire, transport & security

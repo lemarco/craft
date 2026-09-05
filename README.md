@@ -126,17 +126,17 @@ See [multi-raft](docs/decisions/multi-raft.md), [job-queue](docs/decisions/job-q
 
 ```toml
 [dependencies]
-trembita = "0.5"
+trembita = "0.3"
 ```
 
-Product apps: enable `http-jobs` for HTTP job routes and `dev-certs` for local QUIC without PEM files — see [getting-started](docs/getting-started.md).
+Product apps: default `http-jobs` enables HTTP job routes; add `dev-certs` for local QUIC without PEM files. Optional Postgres/Redis adapters: `external-backlog`, `domain-outbox`, `redis-store` — see [facade ADR](docs/decisions/facade.md) and [getting-started](docs/getting-started.md).
 
 ## Workspace crates
 
-| Crate | Purpose |
-|-------|---------|
-| [`trembita`](crates/trembita) | Facade — `TrembitaApp` + `trembita::cluster` |
-| [`trembita-http`](crates/trembita-http) | Product HTTP (`POST /jobs/{stream}` → 202) |
+| Crate | Role |
+|-------|------|
+| [`trembita`](crates/trembita) | **Facade** — primary dependency; enable integrations via Cargo features |
+| [`trembita-http`](crates/trembita-http) | Product HTTP (via `trembita` feature `http-jobs`) |
 | [`trembita-core`](crates/trembita-core) | Pure Raft FSM + shard planners + reference [`kv`](crates/trembita-core/src/kv.rs) StateMachine |
 | [`trembita-proto`](crates/trembita-proto) | Wire types + codec |
 | [`trembita-storage`](crates/trembita-storage) | Durable log, snapshots |
@@ -146,8 +146,10 @@ Product apps: enable `http-jobs` for HTTP job routes and `dev-certs` for local Q
 | [`trembita-events`](crates/trembita-events) | Durable pub/sub topics |
 | [`trembita-actor-store`](crates/trembita-actor-store) | Stateful actor workflow keys |
 | [`trembita-client`](crates/trembita-client) | Client, saga, keyed/batch APIs |
-| [`trembita-macros`](crates/trembita-macros) | Derive macros |
-| [`trembita-store-redis`](crates/trembita-store-redis) | Redis `ActorStateStore` |
+| [`trembita-macros`](crates/trembita-macros) | Derive macros (re-exported by facade) |
+| [`trembita-store-redis`](crates/trembita-store-redis) | Redis `ActorStateStore` (via `trembita` feature `redis-store`) |
+| [`trembita-backlog-postgres`](crates/trembita-backlog-postgres) | Postgres `ExternalBacklog` (via `external-backlog`) |
+| [`trembita-events-postgres`](crates/trembita-events-postgres) | Postgres outbox source (via `domain-outbox`) |
 | [`trembita-dashboard`](crates/trembita-dashboard) | Admin + observability |
 | [`trembita-sim`](crates/trembita-sim) | Deterministic sim harness |
 | [`trembita-ops`](crates/trembita-tools) | Backup/restore CLI |
@@ -158,6 +160,7 @@ Product apps: enable `http-jobs` for HTTP job routes and `dev-certs` for local Q
 | Doc | When to read |
 |-----|----------------|
 | [docs/getting-started.md](docs/getting-started.md) | **Product app tutorial** (TrembitaApp, no Redis) |
+| [docs/decisions/facade.md](docs/decisions/facade.md) | **Single dependency + Cargo features** |
 | [docs/scenarios/README.md](docs/scenarios/README.md) | **Four product scenarios** |
 | [docs/status.md](docs/status.md) | **Current capabilities and limits** |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | **How to contribute** (humans) |

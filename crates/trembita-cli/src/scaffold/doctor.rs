@@ -357,6 +357,26 @@ fn check_topics(app: &str, report: &mut DoctorReport) {
         if app.contains("SessionGate") && !app.contains(".session(") {
             report.warn("SessionGate imported but no .session(...) on a surface");
         }
+        if app.contains(".session(")
+            && app.contains(".cors(")
+            && !app.contains("CorsPolicy::credentials")
+        {
+            report.warn(
+                "SessionGate with CORS — prefer CorsPolicy::credentials(...) so browsers send cookies",
+            );
+        }
+        if app.contains("Gateway::new(true)") && app.contains("dev_fallback") {
+            report.warn("dev_fallback on Gateway::new(true) — disable in production");
+        }
+        if app.contains(".surface(") && app.contains(".hosts(") {
+            let surfaces = app.matches(".surface(").count();
+            let routes = app.matches(".routes(").count()
+                + app.matches("route_table()").count()
+                + app.matches("StaticSite").count();
+            if routes < surfaces {
+                report.warn("gateway surface with hosts but no .routes(...) or route_table()");
+            }
+        }
         if app.contains("protect_product_apis(true)") {
             if app.contains("GatewayBearerIdentity") || app.contains("identity(") {
                 report.ok("gateway has identity configured");

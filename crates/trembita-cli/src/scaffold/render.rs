@@ -297,7 +297,10 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     }
 
     if features.contains(&AppFeature::Gateway) {
-        imports.push("use trembita::{Gateway, GatewayBearerIdentity, GatewayOpts};".to_string());
+        imports.push(
+            "use trembita::{Gateway, GatewayBearerIdentity, GatewayOpts, RequestCtx, Response, RouteTable};"
+                .to_string(),
+        );
     }
 
     if features.contains(&AppFeature::Topics) {
@@ -389,6 +392,14 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
                     .surfaces(|_state| {
                         // trembita:surfaces
                         Gateway::new(false)
+                            .surface(|s| {
+                                s.hosts(["localhost"])
+                                    .routes(
+                                        RouteTable::new().get("/health", |_ctx: RequestCtx| async move {
+                                            Ok(Response::text(http::StatusCode::OK, "ok"))
+                                        }),
+                                    )
+                            })
                         // trembita:surfaces-end
                     }),
             )

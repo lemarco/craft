@@ -12,7 +12,7 @@ depend only on `trembita`.
 
 ```toml
 [dependencies]
-trembita = { version = "0.5", features = ["http-jobs", "dev-certs"] }
+trembita = { version = "0.3", features = ["http-jobs", "dev-certs"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 ```
 
@@ -56,6 +56,8 @@ trembita = { version = "0.3", features = ["http-jobs", "external-backlog", "redi
 ```
 
 Direct `trembita-*` crate dependencies remain available for advanced use.
+
+Full reference: [facade ADR](../../docs/decisions/facade.md).
 
 ## Learn more
 

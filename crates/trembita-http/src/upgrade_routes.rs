@@ -4,11 +4,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use http::{StatusCode, Uri};
+use http::StatusCode;
 use trembita_core::ArtifactManifest;
 
 use crate::AuthFn;
-use crate::routing::{HttpError, RequestCtx, Response, RouteTable};
+use crate::routing::{AuthMode, HttpError, RequestCtx, Response, RouteTable};
 use crate::upgrade_types::{SetDesiredBody, UpgradeApiError, UpgradeStatusResponse};
 
 /// Async view hook for [`UpgradeApi`].
@@ -63,7 +63,16 @@ impl UpgradeApi {
     /// Route table (`GET/POST /cluster/upgrade…`).
     #[must_use]
     pub fn route_table(&self) -> RouteTable {
-        route_table(Arc::new(self.clone_state()))
+        let table = route_table(Arc::new(UpgradeApiState {
+            view: Arc::clone(&self.view),
+            set_desired: Arc::clone(&self.set_desired),
+            auth: None,
+        }));
+        if self.auth.is_some() {
+            table.with_auth_mode(AuthMode::Identity)
+        } else {
+            table
+        }
     }
 
     /// State handle for [`Self::route_table`].
@@ -95,19 +104,6 @@ impl UpgradeApi {
     }
 }
 
-fn ctx_uri(ctx: &RequestCtx) -> Uri {
-    ctx.path().parse().unwrap_or_else(|_| Uri::from_static("/"))
-}
-
-async fn authorize(state: &UpgradeApiState, ctx: &RequestCtx) -> Result<(), UpgradeApiError> {
-    if let Some(auth) = &state.auth {
-        auth(ctx.method().clone(), ctx_uri(ctx), ctx.headers().clone())
-            .await
-            .map_err(|e| UpgradeApiError::Unauthorized(e.to_string()))?;
-    }
-    Ok(())
-}
-
 /// Route table for upgrade routes.
 #[must_use]
 pub fn route_table(state: Arc<UpgradeApiState>) -> RouteTable {
@@ -135,7 +131,6 @@ async fn get_upgrade_inner(
     state: &UpgradeApiState,
     ctx: RequestCtx,
 ) -> Result<Response, UpgradeApiError> {
-    authorize(state, &ctx).await?;
     let view = (state.view)().await?;
     let json = serde_json::to_value(view)
         .map_err(|e| UpgradeApiError::BadRequest(format!("json encode: {e}")))?;
@@ -153,7 +148,6 @@ async fn post_desired_inner(
     state: &UpgradeApiState,
     ctx: RequestCtx,
 ) -> Result<Response, UpgradeApiError> {
-    authorize(state, &ctx).await?;
     let parsed: SetDesiredBody = ctx
         .json()
         .map_err(|e| UpgradeApiError::BadRequest(e.message().to_string()))?;
@@ -227,20 +221,29 @@ mod tests {
 
     #[tokio::test]
     async fn get_upgrade_rejects_without_auth_when_configured() {
+        use crate::auth_fn_to_identity;
+        use crate::routing::DispatchGates;
+
         let auth: AuthFn =
             Arc::new(|_, _, _| Box::pin(async { Err(JobsApiError::Unauthorized("nope".into())) }));
-        let table = route_table(state_with_auth(auth));
-        let resp = table
-            .dispatch_open(
+        let identity = auth_fn_to_identity(Arc::clone(&auth));
+        let table = route_table(state_with_auth(auth)).with_auth_mode(AuthMode::Identity);
+        let gates = DispatchGates {
+            session_gate: None,
+            identity: Some(&identity),
+        };
+        let err = table
+            .dispatch(
                 &Method::GET,
                 "/cluster/upgrade",
                 HashMap::new(),
                 http::HeaderMap::new(),
                 Bytes::new(),
+                &gates,
             )
             .await
-            .expect("dispatch");
-        assert_eq!(resp.status_code(), StatusCode::UNAUTHORIZED);
+            .expect_err("401");
+        assert_eq!(err.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]

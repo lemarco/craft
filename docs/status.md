@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Version** | `0.4.0-dev` (gateway routing v2 landed; release pending) |
+| **Version** | `0.4.0` |
 | **MSRV** | 1.90 |
 | **Distribution** | Published on [crates.io](https://crates.io/crates/trembita) — full test pyramid, E2E/chaos |
 
@@ -65,13 +65,13 @@ Details below ↓
 - **Durable actor workflow store** — `RedbActorStateStore` + voter replication; auto with `.data_dir()` ([actor-state-store](decisions/actor-state-store.md))
 - **Actor store TTL + GC** — per-key TTL on `set`/`set_with_ttl`; periodic leader GC ticker replicates expired-key deletes to voters
 - **Product API** — [`TrembitaApp`](../crates/trembita/src/app/mod.rs), [getting-started.md](getting-started.md)
-- Redis-backed `ActorStateStore` (`trembita-store-redis`); actor migration RPC
+- Redis-backed `ActorStateStore` (`trembita` feature `redis-store`); actor migration RPC
 
-**Job queue** ([job-queue](decisions/job-queue.md)): `RedbJobQueue`, batch enqueue/ack, prefetch, DLQ, cron, `ClusterJobQueue`, `#[trembita::consumer]`, autoscale; **`ExternalBacklog`** ([external-backlog](decisions/external-backlog.md), [`trembita-backlog-postgres`](../crates/trembita-backlog-postgres/)); **`ScheduleSource`** ([schedule-source](decisions/schedule-source.md)).
+**Job queue** ([job-queue](decisions/job-queue.md)): `RedbJobQueue`, batch enqueue/ack, prefetch, DLQ, cron, `ClusterJobQueue`, `#[trembita::consumer]`, autoscale; **`ExternalBacklog`** ([external-backlog](decisions/external-backlog.md), facade feature `external-backlog`); **`ScheduleSource`** ([schedule-source](decisions/schedule-source.md)).
 
 **Event topics** ([event-topics](decisions/event-topics.md)): durable pub/sub, named subscriptions, voter replication; [`TopicOpts`](../crates/trembita/src/topic_opts.rs), [`.topics()`](../crates/trembita/src/app/mod.rs); **`EventOutboxSource`** ([event-outbox](decisions/event-outbox.md)) for transactional outbox drain.
 
-**Gateway & HTTP** ([`trembita-http`](../crates/trembita-http/README.md), [gateway-identity](decisions/gateway-identity.md), [gateway-routing-v2](decisions/gateway-routing-v2.md)): separate listener, opt-in `/jobs/*`, `/actors/*`, `/workflows/*`, bearer auth, native `Gateway`/`RouteTable` + hyper WebSocket.
+**Gateway & HTTP** ([facade `http-jobs`](decisions/facade.md), [gateway-identity](decisions/gateway-identity.md), [gateway-routing-v2](decisions/gateway-routing-v2.md)): separate listener, opt-in `/jobs/*`, `/actors/*`, `/workflows/*`, bearer auth, native `Gateway`/`RouteTable` + hyper WebSocket.
 
 **Workload governor** ([workload-governor](decisions/workload-governor.md)): per-node compute tokens + consumer tuning from gateway load and queue depth.
 

@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use http::StatusCode;
 use http::header;
-use http::{Method, StatusCode, Uri};
 use trembita_jobs::{
     DEFAULT_QUEUE_BATCH_MAX, EnqueueOptions, JobLifecycle, JobListFilter, LeaseId, WorkerId,
 };
@@ -55,24 +55,14 @@ pub fn route_table(state: Arc<JobsApiState>) -> RouteTable {
     let s6 = Arc::clone(&state);
     let s7 = Arc::clone(&state);
     RouteTable::new()
-        .route(
-            Method::POST,
-            "/jobs/{stream}",
-            crate::routing::AuthMode::Open,
-            move |ctx| {
-                let state = Arc::clone(&s1);
-                async move { post_job(state, ctx).await }
-            },
-        )
-        .route(
-            Method::GET,
-            "/jobs/{stream}",
-            crate::routing::AuthMode::Open,
-            move |ctx| {
-                let state = Arc::clone(&s2);
-                async move { list_jobs(state, ctx).await }
-            },
-        )
+        .post("/jobs/{stream}", move |ctx| {
+            let state = Arc::clone(&s1);
+            async move { post_job(state, ctx).await }
+        })
+        .get("/jobs/{stream}", move |ctx| {
+            let state = Arc::clone(&s2);
+            async move { list_jobs(state, ctx).await }
+        })
         .post("/jobs/{stream}/batch", move |ctx| {
             let state = Arc::clone(&s3);
             async move { post_job_batch(state, ctx).await }
@@ -95,31 +85,10 @@ pub fn route_table(state: Arc<JobsApiState>) -> RouteTable {
         })
 }
 
-fn ctx_uri(ctx: &RequestCtx) -> Uri {
-    let mut path = ctx.path().to_string();
-    if !ctx.query().is_empty() {
-        let qs: Vec<String> = ctx
-            .query()
-            .iter()
-            .map(|(k, v)| format!("{k}={v}"))
-            .collect();
-        path.push('?');
-        path.push_str(&qs.join("&"));
-    }
-    path.parse().unwrap_or_else(|_| Uri::from_static("/"))
-}
-
 fn parse_query<T: serde::de::DeserializeOwned>(ctx: &RequestCtx) -> Result<T, JobsApiError> {
     let map: HashMap<String, String> = ctx.query().clone();
     serde_json::from_value(serde_json::json!(map))
         .map_err(|e| JobsApiError::BadRequest(format!("invalid query: {e}")))
-}
-
-async fn authorize(state: &JobsApiState, ctx: &RequestCtx) -> Result<(), JobsApiError> {
-    if let Some(auth) = &state.auth {
-        auth(ctx.method().clone(), ctx_uri(ctx), ctx.headers().clone()).await?;
-    }
-    Ok(())
 }
 
 async fn post_job(state: Arc<JobsApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
@@ -130,7 +99,6 @@ async fn post_job(state: Arc<JobsApiState>, ctx: RequestCtx) -> Result<Response,
 }
 
 async fn post_job_inner(state: &JobsApiState, ctx: RequestCtx) -> Result<Response, JobsApiError> {
-    authorize(state, &ctx).await?;
     let stream = ctx
         .params()
         .get("stream")
@@ -156,7 +124,6 @@ async fn post_job_batch_inner(
     state: &JobsApiState,
     ctx: RequestCtx,
 ) -> Result<Response, JobsApiError> {
-    authorize(state, &ctx).await?;
     let stream = ctx
         .params()
         .get("stream")
@@ -201,7 +168,6 @@ async fn post_ack_batch_inner(
     state: &JobsApiState,
     ctx: RequestCtx,
 ) -> Result<Response, JobsApiError> {
-    authorize(state, &ctx).await?;
     let stream = ctx
         .params()
         .get("stream")
@@ -241,7 +207,6 @@ async fn get_job(state: Arc<JobsApiState>, ctx: RequestCtx) -> Result<Response, 
 }
 
 async fn get_job_inner(state: &JobsApiState, ctx: RequestCtx) -> Result<Response, JobsApiError> {
-    authorize(state, &ctx).await?;
     let stream = ctx
         .params()
         .get("stream")
@@ -270,7 +235,6 @@ async fn list_jobs(state: Arc<JobsApiState>, ctx: RequestCtx) -> Result<Response
 }
 
 async fn list_jobs_inner(state: &JobsApiState, ctx: RequestCtx) -> Result<Response, JobsApiError> {
-    authorize(state, &ctx).await?;
     let stream = ctx
         .params()
         .get("stream")
@@ -305,7 +269,6 @@ async fn post_requeue_inner(
     state: &JobsApiState,
     ctx: RequestCtx,
 ) -> Result<Response, JobsApiError> {
-    authorize(state, &ctx).await?;
     let stream = ctx
         .params()
         .get("stream")
@@ -337,7 +300,6 @@ async fn post_requeue_batch_inner(
     state: &JobsApiState,
     ctx: RequestCtx,
 ) -> Result<Response, JobsApiError> {
-    authorize(state, &ctx).await?;
     let stream = ctx
         .params()
         .get("stream")

@@ -8,14 +8,35 @@ Quick path for **product teams** using [`TrembitaApp`](../crates/trembita/src/ap
 
 ```toml
 [dependencies]
-trembita = "0.5"
+trembita = "0.3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 ```
 
-Enable `dev-certs` for local single-node without PEM files:
+The default feature set includes `http-jobs` (product HTTP gateway helpers). For local QUIC without PEM files, add `dev-certs`:
 
 ```toml
-trembita = { version = "0.5", features = ["dev-certs"] }
+trembita = { version = "0.3", features = ["dev-certs"] }
+```
+
+### Optional integrations (facade features)
+
+Enable on the same `trembita` dependency — no separate adapter crates in your `Cargo.toml`. Full reference: [facade ADR](decisions/facade.md).
+
+| Feature | When to enable |
+|---------|----------------|
+| `http-jobs` (default) | Product gateway, `/jobs/*`, `/actors/*`, `/workflows/*`, custom [`RouteTable`](decisions/gateway-routing-v2.md) |
+| `dev-certs` | Solo local seed without operator-provided mTLS PEMs |
+| `redis-store` | Redis-backed [`ActorStateStore`](decisions/actor-state-redis.md) instead of embedded redb |
+| `external-backlog` | Postgres (or compatible) work table as [`ExternalBacklog`](decisions/external-backlog.md) source |
+| `domain-outbox` | Postgres transactional outbox → event topic drainer ([event-outbox](decisions/event-outbox.md)) |
+
+```toml
+trembita = { version = "0.3", features = ["http-jobs", "dev-certs", "external-backlog"] }
+```
+
+```rust
+// With `external-backlog`:
+use trembita::{PgBacklog, JobOpts, BacklogFeedOpts};
 ```
 
 ## 2. Minimal app
@@ -139,7 +160,7 @@ Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store
 Prefer [`.jobs()`](../crates/trembita/src/job_opts.rs) to register queue + consumer + HTTP enqueue in one call. Enable the `http-jobs` feature (default on the facade):
 
 ```toml
-trembita = { version = "0.5", features = ["http-jobs"] }
+trembita = { version = "0.3", features = ["http-jobs"] }
 ```
 
 ```rust
@@ -164,7 +185,7 @@ TrembitaApp::builder()
 // POST /jobs/{stream} → 202 { "job_id": … }
 ```
 
-Lower-level [`.queue()`](../crates/trembita/src/app/mod.rs) + [`.consumer()`](../crates/trembita/src/app/mod.rs) remain available. See [trembita-http README](../crates/trembita-http/README.md) and [background-jobs](scenarios/background-jobs.md).
+Lower-level [`.queue()`](../crates/trembita/src/app/mod.rs) + [`.consumer()`](../crates/trembita/src/app/mod.rs) remain available. See [facade features](decisions/facade.md) and [background-jobs](scenarios/background-jobs.md).
 
 ## 7. Workflows (sagas)
 
@@ -191,7 +212,7 @@ WebSocket + sticky session routing. Auth stays in your code via [`GatewayIdentit
 use std::time::Duration;
 use trembita::{Gateway, GatewayOpts, RouteTable, TrembitaGatewayState, GatewayIdentity, GatewayRequest, SessionKey};
 use trembita::{accept_websocket, routing_to_http_response};
-use trembita_http::RequestCtx;
+use trembita::gateway::http::RequestCtx;
 
 // WebSocket upgrade on a RouteTable (hyper + tokio-tungstenite in the connected callback).
 fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
@@ -272,5 +293,6 @@ Most apps stay on `TrembitaApp`. For custom state machines, multi-Raft, or direc
 
 - [deployment-model](decisions/deployment-model.md)
 - [product-scenarios](decisions/product-scenarios.md)
+- [facade](decisions/facade.md)
 - [actor-state-store](decisions/actor-state-store.md)
 - [ops/production-runbook.md](ops/production-runbook.md)

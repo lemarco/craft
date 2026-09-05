@@ -20,6 +20,24 @@
 //! }
 //! ```
 //!
+//! ## Dependencies and features
+//!
+//! Add a single crate to `Cargo.toml` and enable integrations via features:
+//!
+//! ```toml
+//! trembita = { version = "0.3", features = ["http-jobs", "dev-certs", "external-backlog"] }
+//! ```
+//!
+//! | Feature | Purpose |
+//! |---------|---------|
+//! | `http-jobs` (default) | Product HTTP gateway (`Gateway`, `/jobs/*`, …) |
+//! | `dev-certs` | Ephemeral mTLS for local development |
+//! | `redis-store` | Redis [`ActorStateStore`](trembita_actor_store::ActorStateStore) |
+//! | `external-backlog` | Postgres [`ExternalBacklog`](trembita_jobs::ExternalBacklog) adapter |
+//! | `domain-outbox` | Postgres [`EventOutboxSource`](trembita_events::EventOutboxSource) adapter |
+//!
+//! Full reference: [facade ADR](https://gitlab.com/lemarco/trembita/-/blob/main/docs/decisions/facade.md).
+//!
 //! ## Cluster APIs
 //!
 //! Custom state machines and low-level control: [`cluster`] (`TrembitaCluster`, `TrembitaClusterBuilder`, queues, journals).

@@ -1,11 +1,25 @@
 # trembita-store-redis
 
-Redis-backed `ActorStateStore` for stateful
+Redis-backed [`ActorStateStore`](https://docs.rs/trembita-actor-store) for stateful
 [trembita](https://crates.io/crates/trembita) actors.
 
 Use when actor instances need durable key/value state outside the Raft log
 (idempotent workers, session caches, etc.). Supports TLS via the `redis` crate's
 Rustls feature set.
+
+## Product apps — use the facade
+
+```toml
+trembita = { version = "0.3", features = ["redis-store"] }
+```
+
+```rust
+use trembita::{RedisStore, store_redis::RedisTlsConfig};
+```
+
+See [facade ADR](../../docs/decisions/facade.md) and [actor-state-redis](../../docs/decisions/actor-state-redis.md).
+
+Direct dependency on `trembita-store-redis` is for advanced/workspace use.
 
 Optional integration tests require Docker (`docker-tests` feature; heavy CI lane).
 

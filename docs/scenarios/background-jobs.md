@@ -177,9 +177,15 @@ See [state placement cheat sheet](state-placement.md) for where queue backlog vs
 
 ### External backlog (Postgres / existing work table)
 
-When the **authoritative backlog** lives outside trembita (Postgres `pending` rows, legacy job table), use [`ExternalBacklog`](../../crates/trembita-jobs/src/external_backlog.rs) instead of reimplementing a leader feeder:
+When the **authoritative backlog** lives outside trembita (Postgres `pending` rows, legacy job table), enable `external-backlog` and use [`ExternalBacklog`](../../crates/trembita-jobs/src/external_backlog.rs):
+
+```toml
+trembita = { version = "0.3", features = ["external-backlog"] }
+```
 
 ```rust
+use trembita::{PgBacklog, JobOpts, BacklogFeedOpts};
+
 JobOpts::new("imports")
     .backlog(
         Arc::new(PgBacklog::connect(&database_url, "trembita_jobs").await?),
@@ -188,11 +194,11 @@ JobOpts::new("imports")
     .consumer(&ImportConsumer)
 ```
 
-trembita runs **`claim` on the leader only**, tops the in-flight queue window to `pending_target × consumer_instances` (live by default: `reachable_nodes × instances`), enqueues with `dedup_key = item.key`, **`settle`s** on ack/nack/reclaim via a durable outbox (`backlog-settle-outbox.redb` + leader drainer), and feeds **`depth()`** to autoscale. Adapter: [`trembita-backlog-postgres`](../../crates/trembita-backlog-postgres/). ADR: [external-backlog](../decisions/external-backlog.md).
+trembita runs **`claim` on the leader only**, tops the in-flight queue window to `pending_target × consumer_instances` (live by default: `reachable_nodes × instances`), enqueues with `dedup_key = item.key`, **`settle`s** on ack/nack/reclaim via a durable outbox (`backlog-settle-outbox.redb` + leader drainer), and feeds **`depth()`** to autoscale. ADR: [external-backlog](../decisions/external-backlog.md); facade: [facade](../decisions/facade.md).
 
 ### 4. HTTP mapping (recommended)
 
-Wire the gateway (`http-jobs` feature) with [`GatewayOpts`](../../crates/trembita/src/gateway/mod.rs) — built-in `/jobs/*` routes are **opt-in** (`.with_jobs_api(true)` or `TREMBITA_GATEWAY_JOBS=1`). Request bodies: raw bytes or JSON `{ "payload": "…" }` / `{ "payload_b64": "…" }` ([`trembita-http` README](../../crates/trembita-http/README.md)).
+Wire the gateway (`http-jobs` feature, on by default) with [`GatewayOpts`](../../crates/trembita/src/gateway/mod.rs) — built-in `/jobs/*` routes are **opt-in** (`.with_jobs_api(true)` or `TREMBITA_GATEWAY_JOBS=1`). Request bodies: raw bytes or JSON `{ "payload": "…" }` / `{ "payload_b64": "…" }` ([facade `http-jobs`](../decisions/facade.md)).
 
 | Intent | Response | Route / API |
 |--------|----------|-------------|

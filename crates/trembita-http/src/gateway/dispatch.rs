@@ -23,6 +23,7 @@ use tower::Service;
 use crate::host::{is_local_dev_host, normalize_host};
 use crate::routing::{
     DispatchGates, IdentityAuthFn, Response, ResponseBody, RouteTable, SessionGate,
+    parse_query_string,
 };
 
 use super::cors::CorsPolicy;
@@ -148,7 +149,15 @@ impl GatewayDispatch {
                     return text_response(StatusCode::NOT_FOUND, &format!("unknown host: {host}"));
                 }
             };
-            if let Some(handler) = surface.routes.match_websocket(&path) {
+            if let Some((handler, auth)) = surface.routes.match_websocket(&path) {
+                let gates = self.gates_for(&surface);
+                if let Err(err) = surface
+                    .routes
+                    .authorize_websocket(&path, auth, &gates, req.headers())
+                    .await
+                {
+                    return routing_to_http_response(err.into_http_response());
+                }
                 return handler(req).await;
             }
             return text_response(StatusCode::NOT_FOUND, "not found");
@@ -184,7 +193,8 @@ impl GatewayDispatch {
         }
 
         let path = parts.uri.path().to_string();
-        let query = parse_query(parts.uri.query());
+        let query = parse_query_string(parts.uri.query());
+        let started = std::time::Instant::now();
         let body_bytes = match read_body(body, crate::routing::MAX_BODY_BYTES).await {
             Ok(b) => b,
             Err(resp) => return resp,
@@ -204,14 +214,24 @@ impl GatewayDispatch {
             )
             .await
         {
-            Ok(resp) => apply_cors(
-                routing_to_http_response(
-                    resp.finalize()
-                        .unwrap_or_else(|e| Response::text(e.status(), e.message())),
-                ),
-                surface.cors.as_ref(),
-                origin.as_deref(),
-            ),
+            Ok(resp) => {
+                let status = resp.status_code();
+                tracing::debug!(
+                    host = %host,
+                    path = %path,
+                    status = %status.as_u16(),
+                    latency_ms = started.elapsed().as_millis() as u64,
+                    "gateway.request"
+                );
+                apply_cors(
+                    routing_to_http_response(
+                        resp.finalize()
+                            .unwrap_or_else(|e| Response::text(e.status(), e.message())),
+                    ),
+                    surface.cors.as_ref(),
+                    origin.as_deref(),
+                )
+            }
             Err(err) => apply_cors(
                 text_response(err.status(), err.message()),
                 surface.cors.as_ref(),
@@ -273,15 +293,7 @@ impl Service<Request<Incoming>> for GatewayService {
 }
 
 fn parse_query(raw: Option<&str>) -> HashMap<String, String> {
-    let Some(raw) = raw else {
-        return HashMap::new();
-    };
-    raw.split('&')
-        .filter_map(|pair| {
-            let (k, v) = pair.split_once('=')?;
-            Some((k.to_string(), v.to_string()))
-        })
-        .collect()
+    parse_query_string(raw)
 }
 
 async fn read_body(body: Incoming, limit: usize) -> Result<Bytes, HttpResponse<BoxBody>> {

@@ -76,6 +76,10 @@ pub struct AddHttpSurfaceOpts {
     pub hosts: Vec<String>,
     /// Rust module file name (default: derived from `name`).
     pub module: Option<String>,
+    /// Wire a [`SessionGate`](trembita::SessionGate) on the surface.
+    pub session: bool,
+    /// Attach [`CorsPolicy::credentials`](trembita::CorsPolicy) for browser clients.
+    pub cors: bool,
 }
 
 /// Options for `add static-site`.
@@ -335,7 +339,7 @@ pub fn route_table() -> RouteTable {{
         ),
     )?;
 
-    wire_http_surface(project, &module, &opts.hosts)?;
+    wire_http_surface(project, &module, &opts.hosts, opts.session, opts.cors)?;
     Ok(())
 }
 
@@ -410,7 +414,7 @@ pub fn route_table() -> RouteTable {{
         ),
     )?;
 
-    wire_http_surface(project, &module, &opts.hosts)?;
+    wire_http_surface(project, &module, &opts.hosts, false, false)?;
     Ok(())
 }
 
@@ -418,6 +422,8 @@ fn wire_http_surface(
     project: &TrembitaProject,
     module: &str,
     hosts: &[String],
+    session: bool,
+    cors: bool,
 ) -> Result<(), AddError> {
     let mod_rs = project.http_dir().join("mod.rs");
     ensure_mod_declaration(&mod_rs, module)?;
@@ -429,16 +435,42 @@ fn wire_http_surface(
         }));
     }
     app.insert_import("use trembita::Gateway;")?;
+    if session {
+        app.insert_import("use trembita::{HttpError, SessionGate};")?;
+    }
+    if cors {
+        app.insert_import("use trembita::CorsPolicy;")?;
+    }
 
     let hosts_list = hosts
         .iter()
         .map(|h| format!("\"{h}\""))
         .collect::<Vec<_>>()
         .join(", ");
+    let cors_line = if cors {
+        format!(
+            "\n                                    .cors(CorsPolicy::credentials([{hosts_list}]))"
+        )
+    } else {
+        String::new()
+    };
+    let session_line = if session {
+        r#"
+                                    .session(SessionGate::validate("session", |token| async move {
+                                        if token.is_empty() {
+                                            Err(HttpError::Unauthorized("empty session".into()))
+                                        } else {
+                                            Ok(())
+                                        }
+                                    }))"#
+            .to_string()
+    } else {
+        String::new()
+    };
     app.insert_surface(&format!(
         r#"
                             .surface(|s| {{
-                                s.hosts([{hosts_list}])
+                                s.hosts([{hosts_list}]){cors_line}{session_line}
                                     .routes(http::{module}::route_table())
                             }})"#,
     ))?;
@@ -583,6 +615,8 @@ mod tests {
                 name: "api".into(),
                 hosts: vec!["api.example.com".into()],
                 module: None,
+                session: false,
+                cors: false,
             },
         )
         .unwrap();

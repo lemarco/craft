@@ -2,28 +2,11 @@
 
 use std::sync::Arc;
 
-use http::{StatusCode, Uri};
+use http::StatusCode;
 
 use crate::IntrospectApiState;
 use crate::introspect_types::IntrospectApiError;
 use crate::routing::{HttpError, RequestCtx, Response, RouteTable};
-use crate::types::JobsApiError;
-
-fn ctx_uri(ctx: &RequestCtx) -> Uri {
-    ctx.path().parse().unwrap_or_else(|_| Uri::from_static("/"))
-}
-
-async fn authorize(state: &IntrospectApiState, ctx: &RequestCtx) -> Result<(), IntrospectApiError> {
-    if let Some(auth) = &state.auth {
-        auth(ctx.method().clone(), ctx_uri(ctx), ctx.headers().clone())
-            .await
-            .map_err(|e| match e {
-                JobsApiError::Unauthorized(m) => IntrospectApiError::Unauthorized(m),
-                other => IntrospectApiError::BadRequest(other.to_string()),
-            })?;
-    }
-    Ok(())
-}
 
 fn json_ok<T: serde::Serialize>(value: T) -> Result<Response, IntrospectApiError> {
     let json = serde_json::to_value(value)
@@ -86,7 +69,6 @@ async fn get_cluster_inner(
     state: &IntrospectApiState,
     ctx: RequestCtx,
 ) -> Result<Response, IntrospectApiError> {
-    authorize(state, &ctx).await?;
     json_ok(state.observer.cluster().await)
 }
 
@@ -104,7 +86,6 @@ async fn get_raft_groups_inner(
     state: &IntrospectApiState,
     ctx: RequestCtx,
 ) -> Result<Response, IntrospectApiError> {
-    authorize(state, &ctx).await?;
     json_ok(state.observer.raft_groups().await)
 }
 
@@ -122,7 +103,6 @@ async fn get_actors_inner(
     state: &IntrospectApiState,
     ctx: RequestCtx,
 ) -> Result<Response, IntrospectApiError> {
-    authorize(state, &ctx).await?;
     json_ok(state.observer.actors().await)
 }
 
@@ -137,7 +117,6 @@ async fn get_actor_inner(
     state: &IntrospectApiState,
     ctx: RequestCtx,
 ) -> Result<Response, IntrospectApiError> {
-    authorize(state, &ctx).await?;
     let id = ctx
         .params()
         .get("id")
@@ -162,7 +141,6 @@ async fn get_node_inner(
     state: &IntrospectApiState,
     ctx: RequestCtx,
 ) -> Result<Response, IntrospectApiError> {
-    authorize(state, &ctx).await?;
     let id = ctx
         .params()
         .get("id")
@@ -192,7 +170,6 @@ async fn get_queues_inner(
     state: &IntrospectApiState,
     ctx: RequestCtx,
 ) -> Result<Response, IntrospectApiError> {
-    authorize(state, &ctx).await?;
     json_ok(state.observer.queues().await)
 }
 
@@ -207,7 +184,6 @@ async fn get_sagas_inner(
     state: &IntrospectApiState,
     ctx: RequestCtx,
 ) -> Result<Response, IntrospectApiError> {
-    authorize(state, &ctx).await?;
     json_ok(state.observer.sagas().await)
 }
 

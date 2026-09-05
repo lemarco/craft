@@ -32,11 +32,16 @@ pub enum AuthMode {
     Identity,
 }
 
+use crate::CookieConfig;
+use crate::routing::Response;
+
 /// Session cookie gate for a surface or route subtree.
 #[derive(Clone)]
 pub struct SessionGate {
     /// Cookie name carrying the session token.
     pub cookie_name: String,
+    /// Optional cookie attributes for login responses.
+    pub cookie_config: Option<CookieConfig>,
     validate: SessionValidateFn,
 }
 
@@ -44,6 +49,7 @@ impl std::fmt::Debug for SessionGate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SessionGate")
             .field("cookie_name", &self.cookie_name)
+            .field("cookie_config", &self.cookie_config)
             .finish_non_exhaustive()
     }
 }
@@ -54,8 +60,46 @@ impl SessionGate {
     pub fn new(cookie_name: impl Into<String>, validate: SessionValidateFn) -> Self {
         Self {
             cookie_name: cookie_name.into(),
+            cookie_config: None,
             validate,
         }
+    }
+
+    /// Attach [`CookieConfig`] for login `Set-Cookie` helpers.
+    #[must_use]
+    pub fn with_cookie_config(mut self, config: CookieConfig) -> Self {
+        self.cookie_name = config.name.clone();
+        self.cookie_config = Some(config);
+        self
+    }
+
+    /// Build from env (`{prefix}_COOKIE_*`) plus a validation hook.
+    #[must_use]
+    pub fn from_cookie_env<F, Fut>(prefix: &str, default_name: &str, f: F) -> Self
+    where
+        F: Fn(String) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), HttpError>> + Send + 'static,
+    {
+        let config = CookieConfig::from_env(prefix, default_name);
+        Self::validate(config.name.clone(), f).with_cookie_config(config)
+    }
+
+    /// Append a session `Set-Cookie` header to `response`.
+    pub fn set_session_cookie(
+        &self,
+        response: &mut Response,
+        token: &str,
+    ) -> Result<(), HttpError> {
+        let cfg = self.cookie_config.as_ref().ok_or_else(|| {
+            HttpError::Internal("SessionGate has no CookieConfig — use with_cookie_config".into())
+        })?;
+        let value = cfg.set_cookie_value(token);
+        response.headers_mut().append(
+            http::header::SET_COOKIE,
+            http::HeaderValue::from_str(&value)
+                .map_err(|e| HttpError::Internal(format!("Set-Cookie: {e}")))?,
+        );
+        Ok(())
     }
 
     /// Build from a function — boxed for storage.
@@ -99,7 +143,7 @@ impl DispatchGates<'_> {
     }
 }
 
-fn parse_cookie<'a>(header: &'a str, name: &str) -> Option<&'a str> {
+pub(crate) fn parse_cookie<'a>(header: &'a str, name: &str) -> Option<&'a str> {
     let prefix = format!("{name}=");
     header.split(';').find_map(|part| {
         let part = part.trim();

@@ -58,10 +58,18 @@ impl PathPattern {
     }
 
     /// Match a request path and extract named parameters.
+    ///
+    /// Trailing slashes are ignored (`/items/` matches `/items`).
     #[must_use]
     pub fn match_path(&self, request_path: &str) -> Option<PathParams> {
-        let req_segments: Vec<&str> = request_path
-            .trim()
+        let normalized = request_path.trim().trim_end_matches('/');
+        let normalized = if normalized.is_empty() {
+            "/"
+        } else {
+            normalized
+        };
+
+        let req_segments: Vec<&str> = normalized
             .trim_matches('/')
             .split('/')
             .filter(|s| !s.is_empty())
@@ -148,5 +156,11 @@ mod tests {
         let pattern = PathPattern::new("/brands/{id}");
         assert!(pattern.match_path("/brands").is_none());
         assert!(pattern.match_path("/brands/1/extra").is_none());
+    }
+
+    #[test]
+    fn trailing_slash_matches() {
+        let pattern = PathPattern::new("/brands/list");
+        assert!(pattern.match_path("/brands/list/").is_some());
     }
 }

@@ -32,8 +32,10 @@ trembita-proto.workspace = true
 http.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+serde_urlencoded.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 tungstenite = { version = "0.26", default-features = false, features = ["handshake"] }
 tower.workspace = true
 opendal = { workspace = true, optional = true }

@@ -1,7 +1,7 @@
 # Stateful actors — external store (Redis)
 
 > **Product default (2026-08-28):** embedded **redb** via [`ActorStateStore`](actor-state-store.md) —
-> no mandatory Redis. This record remains for the **optional** `trembita-store-redis` adapter and
+> no mandatory Redis. This record remains for the **optional** Redis adapter (`trembita` feature `redis-store`) and
 > integration with non-trembita services. Scenario guides: [stateful-workers](../scenarios/stateful-workers.md).
 
 **Status:** Accepted (optional adapter path)  
@@ -38,24 +38,19 @@ Other backends may implement the same trait (PostgreSQL, Valkey, etc.).
 
 ### Framework surface
 
-Optional crate **`trembita-store`** (or module in `trembita-actor`):
+Shipped as [`trembita-store-redis`](../../crates/trembita-store-redis/) — enable on the facade via `redis-store` ([facade](facade.md)):
 
-```rust
-#[async_trait]
-pub trait ActorStateStore: Send + Sync {
-    async fn get(&self, key: &str) -> Result<Option<Vec<u8>, StoreError>;
-    async fn set(&self, key: &str, value: &[u8], ttl: Option<Duration>) -> Result<(), StoreError>;
-    async fn delete(&self, key: &str) -> Result<(), StoreError>;
-    // optional: compare-and-set, hash, pub/sub hooks
-}
-
-// User-facing builder
-TrembitaCluster::builder()
-    .actor_state_store(RedisStore::new(redis_url)?)
-    .auto_workers([...])
+```toml
+trembita = { version = "0.3", features = ["redis-store"] }
 ```
 
-Inject into `UserActor` context:
+```rust
+use trembita::{RedisStore, store_redis::RedisTlsConfig};
+
+let store = RedisStore::connect("redis://127.0.0.1:6379").await?.with_prefix("orders:");
+```
+
+Trait ([`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs)):
 
 ```rust
 #[derive(UserActor)]

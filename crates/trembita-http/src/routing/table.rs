@@ -12,6 +12,7 @@ use super::ctx::{RequestCtx, Response};
 use super::error::HttpError;
 use super::handler::{ArcHandler, Handler};
 use super::path::{PathParams, PathPattern};
+use super::query::build_uri;
 
 /// One route entry in a [`RouteTable`].
 #[derive(Clone)]
@@ -75,12 +76,21 @@ impl RouteEntry {
     }
 }
 
+/// WebSocket upgrade route with optional auth gate.
+#[derive(Clone)]
+struct WebSocketRoute {
+    pattern: PathPattern,
+    auth: AuthMode,
+    handler: UpgradeFn,
+}
+
 /// Declarative route collection — the primary product-app HTTP construct in 0.4.0.
 #[derive(Clone, Default)]
 pub struct RouteTable {
     routes: Vec<RouteEntry>,
     fallback: Option<ArcHandler>,
-    websocket: Option<(PathPattern, UpgradeFn)>,
+    fallback_auth: AuthMode,
+    websocket: Option<WebSocketRoute>,
 }
 
 type UpgradeFn = Arc<
@@ -108,8 +118,29 @@ impl RouteTable {
         Self {
             routes: Vec::new(),
             fallback: None,
+            fallback_auth: AuthMode::Open,
             websocket: None,
         }
+    }
+
+    /// Apply `auth` to every route, fallback, and WebSocket entry in this table.
+    #[must_use]
+    pub fn with_auth_mode(mut self, auth: AuthMode) -> Self {
+        if auth == AuthMode::Open {
+            return self;
+        }
+        self.routes = self
+            .routes
+            .into_iter()
+            .map(|entry| entry.with_auth(auth))
+            .collect();
+        if self.fallback.is_some() {
+            self.fallback_auth = auth;
+        }
+        if let Some(ws) = &mut self.websocket {
+            ws.auth = auth;
+        }
+        self
     }
 
     /// Register a route with explicit method, path, auth mode, and handler.
@@ -139,6 +170,38 @@ impl RouteTable {
     pub fn post(mut self, path: &str, handler: impl Handler + 'static) -> Self {
         self.routes
             .push(RouteEntry::new(Method::POST, path, AuthMode::Open, handler));
+        self
+    }
+
+    /// `PUT` route (open).
+    #[must_use]
+    pub fn put(mut self, path: &str, handler: impl Handler + 'static) -> Self {
+        self.routes
+            .push(RouteEntry::new(Method::PUT, path, AuthMode::Open, handler));
+        self
+    }
+
+    /// `DELETE` route (open).
+    #[must_use]
+    pub fn delete(mut self, path: &str, handler: impl Handler + 'static) -> Self {
+        self.routes.push(RouteEntry::new(
+            Method::DELETE,
+            path,
+            AuthMode::Open,
+            handler,
+        ));
+        self
+    }
+
+    /// `PATCH` route (open).
+    #[must_use]
+    pub fn patch(mut self, path: &str, handler: impl Handler + 'static) -> Self {
+        self.routes.push(RouteEntry::new(
+            Method::PATCH,
+            path,
+            AuthMode::Open,
+            handler,
+        ));
         self
     }
 
@@ -198,9 +261,13 @@ impl RouteTable {
         }
         if self.fallback.is_none() {
             self.fallback = other.fallback;
+            self.fallback_auth = auth;
         }
         if self.websocket.is_none() {
-            self.websocket = other.websocket;
+            self.websocket = other.websocket.map(|mut ws| {
+                ws.auth = auth;
+                ws
+            });
         }
         self
     }
@@ -246,15 +313,90 @@ impl RouteTable {
         + Sync
         + 'static,
     ) -> Self {
-        self.websocket = Some((PathPattern::new(path), Arc::new(handler)));
+        self.websocket = Some(WebSocketRoute {
+            pattern: PathPattern::new(path),
+            auth: AuthMode::Open,
+            handler: Arc::new(handler),
+        });
         self
     }
 
-    /// Returns the WebSocket upgrade handler when `path` matches.
-    pub(crate) fn match_websocket(&self, path: &str) -> Option<&UpgradeFn> {
-        let (pattern, handler) = self.websocket.as_ref()?;
-        pattern.match_path(path)?;
-        Some(handler)
+    /// WebSocket upgrade protected by the surface session gate.
+    #[must_use]
+    pub fn websocket_session(
+        mut self,
+        path: &str,
+        handler: impl Fn(
+            http::Request<hyper::body::Incoming>,
+        ) -> Pin<
+            Box<
+                dyn Future<
+                        Output = http::Response<
+                            http_body_util::combinators::BoxBody<
+                                bytes::Bytes,
+                                std::convert::Infallible,
+                            >,
+                        >,
+                    > + Send,
+            >,
+        > + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        self.websocket = Some(WebSocketRoute {
+            pattern: PathPattern::new(path),
+            auth: AuthMode::Session,
+            handler: Arc::new(handler),
+        });
+        self
+    }
+
+    /// WebSocket upgrade protected by the gateway identity hook.
+    #[must_use]
+    pub fn websocket_identity(
+        mut self,
+        path: &str,
+        handler: impl Fn(
+            http::Request<hyper::body::Incoming>,
+        ) -> Pin<
+            Box<
+                dyn Future<
+                        Output = http::Response<
+                            http_body_util::combinators::BoxBody<
+                                bytes::Bytes,
+                                std::convert::Infallible,
+                            >,
+                        >,
+                    > + Send,
+            >,
+        > + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        self.websocket = Some(WebSocketRoute {
+            pattern: PathPattern::new(path),
+            auth: AuthMode::Identity,
+            handler: Arc::new(handler),
+        });
+        self
+    }
+
+    /// Returns the WebSocket upgrade handler and auth mode when `path` matches.
+    pub(crate) fn match_websocket(&self, path: &str) -> Option<(&UpgradeFn, AuthMode)> {
+        let ws = self.websocket.as_ref()?;
+        ws.pattern.match_path(path)?;
+        Some((&ws.handler, ws.auth))
+    }
+
+    /// Run auth gates before a WebSocket upgrade handler.
+    pub(crate) async fn authorize_websocket(
+        &self,
+        path: &str,
+        auth: AuthMode,
+        gates: &DispatchGates<'_>,
+        headers: &http::HeaderMap,
+    ) -> Result<(), HttpError> {
+        run_auth(auth, gates, &Method::GET, path, &HashMap::new(), headers).await
     }
 
     /// Append all routes from `other` (later entries win on duplicate method+path).
@@ -263,6 +405,7 @@ impl RouteTable {
         self.routes.extend(other.routes);
         if self.fallback.is_none() {
             self.fallback = other.fallback;
+            self.fallback_auth = other.fallback_auth;
         }
         if self.websocket.is_none() {
             self.websocket = other.websocket.clone();
@@ -311,6 +454,7 @@ impl RouteTable {
             return entry.handler.handle(ctx).await?.finalize();
         }
         if let Some(fallback) = &self.fallback {
+            run_auth(self.fallback_auth, gates, method, path, &query, &headers).await?;
             let ctx = RequestCtx::new(
                 method.clone(),
                 path,
@@ -375,20 +519,6 @@ async fn run_auth(
             auth(method.clone(), uri, headers.clone()).await
         }
     }
-}
-
-fn build_uri(path: &str, query: &HashMap<String, String>) -> http::Uri {
-    if query.is_empty() {
-        return path.parse().unwrap_or_else(|_| http::Uri::from_static("/"));
-    }
-    let q = query
-        .iter()
-        .map(|(k, v)| format!("{k}={v}"))
-        .collect::<Vec<_>>()
-        .join("&");
-    format!("{path}?{q}")
-        .parse()
-        .unwrap_or_else(|_| path.parse().unwrap_or_else(|_| http::Uri::from_static("/")))
 }
 
 #[cfg(test)]

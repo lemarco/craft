@@ -12,12 +12,14 @@ mod diff;
 mod error;
 mod handler;
 mod path;
+pub(crate) mod query;
 mod table;
 
-pub use auth::{AuthMode, DispatchGates, IdentityAuthFn, SessionGate, SessionValidateFn};
+pub use auth::{AuthMode, DispatchGates, IdentityAuthFn, SessionGate};
 pub use ctx::{RequestCtx, Response, ResponseBody};
 pub use diff::{RouteDescriptor, RouteTableDiff};
 pub use error::HttpError;
 pub use handler::{ArcHandler, Handler};
 pub use path::{PathParams, PathPattern, PathSegment};
+pub use query::parse_query_string;
 pub use table::{RouteEntry, RouteTable};

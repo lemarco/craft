@@ -3,6 +3,20 @@
 PostgreSQL [`EventOutboxSource`](https://docs.rs/trembita-events/latest/trembita_events/trait.EventOutboxSource.html)
 for the [transactional outbox](https://docs.rs/trembita/latest/trembita/struct.TopicOpts.html) drainer.
 
+## Product apps — use the facade
+
+```toml
+trembita = { version = "0.3", features = ["domain-outbox"] }
+```
+
+```rust
+use trembita::{PgEventOutboxSource, TopicOpts, EventOutboxDrainOpts};
+```
+
+See [facade ADR](../../docs/decisions/facade.md) and [event-outbox](../../docs/decisions/event-outbox.md).
+
+Direct dependency on `trembita-events-postgres` is for advanced/workspace use.
+
 ## Default table shape
 
 ```sql
@@ -20,8 +34,7 @@ Wire into [`TrembitaApp::topics`](https://docs.rs/trembita/latest/trembita/struc
 
 ```rust
 use std::sync::Arc;
-use trembita::{EventOutboxDrainOpts, TopicOpts, TrembitaApp};
-use trembita_events_postgres::PgEventOutboxSource;
+use trembita::{EventOutboxDrainOpts, TopicOpts, TrembitaApp, PgEventOutboxSource};
 
 let outbox = PgEventOutboxSource::connect(&database_url).await?;
 TrembitaApp::builder()

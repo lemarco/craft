@@ -50,6 +50,8 @@ fn add_and_doctor_integration() {
             name: "api".into(),
             hosts: vec!["api.example.com".into()],
             module: None,
+            session: false,
+            cors: false,
         },
     )
     .unwrap();

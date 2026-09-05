@@ -3,11 +3,13 @@
 use std::collections::HashMap;
 
 use bytes::Bytes;
-use http::{HeaderMap, Method, StatusCode};
+use http::{HeaderMap, Method, StatusCode, Uri};
 use serde::de::DeserializeOwned;
 
+use super::auth::parse_cookie;
 use super::error::HttpError;
 use super::path::PathParams;
+use super::query::build_uri;
 
 /// Incoming HTTP request context passed to [`super::Handler`](super::Handler).
 #[derive(Debug, Clone)]
@@ -53,16 +55,28 @@ impl RequestCtx {
         &self.path
     }
 
+    /// Reconstructed request URI (path + decoded query).
+    #[must_use]
+    pub fn uri(&self) -> Uri {
+        build_uri(&self.path, &self.query)
+    }
+
     /// Path parameters from the matched route.
     #[must_use]
     pub fn params(&self) -> &PathParams {
         &self.params
     }
 
-    /// Query parameters (first value per name).
+    /// Query parameters (first value per name, URL-decoded).
     #[must_use]
     pub fn query(&self) -> &HashMap<String, String> {
         &self.query
+    }
+
+    /// One query parameter by name.
+    #[must_use]
+    pub fn query_param(&self, key: &str) -> Option<&str> {
+        self.query.get(key).map(String::as_str)
     }
 
     /// Request headers.
@@ -77,6 +91,19 @@ impl RequestCtx {
         &self.body
     }
 
+    /// Alias for [`Self::body`].
+    #[must_use]
+    pub fn bytes(&self) -> &Bytes {
+        self.body()
+    }
+
+    /// Cookie value from the `Cookie` header.
+    #[must_use]
+    pub fn cookie(&self, name: &str) -> Option<&str> {
+        let header = self.headers.get(http::header::COOKIE)?.to_str().ok()?;
+        parse_cookie(header, name)
+    }
+
     /// Deserialize JSON body.
     ///
     /// Returns [`HttpError::InvalidJson`] with status **400** on failure — Actix-compatible,
@@ -88,6 +115,17 @@ impl RequestCtx {
         serde_json::from_slice(self.body.as_ref()).map_err(|e| {
             HttpError::InvalidJson(format!("Failed to deserialize the JSON body: {e}"))
         })
+    }
+
+    /// Deserialize `application/x-www-form-urlencoded` body.
+    ///
+    /// # Errors
+    /// [`HttpError::BadRequest`] when the body is not valid form data for `T`.
+    pub fn form<T: DeserializeOwned>(&self) -> Result<T, HttpError> {
+        let raw = std::str::from_utf8(self.body.as_ref())
+            .map_err(|e| HttpError::BadRequest(format!("invalid form body: {e}")))?;
+        serde_urlencoded::from_str(raw)
+            .map_err(|e| HttpError::BadRequest(format!("invalid form body: {e}")))
     }
 }
 
@@ -208,5 +246,20 @@ mod tests {
         );
         let err = ctx.json::<serde_json::Value>().expect_err("bad json");
         assert_eq!(err.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn uri_includes_query() {
+        let mut q = HashMap::new();
+        q.insert("a".into(), "1".into());
+        let ctx = RequestCtx::new(
+            Method::GET,
+            "/x",
+            PathParams::new(),
+            q,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+        assert_eq!(ctx.uri().to_string(), "/x?a=1");
     }
 }

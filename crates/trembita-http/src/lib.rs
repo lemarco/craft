@@ -225,7 +225,12 @@ impl JobsApi {
 
     /// Route table with optional gateway auth hook.
     pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
-        routes::route_table(Arc::new(self.clone().into_state_with_auth(auth)))
+        let table = routes::route_table(Arc::new(self.clone().into_state_with_auth(None)));
+        if auth.is_some() {
+            table.with_auth_mode(routing::AuthMode::Identity)
+        } else {
+            table
+        }
     }
 
     /// State handle for route tables.
@@ -295,7 +300,12 @@ impl ActorsApi {
 
     /// Route table with optional gateway auth hook.
     pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
-        actor_routes::route_table(Arc::new(self.clone().into_state_with_auth(auth)))
+        let table = actor_routes::route_table(Arc::new(self.clone().into_state_with_auth(None)));
+        if auth.is_some() {
+            table.with_auth_mode(routing::AuthMode::Identity)
+        } else {
+            table
+        }
     }
 
     /// State handle for route tables.
@@ -365,7 +375,12 @@ impl WorkflowsApi {
 
     /// Route table with optional gateway auth hook.
     pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
-        workflow_routes::route_table(Arc::new(self.clone().into_state_with_auth(auth)))
+        let table = workflow_routes::route_table(Arc::new(self.clone().into_state_with_auth(None)));
+        if auth.is_some() {
+            table.with_auth_mode(routing::AuthMode::Identity)
+        } else {
+            table
+        }
     }
 
     /// State handle for route tables.
@@ -448,7 +463,13 @@ impl IntrospectApi {
 
     /// Route table with optional gateway auth hook.
     pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
-        introspect_routes::route_table(Arc::new(self.clone().into_state_with_auth(auth)))
+        let table =
+            introspect_routes::route_table(Arc::new(self.clone().into_state_with_auth(None)));
+        if auth.is_some() {
+            table.with_auth_mode(routing::AuthMode::Identity)
+        } else {
+            table
+        }
     }
 
     /// State handle for route tables.

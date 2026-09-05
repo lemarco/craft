@@ -2,28 +2,11 @@
 
 use std::sync::Arc;
 
-use http::{StatusCode, Uri};
+use http::StatusCode;
 
 use crate::WorkflowsApiState;
 use crate::routing::{HttpError, RequestCtx, Response, RouteTable};
-use crate::types::JobsApiError;
 use crate::workflow_types::{SagaBody, WorkflowsApiError};
-
-fn ctx_uri(ctx: &RequestCtx) -> Uri {
-    ctx.path().parse().unwrap_or_else(|_| Uri::from_static("/"))
-}
-
-async fn authorize(state: &WorkflowsApiState, ctx: &RequestCtx) -> Result<(), WorkflowsApiError> {
-    if let Some(auth) = &state.auth {
-        auth(ctx.method().clone(), ctx_uri(ctx), ctx.headers().clone())
-            .await
-            .map_err(|e| match e {
-                JobsApiError::Unauthorized(m) => WorkflowsApiError::Unauthorized(m),
-                other => WorkflowsApiError::BadRequest(other.to_string()),
-            })?;
-    }
-    Ok(())
-}
 
 /// Route table for workflow trigger routes.
 #[must_use]
@@ -57,7 +40,6 @@ async fn get_health_inner(
     state: &WorkflowsApiState,
     ctx: RequestCtx,
 ) -> Result<Response, WorkflowsApiError> {
-    authorize(state, &ctx).await?;
     Ok(Response::text(StatusCode::OK, "ok"))
 }
 
@@ -72,7 +54,6 @@ async fn post_run_inner(
     state: &WorkflowsApiState,
     ctx: RequestCtx,
 ) -> Result<Response, WorkflowsApiError> {
-    authorize(state, &ctx).await?;
     let body: SagaBody = ctx
         .json()
         .map_err(|e| WorkflowsApiError::BadRequest(e.message().to_string()))?;
@@ -96,7 +77,6 @@ async fn post_resume_inner(
     state: &WorkflowsApiState,
     ctx: RequestCtx,
 ) -> Result<Response, WorkflowsApiError> {
-    authorize(state, &ctx).await?;
     let body: SagaBody = ctx
         .json()
         .map_err(|e| WorkflowsApiError::BadRequest(e.message().to_string()))?;

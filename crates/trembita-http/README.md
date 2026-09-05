@@ -2,6 +2,8 @@
 
 Product HTTP helpers for [trembita](https://crates.io/crates/trembita) apps (0.4.0 native routing).
 
+**Product apps:** depend on `trembita` with feature `http-jobs` (enabled by default) — types re-exported at the crate root and in `trembita::gateway::http`. See [facade ADR](../../docs/decisions/facade.md). Direct `trembita-http` dependency is for advanced/workspace use.
+
 ## Job enqueue API
 
 Mount via [`RouteTable`](src/routing/table.rs):
