@@ -123,10 +123,10 @@ pub use workload::WorkloadRuntime;
 
 #[cfg(feature = "http-jobs")]
 pub use trembita_http::{
-    accept_websocket, CookieConfig, CorsPolicy, EmbeddedAssets, EmbeddedFile, Gateway,
-    GatewayBuildError, GatewayService, IntrospectApi, IntrospectApiError, Observer,
-    Precompressed, RouteTable, routing_to_http_response, StaticSite, StaticSource, Surface,
-    UpgradeStream, embedded_from_dir, is_local_dev_host, normalize_host,
+    CookieConfig, CorsPolicy, EmbeddedAssets, EmbeddedFile, Gateway, GatewayBuildError,
+    GatewayService, IntrospectApi, IntrospectApiError, Observer, Precompressed, RouteTable,
+    StaticSite, StaticSource, Surface, UpgradeStream, accept_websocket, embedded_from_dir,
+    is_local_dev_host, normalize_host, routing_to_http_response,
 };
 pub use upgrade::upgrade_api;
 pub use upgrade::{

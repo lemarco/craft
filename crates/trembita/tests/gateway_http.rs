@@ -107,14 +107,13 @@ fn ctx_uri(ctx: &RequestCtx) -> http::Uri {
             .map(|(k, v)| format!("{k}={v}"))
             .collect::<Vec<_>>()
             .join("&");
-        format!("{}?{qs}", ctx.path()).parse().expect("path+query uri")
+        format!("{}?{qs}", ctx.path())
+            .parse()
+            .expect("path+query uri")
     }
 }
 
-async fn post_chat(
-    state: TrembitaGatewayState,
-    ctx: RequestCtx,
-) -> Result<Response, HttpError> {
+async fn post_chat(state: TrembitaGatewayState, ctx: RequestCtx) -> Result<Response, HttpError> {
     let uri = ctx_uri(&ctx);
     let mut handle = state
         .open_actor_session_parts(

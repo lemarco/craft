@@ -52,7 +52,7 @@ use trembita_runtime::{CastError, ClusterAskError};
 pub use actor_types::{ActorsApiError, AskAccepted};
 pub use cookie_config::CookieConfig;
 pub use gateway::{
-    accept_websocket, CorsPolicy, Gateway, GatewayBuildError, GatewayService, Surface,
+    CorsPolicy, Gateway, GatewayBuildError, GatewayService, Surface, accept_websocket,
     routing_to_http_response,
 };
 pub use host::{is_local_dev_host, normalize_host};

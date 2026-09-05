@@ -34,6 +34,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tungstenite = { version = "0.26", default-features = false }
 tower.workspace = true
 opendal = { workspace = true, optional = true }
 

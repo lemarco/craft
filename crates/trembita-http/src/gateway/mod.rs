@@ -8,8 +8,7 @@ use crate::routing::{RouteTable, SessionGate};
 
 pub use cors::CorsPolicy;
 pub use dispatch::{
-    GatewayDispatch, GatewayService, UpgradeStream, is_websocket_upgrade,
-    routing_to_http_response,
+    GatewayDispatch, GatewayService, UpgradeStream, is_websocket_upgrade, routing_to_http_response,
 };
 pub use ws::accept_websocket;
 

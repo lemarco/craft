@@ -84,9 +84,7 @@ async fn handle_socket(
         if let WsMessage::Text(text) = msg {
             let payload = trembita::proto::encode(&text).expect("encode");
             if handle.cast(payload).await.is_ok() {
-                let _ = ws
-                    .send(WsMessage::Text(format!("ok: {text}").into()))
-                    .await;
+                let _ = ws.send(WsMessage::Text(format!("ok: {text}").into())).await;
             }
         }
     }

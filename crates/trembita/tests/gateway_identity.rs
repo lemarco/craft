@@ -183,10 +183,7 @@ async fn bearer_identity_requires_user_header() {
         Err(IdentityError::Unauthorized)
     );
 
-    headers.insert(
-        "x-trembita-user",
-        http::HeaderValue::from_static("alice"),
-    );
+    headers.insert("x-trembita-user", http::HeaderValue::from_static("alice"));
     let req = GatewayRequest::from_parts(&Method::GET, &uri, &headers);
     assert_eq!(identity.extract(&req).await, Ok("alice".into()));
 }
@@ -197,10 +194,7 @@ async fn bearer_identity_rejects_query_token() {
 
     let uri: Uri = "/ws?user=alice&token=secret".parse().expect("uri");
     let mut headers = HeaderMap::new();
-    headers.insert(
-        "x-trembita-user",
-        http::HeaderValue::from_static("alice"),
-    );
+    headers.insert("x-trembita-user", http::HeaderValue::from_static("alice"));
     let req = GatewayRequest::from_parts(&Method::GET, &uri, &headers);
     assert_eq!(
         identity.extract(&req).await,

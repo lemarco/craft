@@ -10,6 +10,7 @@ export default defineConfig({
   lang: 'en-US',
   cleanUrls: true,
   lastUpdated: true,
+  appearance: 'dark',
 
   head: [
     ['link', { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' }],
@@ -120,6 +121,10 @@ export default defineConfig({
 
     search: {
       provider: 'local',
+    },
+
+    outline: {
+      level: [2, 3],
     },
 
     footer: {
