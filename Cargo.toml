@@ -36,6 +36,7 @@ members = [
     "crates/trembita",
     "crates/trembita-test-support",
     "crates/trembita-tools",
+    "crates/trembita-cli",
     "crates/trembita-backlog-postgres",
     "crates/trembita-events-postgres",
 ]
@@ -135,6 +136,7 @@ trembita = { path = "crates/trembita", version = "0.3.2" }
 trembita-test-support = { path = "crates/trembita-test-support", version = "0.3.2" }
 trembita-backlog-postgres = { path = "crates/trembita-backlog-postgres", version = "0.3.2" }
 trembita-events-postgres = { path = "crates/trembita-events-postgres", version = "0.3.2" }
+trembita-cli = { path = "crates/trembita-cli", version = "0.3.2" }
 
 # Lints applied across the workspace (library-and-publishing).
 [workspace.lints.rust]

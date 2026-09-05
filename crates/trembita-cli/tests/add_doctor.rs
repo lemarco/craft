@@ -1,10 +1,10 @@
 //! Integration tests for `trembita add` and `trembita doctor`.
 
 use tempfile::tempdir;
-use trembita_tools::scaffold::{
+use trembita_cli::{
     AddActorOpts, AddConsumerOpts, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts,
-    AppFeature, NewProjectOpts, StaticSiteSource, TrembitaProject, add_actor, add_consumer,
-    add_http_surface, add_static_site, add_topic, doctor_fix, run_doctor, scaffold_project,
+    AppFeature, Level, NewProjectOpts, StaticSiteSource, TrembitaProject, add_actor,
+    add_consumer, add_http_surface, add_static_site, add_topic, run_doctor, scaffold_project,
 };
 
 #[test]

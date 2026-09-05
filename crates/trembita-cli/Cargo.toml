@@ -1,0 +1,31 @@
+[package]
+name = "trembita-cli"
+description = "Trembita framework CLI — scaffold and manage product apps."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+homepage.workspace = true
+readme = "README.md"
+categories = ["development-tools", "command-line-utilities"]
+keywords = ["trembita", "scaffold", "cli", "framework", "distributed"]
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "trembita"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+trembita-cli = { path = "." }

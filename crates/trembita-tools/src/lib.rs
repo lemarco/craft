@@ -6,6 +6,5 @@
 pub mod gateway_auth;
 pub mod node;
 pub mod ops;
-pub mod scaffold;
 pub mod showcase_client;
 pub mod showcase_common;

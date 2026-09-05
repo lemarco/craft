@@ -16,6 +16,6 @@ die() { echo "error: $*" >&2; exit 1; }
 
 [ -n "$NAME" ] || die "usage: $0 <project-name> [features]"
 
-cargo run --manifest-path "$ROOT/crates/trembita-tools/Cargo.toml" \
+cargo run --manifest-path "$ROOT/crates/trembita-cli/Cargo.toml" \
     --bin trembita -- \
     new "$NAME" --features "$FEATURES" --trembita-path "$ROOT"

@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use tempfile::tempdir;
-use trembita_tools::scaffold::{AppFeature, NewProjectOpts, scaffold_project};
+use trembita_cli::{AppFeature, NewProjectOpts, scaffold_project};
 
 #[test]
 fn scaffolds_default_layout() {

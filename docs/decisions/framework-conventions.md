@@ -65,27 +65,29 @@ Scaffolded apps expose trembita capabilities as **app features** (mapped to depe
 | `external-backlog` | `trembita-backlog-postgres` adapter |
 | `domain-outbox` | `trembita-events-postgres` adapter |
 
-Future CLI subcommands (`trembita add`, `trembita doctor`) operate on this layout — **shipped** in `trembita-tools` (`trembita add consumer|topic|actor`, `trembita doctor`).
+Future CLI subcommands (`trembita add`, `trembita doctor`) operate on this layout — **shipped** in [`trembita-cli`](../../crates/trembita-cli/) (`trembita add consumer|topic|actor|http-surface|static-site`, `trembita doctor`).
 
 ### CLI
 
-The **`trembita`** binary (in [`trembita-tools`](../../crates/trembita-tools/)) is the framework CLI:
+The **`trembita`** binary lives in [`trembita-cli`](../../crates/trembita-cli/) (published with **0.4.0**):
 
 ```bash
-cargo install --path crates/trembita-tools --bin trembita   # from repo
+cargo install --path crates/trembita-cli          # from repo
+cargo install trembita-cli                        # after 0.4.0 on crates.io
 trembita new my-service --features jobs,gateway,telemetry
 trembita new my-service --output ../my-service --trembita-path ../trembita
 trembita add consumer emails --lease 300
 trembita add topic platform.events
 trembita add actor catalog
+trembita add http-surface api --hosts api.example.com
+trembita add static-site app --hosts app.example.com
 trembita doctor
+trembita doctor --fix
 ```
 
 [`trembita-init.sh`](../../scripts/trembita-init.sh) remains as a thin wrapper delegating to the Rust CLI.
 
-### Non-goals (this ADR)
-
-- Published `trembita-cli` on crates.io — after dogfooding (Quazala migration)
+[`trembita-tools`](../../crates/trembita-tools/) stays workspace-only (`trembita-node`, `trembita-ops`, e2e clients).
 
 ## Consequences
 

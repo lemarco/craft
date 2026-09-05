@@ -15,7 +15,7 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 - **Framework conventions** ([`framework-conventions`](docs/decisions/framework-conventions.md)) — standard product app layout
   (`main.rs` / `app.rs` / `config.rs` / `consumers/` / `domain/`) and app-level Cargo features.
-- **`trembita` CLI** ([`trembita-tools`](crates/trembita-tools/)) — `trembita new`, `trembita add consumer|topic|actor`, `trembita doctor`.
+- **`trembita-cli`** ([`trembita-cli`](crates/trembita-cli/)) — publishable framework CLI: `trembita new`, `trembita add consumer|topic|actor|http-surface|static-site`, `trembita doctor [--fix]`. Ships with **0.4.0** on crates.io.
 - **`trembita-events-postgres`** — [`PgEventOutboxSource`](crates/trembita-events-postgres/src/source.rs) for
   transactional domain outbox drain (`poll` + `mark_published`, configurable [`PgEventOutboxSchema`](crates/trembita-events-postgres/src/schema.rs)).
 - **[`DepthCache`](crates/trembita-jobs/src/depth_cache.rs) / [`CachedDepth`](crates/trembita-jobs/src/depth_cache.rs)** — TTL cache wrapper for expensive

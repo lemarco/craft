@@ -229,15 +229,15 @@ See [realtime-sessions](scenarios/realtime-sessions.md) and [gateway-identity](d
 # From the trembita repo (path dependency):
 ./scripts/trembita-init.sh my-app
 # or:
-cargo run -p trembita-tools --bin trembita -- new my-app --trembita-path .
+cargo run -p trembita-cli -- new my-app --trembita-path .
 
 # With feature selection:
-cargo run -p trembita-tools --bin trembita -- new my-app \
+cargo run -p trembita-cli -- new my-app \
   --features jobs,gateway,telemetry,topics,external-backlog
 ```
 
 Generates the [framework layout](decisions/framework-conventions.md): `main.rs` (boot), `app.rs` (wiring),
-`config.rs`, `consumers/`, `domain/`, plus `deploy/` for local cluster. See [`trembita new --help`](../crates/trembita-tools/src/bin/trembita.rs).
+`config.rs`, `consumers/`, `domain/`, plus `deploy/` for local cluster. See [`trembita new --help`](../crates/trembita-cli/src/main.rs).
 
 ## 10. Observability & ops
 

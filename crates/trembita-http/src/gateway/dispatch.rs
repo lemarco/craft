@@ -241,11 +241,10 @@ async fn read_body(body: Incoming, limit: usize) -> Result<Bytes, HttpResponse<B
 }
 
 fn text_response(status: StatusCode, message: &str) -> HttpResponse<BoxBody> {
-    let body = Full::new(Bytes::from(message.to_string()));
-    let mut resp = HttpResponse::new(
-        body.map_err(|never| match never {})
-            .boxed_unsync(),
+    let body = BoxBody::new(
+        Full::new(Bytes::from(message.to_string())).map_err(|never| match never {}),
     );
+    let mut resp = HttpResponse::new(body);
     *resp.status_mut() = status;
     resp.headers_mut().insert(
         CONTENT_TYPE,

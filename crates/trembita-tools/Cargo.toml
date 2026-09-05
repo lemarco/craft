@@ -16,10 +16,6 @@ workspace = true
 path = "src/lib.rs"
 
 [[bin]]
-name = "trembita"
-path = "src/bin/trembita.rs"
-
-[[bin]]
 name = "trembita-node"
 path = "src/bin/node.rs"
 

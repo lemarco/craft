@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process;
 
 use clap::{Parser, Subcommand, ValueHint};
-use trembita_tools::scaffold::{
+use trembita_cli::{
     AddActorOpts, AddConsumerOpts, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts,
     NewProjectOpts, StaticSiteSource, TrembitaProject, add_actor, add_consumer, add_http_surface,
     add_static_site, add_topic, default_output, doctor_fix, parse_feature_list, run_doctor,
