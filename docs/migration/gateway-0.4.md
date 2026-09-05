@@ -79,6 +79,6 @@ assert!(diff.is_empty(), "{diff:?}");
 
 | 0.3.x | 0.4.0 |
 |-------|-------|
-| `build_gateway_router` | `build_gateway_service` (alias deprecated) |
+| `build_gateway_router` | removed — use `build_gateway_service` |
 | `HostRouter` / `MultiHostBuilder` | `Gateway` + `Surface` |
 | `trembita::axum::*` re-exports | removed — use `trembita_http` types |

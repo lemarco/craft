@@ -28,8 +28,7 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ### Changed
 
-- **Breaking:** `GatewayOpts::routes` removed; use `.surfaces()`. Axum removed from trembita workspace.
-- **`build_gateway_router`** deprecated — use [`build_gateway_service`](crates/trembita/src/gateway/router.rs).
+- **Breaking:** `GatewayOpts::routes` and `build_gateway_router` removed; use `.surfaces()` and [`build_gateway_service`](crates/trembita/src/gateway/router.rs).
 
 ### Removed
 

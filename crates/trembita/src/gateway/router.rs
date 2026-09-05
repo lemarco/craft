@@ -33,15 +33,6 @@ pub fn build_gateway_service(
     build_gateway_service_with_tracker(app, config, Some(connections))
 }
 
-/// Alias retained for cluster re-exports — prefer [`build_gateway_service`].
-#[deprecated(note = "renamed to build_gateway_service in trembita 0.4.0")]
-pub fn build_gateway_router(
-    app: &Arc<TrembitaApp>,
-    config: GatewayConfig,
-) -> Result<WrappedGatewayService, GatewayConfigError> {
-    build_gateway_service(app, config)
-}
-
 #[allow(clippy::unnecessary_wraps)]
 pub(super) fn build_gateway_service_with_tracker(
     app: &Arc<TrembitaApp>,
@@ -62,9 +53,10 @@ pub(super) fn build_gateway_service_with_tracker(
         rate_limit_per_sec,
     } = config;
 
-    let needs_auth = protect_apis || jobs_api || actors_api || workflows_api || introspect_api;
-    let auth = if needs_auth {
-        identity.clone().map(identity_auth_fn)
+    let identity_hook = identity.clone().map(identity_auth_fn);
+    let product_auth = if protect_apis || jobs_api || actors_api || workflows_api || introspect_api
+    {
+        identity_hook.clone()
     } else {
         None
     };
@@ -73,7 +65,7 @@ pub(super) fn build_gateway_service_with_tracker(
     let mut gateway = surfaces.map_or_else(|| Gateway::new(false), |f| f(state));
     gateway = gateway.merge_routes(collect_builtin_routes(
         app,
-        auth.clone(),
+        product_auth,
         jobs_api,
         actors_api,
         workflows_api,
@@ -82,8 +74,8 @@ pub(super) fn build_gateway_service_with_tracker(
 
     let inner = {
         let mut svc = GatewayService::build(&gateway)?;
-        if let Some(auth) = auth {
-            svc = svc.with_identity(trembita_http::auth_fn_to_identity(auth));
+        if let Some(hook) = identity_hook {
+            svc = svc.with_identity(trembita_http::auth_fn_to_identity(hook));
         }
         svc
     };

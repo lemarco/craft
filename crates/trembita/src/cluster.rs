@@ -14,8 +14,8 @@ pub use crate::cluster_handle::{
 };
 pub use crate::gateway::{
     GATEWAY_MAX_BODY_BYTES, GatewayConfig, GatewayConfigError, GatewayHandle, GatewaySpawnError,
-    WrappedGatewayService, build_gateway_router, build_gateway_service, gateway_has_product_apis,
-    gateway_token_from_env, spawn_gateway, validate_gateway_config,
+    WrappedGatewayService, build_gateway_service, gateway_has_product_apis, gateway_token_from_env,
+    spawn_gateway, validate_gateway_config,
 };
 pub use crate::saga::{
     CompositeSagaJournal, Group0SagaJournal, MetaRaftSagaJournal, SagaRegistry, StoreSagaJournal,

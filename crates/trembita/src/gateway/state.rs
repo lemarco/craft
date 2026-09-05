@@ -46,7 +46,7 @@ impl TrembitaGatewayState {
     /// Track a long-lived connection until the guard drops (WebSocket, SSE, …).
     ///
     /// Short HTTP handlers are tracked automatically by gateway middleware when the
-    /// router is built via [`super::build_gateway_router`] or [`super::spawn_gateway`].
+    /// router is built via [`super::build_gateway_service`] or [`super::spawn_gateway`].
     #[must_use]
     pub fn track_connection(&self) -> Option<ConnectionGuard<'_>> {
         self.connections.as_ref().map(|c| c.track())

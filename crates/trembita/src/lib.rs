@@ -93,7 +93,7 @@ pub use gateway::{
     GatewayBearerIdentity, GatewayConfig, GatewayHandle, GatewayIdentity, GatewayOpts,
     GatewayRequest, GatewayTlsPaths, GatewayTokenIdentity, IdentityError, IdentityTypeError,
     NoWorkerError, OpenActorSessionError, SessionHandle, SessionKey, TrembitaGatewayState,
-    WrappedGatewayService, build_gateway_router, build_gateway_service, spawn_gateway,
+    WrappedGatewayService, build_gateway_service, spawn_gateway,
 };
 pub use job_opts::JobOpts;
 pub use queue_opts::QueueOpts;

@@ -32,9 +32,7 @@ pub use identity::{
     GatewayTokenIdentity, IdentityError, IdentityTypeError, SessionKey,
 };
 pub use opts::GatewayOpts;
-pub use router::{
-    WrappedGatewayService, bearer_auth_from_env, build_gateway_router, build_gateway_service,
-};
+pub use router::{WrappedGatewayService, bearer_auth_from_env, build_gateway_service};
 pub use session::{NoWorkerError, OpenActorSessionError, SessionHandle};
 pub use spawn::{GatewaySpawnError, spawn_gateway};
 pub use state::TrembitaGatewayState;
