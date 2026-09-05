@@ -21,7 +21,10 @@ use hyper_util::rt::TokioIo;
 use tower::Service;
 
 use crate::host::{is_local_dev_host, normalize_host};
-use crate::routing::{HttpError, RequestCtx, Response, ResponseBody, RouteTable};
+use crate::routing::{
+    DispatchGates, HttpError, IdentityAuthFn, RequestCtx, Response, ResponseBody, RouteTable,
+    SessionGate,
+};
 
 use super::Surface;
 use super::cors::CorsPolicy;
@@ -34,12 +37,14 @@ pub struct GatewayDispatch {
     hosts: Arc<HashMap<String, Arc<SurfaceDispatch>>>,
     local_dev: Option<Arc<SurfaceDispatch>>,
     is_production: bool,
+    identity: Option<IdentityAuthFn>,
 }
 
 #[derive(Clone)]
 struct SurfaceDispatch {
     routes: RouteTable,
     cors: Option<CorsPolicy>,
+    session: Option<SessionGate>,
 }
 
 impl GatewayDispatch {
@@ -51,6 +56,7 @@ impl GatewayDispatch {
             let dispatch = Arc::new(SurfaceDispatch {
                 routes: surface.route_table().clone(),
                 cors: surface.cors_policy().cloned(),
+                session: surface.session_gate().cloned(),
             });
             for host in surface.host_list() {
                 hosts.insert(normalize_host(host), Arc::clone(&dispatch));
@@ -60,12 +66,14 @@ impl GatewayDispatch {
             Arc::new(SurfaceDispatch {
                 routes: routes.clone(),
                 cors: None,
+                session: None,
             })
         });
         Ok(Self {
             hosts: Arc::new(hosts),
             local_dev,
             is_production: gateway.is_production(),
+            identity: None,
         })
     }
 
@@ -75,7 +83,11 @@ impl GatewayDispatch {
         let mut map = HashMap::clone(&self.hosts);
         map.insert(
             normalize_host(hostname),
-            Arc::new(SurfaceDispatch { routes, cors: None }),
+            Arc::new(SurfaceDispatch {
+                routes,
+                cors: None,
+                session: None,
+            }),
         );
         self.hosts = Arc::new(map);
         self
@@ -92,11 +104,26 @@ impl GatewayDispatch {
                 Arc::new(SurfaceDispatch {
                     routes: merged,
                     cors: surface.cors.clone(),
+                    session: surface.session.clone(),
                 }),
             );
         }
         self.hosts = Arc::new(map);
         self
+    }
+
+    /// Gateway identity hook for [`AuthMode::Identity`] routes.
+    #[must_use]
+    pub fn with_identity(mut self, identity: IdentityAuthFn) -> Self {
+        self.identity = Some(identity);
+        self
+    }
+
+    fn gates_for<'a>(&'a self, surface: &'a SurfaceDispatch) -> DispatchGates<'a> {
+        DispatchGates {
+            session_gate: surface.session.as_ref(),
+            identity: self.identity.as_ref(),
+        }
     }
 
     fn resolve_surface(&self, host: &str) -> Option<Arc<SurfaceDispatch>> {
@@ -167,9 +194,18 @@ impl GatewayDispatch {
             Err(resp) => return resp,
         };
 
+        let gates = self.gates_for(&surface);
+
         match surface
             .routes
-            .dispatch(&parts.method, &path, query, parts.headers, body_bytes)
+            .dispatch(
+                &parts.method,
+                &path,
+                query,
+                parts.headers,
+                body_bytes,
+                &gates,
+            )
             .await
         {
             Ok(resp) => apply_cors(
@@ -215,6 +251,13 @@ impl GatewayService {
     /// Mutable access to dispatch for route merging at build time.
     pub fn dispatch_mut(&mut self) -> &mut GatewayDispatch {
         &mut self.dispatch
+    }
+
+    /// Attach gateway identity hook for [`AuthMode::Identity`] routes.
+    #[must_use]
+    pub fn with_identity(mut self, identity: IdentityAuthFn) -> Self {
+        self.dispatch = self.dispatch.clone().with_identity(identity);
+        self
     }
 }
 

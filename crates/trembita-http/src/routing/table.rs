@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use http::Method;
 
-use super::auth::AuthMode;
+use super::auth::{AuthMode, DispatchGates};
 use super::ctx::{RequestCtx, Response};
 use super::error::HttpError;
 use super::handler::{ArcHandler, Handler};
@@ -125,6 +125,30 @@ impl RouteTable {
         self
     }
 
+    /// `POST` route protected by the surface session gate.
+    #[must_use]
+    pub fn post_session(mut self, path: &str, handler: impl Handler + 'static) -> Self {
+        self.routes.push(RouteEntry::new(
+            Method::POST,
+            path,
+            AuthMode::Session,
+            handler,
+        ));
+        self
+    }
+
+    /// `GET` route protected by gateway identity.
+    #[must_use]
+    pub fn get_identity(mut self, path: &str, handler: impl Handler + 'static) -> Self {
+        self.routes.push(RouteEntry::new(
+            Method::GET,
+            path,
+            AuthMode::Identity,
+            handler,
+        ));
+        self
+    }
+
     /// Catch-all handler when no explicit route matches (static sites, SPA shells).
     #[must_use]
     pub fn fallback(mut self, handler: impl Handler + 'static) -> Self {
@@ -211,9 +235,10 @@ impl RouteTable {
         query: HashMap<String, String>,
         headers: http::HeaderMap,
         body: bytes::Bytes,
+        gates: &DispatchGates<'_>,
     ) -> Result<Response, HttpError> {
         if let Some((entry, params)) = self.match_route(method, path) {
-            let _auth = entry.auth();
+            run_auth(entry.auth(), gates, method, path, &query, &headers).await?;
             let ctx = RequestCtx::new(method.clone(), path, params, query, headers, body);
             return entry.handler.handle(ctx).await?.finalize();
         }
@@ -231,6 +256,18 @@ impl RouteTable {
         Err(HttpError::NotFound)
     }
 
+    async fn dispatch_legacy(
+        &self,
+        method: &Method,
+        path: &str,
+        query: HashMap<String, String>,
+        headers: http::HeaderMap,
+        body: bytes::Bytes,
+    ) -> Result<Response, HttpError> {
+        self.dispatch(method, path, query, headers, body, &DispatchGates::open())
+            .await
+    }
+
     fn match_route(&self, method: &Method, path: &str) -> Option<(&RouteEntry, PathParams)> {
         self.routes.iter().rev().find_map(|entry| {
             if entry.method() != method {
@@ -242,6 +279,46 @@ impl RouteTable {
                 .map(|params| (entry, params))
         })
     }
+}
+
+async fn run_auth(
+    mode: AuthMode,
+    gates: &DispatchGates<'_>,
+    method: &Method,
+    path: &str,
+    query: &HashMap<String, String>,
+    headers: &http::HeaderMap,
+) -> Result<(), HttpError> {
+    match mode {
+        AuthMode::Open => Ok(()),
+        AuthMode::Session => {
+            let gate = gates.session_gate.ok_or_else(|| {
+                HttpError::Internal("session route without surface SessionGate".into())
+            })?;
+            gate.authorize(headers).await
+        }
+        AuthMode::Identity => {
+            let auth = gates.identity.ok_or_else(|| {
+                HttpError::Internal("identity route without gateway identity hook".into())
+            })?;
+            let uri = build_uri(path, query);
+            auth(method.clone(), uri, headers.clone()).await
+        }
+    }
+}
+
+fn build_uri(path: &str, query: &HashMap<String, String>) -> http::Uri {
+    if query.is_empty() {
+        return path.parse().unwrap_or_else(|_| http::Uri::from_static("/"));
+    }
+    let q = query
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join("&");
+    format!("{path}?{q}")
+        .parse()
+        .unwrap_or_else(|_| path.parse().unwrap_or_else(|_| http::Uri::from_static("/")))
 }
 
 #[cfg(test)]
@@ -258,7 +335,7 @@ mod tests {
             Ok(Response::text(StatusCode::OK, ctx.path()))
         });
         let resp = table
-            .dispatch(
+            .dispatch_legacy(
                 &Method::GET,
                 "/health",
                 HashMap::new(),
