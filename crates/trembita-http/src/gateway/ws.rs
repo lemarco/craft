@@ -7,7 +7,7 @@ use bytes::Bytes;
 use http::header::{
     CONNECTION, SEC_WEBSOCKET_ACCEPT, SEC_WEBSOCKET_KEY, SEC_WEBSOCKET_VERSION, UPGRADE,
 };
-use http::{Request, Response as HttpResponse, StatusCode, Version};
+use http::{Request, Response as HttpResponse, StatusCode};
 use http_body_util::{BodyExt, Full};
 use hyper::body::Incoming;
 use hyper_util::rt::TokioIo;
@@ -55,30 +55,4 @@ where
         }
     }
     res
-}
-
-/// Returns `true` when the request looks like a valid WebSocket handshake.
-#[must_use]
-pub fn is_websocket_handshake(req: &Request<Incoming>) -> bool {
-    let upgrade = http::HeaderValue::from_static("Upgrade");
-    req.method() == http::Method::GET
-        && req.version() >= Version::HTTP_11
-        && req
-            .headers()
-            .get(CONNECTION)
-            .and_then(|h| h.to_str().ok())
-            .is_some_and(|h| {
-                h.split([' ', ','])
-                    .any(|p| p.eq_ignore_ascii_case(upgrade.to_str().unwrap_or("Upgrade")))
-            })
-        && req
-            .headers()
-            .get(UPGRADE)
-            .and_then(|h| h.to_str().ok())
-            .is_some_and(|h| h.eq_ignore_ascii_case("websocket"))
-        && req
-            .headers()
-            .get(SEC_WEBSOCKET_VERSION)
-            .is_some_and(|h| h == "13")
-        && req.headers().contains_key(SEC_WEBSOCKET_KEY)
 }

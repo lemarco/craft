@@ -14,10 +14,10 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::{WebSocketStream, tungstenite::protocol::Role};
 use trembita::runtime::{UserActor, actor};
 use trembita::{
-    ActorGroupOpts, Gateway, GatewayOpts, ReadyOpts, RouteTable, RunOpts, TrembitaApp,
-    TrembitaConfigure, TrembitaGatewayState, accept_websocket, routing_to_http_response,
+    ActorGroupOpts, Gateway, GatewayOpts, HttpError, ReadyOpts, RequestCtx, Response, RouteTable,
+    RunOpts, TrembitaApp, TrembitaConfigure, TrembitaGatewayState, accept_websocket,
+    routing_to_http_response,
 };
-use trembita_http::RequestCtx;
 use trembita_tools::showcase_common::{data_dir, display_addr};
 
 const DATA_DIR_NAME: &str = "trembita-showcase-realtime";

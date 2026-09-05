@@ -248,19 +248,6 @@ impl JobsApi {
             auth,
         }
     }
-
-    fn clone_state(&self) -> JobsApiState {
-        JobsApiState {
-            enqueue: Arc::clone(&self.enqueue),
-            enqueue_batch: Arc::clone(&self.enqueue_batch),
-            ack_batch: Arc::clone(&self.ack_batch),
-            job_status: Arc::clone(&self.job_status),
-            list_jobs: Arc::clone(&self.list_jobs),
-            requeue_dead_letter: Arc::clone(&self.requeue_dead_letter),
-            requeue_dead_letter_batch: Arc::clone(&self.requeue_dead_letter_batch),
-            auth: None,
-        }
-    }
 }
 
 /// Async ask hook used by [`ActorsApi`].
@@ -324,14 +311,6 @@ impl ActorsApi {
             ask: self.ask,
             cast: self.cast,
             auth,
-        }
-    }
-
-    fn clone_state(&self) -> ActorsApiState {
-        ActorsApiState {
-            ask: Arc::clone(&self.ask),
-            cast: Arc::clone(&self.cast),
-            auth: None,
         }
     }
 }
@@ -402,14 +381,6 @@ impl WorkflowsApi {
             run: self.run,
             resume: self.resume,
             auth,
-        }
-    }
-
-    fn clone_state(&self) -> WorkflowsApiState {
-        WorkflowsApiState {
-            run: Arc::clone(&self.run),
-            resume: Arc::clone(&self.resume),
-            auth: None,
         }
     }
 }
@@ -492,13 +463,6 @@ impl IntrospectApi {
         IntrospectApiState {
             observer: self.observer,
             auth,
-        }
-    }
-
-    fn clone_state(&self) -> IntrospectApiState {
-        IntrospectApiState {
-            observer: Arc::clone(&self.observer),
-            auth: None,
         }
     }
 }

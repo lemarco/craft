@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use http::{Method, StatusCode, Uri};
+use http::{StatusCode, Uri};
 
 use crate::IntrospectApiState;
 use crate::introspect_types::IntrospectApiError;

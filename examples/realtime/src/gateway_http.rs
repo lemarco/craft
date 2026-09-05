@@ -4,8 +4,7 @@ use std::time::Duration;
 
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
-use trembita::TrembitaGatewayState;
-use trembita_http::{HttpError, RequestCtx, Response};
+use trembita::{HttpError, RequestCtx, Response, TrembitaGatewayState};
 
 use crate::debug;
 

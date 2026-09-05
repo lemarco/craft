@@ -2,8 +2,7 @@
 
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
-use trembita::{Gateway, RouteTable, TrembitaGatewayState};
-use trembita_http::{HttpError, RequestCtx, Response};
+use trembita::{Gateway, HttpError, RequestCtx, Response, RouteTable, TrembitaGatewayState};
 
 use crate::debug;
 

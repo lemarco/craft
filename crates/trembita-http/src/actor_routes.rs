@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use base64::Engine;
 use http::header;
-use http::{Method, StatusCode, Uri};
+use http::{StatusCode, Uri};
 
 use crate::ActorsApiState;
 use crate::actor_types::{ActorsApiError, AskAccepted};

@@ -2,12 +2,12 @@
 
 use std::sync::Arc;
 
-use http::{Method, StatusCode, Uri};
+use http::{StatusCode, Uri};
 
 use crate::WorkflowsApiState;
 use crate::routing::{HttpError, RequestCtx, Response, RouteTable};
 use crate::types::JobsApiError;
-use crate::workflow_types::{SagaBody, WorkflowAccepted, WorkflowsApiError};
+use crate::workflow_types::{SagaBody, WorkflowsApiError};
 
 fn ctx_uri(ctx: &RequestCtx) -> Uri {
     ctx.path().parse().unwrap_or_else(|_| Uri::from_static("/"))
@@ -113,6 +113,8 @@ mod tests {
     use http::Method;
     use std::collections::HashMap;
     use std::future;
+
+    use crate::WorkflowAccepted;
 
     fn test_state(
         run: crate::RunWorkflowFn,

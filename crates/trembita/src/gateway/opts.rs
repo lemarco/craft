@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use trembita_http::Gateway;
 
-use super::super::app::TrembitaApp;
 use super::GatewayTlsPaths;
 use super::config::{DEFAULT_GATEWAY_DRAIN_TIMEOUT, GatewayConfig, GatewaySurfacesFn};
 use super::identity::{self, GatewayIdentity, SessionKey};

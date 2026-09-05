@@ -4,7 +4,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use http::{Method, StatusCode, Uri};
+use http::{StatusCode, Uri};
 use trembita_core::ArtifactManifest;
 
 use crate::AuthFn;

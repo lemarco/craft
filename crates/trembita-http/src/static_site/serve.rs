@@ -3,7 +3,7 @@
 use http::StatusCode;
 use http::header;
 
-use crate::routing::{HttpError, Response, ResponseBody};
+use crate::routing::{Response, ResponseBody};
 
 use super::StaticSiteError;
 

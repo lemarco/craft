@@ -13,7 +13,7 @@ mod handler;
 mod path;
 mod table;
 
-pub use auth::{AuthMode, DispatchGates, IdentityAuthFn, SessionGate, SessionValidateFn};
+pub use auth::{AuthMode, DispatchGates, IdentityAuthFn, SessionGate};
 pub use ctx::{RequestCtx, Response, ResponseBody};
 pub use error::HttpError;
 pub use handler::{ArcHandler, Handler};

@@ -3,7 +3,6 @@
 //! Declare host surfaces with [`GatewayOpts::surfaces`] — see
 //! [gateway-routing-v2](../../docs/decisions/gateway-routing-v2.md).
 
-mod compute;
 mod config;
 mod drain;
 mod identity;
@@ -39,10 +38,3 @@ pub use router::{
 pub use session::{NoWorkerError, OpenActorSessionError, SessionHandle};
 pub use spawn::{GatewaySpawnError, spawn_gateway};
 pub use state::TrembitaGatewayState;
-
-#[cfg(feature = "http-jobs")]
-pub use trembita_http::{
-    ArcHandler, AuthMode, CorsPolicy, Gateway, GatewayBuildError, GatewayService, Handler,
-    HttpError, PathParams, PathPattern, RequestCtx, Response, ResponseBody, RouteEntry, RouteTable,
-    SessionGate, Surface,
-};

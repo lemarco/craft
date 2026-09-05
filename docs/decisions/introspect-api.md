@@ -20,7 +20,7 @@ Cluster introspection JSON already exists ([observability §4](observability.md)
 
 [`TrembitaObserver`](../../crates/trembita/src/observer.rs) implements the port; [`AdminServer`](../../crates/trembita-dashboard/src/server.rs) serves it on the **admin port** (default `:8080`, hyper HTTP/1.1) together with `/health`, `/ready`, `/metrics`, and the embedded dashboard.
 
-Product HTTP already mounts three Axum sub-routers with optional [`AuthFn`](../../crates/trembita-http/src/lib.rs) ([`JobsApi`](../../crates/trembita-http/src/lib.rs), [`ActorsApi`](../../crates/trembita-http/src/lib.rs), [`WorkflowsApi`](../../crates/trembita-http/src/lib.rs)) via [`GatewayOpts`](../../crates/trembita/src/gateway/mod.rs) and [`build_gateway_router`](../../crates/trembita/src/gateway/mod.rs).
+Product HTTP already merges optional [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) entries with [`AuthFn`](../../crates/trembita-http/src/lib.rs) ([`JobsApi`](../../crates/trembita-http/src/lib.rs), [`ActorsApi`](../../crates/trembita-http/src/lib.rs), [`WorkflowsApi`](../../crates/trembita-http/src/lib.rs)) via [`GatewayOpts::surfaces`](../../crates/trembita/src/gateway/opts.rs) and [`build_gateway_service`](../../crates/trembita/src/gateway/mod.rs).
 
 Teams whose **operator UI is the product** (multi-page admin apps, session auth in Postgres, RBAC) need the same snapshots **inside their gateway**, next to custom routes — not on a separate admin listener they must proxy or reimplement by hand.
 

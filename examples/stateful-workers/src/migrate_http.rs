@@ -5,8 +5,7 @@ use std::time::Duration;
 
 use http::StatusCode;
 use trembita::proto::ActorId;
-use trembita::{Gateway, NodeId, RouteTable, TrembitaApp, TrembitaGatewayState};
-use trembita_http::{RequestCtx, Response};
+use trembita::{Gateway, NodeId, RequestCtx, Response, RouteTable, TrembitaApp, TrembitaGatewayState};
 
 use crate::migrate_counter::{CounterMsg, StatefulCounter};
 

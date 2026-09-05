@@ -22,11 +22,9 @@ use tower::Service;
 
 use crate::host::{is_local_dev_host, normalize_host};
 use crate::routing::{
-    DispatchGates, HttpError, IdentityAuthFn, RequestCtx, Response, ResponseBody, RouteTable,
-    SessionGate,
+    DispatchGates, IdentityAuthFn, Response, ResponseBody, RouteTable, SessionGate,
 };
 
-use super::Surface;
 use super::cors::CorsPolicy;
 
 type BoxBody = http_body_util::combinators::BoxBody<Bytes, Infallible>;
@@ -36,7 +34,6 @@ type BoxBody = http_body_util::combinators::BoxBody<Bytes, Infallible>;
 pub struct GatewayDispatch {
     hosts: Arc<HashMap<String, Arc<SurfaceDispatch>>>,
     local_dev: Option<Arc<SurfaceDispatch>>,
-    is_production: bool,
     identity: Option<IdentityAuthFn>,
 }
 
@@ -72,7 +69,6 @@ impl GatewayDispatch {
         Ok(Self {
             hosts: Arc::new(hosts),
             local_dev,
-            is_production: gateway.is_production(),
             identity: None,
         })
     }

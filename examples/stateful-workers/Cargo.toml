@@ -17,4 +17,6 @@ trembita-runtime = { path = "../../crates/trembita-runtime" }
 trembita-tools = { path = "../../crates/trembita-tools" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net", "io-util"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+http = "1"
 tracing = "0.1"
