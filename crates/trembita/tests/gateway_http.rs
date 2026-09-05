@@ -5,22 +5,16 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Json;
-use axum::Router;
-use axum::body::Body;
-use axum::http::{HeaderMap, Method, Request, StatusCode, Uri};
-use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use http::StatusCode;
 use serde::{Deserialize, Serialize};
-use tower::ServiceExt;
-use trembita::cluster::build_gateway_router;
 use trembita::{
     ActorGroupOpts, GatewayOpts, OpenActorSessionError, TrembitaApp, TrembitaConfigure,
     TrembitaGatewayState,
 };
+use trembita_http::{Gateway, HttpError, RequestCtx, Response, RouteTable};
 use trembita_runtime::{UserActor, actor};
 use trembita_test_support::{
-    advance, boot_local_app, eventually_default, wait_for_trembita_app_leader,
+    advance, boot_local_app, eventually_default, spawn_test_gateway, wait_for_trembita_app_leader,
 };
 
 struct FixedToken;
@@ -103,48 +97,83 @@ struct MeResponse {
     user: String,
 }
 
-async fn post_chat(
-    axum::extract::State(state): axum::extract::State<TrembitaGatewayState>,
-    method: axum::http::Method,
-    uri: axum::http::Uri,
-    headers: axum::http::HeaderMap,
-    Json(body): Json<ChatPost>,
-) -> Result<Json<ChatAck>, OpenActorSessionError> {
-    let mut handle = state
-        .open_actor_session_parts(
-            "echo",
-            &method,
-            &uri,
-            &headers,
-            Some(Duration::from_secs(60)),
-        )
-        .await?;
-    let user = handle.session_key().to_string();
-    let payload = trembita::proto::encode(&body.message).expect("encode");
-    handle.cast(payload).await.expect("cast");
-    Ok(Json(ChatAck { ok: true, user }))
-}
-
-async fn get_me(
-    axum::extract::State(state): axum::extract::State<TrembitaGatewayState>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Response {
-    match state.extract_session_parts(&method, &uri, &headers).await {
-        Ok(extracted) => Json(MeResponse {
-            user: extracted.session_key().to_string(),
-        })
-        .into_response(),
-        Err(err) => err.into_response(),
+fn ctx_uri(ctx: &RequestCtx) -> http::Uri {
+    let query = ctx.query();
+    if query.is_empty() {
+        ctx.path().parse().expect("path uri")
+    } else {
+        let qs = query
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join("&");
+        format!("{}?{qs}", ctx.path()).parse().expect("path+query uri")
     }
 }
 
-fn gateway_routes(state: TrembitaGatewayState) -> Router {
-    Router::new()
-        .route("/chat", post(post_chat))
-        .route("/me", get(get_me))
-        .with_state(state)
+async fn post_chat(
+    state: TrembitaGatewayState,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    let uri = ctx_uri(&ctx);
+    let mut handle = state
+        .open_actor_session_parts(
+            "echo",
+            ctx.method(),
+            &uri,
+            ctx.headers(),
+            Some(Duration::from_secs(60)),
+        )
+        .await
+        .map_err(session_err)?;
+    let body: ChatPost = ctx.json()?;
+    let user = handle.session_key().to_string();
+    let payload = trembita::proto::encode(&body.message).expect("encode");
+    handle.cast(payload).await.expect("cast");
+    Ok(Response::json(
+        StatusCode::OK,
+        serde_json::to_value(ChatAck { ok: true, user }).expect("json"),
+    ))
+}
+
+async fn get_me(state: TrembitaGatewayState, ctx: RequestCtx) -> Result<Response, HttpError> {
+    let uri = ctx_uri(&ctx);
+    match state
+        .extract_session_parts(ctx.method(), &uri, ctx.headers())
+        .await
+    {
+        Ok(extracted) => Ok(Response::json(
+            StatusCode::OK,
+            serde_json::to_value(MeResponse {
+                user: extracted.session_key().to_string(),
+            })
+            .expect("json"),
+        )),
+        Err(err) => Ok(err.into_http_response()),
+    }
+}
+
+fn session_err(err: OpenActorSessionError) -> HttpError {
+    match err {
+        OpenActorSessionError::Identity(e) => HttpError::Unauthorized(e.to_string()),
+        OpenActorSessionError::NoWorker(e) => HttpError::Internal(e.to_string()),
+    }
+}
+
+fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
+    let chat_state = state.clone();
+    let me_state = state;
+    Gateway::new(false).dev_fallback(
+        RouteTable::new()
+            .post("/chat", move |ctx: RequestCtx| {
+                let st = chat_state.clone();
+                async move { post_chat(st, ctx).await }
+            })
+            .get("/me", move |ctx: RequestCtx| {
+                let st = me_state.clone();
+                async move { get_me(st, ctx).await }
+            }),
+    )
 }
 
 async fn boot_with_workers(base: &std::path::Path) -> Arc<TrembitaApp> {
@@ -172,6 +201,13 @@ async fn boot_with_workers(base: &std::path::Path) -> Arc<TrembitaApp> {
     app
 }
 
+fn gateway_config() -> trembita::gateway::GatewayConfig {
+    GatewayOpts::new("127.0.0.1:0".parse().unwrap())
+        .identity(FixedToken)
+        .surfaces(gateway_surfaces)
+        .build_config()
+}
+
 #[tokio::test(start_paused = true)]
 async fn http_post_chat_with_query_auth() {
     let base = std::env::temp_dir().join(format!(
@@ -185,23 +221,16 @@ async fn http_post_chat_with_query_auth() {
     std::fs::create_dir_all(&base).unwrap();
 
     let app = boot_with_workers(&base).await;
-    let router = build_gateway_router(
-        &app,
-        GatewayOpts::new("127.0.0.1:0".parse().unwrap())
-            .identity(FixedToken)
-            .routes(gateway_routes)
-            .build_config(),
-    )
-    .expect("gateway config");
-
-    let req = Request::builder()
-        .method("POST")
-        .uri("/chat?user=alice&token=secret")
-        .header(axum::http::header::CONTENT_TYPE, "application/json")
-        .body(Body::from(r#"{"message":"hello"}"#))
-        .unwrap();
-
-    let resp = router.oneshot(req).await.expect("route");
+    let addr = spawn_test_gateway(&app, gateway_config()).await;
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("http://{addr}/chat?user=alice&token=secret"))
+        .header("Host", "127.0.0.1")
+        .header("content-type", "application/json")
+        .body(r#"{"message":"hello"}"#)
+        .send()
+        .await
+        .expect("request");
     assert_eq!(resp.status(), StatusCode::OK);
 
     app.shutdown();
@@ -223,10 +252,10 @@ async fn extract_session_from_on_http_request() {
     let app = boot_with_workers(&base).await;
     let state = TrembitaGatewayState::with_identity(Arc::clone(&app), FixedToken);
 
-    let req = Request::builder()
+    let req = http::Request::builder()
         .method("GET")
         .uri("/me?user=bob&token=secret")
-        .body(Body::empty())
+        .body(())
         .unwrap();
     let extracted = state.extract_session_from(&req).await.expect("auth");
     assert_eq!(extracted.session_key(), "bob");
@@ -248,22 +277,13 @@ async fn http_get_me_route() {
     std::fs::create_dir_all(&base).unwrap();
 
     let app = boot_with_workers(&base).await;
-    let router = build_gateway_router(
-        &app,
-        GatewayOpts::new("127.0.0.1:0".parse().unwrap())
-            .identity(FixedToken)
-            .routes(gateway_routes)
-            .build_config(),
-    )
-    .expect("gateway config");
-
-    let req = Request::builder()
-        .method("GET")
-        .uri("/me?user=bob&token=secret")
-        .body(Body::empty())
-        .unwrap();
-
-    let resp = router.oneshot(req).await.expect("route");
+    let addr = spawn_test_gateway(&app, gateway_config()).await;
+    let resp = reqwest::Client::new()
+        .get(format!("http://{addr}/me?user=bob&token=secret"))
+        .header("Host", "127.0.0.1")
+        .send()
+        .await
+        .expect("request");
     assert_eq!(resp.status(), StatusCode::OK);
 
     app.shutdown();
@@ -283,25 +303,17 @@ async fn http_post_chat_with_bearer_auth() {
     std::fs::create_dir_all(&base).unwrap();
 
     let app = boot_with_workers(&base).await;
-    let router = build_gateway_router(
-        &app,
-        GatewayOpts::new("127.0.0.1:0".parse().unwrap())
-            .identity(FixedToken)
-            .routes(gateway_routes)
-            .build_config(),
-    )
-    .expect("gateway config");
-
-    let req = Request::builder()
-        .method("POST")
-        .uri("/chat")
-        .header(axum::http::header::CONTENT_TYPE, "application/json")
-        .header(axum::http::header::AUTHORIZATION, "Bearer secret")
+    let addr = spawn_test_gateway(&app, gateway_config()).await;
+    let resp = reqwest::Client::new()
+        .post(format!("http://{addr}/chat"))
+        .header("Host", "127.0.0.1")
+        .header("content-type", "application/json")
+        .header("authorization", "Bearer secret")
         .header("x-trembita-user", "carol")
-        .body(Body::from(r#"{"message":"hi"}"#))
-        .unwrap();
-
-    let resp = router.oneshot(req).await.expect("route");
+        .body(r#"{"message":"hi"}"#)
+        .send()
+        .await
+        .expect("request");
     assert_eq!(resp.status(), StatusCode::OK);
 
     app.shutdown();
@@ -321,23 +333,15 @@ async fn http_post_without_auth_returns_401() {
     std::fs::create_dir_all(&base).unwrap();
 
     let app = boot_with_workers(&base).await;
-    let router = build_gateway_router(
-        &app,
-        GatewayOpts::new("127.0.0.1:0".parse().unwrap())
-            .identity(FixedToken)
-            .routes(gateway_routes)
-            .build_config(),
-    )
-    .expect("gateway config");
-
-    let req = Request::builder()
-        .method("POST")
-        .uri("/chat")
-        .header(axum::http::header::CONTENT_TYPE, "application/json")
-        .body(Body::from(r#"{"message":"nope"}"#))
-        .unwrap();
-
-    let resp = router.oneshot(req).await.expect("route");
+    let addr = spawn_test_gateway(&app, gateway_config()).await;
+    let resp = reqwest::Client::new()
+        .post(format!("http://{addr}/chat"))
+        .header("Host", "127.0.0.1")
+        .header("content-type", "application/json")
+        .body(r#"{"message":"nope"}"#)
+        .send()
+        .await
+        .expect("request");
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
     app.shutdown();

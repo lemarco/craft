@@ -1,0 +1,8 @@
+node_modules/
+.vitepress/cache/
+.vitepress/dist/
+guide/
+scenarios/
+reference/
+design/
+changelog.md

@@ -4,22 +4,19 @@
 
 use std::time::Duration;
 
-use axum::Router;
-use axum::extract::State;
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::http::{HeaderMap, Method, Uri};
-use axum::response::{IntoResponse, Response};
-use axum::routing::get;
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
-use trembita::cluster::build_gateway_router;
+use tokio_tungstenite::{WebSocketStream, tungstenite::protocol::Role};
 use trembita::{
     ActorGroupOpts, GatewayOpts, SessionHandle, TrembitaApp, TrembitaConfigure,
     TrembitaGatewayState,
 };
+use trembita_http::{
+    Gateway, RouteTable, UpgradeStream, accept_websocket, routing_to_http_response,
+};
 use trembita_runtime::{UserActor, actor};
 use trembita_test_support::{
-    advance, boot_local_app, eventually_default, wait_for_trembita_app_leader,
+    advance, boot_local_app, eventually_default, spawn_test_gateway, wait_for_trembita_app_leader,
 };
 
 struct FixedToken;
@@ -75,56 +72,53 @@ impl UserActor for EchoWorker {
     }
 }
 
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<TrembitaGatewayState>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Response {
-    let handle = match state
-        .open_actor_session_parts(
-            "echo",
-            &method,
-            &uri,
-            &headers,
-            Some(Duration::from_secs(60)),
-        )
-        .await
-    {
-        Ok(h) => h,
-        Err(err) => return err.into_response(),
-    };
-    let session_key = handle.session_key().to_string();
-    ws.on_upgrade(move |socket| async move {
-        handle_socket(socket, state, session_key, handle).await;
-    })
-    .into_response()
-}
-
 async fn handle_socket(
-    mut socket: WebSocket,
+    stream: UpgradeStream,
     state: TrembitaGatewayState,
-    _session_key: String,
     mut handle: SessionHandle,
 ) {
     let _conn = state.track_connection();
-    while let Some(Ok(msg)) = socket.recv().await {
-        if let Message::Text(text) = msg {
-            let payload = trembita::proto::encode(&text.to_string()).expect("encode");
+    let ws = WebSocketStream::from_raw_socket(stream, Role::Server, None).await;
+    let (mut ws, _) = ws.split();
+    while let Some(Ok(msg)) = ws.next().await {
+        if let WsMessage::Text(text) = msg {
+            let payload = trembita::proto::encode(&text).expect("encode");
             if handle.cast(payload).await.is_ok() {
-                let _ = socket
-                    .send(Message::Text(format!("ok: {text}").into()))
+                let _ = ws
+                    .send(WsMessage::Text(format!("ok: {text}").into()))
                     .await;
             }
         }
     }
 }
 
-fn gateway_routes(state: TrembitaGatewayState) -> Router {
-    Router::new()
-        .route("/ws", get(ws_handler))
-        .with_state(state)
+fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
+    let st = state;
+    Gateway::new(false).dev_fallback(RouteTable::new().websocket("/ws", move |req| {
+        let st = st.clone();
+        Box::pin(async move {
+            match st
+                .open_actor_session_parts(
+                    "echo",
+                    req.method(),
+                    req.uri(),
+                    req.headers(),
+                    Some(Duration::from_secs(60)),
+                )
+                .await
+            {
+                Ok(handle) => accept_websocket(req, move |stream| {
+                    let st = st.clone();
+                    async move { handle_socket(stream, st, handle).await }
+                }),
+                Err(err) => routing_to_http_response(
+                    err.into_http_response()
+                        .finalize()
+                        .unwrap_or_else(|e| trembita_http::Response::text(e.status(), e.message())),
+                ),
+            }
+        })
+    }))
 }
 
 #[tokio::test(start_paused = true)]
@@ -163,19 +157,16 @@ async fn websocket_gateway_casts_to_worker() {
     })
     .await;
 
-    let config = GatewayOpts::new("127.0.0.1:0".parse().unwrap())
-        .identity(FixedToken)
-        .routes(gateway_routes)
-        .build_config();
+    let addr = spawn_test_gateway(
+        &app,
+        GatewayOpts::new("127.0.0.1:0".parse().unwrap())
+            .identity(FixedToken)
+            .surfaces(gateway_surfaces)
+            .build_config(),
+    )
+    .await;
 
-    let router = build_gateway_router(&app, config).expect("gateway config");
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move {
-        axum::serve(listener, router).await.unwrap();
-    });
-
-    let url = format!("ws://{addr}/ws?user=alice&token=secret");
+    let url = format!("ws://127.0.0.1:{}/ws?user=alice&token=secret", addr.port());
     let (mut ws, _) = tokio_tungstenite::connect_async(url)
         .await
         .expect("ws connect");

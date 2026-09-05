@@ -4,6 +4,7 @@ stages:
   - check
   - heavy
   - release
+  - deploy
 
 variables:
   CARGO_TERM_COLOR: always
@@ -169,3 +170,26 @@ publish:
       - README.md
       - docs/status.md
     expire_in: 30 days
+
+# --- Website (trembita.dev via GitLab Pages + Cloudflare) ----------------------
+pages:
+  stage: deploy
+  image: node:22-bookworm
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+  cache:
+    key:
+      files:
+        - website/package-lock.json
+      prefix: website-npm-v1
+    paths:
+      - website/node_modules/
+  before_script:
+    - cd website && npm ci
+  script:
+    - cd website && npm run build
+    - mv website/.vitepress/dist ../public
+  artifacts:
+    paths:
+      - public

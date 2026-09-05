@@ -173,7 +173,7 @@ impl GatewayDispatch {
             .await
         {
             Ok(resp) => apply_cors(
-                to_http_response(
+                routing_to_http_response(
                     resp.finalize()
                         .unwrap_or_else(|e| Response::text(e.status(), e.message())),
                 ),
@@ -276,7 +276,8 @@ fn text_response(status: StatusCode, message: &str) -> HttpResponse<BoxBody> {
     resp
 }
 
-fn to_http_response(response: Response) -> HttpResponse<BoxBody> {
+/// Convert a routing [`Response`] into a hyper HTTP/1 response.
+pub fn routing_to_http_response(response: Response) -> HttpResponse<BoxBody> {
     let status = response.status_code();
     let body = match response.body() {
         ResponseBody::Empty => {

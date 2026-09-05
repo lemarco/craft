@@ -1,0 +1,25 @@
+# trembita
+
+> Distributed Raft + actor framework for Rust — one codebase, N nodes.
+
+- Docs: https://trembita.dev/
+- API: https://docs.rs/trembita
+- Crates: https://crates.io/crates/trembita
+- Source: https://gitlab.com/lemarco/trembita
+
+## Start here
+
+- Getting started: https://trembita.dev/guide/getting-started
+- Scenarios: https://trembita.dev/scenarios/
+- Examples: https://trembita.dev/examples
+- Changelog: https://trembita.dev/changelog
+
+## Install
+
+```toml
+[dependencies]
+trembita = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+```
+
+Use feature `dev-certs` for local single-node without PEM files.

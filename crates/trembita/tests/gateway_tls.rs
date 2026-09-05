@@ -5,22 +5,22 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Router;
-use axum::extract::State;
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::http::{HeaderMap, Method, StatusCode, Uri};
-use axum::response::{IntoResponse, Response};
-use axum::routing::get;
 use futures_util::{SinkExt, StreamExt};
+use http::StatusCode;
 use rustls::pki_types::CertificateDer;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_tungstenite::Connector;
 use tokio_tungstenite::connect_async_tls_with_config;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
+use tokio_tungstenite::{WebSocketStream, tungstenite::protocol::Role};
 use trembita::{
     ActorGroupOpts, GatewayOpts, SessionHandle, TrembitaApp, TrembitaConfigure,
     TrembitaGatewayState, spawn_gateway,
+};
+use trembita_http::{
+    Gateway, RequestCtx, Response, RouteTable, UpgradeStream, accept_websocket,
+    routing_to_http_response,
 };
 use trembita_runtime::{UserActor, actor};
 use trembita_test_support::{
@@ -80,59 +80,56 @@ impl UserActor for EchoWorker {
     }
 }
 
-async fn ping_handler() -> StatusCode {
-    StatusCode::OK
-}
-
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<TrembitaGatewayState>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Response {
-    let handle = match state
-        .open_actor_session_parts(
-            "echo",
-            &method,
-            &uri,
-            &headers,
-            Some(Duration::from_secs(60)),
-        )
-        .await
-    {
-        Ok(h) => h,
-        Err(err) => return err.into_response(),
-    };
-    ws.on_upgrade(move |socket| async move {
-        handle_socket(socket, state, handle).await;
-    })
-    .into_response()
-}
-
 async fn handle_socket(
-    mut socket: WebSocket,
+    stream: UpgradeStream,
     state: TrembitaGatewayState,
     mut handle: SessionHandle,
 ) {
     let _conn = state.track_connection();
-    while let Some(Ok(msg)) = socket.recv().await {
-        if let Message::Text(text) = msg {
-            let payload = trembita::proto::encode(&text.to_string()).expect("encode");
+    let mut ws = WebSocketStream::from_raw_socket(stream, Role::Server, None).await;
+    while let Some(Ok(msg)) = ws.next().await {
+        if let WsMessage::Text(text) = msg {
+            let payload = trembita::proto::encode(&text).expect("encode");
             if handle.cast(payload).await.is_ok() {
-                let _ = socket
-                    .send(Message::Text(format!("ok: {text}").into()))
+                let _ = ws
+                    .send(WsMessage::Text(format!("ok: {text}").into()))
                     .await;
             }
         }
     }
 }
 
-fn gateway_routes(state: TrembitaGatewayState) -> Router {
-    Router::new()
-        .route("/ping", get(ping_handler))
-        .route("/ws", get(ws_handler))
-        .with_state(state)
+fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
+    let ws_state = state.clone();
+    Gateway::new(false).dev_fallback(
+        RouteTable::new()
+            .get("/ping", |_| async { Ok(Response::status(StatusCode::OK)) })
+            .websocket("/ws", move |req| {
+                let st = ws_state.clone();
+                Box::pin(async move {
+                    match st
+                        .open_actor_session_parts(
+                            "echo",
+                            req.method(),
+                            req.uri(),
+                            req.headers(),
+                            Some(Duration::from_secs(60)),
+                        )
+                        .await
+                    {
+                        Ok(handle) => accept_websocket(req, move |stream| {
+                            let st = st.clone();
+                            async move { handle_socket(stream, st, handle).await }
+                        }),
+                        Err(err) => routing_to_http_response(
+                            err.into_http_response().finalize().unwrap_or_else(|e| {
+                                trembita_http::Response::text(e.status(), e.message())
+                            }),
+                        ),
+                    }
+                })
+            }),
+    )
 }
 
 fn mint_gateway_tls_files() -> (
@@ -252,7 +249,7 @@ async fn gateway_serves_https_when_tls_configured() {
 
     let config = GatewayOpts::new(addr)
         .tls(cert_path, key_path)
-        .routes(gateway_routes)
+        .surfaces(gateway_surfaces)
         .build_config();
     let _handle = spawn_gateway(Arc::clone(&app), config)
         .await
@@ -284,7 +281,7 @@ async fn websocket_gateway_wss_casts_to_worker() {
     let config = GatewayOpts::new(addr)
         .identity(FixedToken)
         .tls(cert_path, key_path)
-        .routes(gateway_routes)
+        .surfaces(gateway_surfaces)
         .build_config();
     let _handle = spawn_gateway(Arc::clone(&app), config)
         .await

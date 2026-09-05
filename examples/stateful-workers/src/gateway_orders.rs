@@ -1,13 +1,9 @@
 //! Authenticated order submit — custom HTTP beside built-in `/actors/*` API.
 
-use axum::Json;
-use axum::Router;
-use axum::extract::State;
-use axum::http::{HeaderMap, Method, StatusCode, Uri};
-use axum::response::{IntoResponse, Response};
-use axum::routing::post;
-use trembita::TrembitaGatewayState;
+use http::StatusCode;
 use serde::{Deserialize, Serialize};
+use trembita::{Gateway, RouteTable, TrembitaGatewayState};
+use trembita_http::{HttpError, RequestCtx, Response};
 
 use crate::debug;
 
@@ -24,46 +20,62 @@ pub struct SubmitAck {
     pub tenant: String,
 }
 
-pub fn routes(state: TrembitaGatewayState) -> Router {
-    Router::new()
-        .route("/orders/submit", post(submit_order))
-        .with_state(state)
+fn ctx_uri(ctx: &RequestCtx) -> http::Uri {
+    let query = ctx.query();
+    if query.is_empty() {
+        ctx.path().parse().expect("path uri")
+    } else {
+        let qs = query
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join("&");
+        format!("{}?{qs}", ctx.path()).parse().expect("path+query uri")
+    }
+}
+
+pub fn surfaces(state: TrembitaGatewayState) -> Gateway {
+    Gateway::new(false).dev_fallback(
+        RouteTable::new().post("/orders/submit", move |ctx: RequestCtx| {
+            let st = state.clone();
+            async move { submit_order(st, ctx).await }
+        }),
+    )
 }
 
 /// `POST /orders/submit?user=<tenant>&token=…` — sticky cast to `orders` group.
-pub async fn submit_order(
-    State(state): State<TrembitaGatewayState>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    Json(body): Json<SubmitOrder>,
-) -> Response {
-    let mut handle = match state
-        .open_actor_session_parts("orders", &method, &uri, &headers, None)
+async fn submit_order(
+    state: TrembitaGatewayState,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    let uri = ctx_uri(&ctx);
+    let mut handle = state
+        .open_actor_session_parts("orders", ctx.method(), &uri, ctx.headers(), None)
         .await
-    {
-        Ok(h) => h,
-        Err(err) => return err.into_response(),
-    };
+        .map_err(|err| match err {
+            trembita::OpenActorSessionError::Identity(e) => HttpError::Unauthorized(e.to_string()),
+            trembita::OpenActorSessionError::NoWorker(e) => HttpError::Internal(e.to_string()),
+        })?;
+    let body: SubmitOrder = ctx.json()?;
     let tenant = handle.session_key().to_string();
     let payload = format!(r#"{{"payload":"{}"}}"#, body.order_id);
-    let bytes = match trembita::proto::encode(&payload) {
-        Ok(b) => b,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-    };
+    let bytes = trembita::proto::encode(&payload).map_err(|e| HttpError::Internal(e.to_string()))?;
     match handle.cast(bytes).await {
         Ok(()) => {
             debug::order_submit(body.order_id, &tenant, true);
-            Json(SubmitAck {
-                ok: true,
-                order_id: body.order_id,
-                tenant,
-            })
-            .into_response()
+            Ok(Response::json(
+                StatusCode::OK,
+                serde_json::to_value(SubmitAck {
+                    ok: true,
+                    order_id: body.order_id,
+                    tenant,
+                })
+                .expect("json"),
+            ))
         }
         Err(e) => {
             debug::order_submit(body.order_id, &tenant, false);
-            (StatusCode::BAD_GATEWAY, e.to_string()).into_response()
+            Ok(Response::text(StatusCode::BAD_GATEWAY, e.to_string()))
         }
     }
 }

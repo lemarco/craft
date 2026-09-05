@@ -9,17 +9,15 @@ use std::env;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use axum::Router;
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::State;
-use axum::http::{HeaderMap, Method, Uri};
-use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::tungstenite::Message as WsMessage;
+use tokio_tungstenite::{WebSocketStream, tungstenite::protocol::Role};
 use trembita::runtime::{UserActor, actor};
 use trembita::{
-    ActorGroupOpts, TrembitaApp, TrembitaConfigure, TrembitaGatewayState, GatewayBearerIdentity,
-    GatewayOpts, ReadyOpts, RunOpts,
+    ActorGroupOpts, Gateway, GatewayOpts, ReadyOpts, RouteTable, RunOpts, TrembitaApp,
+    TrembitaConfigure, TrembitaGatewayState, accept_websocket, routing_to_http_response,
 };
+use trembita_http::RequestCtx;
 use trembita_tools::showcase_common::{data_dir, display_addr};
 
 const DATA_DIR_NAME: &str = "trembita-showcase-realtime";
@@ -62,70 +60,86 @@ impl UserActor for ChatWorker {
     }
 }
 
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<TrembitaGatewayState>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Response {
-    let handle = match state
-        .open_actor_session_parts("chat", &method, &uri, &headers, Some(SESSION_TTL))
-        .await
-    {
-        Ok(h) => h,
-        Err(err) => return err.into_response(),
-    };
-    let session_key = handle.session_key().to_string();
-    debug::ws_connect(&session_key, true);
-
-    ws.on_upgrade(move |socket| async move {
-        handle_socket(socket, state, session_key, handle).await;
-    })
-    .into_response()
-}
-
 async fn handle_socket(
-    mut socket: WebSocket,
+    stream: trembita::UpgradeStream,
     state: TrembitaGatewayState,
     session_key: String,
     mut handle: trembita::SessionHandle,
 ) {
     let _conn = state.track_connection();
     debug::session_open(&session_key, true);
-    let _ = socket
-        .send(Message::Text(format!("session open for {session_key}").into()))
+    let mut ws = WebSocketStream::from_raw_socket(stream, Role::Server, None).await;
+    let _ = ws
+        .send(WsMessage::Text(format!("session open for {session_key}").into()))
         .await;
 
-    while let Some(Ok(msg)) = socket.recv().await {
-        if let Message::Text(text) = msg {
+    while let Some(Ok(msg)) = ws.next().await {
+        if let WsMessage::Text(text) = msg {
             let text = text.to_string();
             let payload = trembita::proto::encode(&text).expect("encode chat msg");
             match handle.cast(payload).await {
                 Ok(()) => {
                     debug::ws_message(&session_key, &text, true);
-                    let _ = socket
-                        .send(Message::Text(format!("ok: {text}").into()))
+                    let _ = ws
+                        .send(WsMessage::Text(format!("ok: {text}").into()))
                         .await;
                 }
                 Err(e) => {
                     debug::ws_message(&session_key, &text, false);
-                    let _ = socket
-                        .send(Message::Text(format!("session error: {e}").into()))
+                    let _ = ws
+                        .send(WsMessage::Text(format!("session error: {e}").into()))
                         .await;
                 }
             }
         }
     }
-    let _ = state;
 }
 
-fn gateway_routes(state: TrembitaGatewayState) -> Router {
-    Router::new()
-        .route("/ws", get(ws_handler))
-        .route("/chat", post(gateway_http::post_chat))
-        .route("/me", get(gateway_http::get_me))
-        .with_state(state)
+fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
+    let chat_state = state.clone();
+    let me_state = state.clone();
+    let ws_state = state;
+    Gateway::new(false).dev_fallback(
+        RouteTable::new()
+            .websocket("/ws", move |req| {
+                let st = ws_state.clone();
+                Box::pin(async move {
+                    let handle = match st
+                        .open_actor_session_parts(
+                            "chat",
+                            req.method(),
+                            req.uri(),
+                            req.headers(),
+                            Some(SESSION_TTL),
+                        )
+                        .await
+                    {
+                        Ok(h) => h,
+                        Err(err) => {
+                            return routing_to_http_response(
+                                err.into_http_response().finalize().unwrap_or_else(|e| {
+                                    trembita_http::Response::text(e.status(), e.message())
+                                }),
+                            );
+                        }
+                    };
+                    let session_key = handle.session_key().to_string();
+                    debug::ws_connect(&session_key, true);
+                    accept_websocket(req, move |stream| {
+                        let st = st.clone();
+                        async move { handle_socket(stream, st, session_key, handle).await }
+                    })
+                })
+            })
+            .post("/chat", move |ctx: RequestCtx| {
+                let st = chat_state.clone();
+                async move { gateway_http::post_chat(st, ctx).await }
+            })
+            .get("/me", move |ctx: RequestCtx| {
+                let st = me_state.clone();
+                async move { gateway_http::get_me(st, ctx).await }
+            }),
+    )
 }
 
 fn server_builder() -> trembita::TrembitaAppBuilder {
@@ -150,9 +164,9 @@ fn server_builder() -> trembita::TrembitaAppBuilder {
         })
         .gateway(
             GatewayOpts::new(gateway)
-                .identity(GatewayBearerIdentity::from_env())
+                .identity(trembita::GatewayBearerIdentity::from_env())
                 .protect_product_apis(true)
-                .routes(gateway_routes),
+                .surfaces(gateway_surfaces),
         )
 }
 

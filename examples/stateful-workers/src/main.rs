@@ -64,10 +64,10 @@ fn apply_actors(builder: TrembitaAppBuilder) -> TrembitaAppBuilder {
 fn gateway_opts(addr: std::net::SocketAddr) -> GatewayOpts {
     let opts = GatewayOpts::new(addr);
     if migrate_demo_mode() {
-        opts.routes(|state| migrate_http::migrate_routes(state))
+        opts.surfaces(|state| migrate_http::surfaces(state))
     } else {
         opts.identity(ShowcaseGatewayIdentity::from_env())
-            .routes(gateway_orders::routes)
+            .surfaces(|state| gateway_orders::surfaces(state))
             .with_actors_api(true)
     }
 }

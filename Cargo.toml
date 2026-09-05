@@ -103,11 +103,8 @@ http = "1"
 bytes = "1"
 http-body-util = "0.1"
 hyper = { version = "1.10", features = ["server", "http1"] }
-hyper-util = { version = "0.1", features = ["tokio"] }
+hyper-util = { version = "0.1", features = ["tokio", "service"] }
 tower = { version = "0.5", features = ["util"] }
-axum = { version = "0.8", features = ["json", "ws"] }
-axum-extra = { version = "0.10", features = ["cookie"] }
-tower-http = { version = "0.6", features = ["cors"] }
 opendal = { version = "0.52", features = [
     "services-s3",
     "services-gcs",

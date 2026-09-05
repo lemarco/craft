@@ -6,3 +6,13 @@ Cargo.lock
 
 # Cursor Playwright MCP session dumps (console logs, page snapshots)
 .playwright-mcp/
+
+# VitePress website (generated content + build output)
+website/node_modules/
+website/.vitepress/cache/
+website/.vitepress/dist/
+website/guide/
+website/scenarios/
+website/reference/
+website/design/
+website/changelog.md

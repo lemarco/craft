@@ -4,15 +4,14 @@
 
 use std::time::Duration;
 
-use axum::body::Body;
-use axum::http::{Request, StatusCode, header};
-use tower::ServiceExt;
-use trembita::cluster::build_gateway_router;
+use http::StatusCode;
 use trembita::{
     GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError, QueueOpts, TrembitaApp,
     TrembitaConfigure,
 };
-use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_support::{
+    advance, boot_local_app, spawn_test_gateway, wait_for_trembita_app_leader,
+};
 
 struct BearerSecret;
 
@@ -26,6 +25,14 @@ impl GatewayIdentity for BearerSecret {
             _ => Err(IdentityError::Unauthorized),
         }
     }
+}
+
+fn gateway_config() -> trembita::gateway::GatewayConfig {
+    GatewayOpts::new("127.0.0.1:0".parse().unwrap())
+        .with_introspect_api(true)
+        .identity(BearerSecret)
+        .protect_product_apis(true)
+        .build_config()
 }
 
 #[tokio::test(start_paused = true)]
@@ -63,46 +70,36 @@ async fn gateway_introspect_requires_auth_and_returns_cluster_json() {
     wait_for_trembita_app_leader(&app).await;
     advance(Duration::from_millis(200)).await;
 
-    let router = build_gateway_router(
-        &app,
-        GatewayOpts::new("127.0.0.1:0".parse().unwrap())
-            .with_introspect_api(true)
-            .identity(BearerSecret)
-            .protect_product_apis(true)
-            .build_config(),
-    )
-    .expect("gateway config");
+    let addr = spawn_test_gateway(&app, gateway_config()).await;
+    let client = reqwest::Client::new();
 
-    let unauth = Request::builder()
-        .method("GET")
-        .uri("/introspect/cluster")
-        .body(Body::empty())
-        .unwrap();
-    let resp = router.clone().oneshot(unauth).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
-
-    let authed = Request::builder()
-        .method("GET")
-        .uri("/introspect/cluster")
-        .header(header::AUTHORIZATION, "Bearer secret")
-        .body(Body::empty())
-        .unwrap();
-    let resp = router.clone().oneshot(authed).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+    let unauth = client
+        .get(format!("http://{addr}/introspect/cluster"))
+        .header("Host", "127.0.0.1")
+        .send()
         .await
         .unwrap();
-    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(unauth.status(), StatusCode::UNAUTHORIZED);
+
+    let authed = client
+        .get(format!("http://{addr}/introspect/cluster"))
+        .header("Host", "127.0.0.1")
+        .header("authorization", "Bearer secret")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(authed.status(), StatusCode::OK);
+
+    let json: serde_json::Value = authed.json().await.unwrap();
     assert!(json.get("term").is_some());
     assert!(json.get("nodes").and_then(|v| v.as_array()).is_some());
 
-    let queues = Request::builder()
-        .method("GET")
-        .uri("/introspect/queues")
-        .header(header::AUTHORIZATION, "Bearer secret")
-        .body(Body::empty())
+    let queues = client
+        .get(format!("http://{addr}/introspect/queues"))
+        .header("Host", "127.0.0.1")
+        .header("authorization", "Bearer secret")
+        .send()
+        .await
         .unwrap();
-    let resp = router.oneshot(queues).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(queues.status(), StatusCode::OK);
 }

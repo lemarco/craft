@@ -1,0 +1,14 @@
+{
+  "name": "trembita-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "bash ../scripts/sync-website-content.sh",
+    "dev": "npm run sync && vitepress dev",
+    "build": "npm run sync && vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.3"
+  }
+}

@@ -2,12 +2,10 @@
 
 use std::time::Duration;
 
-use axum::Json;
-use axum::extract::State;
-use axum::http::{HeaderMap, Method, StatusCode, Uri};
-use axum::response::{IntoResponse, Response};
-use trembita::TrembitaGatewayState;
+use http::StatusCode;
 use serde::{Deserialize, Serialize};
+use trembita::TrembitaGatewayState;
+use trembita_http::{HttpError, RequestCtx, Response};
 
 use crate::debug;
 
@@ -33,59 +31,71 @@ pub struct MeResponse {
     pub user: String,
 }
 
+fn ctx_uri(ctx: &RequestCtx) -> http::Uri {
+    let query = ctx.query();
+    if query.is_empty() {
+        ctx.path().parse().expect("path uri")
+    } else {
+        let qs = query
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join("&");
+        format!("{}?{qs}", ctx.path()).parse().expect("path+query uri")
+    }
+}
+
 /// `POST /chat` — JSON body; auth via Bearer + `X-Trembita-User` or `?user=` (see `GatewayBearerIdentity`).
 pub async fn post_chat(
-    State(state): State<TrembitaGatewayState>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    Json(body): Json<ChatPost>,
-) -> Response {
-    let mut handle = match state
-        .open_actor_session_parts("chat", &method, &uri, &headers, Some(SESSION_TTL))
+    state: TrembitaGatewayState,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    let uri = ctx_uri(&ctx);
+    let mut handle = state
+        .open_actor_session_parts("chat", ctx.method(), &uri, ctx.headers(), Some(SESSION_TTL))
         .await
-    {
-        Ok(h) => h,
-        Err(err) => return err.into_response(),
-    };
+        .map_err(session_err)?;
+    let body: ChatPost = ctx.json()?;
     let user = handle.session_key().to_string();
-    let payload = match trembita::proto::encode(&body.message) {
-        Ok(p) => p,
-        Err(e) => {
-            return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
-        }
-    };
+    let payload = trembita::proto::encode(&body.message).map_err(|e| {
+        HttpError::Internal(format!("encode: {e}"))
+    })?;
     match handle.cast(payload).await {
         Ok(()) => {
             debug::http_message(&user, &body.message, true);
-            Json(ChatAck { ok: true, user }).into_response()
+            Ok(Response::json(
+                StatusCode::OK,
+                serde_json::to_value(ChatAck { ok: true, user }).expect("json"),
+            ))
         }
         Err(e) => {
             debug::http_message(&user, &body.message, false);
-            (StatusCode::BAD_GATEWAY, e.to_string()).into_response()
+            Ok(Response::text(StatusCode::BAD_GATEWAY, e.to_string()))
         }
     }
 }
 
 /// `GET /me?user=…` — auth check; returns session key as JSON.
-///
-/// Uses [`TrembitaGatewayState::extract_session_parts`] (same as POST). Call
-/// [`TrembitaGatewayState::extract_session_from`] when middleware already gave you a
-/// [`Request`](axum::http::Request).
-pub async fn get_me(
-    State(state): State<TrembitaGatewayState>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Response {
+pub async fn get_me(state: TrembitaGatewayState, ctx: RequestCtx) -> Result<Response, HttpError> {
+    let uri = ctx_uri(&ctx);
     match state
-        .extract_session_parts(&method, &uri, &headers)
+        .extract_session_parts(ctx.method(), &uri, ctx.headers())
         .await
     {
-        Ok(extracted) => Json(MeResponse {
-            user: extracted.session_key().to_string(),
-        })
-        .into_response(),
-        Err(err) => err.into_response(),
+        Ok(extracted) => Ok(Response::json(
+            StatusCode::OK,
+            serde_json::to_value(MeResponse {
+                user: extracted.session_key().to_string(),
+            })
+            .expect("json"),
+        )),
+        Err(err) => Ok(err.into_http_response()),
+    }
+}
+
+fn session_err(err: trembita::OpenActorSessionError) -> HttpError {
+    match err {
+        trembita::OpenActorSessionError::Identity(e) => HttpError::Unauthorized(e.to_string()),
+        trembita::OpenActorSessionError::NoWorker(e) => HttpError::Internal(e.to_string()),
     }
 }

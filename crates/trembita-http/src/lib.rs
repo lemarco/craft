@@ -51,7 +51,10 @@ use trembita_runtime::{CastError, ClusterAskError};
 
 pub use actor_types::{ActorsApiError, AskAccepted};
 pub use cookie_config::CookieConfig;
-pub use gateway::{CorsPolicy, Gateway, GatewayBuildError, GatewayService, Surface};
+pub use gateway::{
+    accept_websocket, CorsPolicy, Gateway, GatewayBuildError, GatewayService, Surface,
+    routing_to_http_response,
+};
 pub use host::{is_local_dev_host, normalize_host};
 pub use introspect_types::IntrospectApiError;
 pub use routes::parse_enqueue_body;

@@ -2,11 +2,16 @@
 
 mod cors;
 mod dispatch;
+mod ws;
 
 use crate::routing::{RouteTable, SessionGate};
 
 pub use cors::CorsPolicy;
-pub use dispatch::{GatewayDispatch, GatewayService, UpgradeStream, is_websocket_upgrade};
+pub use dispatch::{
+    GatewayDispatch, GatewayService, UpgradeStream, is_websocket_upgrade,
+    routing_to_http_response,
+};
+pub use ws::accept_websocket;
 
 /// One logical product surface — hostnames, optional gates, and routes.
 #[derive(Debug)]

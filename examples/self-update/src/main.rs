@@ -100,16 +100,33 @@ async fn spawn_upgrade_http(
     cluster: Arc<TrembitaCluster<UpgradeMachine>>,
     addr: SocketAddr,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    use hyper::server::conn::http1;
+    use hyper_util::rt::TokioIo;
+    use hyper_util::service::TowerToHyperService;
+    use trembita::Gateway;
+
     let api = upgrade_api(cluster);
-    let router = api.router().with_state(Arc::new(api.into_state()));
+    let gateway = Gateway::new(false).dev_fallback(api.route_table());
+    let service = gateway.build_service()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     eprintln!(
         "trembita: upgrade API http://{} (GET /cluster/upgrade, POST /cluster/upgrade/desired)",
         display_addr(&addr.to_string())
     );
     tokio::spawn(async move {
-        if let Err(e) = axum::serve(listener, router).await {
-            eprintln!("trembita: upgrade API failed: {e}");
+        loop {
+            let Ok((stream, _)) = listener.accept().await else {
+                break;
+            };
+            let service = service.clone();
+            tokio::spawn(async move {
+                let io = TokioIo::new(stream);
+                let hyper_service = TowerToHyperService::new(service);
+                let _ = http1::Builder::new()
+                    .serve_connection(io, hyper_service)
+                    .with_upgrades()
+                    .await;
+            });
         }
     });
     Ok(())

@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::http::{HeaderMap, Method, Uri};
+use http::{HeaderMap, Method, StatusCode, Uri};
 use trembita::{
     GatewayBearerIdentity, GatewayIdentity, GatewayOpts, GatewayRequest, GatewayTokenIdentity,
     IdentityError, IdentityTypeError, SessionHandle, SessionKey, TrembitaGatewayState,
@@ -144,11 +144,11 @@ async fn session_handle_none_without_workers() {
 fn identity_error_status_codes() {
     assert_eq!(
         IdentityError::Unauthorized.status_code(),
-        axum::http::StatusCode::UNAUTHORIZED
+        StatusCode::UNAUTHORIZED
     );
     assert_eq!(
         IdentityError::Forbidden.status_code(),
-        axum::http::StatusCode::FORBIDDEN
+        StatusCode::FORBIDDEN
     );
 }
 
@@ -171,13 +171,13 @@ fn gateway_token_identity_from_env_type() {
 async fn bearer_identity_requires_user_header() {
     let identity = GatewayBearerIdentity::with_static_token("secret");
 
-    let uri: axum::http::Uri = "/api?user=alice".parse().expect("uri");
-    let mut headers = axum::http::HeaderMap::new();
+    let uri: Uri = "/api?user=alice".parse().expect("uri");
+    let mut headers = HeaderMap::new();
     headers.insert(
-        axum::http::header::AUTHORIZATION,
-        axum::http::HeaderValue::from_static("Bearer secret"),
+        http::header::AUTHORIZATION,
+        http::HeaderValue::from_static("Bearer secret"),
     );
-    let req = GatewayRequest::from_parts(&axum::http::Method::GET, &uri, &headers);
+    let req = GatewayRequest::from_parts(&Method::GET, &uri, &headers);
     assert_eq!(
         identity.extract(&req).await,
         Err(IdentityError::Unauthorized)
@@ -185,9 +185,9 @@ async fn bearer_identity_requires_user_header() {
 
     headers.insert(
         "x-trembita-user",
-        axum::http::HeaderValue::from_static("alice"),
+        http::HeaderValue::from_static("alice"),
     );
-    let req = GatewayRequest::from_parts(&axum::http::Method::GET, &uri, &headers);
+    let req = GatewayRequest::from_parts(&Method::GET, &uri, &headers);
     assert_eq!(identity.extract(&req).await, Ok("alice".into()));
 }
 
@@ -195,13 +195,13 @@ async fn bearer_identity_requires_user_header() {
 async fn bearer_identity_rejects_query_token() {
     let identity = GatewayBearerIdentity::with_static_token("secret");
 
-    let uri: axum::http::Uri = "/ws?user=alice&token=secret".parse().expect("uri");
-    let mut headers = axum::http::HeaderMap::new();
+    let uri: Uri = "/ws?user=alice&token=secret".parse().expect("uri");
+    let mut headers = HeaderMap::new();
     headers.insert(
         "x-trembita-user",
-        axum::http::HeaderValue::from_static("alice"),
+        http::HeaderValue::from_static("alice"),
     );
-    let req = GatewayRequest::from_parts(&axum::http::Method::GET, &uri, &headers);
+    let req = GatewayRequest::from_parts(&Method::GET, &uri, &headers);
     assert_eq!(
         identity.extract(&req).await,
         Err(IdentityError::Unauthorized)

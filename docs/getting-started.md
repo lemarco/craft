@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     TrembitaApp::builder()
         .data_dir("/tmp/my-app")
         .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
-        .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?)) // add .routes(...) and opt-in APIs as needed
+        .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?)) // add `.surfaces(...)` and opt-in APIs as needed
         .run(RunOpts::default().with_wait_queue("jobs"))
         .await
 }
@@ -188,30 +188,35 @@ Example: `./scripts/run-example.sh workflows`.
 WebSocket + sticky session routing. Auth stays in your code via [`GatewayIdentity`](scenarios/realtime-sessions.md); trembita maps identity → session key and opens a [`SessionHandle`](scenarios/realtime-sessions.md).
 
 ```rust
-use axum::http::{HeaderMap, Method, Uri};
-use axum::response::IntoResponse;
-use trembita::{TrembitaGatewayState, GatewayOpts, GatewayIdentity, GatewayRequest, SessionKey};
+use std::time::Duration;
+use trembita::{Gateway, GatewayOpts, RouteTable, TrembitaGatewayState, GatewayIdentity, GatewayRequest, SessionKey};
+use trembita::{accept_websocket, routing_to_http_response};
+use trembita_http::RequestCtx;
 
-// WebSocket upgrade: use Method + Uri + HeaderMap (not Request — upgrade consumes the body).
-async fn ws(
-    ws: WebSocketUpgrade,
-    State(state): State<TrembitaGatewayState>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-) -> Response {
-    let mut handle = match state
-        .open_actor_session_parts("chat", &method, &uri, &headers, Some(Duration::from_secs(3600)))
-        .await
-    {
-        Ok(h) => h,
-        Err(e) => return e.into_response(),
-    };
-    // ws.on_upgrade(|socket| async move { handle.cast(...).await; … })
+// WebSocket upgrade on a RouteTable (hyper + tokio-tungstenite in the connected callback).
+fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
+    Gateway::new(false).dev_fallback(
+        RouteTable::new().websocket("/ws", move |req| {
+            let st = state.clone();
+            Box::pin(async move {
+                let handle = match st
+                    .open_actor_session_parts("chat", req.method(), req.uri(), req.headers(), Some(Duration::from_secs(3600)))
+                    .await
+                {
+                    Ok(h) => h,
+                    Err(e) => return routing_to_http_response(e.into_http_response().finalize().unwrap()),
+                };
+                accept_websocket(req, move |stream| async move {
+                    // tokio_tungstenite::WebSocketStream::from_raw_socket(stream, …)
+                    let _ = (stream, handle);
+                })
+            })
+        }),
+    )
 }
 
 TrembitaApp::builder()
-    .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?).identity(MyAuth).routes(|state| { /* Router */ }));
+    .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?).identity(MyAuth).surfaces(gateway_surfaces));
 ```
 
 Runnable showcase:

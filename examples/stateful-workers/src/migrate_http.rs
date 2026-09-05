@@ -3,13 +3,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Router;
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
-use axum::routing::post;
+use http::StatusCode;
 use trembita::proto::ActorId;
-use trembita::{TrembitaApp, NodeId};
+use trembita::{Gateway, NodeId, RouteTable, TrembitaApp, TrembitaGatewayState};
+use trembita_http::{RequestCtx, Response};
 
 use crate::migrate_counter::{CounterMsg, StatefulCounter};
 
@@ -21,17 +18,17 @@ fn migrate_target() -> NodeId {
         .unwrap_or(NodeId(2))
 }
 
-pub fn migrate_routes(state: trembita::TrembitaGatewayState) -> Router {
-    Router::new()
-        .route("/demo/migrate/run", post(run_demo))
-        .with_state(state.app)
-}
-
-async fn run_demo(State(app): State<Arc<TrembitaApp>>) -> impl IntoResponse {
-    match run_demo_inner(&app).await {
-        Ok(msg) => (StatusCode::OK, msg),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
-    }
+pub fn surfaces(state: TrembitaGatewayState) -> Gateway {
+    let app = state.app;
+    Gateway::new(false).dev_fallback(RouteTable::new().post("/demo/migrate/run", move |_: RequestCtx| {
+        let app = Arc::clone(&app);
+        async move {
+            match run_demo_inner(&app).await {
+                Ok(msg) => Ok(Response::text(StatusCode::OK, msg)),
+                Err(e) => Ok(Response::text(StatusCode::INTERNAL_SERVER_ERROR, e)),
+            }
+        }
+    }))
 }
 
 async fn run_demo_inner(app: &TrembitaApp) -> Result<String, String> {
