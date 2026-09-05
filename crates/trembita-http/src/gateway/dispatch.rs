@@ -104,8 +104,22 @@ impl GatewayDispatch {
 
     async fn handle(
         &self,
-        req: Request<Incoming>,
+        req: http::Request<Incoming>,
     ) -> HttpResponse<BoxBody> {
+        if is_websocket_upgrade(req.headers()) {
+            let path = req.uri().path().to_string();
+            for surface in self.hosts.values() {
+                if let Some(future) = surface.routes.dispatch_websocket(&path, req) {
+                    return future.await;
+                }
+            }
+            if let Some(dev) = &self.local_dev {
+                if let Some(future) = dev.routes.dispatch_websocket(&path, req) {
+                    return future.await;
+                }
+            }
+        }
+
         let (parts, body) = req.into_parts();
         let host = match parts.headers.get(HOST) {
             None => return text_response(StatusCode::BAD_REQUEST, "missing Host header"),

@@ -15,13 +15,15 @@ workspace = true
 [features]
 default = []
 # Pulls the full `trembita` facade (dashboard/hyper stack). Enable only in `trembita` tests.
-facade = ["dep:trembita"]
+facade = ["dep:trembita", "dep:hyper", "dep:hyper-util"]
 
 [dependencies]
 trembita-proto.workspace = true
 trembita-core.workspace = true
 trembita-runtime.workspace = true
 trembita = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true }
+hyper-util = { workspace = true, optional = true }
 serde.workspace = true
 thiserror.workspace = true
 pretty_assertions.workspace = true

@@ -2,17 +2,48 @@
 
 #![allow(clippy::large_futures)] // boot_local_app future grows with product builder surface
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::body::Body;
-use axum::http::{Request, StatusCode, header};
-use tower::ServiceExt;
+use bytes::Bytes;
+use http::{Method, StatusCode, Uri, header};
 use trembita::cluster::EnqueueOptions;
 use trembita::{QueueOpts, TrembitaApp, TrembitaConfigure};
+use trembita_http::RouteTable;
 use trembita_jobs::JobLifecycle;
 use trembita_jobs::WorkerId;
 use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};
+
+async fn dispatch(
+    table: &RouteTable,
+    method: Method,
+    uri: &str,
+    body: Bytes,
+    content_type: Option<&str>,
+) -> StatusCode {
+    let parsed: Uri = uri.parse().expect("uri");
+    let path = parsed.path().to_string();
+    let query = parsed.query().map(parse_query).unwrap_or_default();
+    let mut headers = http::HeaderMap::new();
+    if let Some(ct) = content_type {
+        headers.insert(header::CONTENT_TYPE, ct.parse().expect("content-type"));
+    }
+    table
+        .dispatch(&method, &path, query, headers, body)
+        .await
+        .expect("dispatch")
+        .status_code()
+}
+
+fn parse_query(raw: &str) -> HashMap<String, String> {
+    raw.split('&')
+        .filter_map(|pair| {
+            let (k, v) = pair.split_once('=')?;
+            Some((k.to_string(), v.to_string()))
+        })
+        .collect()
+}
 
 #[tokio::test(start_paused = true)]
 #[allow(clippy::too_many_lines)]
@@ -45,37 +76,44 @@ async fn http_post_job_returns_202_and_enqueues() {
     advance(Duration::from_millis(200)).await;
 
     let api = TrembitaApp::jobs_api(Arc::clone(&app));
-    let router = api.router().with_state(Arc::new(api.into_state()));
+    let table = api.route_table();
 
-    let req = Request::builder()
-        .method("POST")
-        .uri("/jobs/jobs?dedup=invoice-1")
-        .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(r#"{"payload":"send-email"}"#))
-        .unwrap();
+    assert_eq!(
+        dispatch(
+            &table,
+            Method::POST,
+            "/jobs/jobs?dedup=invoice-1",
+            Bytes::from(r#"{"payload":"send-email"}"#),
+            Some("application/json"),
+        )
+        .await,
+        StatusCode::ACCEPTED
+    );
 
-    let resp = router.clone().oneshot(req).await.expect("route");
-    assert_eq!(resp.status(), StatusCode::ACCEPTED);
-
-    let batch_req = Request::builder()
-        .method("POST")
-        .uri("/jobs/jobs/batch")
-        .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(
-            r#"{"jobs":[{"payload":"batch-a"},{"payload":"batch-b"}]}"#,
-        ))
-        .unwrap();
-    let batch_resp = router.clone().oneshot(batch_req).await.expect("batch");
-    assert_eq!(batch_resp.status(), StatusCode::ACCEPTED);
+    assert_eq!(
+        dispatch(
+            &table,
+            Method::POST,
+            "/jobs/jobs/batch",
+            Bytes::from(r#"{"jobs":[{"payload":"batch-a"},{"payload":"batch-b"}]}"#),
+            Some("application/json"),
+        )
+        .await,
+        StatusCode::ACCEPTED
+    );
 
     let job_id = app.enqueue("jobs", b"send-email").await.expect("enqueue");
-    let get_req = Request::builder()
-        .method("GET")
-        .uri(format!("/jobs/jobs/{}", job_id.0))
-        .body(Body::empty())
-        .unwrap();
-    let get_resp = router.clone().oneshot(get_req).await.expect("get");
-    assert_eq!(get_resp.status(), StatusCode::OK);
+    assert_eq!(
+        dispatch(
+            &table,
+            Method::GET,
+            &format!("/jobs/jobs/{}", job_id.0),
+            Bytes::new(),
+            None,
+        )
+        .await,
+        StatusCode::OK
+    );
 
     let poison_id = app
         .enqueue_opts("jobs", b"poison", EnqueueOptions::max_attempts(1))
@@ -113,13 +151,17 @@ async fn http_post_job_returns_202_and_enqueues() {
         .expect("row");
     assert_eq!(dl_status.lifecycle, JobLifecycle::DeadLetter);
 
-    let requeue_req = Request::builder()
-        .method("POST")
-        .uri(format!("/jobs/jobs/{}/requeue", poison_id.0))
-        .body(Body::empty())
-        .unwrap();
-    let requeue_resp = router.oneshot(requeue_req).await.expect("requeue");
-    assert_eq!(requeue_resp.status(), StatusCode::OK);
+    assert_eq!(
+        dispatch(
+            &table,
+            Method::POST,
+            &format!("/jobs/jobs/{}/requeue", poison_id.0),
+            Bytes::new(),
+            None,
+        )
+        .await,
+        StatusCode::OK
+    );
 
     let pending = app
         .job_status("jobs", poison_id)

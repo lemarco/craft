@@ -8,6 +8,8 @@ pub mod actor;
 pub mod clock;
 #[cfg(feature = "facade")]
 pub mod facade;
+#[cfg(feature = "facade")]
+pub mod gateway;
 pub mod harness;
 pub mod kv;
 pub mod shard;
@@ -22,6 +24,8 @@ pub use facade::{
     wait_for_group_leader_on_any, wait_for_group_leaders, wait_for_trembita_app_leader,
     wait_for_trembita_leader, wait_for_trembita_stopped,
 };
+#[cfg(feature = "facade")]
+pub use gateway::spawn_test_gateway;
 pub use harness::{
     TICK_PERIOD, fast_raft_config, fast_raft_config_with_seed, free_udp, test_setup,
 };

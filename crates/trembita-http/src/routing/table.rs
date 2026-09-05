@@ -111,12 +111,65 @@ impl RouteTable {
         self
     }
 
+    /// WebSocket upgrade handler for `path` (hyper upgrade — use in gateway dispatch).
+    #[must_use]
+    pub fn websocket(
+        mut self,
+        path: &str,
+        handler: impl Fn(
+                http::Request<hyper::body::Incoming>,
+            ) -> Pin<
+                Box<
+                    dyn Future<
+                            Output = http::Response<
+                                http_body_util::combinators::BoxBody<
+                                    bytes::Bytes,
+                                    std::convert::Infallible,
+                                >,
+                            >,
+                        > + Send,
+                >,
+            > + Send
+            + Sync
+            + 'static,
+    ) -> Self {
+        self.websocket = Some((PathPattern::new(path), Arc::new(handler)));
+        self
+    }
+
+    /// Dispatch a WebSocket upgrade when `path` matches.
+    pub(crate) fn dispatch_websocket(
+        &self,
+        path: &str,
+        req: http::Request<hyper::body::Incoming>,
+    ) -> Option<
+        Pin<
+            Box<
+                dyn Future<
+                        Output = http::Response<
+                            http_body_util::combinators::BoxBody<
+                                bytes::Bytes,
+                                std::convert::Infallible,
+                            >,
+                        >,
+                    > + Send,
+            >,
+        >,
+    > {
+        let (pattern, handler) = self.websocket.as_ref()?;
+        pattern.match_path(path)?;
+        Some(handler(req))
+    }
+
     /// Append all routes from `other` (later entries win on duplicate method+path).
     #[must_use]
     pub fn merge(mut self, other: RouteTable) -> Self {
         self.routes.extend(other.routes);
         if self.fallback.is_none() {
             self.fallback = other.fallback;
+        }
+        if self.websocket.is_none() {
+            self.websocket = other.websocket.clone();
         }
         self
     }
