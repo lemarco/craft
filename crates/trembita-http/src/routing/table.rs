@@ -17,17 +17,33 @@ use super::query::build_uri;
 /// One route entry in a [`RouteTable`].
 #[derive(Clone)]
 pub struct RouteEntry {
-    method: Method,
+    /// `None` matches any HTTP method ([`RouteTable::any`]).
+    method: Option<Method>,
     pattern: PathPattern,
     auth: AuthMode,
     handler: ArcHandler,
 }
 
 impl RouteEntry {
-    /// Register one route.
+    /// Register one route for a specific method.
     #[must_use]
     pub fn new(
         method: Method,
+        path: &str,
+        auth: AuthMode,
+        handler: impl Handler + 'static,
+    ) -> Self {
+        Self::with_method(Some(method), path, auth, handler)
+    }
+
+    /// Register one route for any HTTP method.
+    #[must_use]
+    pub fn any(path: &str, auth: AuthMode, handler: impl Handler + 'static) -> Self {
+        Self::with_method(None, path, auth, handler)
+    }
+
+    fn with_method(
+        method: Option<Method>,
         path: &str,
         auth: AuthMode,
         handler: impl Handler + 'static,
@@ -40,10 +56,10 @@ impl RouteEntry {
         }
     }
 
-    /// HTTP method.
+    /// HTTP method, if this route is method-specific.
     #[must_use]
-    pub fn method(&self) -> &Method {
-        &self.method
+    pub fn method(&self) -> Option<&Method> {
+        self.method.as_ref()
     }
 
     /// Path pattern.
@@ -202,6 +218,14 @@ impl RouteTable {
             AuthMode::Open,
             handler,
         ));
+        self
+    }
+
+    /// Route matching **any** HTTP method (same handler for GET, POST, …).
+    #[must_use]
+    pub fn any(mut self, path: &str, handler: impl Handler + 'static) -> Self {
+        self.routes
+            .push(RouteEntry::any(path, AuthMode::Open, handler));
         self
     }
 
@@ -484,7 +508,7 @@ impl RouteTable {
     }
     fn match_route(&self, method: &Method, path: &str) -> Option<(&RouteEntry, PathParams)> {
         self.routes.iter().rev().find_map(|entry| {
-            if entry.method() != method {
+            if entry.method().is_some_and(|m| m != method) {
                 return None;
             }
             entry
@@ -617,8 +641,6 @@ mod tests {
 
     #[tokio::test]
     async fn session_gate_rejects_unauthenticated_post() {
-        use std::sync::Arc;
-
         use super::super::auth::{DispatchGates, SessionGate};
 
         let table = RouteTable::new().post_session("/orders", |_: RequestCtx| async move {
@@ -679,5 +701,72 @@ mod tests {
         });
         let table = RouteTable::new().merge_authed(AuthMode::Session, inner);
         assert_eq!(table.descriptors()[0].auth, AuthMode::Session);
+    }
+
+    #[tokio::test]
+    async fn any_method_route_matches_post_and_get() {
+        let table = RouteTable::new().any("/hook", |ctx: RequestCtx| async move {
+            Ok(Response::text(
+                StatusCode::OK,
+                ctx.method().as_str().to_string(),
+            ))
+        });
+        let get = table
+            .dispatch_open(
+                &Method::GET,
+                "/hook",
+                HashMap::new(),
+                http::HeaderMap::new(),
+                Bytes::new(),
+            )
+            .await
+            .expect("get");
+        if let ResponseBody::Bytes(b) = get.body() {
+            assert_eq!(b.as_ref(), b"GET");
+        } else {
+            panic!("bytes");
+        }
+        let post = table
+            .dispatch_open(
+                &Method::POST,
+                "/hook",
+                HashMap::new(),
+                http::HeaderMap::new(),
+                Bytes::new(),
+            )
+            .await
+            .expect("post");
+        if let ResponseBody::Bytes(b) = post.body() {
+            assert_eq!(b.as_ref(), b"POST");
+        } else {
+            panic!("bytes");
+        }
+    }
+
+    #[tokio::test]
+    async fn fallback_is_method_agnostic() {
+        let table = RouteTable::new().fallback(|ctx: RequestCtx| async move {
+            Ok(Response::text(
+                StatusCode::OK,
+                ctx.method().as_str().to_string(),
+            ))
+        });
+        for method in [Method::GET, Method::POST, Method::DELETE] {
+            let resp = table
+                .dispatch_open(
+                    &method,
+                    "/nope",
+                    HashMap::new(),
+                    http::HeaderMap::new(),
+                    Bytes::new(),
+                )
+                .await
+                .expect("fallback");
+            if let ResponseBody::Bytes(b) = resp.body() {
+                assert_eq!(b.as_ref(), method.as_str().as_bytes());
+            } else {
+                panic!("bytes");
+            }
+        }
     }
 }

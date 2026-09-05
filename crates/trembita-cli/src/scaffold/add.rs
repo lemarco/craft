@@ -48,7 +48,7 @@ pub struct AddTopicOpts {
 pub struct AddActorOpts {
     /// Actor group name (routing key).
     pub group: String,
-    /// Rust type name (default: `{Group}Worker` in PascalCase).
+    /// Rust type name (default: `{Group}Worker` in `PascalCase`).
     pub type_name: Option<String>,
 }
 
@@ -158,12 +158,12 @@ async fn {handler}(payload: &[u8]) -> Result<(), String> {{
         }));
     } else {
         app.insert_block_before_configure(&format!(
-            r#"            .jobs([
+            r"            .jobs([
                 // trembita:jobs
                 {job_line}
                 // trembita:jobs-end
             ])
-"#,
+",
         ))?;
     }
 
@@ -189,12 +189,12 @@ pub fn add_topic(project: &TrembitaProject, opts: &AddTopicOpts) -> Result<(), A
         }));
     } else {
         app.insert_block_before_configure(&format!(
-            r#"            .topics([
+            r"            .topics([
                 // trembita:topics
                 {topic_line}
                 // trembita:topics-end
             ])
-"#,
+",
         ))?;
     }
 
@@ -232,7 +232,7 @@ pub fn add_actor(project: &TrembitaProject, opts: &AddActorOpts) -> Result<(), A
     fs::write(
         &actor_path,
         format!(
-            r#"//! `{group}` stateful worker group.
+            r"//! `{group}` stateful worker group.
 
 use trembita::actor;
 use trembita::runtime::{{MessageDecodeError, UserActor}};
@@ -255,7 +255,7 @@ impl UserActor for {type_name} {{
         Ok(())
     }}
 }}
-"#,
+",
             group = opts.group,
             type_name = type_name,
         ),
@@ -284,12 +284,12 @@ impl UserActor for {type_name} {{
         }));
     } else {
         app.insert_block_before_configure(&format!(
-            r#"            .workers(workers!(
+            r"            .workers(workers!(
                 // trembita:workers
                 {worker_line}
                 // trembita:workers-end
             ))
-"#,
+",
         ))?;
     }
 
@@ -378,10 +378,7 @@ StaticSite::new(StaticSource::embedded(embedded_from_dir(&ASSETS)))"#,
         }
         StaticSiteSource::Filesystem { path } => {
             if path.starts_with('/') {
-                format!(
-                    r#"StaticSite::new(StaticSource::filesystem("{path}"))"#,
-                    path = path
-                )
+                format!(r#"StaticSite::new(StaticSource::filesystem("{path}"))"#)
             } else {
                 format!(
                     r#"StaticSite::new(StaticSource::filesystem(
@@ -396,7 +393,7 @@ StaticSite::new(StaticSource::embedded(embedded_from_dir(&ASSETS)))"#,
     fs::write(
         &http_path,
         format!(
-            r#"//! `{name}` static site (SPA).
+            r"//! `{name}` static site (SPA).
 
 use trembita::{{RouteTable, StaticSite, StaticSource, embedded_from_dir}};
 
@@ -407,7 +404,7 @@ pub fn route_table() -> RouteTable {{
         .spa_fallback(true)
         .route_table()
 }}
-"#,
+",
             name = opts.name,
             hosts_comment = opts.hosts.join(", "),
             source_body = source_body,
@@ -468,11 +465,11 @@ fn wire_http_surface(
         String::new()
     };
     app.insert_surface(&format!(
-        r#"
+        r"
                             .surface(|s| {{
                                 s.hosts([{hosts_list}]){cors_line}{session_line}
                                     .routes(http::{module}::route_table())
-                            }})"#,
+                            }})",
     ))?;
 
     app.save(&project.app_rs())?;

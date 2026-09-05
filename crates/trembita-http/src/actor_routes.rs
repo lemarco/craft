@@ -120,7 +120,7 @@ mod tests {
     use http::Method;
     use std::collections::HashMap;
     use std::future;
-    use trembita_runtime::{CastError, ClusterAskError};
+    use trembita_runtime::ClusterAskError;
 
     fn test_state(ask: crate::AskFn, cast: crate::CastFn) -> Arc<ActorsApiState> {
         Arc::new(ActorsApiState {

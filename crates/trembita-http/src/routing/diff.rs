@@ -10,8 +10,8 @@ use super::table::RouteTable;
 /// One declarative route (method + path template + auth mode).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RouteDescriptor {
-    /// HTTP method.
-    pub method: Method,
+    /// HTTP method (`None` = any method).
+    pub method: Option<Method>,
     /// Path template (`/items/{id}`).
     pub path: String,
     /// Auth gate applied before the handler.
@@ -21,7 +21,7 @@ pub struct RouteDescriptor {
 impl RouteDescriptor {
     /// Stable key for maps and diffs.
     #[must_use]
-    pub fn key(&self) -> (Method, String) {
+    pub fn key(&self) -> (Option<Method>, String) {
         (self.method.clone(), self.path.clone())
     }
 }

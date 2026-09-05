@@ -9,6 +9,8 @@ pub enum PathSegment {
     Literal(String),
     /// Named capture (`{brandId}`).
     Param(String),
+    /// Optional capture (`{version?}`) — zero or one segment.
+    OptionalParam(String),
 }
 
 /// Parsed route path such as `/brands/{brandId}/urls`.
@@ -20,6 +22,9 @@ pub struct PathPattern {
 
 impl PathPattern {
     /// Parse a path pattern. Leading/trailing slashes are ignored.
+    ///
+    /// Optional segments use `{name?}` (e.g. `/api/{version?}/health` matches `/api/health`
+    /// and `/api/v2/health`).
     ///
     /// # Panics
     /// In debug builds, if a segment looks like `{name` without a closing `}`.
@@ -75,27 +80,61 @@ impl PathPattern {
             .filter(|s| !s.is_empty())
             .collect();
 
-        if req_segments.len() != self.segments.len() {
-            return None;
-        }
-
         let mut params = PathParams::new();
-        for (pattern, actual) in self.segments.iter().zip(req_segments) {
-            match pattern {
-                PathSegment::Literal(expected) if expected == actual => {}
-                PathSegment::Literal(_) => return None,
-                PathSegment::Param(name) => {
-                    params.insert(name.clone(), actual.to_string());
-                }
-            }
-        }
+        match_segments(&self.segments, &req_segments, 0, 0, &mut params)?;
         Some(params)
+    }
+}
+
+fn match_segments(
+    pattern: &[PathSegment],
+    req: &[&str],
+    pi: usize,
+    ri: usize,
+    params: &mut PathParams,
+) -> Option<()> {
+    if pi == pattern.len() {
+        return if ri == req.len() { Some(()) } else { None };
+    }
+
+    match &pattern[pi] {
+        PathSegment::Literal(expected) => {
+            if ri >= req.len() || req[ri] != expected {
+                return None;
+            }
+            match_segments(pattern, req, pi + 1, ri + 1, params)
+        }
+        PathSegment::Param(name) => {
+            if ri >= req.len() {
+                return None;
+            }
+            params.insert(name.clone(), req[ri].to_string());
+            match_segments(pattern, req, pi + 1, ri + 1, params)
+        }
+        PathSegment::OptionalParam(name) => {
+            if ri < req.len() {
+                params.insert(name.clone(), req[ri].to_string());
+                if match_segments(pattern, req, pi + 1, ri + 1, params).is_some() {
+                    return Some(());
+                }
+                params.remove(name);
+            }
+            match_segments(pattern, req, pi + 1, ri, params)
+        }
     }
 }
 
 fn parse_segment(raw: &str) -> PathSegment {
     if let Some(inner) = raw.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
-        PathSegment::Param(inner.to_string())
+        if let Some(name) = inner.strip_suffix('?') {
+            if name.is_empty() {
+                PathSegment::Literal(raw.to_string())
+            } else {
+                PathSegment::OptionalParam(name.to_string())
+            }
+        } else {
+            PathSegment::Param(inner.to_string())
+        }
     } else {
         PathSegment::Literal(raw.to_string())
     }
@@ -118,6 +157,10 @@ impl PathParams {
 
     fn insert(&mut self, name: String, value: String) {
         self.values.insert(name, value);
+    }
+
+    fn remove(&mut self, name: &str) {
+        self.values.remove(name);
     }
 
     /// Lookup one captured parameter.
@@ -162,5 +205,21 @@ mod tests {
     fn trailing_slash_matches() {
         let pattern = PathPattern::new("/brands/list");
         assert!(pattern.match_path("/brands/list/").is_some());
+    }
+
+    #[test]
+    fn optional_trailing_segment() {
+        let pattern = PathPattern::new("/files/{path?}");
+        assert!(pattern.match_path("/files").is_some());
+        let with_id = pattern.match_path("/files/readme.txt").expect("match");
+        assert_eq!(with_id.get("path"), Some("readme.txt"));
+    }
+
+    #[test]
+    fn optional_middle_segment() {
+        let pattern = PathPattern::new("/api/{version?}/health");
+        assert!(pattern.match_path("/api/health").is_some());
+        let v2 = pattern.match_path("/api/v2/health").expect("match");
+        assert_eq!(v2.get("version"), Some("v2"));
     }
 }

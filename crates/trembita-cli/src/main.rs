@@ -99,10 +99,10 @@ enum AddTarget {
         /// Rust module file name (default: derived from `name`).
         #[arg(long)]
         module: Option<String>,
-        /// Wire SessionGate on the surface.
+        /// Wire `SessionGate` on the surface.
         #[arg(long)]
         session: bool,
-        /// Attach CorsPolicy::credentials for browser clients.
+        /// Attach `CorsPolicy::credentials` for browser clients.
         #[arg(long)]
         cors: bool,
     },
@@ -259,9 +259,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 fn resolve_project(
     path: Option<&std::path::Path>,
 ) -> Result<TrembitaProject, Box<dyn std::error::Error>> {
-    let start = path
-        .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::current_dir().expect("cwd"));
+    let start = path.map_or_else(|| std::env::current_dir().expect("cwd"), PathBuf::from);
     Ok(TrembitaProject::discover(&start)?)
 }
 

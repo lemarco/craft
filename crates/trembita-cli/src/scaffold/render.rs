@@ -194,7 +194,7 @@ fn generate_cargo_toml(opts: &NewProjectOpts) -> String {
     }
 
     let mut extra_deps = opts.optional_adapter_lines();
-    if opts.features.iter().any(|f| *f == AppFeature::Gateway) {
+    if opts.features.contains(&AppFeature::Gateway) {
         extra_deps.push_str("http = \"1\"\n");
     }
     if let Some(runtime) = opts.trembita_runtime_dependency_line() {
@@ -256,7 +256,7 @@ fn generate_main_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> St
     };
 
     format!(
-        r#"//! {name} — trembita product app.
+        r"//! {name} — trembita product app.
 
 {mods}
 
@@ -269,7 +269,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {{
 
     App::new(AppConfig::from_env()).run().await
 }}
-"#,
+",
         name = opts.name,
         mods = mods.join("\n"),
         tracing = tracing,
@@ -320,9 +320,9 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
 
     if features.contains(&AppFeature::Jobs) {
         body.push_str(
-            r#"        let idem_store = Arc::new(InMemoryStore::new());
+            r"        let idem_store = Arc::new(InMemoryStore::new());
 
-"#,
+",
         );
         builder.push_str(
             r#"            .jobs([
@@ -353,32 +353,32 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
         );
     } else {
         builder.push_str(
-            r#"            // trembita:topics
+            r"            // trembita:topics
             // trembita:topics-end
-"#,
+",
         );
     }
 
     if features.contains(&AppFeature::Actors) {
         builder.push_str(
-            r#"            .workers(workers!(
+            r"            .workers(workers!(
                 // trembita:workers
                 // trembita:workers-end
             ))
-"#,
+",
         );
     } else {
         builder.push_str(
-            r#"            // trembita:workers
+            r"            // trembita:workers
             // trembita:workers-end
-"#,
+",
         );
     }
 
     if features.contains(&AppFeature::Workflows) {
         builder.push_str(
-            r#"            // Register workflows in src/workflows/ and wire .workflows([...]) here.
-"#,
+            r"            // Register workflows in src/workflows/ and wire .workflows([...]) here.
+",
         );
     }
 
@@ -408,11 +408,11 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     }
 
     builder.push_str(
-        r#"            .configure(TrembitaConfigure {
+        r"            .configure(TrembitaConfigure {
                 admin_addr: Some(self.config.admin_addr),
                 ..TrembitaConfigure::default()
             })
-"#,
+",
     );
 
     let run_opts = if features.contains(&AppFeature::Jobs) {
@@ -424,7 +424,7 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     builder.push_str("            .await\n");
 
     format!(
-        r#"//! {name} — [`TrembitaApp`](trembita::TrembitaApp) wiring.
+        r"//! {name} — [`TrembitaApp`](trembita::TrembitaApp) wiring.
 
 {imports}
 
@@ -444,7 +444,7 @@ impl App {{
     pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {{
 {body}{builder}    }}
 }}
-"#,
+",
         name = opts.name,
         imports = imports_block,
         body = body,

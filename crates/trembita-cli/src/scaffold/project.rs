@@ -51,9 +51,7 @@ impl TrembitaProject {
         if !app_rs.is_file() || !cargo.is_file() {
             return false;
         }
-        std::fs::read_to_string(cargo)
-            .ok()
-            .is_some_and(|c| c.contains("trembita"))
+        std::fs::read_to_string(cargo).is_ok_and(|c| c.contains("trembita"))
     }
 
     /// `src/app.rs`

@@ -37,8 +37,8 @@ async fn get_health(state: Arc<WorkflowsApiState>, ctx: RequestCtx) -> Result<Re
 }
 
 async fn get_health_inner(
-    state: &WorkflowsApiState,
-    ctx: RequestCtx,
+    _state: &WorkflowsApiState,
+    _ctx: RequestCtx,
 ) -> Result<Response, WorkflowsApiError> {
     Ok(Response::text(StatusCode::OK, "ok"))
 }

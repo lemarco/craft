@@ -67,7 +67,7 @@ async fn get_cluster(
 
 async fn get_cluster_inner(
     state: &IntrospectApiState,
-    ctx: RequestCtx,
+    _ctx: RequestCtx,
 ) -> Result<Response, IntrospectApiError> {
     json_ok(state.observer.cluster().await)
 }
@@ -84,7 +84,7 @@ async fn get_raft_groups(
 
 async fn get_raft_groups_inner(
     state: &IntrospectApiState,
-    ctx: RequestCtx,
+    _ctx: RequestCtx,
 ) -> Result<Response, IntrospectApiError> {
     json_ok(state.observer.raft_groups().await)
 }
@@ -101,7 +101,7 @@ async fn get_actors(
 
 async fn get_actors_inner(
     state: &IntrospectApiState,
-    ctx: RequestCtx,
+    _ctx: RequestCtx,
 ) -> Result<Response, IntrospectApiError> {
     json_ok(state.observer.actors().await)
 }
@@ -168,7 +168,7 @@ async fn get_queues(
 
 async fn get_queues_inner(
     state: &IntrospectApiState,
-    ctx: RequestCtx,
+    _ctx: RequestCtx,
 ) -> Result<Response, IntrospectApiError> {
     json_ok(state.observer.queues().await)
 }
@@ -182,7 +182,7 @@ async fn get_sagas(state: Arc<IntrospectApiState>, ctx: RequestCtx) -> Result<Re
 
 async fn get_sagas_inner(
     state: &IntrospectApiState,
-    ctx: RequestCtx,
+    _ctx: RequestCtx,
 ) -> Result<Response, IntrospectApiError> {
     json_ok(state.observer.sagas().await)
 }
@@ -193,7 +193,7 @@ mod tests {
     use bytes::Bytes;
     use http::Method;
     use std::collections::HashMap;
-    use std::future;
+
     use std::sync::Arc;
     use trembita_dashboard::{
         ActorView, BoxFuture, ClusterView, NodeSummary, NodeView, Observer, QueuesView,

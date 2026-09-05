@@ -105,6 +105,8 @@ impl Default for Surface {
 pub struct Gateway {
     surfaces: Vec<Surface>,
     dev_fallback: Option<RouteTable>,
+    dev_fallback_session: Option<SessionGate>,
+    dev_fallback_cors: Option<CorsPolicy>,
     is_production: bool,
 }
 
@@ -115,6 +117,8 @@ impl Gateway {
         Self {
             surfaces: Vec::new(),
             dev_fallback: None,
+            dev_fallback_session: None,
+            dev_fallback_cors: None,
             is_production,
         }
     }
@@ -131,6 +135,32 @@ impl Gateway {
     pub fn dev_fallback(mut self, routes: RouteTable) -> Self {
         self.dev_fallback = Some(routes);
         self
+    }
+
+    /// Session gate for [`dev_fallback`](Self::dev_fallback) routes (loopback hosts).
+    #[must_use]
+    pub fn dev_fallback_session(mut self, gate: SessionGate) -> Self {
+        self.dev_fallback_session = Some(gate);
+        self
+    }
+
+    /// CORS policy for [`dev_fallback`](Self::dev_fallback) routes.
+    #[must_use]
+    pub fn dev_fallback_cors(mut self, policy: CorsPolicy) -> Self {
+        self.dev_fallback_cors = Some(policy);
+        self
+    }
+
+    /// Session gate on dev fallback, if configured.
+    #[must_use]
+    pub fn dev_fallback_session_gate(&self) -> Option<&SessionGate> {
+        self.dev_fallback_session.as_ref()
+    }
+
+    /// CORS on dev fallback, if configured.
+    #[must_use]
+    pub fn dev_fallback_cors_policy(&self) -> Option<&CorsPolicy> {
+        self.dev_fallback_cors.as_ref()
     }
 
     /// Whether this build targets production (no dev fallback).

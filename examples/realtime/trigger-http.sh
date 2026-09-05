@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# POST one chat line over authenticated HTTP (realtime showcase).
+# Session cookie flow: login (Bearer) → Set-Cookie → POST /chat with cookie.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"
@@ -8,26 +8,24 @@ MSG="${2:-hello}"
 HOST="${TREMBITA_GATEWAY:-127.0.0.1:8294}"
 HOST="${HOST#http://}"
 HOST="${HOST#https://}"
-TOKEN="${GATEWAY_TOKEN:-}"
-CLIENT="$CRAFT_ROOT/target/debug/trembita-showcase-client"
+TOKEN="${GATEWAY_TOKEN:-dev-secret}"
+COOKIE_JAR="$(mktemp)"
+trap 'rm -f "$COOKIE_JAR"' EXIT
 
-if [ -x "$CLIENT" ]; then
-    if [ -n "$TOKEN" ]; then
-        exec "$CLIENT" chat "$HOST" "$USER" "$MSG" "$TOKEN"
-    else
-        exec "$CLIENT" chat "$HOST" "$USER" "$MSG"
-    fi
-fi
+echo "POST /login (Bearer + X-Trembita-User: ${USER})"
+curl -fsS -X POST "http://${HOST}/login" \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -H "X-Trembita-User: ${USER}" \
+    -c "$COOKIE_JAR"
 
-if [ -n "$TOKEN" ]; then
-    curl -fsS -X POST "http://${HOST}/chat" \
-        -H "Authorization: Bearer ${TOKEN}" \
-        -H "X-Trembita-User: ${USER}" \
-        -H 'Content-Type: application/json' \
-        -d "{\"message\":\"${MSG}\"}"
-else
-    curl -fsS -X POST "http://${HOST}/chat?user=${USER}" \
-        -H 'Content-Type: application/json' \
-        -d "{\"message\":\"${MSG}\"}"
-fi
+echo
+echo "POST /chat (session cookie)"
+curl -fsS -X POST "http://${HOST}/chat" \
+    -b "$COOKIE_JAR" \
+    -H 'Content-Type: application/json' \
+    -d "{\"message\":\"${MSG}\"}"
+echo
+
+echo "GET /me"
+curl -fsS "http://${HOST}/me" -b "$COOKIE_JAR"
 echo

@@ -63,8 +63,8 @@ impl GatewayDispatch {
         let local_dev = gateway.dev_fallback_routes().map(|routes| {
             Arc::new(SurfaceDispatch {
                 routes: routes.clone(),
-                cors: None,
-                session: None,
+                cors: gateway.dev_fallback_cors_policy().cloned(),
+                session: gateway.dev_fallback_session_gate().cloned(),
             })
         });
         Ok(Self {
@@ -184,10 +184,10 @@ impl GatewayDispatch {
             .map(str::to_string);
 
         if parts.method == Method::OPTIONS {
-            if let (Some(cors), Some(origin)) = (&surface.cors, &origin) {
-                if cors.allows_origin(origin) {
-                    return cors_preflight(cors, &parts.headers);
-                }
+            if let (Some(cors), Some(origin)) = (&surface.cors, &origin)
+                && cors.allows_origin(origin)
+            {
+                return cors_preflight(cors, &parts.headers);
             }
             return text_response(StatusCode::NOT_FOUND, "not found");
         }
@@ -341,18 +341,17 @@ pub fn routing_to_http_response(response: Response) -> HttpResponse<BoxBody> {
     };
     let mut http = HttpResponse::new(body);
     *http.status_mut() = status;
-    for (key, value) in response.headers().iter() {
+    for (key, value) in response.headers() {
         http.headers_mut().insert(key, value.clone());
     }
-    if matches!(response.body(), ResponseBody::Bytes(_)) {
-        if let http::header::Entry::Vacant(entry) = http.headers_mut().entry(CONTENT_LENGTH) {
-            if let ResponseBody::Bytes(b) = response.body() {
-                let _ = entry.insert(
-                    http::HeaderValue::from_str(&b.len().to_string())
-                        .unwrap_or(http::HeaderValue::from_static("0")),
-                );
-            }
-        }
+    if matches!(response.body(), ResponseBody::Bytes(_))
+        && let http::header::Entry::Vacant(entry) = http.headers_mut().entry(CONTENT_LENGTH)
+        && let ResponseBody::Bytes(b) = response.body()
+    {
+        let _ = entry.insert(
+            http::HeaderValue::from_str(&b.len().to_string())
+                .unwrap_or(http::HeaderValue::from_static("0")),
+        );
     }
     http
 }
@@ -440,7 +439,6 @@ pub fn is_websocket_upgrade(headers: &http::HeaderMap) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use http::StatusCode;
 
     #[test]
     fn parse_query_string() {

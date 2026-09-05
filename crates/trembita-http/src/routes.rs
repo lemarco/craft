@@ -479,7 +479,7 @@ mod tests {
     use bytes::Bytes;
     use http::Method;
     use std::future;
-    use trembita_jobs::{JobId, JobLifecycle, JobStatus};
+    use trembita_jobs::JobId;
 
     fn test_state(
         enqueue: crate::EnqueueFn,

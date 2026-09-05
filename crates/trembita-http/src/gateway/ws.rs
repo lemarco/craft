@@ -49,10 +49,10 @@ where
         .append(UPGRADE, http::HeaderValue::from_static("websocket"));
     res.headers_mut()
         .append(SEC_WEBSOCKET_VERSION, http::HeaderValue::from_static("13"));
-    if let Some(accept) = accept {
-        if let Ok(value) = http::HeaderValue::from_str(&accept) {
-            res.headers_mut().append(SEC_WEBSOCKET_ACCEPT, value);
-        }
+    if let Some(accept) = accept
+        && let Ok(value) = http::HeaderValue::from_str(&accept)
+    {
+        res.headers_mut().append(SEC_WEBSOCKET_ACCEPT, value);
     }
     res
 }

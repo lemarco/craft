@@ -1,9 +1,9 @@
 //! # Real-time sessions showcase (sticky actor sessions + WebSocket gateway)
 //!
-//! WebSocket **and** authenticated HTTP on the same gateway identity.
+//! Demonstrates **login → `Set-Cookie` → session-protected HTTP** plus WebSocket on the same gateway.
 
 mod debug;
-mod gateway_http;
+mod gateway_session;
 
 use std::env;
 use std::sync::Mutex;
@@ -14,11 +14,12 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::{WebSocketStream, tungstenite::protocol::Role};
 use trembita::runtime::{UserActor, actor};
 use trembita::{
-    ActorGroupOpts, Gateway, GatewayOpts, HttpError, ReadyOpts, RequestCtx, Response, RouteTable,
-    RunOpts, TrembitaApp, TrembitaConfigure, TrembitaGatewayState, accept_websocket,
-    routing_to_http_response,
+    ActorGroupOpts, CookieConfig, Gateway, GatewayOpts, ReadyOpts, RequestCtx, RouteTable, RunOpts,
+    TrembitaApp, TrembitaConfigure, TrembitaGatewayState, accept_websocket, routing_to_http_response,
 };
 use trembita_tools::showcase_common::{data_dir, display_addr};
+
+use gateway_session::{SessionStore, session_gate};
 
 const DATA_DIR_NAME: &str = "trembita-showcase-realtime";
 const SESSION_TTL: Duration = Duration::from_secs(3600);
@@ -96,46 +97,58 @@ async fn handle_socket(
 }
 
 fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
+    let store = SessionStore::new();
+    let gate = session_gate(store.clone());
+    let login_state = state.clone();
+    let login_gate = gate.clone();
+    let login_store = store.clone();
     let chat_state = state.clone();
-    let me_state = state.clone();
     let ws_state = state;
-    Gateway::new(false).dev_fallback(
-        RouteTable::new()
-            .websocket("/ws", move |req| {
-                let st = ws_state.clone();
-                Box::pin(async move {
-                    let handle = match st
-                        .open_actor_session_parts(
-                            "chat",
-                            req.method(),
-                            req.uri(),
-                            req.headers(),
-                            Some(SESSION_TTL),
-                        )
-                        .await
-                    {
-                        Ok(h) => h,
-                        Err(err) => {
-                            return routing_to_http_response(err.into_http_response());
-                        }
-                    };
-                    let session_key = handle.session_key().to_string();
-                    debug::ws_connect(&session_key, true);
-                    accept_websocket(req, move |stream| {
-                        let st = st.clone();
-                        async move { handle_socket(stream, st, session_key, handle).await }
+
+    Gateway::new(false)
+        .dev_fallback_session(gate)
+        .dev_fallback(
+            RouteTable::new()
+                .websocket("/ws", move |req| {
+                    let st = ws_state.clone();
+                    Box::pin(async move {
+                        let handle = match st
+                            .open_actor_session_parts(
+                                "chat",
+                                req.method(),
+                                req.uri(),
+                                req.headers(),
+                                Some(SESSION_TTL),
+                            )
+                            .await
+                        {
+                            Ok(h) => h,
+                            Err(err) => {
+                                return routing_to_http_response(err.into_http_response());
+                            }
+                        };
+                        let session_key = handle.session_key().to_string();
+                        debug::ws_connect(&session_key, true);
+                        accept_websocket(req, move |stream| {
+                            let st = st.clone();
+                            async move { handle_socket(stream, st, session_key, handle).await }
+                        })
                     })
                 })
-            })
-            .post("/chat", move |ctx: RequestCtx| {
-                let st = chat_state.clone();
-                async move { gateway_http::post_chat(st, ctx).await }
-            })
-            .get("/me", move |ctx: RequestCtx| {
-                let st = me_state.clone();
-                async move { gateway_http::get_me(st, ctx).await }
-            }),
-    )
+                .post_identity("/login", move |ctx: RequestCtx| {
+                    let st = login_state.clone();
+                    let g = login_gate.clone();
+                    let s = login_store.clone();
+                    async move { gateway_session::post_login(st, g, s, ctx).await }
+                })
+                .post_session("/chat", move |ctx: RequestCtx| {
+                    let st = chat_state.clone();
+                    async move { gateway_session::post_chat(st, ctx).await }
+                })
+                .get_session("/me", move |ctx: RequestCtx| {
+                    async move { gateway_session::get_me(ctx).await }
+                }),
+        )
 }
 
 fn server_builder() -> trembita::TrembitaAppBuilder {
@@ -184,9 +197,11 @@ fn print_banner() {
     if env::var("TREMBITA_GATEWAY").is_ok_and(|g| g != "-") {
         let gw = env::var("TREMBITA_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8294".into());
         let host = display_addr(&gw);
-        println!("  websocket ws://{host}/ws?user=alice");
-        println!("  http chat POST http://{host}/chat  (Bearer + X-Trembita-User or ?user=)");
-        println!("  http me    GET  http://{host}/me?user=alice");
+        println!("  websocket ws://{host}/ws?user=alice  (Bearer identity)");
+        println!("  login     POST http://{host}/login  (Bearer + X-Trembita-User → Set-Cookie)");
+        println!("  chat      POST http://{host}/chat   (session cookie)");
+        println!("  me        GET  http://{host}/me      (session cookie)");
+        let _ = CookieConfig::from_env("REALTIME", "sess");
     }
     if let Ok(admin) = env::var("TREMBITA_ADMIN") {
         if admin != "-" {
@@ -200,7 +215,7 @@ fn print_banner() {
     }
     println!("  cluster  ./cluster.sh setup && ./cluster.sh up");
     println!("  trigger  ./trigger.sh alice hello");
-    println!("  http     ./trigger-http.sh alice hello");
+    println!("  session  ./trigger-http.sh alice hello");
     println!("  data_dir {}", data_dir(DATA_DIR_NAME).display());
     println!("press Ctrl-C to stop");
 }

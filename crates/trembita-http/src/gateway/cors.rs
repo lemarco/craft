@@ -38,9 +38,8 @@ impl CorsPolicy {
         if origins.is_empty() {
             return None;
         }
-        let credentials = env::var(format!("{prefix}_CORS_CREDENTIALS"))
-            .map(|v| is_true(&v))
-            .unwrap_or(true);
+        let credentials =
+            env::var(format!("{prefix}_CORS_CREDENTIALS")).map_or(true, |v| is_true(&v));
         Some(Self {
             origins,
             credentials,

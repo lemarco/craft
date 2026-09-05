@@ -219,11 +219,13 @@ impl JobsApi {
     }
 
     /// Route table for job enqueue and lookup.
+    #[must_use]
     pub fn route_table(&self) -> RouteTable {
         self.route_table_with_auth(None)
     }
 
     /// Route table with optional gateway auth hook.
+    #[must_use]
     pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
         let table = routes::route_table(Arc::new(self.clone().into_state_with_auth(None)));
         if auth.is_some() {
@@ -294,11 +296,13 @@ impl ActorsApi {
     }
 
     /// Route table for actor cast and ask.
+    #[must_use]
     pub fn route_table(&self) -> RouteTable {
         self.route_table_with_auth(None)
     }
 
     /// Route table with optional gateway auth hook.
+    #[must_use]
     pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
         let table = actor_routes::route_table(Arc::new(self.clone().into_state_with_auth(None)));
         if auth.is_some() {
@@ -369,11 +373,13 @@ impl WorkflowsApi {
     }
 
     /// Route table for workflow run/resume.
+    #[must_use]
     pub fn route_table(&self) -> RouteTable {
         self.route_table_with_auth(None)
     }
 
     /// Route table with optional gateway auth hook.
+    #[must_use]
     pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
         let table = workflow_routes::route_table(Arc::new(self.clone().into_state_with_auth(None)));
         if auth.is_some() {
@@ -457,11 +463,13 @@ impl IntrospectApi {
     }
 
     /// Route table for introspection snapshots.
+    #[must_use]
     pub fn route_table(&self) -> RouteTable {
         self.route_table_with_auth(None)
     }
 
     /// Route table with optional gateway auth hook.
+    #[must_use]
     pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
         let table =
             introspect_routes::route_table(Arc::new(self.clone().into_state_with_auth(None)));

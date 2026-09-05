@@ -62,6 +62,7 @@ impl AppFeature {
     }
 
     /// Parse from CLI (`jobs`, `gateway`, …).
+    #[must_use]
     pub fn parse_name(s: &str) -> Option<Self> {
         Some(match s.trim().to_ascii_lowercase().as_str() {
             "jobs" | "job" => Self::Jobs,
@@ -101,7 +102,7 @@ pub fn parse_feature_list(raw: &str) -> Result<Vec<AppFeature>, String> {
         .split(',')
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .map(|s| s.parse::<AppFeature>())
+        .map(str::parse::<AppFeature>)
         .collect()
 }
 

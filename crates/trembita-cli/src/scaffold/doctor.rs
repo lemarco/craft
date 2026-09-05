@@ -69,6 +69,7 @@ impl DoctorReport {
     }
 
     /// Print human-readable report to stderr; returns exit code (0 = ok).
+    #[must_use]
     pub fn print_and_exit_code(&self) -> i32 {
         for f in &self.findings {
             let tag = match f.level {
@@ -78,11 +79,12 @@ impl DoctorReport {
             };
             eprintln!("[{tag}] {}", f.message);
         }
-        if self.has_errors() { 1 } else { 0 }
+        i32::from(self.has_errors())
     }
 }
 
 /// Run all doctor checks on `project`.
+#[must_use]
 pub fn run_doctor(project: &TrembitaProject) -> DoctorReport {
     let mut report = DoctorReport::default();
     check_layout(project, &mut report);
@@ -101,6 +103,7 @@ pub fn run_doctor(project: &TrembitaProject) -> DoctorReport {
 }
 
 /// Apply safe auto-fixes (missing `mod` declarations, `main.rs` modules).
+#[must_use]
 pub fn doctor_fix(project: &TrembitaProject) -> DoctorFixReport {
     let mut fixes = 0usize;
     fixes += fix_mod_declarations(&project.consumers_dir());
@@ -333,9 +336,7 @@ fn check_http(project: &TrembitaProject, app: &str, report: &mut DoctorReport) {
 }
 
 fn content_has_route_table(path: &Path) -> bool {
-    fs::read_to_string(path)
-        .ok()
-        .is_some_and(|c| c.contains("pub fn route_table()"))
+    fs::read_to_string(path).is_ok_and(|c| c.contains("pub fn route_table()"))
 }
 
 fn check_topics(app: &str, report: &mut DoctorReport) {
@@ -406,10 +407,10 @@ fn extract_consumer_streams(source: &str) -> Vec<String> {
     let mut streams = Vec::new();
     for line in source.lines() {
         let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("#[consumer(\"") {
-            if let Some(stream) = rest.split('"').next() {
-                streams.push(stream.to_string());
-            }
+        if let Some(rest) = trimmed.strip_prefix("#[consumer(\"")
+            && let Some(stream) = rest.split('"').next()
+        {
+            streams.push(stream.to_string());
         }
     }
     streams
@@ -418,12 +419,12 @@ fn extract_consumer_streams(source: &str) -> Vec<String> {
 fn extract_worker_groups(source: &str) -> Vec<String> {
     let mut groups = Vec::new();
     for line in source.lines() {
-        if line.contains("Stateful worker for group `") {
-            if let Some(start) = line.find('`') {
-                let rest = &line[start + 1..];
-                if let Some(end) = rest.find('`') {
-                    groups.push(rest[..end].to_string());
-                }
+        if line.contains("Stateful worker for group `")
+            && let Some(start) = line.find('`')
+        {
+            let rest = &line[start + 1..];
+            if let Some(end) = rest.find('`') {
+                groups.push(rest[..end].to_string());
             }
         }
     }

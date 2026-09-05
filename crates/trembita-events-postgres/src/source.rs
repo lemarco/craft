@@ -89,13 +89,12 @@ impl EventOutboxSource for PgEventOutboxSource {
             let mut out = Vec::with_capacity(rows.len());
             for row in rows {
                 let id: String = row.try_get("id").map_err(backend)?;
-                let payload_bytes = match row.try_get::<Vec<u8>, _>("payload") {
-                    Ok(bytes) => bytes,
-                    Err(_) => {
-                        let json: sqlx::types::Json<serde_json::Value> =
-                            row.try_get("payload").map_err(backend)?;
-                        PgEventOutboxSource::encode_payload(json)
-                    }
+                let payload_bytes = if let Ok(bytes) = row.try_get::<Vec<u8>, _>("payload") {
+                    bytes
+                } else {
+                    let json: sqlx::types::Json<serde_json::Value> =
+                        row.try_get("payload").map_err(backend)?;
+                    PgEventOutboxSource::encode_payload(json)
                 };
                 out.push(OutboxEvent {
                     id: id.into_bytes(),

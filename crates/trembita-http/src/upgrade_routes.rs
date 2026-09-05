@@ -129,7 +129,7 @@ async fn get_upgrade(state: Arc<UpgradeApiState>, ctx: RequestCtx) -> Result<Res
 
 async fn get_upgrade_inner(
     state: &UpgradeApiState,
-    ctx: RequestCtx,
+    _ctx: RequestCtx,
 ) -> Result<Response, UpgradeApiError> {
     let view = (state.view)().await?;
     let json = serde_json::to_value(view)
