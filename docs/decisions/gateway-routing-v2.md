@@ -20,7 +20,7 @@ was an implementation detail trembita owned end-to-end. Re-exporting axum into p
 (CR-100) showed the boundary was wrong: **routing is a product concern**, not a third-party
 framework concern.
 
-Quazala’s gateway port (116 routes, MH-G3 parity) proved that most routes are **data**
+Large production gateway ports (100+ routes) proved that most routes are **data**
 (`RouteTable`), not bespoke handler code. Host surfaces, session gates, and CORS belong on the
 surface, not copy-pasted per BC adapter.
 
@@ -86,13 +86,13 @@ expose [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) entries, 
 
 - Product apps depend only on `trembita` — no axum / axum-extra / tower-http in app `Cargo.toml`.
 - Host surfaces, session, CORS, drain are first-class declarations, not middleware boilerplate.
-- Route tables are diffable data — parity testing (MH-G3) compares tables + responses.
+- Route tables are diffable data — parity testing compares tables + responses.
 - Version bumps no longer coupled to axum releases.
 
 **Negative**
 
 - **Breaking:** every `GatewayOpts::routes` call site, all examples, all integration tests.
-- **~5–6 person-weeks** before 0.4.0 tag; quazala migrates in the same window.
+- **~5–6 person-weeks** before 0.4.0 tag.
 - Trembita maintains path matching, body limits, JSON extraction — scope axum previously covered.
 
 ## Migration gate (0.4.0 release checklist)
@@ -101,7 +101,7 @@ expose [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) entries, 
 - [x] `GatewayOpts::routes` removed (use `GatewayOpts::surfaces`)
 - [x] All trembita integration tests pass
 - [x] Migration guide [gateway-0.4](../migration/gateway-0.4.md)
-- [ ] Quazala `parity-gateway.sh`: 125 identical, 1 expected (D-09), 0 unexplained
+- [ ] Gateway parity suite: 125 identical, 1 expected (D-09), 0 unexplained
 - [x] Examples updated
 - [x] [gateway-identity](gateway-identity.md) transport section updated
 

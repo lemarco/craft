@@ -1,0 +1,31 @@
+---
+description: Documentation style — no external reference projects in trembita docs
+globs: docs/**/*.md,**/README.md,AGENTS.md,CONTRIBUTING.md
+alwaysApply: false
+---
+
+# trembita documentation
+
+## No reference projects
+
+Do **not** name, link, or allude to external product apps, customer codebases, or private reference implementations in trembita documentation.
+
+```markdown
+<!-- ❌ BAD -->
+Quazala's gateway port proved that most routes are data.
+Real product apps serve as migration targets.
+export TREMBITA_STATIC_ADMIN_BUCKET=quazala-fe-admin
+
+<!-- ✅ GOOD -->
+Large route tables (100+ routes) are mostly declarative data.
+Validate conventions via examples/ and integration tests in this repo.
+export TREMBITA_STATIC_ADMIN_BUCKET=my-app-fe-admin
+```
+
+Use only **in-repo** illustrations:
+
+- `examples/` and `showcase/`
+- crate APIs, tests, and scripts under this workspace
+- generic placeholders (`my-app`, `api.example.com`, `my-app-fe-admin`)
+
+Decision records describe trembita design and migration paths — not third-party adoption timelines or parity scripts living outside the repo.

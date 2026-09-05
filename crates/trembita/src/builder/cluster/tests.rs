@@ -16,9 +16,9 @@ mod merge_app_config_tests {
         let ca = trembita_net::tls::ClusterCa::generate().expect("ca");
         AppConfig {
             node_id,
-            listen: "127.0.0.1:7443".parse::<SocketAddr>().expect("addr"),
-            admin: None,
-            admin_tls: None,
+            listen: "127.0.0.1:443".parse::<SocketAddr>().expect("addr"),
+            http: None,
+            http_tls: None,
             peers: PeerDirectory::new(),
             members: Vec::new(),
             join_seeds: Vec::new(),
@@ -37,13 +37,7 @@ mod merge_app_config_tests {
             data_dir: None,
             job_queue_stream: None,
             job_queue_lease: Duration::from_secs(60),
-            gateway: None,
-            gateway_jobs_api: false,
-            gateway_actors_api: false,
-            gateway_workflows_api: false,
-            gateway_introspect_api: false,
-            gateway_drain_timeout: crate::gateway::DEFAULT_GATEWAY_DRAIN_TIMEOUT,
-            gateway_tls: None,
+            http_drain_timeout: crate::gateway::DEFAULT_GATEWAY_DRAIN_TIMEOUT,
             env: EnvOverrides::default(),
         }
     }

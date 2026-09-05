@@ -5,7 +5,6 @@ use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tokio::net::TcpListener;
 use trembita_core::RaftNode;
 use trembita_dashboard::{EventBus, Metrics, TrembitaEvent};
 use trembita_net::Transport;
@@ -39,7 +38,6 @@ use crate::cluster_handle::{ClusterFacts, TrembitaCluster};
 use crate::gateway::ConnectionTracker;
 use crate::handler::{NodeRouter, PeerSource};
 use crate::multi_raft::{ArcGroupMigrate, GroupMigratePort, MultiRaftState};
-use crate::observer::TrembitaObserver;
 use crate::workload::WorkloadRuntime;
 
 use super::TrembitaClusterBuilder;

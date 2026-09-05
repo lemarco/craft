@@ -11,7 +11,7 @@ coordination, gateway for ingress, separate adapters for Postgres domain data.
 
 What is missing is a **formal project layout** and **tooling** that scaffolds and enforces those
 conventions. Today [`scripts/trembita-init.sh`](../../scripts/trembita-init.sh) generates a flat
-`main.rs`; mature apps (e.g. Quazala) grow ad-hoc module trees.
+`main.rs`; mature apps grow ad-hoc module trees.
 
 ## Decision
 
@@ -99,5 +99,4 @@ trembita doctor --fix
 
 - New projects start with consistent structure; less copy-paste from `examples/`.
 - [`trembita add`](../../docs/backlog.md) can patch known files instead of guessing layout.
-- Quazala becomes the first **migration target** to validate conventions under real complexity.
 - [facade.md](facade.md) — facade features vs app features

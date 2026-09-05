@@ -99,3 +99,9 @@ Architecture and decision records for the distributive Raft actor system.
 ## How we decide
 
 Each record lists **context**, **options**, and a **decision**. Accepted records are listed above; update [status.md](status.md) when shipping or deferring capability.
+
+## Writing docs
+
+- Illustrate with **in-repo** material only: `examples/`, crate APIs, tests, generic placeholders (`my-app`, `api.example.com`).
+- Do **not** name or link external product apps, customer codebases, or private reference implementations.
+- Decision records describe trembita design — not third-party adoption timelines or out-of-repo parity tooling.

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use http::StatusCode;
 use http_body_util::BodyExt;
 use http_body_util::StreamBody;
-use hyper::body::{Bytes, Frame, Incoming};
+use hyper::body::{Bytes, Frame};
 use tokio_stream::wrappers::ReceiverStream;
 use trembita_dashboard::{DASHBOARD_HTML, EventBus, Metrics, Observer, Readiness};
 
@@ -61,8 +61,6 @@ impl OpsApi {
 pub fn ops_route_table(state: Arc<OpsApiState>) -> RouteTable {
     let s1 = Arc::clone(&state);
     let s2 = Arc::clone(&state);
-    let s3 = Arc::clone(&state);
-    let s4 = Arc::clone(&state);
     let events = state.events.clone();
 
     let introspect = crate::IntrospectApiState {

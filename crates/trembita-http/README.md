@@ -155,7 +155,7 @@ S3 example:
 
 ```bash
 export TREMBITA_STATIC_ADMIN_SOURCE=s3
-export TREMBITA_STATIC_ADMIN_BUCKET=quazala-fe-admin
+export TREMBITA_STATIC_ADMIN_BUCKET=my-app-fe-admin
 export TREMBITA_STATIC_ADMIN_PREFIX=releases/latest/
 export AWS_ACCESS_KEY_ID=…
 export AWS_SECRET_ACCESS_KEY=…
