@@ -14,6 +14,7 @@ pub enum PathSegment {
 /// Parsed route path such as `/brands/{brandId}/urls`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PathPattern {
+    template: String,
     segments: Vec<PathSegment>,
 }
 
@@ -24,14 +25,24 @@ impl PathPattern {
     /// In debug builds, if a segment looks like `{name` without a closing `}`.
     #[must_use]
     pub fn new(path: &str) -> Self {
-        let segments = path
-            .trim()
-            .trim_matches('/')
+        let trimmed = path.trim().trim_matches('/');
+        let template = if trimmed.is_empty() {
+            "/".to_string()
+        } else {
+            format!("/{trimmed}")
+        };
+        let segments = trimmed
             .split('/')
             .filter(|s| !s.is_empty())
             .map(parse_segment)
             .collect();
-        Self { segments }
+        Self { template, segments }
+    }
+
+    /// Original path template (`/items/{id}`).
+    #[must_use]
+    pub fn template(&self) -> &str {
+        &self.template
     }
 
     /// Number of path segments (excluding leading slash).

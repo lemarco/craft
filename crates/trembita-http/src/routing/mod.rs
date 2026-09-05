@@ -8,13 +8,15 @@ pub const MAX_BODY_BYTES: usize = 16 * 1024 * 1024;
 
 mod auth;
 mod ctx;
+mod diff;
 mod error;
 mod handler;
 mod path;
 mod table;
 
-pub use auth::{AuthMode, DispatchGates, IdentityAuthFn, SessionGate};
+pub use auth::{AuthMode, DispatchGates, IdentityAuthFn, SessionGate, SessionValidateFn};
 pub use ctx::{RequestCtx, Response, ResponseBody};
+pub use diff::{RouteDescriptor, RouteTableDiff};
 pub use error::HttpError;
 pub use handler::{ArcHandler, Handler};
 pub use path::{PathParams, PathPattern, PathSegment};

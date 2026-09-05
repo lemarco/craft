@@ -13,18 +13,27 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ### Added
 
+- **Gateway routing v2 (0.4.0)** — native [`Gateway`](crates/trembita-http/src/gateway/mod.rs) /
+  [`RouteTable`](crates/trembita-http/src/routing/table.rs) replace Axum; hyper edge for HTTP + WebSocket;
+  [`GatewayOpts::surfaces`](crates/trembita/src/gateway/opts.rs); [`RouteTable::diff`](crates/trembita-http/src/routing/diff.rs)
+  for parity tests; migration guide [gateway-0.4](docs/migration/gateway-0.4.md).
+- **Route auth helpers** — `get_session`, `post_identity`, `merge_authed` on [`RouteTable`](crates/trembita-http/src/routing/table.rs).
 - **Framework conventions** ([`framework-conventions`](docs/decisions/framework-conventions.md)) — standard product app layout
   (`main.rs` / `app.rs` / `config.rs` / `consumers/` / `domain/`) and app-level Cargo features.
-- **`trembita-cli`** ([`trembita-cli`](crates/trembita-cli/)) — publishable framework CLI: `trembita new`, `trembita add consumer|topic|actor|http-surface|static-site`, `trembita doctor [--fix]`. Ships with **0.4.0** on crates.io.
-- **`trembita-events-postgres`** — [`PgEventOutboxSource`](crates/trembita-events-postgres/src/source.rs) for
-  transactional domain outbox drain (`poll` + `mark_published`, configurable [`PgEventOutboxSchema`](crates/trembita-events-postgres/src/schema.rs)).
-- **[`DepthCache`](crates/trembita-jobs/src/depth_cache.rs) / [`CachedDepth`](crates/trembita-jobs/src/depth_cache.rs)** — TTL cache wrapper for expensive
-  [`ExternalBacklog::depth`](crates/trembita-jobs/src/external_backlog.rs) queries; invalidates on claim/settle.
-- **OTLP tracing bootstrap** ([`trembita-runtime`](crates/trembita-runtime/src/tracing_otlp.rs), feature `otlp`) —
-  [`init_tracing_with_otlp`](crates/trembita-runtime/src/tracing_otlp.rs) + [`TracingOpts`](crates/trembita-runtime/src/tracing_otlp.rs).
-- **[`MultiHostBuilder`](crates/trembita-http/src/multi_host.rs) / [`HostSurface`](crates/trembita-http/src/multi_host.rs)** — declarative multi-hostname
-  gateway assembly on [`HostRouter`](crates/trembita-http/src/host_router.rs) with production-gated local dev fallback.
-- **[`CookieConfig::from_env`](crates/trembita-http/src/cookie_config.rs)** — session cookie attributes from `{PREFIX}_COOKIE_*` env vars.
+- **`trembita-cli`** ([`trembita-cli`](crates/trembita-cli/)) — `trembita new`, `trembita add consumer|topic|actor|http-surface|static-site`, `trembita doctor [--fix]`.
+- **`trembita-events-postgres`** — [`PgEventOutboxSource`](crates/trembita-events-postgres/src/source.rs) for transactional domain outbox drain.
+- **[`DepthCache`](crates/trembita-jobs/src/depth_cache.rs)** — TTL cache for external backlog depth queries.
+- **OTLP tracing bootstrap** ([`init_tracing_with_otlp`](crates/trembita-runtime/src/tracing_otlp.rs), feature `otlp`).
+- **[`CookieConfig::from_env`](crates/trembita-http/src/cookie_config.rs)** — session cookie attributes from env.
+
+### Changed
+
+- **Breaking:** `GatewayOpts::routes` removed; use `.surfaces()`. Axum removed from trembita workspace.
+- **`build_gateway_router`** deprecated — use [`build_gateway_service`](crates/trembita/src/gateway/router.rs).
+
+### Removed
+
+- **`HostRouter`**, **`MultiHostBuilder`**, `trembita::axum` re-exports.
 
 ## [0.3.2] — 2026-09-05
 

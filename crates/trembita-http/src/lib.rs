@@ -60,8 +60,8 @@ pub use introspect_types::IntrospectApiError;
 pub use routes::parse_enqueue_body;
 pub use routing::{
     ArcHandler, AuthMode, DispatchGates, Handler, HttpError, IdentityAuthFn, PathParams,
-    PathPattern, PathSegment, RequestCtx, Response, ResponseBody, RouteEntry, RouteTable,
-    SessionGate,
+    PathPattern, PathSegment, RequestCtx, Response, ResponseBody, RouteDescriptor, RouteEntry,
+    RouteTable, RouteTableDiff, SessionGate,
 };
 pub use static_site::{
     EmbeddedAssets, EmbeddedFile, Precompressed, StaticSite, StaticSiteEnvError, StaticSiteError,

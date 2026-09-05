@@ -56,6 +56,23 @@ impl RouteEntry {
     pub fn auth(&self) -> AuthMode {
         self.auth
     }
+
+    /// Same route with a different auth mode (for [`RouteTable::merge_authed`]).
+    #[must_use]
+    pub fn with_auth(mut self, auth: AuthMode) -> Self {
+        self.auth = auth;
+        self
+    }
+
+    /// Snapshot for parity / diff tooling.
+    #[must_use]
+    pub fn descriptor(&self) -> super::diff::RouteDescriptor {
+        super::diff::RouteDescriptor {
+            method: self.method.clone(),
+            path: self.pattern.template().to_string(),
+            auth: self.auth,
+        }
+    }
 }
 
 /// Declarative route collection — the primary product-app HTTP construct in 0.4.0.
@@ -147,6 +164,57 @@ impl RouteTable {
             handler,
         ));
         self
+    }
+
+    /// `GET` route protected by the surface session gate.
+    #[must_use]
+    pub fn get_session(mut self, path: &str, handler: impl Handler + 'static) -> Self {
+        self.routes.push(RouteEntry::new(
+            Method::GET,
+            path,
+            AuthMode::Session,
+            handler,
+        ));
+        self
+    }
+
+    /// `POST` route protected by gateway identity.
+    #[must_use]
+    pub fn post_identity(mut self, path: &str, handler: impl Handler + 'static) -> Self {
+        self.routes.push(RouteEntry::new(
+            Method::POST,
+            path,
+            AuthMode::Identity,
+            handler,
+        ));
+        self
+    }
+
+    /// Merge `other` applying `auth` to every route (subtree / API module protection).
+    #[must_use]
+    pub fn merge_authed(mut self, auth: AuthMode, other: RouteTable) -> Self {
+        for entry in other.routes {
+            self.routes.push(entry.with_auth(auth));
+        }
+        if self.fallback.is_none() {
+            self.fallback = other.fallback;
+        }
+        if self.websocket.is_none() {
+            self.websocket = other.websocket;
+        }
+        self
+    }
+
+    /// Snapshot all routes for logging or parity checks.
+    #[must_use]
+    pub fn descriptors(&self) -> Vec<super::diff::RouteDescriptor> {
+        self.routes.iter().map(RouteEntry::descriptor).collect()
+    }
+
+    /// Compare against `expected` (method + path + auth).
+    #[must_use]
+    pub fn diff(&self, expected: &RouteTable) -> super::diff::RouteTableDiff {
+        super::diff::compare_tables(self, expected)
     }
 
     /// Catch-all handler when no explicit route matches (static sites, SPA shells).
@@ -415,5 +483,71 @@ mod tests {
             .await
             .expect_err("404");
         assert_eq!(err.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn session_gate_rejects_unauthenticated_post() {
+        use std::sync::Arc;
+
+        use super::super::auth::{DispatchGates, SessionGate};
+
+        let table = RouteTable::new().post_session("/orders", |_: RequestCtx| async move {
+            Ok(Response::status(StatusCode::OK))
+        });
+        let gate = SessionGate::validate("sess", |_| async { Ok(()) });
+        let gates = DispatchGates {
+            session_gate: Some(&gate),
+            identity: None,
+        };
+        let err = table
+            .dispatch(
+                &Method::POST,
+                "/orders",
+                HashMap::new(),
+                http::HeaderMap::new(),
+                Bytes::new(),
+                &gates,
+            )
+            .await
+            .expect_err("401");
+        assert_eq!(err.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn identity_gate_runs_before_handler() {
+        use std::sync::Arc;
+
+        use super::super::auth::{DispatchGates, IdentityAuthFn};
+
+        let identity: IdentityAuthFn =
+            Arc::new(|_, _, _| Box::pin(async { Err(HttpError::Unauthorized("nope".into())) }));
+        let table = RouteTable::new().get_identity("/me", |_: RequestCtx| async move {
+            Ok(Response::status(StatusCode::OK))
+        });
+        let gates = DispatchGates {
+            session_gate: None,
+            identity: Some(&identity),
+        };
+        let err = table
+            .dispatch(
+                &Method::GET,
+                "/me",
+                HashMap::new(),
+                http::HeaderMap::new(),
+                Bytes::new(),
+                &gates,
+            )
+            .await
+            .expect_err("401");
+        assert_eq!(err.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn merge_authed_applies_session_to_subtree() {
+        let inner = RouteTable::new().get("/a", |_: RequestCtx| async move {
+            Ok(Response::status(StatusCode::OK))
+        });
+        let table = RouteTable::new().merge_authed(AuthMode::Session, inner);
+        assert_eq!(table.descriptors()[0].auth, AuthMode::Session);
     }
 }

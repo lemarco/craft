@@ -33,7 +33,8 @@ pub fn build_gateway_service(
     build_gateway_service_with_tracker(app, config, Some(connections))
 }
 
-/// Alias retained for cluster re-exports.
+/// Alias retained for cluster re-exports — prefer [`build_gateway_service`].
+#[deprecated(note = "renamed to build_gateway_service in trembita 0.4.0")]
 pub fn build_gateway_router(
     app: &Arc<TrembitaApp>,
     config: GatewayConfig,

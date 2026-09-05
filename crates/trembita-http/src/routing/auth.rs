@@ -21,7 +21,7 @@ pub type SessionValidateFn = Arc<
 >;
 
 /// How a route or subtree is protected.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AuthMode {
     /// No auth gate — handler runs immediately after routing.
     #[default]

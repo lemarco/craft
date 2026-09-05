@@ -346,11 +346,23 @@ fn check_topics(app: &str, report: &mut DoctorReport) {
             report.warn(".topics() present but no TopicOpts::topic entries found");
         }
     }
-    if app.contains(".gateway(") && app.contains("protect_product_apis(true)") {
-        if app.contains("GatewayBearerIdentity") || app.contains("identity(") {
-            report.ok("gateway has identity configured");
-        } else {
-            report.warn("gateway protect_product_apis without identity — will fail at runtime");
+    if app.contains(".gateway(") {
+        if app.contains(".routes(|") {
+            report.error(
+                "GatewayOpts::routes() removed in 0.4.0 — use .surfaces(|state| Gateway::new(...))",
+            );
+        } else if app.contains(".surfaces(") {
+            report.ok("gateway uses GatewayOpts::surfaces()");
+        }
+        if app.contains("SessionGate") && !app.contains(".session(") {
+            report.warn("SessionGate imported but no .session(...) on a surface");
+        }
+        if app.contains("protect_product_apis(true)") {
+            if app.contains("GatewayBearerIdentity") || app.contains("identity(") {
+                report.ok("gateway has identity configured");
+            } else {
+                report.warn("gateway protect_product_apis without identity — will fail at runtime");
+            }
         }
     }
 }

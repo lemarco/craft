@@ -100,6 +100,7 @@ expose [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) entries, 
 - [x] `cargo tree` — zero axum in trembita workspace
 - [x] `GatewayOpts::routes` removed (use `GatewayOpts::surfaces`)
 - [x] All trembita integration tests pass
+- [x] Migration guide [gateway-0.4](../migration/gateway-0.4.md)
 - [ ] Quazala `parity-gateway.sh`: 125 identical, 1 expected (D-09), 0 unexplained
 - [x] Examples updated
 - [x] [gateway-identity](gateway-identity.md) transport section updated

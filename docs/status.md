@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Version** | `0.3.2` |
+| **Version** | `0.4.0-dev` (gateway routing v2 landed; release pending) |
 | **MSRV** | 1.90 |
 | **Distribution** | Published on [crates.io](https://crates.io/crates/trembita) — full test pyramid, E2E/chaos |
 

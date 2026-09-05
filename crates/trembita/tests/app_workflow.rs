@@ -85,7 +85,7 @@ async fn trembita_app_workflows_api_on_gateway() {
 
 #[cfg(feature = "http-jobs")]
 mod gateway_merge {
-    use trembita::cluster::build_gateway_router;
+    use trembita::cluster::build_gateway_service;
     use trembita::{
         GatewayOpts, ReadyOpts, TrembitaApp, TrembitaConfigure, WorkflowOpts, journal_workflow,
     };
@@ -116,7 +116,7 @@ mod gateway_merge {
         )
         .await;
 
-        let router = build_gateway_router(
+        let router = build_gateway_service(
             &app,
             GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
                 .with_workflows_api(true)

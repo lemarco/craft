@@ -45,7 +45,7 @@ my-app/
 | All trembita wiring lives in `app.rs` | One file to patch when adding features |
 | `domain/` must not import `trembita::*` | Hexagon boundary ([architecture-style](architecture-style.md)) |
 | Consumers live in `consumers/`, actors in `actors/` | Predictable discovery; generators know target dirs |
-| HTTP ingress via [`Gateway`](../../crates/trembita-http/src/gateway/mod.rs) + [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) | Virtual-host product surfaces (0.4.0) |
+| HTTP ingress via [`Gateway`](../../crates/trembita-http/src/gateway/mod.rs) + [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) | Virtual-host product surfaces (0.4.0) — see [gateway-0.4 migration](../migration/gateway-0.4.md) |
 | Inter-node communication uses trembita QUIC only | No ad-hoc gRPC/HTTP between cluster members |
 | Domain data in Postgres (or your DB); coordination in redb | [product-scenarios](product-scenarios.md) |
 | [`TrembitaCluster`](../../crates/trembita/src/cluster.rs) is an escape hatch, not the default | Product path is [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) |
