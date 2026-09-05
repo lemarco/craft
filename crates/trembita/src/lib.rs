@@ -7,6 +7,7 @@
 //! ```no_run
 //! use std::time::Duration;
 //! use trembita::prelude::*;
+//! use trembita::Gateway;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
