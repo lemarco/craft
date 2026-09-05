@@ -42,9 +42,11 @@ See [process.md](process.md) for the full commit → push → CI → release dia
 
 ## CI
 
-- **Fast lane** (MR/branch): `ci-fast-lane.sh`
-- **Tag `publish-dry-run`**: full `ci-fast-lane.sh` (not publish-only)
-- **Tag `publish`**: manual; `publish-workspace.sh` + `post-publish-docs.sh`
+- **Fast lane** (MR/branch): `ci-fast-lane.sh` + `website-check`
+- **Tag `publish-dry-run`**: full `ci-fast-lane.sh` (quality gate before release)
+- **Tag `release-build`**: `--release` workspace build
+- **Tag `publish`**: manual; `publish-workspace.sh` + `post-publish-docs.sh` (needs `CARGO_REGISTRIES_CRATES_IO_TOKEN`)
+- **Tag / `master` `pages`**: VitePress site → GitLab Pages
 
 ## Prerequisites
 

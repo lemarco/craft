@@ -1,4 +1,13 @@
-# GitLab CI for trembita (testing-strategy: fast lane on every push/MR, heavy lane nightly).
+# GitLab CI for trembita — production library pipeline.
+#
+# Lanes:
+#   check  — every MR / branch push (fast lane, msrv, website build)
+#   heavy  — nightly schedule or MR label run-heavy
+#   release — version tags: gate → release build → manual crates.io publish
+#   deploy — GitLab Pages (master + release tags)
+#
+# Local dev is unchanged: [profile.dev] in Cargo.toml + unpacked debuginfo.
+# CI-only tuning lives in scripts/ci-env.sh and CARGO_PROFILE_DEV_* below.
 
 stages:
   - check
@@ -11,68 +20,105 @@ variables:
   RUSTFLAGS: "-D warnings"
   RUSTDOCFLAGS: "-D warnings"
   CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
+  # saas-linux-small (~26G): disable unpacked debuginfo so target/ fits on disk.
   CARGO_PROFILE_DEV_DEBUG: "0"
   CARGO_PROFILE_DEV_SPLIT_DEBUGINFO: "off"
+  CARGO_INCREMENTAL: "0"
+  CARGO_BUILD_JOBS: "2"
   NEXTEST_PROFILE: ci
+  TREMBITA_DEFAULT_BRANCH: "master"
 
-.rust_linux_linker:
-  before_script:
-    - bash scripts/ci-linux-linker-deps.sh
+.rules_branch_mr:
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH
 
-.rust_fast_lane_setup:
-  before_script:
-    - !reference [.rust_linux_linker, before_script]
-    - rustup component add rustfmt clippy
-    - mkdir -p "$CARGO_HOME/bin" && curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C "$CARGO_HOME/bin"
-    - bash scripts/ci-dns-localhost.sh
+.rules_master:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+
+.rules_release_tag:
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
 
 .run-heavy-rules:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /run-heavy/
 
-default:
-  image: rust:latest
+.rust_linux_linker:
   before_script:
+    - bash scripts/ci-linux-linker-deps.sh
+
+.rust_ci_setup:
+  before_script:
+    - bash scripts/ci-env.sh
     - !reference [.rust_linux_linker, before_script]
+
+.rust_fast_lane_setup:
+  before_script:
+    - !reference [.rust_ci_setup, before_script]
+    - rustup component add rustfmt clippy
+    - mkdir -p "$CARGO_HOME/bin" && curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C "$CARGO_HOME/bin"
+    - bash scripts/ci-dns-localhost.sh
+
+.rust_registry_cache:
   cache:
     key:
       files:
         - Cargo.lock
-      prefix: ci-slim-v1
+      prefix: cargo-registry-v2
     paths:
       - .cargo/registry/index/
       - .cargo/registry/cache/
       - .cargo/git/db/
-      - target/
+    policy: pull-push
 
-# --- Fast lane — runs on every branch push and merge request -----------------
+# --- Check lane (every MR / branch push) -------------------------------------
+
 fast:
   stage: check
+  extends: .rust_registry_cache
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: never
-    - if: $CI_COMMIT_BRANCH
+    - !reference [.rules_branch_mr, rules]
   before_script:
     - !reference [.rust_fast_lane_setup, before_script]
   script:
     - df -h .
     - TREMBITA_CI_DISK_PRUNE=1 bash scripts/ci-fast-lane.sh
 
-# --- Minimum Supported Rust Version check (library-and-publishing) --------------------------
 msrv:
   stage: check
   image: rust:1.90
+  extends: .rust_registry_cache
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: never
-    - if: $CI_COMMIT_BRANCH
+    - !reference [.rules_branch_mr, rules]
   before_script:
-    - !reference [.rust_linux_linker, before_script]
+    - !reference [.rust_ci_setup, before_script]
   script:
     - cargo check --workspace --all-features
+
+website-check:
+  stage: check
+  image: node:22-bookworm
+  rules:
+    - !reference [.rules_branch_mr, rules]
+  cache:
+    key:
+      files:
+        - website/package-lock.json
+      prefix: website-npm-v1
+    paths:
+      - website/node_modules/
+    policy: pull-push
+  script:
+    - bash scripts/gate-website.sh
+
+# --- Heavy lane (nightly or MR label run-heavy) --------------------------------
 
 fuzz:
   stage: heavy
@@ -80,7 +126,7 @@ fuzz:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
   before_script:
-    - !reference [.rust_linux_linker, before_script]
+    - !reference [.rust_ci_setup, before_script]
   script:
     - cargo install cargo-fuzz
     - cd crates/trembita-fuzz && cargo fuzz run wire_decode -- -max_total_time=300
@@ -111,6 +157,8 @@ linearizability-sim:
   image: rust:latest
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
+  before_script:
+    - !reference [.rust_ci_setup, before_script]
   script:
     - TREMBITA_E2E_LINEARIZABILITY=0 bash e2e/linearizability.sh
 
@@ -125,6 +173,8 @@ store-redis:
     TESTCONTAINERS_RYUK_DISABLED: "true"
   rules:
     - !reference [.run-heavy-rules, rules]
+  before_script:
+    - !reference [.rust_ci_setup, before_script]
   script:
     - cargo test -p trembita-store-redis --features docker-tests -- --ignored
 
@@ -133,6 +183,8 @@ bench:
   image: rust:latest
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
+  before_script:
+    - !reference [.rust_ci_setup, before_script]
   script:
     - cargo bench --manifest-path benchmarks/Cargo.toml
     - SOAK_SECS=120 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak
@@ -142,25 +194,50 @@ bench:
     - SOAK_SAGA_SECS=60 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak_saga
     - SOAK_SESSION_SECS=60 cargo run --release --manifest-path benchmarks/Cargo.toml --bin soak_session
 
-# --- Publish (library-and-publishing) ----------------------------------------
-# Tag pipelines skip branch fast lane; run the full ci-fast-lane before publish.
+# --- Release lane (version tags vX.Y.Z) --------------------------------------
+# Tag push → publish-dry-run (full gate) → release-build → manual publish.
+# Set CARGO_REGISTRIES_CRATES_IO_TOKEN in GitLab CI/CD variables (masked).
+
 publish-dry-run:
   stage: release
+  extends: .rust_registry_cache
   rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+    - !reference [.rules_release_tag, rules]
   before_script:
     - !reference [.rust_fast_lane_setup, before_script]
   script:
     - TREMBITA_CI_DISK_PRUNE=1 bash scripts/ci-fast-lane.sh
 
+release-build:
+  stage: release
+  extends: .rust_registry_cache
+  rules:
+    - !reference [.rules_release_tag, rules]
+  needs:
+    - publish-dry-run
+  before_script:
+    - !reference [.rust_ci_setup, before_script]
+  script:
+    - cargo build --workspace --all-features --release
+    - cargo build -p trembita-tools --release --bin trembita-showcase-client
+
 publish:
   stage: release
+  extends: .rust_registry_cache
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
       when: manual
+  needs:
+    - publish-dry-run
+    - release-build
   before_script:
-    - !reference [.rust_linux_linker, before_script]
+    - !reference [.rust_ci_setup, before_script]
   script:
+    - |
+      if [ -z "${CARGO_REGISTRIES_CRATES_IO_TOKEN:-}" ]; then
+        echo "error: set CARGO_REGISTRIES_CRATES_IO_TOKEN in GitLab CI/CD variables" >&2
+        exit 1
+      fi
     - VERSION="${CI_COMMIT_TAG#v}"
     - ./scripts/publish-workspace.sh "$VERSION"
     - ./scripts/post-publish-docs.sh "$VERSION"
@@ -171,13 +248,17 @@ publish:
       - docs/status.md
     expire_in: 30 days
 
-# --- Website (trembita.dev via GitLab Pages + Cloudflare) ----------------------
+# --- Deploy lane (GitLab Pages → trembita.dev) ---------------------------------
+
 pages:
   stage: deploy
   image: node:22-bookworm
   rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+    - !reference [.rules_master, rules]
+    - !reference [.rules_release_tag, rules]
+  needs:
+    - job: publish-dry-run
+      optional: true
   cache:
     key:
       files:
@@ -185,11 +266,10 @@ pages:
       prefix: website-npm-v1
     paths:
       - website/node_modules/
-  before_script:
-    - cd website && npm ci
+    policy: pull
   script:
-    - cd website && npm run build
-    - mv website/.vitepress/dist ../public
+    - bash scripts/gate-website.sh
+    - mv website/.vitepress/dist public
   artifacts:
     paths:
       - public

@@ -13,6 +13,10 @@ inherits = "default"
 filter = 'not binary(/multi_raft|quic|cert_reload/) & not test(/safety_holds_under_arbitrary_faults/)'
 
 # CI / pre-push: retry flaky network-adjacent tests once.
+# test-threads capped — saas-linux-small runners exhaust disk when many heavy
+# integration tests link in parallel (trembita + reqwest + TLS stack).
 [profile.ci]
+inherits = "default"
+test-threads = 2
 retries = { backoff = "fixed", count = 1, delay = "500ms" }
 slow-timeout = { period = "180s", terminate-after = 2 }

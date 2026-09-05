@@ -4,7 +4,7 @@
 # Usage: ./scripts/gate-step.sh <step>
 #
 # Steps: autofix, fmt, clippy, tests, doctests, doc, shellcheck, doc-links,
-#        publish-dry-run, examples, showcase, msrv
+#        publish-dry-run, website, examples, showcase, msrv
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -61,6 +61,7 @@ case "$STEP" in
   clippy)
     log "clippy (pedantic)"
     run_cmd bash scripts/gate-clippy.sh
+    maybe_disk_prune
     ;;
   tests)
     maybe_disk_prune
@@ -91,6 +92,10 @@ case "$STEP" in
   publish-dry-run)
     log "publish dry-run"
     run_cmd bash scripts/publish-dry-run.sh
+    ;;
+  website)
+    log "website build"
+    run_cmd bash scripts/gate-website.sh
     ;;
   examples)
     log "examples check"

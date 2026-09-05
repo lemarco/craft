@@ -15,13 +15,20 @@ flowchart LR
   subgraph ci [GitLab CI]
     FAST[ci-fast-lane.sh]
     MSRV[msrv job]
+    WEB[website-check]
     HEAVY[heavy lane<br/>schedule or run-heavy label]
     TAG[tag: ci-fast-lane]
+    RELBUILD[release-build]
     PUB[manual publish]
+    PAGES[pages deploy]
   end
   EDIT --> COMMIT --> PUSH --> FAST
   PUSH --> MSRV
-  REL --> TAG --> PUB
+  PUSH --> WEB
+  REL --> TAG --> RELBUILD --> PUB
+  TAG --> PAGES
+  WEB --> PAGES
+  PUB --> PAGES
   FAST -.->|MR label run-heavy| HEAVY
 ```
 
@@ -70,9 +77,18 @@ lefthook run pre-push --tags release     # include release build
 |-----|---------|--------|
 | **fast** | every MR / branch push | `ci-fast-lane.sh` |
 | **msrv** | every MR / branch push | `cargo check` on Rust 1.90 |
+| **website-check** | every MR / branch push | `gate-website.sh` (VitePress build) |
 | **heavy** (e2e, store-redis) | nightly schedule **or** MR label `run-heavy` | e2e scripts / redis tests |
 | **publish-dry-run** | version tag `v*.*.*` | full `ci-fast-lane.sh` |
+| **release-build** | version tag `v*.*.*` | `--release` workspace + showcase client |
 | **publish** | manual on tag | `publish-workspace.sh` + `post-publish-docs.sh` |
+| **pages** | `master` push or version tag | VitePress → GitLab Pages (trembita.dev) |
+
+CI-only cargo tuning (`CARGO_INCREMENTAL=0`, no debuginfo, capped link parallelism)
+lives in `.gitlab-ci.yml` + `scripts/ci-env.sh` — local `[profile.dev]` is unchanged.
+
+Set **`CARGO_REGISTRIES_CRATES_IO_TOKEN`** (masked) in GitLab CI/CD variables before
+using the manual **publish** job.
 
 Add label **`run-heavy`** to an MR to run e2e and Redis integration without waiting for the nightly schedule.
 

@@ -10,8 +10,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DOCS="$ROOT/docs"
 WEB="$ROOT/website"
 REPO="https://gitlab.com/lemarco/trembita"
-REPO_BLOB="$REPO/-/blob/main"
-REPO_TREE="$REPO/-/tree/main"
+DEFAULT_BRANCH="${TREMBITA_DEFAULT_BRANCH:-master}"
+REPO_BLOB="$REPO/-/blob/$DEFAULT_BRANCH"
+REPO_TREE="$REPO/-/tree/$DEFAULT_BRANCH"
 
 transform_md() {
   sed -E \

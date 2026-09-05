@@ -46,7 +46,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 rustls.workspace = true
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 sha2.workspace = true
 hex.workspace = true
 tracing.workspace = true
@@ -73,6 +73,7 @@ full = ["http-jobs", "redis-store", "external-backlog", "domain-outbox"]
 
 [dev-dependencies]
 trembita-http.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 tower.workspace = true
 http-body-util.workspace = true
 bytes.workspace = true

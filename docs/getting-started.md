@@ -204,7 +204,7 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
                     .await
                 {
                     Ok(h) => h,
-                    Err(e) => return routing_to_http_response(e.into_http_response().finalize().unwrap()),
+                    Err(e) => return routing_to_http_response(e.into_http_response()),
                 };
                 accept_websocket(req, move |stream| async move {
                     // tokio_tungstenite::WebSocketStream::from_raw_socket(stream, …)

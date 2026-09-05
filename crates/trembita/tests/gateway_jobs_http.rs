@@ -37,7 +37,7 @@ async fn handle_job(_payload: &[u8]) -> Result<(), ()> {
     Ok(())
 }
 
-fn gateway_config() -> trembita::gateway::GatewayConfig {
+fn gateway_config() -> trembita::GatewayConfig {
     GatewayOpts::new("127.0.0.1:0".parse().unwrap())
         .with_jobs_api(true)
         .identity(BearerSecret)

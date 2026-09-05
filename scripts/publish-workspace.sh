@@ -58,6 +58,7 @@ PUBLISH_ORDER=(
     trembita-store-redis
     trembita-backlog-postgres
     trembita
+    trembita-cli
 )
 
 VERSION="${1:-$(current_version)}"

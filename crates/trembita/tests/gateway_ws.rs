@@ -109,11 +109,7 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
                     let st = st.clone();
                     async move { handle_socket(stream, st, handle).await }
                 }),
-                Err(err) => routing_to_http_response(
-                    err.into_http_response()
-                        .finalize()
-                        .unwrap_or_else(|e| trembita_http::Response::text(e.status(), e.message())),
-                ),
+                Err(err) => routing_to_http_response(err.into_http_response()),
             }
         })
     }))

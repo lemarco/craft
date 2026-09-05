@@ -116,11 +116,7 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
                     {
                         Ok(h) => h,
                         Err(err) => {
-                            return routing_to_http_response(
-                                err.into_http_response().finalize().unwrap_or_else(|e| {
-                                    trembita_http::Response::text(e.status(), e.message())
-                                }),
-                            );
+                            return routing_to_http_response(err.into_http_response());
                         }
                     };
                     let session_key = handle.session_key().to_string();

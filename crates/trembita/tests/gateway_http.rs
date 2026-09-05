@@ -200,7 +200,7 @@ async fn boot_with_workers(base: &std::path::Path) -> Arc<TrembitaApp> {
     app
 }
 
-fn gateway_config() -> trembita::gateway::GatewayConfig {
+fn gateway_config() -> trembita::GatewayConfig {
     GatewayOpts::new("127.0.0.1:0".parse().unwrap())
         .identity(FixedToken)
         .surfaces(gateway_surfaces)

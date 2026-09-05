@@ -27,7 +27,7 @@ impl GatewayIdentity for BearerSecret {
     }
 }
 
-fn gateway_config() -> trembita::gateway::GatewayConfig {
+fn gateway_config() -> trembita::GatewayConfig {
     GatewayOpts::new("127.0.0.1:0".parse().unwrap())
         .with_introspect_api(true)
         .identity(BearerSecret)

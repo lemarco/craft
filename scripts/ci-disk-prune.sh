@@ -13,6 +13,7 @@ cd "$root"
 if [[ -d target/debug ]]; then
   rm -rf target/debug/incremental
   rm -rf target/debug/examples
+  rm -rf target/debug/deps/rustc* 2>/dev/null || true
 fi
 rm -rf target/doc 2>/dev/null || true
 

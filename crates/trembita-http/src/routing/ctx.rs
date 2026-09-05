@@ -170,7 +170,7 @@ impl Response {
     }
 
     /// Serialize JSON bodies and set default `Content-Type` where missing.
-    pub(crate) fn finalize(mut self) -> Result<Self, HttpError> {
+    pub fn finalize(mut self) -> Result<Self, HttpError> {
         use http::header::CONTENT_TYPE;
 
         if let ResponseBody::Json(value) = &self.body {
