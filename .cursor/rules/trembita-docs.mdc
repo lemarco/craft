@@ -12,9 +12,9 @@ Do **not** name, link, or allude to external product apps, customer codebases, o
 
 ```markdown
 <!-- ❌ BAD -->
-Quazala's gateway port proved that most routes are data.
+AcmeCorp's gateway port proved that most routes are data.
 Real product apps serve as migration targets.
-export TREMBITA_STATIC_ADMIN_BUCKET=quazala-fe-admin
+export TREMBITA_STATIC_ADMIN_BUCKET=acme-fe-admin
 
 <!-- ✅ GOOD -->
 Large route tables (100+ routes) are mostly declarative data.

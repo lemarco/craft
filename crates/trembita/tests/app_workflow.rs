@@ -8,8 +8,7 @@ use trembita::{
     TrembitaConfigure, WorkflowBuilder, WorkflowOpts, journal_workflow,
 };
 use trembita_test_support::{
-    TICK_PERIOD, boot_local_app, fast_raft_config_with_seed, gateway_workflows_config,
-    gateway_workflows_surfaces,
+    TICK_PERIOD, boot_local_app, fast_raft_config_with_seed, gateway_workflows_surfaces,
 };
 
 fn noop_plan(saga_id: &str) -> trembita_client::SagaPlan {
