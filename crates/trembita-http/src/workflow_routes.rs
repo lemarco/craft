@@ -143,7 +143,7 @@ mod tests {
         );
         let table = route_table(state);
         let resp = table
-            .dispatch(
+            .dispatch_open(
                 &Method::POST,
                 "/workflows/run",
                 HashMap::new(),

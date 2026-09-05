@@ -165,7 +165,7 @@ mod tests {
             "application/json".parse().expect("ct"),
         );
         let resp = table
-            .dispatch(
+            .dispatch_open(
                 &Method::POST,
                 "/actors/workers/ask",
                 HashMap::new(),
@@ -189,7 +189,7 @@ mod tests {
         );
         let table = route_table(state);
         let resp = table
-            .dispatch(
+            .dispatch_open(
                 &Method::POST,
                 "/actors/workers/ask",
                 HashMap::new(),

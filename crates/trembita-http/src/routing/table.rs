@@ -256,7 +256,10 @@ impl RouteTable {
         Err(HttpError::NotFound)
     }
 
-    async fn dispatch_legacy(
+    /// Dispatch without surface session or gateway identity gates.
+    ///
+    /// Built-in product APIs use handler-level auth; tests call this helper.
+    pub async fn dispatch_open(
         &self,
         method: &Method,
         path: &str,
@@ -267,7 +270,6 @@ impl RouteTable {
         self.dispatch(method, path, query, headers, body, &DispatchGates::open())
             .await
     }
-
     fn match_route(&self, method: &Method, path: &str) -> Option<(&RouteEntry, PathParams)> {
         self.routes.iter().rev().find_map(|entry| {
             if entry.method() != method {
@@ -335,7 +337,7 @@ mod tests {
             Ok(Response::text(StatusCode::OK, ctx.path()))
         });
         let resp = table
-            .dispatch_legacy(
+            .dispatch_open(
                 &Method::GET,
                 "/health",
                 HashMap::new(),
@@ -356,7 +358,7 @@ mod tests {
             ))
         });
         let resp = table
-            .dispatch(
+            .dispatch_open(
                 &Method::GET,
                 "/items/42",
                 HashMap::new(),
@@ -383,7 +385,7 @@ mod tests {
                 Ok(Response::text(StatusCode::OK, "second"))
             });
         let resp = table
-            .dispatch(
+            .dispatch_open(
                 &Method::GET,
                 "/x",
                 HashMap::new(),
@@ -403,7 +405,7 @@ mod tests {
     async fn unknown_route_is_not_found() {
         let table = RouteTable::new();
         let err = table
-            .dispatch(
+            .dispatch_open(
                 &Method::GET,
                 "/nope",
                 HashMap::new(),

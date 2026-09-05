@@ -333,7 +333,7 @@ mod tests {
             auth: None,
         }));
         let resp = table
-            .dispatch(
+            .dispatch_open(
                 &Method::GET,
                 "/introspect/cluster",
                 HashMap::new(),

@@ -79,7 +79,13 @@ pub(super) fn build_gateway_service_with_tracker(
         introspect_api,
     ));
 
-    let inner = GatewayService::build(&gateway)?;
+    let inner = {
+        let mut svc = GatewayService::build(&gateway)?;
+        if let Some(auth) = auth {
+            svc = svc.with_identity(trembita_http::auth_fn_to_identity(auth));
+        }
+        svc
+    };
 
     let compute_pool = app.cluster().workload_runtime().map(|w| w.pool());
 

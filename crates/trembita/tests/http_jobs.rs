@@ -30,7 +30,7 @@ async fn dispatch(
         headers.insert(header::CONTENT_TYPE, ct.parse().expect("content-type"));
     }
     table
-        .dispatch(&method, &path, query, headers, body)
+        .dispatch_open(&method, &path, query, headers, body)
         .await
         .expect("dispatch")
         .status_code()

@@ -59,8 +59,9 @@ pub use host::{is_local_dev_host, normalize_host};
 pub use introspect_types::IntrospectApiError;
 pub use routes::parse_enqueue_body;
 pub use routing::{
-    ArcHandler, AuthMode, Handler, HttpError, PathParams, PathPattern, PathSegment, RequestCtx,
-    Response, ResponseBody, RouteEntry, RouteTable, SessionGate,
+    ArcHandler, AuthMode, DispatchGates, Handler, HttpError, IdentityAuthFn, PathParams,
+    PathPattern, PathSegment, RequestCtx, Response, ResponseBody, RouteEntry, RouteTable,
+    SessionGate,
 };
 pub use static_site::{
     EmbeddedAssets, EmbeddedFile, Precompressed, StaticSite, StaticSiteEnvError, StaticSiteError,
@@ -156,6 +157,19 @@ pub type AuthFn = Arc<
         + Send
         + Sync,
 >;
+
+/// Convert legacy [`AuthFn`] (handler-level product API auth) to [`IdentityAuthFn`].
+#[must_use]
+pub fn auth_fn_to_identity(auth: AuthFn) -> routing::IdentityAuthFn {
+    Arc::new(move |method, uri, headers| {
+        let auth = Arc::clone(&auth);
+        Box::pin(async move {
+            auth(method, uri, headers)
+                .await
+                .map_err(|e| routing::HttpError::Unauthorized(e.to_string()))
+        })
+    })
+}
 
 /// Shared state for job routes.
 pub struct JobsApiState {

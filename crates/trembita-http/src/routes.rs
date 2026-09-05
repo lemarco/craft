@@ -571,7 +571,7 @@ mod tests {
         body: Bytes,
     ) -> http::StatusCode {
         table
-            .dispatch(&method, path, HashMap::new(), http::HeaderMap::new(), body)
+            .dispatch_open(&method, path, HashMap::new(), http::HeaderMap::new(), body)
             .await
             .expect("dispatch")
             .status_code()

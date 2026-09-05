@@ -213,7 +213,7 @@ mod tests {
             auth: None,
         }));
         let resp = table
-            .dispatch(
+            .dispatch_open(
                 &Method::GET,
                 "/cluster/upgrade",
                 HashMap::new(),
@@ -231,7 +231,7 @@ mod tests {
             Arc::new(|_, _, _| Box::pin(async { Err(JobsApiError::Unauthorized("nope".into())) }));
         let table = route_table(state_with_auth(auth));
         let resp = table
-            .dispatch(
+            .dispatch_open(
                 &Method::GET,
                 "/cluster/upgrade",
                 HashMap::new(),
@@ -260,7 +260,7 @@ mod tests {
         }));
         let body = r#"{"app_version":"1.0.0","url":"file:///x","sha256_hex":"00"}"#;
         let resp = table
-            .dispatch(
+            .dispatch_open(
                 &Method::POST,
                 "/cluster/upgrade/desired",
                 HashMap::new(),

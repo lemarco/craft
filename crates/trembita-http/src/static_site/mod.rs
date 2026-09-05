@@ -304,7 +304,7 @@ mod tests {
         let table = StaticSite::new(StaticSource::embedded(sample_assets())).route_table();
 
         let asset = table
-            .dispatch(
+            .dispatch_open(
                 &Method::GET,
                 "/assets/app.js",
                 HashMap::new(),
@@ -316,7 +316,7 @@ mod tests {
         assert_eq!(asset.status_code(), StatusCode::OK);
 
         let deep = table
-            .dispatch(
+            .dispatch_open(
                 &Method::GET,
                 "/brands/123",
                 HashMap::new(),
@@ -332,7 +332,7 @@ mod tests {
     async fn gateway_static_site_integration() {
         let table = StaticSite::new(StaticSource::embedded(sample_assets())).route_table();
         let resp = table
-            .dispatch(
+            .dispatch_open(
                 &Method::GET,
                 "/assets/app.js",
                 HashMap::new(),

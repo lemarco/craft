@@ -32,7 +32,7 @@ async fn http_ask_returns_503_when_group_has_no_workers() {
     let mut headers = http::HeaderMap::new();
     headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
     let resp = table
-        .dispatch(
+        .dispatch_open(
             &Method::POST,
             "/actors/missing/ask",
             HashMap::new(),
