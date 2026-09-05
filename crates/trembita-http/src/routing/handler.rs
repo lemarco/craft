@@ -10,7 +10,10 @@ use super::error::HttpError;
 /// Async HTTP handler invoked after routing and auth gates.
 pub trait Handler: Send + Sync {
     /// Handle one request.
-    fn handle(&self, ctx: RequestCtx) -> Pin<Box<dyn Future<Output = Result<Response, HttpError>> + Send>>;
+    fn handle(
+        &self,
+        ctx: RequestCtx,
+    ) -> Pin<Box<dyn Future<Output = Result<Response, HttpError>> + Send>>;
 }
 
 impl<F, Fut> Handler for F
@@ -18,7 +21,10 @@ where
     F: Fn(RequestCtx) -> Fut + Send + Sync,
     Fut: Future<Output = Result<Response, HttpError>> + Send + 'static,
 {
-    fn handle(&self, ctx: RequestCtx) -> Pin<Box<dyn Future<Output = Result<Response, HttpError>> + Send>> {
+    fn handle(
+        &self,
+        ctx: RequestCtx,
+    ) -> Pin<Box<dyn Future<Output = Result<Response, HttpError>> + Send>> {
         Box::pin((self)(ctx))
     }
 }

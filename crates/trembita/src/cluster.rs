@@ -46,10 +46,10 @@ pub use trembita_core::upgrade::{
 pub use trembita_core::{CompactionPolicy, DEFAULT_COMPACT_BYTES, DEFAULT_COMPACT_ENTRIES};
 #[cfg(feature = "http-jobs")]
 pub use trembita_http::{
-    ActorView, ClusterView, IntrospectApi, IntrospectApiError, NodeSummary, NodeView,
-    Observer, QueueStreamView, QueuesView, RaftGroupSummary, RaftGroupsView, SagaBody,
-    SagaRecordView, WorkflowAccepted, WorkflowsApi, WorkflowsApiError, is_local_dev_host,
-    normalize_host, spawn_workflows_server,
+    ActorView, ClusterView, IntrospectApi, IntrospectApiError, NodeSummary, NodeView, Observer,
+    QueueStreamView, QueuesView, RaftGroupSummary, RaftGroupsView, SagaBody, SagaRecordView,
+    WorkflowAccepted, WorkflowsApi, WorkflowsApiError, is_local_dev_host, normalize_host,
+    spawn_workflows_server,
 };
 pub use trembita_jobs::{
     AutoscalePolicy, BacklogError, BacklogFeedOpts, BacklogItem, BacklogRegistry, ClusterJobQueue,

@@ -1,7 +1,7 @@
 //! HTTP response assembly for static files.
 
-use http::header;
 use http::StatusCode;
+use http::header;
 
 use crate::routing::{HttpError, Response, ResponseBody};
 

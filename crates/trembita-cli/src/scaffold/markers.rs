@@ -21,7 +21,9 @@ pub enum PatchError {
     #[error("missing file: {0}")]
     MissingFile(String),
     /// Marker not found (legacy app.rs).
-    #[error("marker `{marker}` not found in app.rs — re-scaffold or add `{marker}` / `{marker}-end` comments")]
+    #[error(
+        "marker `{marker}` not found in app.rs — re-scaffold or add `{marker}` / `{marker}-end` comments"
+    )]
     MissingMarker {
         /// Marker name.
         marker: String,
@@ -167,11 +169,7 @@ impl AppRsPatch {
 pub fn ensure_mod_declaration(mod_rs: &std::path::Path, module: &str) -> Result<bool, PatchError> {
     let decl = format!("pub mod {module};");
     if !mod_rs.is_file() {
-        std::fs::create_dir_all(
-            mod_rs
-                .parent()
-                .expect("mod.rs parent")
-        )?;
+        std::fs::create_dir_all(mod_rs.parent().expect("mod.rs parent"))?;
         std::fs::write(mod_rs, format!("//! Generated module root.\n\n{decl}\n"))?;
         return Ok(true);
     }

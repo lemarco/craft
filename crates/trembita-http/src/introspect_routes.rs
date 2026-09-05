@@ -10,26 +10,17 @@ use crate::routing::{HttpError, RequestCtx, Response, RouteTable};
 use crate::types::JobsApiError;
 
 fn ctx_uri(ctx: &RequestCtx) -> Uri {
-    ctx.path()
-        .parse()
-        .unwrap_or_else(|_| Uri::from_static("/"))
+    ctx.path().parse().unwrap_or_else(|_| Uri::from_static("/"))
 }
 
-async fn authorize(
-    state: &IntrospectApiState,
-    ctx: &RequestCtx,
-) -> Result<(), IntrospectApiError> {
+async fn authorize(state: &IntrospectApiState, ctx: &RequestCtx) -> Result<(), IntrospectApiError> {
     if let Some(auth) = &state.auth {
-        auth(
-            ctx.method().clone(),
-            ctx_uri(ctx),
-            ctx.headers().clone(),
-        )
-        .await
-        .map_err(|e| match e {
-            JobsApiError::Unauthorized(m) => IntrospectApiError::Unauthorized(m),
-            other => IntrospectApiError::BadRequest(other.to_string()),
-        })?;
+        auth(ctx.method().clone(), ctx_uri(ctx), ctx.headers().clone())
+            .await
+            .map_err(|e| match e {
+                JobsApiError::Unauthorized(m) => IntrospectApiError::Unauthorized(m),
+                other => IntrospectApiError::BadRequest(other.to_string()),
+            })?;
     }
     Ok(())
 }
@@ -135,10 +126,7 @@ async fn get_actors_inner(
     json_ok(state.observer.actors().await)
 }
 
-async fn get_actor(
-    state: Arc<IntrospectApiState>,
-    ctx: RequestCtx,
-) -> Result<Response, HttpError> {
+async fn get_actor(state: Arc<IntrospectApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
     match get_actor_inner(&state, ctx).await {
         Ok(r) => Ok(r),
         Err(e) => Ok(e.into_http_response()),
@@ -163,10 +151,7 @@ async fn get_actor_inner(
         .ok_or_else(|| IntrospectApiError::NotFound("no such actor".into()))?
 }
 
-async fn get_node(
-    state: Arc<IntrospectApiState>,
-    ctx: RequestCtx,
-) -> Result<Response, HttpError> {
+async fn get_node(state: Arc<IntrospectApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
     match get_node_inner(&state, ctx).await {
         Ok(r) => Ok(r),
         Err(e) => Ok(e.into_http_response()),
@@ -211,10 +196,7 @@ async fn get_queues_inner(
     json_ok(state.observer.queues().await)
 }
 
-async fn get_sagas(
-    state: Arc<IntrospectApiState>,
-    ctx: RequestCtx,
-) -> Result<Response, HttpError> {
+async fn get_sagas(state: Arc<IntrospectApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
     match get_sagas_inner(&state, ctx).await {
         Ok(r) => Ok(r),
         Err(e) => Ok(e.into_http_response()),

@@ -10,7 +10,9 @@ use trembita::{
     GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError, QueueOpts, TrembitaApp,
     TrembitaConfigure,
 };
-use trembita_test_support::{advance, boot_local_app, spawn_test_gateway, wait_for_trembita_app_leader};
+use trembita_test_support::{
+    advance, boot_local_app, spawn_test_gateway, wait_for_trembita_app_leader,
+};
 
 struct TestGatewayIdentity;
 

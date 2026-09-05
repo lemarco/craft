@@ -89,11 +89,11 @@ pub use configure::TrembitaConfigure;
 pub use consumer::{ConsumerGroup, ConsumerOpts, IdempotencyKeyFn, IdempotencyOpts, JobConsumer};
 pub use cron_opts::CronOpts;
 pub use gateway::{
-    build_gateway_router, build_gateway_service, ConnectionGuard, ConnectionTracker,
-    DEFAULT_GATEWAY_DRAIN_TIMEOUT, ExtractedIdentity, GatewayBearerIdentity, GatewayHandle,
-    GatewayIdentity, GatewayOpts, GatewayRequest, GatewayTlsPaths, GatewayTokenIdentity,
-    IdentityError, IdentityTypeError, NoWorkerError, OpenActorSessionError, SessionHandle,
-    SessionKey, TrembitaGatewayState, WrappedGatewayService, spawn_gateway,
+    ConnectionGuard, ConnectionTracker, DEFAULT_GATEWAY_DRAIN_TIMEOUT, ExtractedIdentity,
+    GatewayBearerIdentity, GatewayHandle, GatewayIdentity, GatewayOpts, GatewayRequest,
+    GatewayTlsPaths, GatewayTokenIdentity, IdentityError, IdentityTypeError, NoWorkerError,
+    OpenActorSessionError, SessionHandle, SessionKey, TrembitaGatewayState, WrappedGatewayService,
+    build_gateway_router, build_gateway_service, spawn_gateway,
 };
 pub use job_opts::JobOpts;
 pub use queue_opts::QueueOpts;

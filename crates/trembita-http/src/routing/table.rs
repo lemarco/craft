@@ -25,7 +25,12 @@ pub struct RouteEntry {
 impl RouteEntry {
     /// Register one route.
     #[must_use]
-    pub fn new(method: Method, path: &str, auth: AuthMode, handler: impl Handler + 'static) -> Self {
+    pub fn new(
+        method: Method,
+        path: &str,
+        auth: AuthMode,
+        handler: impl Handler + 'static,
+    ) -> Self {
         Self {
             method,
             pattern: PathPattern::new(path),
@@ -99,31 +104,24 @@ impl RouteTable {
         auth: AuthMode,
         handler: impl Handler + 'static,
     ) -> Self {
-        self.routes.push(RouteEntry::new(method, path, auth, handler));
+        self.routes
+            .push(RouteEntry::new(method, path, auth, handler));
         self
     }
 
     /// `GET` route (open).
     #[must_use]
     pub fn get(mut self, path: &str, handler: impl Handler + 'static) -> Self {
-        self.routes.push(RouteEntry::new(
-            Method::GET,
-            path,
-            AuthMode::Open,
-            handler,
-        ));
+        self.routes
+            .push(RouteEntry::new(Method::GET, path, AuthMode::Open, handler));
         self
     }
 
     /// `POST` route (open).
     #[must_use]
     pub fn post(mut self, path: &str, handler: impl Handler + 'static) -> Self {
-        self.routes.push(RouteEntry::new(
-            Method::POST,
-            path,
-            AuthMode::Open,
-            handler,
-        ));
+        self.routes
+            .push(RouteEntry::new(Method::POST, path, AuthMode::Open, handler));
         self
     }
 
@@ -140,33 +138,8 @@ impl RouteTable {
         mut self,
         path: &str,
         handler: impl Fn(
-                http::Request<hyper::body::Incoming>,
-            ) -> Pin<
-                Box<
-                    dyn Future<
-                            Output = http::Response<
-                                http_body_util::combinators::BoxBody<
-                                    bytes::Bytes,
-                                    std::convert::Infallible,
-                                >,
-                            >,
-                        > + Send,
-                >,
-            > + Send
-            + Sync
-            + 'static,
-    ) -> Self {
-        self.websocket = Some((PathPattern::new(path), Arc::new(handler)));
-        self
-    }
-
-    /// Dispatch a WebSocket upgrade when `path` matches.
-    pub(crate) fn dispatch_websocket(
-        &self,
-        path: &str,
-        req: http::Request<hyper::body::Incoming>,
-    ) -> Option<
-        Pin<
+            http::Request<hyper::body::Incoming>,
+        ) -> Pin<
             Box<
                 dyn Future<
                         Output = http::Response<
@@ -177,11 +150,19 @@ impl RouteTable {
                         >,
                     > + Send,
             >,
-        >,
-    > {
+        > + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        self.websocket = Some((PathPattern::new(path), Arc::new(handler)));
+        self
+    }
+
+    /// Returns the WebSocket upgrade handler when `path` matches.
+    pub(crate) fn match_websocket(&self, path: &str) -> Option<&UpgradeFn> {
         let (pattern, handler) = self.websocket.as_ref()?;
         pattern.match_path(path)?;
-        Some(handler(req))
+        Some(handler)
     }
 
     /// Append all routes from `other` (later entries win on duplicate method+path).
@@ -233,14 +214,7 @@ impl RouteTable {
     ) -> Result<Response, HttpError> {
         if let Some((entry, params)) = self.match_route(method, path) {
             let _auth = entry.auth();
-            let ctx = RequestCtx::new(
-                method.clone(),
-                path,
-                params,
-                query,
-                headers,
-                body,
-            );
+            let ctx = RequestCtx::new(method.clone(), path, params, query, headers, body);
             return entry.handler.handle(ctx).await?.finalize();
         }
         if let Some(fallback) = &self.fallback {
@@ -258,18 +232,15 @@ impl RouteTable {
     }
 
     fn match_route(&self, method: &Method, path: &str) -> Option<(&RouteEntry, PathParams)> {
-        self.routes
-            .iter()
-            .rev()
-            .find_map(|entry| {
-                if entry.method() != method {
-                    return None;
-                }
-                entry
-                    .pattern()
-                    .match_path(path)
-                    .map(|params| (entry, params))
-            })
+        self.routes.iter().rev().find_map(|entry| {
+            if entry.method() != method {
+                return None;
+            }
+            entry
+                .pattern()
+                .match_path(path)
+                .map(|params| (entry, params))
+        })
     }
 }
 
@@ -328,8 +299,12 @@ mod tests {
     #[tokio::test]
     async fn later_route_wins_on_duplicate() {
         let table = RouteTable::new()
-            .get("/x", |_| async { Ok(Response::text(StatusCode::OK, "first")) })
-            .get("/x", |_| async { Ok(Response::text(StatusCode::OK, "second")) });
+            .get("/x", |_| async {
+                Ok(Response::text(StatusCode::OK, "first"))
+            })
+            .get("/x", |_| async {
+                Ok(Response::text(StatusCode::OK, "second"))
+            });
         let resp = table
             .dispatch(
                 &Method::GET,

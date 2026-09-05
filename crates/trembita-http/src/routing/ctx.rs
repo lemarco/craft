@@ -181,8 +181,7 @@ impl Response {
                 .entry(CONTENT_TYPE)
                 .or_insert(http::HeaderValue::from_static("application/json"));
         }
-        if matches!(self.body, ResponseBody::Bytes(_)) && !self.headers.contains_key(CONTENT_TYPE)
-        {
+        if matches!(self.body, ResponseBody::Bytes(_)) && !self.headers.contains_key(CONTENT_TYPE) {
             self.headers_mut().insert(
                 CONTENT_TYPE,
                 http::HeaderValue::from_static("text/plain; charset=utf-8"),

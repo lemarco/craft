@@ -134,9 +134,7 @@ async fn {handler}(payload: &[u8]) -> Result<(), String> {{
     ensure_mod_declaration(&mod_rs, &module)?;
 
     let mut app = AppRsPatch::load(&project.app_rs())?;
-    app.insert_import(&format!(
-        "use crate::consumers::{module}::{consumer_type};"
-    ))?;
+    app.insert_import(&format!("use crate::consumers::{module}::{consumer_type};"))?;
 
     let job_line = format!(
         r#"JobOpts::new("{stream}")
@@ -263,9 +261,7 @@ impl UserActor for {type_name} {{
     ensure_mod_declaration(&mod_rs, &module)?;
 
     let mut app = AppRsPatch::load(&project.app_rs())?;
-    app.insert_import(&format!(
-        "use crate::actors::{module}::{type_name};"
-    ))?;
+    app.insert_import(&format!("use crate::actors::{module}::{type_name};"))?;
     app.insert_import("use trembita::{WorkerOpts, WorkerScale, workers};")?;
 
     let worker_line = format!(
@@ -344,7 +340,10 @@ pub fn route_table() -> RouteTable {{
 }
 
 /// Add a static SPA surface (`StaticSite` + gateway `.surface()`).
-pub fn add_static_site(project: &TrembitaProject, opts: &AddStaticSiteOpts) -> Result<(), AddError> {
+pub fn add_static_site(
+    project: &TrembitaProject,
+    opts: &AddStaticSiteOpts,
+) -> Result<(), AddError> {
     validate_identifier(&opts.name)?;
     validate_hosts(&opts.hosts)?;
     let module = opts.module.clone().unwrap_or_else(|| {
@@ -496,7 +495,9 @@ fn validate_hosts(hosts: &[String]) -> Result<(), AddError> {
 
 fn validate_identifier(name: &str) -> Result<(), AddError> {
     let ok = !name.is_empty()
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
         && name.chars().next().is_some_and(|c| c.is_ascii_alphabetic());
     if ok {
         Ok(())

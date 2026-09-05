@@ -57,11 +57,7 @@ impl<'a> GatewayRequest<'a> {
     /// Cookie value for `name`, if present.
     #[must_use]
     pub fn cookie(&self, name: &str) -> Option<&str> {
-        let header = self
-            .headers
-            .get(http::header::COOKIE)?
-            .to_str()
-            .ok()?;
+        let header = self.headers.get(http::header::COOKIE)?.to_str().ok()?;
         parse_cookie(header, name)
     }
 

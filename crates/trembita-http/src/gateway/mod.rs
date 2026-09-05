@@ -231,19 +231,21 @@ mod tests {
         );
 
         let ok = Gateway::new(false).surface(|s| {
-            s.hosts(["api.example.com"])
-                .routes(RouteTable::new().get("/health", |_: RequestCtx| async {
+            s.hosts(["api.example.com"]).routes(
+                RouteTable::new().get("/health", |_: RequestCtx| async {
                     Ok(Response::status(StatusCode::OK))
-                }))
+                }),
+            )
         });
         ok.validate().expect("valid");
     }
 
     #[test]
     fn dev_fallback_hidden_in_production() {
-        let g = Gateway::new(true).dev_fallback(RouteTable::new().get("/x", |_: RequestCtx| async {
-            Ok(Response::status(StatusCode::OK))
-        }));
+        let g =
+            Gateway::new(true).dev_fallback(RouteTable::new().get("/x", |_: RequestCtx| async {
+                Ok(Response::status(StatusCode::OK))
+            }));
         assert!(g.dev_fallback_routes().is_none());
     }
 }

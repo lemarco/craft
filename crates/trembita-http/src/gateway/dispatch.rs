@@ -20,11 +20,11 @@ use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
 use tower::Service;
 
-use crate::routing::{HttpError, RequestCtx, Response, ResponseBody, RouteTable};
 use crate::host::{is_local_dev_host, normalize_host};
+use crate::routing::{HttpError, RequestCtx, Response, ResponseBody, RouteTable};
 
-use super::cors::CorsPolicy;
 use super::Surface;
+use super::cors::CorsPolicy;
 
 type BoxBody = http_body_util::combinators::BoxBody<Bytes, Infallible>;
 
@@ -75,10 +75,7 @@ impl GatewayDispatch {
         let mut map = HashMap::clone(&self.hosts);
         map.insert(
             normalize_host(hostname),
-            Arc::new(SurfaceDispatch {
-                routes,
-                cors: None,
-            }),
+            Arc::new(SurfaceDispatch { routes, cors: None }),
         );
         self.hosts = Arc::new(map);
         self
@@ -102,41 +99,36 @@ impl GatewayDispatch {
         self
     }
 
-    fn find_websocket(
-        &self,
-        path: &str,
-        req: http::Request<Incoming>,
-    ) -> Option<
-        Pin<
-            Box<
-                dyn Future<
-                        Output = HttpResponse<BoxBody>,
-                    > + Send,
-            >,
-        >,
-    > {
-        for surface in self.hosts.values() {
-            if let Some(future) = surface.routes.dispatch_websocket(path, req) {
-                return Some(future);
-            }
+    fn resolve_surface(&self, host: &str) -> Option<Arc<SurfaceDispatch>> {
+        if let Some(s) = self.hosts.get(host) {
+            return Some(Arc::clone(s));
         }
-        if let Some(dev) = &self.local_dev {
-            if let Some(future) = dev.routes.dispatch_websocket(path, req) {
-                return Some(future);
-            }
+        if is_local_dev_host(host) {
+            return self.local_dev.as_ref().map(Arc::clone);
         }
         None
     }
 
-    async fn handle(
-        &self,
-        req: http::Request<Incoming>,
-    ) -> HttpResponse<BoxBody> {
+    async fn handle(&self, req: http::Request<Incoming>) -> HttpResponse<BoxBody> {
         if is_websocket_upgrade(req.headers()) {
-            let path = req.uri().path();
-            if let Some(future) = self.find_websocket(&path, req) {
-                return future.await;
+            let path = req.uri().path().to_string();
+            let host = match req.headers().get(HOST) {
+                None => return text_response(StatusCode::BAD_REQUEST, "missing Host header"),
+                Some(value) => match value.to_str() {
+                    Ok(raw) => normalize_host(raw),
+                    Err(_) => return text_response(StatusCode::BAD_REQUEST, "invalid Host header"),
+                },
+            };
+            let surface = match self.resolve_surface(&host) {
+                Some(s) => s,
+                None => {
+                    return text_response(StatusCode::NOT_FOUND, &format!("unknown host: {host}"));
+                }
+            };
+            if let Some(handler) = surface.routes.match_websocket(&path) {
+                return handler(req).await;
             }
+            return text_response(StatusCode::NOT_FOUND, "not found");
         }
 
         let (parts, body) = req.into_parts();
@@ -148,15 +140,9 @@ impl GatewayDispatch {
             },
         };
 
-        let surface = if let Some(s) = self.hosts.get(&host) {
-            Arc::clone(s)
-        } else if is_local_dev_host(&host) {
-            match &self.local_dev {
-                Some(s) => Arc::clone(s),
-                None => return text_response(StatusCode::NOT_FOUND, &format!("unknown host: {host}")),
-            }
-        } else {
-            return text_response(StatusCode::NOT_FOUND, &format!("unknown host: {host}"));
+        let surface = match self.resolve_surface(&host) {
+            Some(s) => s,
+            None => return text_response(StatusCode::NOT_FOUND, &format!("unknown host: {host}")),
         };
 
         let origin = parts
@@ -186,9 +172,14 @@ impl GatewayDispatch {
             .dispatch(&parts.method, &path, query, parts.headers, body_bytes)
             .await
         {
-            Ok(resp) => apply_cors(to_http_response(resp.finalize().unwrap_or_else(|e| {
-                Response::text(e.status(), e.message())
-            })), surface.cors.as_ref(), origin.as_deref()),
+            Ok(resp) => apply_cors(
+                to_http_response(
+                    resp.finalize()
+                        .unwrap_or_else(|e| Response::text(e.status(), e.message())),
+                ),
+                surface.cors.as_ref(),
+                origin.as_deref(),
+            ),
             Err(err) => apply_cors(
                 text_response(err.status(), err.message()),
                 surface.cors.as_ref(),
@@ -274,9 +265,8 @@ async fn read_body(body: Incoming, limit: usize) -> Result<Bytes, HttpResponse<B
 }
 
 fn text_response(status: StatusCode, message: &str) -> HttpResponse<BoxBody> {
-    let body = BoxBody::new(
-        Full::new(Bytes::from(message.to_string())).map_err(|never| match never {}),
-    );
+    let body =
+        BoxBody::new(Full::new(Bytes::from(message.to_string())).map_err(|never| match never {}));
     let mut resp = HttpResponse::new(body);
     *resp.status_mut() = status;
     resp.headers_mut().insert(
@@ -289,11 +279,12 @@ fn text_response(status: StatusCode, message: &str) -> HttpResponse<BoxBody> {
 fn to_http_response(response: Response) -> HttpResponse<BoxBody> {
     let status = response.status_code();
     let body = match response.body() {
-        ResponseBody::Empty => BoxBody::new(http_body_util::Empty::<Bytes>::new()
-            .map_err(|never| match never {})),
-        ResponseBody::Bytes(b) => BoxBody::new(
-            Full::new(b.clone()).map_err(|never| match never {}),
-        ),
+        ResponseBody::Empty => {
+            BoxBody::new(http_body_util::Empty::<Bytes>::new().map_err(|never| match never {}))
+        }
+        ResponseBody::Bytes(b) => {
+            BoxBody::new(Full::new(b.clone()).map_err(|never| match never {}))
+        }
         ResponseBody::Json(_) => unreachable!("finalize converts JSON"),
     };
     let mut http = HttpResponse::new(body);
@@ -304,9 +295,10 @@ fn to_http_response(response: Response) -> HttpResponse<BoxBody> {
     if matches!(response.body(), ResponseBody::Bytes(_)) {
         if let http::header::Entry::Vacant(entry) = http.headers_mut().entry(CONTENT_LENGTH) {
             if let ResponseBody::Bytes(b) = response.body() {
-                let _ = entry.insert(http::HeaderValue::from_str(&b.len().to_string()).unwrap_or(
-                    http::HeaderValue::from_static("0"),
-                ));
+                let _ = entry.insert(
+                    http::HeaderValue::from_str(&b.len().to_string())
+                        .unwrap_or(http::HeaderValue::from_static("0")),
+                );
             }
         }
     }

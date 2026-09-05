@@ -2,9 +2,9 @@
 
 use tempfile::tempdir;
 use trembita_cli::{
-    AddActorOpts, AddConsumerOpts, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts,
-    AppFeature, Level, NewProjectOpts, StaticSiteSource, TrembitaProject, add_actor,
-    add_consumer, add_http_surface, add_static_site, add_topic, run_doctor, scaffold_project,
+    AddActorOpts, AddConsumerOpts, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts, AppFeature,
+    Level, NewProjectOpts, StaticSiteSource, TrembitaProject, add_actor, add_consumer,
+    add_http_surface, add_static_site, add_topic, run_doctor, scaffold_project,
 };
 
 #[test]

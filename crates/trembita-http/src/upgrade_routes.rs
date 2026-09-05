@@ -96,23 +96,14 @@ impl UpgradeApi {
 }
 
 fn ctx_uri(ctx: &RequestCtx) -> Uri {
-    ctx.path()
-        .parse()
-        .unwrap_or_else(|_| Uri::from_static("/"))
+    ctx.path().parse().unwrap_or_else(|_| Uri::from_static("/"))
 }
 
-async fn authorize(
-    state: &UpgradeApiState,
-    ctx: &RequestCtx,
-) -> Result<(), UpgradeApiError> {
+async fn authorize(state: &UpgradeApiState, ctx: &RequestCtx) -> Result<(), UpgradeApiError> {
     if let Some(auth) = &state.auth {
-        auth(
-            ctx.method().clone(),
-            ctx_uri(ctx),
-            ctx.headers().clone(),
-        )
-        .await
-        .map_err(|e| UpgradeApiError::Unauthorized(e.to_string()))?;
+        auth(ctx.method().clone(), ctx_uri(ctx), ctx.headers().clone())
+            .await
+            .map_err(|e| UpgradeApiError::Unauthorized(e.to_string()))?;
     }
     Ok(())
 }
@@ -133,10 +124,7 @@ pub fn route_table(state: Arc<UpgradeApiState>) -> RouteTable {
         })
 }
 
-async fn get_upgrade(
-    state: Arc<UpgradeApiState>,
-    ctx: RequestCtx,
-) -> Result<Response, HttpError> {
+async fn get_upgrade(state: Arc<UpgradeApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
     match get_upgrade_inner(&state, ctx).await {
         Ok(r) => Ok(r),
         Err(e) => Ok(e.into_http_response()),
@@ -154,10 +142,7 @@ async fn get_upgrade_inner(
     Ok(Response::json(StatusCode::OK, json))
 }
 
-async fn post_desired(
-    state: Arc<UpgradeApiState>,
-    ctx: RequestCtx,
-) -> Result<Response, HttpError> {
+async fn post_desired(state: Arc<UpgradeApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
     match post_desired_inner(&state, ctx).await {
         Ok(r) => Ok(r),
         Err(e) => Ok(e.into_http_response()),

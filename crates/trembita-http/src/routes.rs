@@ -109,43 +109,27 @@ fn ctx_uri(ctx: &RequestCtx) -> Uri {
     path.parse().unwrap_or_else(|_| Uri::from_static("/"))
 }
 
-fn parse_query<T: serde::de::DeserializeOwned>(
-    ctx: &RequestCtx,
-) -> Result<T, JobsApiError> {
+fn parse_query<T: serde::de::DeserializeOwned>(ctx: &RequestCtx) -> Result<T, JobsApiError> {
     let map: HashMap<String, String> = ctx.query().clone();
     serde_json::from_value(serde_json::json!(map))
         .map_err(|e| JobsApiError::BadRequest(format!("invalid query: {e}")))
 }
 
-async fn authorize(
-    state: &JobsApiState,
-    ctx: &RequestCtx,
-) -> Result<(), JobsApiError> {
+async fn authorize(state: &JobsApiState, ctx: &RequestCtx) -> Result<(), JobsApiError> {
     if let Some(auth) = &state.auth {
-        auth(
-            ctx.method().clone(),
-            ctx_uri(ctx),
-            ctx.headers().clone(),
-        )
-        .await?;
+        auth(ctx.method().clone(), ctx_uri(ctx), ctx.headers().clone()).await?;
     }
     Ok(())
 }
 
-async fn post_job(
-    state: Arc<JobsApiState>,
-    ctx: RequestCtx,
-) -> Result<Response, HttpError> {
+async fn post_job(state: Arc<JobsApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
     match post_job_inner(&state, ctx).await {
         Ok(r) => Ok(r),
         Err(e) => Ok(e.into_http_response()),
     }
 }
 
-async fn post_job_inner(
-    state: &JobsApiState,
-    ctx: RequestCtx,
-) -> Result<Response, JobsApiError> {
+async fn post_job_inner(state: &JobsApiState, ctx: RequestCtx) -> Result<Response, JobsApiError> {
     authorize(state, &ctx).await?;
     let stream = ctx
         .params()
@@ -158,16 +142,10 @@ async fn post_job_inner(
     let job_id = (state.enqueue)(stream, payload, opts)
         .await
         .map_err(|e| JobsApiError::Queue(e.to_string()))?;
-    json_response(
-        StatusCode::ACCEPTED,
-        EnqueueAccepted { job_id: job_id.0 },
-    )
+    json_response(StatusCode::ACCEPTED, EnqueueAccepted { job_id: job_id.0 })
 }
 
-async fn post_job_batch(
-    state: Arc<JobsApiState>,
-    ctx: RequestCtx,
-) -> Result<Response, HttpError> {
+async fn post_job_batch(state: Arc<JobsApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
     match post_job_batch_inner(&state, ctx).await {
         Ok(r) => Ok(r),
         Err(e) => Ok(e.into_http_response()),
@@ -212,10 +190,7 @@ async fn post_job_batch_inner(
     )
 }
 
-async fn post_ack_batch(
-    state: Arc<JobsApiState>,
-    ctx: RequestCtx,
-) -> Result<Response, HttpError> {
+async fn post_ack_batch(state: Arc<JobsApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
     match post_ack_batch_inner(&state, ctx).await {
         Ok(r) => Ok(r),
         Err(e) => Ok(e.into_http_response()),
@@ -258,20 +233,14 @@ async fn post_ack_batch_inner(
     json_response(StatusCode::OK, AckBatchAccepted { acked })
 }
 
-async fn get_job(
-    state: Arc<JobsApiState>,
-    ctx: RequestCtx,
-) -> Result<Response, HttpError> {
+async fn get_job(state: Arc<JobsApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
     match get_job_inner(&state, ctx).await {
         Ok(r) => Ok(r),
         Err(e) => Ok(e.into_http_response()),
     }
 }
 
-async fn get_job_inner(
-    state: &JobsApiState,
-    ctx: RequestCtx,
-) -> Result<Response, JobsApiError> {
+async fn get_job_inner(state: &JobsApiState, ctx: RequestCtx) -> Result<Response, JobsApiError> {
     authorize(state, &ctx).await?;
     let stream = ctx
         .params()
@@ -293,20 +262,14 @@ async fn get_job_inner(
     json_response(StatusCode::OK, status_to_response(&status))
 }
 
-async fn list_jobs(
-    state: Arc<JobsApiState>,
-    ctx: RequestCtx,
-) -> Result<Response, HttpError> {
+async fn list_jobs(state: Arc<JobsApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
     match list_jobs_inner(&state, ctx).await {
         Ok(r) => Ok(r),
         Err(e) => Ok(e.into_http_response()),
     }
 }
 
-async fn list_jobs_inner(
-    state: &JobsApiState,
-    ctx: RequestCtx,
-) -> Result<Response, JobsApiError> {
+async fn list_jobs_inner(state: &JobsApiState, ctx: RequestCtx) -> Result<Response, JobsApiError> {
     authorize(state, &ctx).await?;
     let stream = ctx
         .params()
@@ -331,10 +294,7 @@ async fn list_jobs_inner(
     )
 }
 
-async fn post_requeue(
-    state: Arc<JobsApiState>,
-    ctx: RequestCtx,
-) -> Result<Response, HttpError> {
+async fn post_requeue(state: Arc<JobsApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
     match post_requeue_inner(&state, ctx).await {
         Ok(r) => Ok(r),
         Err(e) => Ok(e.into_http_response()),
@@ -611,13 +571,7 @@ mod tests {
         body: Bytes,
     ) -> http::StatusCode {
         table
-            .dispatch(
-                &method,
-                path,
-                HashMap::new(),
-                http::HeaderMap::new(),
-                body,
-            )
+            .dispatch(&method, path, HashMap::new(), http::HeaderMap::new(), body)
             .await
             .expect("dispatch")
             .status_code()
@@ -639,13 +593,7 @@ mod tests {
             noop_requeue_batch(),
         );
         let table = route_table(state);
-        let status = dispatch(
-            &table,
-            Method::POST,
-            "/jobs/emails",
-            Bytes::from("hello"),
-        )
-        .await;
+        let status = dispatch(&table, Method::POST, "/jobs/emails", Bytes::from("hello")).await;
         assert_eq!(status, StatusCode::ACCEPTED);
     }
 

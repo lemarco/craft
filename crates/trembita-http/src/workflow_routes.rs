@@ -10,26 +10,17 @@ use crate::types::JobsApiError;
 use crate::workflow_types::{SagaBody, WorkflowAccepted, WorkflowsApiError};
 
 fn ctx_uri(ctx: &RequestCtx) -> Uri {
-    ctx.path()
-        .parse()
-        .unwrap_or_else(|_| Uri::from_static("/"))
+    ctx.path().parse().unwrap_or_else(|_| Uri::from_static("/"))
 }
 
-async fn authorize(
-    state: &WorkflowsApiState,
-    ctx: &RequestCtx,
-) -> Result<(), WorkflowsApiError> {
+async fn authorize(state: &WorkflowsApiState, ctx: &RequestCtx) -> Result<(), WorkflowsApiError> {
     if let Some(auth) = &state.auth {
-        auth(
-            ctx.method().clone(),
-            ctx_uri(ctx),
-            ctx.headers().clone(),
-        )
-        .await
-        .map_err(|e| match e {
-            JobsApiError::Unauthorized(m) => WorkflowsApiError::Unauthorized(m),
-            other => WorkflowsApiError::BadRequest(other.to_string()),
-        })?;
+        auth(ctx.method().clone(), ctx_uri(ctx), ctx.headers().clone())
+            .await
+            .map_err(|e| match e {
+                JobsApiError::Unauthorized(m) => WorkflowsApiError::Unauthorized(m),
+                other => WorkflowsApiError::BadRequest(other.to_string()),
+            })?;
     }
     Ok(())
 }
@@ -55,10 +46,7 @@ pub fn route_table(state: Arc<WorkflowsApiState>) -> RouteTable {
         })
 }
 
-async fn get_health(
-    state: Arc<WorkflowsApiState>,
-    ctx: RequestCtx,
-) -> Result<Response, HttpError> {
+async fn get_health(state: Arc<WorkflowsApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
     match get_health_inner(&state, ctx).await {
         Ok(r) => Ok(r),
         Err(e) => Ok(e.into_http_response()),
@@ -73,10 +61,7 @@ async fn get_health_inner(
     Ok(Response::text(StatusCode::OK, "ok"))
 }
 
-async fn post_run(
-    state: Arc<WorkflowsApiState>,
-    ctx: RequestCtx,
-) -> Result<Response, HttpError> {
+async fn post_run(state: Arc<WorkflowsApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
     match post_run_inner(&state, ctx).await {
         Ok(r) => Ok(r),
         Err(e) => Ok(e.into_http_response()),

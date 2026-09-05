@@ -70,7 +70,14 @@ pub(super) fn build_gateway_service_with_tracker(
 
     let state = TrembitaGatewayState::from_parts(Arc::clone(app), identity, connections.clone());
     let mut gateway = surfaces.map_or_else(|| Gateway::new(false), |f| f(state));
-    gateway = gateway.merge_routes(collect_builtin_routes(app, auth, jobs_api, actors_api, workflows_api, introspect_api));
+    gateway = gateway.merge_routes(collect_builtin_routes(
+        app,
+        auth,
+        jobs_api,
+        actors_api,
+        workflows_api,
+        introspect_api,
+    ));
 
     let inner = GatewayService::build(&gateway)?;
 
@@ -114,7 +121,14 @@ fn collect_builtin_routes(
     }
     #[cfg(not(feature = "http-jobs"))]
     {
-        let _ = (app, auth, jobs_api, actors_api, workflows_api, introspect_api);
+        let _ = (
+            app,
+            auth,
+            jobs_api,
+            actors_api,
+            workflows_api,
+            introspect_api,
+        );
     }
     table
 }
@@ -152,10 +166,7 @@ impl tower::Service<http::Request<hyper::body::Incoming>> for WrappedGatewayServ
         self.inner.poll_ready(cx)
     }
 
-    fn call(
-        &mut self,
-        req: http::Request<hyper::body::Incoming>,
-    ) -> Self::Future {
+    fn call(&mut self, req: http::Request<hyper::body::Incoming>) -> Self::Future {
         if let Some(limiter) = &self.rate_limiter
             && !limiter.try_acquire()
         {
@@ -176,15 +187,12 @@ impl tower::Service<http::Request<hyper::body::Incoming>> for WrappedGatewayServ
     }
 }
 
-fn too_many_requests(
-) -> http::Response<http_body_util::combinators::BoxBody<bytes::Bytes, std::convert::Infallible>> {
+fn too_many_requests()
+-> http::Response<http_body_util::combinators::BoxBody<bytes::Bytes, std::convert::Infallible>> {
     use bytes::Bytes;
     use http_body_util::Full;
     let body = Full::new(Bytes::from_static(b"rate limit exceeded"));
-    let mut resp = http::Response::new(
-        body.map_err(|never| match never {})
-            .boxed_unsync(),
-    );
+    let mut resp = http::Response::new(body.map_err(|never| match never {}).boxed_unsync());
     *resp.status_mut() = http::StatusCode::TOO_MANY_REQUESTS;
     resp
 }

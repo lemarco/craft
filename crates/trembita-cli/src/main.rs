@@ -179,13 +179,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     eprintln!("Registered topic in {}", project.app_rs().display());
                 }
                 AddTarget::Actor { group, type_name } => {
-                    add_actor(
-                        &project,
-                        &AddActorOpts {
-                            group,
-                            type_name,
-                        },
-                    )?;
+                    add_actor(&project, &AddActorOpts { group, type_name })?;
                     eprintln!("Added actor in {}", project.actors_dir().display());
                 }
                 AddTarget::HttpSurface {
@@ -252,7 +246,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn resolve_project(path: Option<&std::path::Path>) -> Result<TrembitaProject, Box<dyn std::error::Error>> {
+fn resolve_project(
+    path: Option<&std::path::Path>,
+) -> Result<TrembitaProject, Box<dyn std::error::Error>> {
     let start = path
         .map(PathBuf::from)
         .unwrap_or_else(|| std::env::current_dir().expect("cwd"));

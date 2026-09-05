@@ -109,9 +109,7 @@ impl PathParams {
 
     /// Iterator over `(name, value)` pairs.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
-        self.values
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
+        self.values.iter().map(|(k, v)| (k.as_str(), v.as_str()))
     }
 }
 

@@ -13,23 +13,17 @@ use crate::routing::{HttpError, RequestCtx, Response, RouteTable};
 use crate::types::JobsApiError;
 
 fn ctx_uri(ctx: &RequestCtx) -> Uri {
-    ctx.path()
-        .parse()
-        .unwrap_or_else(|_| Uri::from_static("/"))
+    ctx.path().parse().unwrap_or_else(|_| Uri::from_static("/"))
 }
 
 async fn authorize(state: &ActorsApiState, ctx: &RequestCtx) -> Result<(), ActorsApiError> {
     if let Some(auth) = &state.auth {
-        auth(
-            ctx.method().clone(),
-            ctx_uri(ctx),
-            ctx.headers().clone(),
-        )
-        .await
-        .map_err(|e| match e {
-            JobsApiError::Unauthorized(m) => ActorsApiError::Unauthorized(m),
-            other => ActorsApiError::BadRequest(other.to_string()),
-        })?;
+        auth(ctx.method().clone(), ctx_uri(ctx), ctx.headers().clone())
+            .await
+            .map_err(|e| match e {
+                JobsApiError::Unauthorized(m) => ActorsApiError::Unauthorized(m),
+                other => ActorsApiError::BadRequest(other.to_string()),
+            })?;
     }
     Ok(())
 }
@@ -50,10 +44,7 @@ pub fn route_table(state: Arc<ActorsApiState>) -> RouteTable {
         })
 }
 
-async fn post_ask(
-    state: Arc<ActorsApiState>,
-    ctx: RequestCtx,
-) -> Result<Response, HttpError> {
+async fn post_ask(state: Arc<ActorsApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
     match post_ask_inner(&state, ctx).await {
         Ok(r) => Ok(r),
         Err(e) => Ok(e.into_http_response()),
@@ -78,7 +69,10 @@ async fn post_ask_inner(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     if ct.starts_with("application/octet-stream") {
-        return Ok(Response::text(StatusCode::OK, String::from_utf8_lossy(&reply)));
+        return Ok(Response::text(
+            StatusCode::OK,
+            String::from_utf8_lossy(&reply),
+        ));
     }
     let json = serde_json::to_value(AskAccepted {
         reply_b64: base64::engine::general_purpose::STANDARD.encode(reply),
@@ -87,10 +81,7 @@ async fn post_ask_inner(
     Ok(Response::json(StatusCode::OK, json))
 }
 
-async fn post_cast(
-    state: Arc<ActorsApiState>,
-    ctx: RequestCtx,
-) -> Result<Response, HttpError> {
+async fn post_cast(state: Arc<ActorsApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
     match post_cast_inner(&state, ctx).await {
         Ok(r) => Ok(r),
         Err(e) => Ok(e.into_http_response()),
@@ -125,9 +116,8 @@ fn map_ask_error(err: trembita_runtime::ClusterAskError) -> ActorsApiError {
         trembita_runtime::ClusterAskError::NoTarget(g) => {
             ActorsApiError::NoTarget(format!("no live instance of group `{g}`"))
         }
-        trembita_runtime::ClusterAskError::Timeout(_) | trembita_runtime::ClusterAskError::NoReply => {
-            ActorsApiError::Timeout
-        }
+        trembita_runtime::ClusterAskError::Timeout(_)
+        | trembita_runtime::ClusterAskError::NoReply => ActorsApiError::Timeout,
         other => ActorsApiError::Actor(other.to_string()),
     }
 }

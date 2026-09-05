@@ -13,7 +13,9 @@ pub struct TrembitaProject {
 #[derive(Debug, thiserror::Error)]
 pub enum ProjectError {
     /// No trembita app found walking up from the start path.
-    #[error("not a trembita product app (missing src/app.rs or trembita in Cargo.toml); run from project root or pass --path")]
+    #[error(
+        "not a trembita product app (missing src/app.rs or trembita in Cargo.toml); run from project root or pass --path"
+    )]
     NotFound,
     /// I/O error.
     #[error("{0}")]

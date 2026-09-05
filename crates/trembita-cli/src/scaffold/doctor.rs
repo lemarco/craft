@@ -115,7 +115,9 @@ pub fn doctor_fix(project: &TrembitaProject) -> DoctorFixReport {
     if project.http_dir().is_dir() && ensure_main_module(project, "http").unwrap_or(false) {
         fixes += 1;
     }
-    DoctorFixReport { fixes_applied: fixes }
+    DoctorFixReport {
+        fixes_applied: fixes,
+    }
 }
 
 fn fix_mod_declarations(dir: &Path) -> usize {
@@ -306,7 +308,8 @@ fn check_http(project: &TrembitaProject, app: &str, report: &mut DoctorReport) {
     let mod_content = fs::read_to_string(&mod_rs).unwrap_or_default();
     let main = fs::read_to_string(project.main_rs()).unwrap_or_default();
     if !main.contains("mod http;") {
-        report.warn("src/http/ exists but main.rs has no `mod http;` — run `trembita doctor --fix`");
+        report
+            .warn("src/http/ exists but main.rs has no `mod http;` — run `trembita doctor --fix`");
     }
     for entry in walk_rs_files(&http_dir) {
         if entry.file_name().is_some_and(|n| n == "mod.rs") {
