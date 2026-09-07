@@ -304,9 +304,7 @@ mod tests {
         let observer: Arc<dyn Observer> = Arc::new(FakeObserver {
             actor_id: "orders/0".into(),
         });
-        let table = route_table(Arc::new(IntrospectApiState {
-            observer,
-        }));
+        let table = route_table(Arc::new(IntrospectApiState { observer }));
         let resp = table
             .dispatch_open(
                 &Method::GET,

@@ -203,7 +203,7 @@ impl GatewayDispatch {
         let started = std::time::Instant::now();
         let body_bytes = match read_body(body, crate::routing::MAX_BODY_BYTES).await {
             Ok(b) => b,
-            Err(resp) => return resp,
+            Err(resp) => return *resp,
         };
 
         let gates = self.gates_for(&surface);
@@ -298,22 +298,22 @@ impl Service<Request<Incoming>> for GatewayService {
     }
 }
 
-async fn read_body(body: Incoming, limit: usize) -> Result<Bytes, HttpResponse<BoxBody>> {
+async fn read_body(body: Incoming, limit: usize) -> Result<Bytes, Box<HttpResponse<BoxBody>>> {
     match body.collect().await {
         Ok(collected) => {
             let bytes = collected.to_bytes();
             if bytes.len() > limit {
-                return Err(text_response(
+                return Err(Box::new(text_response(
                     StatusCode::PAYLOAD_TOO_LARGE,
                     "request body too large",
-                ));
+                )));
             }
             Ok(bytes)
         }
-        Err(_) => Err(text_response(
+        Err(_) => Err(Box::new(text_response(
             StatusCode::BAD_REQUEST,
             "failed to read body",
-        )),
+        ))),
     }
 }
 

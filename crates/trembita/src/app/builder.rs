@@ -78,12 +78,11 @@ impl TrembitaAppBuilder {
                 opts = opts.tls(cert, key);
             }
             self.gateway = Some(opts.into_config());
-        } else if let Some(gateway) = self.gateway.as_mut() {
-            if gateway.tls.is_none()
-                && let Some((cert, key)) = cfg.http_tls.clone()
-            {
-                gateway.tls = Some(crate::gateway::GatewayTlsPaths { cert, key });
-            }
+        } else if let Some(gateway) = self.gateway.as_mut()
+            && gateway.tls.is_none()
+            && let Some((cert, key)) = cfg.http_tls.clone()
+        {
+            gateway.tls = Some(crate::gateway::GatewayTlsPaths { cert, key });
         }
         self
     }

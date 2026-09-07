@@ -123,10 +123,7 @@ mod tests {
     use trembita_runtime::ClusterAskError;
 
     fn test_state(ask: crate::AskFn, cast: crate::CastFn) -> Arc<ActorsApiState> {
-        Arc::new(ActorsApiState {
-            ask,
-            cast,
-        })
+        Arc::new(ActorsApiState { ask, cast })
     }
 
     #[tokio::test]

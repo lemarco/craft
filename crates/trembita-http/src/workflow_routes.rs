@@ -100,10 +100,7 @@ mod tests {
         run: crate::RunWorkflowFn,
         resume: crate::ResumeWorkflowFn,
     ) -> Arc<WorkflowsApiState> {
-        Arc::new(WorkflowsApiState {
-            run,
-            resume,
-        })
+        Arc::new(WorkflowsApiState { run, resume })
     }
 
     #[tokio::test]
