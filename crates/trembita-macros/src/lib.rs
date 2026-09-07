@@ -174,7 +174,7 @@ pub fn actor(attr: TokenStream, item: TokenStream) -> TokenStream {
     let is_user_actor = input
         .trait_
         .as_ref()
-        .and_then(|(_, path, _)| path.segments.last())
+        .and_then(|(path, _)| path.segments.last())
         .is_some_and(|seg| seg.ident == "UserActor");
     if !is_user_actor {
         return syn::Error::new_spanned(

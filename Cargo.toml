@@ -105,7 +105,7 @@ http-body-util = "0.1"
 hyper = { version = "1.10", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio", "service"] }
 tower = { version = "0.5", features = ["util"] }
-opendal = { version = "0.57", features = [
+opendal = { version = "0.55", features = [
     "services-s3",
     "services-gcs",
     "services-fs",
