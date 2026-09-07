@@ -4,6 +4,9 @@ Cargo.lock
 **/*.rs.bk
 .DS_Store
 
+# Local / CI rustc artifact cache (sccache)
+.sccache/
+
 # Cursor Playwright MCP session dumps (console logs, page snapshots)
 .playwright-mcp/
 
