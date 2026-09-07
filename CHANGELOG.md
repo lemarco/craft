@@ -7,7 +7,7 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with all
 
 Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases may include breaking changes on minor bumps; each is noted here.
 
-**Crates.io:** [`0.3.2`](https://crates.io/crates/trembita) (2026-09-05). See [0.4.0](#040--2026-09-07) below for the upcoming release.
+**Crates.io:** [`0.4.0`](https://crates.io/crates/trembita) (2026-09-07).
 
 ## [Unreleased]
 
