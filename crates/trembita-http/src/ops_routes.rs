@@ -65,7 +65,6 @@ pub fn ops_route_table(state: Arc<OpsApiState>) -> RouteTable {
 
     let introspect = crate::IntrospectApiState {
         observer: Arc::clone(&state.observer),
-        auth: None,
     };
 
     RouteTable::new()

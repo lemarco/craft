@@ -306,7 +306,6 @@ mod tests {
         });
         let table = route_table(Arc::new(IntrospectApiState {
             observer,
-            auth: None,
         }));
         let resp = table
             .dispatch_open(

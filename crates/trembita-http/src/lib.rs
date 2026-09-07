@@ -182,7 +182,6 @@ pub struct JobsApiState {
     pub(crate) list_jobs: ListJobsFn,
     pub(crate) requeue_dead_letter: RequeueDeadLetterFn,
     pub(crate) requeue_dead_letter_batch: RequeueDeadLetterBatchFn,
-    pub(crate) auth: Option<AuthFn>,
 }
 
 /// HTTP job enqueue + lookup API.
@@ -227,9 +226,12 @@ impl JobsApi {
     }
 
     /// Route table with optional gateway auth hook.
+    ///
+    /// When `auth` is `Some`, routes use [`AuthMode::Identity`]; the hook itself is
+    /// wired on the gateway via [`auth_fn_to_identity`], not stored in handler state.
     #[must_use]
     pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
-        let table = routes::route_table(Arc::new(self.clone().into_state_with_auth(None)));
+        let table = routes::route_table(Arc::new(self.clone().into_state()));
         if auth.is_some() {
             table.with_auth_mode(routing::AuthMode::Identity)
         } else {
@@ -240,12 +242,6 @@ impl JobsApi {
     /// State handle for route tables.
     #[must_use]
     pub fn into_state(self) -> JobsApiState {
-        self.into_state_with_auth(None)
-    }
-
-    /// State handle with an optional gateway auth hook.
-    #[must_use]
-    pub fn into_state_with_auth(self, auth: Option<AuthFn>) -> JobsApiState {
         JobsApiState {
             enqueue: self.enqueue,
             enqueue_batch: self.enqueue_batch,
@@ -254,8 +250,13 @@ impl JobsApi {
             list_jobs: self.list_jobs,
             requeue_dead_letter: self.requeue_dead_letter,
             requeue_dead_letter_batch: self.requeue_dead_letter_batch,
-            auth,
         }
+    }
+
+    /// Alias of [`Self::into_state`]. Auth is applied via [`Self::route_table_with_auth`].
+    #[must_use]
+    pub fn into_state_with_auth(self, _auth: Option<AuthFn>) -> JobsApiState {
+        self.into_state()
     }
 }
 
@@ -280,7 +281,6 @@ pub type CastFn = Arc<
 pub struct ActorsApiState {
     pub(crate) ask: AskFn,
     pub(crate) cast: CastFn,
-    pub(crate) auth: Option<AuthFn>,
 }
 
 /// HTTP actor cast / ask API.
@@ -304,9 +304,12 @@ impl ActorsApi {
     }
 
     /// Route table with optional gateway auth hook.
+    ///
+    /// When `auth` is `Some`, routes use [`AuthMode::Identity`]; the hook itself is
+    /// wired on the gateway via [`auth_fn_to_identity`], not stored in handler state.
     #[must_use]
     pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
-        let table = actor_routes::route_table(Arc::new(self.clone().into_state_with_auth(None)));
+        let table = actor_routes::route_table(Arc::new(self.clone().into_state()));
         if auth.is_some() {
             table.with_auth_mode(routing::AuthMode::Identity)
         } else {
@@ -317,17 +320,16 @@ impl ActorsApi {
     /// State handle for route tables.
     #[must_use]
     pub fn into_state(self) -> ActorsApiState {
-        self.into_state_with_auth(None)
-    }
-
-    /// State handle with an optional gateway auth hook.
-    #[must_use]
-    pub fn into_state_with_auth(self, auth: Option<AuthFn>) -> ActorsApiState {
         ActorsApiState {
             ask: self.ask,
             cast: self.cast,
-            auth,
         }
+    }
+
+    /// Alias of [`Self::into_state`]. Auth is applied via [`Self::route_table_with_auth`].
+    #[must_use]
+    pub fn into_state_with_auth(self, _auth: Option<AuthFn>) -> ActorsApiState {
+        self.into_state()
     }
 }
 
@@ -357,7 +359,6 @@ pub type ResumeWorkflowFn = Arc<
 pub struct WorkflowsApiState {
     pub(crate) run: RunWorkflowFn,
     pub(crate) resume: ResumeWorkflowFn,
-    pub(crate) auth: Option<AuthFn>,
 }
 
 /// HTTP keyed-saga trigger API.
@@ -381,9 +382,12 @@ impl WorkflowsApi {
     }
 
     /// Route table with optional gateway auth hook.
+    ///
+    /// When `auth` is `Some`, routes use [`AuthMode::Identity`]; the hook itself is
+    /// wired on the gateway via [`auth_fn_to_identity`], not stored in handler state.
     #[must_use]
     pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
-        let table = workflow_routes::route_table(Arc::new(self.clone().into_state_with_auth(None)));
+        let table = workflow_routes::route_table(Arc::new(self.clone().into_state()));
         if auth.is_some() {
             table.with_auth_mode(routing::AuthMode::Identity)
         } else {
@@ -394,17 +398,16 @@ impl WorkflowsApi {
     /// State handle for route tables.
     #[must_use]
     pub fn into_state(self) -> WorkflowsApiState {
-        self.into_state_with_auth(None)
-    }
-
-    /// State handle with an optional gateway auth hook.
-    #[must_use]
-    pub fn into_state_with_auth(self, auth: Option<AuthFn>) -> WorkflowsApiState {
         WorkflowsApiState {
             run: self.run,
             resume: self.resume,
-            auth,
         }
+    }
+
+    /// Alias of [`Self::into_state`]. Auth is applied via [`Self::route_table_with_auth`].
+    #[must_use]
+    pub fn into_state_with_auth(self, _auth: Option<AuthFn>) -> WorkflowsApiState {
+        self.into_state()
     }
 }
 
@@ -448,7 +451,6 @@ pub async fn spawn_workflows_server(
 /// Shared state for introspection routes.
 pub struct IntrospectApiState {
     pub(crate) observer: Arc<dyn Observer>,
-    pub(crate) auth: Option<AuthFn>,
 }
 
 /// HTTP cluster introspection API (read-only Observer snapshots).
@@ -471,10 +473,12 @@ impl IntrospectApi {
     }
 
     /// Route table with optional gateway auth hook.
+    ///
+    /// When `auth` is `Some`, routes use [`AuthMode::Identity`]; the hook itself is
+    /// wired on the gateway via [`auth_fn_to_identity`], not stored in handler state.
     #[must_use]
     pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
-        let table =
-            introspect_routes::route_table(Arc::new(self.clone().into_state_with_auth(None)));
+        let table = introspect_routes::route_table(Arc::new(self.clone().into_state()));
         if auth.is_some() {
             table.with_auth_mode(routing::AuthMode::Identity)
         } else {
@@ -485,15 +489,14 @@ impl IntrospectApi {
     /// State handle for route tables.
     #[must_use]
     pub fn into_state(self) -> IntrospectApiState {
-        self.into_state_with_auth(None)
-    }
-
-    /// State handle with an optional gateway auth hook.
-    #[must_use]
-    pub fn into_state_with_auth(self, auth: Option<AuthFn>) -> IntrospectApiState {
         IntrospectApiState {
             observer: self.observer,
-            auth,
         }
+    }
+
+    /// Alias of [`Self::into_state`]. Auth is applied via [`Self::route_table_with_auth`].
+    #[must_use]
+    pub fn into_state_with_auth(self, _auth: Option<AuthFn>) -> IntrospectApiState {
+        self.into_state()
     }
 }

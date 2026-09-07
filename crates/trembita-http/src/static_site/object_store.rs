@@ -58,7 +58,7 @@ impl ObjectStoreBackend {
         if let Some(endpoint) = &config.endpoint {
             builder = builder.endpoint(endpoint);
         }
-        let op = Operator::new(builder).expect("s3 operator").finish();
+        let op = Operator::new(builder).expect("s3 operator");
         let prefix = config.prefix.unwrap_or_default();
         Self {
             op,

@@ -103,7 +103,6 @@ mod tests {
         Arc::new(WorkflowsApiState {
             run,
             resume,
-            auth: None,
         })
     }
 

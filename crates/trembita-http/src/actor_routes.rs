@@ -126,7 +126,6 @@ mod tests {
         Arc::new(ActorsApiState {
             ask,
             cast,
-            auth: None,
         })
     }
 

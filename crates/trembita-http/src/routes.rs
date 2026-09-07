@@ -498,7 +498,6 @@ mod tests {
             list_jobs,
             requeue_dead_letter,
             requeue_dead_letter_batch,
-            auth: None,
         })
     }
 

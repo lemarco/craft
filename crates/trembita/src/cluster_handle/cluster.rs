@@ -653,19 +653,21 @@ impl<M: StateMachine> TrembitaCluster<M> {
 
     /// Whether this node currently believes it is the Raft leader.
     pub async fn is_leader(&self) -> bool {
-        if let Some(meta) = &self.meta_handle {
-            return meta
-                .status()
-                .await
-                .is_some_and(|s| matches!(s.role, trembita_core::Role::Leader));
-        }
-        let Some(handle) = self.group_handle(0) else {
+        let status = if let Some(meta) = &self.meta_handle {
+            meta.status().await
+        } else {
+            let Some(handle) = self.group_handle(0) else {
+                return false;
+            };
+            handle.status().await
+        };
+        let Some(status) = status else {
             return false;
         };
-        handle
-            .status()
-            .await
-            .is_some_and(|s| matches!(s.role, trembita_core::Role::Leader))
+        // Keep product facades (queues, topics) in sync when callers poll leadership —
+        // they route via [`ClusterFacts`], which otherwise lags the periodic refresher.
+        self.facts.update(&status);
+        matches!(status.role, trembita_core::Role::Leader)
     }
 
     /// Poll until this node is leader and optional job streams are mounted.

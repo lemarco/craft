@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use sqlx::postgres::PgPoolOptions;
-use sqlx::{PgPool, Row};
+use sqlx::{AssertSqlSafe, PgPool, Row};
 use trembita_actor_store::BoxFuture;
 use trembita_jobs::{BacklogError, BacklogItem, ExternalBacklog, Settlement};
 
@@ -122,7 +122,7 @@ impl ExternalBacklog for PgBacklog {
             let sql = format!(
                 "SELECT COUNT(*)::BIGINT AS n FROM {table} WHERE {status} IN ('{pending}', '{claimed}')"
             );
-            let row = sqlx::query(&sql)
+            let row = sqlx::query(AssertSqlSafe(sql))
                 .fetch_one(&pool)
                 .await
                 .map_err(|e| BacklogError::Backend(e.to_string()))?;
@@ -157,7 +157,7 @@ impl ExternalBacklog for PgBacklog {
                  WHERE t.{id} = picked.{id} \
                  RETURNING t.{id}, t.{payload}, t.{priority}"
             );
-            let rows = sqlx::query(&sql)
+            let rows = sqlx::query(AssertSqlSafe(sql))
                 .bind(i64::try_from(max).unwrap_or(i64::MAX))
                 .fetch_all(&pool)
                 .await
@@ -196,7 +196,7 @@ impl ExternalBacklog for PgBacklog {
                         "UPDATE {table} SET {status} = '{next}' \
                          WHERE {id} = $1 AND {status} = '{claimed}' AND {attempts_col} = $2"
                     );
-                    sqlx::query(&sql)
+                    sqlx::query(AssertSqlSafe(sql))
                         .bind(id_str)
                         .bind(i32::try_from(attempts).unwrap_or(i32::MAX))
                         .execute(&pool)
@@ -212,7 +212,7 @@ impl ExternalBacklog for PgBacklog {
                         "UPDATE {table} SET {status} = '{next}', {error} = $2, {attempts_col} = $3 \
                          WHERE {id} = $1"
                     );
-                    sqlx::query(&sql)
+                    sqlx::query(AssertSqlSafe(sql))
                         .bind(id_str)
                         .bind(msg)
                         .bind(i32::try_from(attempts).unwrap_or(i32::MAX))
@@ -229,7 +229,7 @@ impl ExternalBacklog for PgBacklog {
                         "UPDATE {table} SET {status} = '{next}', {error} = $2, {attempts_col} = $3 \
                          WHERE {id} = $1"
                     );
-                    sqlx::query(&sql)
+                    sqlx::query(AssertSqlSafe(sql))
                         .bind(id_str)
                         .bind(msg)
                         .bind(i32::try_from(attempts).unwrap_or(i32::MAX))
@@ -252,7 +252,7 @@ impl ExternalBacklog for PgBacklog {
             let claimed = schema.claimed_status.replace('\'', "''");
             let sql =
                 format!("UPDATE {table} SET {status} = '{pending}' WHERE {status} = '{claimed}'");
-            let result = sqlx::query(&sql)
+            let result = sqlx::query(AssertSqlSafe(sql))
                 .execute(&pool)
                 .await
                 .map_err(|e| BacklogError::Backend(e.to_string()))?;
@@ -276,7 +276,7 @@ impl ExternalBacklog for PgBacklog {
                 "UPDATE {table} SET {status} = '{pending}' \
                  WHERE {id} = $1 AND {status} = '{claimed}'"
             );
-            sqlx::query(&sql)
+            sqlx::query(AssertSqlSafe(sql))
                 .bind(id_str)
                 .execute(&pool)
                 .await

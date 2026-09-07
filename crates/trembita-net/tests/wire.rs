@@ -153,7 +153,7 @@ fn protocol_version_missing_header_defaults_to_one() {
 
 #[test]
 fn default_port_matches_the_spec() {
-    assert_eq!(wire::DEFAULT_PORT, 7443);
+    assert_eq!(wire::DEFAULT_PORT, 443);
 }
 
 // --- Peer directory ---------------------------------------------------------

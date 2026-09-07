@@ -298,10 +298,6 @@ impl Service<Request<Incoming>> for GatewayService {
     }
 }
 
-fn parse_query(raw: Option<&str>) -> HashMap<String, String> {
-    parse_query_string(raw)
-}
-
 async fn read_body(body: Incoming, limit: usize) -> Result<Bytes, HttpResponse<BoxBody>> {
     match body.collect().await {
         Ok(collected) => {
@@ -447,8 +443,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_query_string() {
-        let q = parse_query(Some("a=1&b=two"));
+    fn parses_simple_query() {
+        let q = parse_query_string(Some("a=1&b=two"));
         assert_eq!(q.get("a").map(String::as_str), Some("1"));
         assert_eq!(q.get("b").map(String::as_str), Some("two"));
     }

@@ -31,8 +31,6 @@ pub struct UpgradeApiState {
     pub view: UpgradeViewFn,
     /// `POST /cluster/upgrade/desired`
     pub set_desired: SetDesiredFn,
-    /// Optional auth hook (required for production fleet mutation).
-    pub auth: Option<AuthFn>,
 }
 
 /// Cluster upgrade HTTP API.
@@ -66,7 +64,6 @@ impl UpgradeApi {
         let table = route_table(Arc::new(UpgradeApiState {
             view: Arc::clone(&self.view),
             set_desired: Arc::clone(&self.set_desired),
-            auth: None,
         }));
         if self.auth.is_some() {
             table.with_auth_mode(AuthMode::Identity)
@@ -81,26 +78,13 @@ impl UpgradeApi {
         UpgradeApiState {
             view: self.view,
             set_desired: self.set_desired,
-            auth: self.auth,
         }
     }
 
-    /// Like [`Self::into_state`] with an explicit auth hook.
+    /// Alias of [`Self::into_state`]. Auth is applied via [`Self::with_auth`] / route table mode.
     #[must_use]
-    pub fn into_state_with_auth(self, auth: Option<AuthFn>) -> UpgradeApiState {
-        UpgradeApiState {
-            view: self.view,
-            set_desired: self.set_desired,
-            auth,
-        }
-    }
-
-    fn clone_state(&self) -> UpgradeApiState {
-        UpgradeApiState {
-            view: Arc::clone(&self.view),
-            set_desired: Arc::clone(&self.set_desired),
-            auth: self.auth.clone(),
-        }
+    pub fn into_state_with_auth(self, _auth: Option<AuthFn>) -> UpgradeApiState {
+        self.into_state()
     }
 }
 
@@ -169,7 +153,7 @@ mod tests {
     use super::*;
     use crate::JobsApiError;
 
-    fn state_with_auth(auth: AuthFn) -> Arc<UpgradeApiState> {
+    fn test_state() -> Arc<UpgradeApiState> {
         Arc::new(UpgradeApiState {
             view: Arc::new(|| {
                 Box::pin(async {
@@ -184,7 +168,6 @@ mod tests {
                 })
             }),
             set_desired: Arc::new(|_| Box::pin(async { Ok(()) })),
-            auth: Some(auth),
         })
     }
 
@@ -204,7 +187,6 @@ mod tests {
                 })
             }),
             set_desired: Arc::new(|_| Box::pin(async { Ok(()) })),
-            auth: None,
         }));
         let resp = table
             .dispatch_open(
@@ -227,7 +209,7 @@ mod tests {
         let auth: AuthFn =
             Arc::new(|_, _, _| Box::pin(async { Err(JobsApiError::Unauthorized("nope".into())) }));
         let identity = auth_fn_to_identity(Arc::clone(&auth));
-        let table = route_table(state_with_auth(auth)).with_auth_mode(AuthMode::Identity);
+        let table = route_table(test_state()).with_auth_mode(AuthMode::Identity);
         let gates = DispatchGates {
             session_gate: None,
             identity: Some(&identity),
@@ -259,7 +241,6 @@ mod tests {
                     Ok(())
                 })
             }),
-            auth: None,
         }));
         let body = r#"{"app_version":"1.0.0","url":"file:///x","sha256_hex":"00"}"#;
         let resp = table

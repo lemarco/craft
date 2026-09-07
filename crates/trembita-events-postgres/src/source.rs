@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use sqlx::postgres::PgPoolOptions;
-use sqlx::{PgPool, Row};
+use sqlx::{AssertSqlSafe, PgPool, Row};
 use trembita_actor_store::BoxFuture;
 use trembita_events::{EventOutboxError, EventOutboxSource, OutboxEvent};
 
@@ -79,7 +79,7 @@ impl EventOutboxSource for PgEventOutboxSource {
                  LIMIT $2"
             );
 
-            let rows = sqlx::query(&sql)
+            let rows = sqlx::query(AssertSqlSafe(sql))
                 .bind(after_str)
                 .bind(i64::try_from(max.max(1)).unwrap_or(i64::MAX))
                 .fetch_all(&pool)
@@ -124,7 +124,7 @@ impl EventOutboxSource for PgEventOutboxSource {
                 "UPDATE {table} SET {published} = NOW() \
                  WHERE {id_col}::text = ANY($1::text[])"
             );
-            sqlx::query(&sql)
+            sqlx::query(AssertSqlSafe(sql))
                 .bind(&ids)
                 .execute(&pool)
                 .await

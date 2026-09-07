@@ -23,7 +23,7 @@ fn replication_unsupported() -> TopicError {
 /// Cluster-facing [`EventTopic`] that routes through the leader wire service.
 pub struct ClusterEventTopic {
     topic: String,
-    _node_id: NodeId,
+    node_id: NodeId,
     state: Arc<dyn ClusterState>,
     transport: Arc<dyn Transport>,
 }
@@ -39,13 +39,19 @@ impl ClusterEventTopic {
     ) -> Self {
         Self {
             topic: topic.into(),
-            _node_id: node_id,
+            node_id,
             state,
             transport,
         }
     }
 
     fn leader(&self) -> Result<NodeId, TopicError> {
+        // Prefer local leadership (same as [`trembita_jobs::ClusterJobQueue`]) so
+        // publishes succeed as soon as facts report leader, even if `leader_id`
+        // has not been mirrored yet.
+        if self.state.is_leader() {
+            return Ok(self.node_id);
+        }
         self.state.leader_id().ok_or(TopicError::NotLeader)
     }
 
