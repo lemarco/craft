@@ -4,16 +4,15 @@
 # not merge with them -- setting `RUSTFLAGS=-D warnings` silently drops mold and
 # invalidates the whole build cache. Put lints in [target.*.rustflags] instead.
 #
-# Machine-specific build settings (target-dir on a faster disk, sccache,
-# incremental) belong in your environment, not here -- this file applies to CI
-# and every other clone. See docs: CARGO_TARGET_DIR / RUSTC_WRAPPER / CARGO_INCREMENTAL.
+# Requires `sccache` on PATH (`cargo install sccache` / scripts/install-dev-tools.sh).
+# An exported `RUSTC_WRAPPER` still overrides this — unset it if you need the
+# repo config to win: `env -u RUSTC_WRAPPER cargo …`.
 
 [build]
-# sccache is enabled via ~/.cargo/config.toml (rustc-wrapper). Incremental
-# compilation and sccache are incompatible — keep this false or Rust hit rate
-# stays ~0% (every rebuild looks like a unique compile).
+# Force sccache for this repo (works even without ~/.cargo rustc-wrapper).
+rustc-wrapper = "sccache"
+# Incremental and sccache are incompatible — Rust hit rate stays ~0% otherwise.
 incremental = false
-# rustc-wrapper lives in ~/.cargo; do not duplicate here (CI/other clones).
 
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"
