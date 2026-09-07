@@ -9,10 +9,11 @@
 # and every other clone. See docs: CARGO_TARGET_DIR / RUSTC_WRAPPER / CARGO_INCREMENTAL.
 
 [build]
-# Faster incremental rebuilds in dev; disable only when using sccache as rustc-wrapper.
-incremental = true
-# Uncomment or `export RUSTC_WRAPPER=sccache` for cold-build caching (CI / clean clones).
-# rustc-wrapper = "sccache"
+# sccache is enabled via ~/.cargo/config.toml (rustc-wrapper). Incremental
+# compilation and sccache are incompatible — keep this false or Rust hit rate
+# stays ~0% (every rebuild looks like a unique compile).
+incremental = false
+# rustc-wrapper lives in ~/.cargo; do not duplicate here (CI/other clones).
 
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"
