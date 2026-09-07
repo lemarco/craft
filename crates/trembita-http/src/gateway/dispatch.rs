@@ -112,7 +112,7 @@ impl GatewayDispatch {
         self
     }
 
-    /// Gateway identity hook for [`AuthMode::Identity`] routes.
+    /// Gateway identity hook for `AuthMode::Identity` routes.
     #[must_use]
     pub fn with_identity(mut self, identity: IdentityAuthFn) -> Self {
         self.identity = Some(identity);
@@ -276,7 +276,7 @@ impl GatewayService {
         &mut self.dispatch
     }
 
-    /// Attach gateway identity hook for [`AuthMode::Identity`] routes.
+    /// Attach gateway identity hook for `AuthMode::Identity` routes.
     #[must_use]
     pub fn with_identity(mut self, identity: IdentityAuthFn) -> Self {
         self.dispatch = self.dispatch.clone().with_identity(identity);

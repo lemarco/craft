@@ -126,7 +126,7 @@ impl AppRsPatch {
         Ok(())
     }
 
-    /// Ensure `.surfaces(|…| { // trembita:surfaces … })` exists on [`GatewayOpts`].
+    /// Ensure `.surfaces(|…| { // trembita:surfaces … })` exists on `GatewayOpts`.
     pub fn ensure_surfaces_block(&mut self) -> Result<(), PatchError> {
         if self.has_marker(names::SURFACES) {
             return Ok(());

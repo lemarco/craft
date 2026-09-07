@@ -97,7 +97,7 @@ pub fn gateway_ops_surfaces(state: TrembitaGatewayState) -> Gateway {
     Gateway::new(false).dev_fallback(state.app.ops_api().route_table())
 }
 
-/// Ops route table for a running [`TrembitaCluster`] (facade integration tests).
+/// Ops route table for a running `TrembitaCluster` (facade integration tests).
 #[must_use]
 pub fn cluster_ops_route_table<M>(
     cluster: &trembita::cluster::TrembitaCluster<M>,

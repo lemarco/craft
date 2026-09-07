@@ -76,9 +76,9 @@ pub struct AddHttpSurfaceOpts {
     pub hosts: Vec<String>,
     /// Rust module file name (default: derived from `name`).
     pub module: Option<String>,
-    /// Wire a [`SessionGate`](trembita::SessionGate) on the surface.
+    /// Wire `SessionGate` on the surface.
     pub session: bool,
-    /// Attach [`CorsPolicy::credentials`](trembita::CorsPolicy) for browser clients.
+    /// Attach `CorsPolicy::credentials` for browser clients.
     pub cors: bool,
 }
 

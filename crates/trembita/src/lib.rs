@@ -41,8 +41,8 @@
 //! | `http-jobs` (default) | Product HTTP gateway (`Gateway`, `/jobs/*`, …) |
 //! | `dev-certs` | Ephemeral mTLS for local development |
 //! | `redis-store` | Redis [`ActorStateStore`](trembita_actor_store::ActorStateStore) |
-//! | `external-backlog` | Postgres [`ExternalBacklog`](trembita_jobs::ExternalBacklog) adapter |
-//! | `domain-outbox` | Postgres [`EventOutboxSource`](trembita_events::EventOutboxSource) adapter |
+//! | `external-backlog` | Postgres [`ExternalBacklog`] adapter |
+//! | `domain-outbox` | Postgres [`EventOutboxSource`] adapter |
 //!
 //! Full reference: [facade ADR](https://gitlab.com/lemarco/trembita/-/blob/main/docs/decisions/facade.md).
 //!
