@@ -27,6 +27,11 @@ variables:
   CARGO_BUILD_JOBS: "2"
   NEXTEST_PROFILE: ci
   TREMBITA_DEFAULT_BRANCH: "master"
+  # sccache (forced by .cargo/config.toml rustc-wrapper) — small disk budget on CI.
+  SCCACHE_DIR: "$CI_PROJECT_DIR/.sccache"
+  SCCACHE_CACHE_SIZE: "2G"
+  RUSTC_WRAPPER: sccache
+  SCCACHE_VERSION: "0.17.0"
 
 .rules_branch_mr:
   rules:
@@ -57,6 +62,7 @@ variables:
 .rust_ci_setup:
   before_script:
     - bash scripts/ci-env.sh
+    - bash scripts/ci-sccache.sh
     - !reference [.rust_linux_linker, before_script]
 
 .rust_fast_lane_setup:
@@ -71,11 +77,12 @@ variables:
     key:
       files:
         - Cargo.lock
-      prefix: cargo-registry-v2
+      prefix: cargo-registry-sccache-v1
     paths:
       - .cargo/registry/index/
       - .cargo/registry/cache/
       - .cargo/git/db/
+      - .sccache/
     policy: pull-push
 
 # --- Check lane (every MR / branch push) -------------------------------------
@@ -90,6 +97,9 @@ fast:
   script:
     - df -h .
     - TREMBITA_CI_DISK_PRUNE=1 bash scripts/ci-fast-lane.sh
+  after_script:
+    - export PATH="${CARGO_HOME}/bin:${PATH}"
+    - sccache --show-stats || true
 
 msrv:
   stage: check

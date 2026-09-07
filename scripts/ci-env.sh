@@ -10,6 +10,11 @@ export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
 export NEXTEST_PROFILE="${NEXTEST_PROFILE:-ci}"
 
+# Prefer CI-installed tools (nextest, sccache) over the image defaults.
+if [[ -n "${CARGO_HOME:-}" ]]; then
+  export PATH="${CARGO_HOME}/bin:${PATH}"
+fi
+
 if [[ -n "${CI:-}" ]]; then
   echo "ci-env: CARGO_INCREMENTAL=$CARGO_INCREMENTAL CARGO_BUILD_JOBS=$CARGO_BUILD_JOBS NEXTEST_PROFILE=$NEXTEST_PROFILE"
   echo "ci-env: CARGO_PROFILE_DEV_DEBUG=${CARGO_PROFILE_DEV_DEBUG:-<unset>} CARGO_PROFILE_DEV_SPLIT_DEBUGINFO=${CARGO_PROFILE_DEV_SPLIT_DEBUGINFO:-<unset>}"
