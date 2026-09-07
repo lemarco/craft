@@ -47,6 +47,9 @@ struct SurfaceDispatch {
 
 impl GatewayDispatch {
     /// Build dispatch table from validated [`super::Gateway`] surfaces.
+    ///
+    /// # Errors
+    /// [`super::GatewayBuildError`] when the gateway has no hosts or invalid surfaces.
     pub fn from_gateway(gateway: &super::Gateway) -> Result<Self, super::GatewayBuildError> {
         gateway.validate()?;
         let mut hosts = HashMap::new();
@@ -92,7 +95,7 @@ impl GatewayDispatch {
 
     /// Append routes onto every registered surface (built-in APIs on all hosts).
     #[must_use]
-    pub fn merge_all_surfaces(mut self, routes: RouteTable) -> Self {
+    pub fn merge_all_surfaces(mut self, routes: &RouteTable) -> Self {
         let mut map = HashMap::new();
         for (host, surface) in self.hosts.iter() {
             let merged = surface.routes.clone().merge(routes.clone());
@@ -133,6 +136,7 @@ impl GatewayDispatch {
         None
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle(&self, req: http::Request<Incoming>) -> HttpResponse<BoxBody> {
         if is_websocket_upgrade(req.headers()) {
             let path = req.uri().path().to_string();
@@ -143,11 +147,8 @@ impl GatewayDispatch {
                     Err(_) => return text_response(StatusCode::BAD_REQUEST, "invalid Host header"),
                 },
             };
-            let surface = match self.resolve_surface(&host) {
-                Some(s) => s,
-                None => {
-                    return text_response(StatusCode::NOT_FOUND, &format!("unknown host: {host}"));
-                }
+            let Some(surface) = self.resolve_surface(&host) else {
+                return text_response(StatusCode::NOT_FOUND, &format!("unknown host: {host}"));
             };
             if let Some((handler, auth)) = surface.routes.match_websocket(&path) {
                 let gates = self.gates_for(&surface);
@@ -156,7 +157,7 @@ impl GatewayDispatch {
                     .authorize_websocket(&path, auth, &gates, req.headers())
                     .await
                 {
-                    return routing_to_http_response(err.into_http_response());
+                    return routing_to_http_response(&err.into_http_response());
                 }
                 return handler(req).await;
             }
@@ -172,9 +173,8 @@ impl GatewayDispatch {
             },
         };
 
-        let surface = match self.resolve_surface(&host) {
-            Some(s) => s,
-            None => return text_response(StatusCode::NOT_FOUND, &format!("unknown host: {host}")),
+        let Some(surface) = self.resolve_surface(&host) else {
+            return text_response(StatusCode::NOT_FOUND, &format!("unknown host: {host}"));
         };
 
         let origin = parts
@@ -226,12 +226,13 @@ impl GatewayDispatch {
                     host = %host,
                     path = %path,
                     status = %status.as_u16(),
-                    latency_ms = started.elapsed().as_millis() as u64,
+                    latency_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
                     "gateway.request"
                 );
                 apply_cors(
                     routing_to_http_response(
-                        resp.finalize()
+                        &resp
+                            .finalize()
                             .unwrap_or_else(|e| Response::text(e.status(), e.message())),
                     ),
                     surface.cors.as_ref(),
@@ -330,7 +331,7 @@ fn text_response(status: StatusCode, message: &str) -> HttpResponse<BoxBody> {
 }
 
 /// Convert a routing [`Response`] into a hyper HTTP/1 response.
-pub fn routing_to_http_response(response: Response) -> HttpResponse<BoxBody> {
+pub fn routing_to_http_response(response: &Response) -> HttpResponse<BoxBody> {
     let status = response.status_code();
     let body = match response.body() {
         ResponseBody::Empty => {

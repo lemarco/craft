@@ -46,7 +46,6 @@ async fn trembita_app_three_node_cluster_re_elects_after_leader_shutdown() {
                 tick_period: Duration::from_millis(5),
                 reconcile_period: Duration::from_millis(20),
                 directory_publish_period: Duration::from_millis(20),
-                ..TrembitaConfigure::default()
             })
             .members(ids)
             .boot_for_test(RunOpts::local().with_local_net(net.clone()))

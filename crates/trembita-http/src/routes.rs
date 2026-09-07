@@ -46,6 +46,7 @@ pub struct ListJobsQuery {
 
 /// Route table for job queue routes.
 #[must_use]
+#[allow(clippy::needless_pass_by_value)]
 pub fn route_table(state: Arc<JobsApiState>) -> RouteTable {
     let s1 = Arc::clone(&state);
     let s2 = Arc::clone(&state);

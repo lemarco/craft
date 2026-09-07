@@ -7,11 +7,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with all
 
 Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases may include breaking changes on minor bumps; each is noted here.
 
-**Crates.io:** [`0.4.0`](https://crates.io/crates/trembita) (2026-09-05). See [0.4.0](#040--2026-09-05) below for the latest release.
+**Crates.io:** [`0.3.2`](https://crates.io/crates/trembita) (2026-09-05). See [0.4.0](#040--2026-09-07) below for the upcoming release.
 
 ## [Unreleased]
 
-## [0.4.0] — 2026-09-05
+## [0.4.0] — 2026-09-07
 
 ### Added
 
@@ -36,7 +36,12 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 ### Changed
 
 - **Breaking:** `GatewayOpts::routes` and `build_gateway_router` removed; use `.surfaces()` and [`build_gateway_service`](crates/trembita/src/gateway/router.rs).
+- **Breaking:** default QUIC/HTTP listen port is **443** (was `7443`); wire UDP and product TCP share the port ([unified-listener](docs/decisions/unified-listener.md)).
 - **Path matching** — trailing-slash normalization on route patterns.
+
+### Fixed
+
+- Topic publish no longer returns `NotLeader` immediately after election (`ClusterFacts` lagged live Raft status).
 
 ### Removed
 
@@ -44,8 +49,7 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ## [0.3.2] — 2026-09-05
 
-> **Superseded in 0.4.0:** This release used Axum [`HostRouter`](crates/trembita-http/src/host_router.rs) and
-> `host_router.rs`. Those APIs were **removed in 0.4.0** — migrate to [`Gateway`](crates/trembita-http/src/gateway/mod.rs) /
+> **Superseded in 0.4.0:** This release used Axum `HostRouter` (`host_router.rs`). Those APIs were **removed in 0.4.0** — migrate to [`Gateway`](crates/trembita-http/src/gateway/mod.rs) /
 > [`RouteTable`](crates/trembita-http/src/routing/table.rs) ([gateway-0.4](docs/migration/gateway-0.4.md)).
 
 ### Added
@@ -313,7 +317,8 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
   backpressure on QUIC.
 
 
-[Unreleased]: https://gitlab.com/lemarco/trembita/-/compare/v0.3.2...HEAD
+[Unreleased]: https://gitlab.com/lemarco/trembita/-/compare/v0.4.0...HEAD
+[0.4.0]: https://gitlab.com/lemarco/trembita/-/compare/v0.3.2...v0.4.0
 [0.3.2]: https://gitlab.com/lemarco/trembita/-/compare/v0.3.1...v0.3.2
 [0.3.1]: https://gitlab.com/lemarco/trembita/-/compare/v0.3.0...v0.3.1
 [0.3.0]: https://gitlab.com/lemarco/trembita/-/compare/v0.2.3...v0.3.0

@@ -57,13 +57,13 @@ For new feature epics, use the next **B-NN** id and link the scenario + ADR.
 **Scenario:** all — custom operator / admin UIs (session auth, multi-page apps)  
 **ADR:** [introspect-api](decisions/introspect-api.md)
 
-Introspection JSON (`/introspect/cluster`, `/actors`, `/queues`, `/sagas`, …) is served only by the admin hyper server on `:8080`. Product teams mounting Jobs/Actors/Workflows on the gateway still hand-write the same read-only handlers to feed their admin UI. `list_jobs` / `requeue_dead_letter_batch` are already on `JobsApi`; the gap is the **Observer snapshots** as a fourth mountable [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) with `AuthFn`.
+Introspection JSON (`/introspect/cluster`, `/actors`, `/queues`, `/sagas`, …) is served only by the admin hyper server on `:8080`. Product teams mounting Jobs/Actors/Workflows on the gateway still hand-write the same read-only handlers to feed their admin UI. `list_jobs` / `requeue_dead_letter_batch` are already on `JobsApi`; the gap is the **Observer snapshots** as a fourth mountable [`RouteTable`](../crates/trembita-http/src/routing/table.rs) with `AuthFn`.
 
 
 | Subtask | Wave | Description | Status |
 | ------- | ---- | ----------- | ------ |
 | B-19a   | 1 | **ADR** — `IntrospectApi`, routes, gateway wiring, admin port unchanged | ✅ |
-| B-19b   | 1 | **`IntrospectApi` in `trembita-http`** — [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) over `Arc<dyn Observer>`, `AuthFn` | ✅ |
+| B-19b   | 1 | **`IntrospectApi` in `trembita-http`** — [`RouteTable`](../crates/trembita-http/src/routing/table.rs) over `Arc<dyn Observer>`, `AuthFn` | ✅ |
 | B-19c   | 1 | **Facade** — `TrembitaApp::introspect_api`, `GatewayOpts::with_introspect_api`, `build_gateway_service` merge | ✅ |
 | B-19d   | 1 | **Re-exports** — `Observer` + view types from `trembita` / `trembita-http` for app handlers | ✅ |
 | B-19e   | 2 | **Tests** — route unit tests; integration `protect_product_apis` + JSON parity with admin | ✅ |

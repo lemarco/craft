@@ -493,7 +493,7 @@ impl RouteTable {
             self.fallback_auth = other.fallback_auth;
         }
         if self.websocket.is_none() {
-            self.websocket = other.websocket.clone();
+            self.websocket.clone_from(&other.websocket);
         }
         self.sse.extend(other.sse);
         self
@@ -516,7 +516,7 @@ impl std::fmt::Debug for RouteTable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RouteTable")
             .field("len", &self.routes.len())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -557,6 +557,9 @@ impl RouteTable {
     /// Dispatch without surface session or gateway identity gates.
     ///
     /// Built-in product APIs use handler-level auth; tests call this helper.
+    ///
+    /// # Errors
+    /// Same as [`Self::dispatch`].
     pub async fn dispatch_open(
         &self,
         method: &Method,

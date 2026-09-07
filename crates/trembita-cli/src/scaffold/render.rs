@@ -417,7 +417,7 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     if features.contains(&AppFeature::Gateway) {
         if features.contains(&AppFeature::Jobs) {
             builder.push_str(
-                r#"            .gateway(
+                r"            .gateway(
                 GatewayOpts::new(self.config.http_addr)
                     .identity(GatewayBearerIdentity::from_env())
                     .surfaces(|state| {
@@ -429,11 +429,11 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
                         // trembita:surfaces-end
                     }),
             )
-"#,
+",
             );
         } else {
             builder.push_str(
-                r#"            .gateway(
+                r"            .gateway(
                 GatewayOpts::new(self.config.http_addr)
                     .identity(GatewayBearerIdentity::from_env())
                     .surfaces(|state| {
@@ -443,7 +443,7 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
                         // trembita:surfaces-end
                     }),
             )
-"#,
+",
             );
         }
     }

@@ -230,6 +230,7 @@ impl JobsApi {
     /// When `auth` is `Some`, routes use [`AuthMode::Identity`]; the hook itself is
     /// wired on the gateway via [`auth_fn_to_identity`], not stored in handler state.
     #[must_use]
+    #[allow(clippy::needless_pass_by_value)]
     pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
         let table = routes::route_table(Arc::new(self.clone().into_state()));
         if auth.is_some() {
@@ -308,6 +309,7 @@ impl ActorsApi {
     /// When `auth` is `Some`, routes use [`AuthMode::Identity`]; the hook itself is
     /// wired on the gateway via [`auth_fn_to_identity`], not stored in handler state.
     #[must_use]
+    #[allow(clippy::needless_pass_by_value)]
     pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
         let table = actor_routes::route_table(Arc::new(self.clone().into_state()));
         if auth.is_some() {
@@ -386,6 +388,7 @@ impl WorkflowsApi {
     /// When `auth` is `Some`, routes use [`AuthMode::Identity`]; the hook itself is
     /// wired on the gateway via [`auth_fn_to_identity`], not stored in handler state.
     #[must_use]
+    #[allow(clippy::needless_pass_by_value)]
     pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
         let table = workflow_routes::route_table(Arc::new(self.clone().into_state()));
         if auth.is_some() {
@@ -477,6 +480,7 @@ impl IntrospectApi {
     /// When `auth` is `Some`, routes use [`AuthMode::Identity`]; the hook itself is
     /// wired on the gateway via [`auth_fn_to_identity`], not stored in handler state.
     #[must_use]
+    #[allow(clippy::needless_pass_by_value)]
     pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
         let table = introspect_routes::route_table(Arc::new(self.clone().into_state()));
         if auth.is_some() {

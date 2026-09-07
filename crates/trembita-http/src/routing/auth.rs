@@ -68,7 +68,7 @@ impl SessionGate {
     /// Attach [`CookieConfig`] for login `Set-Cookie` helpers.
     #[must_use]
     pub fn with_cookie_config(mut self, config: CookieConfig) -> Self {
-        self.cookie_name = config.name.clone();
+        self.cookie_name.clone_from(&config.name);
         self.cookie_config = Some(config);
         self
     }
@@ -85,6 +85,9 @@ impl SessionGate {
     }
 
     /// Append a session `Set-Cookie` header to `response`.
+    ///
+    /// # Errors
+    /// [`HttpError::Internal`] when the gate has no cookie config or the header value is invalid.
     pub fn set_session_cookie(
         &self,
         response: &mut Response,
@@ -113,6 +116,9 @@ impl SessionGate {
     }
 
     /// Validate the session cookie in `headers`, if present.
+    ///
+    /// # Errors
+    /// [`HttpError::Unauthorized`] when the cookie is missing or the validator rejects it.
     pub async fn authorize(&self, headers: &HeaderMap) -> Result<(), HttpError> {
         let header = headers
             .get(http::header::COOKIE)

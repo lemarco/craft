@@ -208,6 +208,9 @@ impl Response {
     }
 
     /// Serialize JSON bodies and set default `Content-Type` where missing.
+    ///
+    /// # Errors
+    /// [`HttpError::Internal`] when a JSON body cannot be encoded.
     pub fn finalize(mut self) -> Result<Self, HttpError> {
         use http::header::CONTENT_TYPE;
 

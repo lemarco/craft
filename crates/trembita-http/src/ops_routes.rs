@@ -58,6 +58,7 @@ impl OpsApi {
 
 /// Route table for health, readiness, metrics, dashboard, and introspection.
 #[must_use]
+#[allow(clippy::needless_pass_by_value)]
 pub fn ops_route_table(state: Arc<OpsApiState>) -> RouteTable {
     let s1 = Arc::clone(&state);
     let s2 = Arc::clone(&state);
@@ -156,6 +157,9 @@ fn dashboard_events_sse(events: EventBus) -> Pin<Box<dyn Future<Output = HttpRes
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+
+    use http::HeaderMap;
     use trembita_dashboard::BoxFuture;
 
     struct FakeObserver;
@@ -233,8 +237,8 @@ mod tests {
             .dispatch_open(
                 &http::Method::GET,
                 "/health",
-                Default::default(),
-                Default::default(),
+                HashMap::default(),
+                HeaderMap::default(),
                 Bytes::new(),
             )
             .await
@@ -244,8 +248,8 @@ mod tests {
             .dispatch_open(
                 &http::Method::GET,
                 "/ready",
-                Default::default(),
-                Default::default(),
+                HashMap::default(),
+                HeaderMap::default(),
                 Bytes::new(),
             )
             .await

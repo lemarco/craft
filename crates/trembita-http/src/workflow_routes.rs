@@ -11,13 +11,11 @@ use crate::workflow_types::{SagaBody, WorkflowsApiError};
 /// Route table for workflow trigger routes.
 #[must_use]
 pub fn route_table(state: Arc<WorkflowsApiState>) -> RouteTable {
-    let health_state = Arc::clone(&state);
     let run_state = Arc::clone(&state);
     let resume_state = state;
     RouteTable::new()
-        .get("/health", move |ctx| {
-            let state = Arc::clone(&health_state);
-            async move { get_health(state, ctx).await }
+        .get("/health", move |_ctx| async move {
+            Ok(Response::text(StatusCode::OK, "ok"))
         })
         .post("/workflows/run", move |ctx| {
             let state = Arc::clone(&run_state);
@@ -27,20 +25,6 @@ pub fn route_table(state: Arc<WorkflowsApiState>) -> RouteTable {
             let state = Arc::clone(&resume_state);
             async move { post_resume(state, ctx).await }
         })
-}
-
-async fn get_health(state: Arc<WorkflowsApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {
-    match get_health_inner(&state, ctx).await {
-        Ok(r) => Ok(r),
-        Err(e) => Ok(e.into_http_response()),
-    }
-}
-
-async fn get_health_inner(
-    _state: &WorkflowsApiState,
-    _ctx: RequestCtx,
-) -> Result<Response, WorkflowsApiError> {
-    Ok(Response::text(StatusCode::OK, "ok"))
 }
 
 async fn post_run(state: Arc<WorkflowsApiState>, ctx: RequestCtx) -> Result<Response, HttpError> {

@@ -155,7 +155,7 @@ Gateway does **not** hold conversation state — only the session handle ([`Sess
 
 Use [`open_actor_session_parts`](../../crates/trembita/src/gateway/mod.rs) when the handler also extracts a JSON body; use [`open_actor_session_from`](../../crates/trembita/src/gateway/mod.rs) / [`extract_session_from`](../../crates/trembita/src/gateway/mod.rs) on plain GET handlers.
 
-Showcases: [`examples/realtime/src/gateway_http.rs`](../../examples/realtime/src/gateway_http.rs) (`POST /chat`, `GET /me`), [`examples/stateful-workers/src/gateway_orders.rs`](../../examples/stateful-workers/src/gateway_orders.rs) (`POST /orders/submit` beside built-in `/actors/*`).
+Showcases: [`examples/realtime`](../../examples/realtime/) (`POST /chat`, `GET /me`), [`examples/stateful-workers`](../../examples/stateful-workers/) (`POST /orders/submit` beside built-in `/actors/*`).
 
 ```rust
 use http::StatusCode;
