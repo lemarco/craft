@@ -119,18 +119,18 @@ struct ObjectTarget {
 fn operator_for_uri(uri: &str) -> Result<ObjectTarget, OpsError> {
     if let Some(rest) = uri.strip_prefix("s3://") {
         let (bucket, key) = split_bucket_key(rest)?;
-        let op = Operator::new(S3::default().bucket(&bucket))?;
+        let op = Operator::new(S3::default().bucket(&bucket))?.finish();
         return Ok(ObjectTarget { op, key });
     }
     if let Some(rest) = uri.strip_prefix("gs://") {
         let (bucket, key) = split_bucket_key(rest)?;
-        let op = Operator::new(Gcs::default().bucket(&bucket))?;
+        let op = Operator::new(Gcs::default().bucket(&bucket))?.finish();
         return Ok(ObjectTarget { op, key });
     }
     if let Some(rest) = uri.strip_prefix("file://") {
         let (root, key) = split_file_root_key(rest)?;
         let root_str = root.to_string_lossy().into_owned();
-        let op = Operator::new(Fs::default().root(&root_str))?;
+        let op = Operator::new(Fs::default().root(&root_str))?.finish();
         return Ok(ObjectTarget {
             op,
             key: key.clone(),

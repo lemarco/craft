@@ -11,7 +11,7 @@ use trembita::net::LocalNetwork;
 use trembita::proto::{LogIndex, NodeId};
 use trembita::{TopicOpts, TrembitaApp, TrembitaConfigure};
 use trembita_events::{SubscriptionStart, TopicSubscriptionDef};
-use trembita_test_support::{advance, await_trembita_leader, boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_support::{advance, await_trembita_leader, boot_local_app};
 
 #[derive(Default)]
 struct Empty;
@@ -68,7 +68,13 @@ async fn trembita_app_publishes_and_tracks_topic_metrics() {
     )
     .await;
 
-    wait_for_trembita_app_leader(&app).await;
+    for _ in 0..200 {
+        if app.is_leader().await {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(app.is_leader().await);
 
     app.publish("orders.events", b"order-created")
         .await
