@@ -15,10 +15,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use trembita::{
-    ActorGroupOpts, ConsumerOpts, Gateway, GatewayBearerIdentity, GatewayOpts, JobOpts, RunOpts,
-    TrembitaApp, TrembitaConfigure, TrembitaGatewayState, consumer,
+    ActorGroupOpts, AuthMode, ConsumerOpts, Gateway, GatewayBearerIdentity, GatewayOpts, JobOpts,
+    RunOpts, TrembitaApp, TrembitaConfigure, TrembitaGatewayState, consumer,
 };
-use trembita_http::AuthMode;
 use trembita_tools::showcase_common::{data_dir, display_addr};
 
 use crate::bridge::register as register_bridge;

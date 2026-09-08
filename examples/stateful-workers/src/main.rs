@@ -24,10 +24,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use trembita::{
-    Gateway, GatewayOpts, ReadyOpts, RunOpts, TrembitaApp, TrembitaAppBuilder, TrembitaConfigure,
-    TrembitaGatewayState, WorkerOpts, WorkerScale, workers,
+    AuthMode, Gateway, GatewayOpts, ReadyOpts, RunOpts, TrembitaApp, TrembitaAppBuilder,
+    TrembitaConfigure, TrembitaGatewayState, WorkerOpts, WorkerScale, workers,
 };
-use trembita_http::AuthMode;
 use trembita_tools::gateway_auth::ShowcaseGatewayIdentity;
 use trembita_tools::showcase_common::{data_dir, display_addr, env_flag};
 
