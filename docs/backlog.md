@@ -296,7 +296,7 @@ flowchart TB
 
 ### B-06 ✅ `trembita init` project template
 
-**Shipped:** 2026-08-28 — `scripts/trembita-init.sh`, `templates/trembita-app/`.
+**Shipped:** 2026-08-28 — `scripts/trembita-init.sh`, `crates/trembita-cli/templates/trembita-app/`.
 
 
 | Subtask | Description                                                         | Status     |
@@ -419,7 +419,7 @@ Gateway production readiness, queue lifecycle polish, and glue between product s
 | Subtask | Wave | Description | Status |
 | ------- | ---- | ----------- | ------ |
 | B-14a   | 1 | **Gateway auth hook** — middleware slot on [`GatewayOpts`](../crates/trembita/src/gateway/mod.rs) (JWT / API key / custom Axum layer); document pattern; extend [`examples/realtime/`](../examples/realtime/) beyond `GATEWAY_TOKEN` query stub ([product-scenarios](decisions/product-scenarios.md)) | ✅ |
-| B-14b   | 1 | **`trembita init` v2** — [`templates/trembita-app/`](../templates/trembita-app/): `JobOpts` + `#[consumer]` + `IdempotencyOpts::by_dedup_key` + `default_max_attempts(5)`; remove bare `TODO` stub ([B-06](backlog.md#b-06--trembita-init-project-template)) | ✅ |
+| B-14b   | 1 | **`trembita init` v2** — [`templates/trembita-app/`](../crates/trembita-cli/templates/trembita-app/): `JobOpts` + `#[consumer]` + `IdempotencyOpts::by_dedup_key` + `default_max_attempts(5)`; remove bare `TODO` stub ([B-06](backlog.md#b-06--trembita-init-project-template)) | ✅ |
 | B-14c   | 1 | **E2E HTTP jobs via gateway (docker)** — `POST /jobs/{stream}/batch` through product gateway in `e2e/` (QUIC queue E2E exists; HTTP gateway path does not) | ✅ |
 | B-14d   | 2 | **`IdempotencyOpts` TTL** — optional `retain_for` / `with_ttl` on done markers in `ActorStateStore`; default forever for payment-style keys; doc high-volume cleanup | ✅ |
 | B-14e   | 2 | **Graceful consumer drain** — on shutdown: stop leasing, wait for in-flight handlers (timeout), then ack/nack; `RunOpts` or `ConsumerOpts` hook to avoid noisy redelivery metrics | ✅ |

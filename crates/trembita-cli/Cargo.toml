@@ -11,6 +11,13 @@ homepage.workspace = true
 readme = "README.md"
 categories = ["development-tools", "command-line-utilities"]
 keywords = ["trembita", "scaffold", "cli", "framework", "distributed"]
+include = [
+    "src/**/*",
+    "templates/**/*",
+    "tests/**/*",
+    "Cargo.toml",
+    "README.md",
+]
 
 [lints]
 workspace = true
