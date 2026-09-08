@@ -2,7 +2,7 @@
 
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
-use trembita::{Gateway, HttpError, RequestCtx, Response, RouteTable, TrembitaGatewayState};
+use trembita::{HttpError, RequestCtx, Response, RouteTable, TrembitaGatewayState};
 
 use crate::debug;
 
@@ -38,10 +38,6 @@ pub fn order_routes(state: TrembitaGatewayState) -> RouteTable {
         let st = state.clone();
         async move { submit_order(st, ctx).await }
     })
-}
-
-pub fn surfaces(state: TrembitaGatewayState) -> Gateway {
-    Gateway::new(false).dev_fallback(order_routes(state))
 }
 
 /// `POST /orders/submit?user=<tenant>&token=…` — sticky cast to `orders` group.
