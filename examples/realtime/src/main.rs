@@ -103,6 +103,7 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
     let login_gate = gate.clone();
     let login_store = store.clone();
     let chat_state = state.clone();
+    let ops = state.app.ops_api().route_table();
     let ws_state = state;
 
     Gateway::new(false)
@@ -148,7 +149,7 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
                 .get_session("/me", move |ctx: RequestCtx| {
                     async move { gateway_session::get_me(ctx).await }
                 })
-                .merge(state.app.ops_api().route_table()),
+                .merge(ops),
         )
 }
 
