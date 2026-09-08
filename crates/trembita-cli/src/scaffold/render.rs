@@ -75,9 +75,7 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
     write_file(&root.join("Cargo.toml"), &generate_cargo_toml(opts))?;
     write_file(
         &root.join("README.md"),
-        &vars.apply(include_str!(
-            "../../templates/trembita-app/README.md.tpl"
-        )),
+        &vars.apply(include_str!("../../templates/trembita-app/README.md.tpl")),
     )?;
     write_file(
         &root.join("deploy/docker-compose.yml"),
