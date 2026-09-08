@@ -19,7 +19,7 @@ lefthook install
 ./scripts/install-dev-tools.sh   # cargo-nextest (parallel tests)
 ```
 
-MSRV is **1.90**. Edition **2024**. `unsafe` is forbidden workspace-wide.
+MSRV is **1.94**. Edition **2024**. `unsafe` is forbidden workspace-wide.
 
 ## Quality gates
 

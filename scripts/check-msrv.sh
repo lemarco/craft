@@ -2,14 +2,29 @@
 # MSRV gate — mirrors .gitlab-ci.yml `msrv` job (library-and-publishing).
 #
 # Env:
-#   TREMBITA_MSRV=1.90           — toolchain version (default from workspace)
+#   TREMBITA_MSRV=1.94           — toolchain version (default: workspace rust-version)
 #   TREMBITA_MSRV_STRICT=1       — fail when rustup/toolchain missing (release gate)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/hook-prelude.sh
 
-MSRV="${TREMBITA_MSRV:-1.90}"
+workspace_msrv() {
+  # Prefer [workspace.package] rust-version from the root Cargo.toml.
+  awk '
+    /^\[workspace\.package\]/ { in_pkg = 1; next }
+    /^\[/ { in_pkg = 0 }
+    in_pkg && /^rust-version[[:space:]]*=/ {
+      if (match($0, /"[0-9]+\.[0-9]+(\.[0-9]+)?"/)) {
+        print substr($0, RSTART + 1, RLENGTH - 2)
+        exit
+      }
+    }
+  ' Cargo.toml
+}
+
+MSRV="${TREMBITA_MSRV:-$(workspace_msrv)}"
+MSRV="${MSRV:-1.94}"
 STRICT="${TREMBITA_MSRV_STRICT:-0}"
 
 fail_or_warn() {

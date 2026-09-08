@@ -49,7 +49,7 @@ Legacy wrappers: `quality-gate-pre-commit.sh`, `quality-gate-pre-push.sh`.
 | test fail | Re-run narrow test |
 | doctest | `cargo test --doc -p <crate>` |
 | doc link | `./scripts/check-doc-links.sh` |
-| MSRV on release | `rustup toolchain install 1.90` |
+| MSRV on release | `rustup toolchain install 1.94` |
 
 ## Merge-ready checklist
 

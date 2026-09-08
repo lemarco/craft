@@ -46,7 +46,7 @@ Never `cargo publish --workspace` for real uploads. Use `publish-workspace.sh` (
 | `429 Too Many Requests` | Wait for script retry |
 | `tag vX.Y.Z already exists` | `--publish-only` |
 | `cargo doc` failed | Fix rustdoc; patch release — gate blocks |
-| MSRV strict fail | `rustup toolchain install 1.90` |
+| MSRV strict fail | `rustup toolchain install 1.94` |
 
 ## Related
 

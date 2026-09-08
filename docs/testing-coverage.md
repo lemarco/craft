@@ -204,7 +204,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Job | When | What runs |
 |-----|------|-----------|
 | `fast` | Every MR / push | fmt, clippy `-D warnings`, nextest (all non-ignored tests), doctests, doc |
-| `msrv` | Every MR / push | `cargo check` on Rust 1.90 |
+| `msrv` | Every MR / push | `cargo check` on Rust 1.94 |
 | `e2e` | Scheduled | `e2e/run.sh` + `e2e/leave.sh` + `e2e/chaos.sh` + `e2e/cert_renew.sh` + docker phase of `e2e/linearizability.sh` |
 | `linearizability-sim` | Scheduled | trembita-sim linearizability + read_index seed sweep (`e2e/linearizability.sh`) |
 | `store-redis` | Scheduled | `cargo test -p trembita-store-redis -- --ignored` |

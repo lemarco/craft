@@ -46,4 +46,4 @@ See [docs/process.md](docs/process.md) for gate tiers, CI lanes, and release.
 
 Fast iteration while coding: `./scripts/test-fast.sh -p <crate>`.
 
-MSRV **1.90**. Conventional commits. GitLab issues as `#<number>`.
+MSRV **1.94**. Conventional commits. GitLab issues as `#<number>`.

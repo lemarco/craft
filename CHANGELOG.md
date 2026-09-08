@@ -11,6 +11,10 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ## [Unreleased]
 
+### Changed
+
+- **MSRV 1.94** (was 1.90) — required by `sqlx` 0.9 and related dependency bumps; CI/`check-msrv.sh` aligned.
+
 ## [0.4.0] — 2026-09-07
 
 ### Added

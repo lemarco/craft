@@ -3,7 +3,7 @@
 **A distributed Raft + actor framework for Rust: one codebase, N nodes, elastic and self-healing.**
 
 [![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
-[![rust](https://img.shields.io/badge/rustc-1.90%2B-orange.svg)](#msrv)
+[![rust](https://img.shields.io/badge/rustc-1.94%2B-orange.svg)](#msrv)
 
 [![crates.io](https://img.shields.io/crates/v/trembita.svg)](https://crates.io/crates/trembita)
 [![docs.rs](https://docs.rs/trembita/badge.svg)](https://docs.rs/trembita)
@@ -173,7 +173,7 @@ Product apps: default `http-jobs` enables HTTP job routes; add `dev-certs` for l
 
 ## MSRV
 
-Minimum Supported Rust Version is **1.90** ([library-and-publishing](docs/decisions/library-and-publishing.md)).
+Minimum Supported Rust Version is **1.94** ([library-and-publishing](docs/decisions/library-and-publishing.md)).
 
 ## License
 

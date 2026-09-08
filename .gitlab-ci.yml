@@ -103,7 +103,7 @@ fast:
 
 msrv:
   stage: check
-  image: rust:1.90
+  image: rust:1.94
   extends: .rust_registry_cache
   rules:
     - !reference [.rules_branch_mr, rules]

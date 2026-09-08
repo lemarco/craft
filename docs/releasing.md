@@ -52,7 +52,7 @@ See [process.md](process.md) for the full commit → push → CI → release dia
 
 - `CARGO_REGISTRY_TOKEN` or `cargo login`
 - Clean working tree for prepare (not `--publish-only`)
-- MSRV toolchain installed locally (`rustup toolchain install 1.90`)
+- MSRV toolchain installed locally (`rustup toolchain install 1.94`)
 
 ## Versioning policy
 

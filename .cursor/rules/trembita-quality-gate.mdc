@@ -35,7 +35,7 @@ While iterating: `./scripts/test-with-log.sh -p <crate> --test <name>` — see `
 
 ## Standards
 
-- **MSRV 1.90**, edition 2024, `unsafe` forbidden workspace-wide.
+- **MSRV 1.94**, edition 2024, `unsafe` forbidden workspace-wide.
 - **Clippy / rustc: `-D warnings`**; **`clippy::pedantic`** via `scripts/clippy-args.sh`.
 - **`missing_docs`**: `deny` on published crates; audit: `./scripts/docs-missing-audit.sh`.
 - **Conventional commits**; GitLab issues as `#<number>`.

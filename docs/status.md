@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | **Version** | `0.4.0` |
-| **MSRV** | 1.90 |
+| **MSRV** | 1.94 |
 | **Distribution** | Published on [crates.io](https://crates.io/crates/trembita) — full test pyramid, E2E/chaos |
 
 ---
