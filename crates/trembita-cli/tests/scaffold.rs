@@ -28,7 +28,7 @@ fn scaffolds_default_layout() {
         "scaffold README must not use monorepo-relative doc paths"
     );
     assert!(readme.contains("gitlab.com/lemarco/trembita"));
-    assert!(readme.contains("demo-app"));
+    assert!(readme.starts_with("# demo app\n"));
     let cargo = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
     assert!(cargo.contains("name = \"demo-app\""));
     assert!(cargo.contains("default = [\"gateway\", \"jobs\", \"telemetry\"]"));

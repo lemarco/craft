@@ -13,7 +13,7 @@ Operational checklist for running trembita on **N identical VPS or bare-metal no
 4. **Data directory** — `TREMBITA_DATA_DIR=/var/lib/trembita/data` (redb: Raft groups, queues, actor store).
 5. **Peers** — static `TREMBITA_PEERS=id@host:7443,...` **or** dynamic `TREMBITA_JOIN_SEEDS` on first boot.
 6. **TLS** — `TREMBITA_NODE_CERT`, `TREMBITA_NODE_KEY`, `TREMBITA_CA_CERT` (see [certs.md](../certs.md)).
-7. **Ops HTTP (optional)** — merge [`OpsApi`](../crates/trembita-http/src/ops_routes.rs) on a private bind (`TREMBITA_HTTP` for `trembita-node`). Dashboard at `/dashboard`, Prometheus at `/metrics`.
+7. **Ops HTTP (optional)** — merge [`OpsApi`](../../crates/trembita-http/src/ops_routes.rs) on a private bind (`TREMBITA_HTTP` for `trembita-node`). Dashboard at `/dashboard`, Prometheus at `/metrics`.
 8. **Firewall** — allow **UDP/TCP 7443** between cluster members; restrict admin port to ops networks only.
 
 ### First node (bootstrap)
