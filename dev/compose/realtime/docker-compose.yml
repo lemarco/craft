@@ -43,7 +43,7 @@ services:
       <<: *node-env
       TREMBITA_NODE_ID: "1"
       TREMBITA_LISTEN: 0.0.0.0:7743
-      TREMBITA_ADMIN: 0.0.0.0:9380
+      TREMBITA_HTTP: 0.0.0.0:9380
       TREMBITA_GATEWAY: 0.0.0.0:8294
       TREMBITA_NODE_CERT: /certs/node-1.pem
       TREMBITA_NODE_KEY: /certs/node-1.key
@@ -64,7 +64,7 @@ services:
       <<: *node-env
       TREMBITA_NODE_ID: "2"
       TREMBITA_LISTEN: 0.0.0.0:7753
-      TREMBITA_ADMIN: 0.0.0.0:9381
+      TREMBITA_HTTP: 0.0.0.0:9381
       TREMBITA_GATEWAY: 0.0.0.0:8295
       TREMBITA_NODE_CERT: /certs/node-2.pem
       TREMBITA_NODE_KEY: /certs/node-2.key
@@ -85,7 +85,7 @@ services:
       <<: *node-env
       TREMBITA_NODE_ID: "3"
       TREMBITA_LISTEN: 0.0.0.0:7763
-      TREMBITA_ADMIN: 0.0.0.0:9382
+      TREMBITA_HTTP: 0.0.0.0:9382
       TREMBITA_GATEWAY: 0.0.0.0:8296
       TREMBITA_NODE_CERT: /certs/node-3.pem
       TREMBITA_NODE_KEY: /certs/node-3.key

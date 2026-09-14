@@ -78,12 +78,10 @@ Same code as above. [`cluster.sh`](../examples/background-jobs/cluster.sh) sets 
 | `TREMBITA_ALLOW_JOIN` | Seed accepts joins (default `1` when not joining) |
 | `TREMBITA_ALLOW_VOTER_JOIN` | Seed accepts voter joins (default `0`; joiners need `TREMBITA_JOIN_ROLE=voter`) |
 | `TREMBITA_PEERS` | Static voter bootstrap (`id@host:port,...`) — use for a fixed voter set without dynamic join |
-| `TREMBITA_GATEWAY` | Product HTTP/WS bind |
-| `TREMBITA_GATEWAY_INTROSPECT` | Mount `/introspect/*` on the gateway when `TREMBITA_GATEWAY` is set |
+| `TREMBITA_HTTP` | Unified product + ops HTTP bind (`-` disables); [`trembita-node`](../crates/trembita-tools) defaults to `127.0.0.1:8080` |
+| `TREMBITA_GATEWAY` | Alias for `TREMBITA_HTTP` on [`TrembitaApp`](../crates/trembita/src/app/mod.rs) |
 | `TREMBITA_CERT_WATCH_SECS` | PEM hot-reload poll interval (default `60`) |
-| `TREMBITA_ADMIN` | Admin dashboard bind (optional; unset = disabled; `-` = explicit off) |
-| `TREMBITA_GATEWAY_TLS_CERT` / `TREMBITA_GATEWAY_TLS_KEY` | Gateway HTTPS / WSS (optional; both required) |
-| `TREMBITA_ADMIN_TLS_CERT` / `TREMBITA_ADMIN_TLS_KEY` | Admin HTTPS (optional; both required) |
+| `TREMBITA_HTTP_TLS_CERT` / `TREMBITA_HTTP_TLS_KEY` | HTTP HTTPS / WSS (optional; both required; `TREMBITA_GATEWAY_TLS_*` aliases) |
 | `TREMBITA_JOB_QUEUE` | Job stream name (optional) |
 
 Node id is **not** configured — seed gets `1`, joiners are assigned by the leader and persisted under `TREMBITA_DATA_DIR`.
@@ -269,7 +267,7 @@ Generates the [framework layout](decisions/framework-conventions.md): `main.rs` 
 
 | Need | How |
 |------|-----|
-| Live dashboard | `.configure(TrembitaConfigure { admin_addr: Some(...), ..Default::default() })` or `TREMBITA_ADMIN` |
+| Live dashboard | Merge [`OpsApi::route_table()`](../crates/trembita-http/src/ops_routes.rs) in [`GatewayOpts::surfaces`](../crates/trembita/src/gateway/opts.rs) (see scaffold `src/http/ops.rs`) |
 | Queue / workflow panels | Dashboard polls `/introspect/queues` and `/introspect/sagas` |
 | Prometheus | Scrape `GET /metrics` (includes `trembita_queue_*`, `trembita_saga_*`) |
 | Push export | `.metrics_sink(Arc::new(my_sink))` on [`TrembitaAppBuilder`](../crates/trembita/src/app/mod.rs) — see [`MetricsSink`](../crates/trembita-dashboard/src/metrics_sink.rs) |

@@ -1,6 +1,6 @@
 # {{PROJECT_TITLE}}
 
-trembita product app — scaffolded with [`trembita new`](../../docs/decisions/framework-conventions.md).
+trembita product app — scaffolded with [`trembita new`]({{TREMBITA_DOC_BASE}}/docs/decisions/framework-conventions.md).
 
 ## Layout
 
@@ -11,6 +11,7 @@ src/
   config.rs     env config
   consumers/    job handlers
   domain/       business logic (no trembita imports)
+  http/         gateway route tables (when gateway feature enabled)
 ```
 
 ## Run locally
@@ -19,12 +20,12 @@ src/
 cargo run
 ```
 
-Gateway (when enabled): `http://127.0.0.1:8090` · Admin: `http://127.0.0.1:8080`
+HTTP gateway (when enabled): `http://127.0.0.1:8090` — product routes plus ops (`/health`, `/dashboard`, `/metrics`, `/introspect/*`) from `src/http/ops.rs`.
 
-Set `GATEWAY_TOKEN` (or `TREMBITA_GATEWAY_TOKEN`) before calling protected APIs.
+Set `GATEWAY_TOKEN` (or `TREMBITA_GATEWAY_TOKEN`) before calling identity-protected APIs.
 
 ## 3-node cluster
 
 See `deploy/docker-compose.yml` and `deploy/.env.example`.
 
-Docs: [getting-started](../../docs/getting-started.md) · [scenarios](../../docs/scenarios/README.md)
+Docs: [getting-started]({{TREMBITA_DOC_BASE}}/docs/getting-started.md) · [scenarios]({{TREMBITA_DOC_BASE}}/docs/scenarios/README.md)

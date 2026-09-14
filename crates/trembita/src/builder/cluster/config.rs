@@ -11,7 +11,7 @@ use trembita_core::{
     Config, DEFAULT_GROUP_LEARNER_FACTOR, DEFAULT_GROUP_REPLICATION_FACTOR, ReachabilityConfig,
     StateMachine,
 };
-use trembita_dashboard::{AdminTlsPaths, MetricsSink};
+use trembita_dashboard::MetricsSink;
 use trembita_net::TrafficPolicy;
 use trembita_proto::{JoinRole, NodeId};
 use trembita_runtime::{
@@ -45,8 +45,6 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             refresh_period: Duration::from_millis(50),
             event_capacity: 1024,
             metrics_sink: None,
-            admin_addr: None,
-            admin_tls: None,
             join_seeds: Vec::new(),
             join_role: JoinRole::Learner,
             traffic_policy: TrafficPolicy::unlimited(),
@@ -547,29 +545,10 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     }
 
     /// Forward every runtime metrics sample to an external [`MetricsSink`]
-    /// while keeping the admin `GET /metrics` Prometheus registry updated.
+    /// while keeping the ops `GET /metrics` Prometheus registry updated.
     #[must_use]
     pub fn metrics_sink(mut self, sink: Arc<dyn MetricsSink>) -> Self {
         self.metrics_sink = Some(sink);
-        self
-    }
-
-    /// Serve the admin HTTP/1.1 endpoints (health, readiness, metrics,
-    /// introspection, dashboard) on `addr` (default `0.0.0.0:8080`, health-admin-port).
-    #[must_use]
-    pub fn admin_addr(mut self, addr: SocketAddr) -> Self {
-        self.admin_addr = Some(addr);
-        self
-    }
-
-    /// Serve admin over **TLS** (server-only) using PEM `cert` and `key`
-    /// (admin TLS). Plain HTTP is used when unset.
-    #[must_use]
-    pub fn admin_tls(mut self, cert: impl Into<PathBuf>, key: impl Into<PathBuf>) -> Self {
-        self.admin_tls = Some(AdminTlsPaths {
-            cert: cert.into(),
-            key: key.into(),
-        });
         self
     }
 

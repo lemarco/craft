@@ -55,7 +55,7 @@ cluster_display_addr() {
 cluster_node_env_base() {
     local listen=$1 admin=$2 gateway=$3
     export TREMBITA_LISTEN="$listen"
-    export TREMBITA_ADMIN="$admin"
+    export TREMBITA_HTTP="$admin"
     export TREMBITA_GATEWAY="$gateway"
     export TREMBITA_DATA_DIR="$CLUSTER_DEV/data/p${listen##*:}"
     export TREMBITA_CERT_DIR="$CLUSTER_CERTS"

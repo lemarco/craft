@@ -121,6 +121,8 @@ pub use gateway::{
     NoWorkerError, OpenActorSessionError, SessionHandle, SessionKey, TrembitaGatewayState,
     WrappedGatewayService, build_gateway_service, spawn_gateway,
 };
+#[cfg(feature = "http-jobs")]
+pub use gateway::{cluster_ops_route_table, spawn_cluster_ops_http};
 pub use job_opts::JobOpts;
 pub use queue_opts::QueueOpts;
 pub use ready::ReadyOpts;

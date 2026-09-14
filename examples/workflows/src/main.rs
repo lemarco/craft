@@ -8,7 +8,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use trembita::{
-    Gateway, GatewayOpts, ReadyOpts, RunOpts, TrembitaApp, TrembitaConfigure, WorkflowOpts,
+    AuthMode, Gateway, GatewayBearerIdentity, GatewayOpts, ReadyOpts, RunOpts, TrembitaApp,
+    TrembitaConfigure, WorkflowOpts,
 };
 use trembita_tools::showcase_common::{data_dir, display_addr};
 
@@ -33,14 +34,17 @@ fn server_builder() -> trembita::TrembitaAppBuilder {
                 ..TrembitaConfigure::default()
             })
             .gateway(
-                GatewayOpts::new(gateway).surfaces(|state| {
-                    let app = Arc::clone(&state.app);
-                    Gateway::new(false).dev_fallback(
-                        TrembitaApp::workflows_api(app)
-                            .route_table()
-                            .merge(state.app.ops_api().route_table()),
-                    )
-                }),
+                GatewayOpts::new(gateway)
+                    .identity(GatewayBearerIdentity::from_env())
+                    .surfaces(|state| {
+                        let app = Arc::clone(&state.app);
+                        Gateway::new(false).dev_fallback(
+                            TrembitaApp::workflows_api(app)
+                                .route_table()
+                                .with_auth_mode(AuthMode::Identity)
+                                .merge(state.app.ops_api().route_table()),
+                        )
+                    }),
             ),
     )
 }

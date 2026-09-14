@@ -1,5 +1,7 @@
 //! Product-oriented re-exports — typical `use trembita::prelude::*` import set.
 
+#[cfg(feature = "http-jobs")]
+pub use crate::AuthMode;
 pub use crate::actor_group::ActorGroupOpts;
 pub use crate::app::{ShutdownOpts, TrembitaApp, TrembitaAppBuilder, journal_workflow};
 pub use crate::app_opts::RunOpts;

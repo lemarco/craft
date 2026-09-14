@@ -17,10 +17,10 @@ pub struct NodeConfig {
     pub node_id: NodeId,
     /// QUIC listen address.
     pub listen: SocketAddr,
-    /// Admin HTTP listen address (`None` when disabled).
-    pub admin: Option<SocketAddr>,
-    /// Optional admin TLS PEM paths (`TREMBITA_ADMIN_TLS_CERT` + `TREMBITA_ADMIN_TLS_KEY`).
-    pub admin_tls: Option<(PathBuf, PathBuf)>,
+    /// Ops + product HTTP listen address (`None` when disabled).
+    pub http: Option<SocketAddr>,
+    /// Optional HTTP TLS PEM paths (`TREMBITA_HTTP_TLS_CERT` + `TREMBITA_HTTP_TLS_KEY`).
+    pub http_tls: Option<(PathBuf, PathBuf)>,
     /// Peer address book.
     pub peers: PeerDirectory,
     /// Static cluster members (may omit self when joining dynamically).
@@ -227,7 +227,7 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
         .as_deref()
         .unwrap_or("0.0.0.0:7443")
         .parse()?;
-    let admin = match env("TREMBITA_ADMIN").as_deref() {
+    let http = match env("TREMBITA_HTTP").as_deref() {
         Some("-") => None,
         Some(a) => Some(a.parse()?),
         None => Some("127.0.0.1:8080".parse()?),
@@ -244,15 +244,15 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
     let allow_join = env_bool("TREMBITA_ALLOW_JOIN");
     let allow_leave = env_bool("TREMBITA_ALLOW_LEAVE");
     let graceful_leave = env_bool("TREMBITA_GRACEFUL_LEAVE");
-    let admin_tls = match (
-        env("TREMBITA_ADMIN_TLS_CERT"),
-        env("TREMBITA_ADMIN_TLS_KEY"),
+    let http_tls = match (
+        env("TREMBITA_HTTP_TLS_CERT").or_else(|| env("TREMBITA_GATEWAY_TLS_CERT")),
+        env("TREMBITA_HTTP_TLS_KEY").or_else(|| env("TREMBITA_GATEWAY_TLS_KEY")),
     ) {
         (Some(cert), Some(key)) => Some((PathBuf::from(cert), PathBuf::from(key))),
         (None, None) => None,
         _ => {
             return Err(
-                "TREMBITA_ADMIN_TLS_CERT and TREMBITA_ADMIN_TLS_KEY must both be set or both unset"
+                "TREMBITA_HTTP_TLS_CERT and TREMBITA_HTTP_TLS_KEY must both be set or both unset"
                     .into(),
             );
         }
@@ -287,8 +287,8 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
     Ok(NodeConfig {
         node_id,
         listen,
-        admin,
-        admin_tls,
+        http,
+        http_tls,
         peers,
         members,
         join_seeds,
@@ -352,9 +352,11 @@ mod tests {
     const TREMBITA_ENV_KEYS: &[&str] = &[
         "TREMBITA_NODE_ID",
         "TREMBITA_LISTEN",
-        "TREMBITA_ADMIN",
-        "TREMBITA_ADMIN_TLS_CERT",
-        "TREMBITA_ADMIN_TLS_KEY",
+        "TREMBITA_HTTP",
+        "TREMBITA_HTTP_TLS_CERT",
+        "TREMBITA_HTTP_TLS_KEY",
+        "TREMBITA_GATEWAY_TLS_CERT",
+        "TREMBITA_GATEWAY_TLS_KEY",
         "TREMBITA_PEERS",
         "TREMBITA_JOIN_SEEDS",
         "TREMBITA_DISCOVERY",
@@ -486,17 +488,17 @@ mod tests {
     }
 
     #[test]
-    fn config_from_env_honours_admin_disable_and_join_flags() {
+    fn config_from_env_honours_http_disable_and_join_flags() {
         with_trembita_env(
             &[
-                ("TREMBITA_ADMIN", Some("-")),
+                ("TREMBITA_HTTP", Some("-")),
                 ("TREMBITA_ALLOW_JOIN", Some("yes")),
                 ("TREMBITA_ALLOW_LEAVE", Some("on")),
                 ("TREMBITA_GRACEFUL_LEAVE", Some("true")),
             ],
             || {
                 let cfg = config_from_env().expect("config");
-                assert!(cfg.admin.is_none());
+                assert!(cfg.http.is_none());
                 assert!(cfg.allow_join);
                 assert!(cfg.allow_leave);
                 assert!(cfg.graceful_leave);
@@ -505,13 +507,10 @@ mod tests {
     }
 
     #[test]
-    fn admin_tls_env_requires_both_cert_and_key() {
-        with_trembita_env(
-            &[("TREMBITA_ADMIN_TLS_CERT", Some("/tmp/cert.pem"))],
-            || {
-                assert!(config_from_env().is_err());
-            },
-        );
+    fn http_tls_env_requires_both_cert_and_key() {
+        with_trembita_env(&[("TREMBITA_HTTP_TLS_CERT", Some("/tmp/cert.pem"))], || {
+            assert!(config_from_env().is_err());
+        });
     }
 
     #[test]

@@ -13,8 +13,8 @@
 //! |-----|---------|---------|
 //! | `TREMBITA_NODE_ID` | This node's id (`u64`) | `1` |
 //! | `TREMBITA_LISTEN` | QUIC listen `addr:port` | `0.0.0.0:7443` |
-//! | `TREMBITA_ADMIN` | Admin HTTP `addr:port` (`-` to disable) | `0.0.0.0:8080` |
-//! | `TREMBITA_ADMIN_TLS_CERT` / `TREMBITA_ADMIN_TLS_KEY` | PEM paths for admin HTTPS (both required) | *plain HTTP* |
+//! | `TREMBITA_HTTP` | Ops HTTP `addr:port` (`-` to disable) | `127.0.0.1:8080` |
+//! | `TREMBITA_HTTP_TLS_CERT` / `TREMBITA_HTTP_TLS_KEY` | PEM paths for HTTPS (both required) | *plain HTTP* |
 //! | `TREMBITA_PEERS` | `id@host:port` list of **all** members (static membership) | *self only* |
 //! | `TREMBITA_JOIN_SEEDS` | `id@host:port` seed list for a **dynamic** join (discovery) | *none* |
 //! | `TREMBITA_DISCOVERY` | `dns:<prefix>:<service>:<replicas>:<port>` → resolve seeds | *none* |
@@ -38,7 +38,8 @@
 
 use std::error::Error;
 
-use trembita::cluster::{PemSecurity, TrembitaCluster};
+use trembita::GatewayTlsPaths;
+use trembita::cluster::{PemSecurity, TrembitaCluster, spawn_cluster_ops_http};
 use trembita::core::StateMachine;
 use trembita::discovery::resolve_dns_seeds;
 use trembita::proto::LogIndex;
@@ -99,12 +100,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut builder =
         TrembitaCluster::builder(cfg.node_id, Demo::default()).members(cfg.members.clone());
-    if let Some(admin) = cfg.admin {
-        builder = builder.admin_addr(admin);
-    }
-    if let Some((cert, key)) = cfg.admin_tls {
-        builder = builder.admin_tls(cert, key);
-    }
     if cfg.allow_join {
         builder = builder.allow_join(true);
     }
@@ -137,13 +132,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .await?
     };
 
+    let ops_http = if let Some(http_addr) = cfg.http {
+        let tls = cfg
+            .http_tls
+            .map(|(cert, key)| GatewayTlsPaths { cert, key });
+        Some(
+            spawn_cluster_ops_http(&cluster, http_addr, cfg.drain_timeout, tls)
+                .await
+                .map_err(|e| format!("ops http: {e}"))?,
+        )
+    } else {
+        None
+    };
+
     println!(
         "node {:?} listening on {} — members {:?}{}",
         cfg.node_id,
         cfg.listen,
         cfg.members,
-        cfg.admin
-            .map(|a| format!(", admin http://{a}"))
+        cfg.http
+            .map(|a| format!(", ops http://{a}"))
             .unwrap_or_default()
     );
     println!("ready; press Ctrl-C or send SIGTERM to stop.");
@@ -155,6 +163,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             Ok(membership) => println!("left cluster; remaining voters {:?}", membership.voters),
             Err(e) => eprintln!("graceful leave failed ({e}); shutting down anyway"),
         }
+    }
+    if let Some(handle) = ops_http {
+        handle.drain().await;
     }
     cluster.shutdown();
     Ok(())

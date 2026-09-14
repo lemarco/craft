@@ -11,9 +11,18 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ## [Unreleased]
 
+### Added
+
+- **`spawn_cluster_ops_http`** / **`cluster_ops_route_table`** — mount ops routes (`/health`, `/metrics`, `/dashboard`, `/introspect/*`) on a TCP listener for [`TrembitaCluster`](crates/trembita/src/cluster_handle/cluster.rs) without [`TrembitaApp`](crates/trembita/src/app/mod.rs).
+
 ### Changed
 
 - **MSRV 1.94** (was 1.90) — required by `sqlx` 0.9 and related dependency bumps; CI/`check-msrv.sh` aligned.
+- **`trembita-node`** — ops HTTP via `TREMBITA_HTTP` (replaces no-op `TREMBITA_ADMIN` / `.admin_addr()`); TLS via `TREMBITA_HTTP_TLS_*`.
+
+### Removed
+
+- **`TrembitaClusterBuilder::admin_addr`** / **`admin_tls`** — use explicit [`OpsApi`](crates/trembita-http/src/ops_routes.rs) routes on the unified HTTP listener ([unified-listener](docs/decisions/unified-listener.md)).
 
 ## [0.4.0] — 2026-09-07
 

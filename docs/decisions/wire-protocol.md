@@ -90,17 +90,14 @@ Responses: plain HTTP, JSON (admin is **not** the postcard hot path).
 
 | Source | Key | Default |
 |--------|-----|---------|
-| Builder | `.admin_listen(addr)` | `0.0.0.0:8080` |
-| Environment | `TREMBITA_ADMIN_ADDR` | same |
-| Disable | `.admin_disabled()` / `TREMBITA_ADMIN_ADDR=off` | admin off |
+| Environment | `TREMBITA_HTTP` / `TREMBITA_GATEWAY` | product + ops TCP bind |
+| Disable | `TREMBITA_HTTP=-` | no HTTP listener |
 
-Admin carries **no consensus / client data**. Default plain HTTP; optional server-only TLS via `.admin_tls()` / `TREMBITA_ADMIN_TLS_*`. No mTLS requirement. No mutation endpoints in v1.
+Ops routes (`/health`, `/metrics`, `/introspect/*`, `/dashboard`) are explicit [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) merges — see [unified-listener](unified-listener.md). No consensus / client data on this listener. Optional server-only TLS via `TREMBITA_HTTP_TLS_*` (aliases `TREMBITA_GATEWAY_TLS_*`). No mTLS requirement.
 
-## Product gateway port
+## Product gateway
 
-**Separate product HTTP listener** (address from [`GatewayOpts::new`](../../crates/trembita/src/gateway/mod.rs) / `TREMBITA_GATEWAY`), distinct from admin and QUIC.
-
-Default plain HTTP / WS. Optional server-only TLS via [`.tls()`](../../crates/trembita/src/gateway/mod.rs) / `TREMBITA_GATEWAY_TLS_*` — WebSocket upgrades use **WSS** automatically on a TLS listener. No client certificates.
+Same TCP listener as ops when co-hosted; host-based surfaces via [`GatewayOpts::surfaces`](../../crates/trembita/src/gateway/opts.rs). Default plain HTTP / WS. WebSocket upgrades use **WSS** on a TLS listener. No client certificates.
 
 ## Consequences
 

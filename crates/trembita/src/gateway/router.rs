@@ -88,6 +88,20 @@ impl WrappedGatewayService {
     pub fn inner(&self) -> &GatewayService {
         &self.inner
     }
+
+    /// Wrap a built [`GatewayService`] with connection tracking only (cluster ops HTTP).
+    #[must_use]
+    pub fn from_gateway_service(
+        inner: GatewayService,
+        connections: Option<Arc<ConnectionTracker>>,
+    ) -> Self {
+        Self {
+            inner,
+            connections,
+            rate_limiter: None,
+            compute_pool: None,
+        }
+    }
 }
 
 impl tower::Service<http::Request<hyper::body::Incoming>> for WrappedGatewayService {

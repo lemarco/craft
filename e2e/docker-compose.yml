@@ -45,7 +45,7 @@ services:
       <<: *node-queue-env
       TREMBITA_NODE_ID: "1"
       TREMBITA_LISTEN: "0.0.0.0:7443"
-      TREMBITA_ADMIN: "0.0.0.0:8080"
+      TREMBITA_HTTP: "0.0.0.0:8080"
       TREMBITA_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
       TREMBITA_CA_CERT: /certs/ca.pem
       TREMBITA_NODE_CERT: /certs/node-1.pem
@@ -66,7 +66,7 @@ services:
       <<: *node-queue-env
       TREMBITA_NODE_ID: "2"
       TREMBITA_LISTEN: "0.0.0.0:7443"
-      TREMBITA_ADMIN: "0.0.0.0:8080"
+      TREMBITA_HTTP: "0.0.0.0:8080"
       TREMBITA_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
       TREMBITA_CA_CERT: /certs/ca.pem
       TREMBITA_NODE_CERT: /certs/node-2.pem
@@ -87,7 +87,7 @@ services:
       <<: *node-queue-env
       TREMBITA_NODE_ID: "3"
       TREMBITA_LISTEN: "0.0.0.0:7443"
-      TREMBITA_ADMIN: "0.0.0.0:8080"
+      TREMBITA_HTTP: "0.0.0.0:8080"
       TREMBITA_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
       TREMBITA_CA_CERT: /certs/ca.pem
       TREMBITA_NODE_CERT: /certs/node-3.pem

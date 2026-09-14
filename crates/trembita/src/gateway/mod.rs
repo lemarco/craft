@@ -3,6 +3,8 @@
 //! Declare host surfaces with [`GatewayOpts::surfaces`] — see
 //! [gateway-routing-v2](../../docs/decisions/gateway-routing-v2.md).
 
+#[cfg(feature = "http-jobs")]
+mod cluster_ops;
 mod config;
 mod drain;
 mod identity;
@@ -35,3 +37,6 @@ pub use router::{WrappedGatewayService, bearer_auth_from_env, build_gateway_serv
 pub use session::{NoWorkerError, OpenActorSessionError, SessionHandle};
 pub use spawn::{GatewaySpawnError, spawn_gateway};
 pub use state::TrembitaGatewayState;
+
+#[cfg(feature = "http-jobs")]
+pub use cluster_ops::{cluster_ops_route_table, spawn_cluster_ops_http};

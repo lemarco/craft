@@ -31,7 +31,7 @@ services:
     environment:
       TREMBITA_NODE_ID: "1"
       TREMBITA_LISTEN: "0.0.0.0:7443"
-      TREMBITA_ADMIN: "0.0.0.0:8080"
+      TREMBITA_HTTP: "0.0.0.0:8080"
       TREMBITA_PEERS: "1@trembita-1:7443,2@trembita-2:7443,3@trembita-3:7443"
       TREMBITA_NODE_CERT: /etc/trembita/node.pem
       TREMBITA_NODE_KEY: /etc/trembita/node.key
@@ -53,7 +53,7 @@ services:
     environment:
       TREMBITA_NODE_ID: "2"
       TREMBITA_LISTEN: "0.0.0.0:7443"
-      TREMBITA_ADMIN: "0.0.0.0:8080"
+      TREMBITA_HTTP: "0.0.0.0:8080"
       TREMBITA_PEERS: "1@trembita-1:7443,2@trembita-2:7443,3@trembita-3:7443"
       TREMBITA_NODE_CERT: /etc/trembita/node.pem
       TREMBITA_NODE_KEY: /etc/trembita/node.key
@@ -72,7 +72,7 @@ services:
     environment:
       TREMBITA_NODE_ID: "3"
       TREMBITA_LISTEN: "0.0.0.0:7443"
-      TREMBITA_ADMIN: "0.0.0.0:8080"
+      TREMBITA_HTTP: "0.0.0.0:8080"
       TREMBITA_PEERS: "1@trembita-1:7443,2@trembita-2:7443,3@trembita-3:7443"
       TREMBITA_NODE_CERT: /etc/trembita/node.pem
       TREMBITA_NODE_KEY: /etc/trembita/node.key

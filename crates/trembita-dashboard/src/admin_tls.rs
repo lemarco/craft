@@ -15,9 +15,9 @@ use thiserror::Error;
 /// PEM paths for the admin listener certificate chain and private key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdminTlsPaths {
-    /// Server certificate chain (`TREMBITA_ADMIN_TLS_CERT`).
+    /// Server certificate chain (`TREMBITA_HTTP_TLS_CERT`).
     pub cert: PathBuf,
-    /// Private key (`TREMBITA_ADMIN_TLS_KEY`).
+    /// Private key (`TREMBITA_HTTP_TLS_KEY`).
     pub key: PathBuf,
 }
 

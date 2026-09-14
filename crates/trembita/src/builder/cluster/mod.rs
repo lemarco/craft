@@ -2,17 +2,16 @@
 //! library-and-publishing). Describe a node (its id, membership, state machine, actor types, and
 //! managed groups), then `start_*` it over a transport; the builder assembles
 //! the consensus runtime, the actor control/messaging/directory planes, the
-//! leader-only supervisor, telemetry, and the admin server, and wires the
+//! leader-only supervisor, telemetry, and wires the
 //! background loops that keep them current.
 
 use std::collections::BTreeMap;
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use trembita_core::{Config, StateMachine};
-use trembita_dashboard::{AdminTlsPaths, MetricsSink};
+use trembita_dashboard::MetricsSink;
 use trembita_jobs::WorkloadOpts;
 use trembita_net::TrafficPolicy;
 use trembita_proto::{JoinRole, NodeId, QueueAutoscalePolicyCommand};
@@ -52,8 +51,6 @@ pub struct TrembitaClusterBuilder<M: StateMachine> {
     refresh_period: Duration,
     event_capacity: usize,
     metrics_sink: Option<Arc<dyn MetricsSink>>,
-    admin_addr: Option<SocketAddr>,
-    admin_tls: Option<AdminTlsPaths>,
     join_seeds: Vec<Seed>,
     /// Role requested on dynamic join ([`Self::join_as`]).
     join_role: JoinRole,

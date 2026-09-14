@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use trembita::{TrembitaApp, TrembitaGatewayState};
-use trembita_http::{AuthMode, RouteTable};
+use trembita::{AuthMode, TrembitaApp, TrembitaGatewayState};
+use trembita_http::RouteTable;
 
 /// Job API route table (identity-protected when gateway identity is configured).
 #[must_use]

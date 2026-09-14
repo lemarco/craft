@@ -7,6 +7,17 @@ use std::path::{Path, PathBuf};
 use super::features::AppFeature;
 use super::new::NewProjectOpts;
 
+/// `include_str!` paths anchored at [`CARGO_MANIFEST_DIR`](https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-set-for-crates) (`crates/trembita-cli`).
+macro_rules! app_tpl {
+    ($rel:literal) => {
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/templates/trembita-app/",
+            $rel
+        ))
+    };
+}
+
 /// Error while writing scaffold files.
 #[derive(Debug, thiserror::Error)]
 pub enum ScaffoldError {
@@ -27,6 +38,7 @@ struct Vars {
     title: String,
     trembita_version: String,
     trembita_dep: String,
+    trembita_doc_base: String,
 }
 
 impl Vars {
@@ -36,6 +48,7 @@ impl Vars {
             title: opts.name.replace('-', " "),
             trembita_version: opts.trembita_version.clone(),
             trembita_dep: opts.trembita_dependency_line(),
+            trembita_doc_base: "https://gitlab.com/lemarco/trembita/-/blob/main".into(),
         }
     }
 
@@ -44,6 +57,7 @@ impl Vars {
             .replace("{{PROJECT_TITLE}}", &self.title)
             .replace("{{TREMBITA_VERSION}}", &self.trembita_version)
             .replace("{{TREMBITA_DEP}}", &self.trembita_dep)
+            .replace("{{TREMBITA_DOC_BASE}}", &self.trembita_doc_base)
     }
 }
 
@@ -75,19 +89,15 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
     write_file(&root.join("Cargo.toml"), &generate_cargo_toml(opts))?;
     write_file(
         &root.join("README.md"),
-        &vars.apply(include_str!("../../templates/trembita-app/README.md.tpl")),
+        &vars.apply(app_tpl!("README.md.tpl")),
     )?;
     write_file(
         &root.join("deploy/docker-compose.yml"),
-        &vars.apply(include_str!(
-            "../../templates/trembita-app/deploy/docker-compose.yml.tpl"
-        )),
+        &vars.apply(app_tpl!("deploy/docker-compose.yml.tpl")),
     )?;
     write_file(
         &root.join("deploy/.env.example"),
-        &vars.apply(include_str!(
-            "../../templates/trembita-app/deploy/env.example.tpl"
-        )),
+        &vars.apply(app_tpl!("deploy/env.example.tpl")),
     )?;
     write_file(
         &root.join("src/main.rs"),
@@ -96,35 +106,25 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
     write_file(&root.join("src/app.rs"), &generate_app_rs(opts, &features))?;
     write_file(
         &root.join("src/config.rs"),
-        &vars.apply(include_str!(
-            "../../templates/trembita-app/src/config.rs.tpl"
-        )),
+        &vars.apply(app_tpl!("src/config.rs.tpl")),
     )?;
     write_file(
         &root.join("src/consumers/mod.rs"),
-        &vars.apply(include_str!(
-            "../../templates/trembita-app/src/consumers/mod.rs.tpl"
-        )),
+        &vars.apply(app_tpl!("src/consumers/mod.rs.tpl")),
     )?;
     write_file(
         &root.join("src/consumers/sample.rs"),
-        &vars.apply(include_str!(
-            "../../templates/trembita-app/src/consumers/sample.rs.tpl"
-        )),
+        &vars.apply(app_tpl!("src/consumers/sample.rs.tpl")),
     )?;
     write_file(
         &root.join("src/domain/mod.rs"),
-        &vars.apply(include_str!(
-            "../../templates/trembita-app/src/domain/mod.rs.tpl"
-        )),
+        &vars.apply(app_tpl!("src/domain/mod.rs.tpl")),
     )?;
 
     if features.contains(&AppFeature::Actors) {
         write_file(
             &root.join("src/actors/mod.rs"),
-            &vars.apply(include_str!(
-                "../../templates/trembita-app/src/actors/mod.rs.tpl"
-            )),
+            &vars.apply(app_tpl!("src/actors/mod.rs.tpl")),
         )?;
     }
     if features.contains(&AppFeature::Gateway) {
@@ -134,25 +134,19 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
         )?;
         write_file(
             &root.join("src/http/ops.rs"),
-            &vars.apply(include_str!(
-                "../../templates/trembita-app/src/http/ops.rs.tpl"
-            )),
+            &vars.apply(app_tpl!("src/http/ops.rs.tpl")),
         )?;
         if features.contains(&AppFeature::Jobs) {
             write_file(
                 &root.join("src/http/jobs.rs"),
-                &vars.apply(include_str!(
-                    "../../templates/trembita-app/src/http/jobs.rs.tpl"
-                )),
+                &vars.apply(app_tpl!("src/http/jobs.rs.tpl")),
             )?;
         }
     }
     if features.contains(&AppFeature::Workflows) {
         write_file(
             &root.join("src/workflows/mod.rs"),
-            &vars.apply(include_str!(
-                "../../templates/trembita-app/src/workflows/mod.rs.tpl"
-            )),
+            &vars.apply(app_tpl!("src/workflows/mod.rs.tpl")),
         )?;
     }
 

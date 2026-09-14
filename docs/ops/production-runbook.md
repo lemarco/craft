@@ -13,7 +13,7 @@ Operational checklist for running trembita on **N identical VPS or bare-metal no
 4. **Data directory** — `TREMBITA_DATA_DIR=/var/lib/trembita/data` (redb: Raft groups, queues, actor store).
 5. **Peers** — static `TREMBITA_PEERS=id@host:7443,...` **or** dynamic `TREMBITA_JOIN_SEEDS` on first boot.
 6. **TLS** — `TREMBITA_NODE_CERT`, `TREMBITA_NODE_KEY`, `TREMBITA_CA_CERT` (see [certs.md](../certs.md)).
-7. **Admin (optional)** — `TREMBITA_ADMIN=0.0.0.0:8080`; bind privately or firewall. Dashboard at `/dashboard`, Prometheus at `/metrics`.
+7. **Ops HTTP (optional)** — merge [`OpsApi`](../crates/trembita-http/src/ops_routes.rs) on a private bind (`TREMBITA_HTTP` for `trembita-node`). Dashboard at `/dashboard`, Prometheus at `/metrics`.
 8. **Firewall** — allow **UDP/TCP 7443** between cluster members; restrict admin port to ops networks only.
 
 ### First node (bootstrap)
@@ -66,7 +66,7 @@ Start with **one group** until metrics or latency justify adding groups — prem
 | `GET /introspect/queues` | Per-stream pending / leased depth |
 | `GET /introspect/sagas` | Saga journal records (running / done / stuck) |
 
-Scrape `/metrics` from a private network; do not expose the admin port on the public internet without TLS (`TREMBITA_ADMIN_TLS_*`) and firewall rules.
+Scrape `/metrics` from a private network; do not expose the ops HTTP listener on the public internet without TLS (`TREMBITA_HTTP_TLS_*`) and firewall rules.
 
 ## Post-deploy verification
 

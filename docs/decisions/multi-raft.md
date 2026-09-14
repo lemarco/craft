@@ -109,7 +109,7 @@ Six production-oriented capabilities (landed):
 | Phi-accrual detector | `FailureDetectorKind::PhiAccrual` |
 | Snapshot backup / restore | `trembita-ops` CLI — local gzip-tar + `s3://` / `gs://` / `file://` via opendal |
 | Rolling wire upgrade (N/N−1) | `MIN_COMPATIBLE_PROTOCOL_VERSION` + `protocol_version_compatible()` |
-| Admin TLS | `AdminServer::serve_tls`, `TREMBITA_ADMIN_TLS_*` |
+| Ops HTTP TLS | [`GatewayOpts::tls`](../../crates/trembita/src/gateway/opts.rs), `TREMBITA_HTTP_TLS_*` |
 | Jepsen-lite gate | `e2e/linearizability.sh` — trembita-sim checker + docker phase |
 
 `app_version` join skew remains **exact match**; only protocol/wire accepts a compatibility band ([cluster-membership](cluster-membership.md#version-skew--hard-reject)).

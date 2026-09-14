@@ -105,12 +105,7 @@ pub fn cluster_ops_route_table<M>(
 where
     M: trembita_core::StateMachine + Send + Sync + 'static,
 {
-    trembita_http::OpsApi::new(
-        cluster.introspect_observer(),
-        cluster.metrics().clone(),
-        cluster.events().clone(),
-    )
-    .route_table()
+    trembita::cluster::cluster_ops_route_table(cluster)
 }
 
 /// Bind an ephemeral port and serve ops routes for `cluster` until shutdown.

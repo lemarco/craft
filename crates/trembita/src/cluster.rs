@@ -17,6 +17,8 @@ pub use crate::gateway::{
     WrappedGatewayService, build_gateway_service, gateway_token_from_env, spawn_gateway,
     validate_gateway_config,
 };
+#[cfg(feature = "http-jobs")]
+pub use crate::gateway::{cluster_ops_route_table, spawn_cluster_ops_http};
 pub use crate::saga::{
     CompositeSagaJournal, Group0SagaJournal, MetaRaftSagaJournal, SagaRegistry, StoreSagaJournal,
     record_saga_metrics, saga_metrics_callback,

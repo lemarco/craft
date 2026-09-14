@@ -16,14 +16,14 @@
 # Failover smoke (e2e harness):
 #   ./scripts/dev-3node.sh queue-smoke
 #
-# Admin dashboards (908x avoids common 8080/8081 conflicts — k3d, qbittorrent, nginx):
+# Ops HTTP dashboards (908x avoids common 8080/8081 conflicts — k3d, qbittorrent, nginx):
 #   node1 http://<host>:9080/dashboard
 #   node2 http://<host>:9081/dashboard
 #   node3 http://<host>:9082/dashboard
 #
-# Admin binds 0.0.0.0 by default so a browser on another machine (SSH session)
+# Ops HTTP binds 0.0.0.0 by default so a browser on another machine (SSH session)
 # can reach the dashboard via the server's IP. For localhost-only:
-#   TREMBITA_DEV_ADMIN_BIND=127.0.0.1 ./scripts/dev-3node.sh 1
+#   TREMBITA_DEV_HTTP_BIND=127.0.0.1 ./scripts/dev-3node.sh 1
 # Or SSH port-forward from your laptop:
 #   ssh -L 9080:127.0.0.1:9080 -L 9081:127.0.0.1:9081 -L 9082:127.0.0.1:9082 lecomp
 #
@@ -34,15 +34,15 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEV="${TREMBITA_DEV_3NODE_DIR:-$ROOT/target/trembita-3node-dev}"
 CERTS="$DEV/certs"
 PEERS="1@127.0.0.1:7443,2@127.0.0.1:7453,3@127.0.0.1:7463"
-ADMIN_BIND="${TREMBITA_DEV_ADMIN_BIND:-0.0.0.0}"
+HTTP_BIND="${TREMBITA_DEV_HTTP_BIND:-0.0.0.0}"
 
 die() { echo "error: $*" >&2; exit 1; }
 
 node_env() {
-    local id=$1 listen=$2 admin=$3
+    local id=$1 listen=$2 http=$3
     export TREMBITA_NODE_ID="$id"
     export TREMBITA_LISTEN="$listen"
-    export TREMBITA_ADMIN="$admin"
+    export TREMBITA_HTTP="$http"
     export TREMBITA_DATA_DIR="$DEV/data/node-$id"
     export TREMBITA_JOB_QUEUE=jobs
     export TREMBITA_JOB_QUEUE_LEASE_SECS=60
@@ -84,11 +84,11 @@ setup() {
 }
 
 run_node() {
-    local id=$1 listen=$2 admin=$3
+    local id=$1 listen=$2 http=$3
     [ -f "$CERTS/node-$id.pem" ] || die "run ./scripts/dev-3node.sh setup first"
-    node_env "$id" "$listen" "$admin"
+    node_env "$id" "$listen" "$http"
     mkdir -p "$TREMBITA_DATA_DIR"
-    echo ">> node $id  QUIC=$listen  admin=$admin  data=$TREMBITA_DATA_DIR"
+    echo ">> node $id  QUIC=$listen  http=$http  data=$TREMBITA_DATA_DIR"
     exec "$ROOT/target/release/trembita-node"
 }
 
@@ -128,7 +128,7 @@ watch() {
 
 _demo_admin_tail() {
     echo ""
-    echo ">> admin (any node — read-only HTTP):"
+    echo ">> ops http (any node — read-only HTTP):"
     echo "  curl -s http://127.0.0.1:9080/introspect/cluster | jq ."
     echo "  curl -s http://127.0.0.1:9080/introspect/queues | jq ."
     echo "  open http://127.0.0.1:9080/dashboard"
@@ -149,9 +149,9 @@ usage() {
 
 case "${1:-}" in
     setup) setup ;;
-    1) run_node 1 "127.0.0.1:7443" "${ADMIN_BIND}:9080" ;;
-    2) run_node 2 "127.0.0.1:7453" "${ADMIN_BIND}:9081" ;;
-    3) run_node 3 "127.0.0.1:7463" "${ADMIN_BIND}:9082" ;;
+    1) run_node 1 "127.0.0.1:7443" "${HTTP_BIND}:9080" ;;
+    2) run_node 2 "127.0.0.1:7453" "${HTTP_BIND}:9081" ;;
+    3) run_node 3 "127.0.0.1:7463" "${HTTP_BIND}:9082" ;;
     queue-smoke) queue_smoke ;;
     demo) demo ;;
     watch) watch ;;

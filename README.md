@@ -68,7 +68,7 @@ lefthook install
 
 **Read next:** [docs/status.md](docs/status.md) → [docs/architecture.md](docs/architecture.md) → [crates/trembita/src/builder/cluster/mod.rs](crates/trembita/src/builder/cluster/mod.rs)
 
-**`trembita-node` env:** `TREMBITA_NODE_ID`, `TREMBITA_LISTEN` (`:7443`), `TREMBITA_ADMIN` (`:8080`), `TREMBITA_PEERS`, `TREMBITA_JOIN_SEEDS`, `TREMBITA_DISCOVERY` — [docs/certs.md](docs/certs.md)
+**`trembita-node` env:** `TREMBITA_NODE_ID`, `TREMBITA_LISTEN` (`:7443`), `TREMBITA_HTTP` (`:8080` ops), `TREMBITA_PEERS`, `TREMBITA_JOIN_SEEDS`, `TREMBITA_DISCOVERY` — [docs/certs.md](docs/certs.md)
 
 **Job queue on `trembita-node`** (optional, requires `TREMBITA_DATA_DIR`):
 
@@ -86,7 +86,7 @@ See [job-queue](docs/decisions/job-queue.md) and [protocol.md](docs/protocol.md#
 
 ```rust
 use std::time::Duration;
-use trembita::{TrembitaApp, TrembitaConfigure, GatewayOpts, JobOpts, RunOpts, consumer};
+use trembita::{Gateway, GatewayOpts, JobOpts, RunOpts, TrembitaApp, TrembitaConfigure, consumer};
 
 #[consumer("jobs")]
 async fn handle_job(_payload: &[u8]) -> Result<(), ()> {
@@ -99,11 +99,10 @@ TrembitaApp::builder()
         .lease(Duration::from_secs(300))
         .consumer(&HandleJobConsumer)
         .http_enqueue(true)])
-    .configure(TrembitaConfigure {
-        admin_addr: Some("127.0.0.1:8080".parse()?),
-        ..TrembitaConfigure::default()
-    })
-    .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?))
+    .gateway(
+        GatewayOpts::new("127.0.0.1:8090".parse()?)
+            .surfaces(|state| Gateway::new(false).dev_fallback(state.app.ops_api().route_table())),
+    )
     .run(RunOpts::default().with_wait_queue("jobs"))
     .await?;
 ```

@@ -57,10 +57,11 @@ Dev without a token: `?user=alice` on WebSocket and HTTP still works.
 | `GET /me` | Bearer + `X-Trembita-User` or `?user=` | returns `{"user":"…"}` |
 
 Identity: [`GatewayBearerIdentity`](../../crates/trembita/src/gateway/identity.rs) via
-[`GatewayOpts::identity`](../../crates/trembita/src/gateway/mod.rs). Built-in `/jobs/*`,
-`/actors/*`, and `/workflows/*` routes are protected with
-[`.protect_product_apis(true)`](../../crates/trembita/src/gateway/mod.rs) when enabled on
-the gateway.
+[`GatewayOpts::identity`](../../crates/trembita/src/gateway/mod.rs). Custom routes use
+route-level auth (`post_identity`, `post_session`, …). Mounting built-in `/jobs/*`,
+`/actors/*`, or `/workflows/*` tables uses
+[`.with_auth_mode(AuthMode::Identity)`](../../crates/trembita-http/src/routing/auth.rs)
+(import [`AuthMode`](../../crates/trembita/src/lib.rs) from `trembita`).
 
 ## Quick start (cluster — 3 terminals, QUIC)
 

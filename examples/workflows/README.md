@@ -66,5 +66,6 @@ Docker Compose: `cd dev/compose/workflows && docker compose up --build`
 | `TREMBITA_DATA_DIR` | `/tmp/trembita-showcase-workflows` | Raft + Meta-Raft redb |
 | `TREMBITA_PEERS` | unset | When set → QUIC cluster mode |
 | `TREMBITA_GATEWAY_WORKFLOWS` | unset | Set `1` to mount `/workflows/*` when gateway comes from env only |
+| `GATEWAY_TOKEN` | unset | When set, `/workflows/*` requires `Authorization: Bearer` + `X-Trembita-User` ([`AuthMode::Identity`](../../crates/trembita-http/src/routing/auth.rs)) |
 
 Guide: [docs/scenarios/workflows.md](../../docs/scenarios/workflows.md)
