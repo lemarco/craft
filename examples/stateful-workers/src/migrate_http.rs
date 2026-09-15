@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use http::StatusCode;
-use trembita::proto::ActorId;
+use trembita::proto::{ActorGroupName, ActorId};
 use trembita::{Gateway, NodeId, RequestCtx, Response, RouteTable, TrembitaApp, TrembitaGatewayState};
 
 use crate::migrate_counter::{CounterMsg, StatefulCounter};
@@ -51,7 +51,7 @@ async fn run_demo_inner(app: &TrembitaApp) -> Result<String, String> {
 
     let source = ActorId {
         node: local,
-        name: "counter".into(),
+        name: ActorGroupName::try_from("counter").expect("counter"),
         instance: 0,
         generation: 0,
     };

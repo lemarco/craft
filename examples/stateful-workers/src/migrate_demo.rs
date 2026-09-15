@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use trembita::core::{Config, StateMachine};
 use trembita::net::LocalNetwork;
-use trembita::proto::{ActorId, LogIndex};
+use trembita::proto::{ActorGroupName, ActorId, LogIndex, LogicalTick};
 use trembita::cluster::TrembitaCluster;
 use trembita::NodeId;
 
@@ -66,9 +66,9 @@ pub async fn run_local() -> Result<(), Box<dyn std::error::Error>> {
             TrembitaCluster::builder(id, Empty)
                 .members(ids)
                 .raft_config(Config {
-                    election_timeout_min: 5,
-                    election_timeout_max: 10,
-                    heartbeat_interval: 2,
+                    election_timeout_min: LogicalTick(5),
+                    election_timeout_max: LogicalTick(10),
+                    heartbeat_interval: LogicalTick(2),
                     seed: 9,
                     ..Default::default()
                 })
@@ -100,7 +100,7 @@ pub async fn run_local() -> Result<(), Box<dyn std::error::Error>> {
 
     let source = ActorId {
         node: NodeId(1),
-        name: "counter".into(),
+        name: ActorGroupName::try_from("counter").expect("counter"),
         instance: 0,
         generation: 0,
     };
