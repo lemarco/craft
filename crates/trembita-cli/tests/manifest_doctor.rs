@@ -16,6 +16,7 @@ fn doctor_errors_when_jobs_registered_in_app_rs() {
         features: AppFeature::defaults(),
         trembita_version: "0.3.2".into(),
         trembita_path: None,
+        template: None,
     };
     let root = scaffold_project(&opts).unwrap();
     let project = TrembitaProject { root };
@@ -24,8 +25,8 @@ fn doctor_errors_when_jobs_registered_in_app_rs() {
     let mut app = fs::read_to_string(&app_path).unwrap();
     app = app.replace(".manifest(manifest::build())", "");
     app = app.replace(
-        ".data_dir(&self.config.data_dir)",
-        ".data_dir(&self.config.data_dir)\n            .jobs([])",
+        "TrembitaApp::from_config(cfg)?",
+        "TrembitaApp::from_config(cfg)?\n            .jobs([])",
     );
     fs::write(&app_path, app).unwrap();
 
@@ -58,6 +59,7 @@ fn doctor_errors_when_manifest_missing() {
         features: AppFeature::defaults(),
         trembita_version: "0.3.2".into(),
         trembita_path: None,
+        template: None,
     };
     let root = scaffold_project(&opts).unwrap();
     fs::remove_file(root.join("src/manifest.rs")).unwrap();

@@ -17,6 +17,7 @@ fn add_and_doctor_integration() {
         features: AppFeature::defaults(),
         trembita_version: "0.3.2".into(),
         trembita_path: None,
+        template: None,
     };
     let root = scaffold_project(&opts).unwrap();
     let project = TrembitaProject { root };
@@ -98,6 +99,7 @@ fn add_workflow_and_doctor_passes() {
         features: vec![AppFeature::Jobs, AppFeature::Gateway, AppFeature::Workflows],
         trembita_version: "0.3.2".into(),
         trembita_path: None,
+        template: None,
     };
     let root = scaffold_project(&opts).unwrap();
     let project = TrembitaProject { root };
@@ -130,6 +132,7 @@ fn doctor_finds_orphan_consumer_file() {
         features: AppFeature::defaults(),
         trembita_version: "0.3.2".into(),
         trembita_path: None,
+        template: None,
     };
     let root = scaffold_project(&opts).unwrap();
     let project = TrembitaProject { root };
@@ -157,6 +160,7 @@ fn project_discover_from_subdirectory() {
         features: AppFeature::defaults(),
         trembita_version: "0.3.2".into(),
         trembita_path: None,
+        template: None,
     };
     let root = scaffold_project(&opts).unwrap();
     let sub = root.join("src/consumers");

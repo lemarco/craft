@@ -860,6 +860,7 @@ mod tests {
             features: AppFeature::defaults(),
             trembita_version: "0.3.2".into(),
             trembita_path: None,
+            template: None,
         };
         let root = scaffold_project(&opts).unwrap();
         let project = TrembitaProject { root };
@@ -996,6 +997,7 @@ mod tests {
             features: vec![AppFeature::Gateway],
             trembita_version: "0.3.2".into(),
             trembita_path: None,
+            template: None,
         };
         let root = scaffold_project(&opts).unwrap();
         let project = TrembitaProject { root };

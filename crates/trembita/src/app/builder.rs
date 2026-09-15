@@ -56,6 +56,8 @@ pub struct TrembitaAppBuilder {
     /// Disable registration-driven product APIs on the default gateway.
     #[cfg(feature = "http-jobs")]
     gateway_exclude_apis: GatewayProductApiExclusions,
+    /// Config from [`Self::from_config`] — avoids re-parsing env in [`Self::boot`].
+    boot_config: Option<AppConfig>,
 }
 
 impl TrembitaAppBuilder {
@@ -81,6 +83,7 @@ impl TrembitaAppBuilder {
             gateway_include_ops: true,
             #[cfg(feature = "http-jobs")]
             gateway_exclude_apis: GatewayProductApiExclusions::default(),
+            boot_config: None,
         }
     }
 
@@ -172,15 +175,24 @@ impl TrembitaAppBuilder {
         self
     }
 
+    /// Builder from a parsed [`AppConfig`] (scaffold `config.rs`, tests, embedders).
+    ///
+    /// Same cluster/gateway/job-queue merge as [`Self::from_env`], without reading the environment again in [`.run`](Self::run).
+    #[must_use]
+    pub fn from_config(cfg: AppConfig) -> Self {
+        let mut builder = Self::new_default().apply_env_config(&cfg);
+        builder.boot_config = Some(cfg);
+        builder
+    }
+
     /// Env-first builder: cluster join/listen/data_dir/job queue from `TREMBITA_*` (see [`crate::env_config::app_config_from_env`]).
     ///
-    /// Register domain wiring (`.jobs`, `.consumers`, …) after this, then [`.run`](Self::run)([`RunOpts::from_env`](crate::app_opts::RunOpts::from_env)).
+    /// Prefer [`Self::from_config`] when `main` already parsed env once. Register domain wiring (`.jobs`, `.manifest`, …), then [`.run`](Self::run)([`RunOpts::for_manifest`](crate::app_opts::RunOpts::for_manifest)).
     ///
     /// # Errors
     /// Invalid or missing required environment variables.
     pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
-        let cfg = app_config_from_env()?;
-        Ok(Self::new_default().apply_env_config(&cfg))
+        Ok(Self::from_config(app_config_from_env()?))
     }
 
     fn ensure_product_gateway(mut self, cfg: Option<&AppConfig>) -> Self {
@@ -655,9 +667,15 @@ impl TrembitaAppBuilder {
             )
             .await;
         }
-        let cfg = app_config_from_env().map_err(|e| StartError::Config(e.to_string()))?;
         let mut builder = self;
-        builder = builder.apply_env_config(&cfg);
+        let cfg = match builder.boot_config.take() {
+            Some(cfg) => cfg,
+            None => {
+                let cfg = app_config_from_env().map_err(|e| StartError::Config(e.to_string()))?;
+                builder = builder.apply_env_config(&cfg);
+                cfg
+            }
+        };
         builder = builder.ensure_product_gateway(Some(&cfg));
         builder.validate(cfg.http)?;
         let workflows = builder.workflows;

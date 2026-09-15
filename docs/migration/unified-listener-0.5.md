@@ -60,7 +60,7 @@ Default (local dev — ops + registered product APIs on loopback):
 TrembitaApp::from_env()?
     .jobs([JobOpts::new("jobs", Duration::from_secs(60)).http_enqueue(true)])
     .gateway_routes(|state| http::product::route_table(&state))
-    .run(RunOpts::from_env())
+    .run(RunOpts::from_env()?)
     .await?;
 ```
 

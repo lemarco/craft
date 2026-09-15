@@ -16,7 +16,7 @@ Common optional:
 
 | Variable | Purpose |
 |----------|---------|
-| `TREMBITA_JOB_QUEUE` | Job stream name when using env-only queue registration + [`RunOpts::from_env()`](../crates/trembita/src/app_opts.rs) wait-for-leader |
+| `TREMBITA_JOB_QUEUE` | Job stream name when using env-only queue registration + [`RunOpts::from_config`](../crates/trembita/src/app_opts.rs) / [`RunOpts::for_manifest`](../crates/trembita/src/app_opts.rs) wait-for-leader |
 | `TREMBITA_ALLOW_JOIN` | Seed accepts dynamic join (default **on** when not joining) |
 
 **Do not set** `TREMBITA_NODE_ID` on product nodes — id comes from join assignment and `{data_dir}/node-id`.

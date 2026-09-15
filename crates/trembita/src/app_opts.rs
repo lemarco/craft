@@ -5,8 +5,10 @@ use std::pin::Pin;
 use tokio::task::JoinHandle;
 use trembita_net::LocalNetwork;
 
+use crate::AppManifest;
 use crate::ReadyOpts;
 use crate::app::{ShutdownOpts, TrembitaApp};
+use crate::env_config::AppConfig;
 
 /// Custom shutdown future for [`RunOpts::with_shutdown_signal`].
 pub type ShutdownSignal = Pin<Box<dyn Future<Output = ()> + Send>>;
@@ -37,16 +39,46 @@ impl Default for RunOpts {
 }
 
 impl RunOpts {
-    /// Boot/shutdown options from `TREMBITA_*` (`TREMBITA_GRACEFUL_LEAVE`, `TREMBITA_JOB_QUEUE` → wait-for-queue).
+    /// Boot/shutdown options from a parsed [`AppConfig`].
     #[must_use]
-    pub fn from_env() -> Self {
-        let mut opts = Self::default();
-        if let Ok(stream) = std::env::var("TREMBITA_JOB_QUEUE") {
-            if !stream.is_empty() {
-                opts = opts.with_wait_queue(&stream);
-            }
+    pub fn from_config(cfg: &AppConfig) -> Self {
+        let mut opts = Self {
+            shutdown: ShutdownOpts {
+                graceful_leave: cfg.graceful_leave,
+                ..ShutdownOpts::default()
+            },
+            ..Self::default()
+        };
+        if let Some(stream) = cfg.job_queue_stream.as_ref().filter(|s| !s.is_empty()) {
+            opts = opts.with_wait_queue(stream);
         }
         opts
+    }
+
+    /// Boot/shutdown options from `TREMBITA_*` (`TREMBITA_GRACEFUL_LEAVE`, `TREMBITA_JOB_QUEUE` → wait-for-queue).
+    ///
+    /// # Errors
+    /// Invalid environment (same as [`crate::env_config::app_config_from_env`]).
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self::from_config(&crate::env_config::app_config_from_env()?))
+    }
+
+    /// [`Self::from_config`] plus readiness from [`AppManifest`]: one job stream → wait-for-queue; several → use env or [`.with_wait_queue`](Self::with_wait_queue).
+    #[must_use]
+    pub fn for_manifest(cfg: &AppConfig, manifest: &AppManifest) -> Self {
+        Self::from_config(cfg).with_manifest(manifest)
+    }
+
+    /// When [`Self::wait_ready`] is unset: single manifest job stream → [`Self::with_wait_queue`]; multiple streams → unchanged (set `TREMBITA_JOB_QUEUE` or call `with_wait_queue` explicitly).
+    #[must_use]
+    pub fn with_manifest(self, manifest: &AppManifest) -> Self {
+        if self.wait_ready.is_some() {
+            return self;
+        }
+        match manifest.job_stream_names().as_slice() {
+            [stream] => self.with_wait_queue(stream),
+            _ => self,
+        }
     }
 
     /// Poll until the cluster (and optional queue) is ready after boot.
@@ -108,5 +140,29 @@ impl ShutdownOpts {
     #[must_use]
     pub fn from_env() -> Self {
         TrembitaApp::shutdown_opts_from_env()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::RunOpts;
+    use crate::AppManifest;
+    use crate::JobOpts;
+
+    #[test]
+    fn with_manifest_waits_on_single_job_stream() {
+        let manifest =
+            AppManifest::new().jobs([JobOpts::new("emails").lease(Duration::from_secs(60))]);
+        let opts = RunOpts::default().with_manifest(&manifest);
+        assert!(opts.wait_ready.is_some());
+    }
+
+    #[test]
+    fn with_manifest_skips_wait_when_multiple_job_streams() {
+        let manifest = AppManifest::new().jobs([JobOpts::new("a"), JobOpts::new("b")]);
+        let opts = RunOpts::default().with_manifest(&manifest);
+        assert!(opts.wait_ready.is_none());
     }
 }

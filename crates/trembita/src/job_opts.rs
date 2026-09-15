@@ -71,6 +71,12 @@ impl std::fmt::Debug for JobOpts {
 }
 
 impl JobOpts {
+    /// Stream / queue name passed to [`.new`](Self::new).
+    #[must_use]
+    pub fn stream_name(&self) -> &str {
+        &self.name
+    }
+
     /// Register a job stream named `name` (creates `queue-{name}.redb` under `data_dir`).
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {

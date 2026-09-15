@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use super::features::AppFeature;
+use super::template::AppTemplate;
 
 /// Inputs for scaffolding a new product app.
 #[derive(Debug, Clone)]
@@ -13,6 +14,8 @@ pub struct NewProjectOpts {
     pub output: PathBuf,
     /// Enabled app features.
     pub features: Vec<AppFeature>,
+    /// Preset scenario (`--template`), when set without `--features`.
+    pub template: Option<AppTemplate>,
     /// crates.io version pin when not using a path dependency.
     pub trembita_version: String,
     /// Optional path to a local trembita checkout.

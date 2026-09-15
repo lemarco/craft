@@ -14,13 +14,17 @@ fn scaffolds_default_layout() {
         features: AppFeature::defaults(),
         trembita_version: "0.3.2".into(),
         trembita_path: None,
+        template: None,
     };
     let root = scaffold_project(&opts).unwrap();
     assert!(root.join("src/main.rs").is_file());
     assert!(root.join("src/app.rs").is_file());
     assert!(root.join("src/manifest.rs").is_file());
     let app = std::fs::read_to_string(root.join("src/app.rs")).unwrap();
-    assert!(app.contains(".manifest(manifest::build())"));
+    assert!(app.contains("TrembitaApp::from_config"));
+    assert!(app.contains("RunOpts::for_manifest"));
+    assert!(app.contains("let manifest = manifest::build()"));
+    assert!(app.contains(".manifest(manifest)"));
     assert!(root.join("src/config.rs").is_file());
     assert!(root.join("src/consumers/sample.rs").is_file());
     assert!(root.join("src/domain/mod.rs").is_file());
@@ -46,6 +50,7 @@ fn rejects_invalid_name() {
         features: AppFeature::defaults(),
         trembita_version: "0.3.2".into(),
         trembita_path: None,
+        template: None,
     };
     assert!(scaffold_project(&opts).is_err());
 }
@@ -64,6 +69,7 @@ fn optional_modules_for_extra_features() {
         ],
         trembita_version: "0.3.2".into(),
         trembita_path: Some(Path::new("/tmp/trembita").to_path_buf()),
+        template: None,
     };
     let root = scaffold_project(&opts).unwrap();
     assert!(root.join("src/actors/mod.rs").is_file());
@@ -87,8 +93,12 @@ fn postgres_adapters_forward_through_trembita_features() {
         ],
         trembita_version: "0.3.2".into(),
         trembita_path: None,
+        template: None,
     };
     let root = scaffold_project(&opts).unwrap();
+    let app = std::fs::read_to_string(root.join("src/app.rs")).unwrap();
+    assert!(app.contains("TrembitaApp::from_config"));
+    assert!(app.contains("RunOpts::for_manifest"));
     let cargo = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
     assert!(cargo.contains(
         "features = [\"dev-certs\", \"http-jobs\", \"external-backlog\", \"domain-outbox\"]"
@@ -97,4 +107,25 @@ fn postgres_adapters_forward_through_trembita_features() {
     assert!(cargo.contains("domain-outbox = [\"trembita/domain-outbox\"]"));
     assert!(!cargo.contains("trembita-backlog-postgres"));
     assert!(!cargo.contains("trembita-events-postgres"));
+}
+
+#[test]
+fn template_realtime_includes_ws_and_chat_worker() {
+    use trembita_cli::{AppTemplate, resolve_scaffold_features};
+
+    let dir = tempdir().unwrap();
+    let features = resolve_scaffold_features(Some(AppTemplate::Realtime), "").unwrap();
+    let opts = NewProjectOpts {
+        name: "live-app".into(),
+        output: dir.path().to_path_buf(),
+        features,
+        template: Some(AppTemplate::Realtime),
+        trembita_version: "0.3.2".into(),
+        trembita_path: None,
+    };
+    let root = scaffold_project(&opts).unwrap();
+    assert!(root.join("src/actors/chat.rs").is_file());
+    let app = std::fs::read_to_string(root.join("src/app.rs")).unwrap();
+    assert!(app.contains("mount_raw_websocket"));
+    assert!(!root.join("src/consumers/sample.rs").exists());
 }

@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use super::features::AppFeature;
 use super::new::NewProjectOpts;
+use super::template::AppTemplate;
 
 /// `include_str!` paths anchored at [`CARGO_MANIFEST_DIR`](https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-set-for-crates) (`crates/trembita-cli`).
 macro_rules! app_tpl {
@@ -116,10 +117,12 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
         &root.join("src/consumers/mod.rs"),
         &vars.apply(app_tpl!("src/consumers/mod.rs.tpl")),
     )?;
-    write_file(
-        &root.join("src/consumers/sample.rs"),
-        &vars.apply(app_tpl!("src/consumers/sample.rs.tpl")),
-    )?;
+    if features.contains(&AppFeature::Jobs) {
+        write_file(
+            &root.join("src/consumers/sample.rs"),
+            &vars.apply(app_tpl!("src/consumers/sample.rs.tpl")),
+        )?;
+    }
     write_file(
         &root.join("src/domain/mod.rs"),
         &vars.apply(app_tpl!("src/domain/mod.rs.tpl")),
@@ -128,8 +131,14 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
     if features.contains(&AppFeature::Actors) {
         write_file(
             &root.join("src/actors/mod.rs"),
-            &vars.apply(app_tpl!("src/actors/mod.rs.tpl")),
+            &generate_actors_mod_rs(opts),
         )?;
+        if opts.template == Some(AppTemplate::Realtime) {
+            write_file(
+                &root.join("src/actors/chat.rs"),
+                &generate_realtime_chat_actor(),
+            )?;
+        }
     }
     if features.contains(&AppFeature::Gateway) {
         write_file(
@@ -167,7 +176,7 @@ fn generate_http_mod_rs(features: &HashSet<AppFeature>) -> String {
         mods.push_str("pub mod jobs;\n");
     }
     format!(
-        r"//! HTTP route modules — ops/jobs tables are defaults via [`TrembitaApp::from_env`](trembita::TrembitaApp::from_env).
+        r"//! HTTP route modules — ops/jobs tables are defaults via [`TrembitaApp::from_config`](trembita::TrembitaApp::from_config).
 //!
 //! Edit [`product::route_table`](product::route_table) for app-specific routes (`.gateway_routes()` in `app.rs`).
 //! Host split: [`Gateway::surface_hosts`](trembita::Gateway::surface_hosts) in a custom `.gateway(GatewayOpts::from_env()?.surfaces(...))`.
@@ -289,13 +298,12 @@ fn generate_main_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> St
 {mods}
 
 use app::App;
-use config::AppConfig;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {{
 {tracing}
 
-    App::new(AppConfig::from_env()).run().await
+    App::new(config::from_env()?).run().await
 }}
 ",
         name = opts.name,
@@ -320,6 +328,9 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
         imports.push("use trembita::TopicOpts;".to_string());
     }
     imports.push("use trembita::{WorkerOpts, WorkerScale, workers};".to_string());
+    if opts.template == Some(AppTemplate::Realtime) {
+        imports.push("use crate::actors::chat::ChatWorker;".to_string());
+    }
 
     let imports_block = format!(
         "// trembita:imports\n{}\n// trembita:imports-end",
@@ -360,13 +371,26 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
         );
     }
 
-    chain.push_str(
-        r"
+    if opts.template == Some(AppTemplate::Realtime) {
+        chain.push_str(
+            r#"
+        .workers(workers!(
+            // trembita:workers
+            WorkerOpts::<ChatWorker>::new("chat")
+                .config(())
+                .scale(WorkerScale::PerNode(1)),
+            // trembita:workers-end
+        ))"#,
+        );
+    } else {
+        chain.push_str(
+            r"
         .workers(workers!(
             // trembita:workers
             // trembita:workers-end
         ))",
-    );
+        );
+    }
 
     if features.contains(&AppFeature::Workflows) {
         imports.push("use trembita::WorkflowOpts;".to_string());
@@ -406,8 +430,12 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
         "use trembita::{RunOpts, TrembitaApp, TrembitaConfigure};".to_string(),
     ];
 
-    if features.contains(&AppFeature::Jobs) {
-        imports.push("use crate::consumers::sample::STREAM as SAMPLE_STREAM;".to_string());
+    if opts.template == Some(AppTemplate::Realtime) {
+        imports.push("use trembita::ReadyOpts;".to_string());
+        imports.push(
+            "use trembita::{AuthMode, RouteTable, TrembitaGatewayState, mount_raw_websocket, run_text_loop, server_stream};".to_string(),
+        );
+        imports.push("use trembita::futures_util::SinkExt;".to_string());
     }
 
     if features.contains(&AppFeature::Gateway) {
@@ -419,19 +447,60 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
         imports.join("\n")
     );
 
-    let mut builder = String::from("        TrembitaApp::from_env()?\n");
-    builder.push_str("            .data_dir(&self.config.data_dir)\n");
-    builder.push_str("            .manifest(manifest::build())\n");
+    let mut preamble = String::new();
+    if opts.template == Some(AppTemplate::Realtime) {
+        preamble.push_str(
+            r#"        fn ws_echo_routes(state: TrembitaGatewayState) -> RouteTable {
+            mount_raw_websocket(
+                RouteTable::new(),
+                "/ws",
+                AuthMode::Open,
+                state,
+                |raw| {
+                    Box::pin(async move {
+                        let ws = server_stream(raw.stream).await;
+                        run_text_loop(ws, |text| async move { Some(format!("echo: {text}")) })
+                            .await;
+                    })
+                },
+            )
+        }
+
+"#,
+        );
+    }
+
+    let mut builder = String::from(
+        "        let cfg = self.config;\n        let manifest = manifest::build();\n        let run = RunOpts::for_manifest(&cfg, &manifest);\n",
+    );
+    if opts.template == Some(AppTemplate::Realtime) {
+        builder.push_str("        let run = run.with_wait_ready(ReadyOpts::default());\n");
+    }
+    builder.push_str("        TrembitaApp::from_config(cfg)?\n");
+    builder.push_str("            .manifest(manifest)\n");
 
     if features.contains(&AppFeature::Gateway) {
-        builder.push_str(
-            r"            .gateway_routes(|state| {
+        if opts.template == Some(AppTemplate::Realtime) {
+            builder.push_str(
+                r"            .gateway_routes(|state| {
+                // trembita:gateway-routes
+                let mut table = http::product::route_table(&state);
+                table.merge(ws_echo_routes(state));
+                table
+                // trembita:gateway-routes-end
+            })
+",
+            );
+        } else {
+            builder.push_str(
+                r"            .gateway_routes(|state| {
                 // trembita:gateway-routes
                 http::product::route_table(&state)
                 // trembita:gateway-routes-end
             })
 ",
-        );
+            );
+        }
     }
 
     builder.push_str(
@@ -441,12 +510,7 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
 ",
     );
 
-    let run_opts = if features.contains(&AppFeature::Jobs) {
-        "RunOpts::from_env().with_wait_queue(SAMPLE_STREAM)"
-    } else {
-        "RunOpts::from_env()"
-    };
-    builder.push_str(&format!("            .run({run_opts})\n"));
+    builder.push_str("            .run(run)\n");
     builder.push_str("            .await\n");
 
     format!(
@@ -468,11 +532,52 @@ impl App {{
 
     /// Start the trembita cluster and block until shutdown.
     pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {{
-{builder}    }}
+{preamble}{builder}    }}
 }}
 ",
         name = opts.name,
         imports = imports_block,
+        preamble = preamble,
         builder = builder,
     )
+}
+
+fn generate_actors_mod_rs(opts: &NewProjectOpts) -> String {
+    if opts.template == Some(AppTemplate::Realtime) {
+        "//! Stateful worker groups — register in `src/manifest.rs`.\n\npub mod chat;\n".into()
+    } else {
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/templates/trembita-app/src/actors/mod.rs.tpl"
+        ))
+        .into()
+    }
+}
+
+fn generate_realtime_chat_actor() -> String {
+    r"//! `chat` worker group — extend for sticky session casts from WebSocket handlers.
+
+use trembita::actor;
+use trembita::runtime::{MessageDecodeError, UserActor};
+
+/// Echo-friendly worker stub for realtime templates.
+#[derive(Default)]
+pub struct ChatWorker;
+
+#[actor]
+impl UserActor for ChatWorker {
+    type Config = ();
+    type Message = Vec<u8>;
+    type Error = String;
+
+    fn decode_message(payload: &[u8]) -> Result<Self::Message, MessageDecodeError> {
+        Ok(payload.to_vec())
+    }
+
+    async fn handle(&mut self, _msg: Self::Message) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+"
+    .to_string()
 }

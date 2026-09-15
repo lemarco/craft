@@ -556,6 +556,7 @@ fn check_manifest_product_http(manifest: &str, app: &str, report: &mut DoctorRep
     let needs_listener = manifest.contains(".workflows(")
         || (manifest.contains(".topics(") && !app.contains("without_topics_api()"));
     let has_listener = app.contains("TrembitaApp::from_env")
+        || app.contains("TrembitaApp::from_config")
         || app.contains(".gateway(")
         || app.contains("GatewayOpts::");
     if needs_listener && !has_listener {
@@ -637,6 +638,7 @@ fn manual_product_api_merge(app: &str, api_fn: &str) -> bool {
 
 fn ops_routes_zero_config(app: &str) -> bool {
     app.contains("TrembitaApp::from_env")
+        || app.contains("TrembitaApp::from_config")
         || app.contains("default_surfaces")
         || app.contains("default_product_routes")
         || app.contains("gateway_routes(")
@@ -1142,6 +1144,7 @@ mod tests {
             features: AppFeature::defaults(),
             trembita_version: "0.3.2".into(),
             trembita_path: None,
+            template: None,
         };
         let root = scaffold_project(&opts).unwrap();
         let project = TrembitaProject { root };
@@ -1168,6 +1171,7 @@ mod tests {
             features: AppFeature::defaults(),
             trembita_version: "0.3.2".into(),
             trembita_path: None,
+            template: None,
         };
         let root = scaffold_project(&opts).unwrap();
         let project = TrembitaProject { root };
@@ -1184,6 +1188,7 @@ mod tests {
             features: AppFeature::defaults(),
             trembita_version: "0.3.2".into(),
             trembita_path: None,
+            template: None,
         };
         let root = scaffold_project(&opts).unwrap();
         let project = TrembitaProject { root };
@@ -1207,6 +1212,7 @@ async fn handle_orphan(_: &[u8]) -> Result<(), ()> { Ok(()) }
             features: AppFeature::defaults(),
             trembita_version: "0.3.2".into(),
             trembita_path: None,
+            template: None,
         };
         let root = scaffold_project(&opts).unwrap();
         let project = TrembitaProject { root };
@@ -1239,6 +1245,7 @@ async fn handle_orphan(_: &[u8]) -> Result<(), ()> { Ok(()) }
             features: AppFeature::defaults(),
             trembita_version: "0.3.2".into(),
             trembita_path: None,
+            template: None,
         };
         let root = scaffold_project(&opts).unwrap();
         let project = TrembitaProject { root };
@@ -1273,6 +1280,7 @@ async fn handle_extra(_: &[u8]) -> Result<(), ()> { Ok(()) }
             features: AppFeature::defaults(),
             trembita_version: "0.3.2".into(),
             trembita_path: None,
+            template: None,
         };
         let root = scaffold_project(&opts).unwrap();
         let project = TrembitaProject { root };

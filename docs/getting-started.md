@@ -62,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     TrembitaApp::from_env()?
         .jobs([JobOpts::new("jobs", Duration::from_secs(60)).http_enqueue(true)])
-        .run(RunOpts::from_env())
+        .run(RunOpts::from_env()?)
         .await
 }
 ```
@@ -78,7 +78,7 @@ let manifest = AppManifest::new()
 
 TrembitaApp::from_env()?
     .manifest(manifest)
-    .run(RunOpts::from_env())
+    .run(RunOpts::from_env()?)
     .await?;
 ```
 

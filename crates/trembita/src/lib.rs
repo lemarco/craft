@@ -13,7 +13,7 @@
 //!     init_tracing();
 //!     TrembitaApp::from_env()?
 //!         .jobs([JobOpts::new("jobs", Duration::from_secs(300)).http_enqueue(true)])
-//!         .run(RunOpts::from_env())
+//!         .run(RunOpts::from_env()?)
 //!         .await
 //! }
 //! ```

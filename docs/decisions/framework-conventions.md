@@ -55,12 +55,14 @@ pub fn build() -> AppManifest {
 `app.rs` applies it and owns **ingress + lifecycle** only:
 
 ```rust
-TrembitaApp::from_env()?
-    .data_dir(&self.config.data_dir)
-    .manifest(manifest::build())
+let cfg = self.config;
+let manifest = manifest::build();
+let run = RunOpts::for_manifest(&cfg, &manifest);
+TrembitaApp::from_config(cfg)?
+    .manifest(manifest)
     .gateway_routes(|state| http::product::route_table(&state))
     .configure(TrembitaConfigure::default())
-    .run(RunOpts::from_env())
+    .run(run)
     .await?;
 ```
 
@@ -118,7 +120,9 @@ The **`trembita`** binary lives in [`trembita-cli`](../../crates/trembita-cli/) 
 ```bash
 cargo install --path crates/trembita-cli          # from repo
 cargo install trembita-cli                        # after 0.4.0 on crates.io
-trembita new my-service --features jobs,gateway,telemetry
+trembita new my-service --template jobs
+trembita new my-service --template realtime
+trembita new my-service --features jobs,gateway,telemetry   # advanced override
 trembita new my-service --output ../my-service --trembita-path ../trembita
 trembita add consumer emails --lease 300
 trembita add topic platform.events

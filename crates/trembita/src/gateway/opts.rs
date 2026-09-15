@@ -7,7 +7,7 @@ use std::time::Duration;
 use trembita_http::{AuthMode, Gateway, RouteTable};
 
 use crate::app::DefaultGatewayApis;
-use crate::env_config::app_config_from_env;
+use crate::env_config::{AppConfig, app_config_from_env};
 
 use super::GatewayTlsPaths;
 use super::config::{DEFAULT_GATEWAY_DRAIN_TIMEOUT, GatewayConfig, GatewaySurfacesFn};
@@ -40,12 +40,11 @@ impl fmt::Debug for GatewayOpts {
 }
 
 impl GatewayOpts {
-    /// TCP bind, TLS, drain, and identity from `TREMBITA_LISTEN` / `TREMBITA_HTTP_TLS_*` ([env.md](../../../docs/env.md)).
+    /// TCP bind, TLS, drain, and identity from a parsed [`AppConfig`].
     ///
     /// # Errors
-    /// Invalid env or `TREMBITA_HTTP=-` (no TCP listener).
-    pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
-        let cfg = app_config_from_env()?;
+    /// `cfg.http` is `None` (`TREMBITA_HTTP=-` — no TCP listener).
+    pub fn from_config(cfg: &AppConfig) -> Result<Self, Box<dyn std::error::Error>> {
         let Some(addr) = cfg.http else {
             return Err(
                 "TREMBITA_HTTP=- disables the TCP gateway; omit .gateway() or enable HTTP on TREMBITA_LISTEN"
@@ -55,10 +54,18 @@ impl GatewayOpts {
         let mut opts = Self::new(addr)
             .drain_timeout(cfg.http_drain_timeout)
             .identity(GatewayBearerIdentity::from_env());
-        if let Some((cert, key)) = cfg.http_tls {
+        if let Some((cert, key)) = cfg.http_tls.clone() {
             opts = opts.tls(cert, key);
         }
         Ok(opts)
+    }
+
+    /// TCP bind, TLS, drain, and identity from `TREMBITA_LISTEN` / `TREMBITA_HTTP_TLS_*` ([env.md](../../../docs/env.md)).
+    ///
+    /// # Errors
+    /// Invalid env or `TREMBITA_HTTP=-` (no TCP listener).
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        Self::from_config(&app_config_from_env()?)
     }
 
     /// Bind address with no routes — wire surfaces via [`.surfaces`](Self::surfaces) or [`.default_surfaces`](Self::default_surfaces).

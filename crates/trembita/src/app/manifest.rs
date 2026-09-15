@@ -69,6 +69,12 @@ impl AppManifest {
         self
     }
 
+    /// Durable job stream names from [`.jobs`](Self::jobs) (manifest order).
+    #[must_use]
+    pub fn job_stream_names(&self) -> Vec<&str> {
+        self.jobs.iter().map(|j| j.stream_name()).collect()
+    }
+
     /// Apply all registrations to `builder` (same effect as calling `.jobs` / `.topics` / … separately).
     #[must_use]
     pub fn apply(self, builder: TrembitaAppBuilder) -> TrembitaAppBuilder {
@@ -104,5 +110,11 @@ mod tests {
         let _builder = TrembitaApp::builder()
             .data_dir("/tmp/manifest-test")
             .manifest(manifest);
+    }
+
+    #[test]
+    fn job_stream_names_follows_manifest_jobs() {
+        let manifest = AppManifest::new().jobs([JobOpts::new("a"), JobOpts::new("b")]);
+        assert_eq!(manifest.job_stream_names(), vec!["a", "b"]);
     }
 }

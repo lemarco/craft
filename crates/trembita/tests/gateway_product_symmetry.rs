@@ -9,8 +9,8 @@ use std::time::Duration;
 use bytes::Bytes;
 use http::{Method, StatusCode};
 use trembita::{
-    GatewayOpts, TopicOpts, TrembitaApp, TrembitaConfigure, WorkflowBuilder, WorkflowOpts,
-    journal_workflow,
+    DefaultGatewayApis, GatewayOpts, TopicOpts, TrembitaApp, TrembitaConfigure,
+    TrembitaGatewayState, WorkflowBuilder, WorkflowOpts, journal_workflow,
 };
 use trembita_http::RouteTable;
 use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};

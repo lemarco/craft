@@ -8,11 +8,11 @@ use std::process;
 use clap::{Parser, Subcommand, ValueHint};
 use trembita_cli::{
     AddActorOpts, AddConsumerOpts, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts,
-    AddWorkflowOpts, AddWsSurfaceOpts, NewProjectOpts, StaticSiteSource, TrembitaProject,
-    add_actor, add_consumer, add_http_surface, add_jobs_routes, add_ops_routes, add_static_site,
-    add_topic, add_workflow, add_ws_surface, default_output, dev_http, dev_setup, dev_status,
-    dev_stop, dev_trigger, dev_up, doctor_fix, list_showcases, parse_feature_list, run_doctor,
-    scaffold_project,
+    AddWorkflowOpts, AddWsSurfaceOpts, AppTemplate, NewProjectOpts, StaticSiteSource,
+    TrembitaProject, add_actor, add_consumer, add_http_surface, add_jobs_routes, add_ops_routes,
+    add_static_site, add_topic, add_workflow, add_ws_surface, default_output, dev_http, dev_setup,
+    dev_status, dev_stop, dev_trigger, dev_up, doctor_fix, list_showcases, parse_feature_list,
+    resolve_scaffold_features, run_doctor, scaffold_project,
 };
 
 #[derive(Parser)]
@@ -35,9 +35,11 @@ enum Command {
         /// Parent directory (default: current directory).
         #[arg(long, value_hint = ValueHint::DirPath)]
         output: Option<PathBuf>,
-        /// Comma-separated features: jobs, gateway, telemetry, topics, workflows,
-        /// actors, external-backlog, domain-outbox.
-        #[arg(long, default_value = "jobs,gateway,telemetry")]
+        /// Preset: jobs, realtime, workflows, topics (sets default features + manifest stubs).
+        #[arg(long, value_parser = parse_template_arg)]
+        template: Option<AppTemplate>,
+        /// Comma-separated features (overrides `--template` when non-empty).
+        #[arg(long, default_value = "")]
         features: String,
         /// Path to a local trembita checkout (uses path dependency instead of crates.io).
         #[arg(long, value_hint = ValueHint::DirPath)]
@@ -223,23 +225,38 @@ fn main() {
     }
 }
 
+fn parse_template_arg(s: &str) -> Result<AppTemplate, String> {
+    AppTemplate::parse_name(s).ok_or_else(|| {
+        format!(
+            "unknown template `{s}` (expected: {})",
+            AppTemplate::all()
+                .iter()
+                .map(|t| t.id())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    })
+}
+
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     match cli.command {
         Command::New {
             name,
             output,
+            template,
             features,
             trembita_path,
             trembita_version,
         } => {
-            let features = parse_feature_list(&features)?;
+            let features = resolve_scaffold_features(template, &features)?;
             let output =
                 output.unwrap_or_else(|| default_output(&std::env::current_dir().expect("cwd")));
             let opts = NewProjectOpts {
                 name,
                 output,
                 features,
+                template,
                 trembita_version,
                 trembita_path,
             };

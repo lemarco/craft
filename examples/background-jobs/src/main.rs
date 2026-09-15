@@ -148,7 +148,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     debug::startup("quic", 0, &data_dir(DATA_DIR_NAME));
     print_banner();
     server_builder()?
-        .run(RunOpts::from_env().with_wait_queue(STREAM))
+        .run(RunOpts::from_env()?.with_wait_queue(STREAM))
         .await?;
     debug::shutdown(worker_count() as usize);
     Ok(())

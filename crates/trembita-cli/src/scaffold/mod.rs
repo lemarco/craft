@@ -8,6 +8,7 @@ mod new;
 mod project;
 mod registry;
 mod render;
+mod template;
 mod templates;
 
 pub use add::{
@@ -21,3 +22,4 @@ pub use markers::{AppRsPatch, PatchError};
 pub use new::{NewProjectOpts, default_output};
 pub use project::{ProjectError, TrembitaProject};
 pub use render::{ScaffoldError, scaffold_project};
+pub use template::{AppTemplate, resolve_scaffold_features};
