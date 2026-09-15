@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use trembita::{
-    ActorGroupOpts, ConsumerOpts, JobOpts, RunOpts, TrembitaApp, TrembitaConfigure, consumer,
+    ActorGroupOpts, ConsumerOpts, JobOpts, TrembitaApp, TrembitaConfigure, consumer,
 };
 use trembita_tools::showcase_common::{
     data_dir, display_addr, http_bind_display, http_disabled, wire_bind_from_env,

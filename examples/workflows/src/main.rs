@@ -5,7 +5,7 @@ mod onboarding;
 
 use std::time::Duration;
 
-use trembita::{ReadyOpts, RunOpts, TrembitaApp, TrembitaConfigure, WorkflowOpts};
+use trembita::{ReadyOpts, TrembitaApp, TrembitaConfigure, WorkflowOpts};
 use trembita_tools::showcase_common::{
     data_dir, display_addr, http_bind_display, http_disabled,
 };

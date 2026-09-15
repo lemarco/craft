@@ -12,7 +12,7 @@ use std::time::Duration;
 use trembita::runtime::{UserActor, actor};
 use trembita::{
     ActorGroupOpts, AuthMode, CookieConfig, Gateway, GatewayOpts, ReadyOpts, RequestCtx, RouteTable,
-    RunOpts, TrembitaApp, TrembitaConfigure, TrembitaGatewayState, WsMessage, futures_util::SinkExt,
+    TrembitaApp, TrembitaConfigure, TrembitaGatewayState, WsMessage, futures_util::SinkExt,
     mount_sticky_websocket, run_sticky_cast_loop, server_stream,
 };
 use trembita_tools::showcase_common::{
