@@ -150,9 +150,7 @@ where
 {
     authorize_replicate_leader(state, declared_leader, not_leader_msg)?;
     for op in ops {
-        apply_one(op)
-            .await
-            .map_err(map_apply_err)?;
+        apply_one(op).await.map_err(map_apply_err)?;
     }
     Ok(())
 }

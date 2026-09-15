@@ -1,9 +1,15 @@
 //! `trembita-runtime` — Raft node runtime, actor registry, and cluster supervision.
 //!
-//! Hosts [`spawn_node`], [`ActorRegistry`], cross-node messaging, and the
-//! leader-only [`ClusterSupervisor`].
+//! Hosts [`spawn_node`](data_plane::spawn_node), [`ActorRegistry`](data_plane::ActorRegistry),
+//! cross-node messaging, and the leader-only [`ClusterSupervisor`](control_plane::ClusterSupervisor).
+//!
+//! Internal layout: [`control_plane`] (catalog, rebalance, supervisor) vs
+//! [`data_plane`] (driver, node service, actors).
 
 pub use {trembita_core, trembita_net, trembita_proto, trembita_storage};
+
+pub mod control_plane;
+pub mod data_plane;
 
 /// Attribute macro for remotely spawnable [`UserActor`] wire codecs.
 pub use trembita_macros::actor;
@@ -44,7 +50,8 @@ pub use group_membership::{GroupMembershipSyncReport, sync_hosted_group_membersh
 pub use group_rebalance::{GroupRebalanceReport, RaftGroupReconciler};
 pub use leader_replicate::{
     REPLICATION_NO_REACHABLE_VOTERS, authorize_replicate_leader, fanout_product_replicate,
-    fanout_replicate, forward_to_leader, replicate_reply_err, replication_peers,
+    fanout_replicate, follower_apply_product_replicate, follower_apply_product_replicate_sync,
+    forward_to_leader, replicate_reply_err, replication_peers,
 };
 pub use leader_task::{LeaderGate, LeaderLoopOpts, LeaderSession, run_leader_loop};
 pub use mailbox_spool::{
@@ -79,10 +86,8 @@ pub use sharded::{
 pub use supervisor::{ClusterState, ClusterSupervisor, GroupReconcile, ReconcileReport};
 pub use tracing_init::init_tracing;
 #[cfg(feature = "otlp")]
-mod metrics_otlp;
-#[cfg(feature = "otlp")]
 mod tracing_otlp;
 #[cfg(feature = "otlp")]
-pub use metrics_otlp::{MetricsOpts, init_metrics_with_otlp};
-#[cfg(feature = "otlp")]
 pub use tracing_otlp::{TracingOpts, init_tracing_with_otlp};
+#[cfg(feature = "otlp")]
+pub use trembita_metrics_otlp::{MetricsOpts, init_metrics_with_otlp};

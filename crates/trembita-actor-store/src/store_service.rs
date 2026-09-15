@@ -19,8 +19,8 @@ use trembita_proto::{
 
 use crate::store::{ActorStateStore, StoreError};
 use trembita_runtime::{
-    ClusterState, authorize_replicate_leader, fanout_product_replicate, forward_to_leader,
-    replicate_reply_err,
+    ClusterState, authorize_replicate_leader, fanout_product_replicate,
+    follower_apply_product_replicate_sync, forward_to_leader, replicate_reply_err,
 };
 
 use crate::{RedbActorStateStore, StoreReplicationOps};
@@ -213,17 +213,17 @@ impl StoreService {
         _from: Option<NodeId>,
         request: &StoreReplicateRequest,
     ) -> StoreReplicateReply {
-        if let Err(e) = self.authorize_replicate(NodeId(request.leader_id)) {
-            return StoreReplicateReply { error: Some(e) };
+        let result = follower_apply_product_replicate_sync(
+            self.state.as_ref(),
+            NodeId(request.leader_id),
+            REPLICATE_NOT_LEADER,
+            &request.ops,
+            |op| self.local.apply_replicate(op),
+            ProductWireError::backend,
+        );
+        StoreReplicateReply {
+            error: result.err(),
         }
-        for op in &request.ops {
-            if let Err(e) = self.local.apply_replicate(op) {
-                return StoreReplicateReply {
-                    error: Some(ProductWireError::backend(e)),
-                };
-            }
-        }
-        StoreReplicateReply { error: None }
     }
 
     /// Leader-only sweep of expired TTL keys; replicates deletes to voters.

@@ -32,9 +32,10 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 tokio.workspace = true
 opentelemetry = { version = "0.31", optional = true }
-opentelemetry_sdk = { version = "0.31", optional = true, features = ["metrics", "rt-tokio"] }
+opentelemetry_sdk = { version = "0.31", optional = true, features = ["trace", "rt-tokio"] }
 opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic"], optional = true }
 tracing-opentelemetry = { version = "0.32", optional = true }
+trembita-metrics-otlp = { path = "../trembita-metrics-otlp", version = "0.4.0", optional = true }
 
 [features]
 default = []
@@ -43,6 +44,7 @@ otlp = [
     "dep:opentelemetry_sdk",
     "dep:opentelemetry-otlp",
     "dep:tracing-opentelemetry",
+    "dep:trembita-metrics-otlp",
 ]
 
 [dev-dependencies]

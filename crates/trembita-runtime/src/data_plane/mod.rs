@@ -16,8 +16,7 @@ pub use crate::registry::{
     ScaleError, SendError, SnapshotError, SpawnError, StopError, UserActor, WireReplyPort,
 };
 pub use crate::runtime::{
-    ClientError, NodeHandle, NodeService, NodeStatus, QueueAutoscalePolicyAppliedFn,
-    RuntimeConfig, SagaJournalAppliedFn, TwoPhaseGcAbortedFn, TwoPhaseJournalAppliedFn,
-    spawn as spawn_node,
+    ClientError, NodeHandle, NodeService, NodeStatus, QueueAutoscalePolicyAppliedFn, RuntimeConfig,
+    SagaJournalAppliedFn, TwoPhaseGcAbortedFn, TwoPhaseJournalAppliedFn, spawn as spawn_node,
 };
 pub use crate::session::ActorSession;
