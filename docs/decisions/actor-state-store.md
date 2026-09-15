@@ -1,14 +1,11 @@
 # Stateful actors — workflow store (`ActorStateStore`, redb-first)
 
 **Status:** Accepted  
-**Date:** 2026-08-28  
-**Supersedes (default path):** [actor-state-redis](actor-state-redis.md) — Redis remains an optional adapter, not the product default.
+**Date:** 2026-08-28
 
 ## Context
 
-Medium open question **#2** ([cross-node-actors](cross-node-actors.md)): what happens to **stateful actor** workflow data on VPS crash?
-
-The original ADR recommended **Redis** as the primary example. Product direction (2026-08-28) is **zero mandatory external infra**: the same embedded `redb` model used for [job-queue](job-queue.md) and Raft storage should cover actor workflow keys for teams that run entirely on trembita.
+Stateful actors need workflow data that survives VPS crash without putting every byte in the Raft log ([cross-node-actors](cross-node-actors.md)). The default is **embedded `redb`** under `data_dir`, same durability class as [job-queue](job-queue.md) and Raft storage — **no mandatory external infra**. Optional Redis integration is documented in [actor-state-redis](actor-state-redis.md).
 
 ## Decision
 
@@ -21,12 +18,12 @@ The original ADR recommended **Redis** as the primary example. Product direction
 
 **Do not** put routine actor workflow bytes in the Raft log — avoids R1 write ceiling and wrong abstraction ([future-work-and-risks](future-work-and-risks.md)).
 
-### Default backend: embedded redb (target)
+### Default backend: embedded redb
 
 | Backend | Role | Status |
 |---------|------|--------|
 | **`InMemoryStore`** | Tests, single-node dev | **shipped** |
-| **`RedbActorStateStore`** | Production, `{data_dir}/actor-store.redb`, voter replication like `RedbJobQueue` | **shipped** (0.2.x) |
+| **`RedbActorStateStore`** | Production, `{data_dir}/actor-store.redb`, voter replication like `RedbJobQueue` | **shipped** |
 | **`RedisStore`** (`trembita-store-redis`) | Optional — shared cache with non-trembita services | **shipped** |
 
 Product getting started and [scenario guides](../scenarios/README.md) use **redb or SM only**. Redis is documented under optional integration.

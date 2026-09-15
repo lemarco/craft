@@ -30,7 +30,7 @@ real network between separate processes.
   process restart.
 - `linearizability.sh` — Jepsen-lite gate: trembita-sim checker sweep, then docker
   E2E with concurrent QUIC clients (`trembita-e2e-client` + `trembita_sim::History`)
-  and partition chaos under admin poll.
+  and partition chaos under ops HTTP poll.
 - `queue.sh` — job queue over QUIC: enqueue on the leader, lease/ack on a
   follower (`trembita-e2e-queue-client`), kill the leader, drain the replicated
   backlog on the new leader.
@@ -42,7 +42,7 @@ real network between separate processes.
 ## Run it
 
 ```sh
-./e2e/run.sh                    # election + admin smoke + failover
+./e2e/run.sh                    # election + ops HTTP smoke + failover
 ./e2e/leave.sh                  # graceful leave (TREMBITA_GRACEFUL_LEAVE)
 ./e2e/queue.sh                  # job queue enqueue / follower worker / failover
 ./e2e/gateway_jobs.sh         # HTTP jobs via gateway (integration test)

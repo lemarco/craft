@@ -94,11 +94,13 @@ Architecture and decision records for the distributive Raft actor system.
 | [backlog.md](backlog.md) | Implementation backlog |
 | [testing-coverage.md](testing-coverage.md) | Test inventory and coverage matrix |
 | [releasing.md](releasing.md) | crates.io publish workflow |
-| [../CHANGELOG.md](../CHANGELOG.md) | Version history |
+| [../CHANGELOG.md](../CHANGELOG.md) | Changelog policy (detailed history from **1.0**) |
 
 ## How we decide
 
 Each record lists **context**, **options**, and a **decision**. Accepted records are listed above; update [status.md](status.md) when shipping or deferring capability.
+
+**Pre-1.0 documentation policy:** we document **current design and behavior**, not how it evolved. No version-to-version migration guides and no detailed [CHANGELOG](../CHANGELOG.md) history until **1.0** — use [status.md](status.md), [env.md](env.md), [getting-started.md](getting-started.md), and [decisions/](decisions/) instead.
 
 ## Writing docs
 

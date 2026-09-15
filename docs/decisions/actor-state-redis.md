@@ -1,12 +1,10 @@
 # Stateful actors — external store (Redis)
 
-> **Product default (2026-08-28):** embedded **redb** via [`ActorStateStore`](actor-state-store.md) —
-> no mandatory Redis. This record remains for the **optional** Redis adapter (`trembita` feature `redis-store`) and
-> integration with non-trembita services. Scenario guides: [stateful-workers](../scenarios/stateful-workers.md).
+> **Product default:** embedded **redb** via [`ActorStateStore`](actor-state-store.md) — no mandatory Redis.
+> This record covers the **optional** Redis adapter (`trembita` feature `redis-store`) and integration with non-trembita services. Scenario: [stateful-workers](../scenarios/stateful-workers.md).
 
 **Status:** Accepted (optional adapter path)  
-**Date:** 2026-07-05  
-**Amended:** 2026-08-28 — superseded as default by [actor-state-store](actor-state-store.md)
+**Date:** 2026-07-05
 
 ## Context
 
@@ -86,15 +84,14 @@ Raft `migration_snapshot` remains for **small hot buffers**; **Redis is source o
 - **Not** managed by trembita — user provisions Redis (single instance dev, HA prod)
 - **Not** linearizable with Raft reads unless user designs transactions carefully
 
-### v1 scope
+### Shipped vs backlog
 
-| In v1 | Deferred |
-|-------|----------|
-| `ActorStateStore` trait | Built-in PostgreSQL impl |
-| **`trembita-store-redis`** example impl (`redis` / `fred` crate) | Redis Cluster auto-discovery |
-| Docs + example worker using Redis | Framework-hosted Redis |
+| Shipped | Not in core |
+|---------|-------------|
+| `ActorStateStore` trait + **`RedisStore`** in `trembita-store-redis` | Built-in PostgreSQL `ActorStateStore` |
+| Docs + integration path | Redis Cluster auto-discovery, framework-hosted Redis |
 
-Core trembita **works without Redis** — stateless actors + Raft SM only. Redis is **recommended pattern** for stateful actors.
+Core trembita **works without Redis** — default stateful path is [`RedbActorStateStore`](actor-state-store.md). Use Redis when you already run it for non-trembita services or need a shared cache outside `data_dir`.
 
 ## Consequences
 

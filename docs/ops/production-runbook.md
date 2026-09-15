@@ -30,7 +30,7 @@ Ops routes (`/health`, `/ready`, `/metrics`, `/dashboard`) are on the **same** T
 
 ### Static clusters (`trembita-node`, e2e)
 
-Legacy ops layout: explicit `TREMBITA_NODE_ID`, static `TREMBITA_PEERS`, per-file PEM paths — see [certs.md](../certs.md#static-multi-node-bootstrap).
+Reference layout (not elastic product apps): explicit `TREMBITA_NODE_ID`, static `TREMBITA_PEERS`, per-file PEM paths — see [certs.md](../certs.md#static-multi-node-bootstrap).
 
 ### Join troubleshooting
 

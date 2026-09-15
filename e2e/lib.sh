@@ -10,7 +10,7 @@ declare -A PORT=([1]=18081 [2]=18082 [3]=18083)
 # node1 serves ops HTTPS when TREMBITA_HTTP_TLS_* is set; e2e compose uses plain HTTP.
 declare -A ADMIN_TLS=([1]=0 [2]=0 [3]=0)
 
-# Host the published admin ports are reachable on. Localhost normally; under
+# Host the published ops HTTP ports are reachable on. Localhost normally; under
 # GitLab dind the ports live on the `docker` service host, so set
 # TREMBITA_E2E_HOST=docker there.
 HOST="${TREMBITA_E2E_HOST:-127.0.0.1}"
@@ -21,7 +21,7 @@ CA_FILE="${TREMBITA_E2E_CA_FILE:-}"
 # Tear the cluster + volumes down. Register with `trap cleanup EXIT`.
 cleanup() { $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true; }
 
-# Copy the cluster CA out of node1 for curl --cacert (admin TLS on node1).
+# Copy the cluster CA out of node1 for curl --cacert (ops HTTP TLS on node1).
 ensure_ca_file() {
     if [ -n "$CA_FILE" ] && [ -f "$CA_FILE" ]; then
         return 0
@@ -46,7 +46,7 @@ leader_at() {
         | grep -o '"leader":[0-9]*' | head -1 | cut -d: -f2
 }
 
-# True when /health returns 200 on a node's admin port.
+# True when /health returns 200 on a node's ops HTTP port.
 health_ok() {
     admin_curl "$1" "/health" >/dev/null 2>&1
 }

@@ -2,7 +2,7 @@
 
 Four standalone **product** binaries (plus self-update) — each with its own `Cargo.toml`, README, `cluster.sh` (QUIC/mTLS), and `trigger.sh`. They demonstrate jobs, actors, topics, and workflows on the same [`TrembitaApp`](../crates/trembita/src/app/mod.rs) path as [`trembita new`](../docs/decisions/framework-conventions.md), but use **builder wiring in `main.rs`** instead of the scaffold’s `manifest.rs` layout.
 
-**Dev UX (repo contributors):** build the **debug** CLI, then use `dev` from the repo root — see [getting-started §4](../docs/getting-started.md#4-try-the-showcases). Legacy `./cluster.sh` remains for scripts/CI.
+**Dev UX (repo contributors):** build the **debug** CLI, then use `dev` from the repo root — see [getting-started §4](../docs/getting-started.md#4-try-the-showcases). `./cluster.sh` remains for scripts/CI.
 
 ```bash
 cargo build -p trembita-cli

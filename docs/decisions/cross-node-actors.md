@@ -2,7 +2,6 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-05  
-**Amended:** 2026-07-05 — `spawn_remote`, `scale_cluster`, automatic migration on node leave
 
 ## Context
 

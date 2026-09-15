@@ -1,6 +1,6 @@
 # trembita-http
 
-Product HTTP helpers for [trembita](https://crates.io/crates/trembita) apps (0.4.0 native routing).
+Product HTTP helpers for [trembita](https://crates.io/crates/trembita) apps (native [`RouteTable`](src/routing/table.rs) routing).
 
 **Product apps:** depend on `trembita` with feature `http-jobs` (enabled by default) — types re-exported at the crate root and in `trembita::gateway::http`. See [facade ADR](../../docs/decisions/facade.md). Direct `trembita-http` dependency is for advanced/workspace use.
 
@@ -72,7 +72,7 @@ let api = IntrospectApi::new(observer);
 let routes = api.route_table_with_auth(Some(auth_fn));
 ```
 
-Or merge built-in tables in gateway surfaces (0.5+ — `with_*_api` removed):
+Or merge built-in tables in gateway surfaces explicitly:
 
 ```rust
 GatewayOpts::new(addr)
@@ -165,4 +165,4 @@ export AWS_ACCESS_KEY_ID=…
 export AWS_SECRET_ACCESS_KEY=…
 ```
 
-See [gateway-routing-v2](../../docs/decisions/gateway-routing-v2.md) for the full 0.4.0 migration guide.
+See [gateway-routing-v2](../../docs/decisions/gateway-routing-v2.md) for the native routing model.

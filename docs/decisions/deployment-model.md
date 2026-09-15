@@ -2,7 +2,6 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-05  
-**Amended:** 2026-07-05 — VPS incremental join + actor scaling vision
 
 ## Context
 
@@ -17,7 +16,7 @@ Operational model: **VPS / bare metal** — one process per node; docker-compose
 | Artifact | Role |
 |----------|------|
 | **`trembita-*` crates + `TrembitaCluster` API** | Primary product — user embeds in their app |
-| **`examples/`** | Four product showcases (jobs, stateful workers, realtime, workflows) — each standalone `Cargo.toml`, local + QUIC `cluster.sh` |
+| **`examples/`** | Product showcases (jobs, stateful workers, realtime, workflows, self-update) — each standalone `Cargo.toml`, local + QUIC `cluster.sh` |
 | **`dev/`** | Shared cluster helpers (`cluster-common.sh`), certs, optional Docker Compose per showcase |
 | **`trembita-node` (optional)** | Thin wrapper around the same API for demos only — not a plugin host |
 
@@ -29,10 +28,10 @@ The user ships **one binary** built from their app. Production runs **N processe
 #[tokio::main]
 async fn main() -> Result<()> {
     let cluster = TrembitaCluster::builder()
-        .node_id(env("NODE_ID"))
-        .listen(env("LISTEN_ADDR"))           // e.g. 0.0.0.0:443 (TREMBITA_LISTEN)
-        .join(env_optional("JOIN_ADDR"))      // None = seed/first node; Some = join existing
-        .allow_join(env_bool("RAFT_ALLOW_JOIN")) // seed/members: accept joins only when true
+        .node_id(env("TREMBITA_NODE_ID"))     // product apps: assigned id in {data_dir}/node-id
+        .listen(env("TREMBITA_LISTEN"))       // e.g. 0.0.0.0:443 — QUIC + product TCP
+        .join_seeds(parse_seeds(env("TREMBITA_JOIN_SEEDS"))) // joiners only; seed omits
+        .allow_join(env_bool("TREMBITA_ALLOW_JOIN"))
         .state_machine(MyAppState::default())
         .resource_profile(ResourceProfile::UseAllAvailable)
         .auto_workers([AutoWorkerSpec::new("workers", WorkerConfig::default)])
@@ -54,14 +53,14 @@ sequenceDiagram
     participant V2 as VPS 2
     participant V3 as VPS 3
 
-    V1->>V1: JOIN_ADDR unset; --allow-join → accept joins
+    V1->>V1: TREMBITA_JOIN_SEEDS unset; TREMBITA_ALLOW_JOIN=1 → accept joins
     V2->>V1: TREMBITA_JOIN_SEEDS=1@vps1:443 → join cluster (membership)
     V3->>V1: TREMBITA_JOIN_SEEDS=1@vps1:443 (or any member) → join cluster
     Note over V1,V3: Same binary, same actor definitions; scale by adding VPSes
 ```
 
-1. **First VPS:** no join address — becomes seed (single-node Raft until peers arrive).
-2. **Next VPS:** `JOIN_ADDR` points at any live member (typically first); framework runs **join protocol** ([cluster-elasticity](cluster-elasticity.md)).
+1. **First VPS:** omit `TREMBITA_JOIN_SEEDS` — becomes seed (single-node Raft until peers arrive).
+2. **Next VPS:** `TREMBITA_JOIN_SEEDS` points at any live member (typically first); framework runs **join protocol** ([cluster-elasticity](cluster-elasticity.md)).
 3. **Further VPSes:** same — connect to seed or any healthy peer.
 
 Client traffic: any node (transparent forward, [client-and-routing](client-and-routing.md)). Load balancers can round-robin across VPS addresses.
@@ -91,7 +90,7 @@ Raft gives **consistent replicated state** (via user `StateMachine`). **Actors**
 
 - One codebase, deploy anywhere, grow cluster incrementally
 - Natural fit for ractor + embed model ([state-machine](state-machine.md))
-- VPS-friendly: env vars `NODE_ID`, `LISTEN_ADDR`, `JOIN_ADDR`, TLS paths
+- VPS-friendly: product env in [env.md](../env.md) (`TREMBITA_LISTEN`, `TREMBITA_DATA_DIR`, `TREMBITA_CERT_DIR`, `TREMBITA_JOIN_SEEDS`, …)
 
 **Negative**
 

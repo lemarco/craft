@@ -134,15 +134,17 @@ cargo build -p trembita-cli   # debug CLI (`dev` is omitted from `--release` / c
 | [realtime](../examples/realtime/) | Sticky sessions / WebSocket |
 | [workflows](../examples/workflows/) | Saga journal + steps |
 
-Solo node: `cargo run --release` inside `examples/<name>/`. Legacy: `./cluster.sh` in each example. **Compose** under [`dev/compose/`](../dev/compose/) is for CI/demo — not the primary dev path.
+Solo node: `cargo run --release` inside `examples/<name>/`. Multi-node scripts: `./cluster.sh` in each example. **Compose** under [`dev/compose/`](../dev/compose/) is for CI/demo — not the primary dev path.
 
-Internal HTTP/WS client (not on crates.io; built by `./cluster.sh setup`):
+Internal HTTP/WS client (not on crates.io; built by `./cluster.sh setup` or `trembita dev setup`):
 
 ```bash
-cargo build -p trembita-showcase-client
+cargo build -p trembita-tools --bin trembita-showcase-client
 ./target/debug/trembita-showcase-client job 127.0.0.1:8090 emails hello
 ./target/debug/trembita-showcase-client ws 127.0.0.1:8290 alice hello
 ```
+
+Prefer `./target/debug/trembita dev http --showcase background-jobs -- job emails hello` when using the debug CLI from the repo root.
 
 Reference KV [`StateMachine`](../crates/trembita-core/src/kv.rs) (`trembita::kv` on the facade) for low-level Raft `propose` / `query` without a full product app.
 
@@ -175,7 +177,7 @@ TrembitaApp::builder()
     .await?;
 ```
 
-Legacy [`.actors()`](../crates/trembita/src/app/mod.rs) + [`ActorGroupOpts`](../crates/trembita/src/actor_group.rs) remain supported.
+Alternate API: [`.actors()`](../crates/trembita/src/app/mod.rs) + [`ActorGroupOpts`](../crates/trembita/src/actor_group.rs).
 
 Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store_set`](../crates/trembita-actor-store/src/store_codec.rs) — backed by redb when `data_dir` is set.
 
@@ -196,13 +198,14 @@ async fn handle_job(_payload: &[u8]) -> Result<(), ()> {
     Ok(())
 }
 
+// QUIC wire and product TCP must share TREMBITA_LISTEN (see env.md).
 TrembitaApp::builder()
     .data_dir("/var/lib/trembita")
     .jobs([JobOpts::new("jobs")
         .lease(Duration::from_secs(300))
         .consumer(&HandleJobConsumer)
         .http_enqueue(true)])
-    .gateway(GatewayOpts::new("0.0.0.0:3000".parse()?))
+    .gateway(GatewayOpts::from_env()?)
     .run(RunOpts::default().with_wait_queue("jobs"))
     .await?;
 
@@ -256,8 +259,13 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
     Gateway::new(false).dev_fallback(table)
 }
 
+// Set TREMBITA_LISTEN=127.0.0.1:8090 (or use TrembitaApp::from_env()?) so wire matches the gateway bind.
 TrembitaApp::builder()
-    .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?).identity(MyAuth).surfaces(gateway_surfaces));
+    .gateway(
+        GatewayOpts::from_env()?
+            .identity(MyAuth)
+            .surfaces(gateway_surfaces),
+    );
 // Or: GatewayOpts::realtime_ws("/ws", "chat", Duration::from_secs(3600), |sticky| …)
 // Scaffold: add src/http/ws.rs and merge routes in app.rs (see docs/scenarios/websocket-wiring.md)
 ```

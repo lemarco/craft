@@ -2,7 +2,6 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-05  
-**Amended:** 2026-07-05 — product name **trembita** (replaces `drafs`)
 
 ## Context
 
@@ -71,7 +70,7 @@ TrembitaCluster::builder()
     .await?;
 ```
 
-(`RaftCluster` alias may exist temporarily for docs migration; **`TrembitaCluster` is canonical**.)
+Use **`TrembitaCluster`** (via `trembita::cluster`) for custom state machines and low-level control.
 
 ### Why `trembita`
 
@@ -84,7 +83,7 @@ TrembitaCluster::builder()
 | Option | Why not |
 |--------|---------|
 | **`raft-*`** | crates.io / tikv collision |
-| **`drafs-*`** | Accurate acronym but opaque; superseded by user choice |
+| **`drafs-*`** | Accurate acronym but opaque |
 
 ## Consequences
 

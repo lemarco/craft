@@ -58,7 +58,7 @@ See [job-queue](job-queue.md) for why mailboxes and Raft logs are not misused as
 | mTLS certs ([certificates](certificates.md)) | `domain-outbox` — Postgres transactional outbox |
 | | Load balancer in front of gateway nodes |
 
-**Non-goals:** Kubernetes as core product, one-container-per-actor microservices, mandatory Redis/PostgreSQL/RabbitMQ, **static node roles** as the primary scaling model (removed — use homogeneous nodes + `.workload()`).
+**Non-goals:** Kubernetes as core product, one-container-per-actor microservices, mandatory Redis/PostgreSQL/RabbitMQ, static node roles as the primary scaling model (use homogeneous nodes + `.workload()`).
 
 ### Homogeneous nodes — compute tokens (B-16)
 
@@ -66,9 +66,9 @@ Every VPS runs the **same binary** (gateway when configured + job consumers + ac
 
 When ingress is quiet, **job consumers use spare CPU** on that node (night batch scenario). When gateway load rises, a per-node **workload governor** throttles consumer parallelism so API latency stays bounded — without rescaling the cluster.
 
-See [workload-governor](workload-governor.md). Static role env vars (`TREMBITA_ROLE`, etc.) were **removed** in B-16g.
+See [workload-governor](workload-governor.md).
 
-### Unified product surface (0.3.0+)
+### Unified product surface
 
 [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) wraps the same runtime as `TrembitaClusterBuilder`:
 
@@ -87,12 +87,12 @@ TrembitaApp::builder()
         .lease(Duration::from_secs(300))
         .consumer(&SendEmailConsumer)
         .http_enqueue(true)])
-    .gateway(GatewayOpts::new("0.0.0.0:8090".parse()?))
+    .gateway(GatewayOpts::from_env()?) // TREMBITA_LISTEN=0.0.0.0:8090
     .run(RunOpts::default().with_wait_queue("emails"))
     .await?;
 ```
 
-Declarative [`.jobs()`](../../crates/trembita/src/job_opts.rs) registers queue + consumer (+ optional HTTP enqueue). [`.workers()`](../../crates/trembita/src/worker_opts.rs) registers actor groups with explicit [`WorkerScale`](../../crates/trembita/src/worker_opts.rs) (`Fixed` / `PerNode` / queue `Auto`). Legacy [`.actors()`](../../crates/trembita/src/app/mod.rs) + [`ActorGroupOpts`](../../crates/trembita/src/actor_group.rs) remain supported ([examples/](../../examples/README.md)).
+Declarative [`.jobs()`](../../crates/trembita/src/job_opts.rs) registers queue + consumer (+ optional HTTP enqueue). [`.workers()`](../../crates/trembita/src/worker_opts.rs) registers actor groups with explicit [`WorkerScale`](../../crates/trembita/src/worker_opts.rs) (`Fixed` / `PerNode` / queue `Auto`). Alternate API: [`.actors()`](../../crates/trembita/src/app/mod.rs) + [`ActorGroupOpts`](../../crates/trembita/src/actor_group.rs) ([examples/](../../examples/README.md)).
 
 **Scaffolded product apps** ([`trembita new`](framework-conventions.md)) collect the same opts in [`manifest.rs`](../../crates/trembita/src/app/manifest.rs) via [`AppManifest`](../../crates/trembita/src/app/manifest.rs) and [`.manifest()`](../../crates/trembita/src/app/builder.rs) — see [framework-conventions](framework-conventions.md).
 
@@ -125,27 +125,9 @@ Typical flows:
 - **Session:** WebSocket → `ActorSession` → `ask_session` (actor mailbox + workers)
 - **Workflow:** `run_workflow` / HTTP `/workflows/*` — journal in Meta-Raft; steps call actors, queue, or external HTTP
 
-### What is shipped vs polish backlog
+### Shipped capabilities and open work
 
-| Capability | Status | Notes |
-|------------|--------|-------|
-| `RedbJobQueue`, `ClusterJobQueue`, autoscale | **shipped** | — |
-| Saga journal (`MetaRaftSagaJournal`, `CompositeSagaJournal`) | **shipped** | — |
-| `ActorSession`, consistent-hash routing | **shipped** | — |
-| Actor migration on leave/crash | **shipped** | — |
-| `RedbActorStateStore` + voter replication + TTL/GC | **shipped** | B-01 ✅ |
-| `TrembitaApp` product facade + gateway | **shipped** | B-02 ✅ |
-| HTTP jobs API (`202`, batch, DLQ requeue) | **shipped** | B-03 ✅ |
-| Real-time showcase + `ActorsApi` on gateway | **shipped** | B-04 ✅ — [examples/realtime/](../../examples/realtime/) |
-| `WorkflowBuilder` + resume CLI | **shipped** | B-05 ✅ |
-| `trembita init` template | **shipped** | B-06 ✅ — polish: richer worker stubs |
-| Dashboard: queue depth + saga status | **shipped** | B-07 ✅ |
-| Scenario docs (redb-first, no mandatory Redis) | **shipped** | B-08 ✅ |
-| Gateway bearer auth + identity-protected product routes (`AuthMode::Identity`) | **shipped** | B-14a ✅ |
-| E2E HTTP batch via product gateway | **shipped** | B-14c ✅ — `trembita/tests/gateway_jobs_http.rs` |
-| Gateway auth (custom beyond bearer stub) | **polish** | apps add `AuthFn` / custom identity |
-
-Full epic list: [backlog.md](../backlog.md) (P0–P3 ✅).
+This ADR states **product positioning and composition**. What is implemented today and what remains optional lives in [status.md](../status.md) (current index) and [backlog.md](../backlog.md) (open work) — not duplicated here.
 
 ## Consequences
 
@@ -157,7 +139,7 @@ Full epic list: [backlog.md](../backlog.md) (P0–P3 ✅).
 
 **Negative**
 
-- Declarative `.jobs()` / `.workers()` builder sugar shipped — legacy `.queue`, `.consumer`, and `.actors(name, ActorGroupOpts::…)` remain supported
+- Prefer declarative `.jobs()` / `.workers()`; lower-level `.queue()`, `.consumer()`, and `.actors()` remain available for custom wiring
 - WebSocket gateway auth: [`GatewayBearerIdentity`](../../crates/trembita/src/gateway/identity.rs) covers bearer tokens on product routes; session/OAuth/JWT for custom WebSocket handlers remains app-owned via `.identity()` and custom routes
 - Stateful workers need `RedbActorStateStore` + SM discipline — keys without SM still require explicit design
 

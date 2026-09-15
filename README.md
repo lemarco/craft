@@ -24,9 +24,9 @@
 
 | | |
 |---|---|
-| **Version** | `0.4.0` (0.5.0 unified-listener in progress) |
-| **Distribution** | Published on [crates.io](https://crates.io/crates/trembita) — E2E/chaos, product showcases |
-| **Release** | v0.4.0 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/trembita/0.4.0](https://docs.rs/trembita/0.4.0) |
+| **Stability** | Pre-**1.0** experimental — [docs/status.md](docs/status.md) |
+| **Distribution** | [crates.io](https://crates.io/crates/trembita) (`0.4.0` snapshot) · E2E/chaos · product showcases |
+| **Docs** | [docs.rs/trembita](https://docs.rs/trembita) · no detailed version history until 1.0 ([CHANGELOG.md](CHANGELOG.md)) |
 | **Full status** | [docs/status.md](docs/status.md) |
 
 ### Highlights
@@ -99,6 +99,7 @@ async fn handle_job(_payload: &[u8]) -> Result<(), ()> {
     Ok(())
 }
 
+// Export TREMBITA_LISTEN=127.0.0.1:8090 — QUIC and HTTP share this port (unified listener).
 TrembitaApp::builder()
     .data_dir("/var/lib/trembita")
     .jobs([JobOpts::new("jobs")
@@ -106,7 +107,7 @@ TrembitaApp::builder()
         .consumer(&HandleJobConsumer)
         .http_enqueue(true)])
     .gateway(
-        GatewayOpts::new("127.0.0.1:8090".parse()?)
+        GatewayOpts::from_env()?
             .surfaces(|state| Gateway::new(false).dev_fallback(state.app.ops_api().route_table())),
     )
     .run(RunOpts::default().with_wait_queue("jobs"))
@@ -174,7 +175,7 @@ Product apps: default `http-jobs` enables HTTP job routes; add `dev-certs` for l
 | [docs/testing-coverage.md](docs/testing-coverage.md) | Test inventory |
 | [docs/protocol.md](docs/protocol.md) | HTTP/3 routes |
 | [docs/releasing.md](docs/releasing.md) | crates.io workflow |
-| [CHANGELOG.md](CHANGELOG.md) | Version history |
+| [CHANGELOG.md](CHANGELOG.md) | Changelog policy (pre-1.0) |
 
 ## MSRV
 

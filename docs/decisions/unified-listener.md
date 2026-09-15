@@ -1,64 +1,46 @@
 # Unified listener — one port, two sockets, explicit routes
 
 **Status:** Accepted  
-**Date:** 2026-09-05  
-**Target release:** 0.5.0
+**Date:** 2026-09-05
 
 ## Context
 
-Trembita ran **three HTTP-related listeners** per node:
+Product nodes expose **one published port number** for cluster wire and for HTTP. Split admin/gateway TCP listeners and hidden built-in route merges made the full route table invisible in app code — conflicting with [framework-conventions](framework-conventions.md) (`src/http/` + explicit [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) merges).
 
-| Listener | Default | Stack |
-|----------|---------|-------|
-| Wire | `:7443/udp` | QUIC + HTTP/3 + mTLS + postcard |
-| Admin | `:8080/tcp` | HTTP/1.1 — health, metrics, dashboard, introspect |
-| Gateway | `:8090/tcp` | HTTP/1.1 — product routes + hidden built-in APIs |
-
-Built-in routes (`/jobs/*`, `/introspect/*`, …) were mounted via `.with_*_api(true)` flags
-and merged invisibly in `collect_builtin_routes()`. Apps could not see the full route table in
-`src/http/` or `app.rs`. (Product **capabilities** — job streams, topics, workers — now live in
-scaffold `src/manifest.rs`; HTTP wiring stays in `app.rs` / `src/http/`.)
-
-[framework-conventions](framework-conventions.md) prescribes HTTP ingress via explicit
-[`RouteTable`](../../crates/trembita-http/src/routing/table.rs) in `src/http/`, but the framework
-violated its own rule for operational routes.
+Product **capabilities** (jobs, topics, workers) live in scaffold `src/manifest.rs`; HTTP wiring stays in `app.rs` / `src/http/`.
 
 ## Decision
 
-### One port number, two sockets (industry standard)
+### One port number, two sockets
 
 ```
 :443/udp  →  QUIC + HTTP/3 + mTLS     wire (/raft/v1/*, actors, queue)
 :443/tcp  →  TLS + HTTP/1.1 (+ h2)    product + ops (all RouteTable routes)
 ```
 
-Default listen port moves from `7443` to **`443`** for both transports. Wire and HTTP share the
-port number; UDP and TCP are separate sockets.
-
-Env:
+Wire and HTTP share the port **number**; UDP and TCP are separate sockets. Default: **`TREMBITA_LISTEN=0.0.0.0:443`**.
 
 | Variable | Role |
 |----------|------|
-| `TREMBITA_LISTEN` | One port number: QUIC (UDP) + product/ops HTTP (TCP) (default `0.0.0.0:443`) |
-| `TREMBITA_HTTP` / `TREMBITA_GATEWAY` | **Internal:** `-` disables TCP only; otherwise omit (HTTP co-hosts on `TREMBITA_LISTEN`) |
+| `TREMBITA_LISTEN` | QUIC (UDP) + product/ops HTTP (TCP) on the same `host:port` |
+| `TREMBITA_HTTP` / `TREMBITA_GATEWAY` | **Internal:** `-` disables TCP only; otherwise omit |
 | `TREMBITA_HTTP_TLS_*` | Server TLS for the TCP listener |
 
-**Removed:** `TREMBITA_ADMIN`, `TREMBITA_ADMIN_TLS_*`, `TREMBITA_GATEWAY_*` API flags
-(`TREMBITA_GATEWAY_JOBS`, …), separate admin listener.
+Do **not** use separate admin/gateway env ports or `TREMBITA_GATEWAY_*` API toggles — see [env.md](../env.md).
 
-### All HTTP routes are explicit app code
+### Explicit HTTP routes
 
-Scaffold generates:
+Scaffold layout:
 
 ```
 src/http/
 ├── mod.rs           # re-exports + merge helpers
 ├── ops.rs           # /health, /ready, /metrics, /introspect/*, /dashboard
 ├── jobs.rs          # /jobs/* (when jobs feature enabled)
-└── product.rs       # custom business routes (manual module + `.surface()`)
+└── product.rs       # custom business routes
 ```
 
-`app.rs` wires HTTP in [`.gateway_routes()` / `.surfaces()`](../../crates/trembita/src/app/builder.rs) — no hidden merge (capabilities are in `manifest.rs` on scaffold projects):
+`app.rs` wires [`.gateway_routes()` / `.surfaces()`](../../crates/trembita/src/app/builder.rs):
 
 ```rust
 .surfaces(|state| {
@@ -73,58 +55,41 @@ src/http/
 })
 ```
 
-Scaffolded apps ship `ops.rs` / `jobs.rs` in the template; extend `src/http/` and wire merges in `app.rs`.
+Framework builders: **`OpsApi`**, **`JobsApi`**, **`IntrospectApi`**, etc. Apps choose what to merge and where.
 
-Framework provides **`OpsApi`**, **`JobsApi`**, **`IntrospectApi`**, etc. as route-table
-builders — apps choose what to merge and where.
+### `TrembitaApp::from_env` defaults
 
-### Removed APIs
+[`TrembitaApp::from_env()`](../../crates/trembita/src/app/runtime.rs) mounts **ops + registration-driven product APIs** on `TREMBITA_LISTEN` via [`default_surfaces`](../../crates/trembita/src/app/gateway.rs) unless you opt out ([`.without_ops()`](../../crates/trembita/src/app/builder.rs), [`.without_jobs_api()`](../../crates/trembita/src/app/builder.rs), …). Custom host splits still use explicit `src/http/` merges.
 
-- `GatewayOpts::with_jobs_api`, `with_actors_api`, `with_workflows_api`, `with_introspect_api`
-- `GatewayOpts::protect_product_apis`
-- `collect_builtin_routes()` in `router.rs`
-- `TrembitaClusterBuilder::admin_addr` and admin listener spawn in `assemble.rs`
-- Separate `AdminServer` production path (ops routes live in `OpsApi` → `RouteTable`)
+### Cluster-only ops HTTP
 
-`AdminServer` in `trembita-dashboard` remains for dashboard-crate unit tests only.
+[`spawn_cluster_ops_http`](../../crates/trembita/src/gateway/cluster_ops.rs) / [`cluster_ops_route_table`](../../crates/trembita/src/gateway/cluster_ops.rs) for [`TrembitaCluster`](../../crates/trembita/src/cluster_handle/cluster.rs) and [`trembita-node`](../../crates/trembita-tools/src/bin/node.rs) without a product gateway.
+
+`AdminServer` in `trembita-dashboard` is for crate unit tests only; production ops use `OpsApi` → `RouteTable`.
 
 ## Rejected
 
-- Deprecation period for old admin/gateway split — hard cut in 0.5.0
 - Single socket for wire + HTTP — different transports and security profiles
-- Keeping hidden `.with_*_api()` flags alongside explicit routes
+- Hidden `.with_*_api()` flags alongside explicit routes
 
 ## Consequences
 
-**Positive**
+**Positive:** One firewall rule per direction; full route inventory in app source; host-based product vs ops surfaces.
 
-- One firewall rule per direction (`udp/443`, `tcp/443`)
-- Full route inventory visible in `src/http/` and `app.rs`
-- Framework conventions enforced for ops routes too
-- Host-based separation: product surface vs ops surface
+**Negative:** Host-split and fully custom gateways require explicit route-table merges; SSE `/dashboard/events` needs `RouteTable::sse()` in dispatch.
 
-**Negative**
+## Deploy checklist
 
-- Breaking: all apps using `TREMBITA_ADMIN`, `.with_jobs_api(true)`, examples, docker-compose
-- Brownfield / host-split apps still merge ops/jobs route tables explicitly (scaffold template + `app.rs`)
-- SSE `/dashboard/events` requires `RouteTable::sse()` support in gateway dispatch
+1. Set **`TREMBITA_LISTEN`** (wire + TCP share this port)
+2. Prefer **`TrembitaApp::from_env()`** + `.jobs()` / `.topics()` / `.workers()` when defaults fit
+3. Otherwise merge `ops_api()` and product API tables in `.surfaces()` / `.gateway_routes()`; use `RouteTable::with_auth_mode(AuthMode::Identity)` for protected APIs
+4. Run `trembita doctor --preflight`; scrape `/health` and `/metrics` on the unified bind
 
-### Amended (0.5.0) — `TrembitaApp::from_env` defaults
-
-Product apps using [`TrembitaApp::from_env()`](../../crates/trembita/src/app/runtime.rs) get **ops + registration-driven product APIs** on `TREMBITA_LISTEN` via [`default_surfaces`](../../crates/trembita/src/app/gateway.rs) — no manual `http::ops` merge unless you opt out ([`.without_ops()`](../../crates/trembita/src/app/builder.rs), [`.without_jobs_api()`](../../crates/trembita/src/app/builder.rs), …). Scaffold projects still keep explicit `src/http/` modules for custom routes and host splits.
-
-## Migration (0.5.0)
-
-Step-by-step guide: [unified-listener-0.5.md](../migration/unified-listener-0.5.md).
-
-1. Replace `TREMBITA_ADMIN` + split gateway/admin ports with **`TREMBITA_LISTEN=0.0.0.0:443`** (or your bind) — wire (UDP) and HTTP (TCP) share the port number
-2. Prefer **`TrembitaApp::from_env()`** + `.jobs()` / `.topics()` / `.workers()` registration (automatic `/jobs/*`, ops, introspect on the unified bind)
-3. Brownfield: replace `.with_jobs_api(true)` with `http::jobs::route_table(&state)` (or `.gateway_routes()`) in surfaces; copy scaffold `src/http/ops.rs` when ops are not on the default gateway
-4. Point probes at the unified bind: `GET /health`, `GET /ready`, `GET /metrics`
+**Docker / k8s:** publish one port number for UDP + TCP; split product vs ops by **hostname** on the same TCP bind when needed ([production-runbook](../ops/production-runbook.md)).
 
 ## Related
 
 - [gateway-routing-v2](gateway-routing-v2.md) — native RouteTable model
 - [framework-conventions](framework-conventions.md) — `src/http/` layout
-- [wire-protocol](wire-protocol.md) — QUIC wire (updated default port)
-- [introspect-api](introspect-api.md) — superseded ops-on-gateway section
+- [wire-protocol](wire-protocol.md) — QUIC wire
+- [introspect-api](introspect-api.md) — introspection routes

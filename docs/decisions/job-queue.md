@@ -24,7 +24,7 @@ Options considered:
 | **Dedicated `JobQueue` port** + embedded disk + optional Redis adapter | **Accepted** |
 | Replace all mailboxes with a durable queue | Rejected — local `ask`/control paths must stay fast; layered model instead |
 
-Relationship to [actor-state-redis](actor-state-redis.md): Redis remains an **optional** adapter for workflow keys and, if desired, a remote queue backend. The **default embedded path** is **`redb` on local disk** — no mandatory external dependency.
+Relationship to [actor-state-redis](actor-state-redis.md): Redis is an **optional** adapter for workflow keys only. Queue backlog is **`redb` on local disk** by default — no mandatory external dependency. A remote Redis queue adapter is not shipped; track open work in [backlog.md](../backlog.md).
 
 ## Decision
 
@@ -92,7 +92,7 @@ Semantics:
 |---------|-------|------|
 | **`InMemoryJobQueue`** | `trembita-jobs` | Tests, sim, single-node dev |
 | **`RedbJobQueue`** | `trembita-jobs` | Default production backend (embedded `redb`) |
-| **`RedisJobQueue`** (optional) | `trembita-store-redis` or sibling | Remote/shared queue when user already runs Redis |
+| **`ClusterJobQueue`** | `trembita-jobs` + runtime | Leader `QueueService` + follower forward/replicate |
 
 **Default:** `RedbJobQueue` — `{data_dir}/queue-{stream}.redb`, separate from `group-*.redb` Raft files.
 
@@ -127,20 +127,20 @@ Wire routes (under `/raft/v1/queue/`):
 | `GET .../metrics` | Depth for autoscale & observability |
 | `POST .../replicate` | Leader → voter idempotent state sync |
 
-**v2 (deferred):** Redis adapter and cross-node durable mailbox remain open.
+Optional **`.durable_mailbox()`** on the cluster builder persists cross-node mailbox outbox/inbox under `data_dir` (complements in-memory mailboxes; not a job queue).
 
-### Sharded streams (v2)
+### Sharded streams
 
 - **`job_queue_sharded(name, shard_count, lease_timeout)`** — `{name}~0` … `{name}~{N-1}` independent redb files; logical [`ShardedJobQueue`](../../crates/trembita-jobs/src/sharded_queue.rs) federates enqueue/lease/ack.
 - Enqueue routes by hash of `shard_key` (or payload); replication runs per shard stream.
 - Spreads leader write + replicate load without putting jobs in the Raft log.
 
-### Priority and delayed jobs (v2)
+### Priority and delayed jobs
 
 - [`EnqueueOptions`](../../crates/trembita-jobs/src/queue/mod.rs): `priority` (higher first), `not_before_ms` / `EnqueueOptions::delayed`.
 - Wire: optional fields on `QueueEnqueueRequest`; replicated in `QueueReplicateOp::Enqueue`.
 
-### Membership autoscale (v2)
+### Membership autoscale
 
 - [`MembershipAutoscalePolicy`](../../crates/trembita-jobs/src/queue_autoscale.rs) + [`job_queue_membership_autoscale`](../../crates/trembita/src/builder/cluster/mod.rs): when `(pending + leased) / live_nodes` exceeds threshold and `live_nodes < max_nodes`, invoke user `join` hook (deploy VPS + dynamic join).
 - Complements worker [`AutoscalePolicy`](../../crates/trembita-jobs/src/queue_autoscale.rs) capped at `reachable_nodes`.
@@ -188,33 +188,11 @@ Scaling **out beyond node count** in production still means **add VPS + join** (
 - **Not** linearizable with SM state unless the application designs commit ordering.
 - **Not** a global serializable transaction log across shards (see [multi-raft § cross-shard transactions](multi-raft.md#cross-shard-transactions)).
 
-## v1 implementation scope
+## Shipped capabilities
 
-| In v1 | Status |
-|-------|--------|
-| `JobQueue` trait + `InMemoryJobQueue` | **landed** |
-| `RedbJobQueue` + crash/reopen tests | **landed** |
-| Worker consumer helper + example | **landed** |
-| Leader `QueueService` + wire routes (`/raft/v1/queue/*`) | **landed** |
-| Synchronous voter replication (`/queue/replicate`) | **landed** |
-| `ClusterJobQueue` client + follower forward | **landed** |
-| `run_queue_autoscaler` → `scale_cluster` | **landed** |
-| Facade builder (`job_queue`, `job_queue_autoscale`) | **landed** |
-| Sharded streams (`job_queue_sharded`) | **landed** |
-| Priority + delayed enqueue (`EnqueueOptions`) | **landed** |
-| Membership autoscale (`job_queue_membership_autoscale`) | **landed** |
-| Parallel voter replicate + replicate auth | **landed** |
-| Meta-Raft autoscale policy persistence | **landed** |
-| `RedbJobQueue` periodic compaction | **landed** |
-| Cross-node durable mailbox outbox/inbox (`durable_mailbox`) | **landed** |
+The workspace ships the full embedded queue stack: `JobQueue` port, `InMemoryJobQueue`, `RedbJobQueue`, leader `QueueService` with `/raft/v1/queue/*` and voter `/queue/replicate`, `ClusterJobQueue` + follower forward, worker consumer helpers, facade `job_queue` / `job_queue_autoscale` / `job_queue_sharded` / `job_queue_membership_autoscale`, priority and delayed enqueue, Meta-Raft autoscale policy, periodic `RedbJobQueue` compaction, and optional `.durable_mailbox()`.
 
-Implementation status: **v2 + production polish landed** — Redis adapter remains deferred; see [status.md](../status.md).
-
-### Deferred (post-v2)
-
-| Item | Notes |
-|------|-------|
-| `RedisJobQueue` adapter | Optional remote backend |
+For a product-oriented checklist and gaps, see [status.md](../status.md) and [backlog.md](../backlog.md).
 
 ## Consequences
 

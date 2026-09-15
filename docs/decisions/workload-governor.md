@@ -16,7 +16,7 @@ Teams rejected **static node roles** (`TREMBITA_ROLE=gateway|worker`) as the pri
 
 Today autoscale reads **queue depth only** ([job-queue](job-queue.md)). It does not observe **local gateway load**. Aggressive consumer settings (`batch`, `instances`, short `idle_sleep`) can starve HTTP/WebSocket handlers on the same node.
 
-`TREMBITA_ROLE` was an advanced env split for edge-only nodes. It conflicted with the homogeneous vision and was **removed in B-16g** (after a deprecation phase in B-16f).
+Do **not** use static role env vars (`TREMBITA_ROLE`, `TREMBITA_GATEWAY_ONLY`, `TREMBITA_NO_CONSUMER`) — see [product-scenarios](product-scenarios.md).
 
 ## Decision
 
@@ -35,7 +35,7 @@ No cluster topology change. No leader election for this loop. No `TREMBITA_ROLE`
 | Signal | Source today | Use |
 |--------|--------------|-----|
 | Active gateway connections | [`ConnectionTracker`](../../crates/trembita/src/gateway/drain.rs) | Low → more tokens for jobs; high → protect API |
-| In-flight HTTP (future) | Axum middleware counter | Same, finer than connections alone |
+| In-flight HTTP (future) | Gateway middleware counter | Same, finer than connections alone |
 | Queue depth (local view) | `JobQueue::metrics` / external backlog | Opportunistic job boost when API quiet **and** work waiting |
 | Consumer in-flight (future) | governor-owned counter | Avoid over-subscription |
 
@@ -57,7 +57,7 @@ TrembitaApp::builder()
     .workload(WorkloadOpts::balanced()
         .max_compute_tokens(available_parallelism())
         .api_protect( ApiProtect::when_connections_above(32) ))
-    .gateway(GatewayOpts::new("0.0.0.0:8090".parse()?))
+    .gateway(GatewayOpts::from_env()?) // TREMBITA_LISTEN=0.0.0.0:8090
     .jobs([JobOpts::new("imports").consumer(&ImportConsumer)])
 ```
 
@@ -84,16 +84,9 @@ flowchart LR
 
 Cluster-wide autoscale ([`AutoscalePolicy`](../../crates/trembita-jobs/src/queue_autoscale.rs)) remains for **worker actor count across VPSes**. The governor is **local fairness** between ingress and compute on one machine.
 
-## Removed: `TREMBITA_ROLE`
+## Edge-only ingress
 
-**Removed in B-16g.** Homogeneous nodes use `.workload()` and deployment choice (register consumers or not) instead of role env vars.
-
-| Phase | Item |
-|-------|------|
-| **B-16a** | Documented roles as deprecated; showcases use homogeneous env |
-| **B-16f–g** | Removed `NodeRole`, `node_role_from_env`, `TREMBITA_ROLE`, `TREMBITA_GATEWAY_ONLY`, `TREMBITA_NO_CONSUMER` |
-
-Edge-only ingress without local consumers is achieved by **not registering** `.jobs()` / `.workers()` on those nodes (deployment choice), or by setting consumer `instances(0)` — not by a role env var.
+Homogeneous nodes use `.workload()` for local API vs jobs fairness. To run gateway without local consumers, **omit** `.jobs()` / `.workers()` on those nodes (deployment choice), or set consumer `instances(0)` — not a role env var.
 
 ## Consequences
 

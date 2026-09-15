@@ -8,7 +8,7 @@ See [process.md](process.md) for the full commit → push → CI → release dia
 ## TL;DR
 
 ```sh
-# 1. Update CHANGELOG.md: move [Unreleased] items under the new version.
+# 1. Optional: note the release in docs/archive/ if needed. Detailed CHANGELOG entries start at 1.0.
 # 2. One-shot (recommended): release gate + bump + tag + publish + push + release build
 ./scripts/release.sh 0.2.0 --publish
 
@@ -56,6 +56,6 @@ See [process.md](process.md) for the full commit → push → CI → release dia
 
 ## Versioning policy
 
-- **SemVer.** Under `0.x`, breaking changes may land on minor bumps; record in `CHANGELOG.md`.
+- **SemVer.** Under `0.x`, breaking changes may land on minor bumps; detailed `CHANGELOG.md` entries start at **1.0**.
 - **MSRV** bumps are a minor-version event.
 - **Wire/protocol** compatibility: `Raft-Protocol-Version` ([protocol.md](protocol.md)).

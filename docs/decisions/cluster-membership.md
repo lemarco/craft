@@ -2,15 +2,14 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-05  
-**Updated:** 2026-09-02 — learner join default, voter replacement, placement_nodes
 
 ## Context
 
-Nodes must find peers, join and leave safely, and (in multi-Raft mode) maintain per-group voter sets. Dynamic `JOIN_ADDR` join with **full joint-consensus membership** is a v1 requirement — not a late add-on.
+Nodes must find peers, join and leave safely, and (in multi-Raft mode) maintain per-group voter sets. Dynamic join via **`TREMBITA_JOIN_SEEDS`** (or builder `join_seeds`) uses **full joint-consensus membership** in the replicated log.
 
 ## Joint-consensus membership
 
-**Implement full Raft membership changes (joint consensus) in early core phases — not deferred.**
+Membership changes go through **joint consensus** — add/remove voter, learner promotion, safe rejection of overlapping changes.
 
 | Feature | Required |
 |---------|----------|
@@ -26,9 +25,8 @@ Membership changes always go through the Raft log — HTTP routes are **entry po
 
 | Option | Why rejected |
 |--------|--------------|
-| Static bootstrap only in v1 | Breaks VPS chain-deploy story |
+| Static bootstrap only | Breaks VPS chain-deploy story |
 | Simplified join without joint consensus | Safety debt |
-| Hybrid simplified now, fix later | User chose full membership upfront |
 
 ## Discovery
 
@@ -36,8 +34,8 @@ Membership changes always go through the Raft log — HTTP routes are **entry po
 
 | Mechanism | Purpose |
 |-----------|---------|
-| **`JOIN_ADDR` (optional env/CLI)** | First contact for a **new** VPS |
-| **Seed mode** | No `JOIN_ADDR` → single-node; **`--allow-join`** to accept joins |
+| **`TREMBITA_JOIN_SEEDS`** (joiners) | First contact seed(s) for a **new** VPS (`id@host:port`) |
+| **Seed mode** | Omit join seeds → single-node; **`TREMBITA_ALLOW_JOIN=1`** to accept joins |
 | **Raft cluster config** | Authoritative peer list — joint-consensus changes |
 | **Static peer files** | Optional for air-gapped templates only |
 

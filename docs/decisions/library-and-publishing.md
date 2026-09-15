@@ -31,7 +31,7 @@
 ### Versioning
 
 - **SemVer** across the workspace; all `trembita-*` crates share a synchronized version.
-- Pre-1.0 (`0.x`): breaking changes may land on minor bumps, documented in CHANGELOG.
+- Pre-1.0 (`0.x`): breaking changes may land on minor bumps; **detailed history starts at 1.0** ([CHANGELOG.md](../../CHANGELOG.md)).
 - Wire/protocol compatibility tracked separately via `Raft-Protocol-Version` ([protocol.md](../protocol.md)); protocol changes are breaking and gated by [cluster-membership](cluster-membership.md#version-skew--hard-reject).
 
 ### MSRV

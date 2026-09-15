@@ -134,12 +134,12 @@ For apps holding `Arc<ClusterFacts>` / `Arc<dyn ClusterState>` directly:
 trembita_runtime::run_leader_loop(state, opts, stop_rx, |gate| async move { /* ... */ }).await;
 ```
 
-### 4. Internal migration (same release train as B-18)
+### 4. Framework loops on `run_leader_loop`
 
-Replace ad-hoc loops with `run_leader_loop` + thin `tick` closures:
+Internal periodic work uses `run_leader_loop` + thin `tick` closures:
 
-| Current | After |
-|---------|-------|
+| Loop | Wiring |
+|------|--------|
 | `run_backlog_feeder` | [`LeaderSession::gate`](../../crates/trembita-runtime/src/leader_task.rs) inline (stable public path; avoids `FnMut` feed state in `run_leader_loop`) |
 | `run_backlog_settle_drainer` | same |
 | `run_queue_autoscaler` / membership | `run_leader_loop` + mutex-held loop state |
@@ -172,7 +172,7 @@ Update [testing-coverage.md](../testing-coverage.md) when tests land.
 **Negative**
 
 - Another public type to stabilize before 1.0 (`LeaderGate`, `LeaderLoopOpts`).
-- Migration touches many crates — risk of subtle behaviour change (e.g. autoscaler cooldown across terms); each migrated loop needs explicit policy note in MR.
+- Shared loop helper touches many crates — behaviour changes need explicit policy notes in review (e.g. autoscaler cooldown across terms).
 - Does not remove RPC-path `is_leader()` checks — total check count drops modestly until a separate forward helper exists.
 
 ## Out of scope (follow-ups)

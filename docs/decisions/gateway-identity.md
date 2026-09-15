@@ -64,7 +64,7 @@ Auth is **never** prescribed (no JWT crate, no cookie store in trembita).
 
 **Positive:** Auth freedom; session key aligned with `session_str`; shorter realtime handlers; graceful gateway drain.
 
-**Negative:** Breaking change — `.surfaces(|state| …)` replaces axum `.routes()`; users must implement [`GatewayIdentity`] for protected routes.
+**Negative:** Protected routes require a [`GatewayIdentity`] implementation and route-level [`AuthMode::Identity`](../../crates/trembita-http/src/routing/auth.rs) ([gateway-routing-v2](gateway-routing-v2.md)).
 
 ## Related
 

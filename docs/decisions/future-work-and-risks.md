@@ -2,7 +2,6 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-05  
-**Updated:** 2026-08-28 — consolidated with [status.md](../status.md)
 
 ## Context
 

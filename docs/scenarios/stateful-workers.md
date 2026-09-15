@@ -148,6 +148,7 @@ Prefer [`.workers()`](../../crates/trembita/src/worker_opts.rs) with explicit [`
 ```rust
 use trembita::{TrembitaApp, GatewayOpts, RunOpts, WorkerOpts, WorkerScale, workers};
 
+// Export TREMBITA_LISTEN=127.0.0.1:8190 so QUIC wire and TCP gateway share one port.
 TrembitaApp::builder()
     .data_dir("/var/lib/trembita")
     .workers(workers!(
@@ -156,12 +157,12 @@ TrembitaApp::builder()
             .scale(WorkerScale::Fixed(1))
             .http_cast(true),
     ))
-    .gateway(GatewayOpts::new("127.0.0.1:8190".parse()?).with_actors_api(true))
+    .gateway(GatewayOpts::from_env()?)
     .run(RunOpts::default())
     .await?;
 ```
 
-Legacy [`.actors()`](../../crates/trembita/src/app/mod.rs) + [`ActorGroupOpts`](../../crates/trembita/src/actor_group.rs) remain supported.
+Alternate API: [`.actors()`](../../crates/trembita/src/app/mod.rs) + [`ActorGroupOpts`](../../crates/trembita/src/actor_group.rs).
 
 See [examples/stateful-workers/](../../examples/stateful-workers/).
 

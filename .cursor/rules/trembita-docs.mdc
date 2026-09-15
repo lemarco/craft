@@ -28,4 +28,12 @@ Use only **in-repo** illustrations:
 - crate APIs, tests, and scripts under this workspace
 - generic placeholders (`my-app`, `api.example.com`, `my-app-fe-admin`)
 
-Decision records describe trembita design and migration paths — not third-party adoption timelines or parity scripts living outside the repo.
+Decision records describe **current** trembita design — not third-party adoption timelines or out-of-repo parity tooling.
+
+## Pre-1.0 (no history narrative)
+
+Until **1.0**, docs describe **what to do now**, not what changed between `0.x` releases:
+
+- No version-to-version migration guides ([docs/README.md](../../docs/README.md))
+- No detailed [CHANGELOG.md](../../CHANGELOG.md) entries (archive only: [docs/archive/](../../docs/archive/))
+- ADRs: problem + decision + consequences — avoid “removed in 0.x”, “breaking from 0.y”, and old-vs-new comparison tables unless essential to the decision

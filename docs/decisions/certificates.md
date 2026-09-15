@@ -2,7 +2,6 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-05  
-**Updated:** 2026-08-28 — merged cert-provisioning and cert-automation
 
 ## Context
 

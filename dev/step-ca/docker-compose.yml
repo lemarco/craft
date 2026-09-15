@@ -5,6 +5,8 @@
 #   ./bootstrap.sh                 # mint certs/ via generate.sh
 #   docker compose up --build      # 3 trembita-node containers + optional step-ca
 #
+# Ops HTTP co-hosts on TREMBITA_LISTEN (same port number as QUIC wire; no split TREMBITA_HTTP).
+#
 # Hot reload: reissue a node cert, then SIGHUP or wait for TREMBITA_CERT_WATCH_SECS:
 #   ./../certs/generate.sh --node-id 1 --out ./certs --ca ./certs/ca.pem --ca-key ./certs/ca.key
 #   docker compose kill -s HUP trembita-1
@@ -31,7 +33,6 @@ services:
     environment:
       TREMBITA_NODE_ID: "1"
       TREMBITA_LISTEN: "0.0.0.0:7443"
-      TREMBITA_HTTP: "0.0.0.0:8080"
       TREMBITA_PEERS: "1@trembita-1:7443,2@trembita-2:7443,3@trembita-3:7443"
       TREMBITA_NODE_CERT: /etc/trembita/node.pem
       TREMBITA_NODE_KEY: /etc/trembita/node.key
@@ -43,7 +44,7 @@ services:
       - ./certs/ca.pem:/etc/trembita/ca.pem
     ports:
       - "7441:7443/udp"
-      - "8081:8080"
+      - "7441:7443/tcp"
 
   trembita-2:
     image: trembita-node:step-ca-demo
@@ -53,7 +54,6 @@ services:
     environment:
       TREMBITA_NODE_ID: "2"
       TREMBITA_LISTEN: "0.0.0.0:7443"
-      TREMBITA_HTTP: "0.0.0.0:8080"
       TREMBITA_PEERS: "1@trembita-1:7443,2@trembita-2:7443,3@trembita-3:7443"
       TREMBITA_NODE_CERT: /etc/trembita/node.pem
       TREMBITA_NODE_KEY: /etc/trembita/node.key
@@ -72,7 +72,6 @@ services:
     environment:
       TREMBITA_NODE_ID: "3"
       TREMBITA_LISTEN: "0.0.0.0:7443"
-      TREMBITA_HTTP: "0.0.0.0:8080"
       TREMBITA_PEERS: "1@trembita-1:7443,2@trembita-2:7443,3@trembita-3:7443"
       TREMBITA_NODE_CERT: /etc/trembita/node.pem
       TREMBITA_NODE_KEY: /etc/trembita/node.key

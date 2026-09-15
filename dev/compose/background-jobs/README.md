@@ -24,7 +24,7 @@ curl -X POST http://127.0.0.1:8090/jobs/emails \
   -d '{"payload":"hello-from-compose"}'
 ```
 
-Or with the internal showcase client (after `cargo build -p trembita-showcase-client`):
+Or with the internal showcase client (after `cargo build -p trembita-tools --bin trembita-showcase-client`):
 
 ```bash
 ./target/debug/trembita-showcase-client job 127.0.0.1:8090 emails hello

@@ -58,7 +58,7 @@ Also accepted as `TREMBITA_GATEWAY_TOKEN` (legacy name). Unset = open product HT
 
 ---
 
-## Internal / legacy (avoid in product compose)
+## Do not use in product deploys
 
 | Variable | Status |
 |----------|--------|
@@ -66,8 +66,8 @@ Also accepted as `TREMBITA_GATEWAY_TOKEN` (legacy name). Unset = open product HT
 | `TREMBITA_NODE_ID` | **Ops / static clusters** (`trembita-node`, fixed voter bootstrap). Product apps: use `node-id` file. |
 | `TREMBITA_PEERS` | **Static voter bootstrap** — fixed id→address map at first boot; use join seeds for elastic clusters. |
 | `TREMBITA_NODE_CERT`, `TREMBITA_NODE_KEY`, `TREMBITA_CA_CERT` | Low-level PEM paths — use `TREMBITA_CERT_DIR` + `node-{id}.pem` instead. |
-| `TREMBITA_GATEWAY_*` (API toggles) | **Removed in 0.5** — routes come from app registration / default gateway surfaces. |
-| `TREMBITA_ADMIN`, split admin ports | **Removed** — [unified-listener-0.5](migration/unified-listener-0.5.md) |
+| `TREMBITA_GATEWAY_*` (API toggles) | **Do not use** — routes come from app registration / default gateway surfaces. |
+| `TREMBITA_ADMIN`, split admin ports | **Do not use** — [unified-listener](decisions/unified-listener.md) |
 
 ---
 
@@ -94,4 +94,4 @@ Also accepted as `TREMBITA_GATEWAY_TOKEN` (legacy name). Unset = open product HT
 
 Run `trembita doctor` on scaffold projects — it checks `manifest.rs` ↔ `consumers/` wiring, gateway merges in `app.rs`, and legacy keys in `deploy/.env.example`. Before deploy, use **`trembita doctor --preflight`**: stricter checks for `TREMBITA_LISTEN` / `DATA_DIR` / `CERT_DIR`, compose join pattern (no `TREMBITA_NODE_ID`), default ops gateway wiring, and local `deploy/certs/ca.pem` when present.
 
-See also: [getting-started.md](getting-started.md), [certs.md](certs.md), [migration/unified-listener-0.5.md](migration/unified-listener-0.5.md).
+See also: [getting-started.md](getting-started.md), [certs.md](certs.md), [unified-listener](decisions/unified-listener.md).

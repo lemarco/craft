@@ -146,7 +146,11 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
 }
 
 TrembitaApp::builder()
-    .gateway(GatewayOpts::new(addr).identity(AppIdentity { /* … */ }).surfaces(gateway_surfaces));
+    .gateway(
+        GatewayOpts::from_env()? // or GatewayOpts::new(addr) when TREMBITA_LISTEN == addr
+            .identity(AppIdentity { /* … */ })
+            .surfaces(gateway_surfaces),
+    );
 ```
 
 Gateway does **not** hold conversation state — only the session handle ([`SessionHandle`](../../crates/trembita/src/gateway/session.rs)).

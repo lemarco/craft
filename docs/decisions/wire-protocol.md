@@ -2,7 +2,6 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-05  
-**Updated:** 2026-09-15 — ops HTTP co-hosted on `TREMBITA_LISTEN` ([unified-listener](unified-listener.md))
 
 ## Context
 
@@ -95,7 +94,7 @@ Responses: plain HTTP, JSON (ops HTTP is **not** the postcard hot path).
 | Internal | `TREMBITA_HTTP` / `TREMBITA_GATEWAY` | omit in deploys; `-` disables TCP only (QUIC-only node) |
 | Reference `trembita-node` | same rules via [`product_http_from_wire`](../../crates/trembita/src/env_config.rs) | TCP co-hosted on `TREMBITA_LISTEN` when not disabled |
 
-No consensus / client data on this listener. Optional server-only TLS via `TREMBITA_HTTP_TLS_*` (aliases `TREMBITA_GATEWAY_TLS_*`). No mTLS requirement. Brownfield merges: [unified-listener](unified-listener.md), [migration/unified-listener-0.5.md](../migration/unified-listener-0.5.md).
+No consensus / client data on this listener. Optional server-only TLS via `TREMBITA_HTTP_TLS_*` (aliases `TREMBITA_GATEWAY_TLS_*`). No mTLS requirement. Brownfield merges: [unified-listener](unified-listener.md).
 
 ## Product gateway
 

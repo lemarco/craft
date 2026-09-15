@@ -2,7 +2,6 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-05  
-**Updated:** 2026-07-05 — client path **mTLS required** in production
 
 ## Context
 
@@ -45,7 +44,7 @@ RemoteClient::connect(addr, ClientTlsConfig {
 |--------|------|-----|
 | User handler → `ClientHandle` | in-process | None |
 | Separate process → `RemoteClient` | HTTP/3 `/client/wire` | **mTLS** |
-| Browser → user’s axum/actix HTTPS | user’s port 443 | User’s TLS (separate) |
+| Browser → user’s HTTPS app | user’s port 443 | User’s TLS (separate) |
 
 ### Development / tests
 

@@ -131,7 +131,7 @@ When workflows are registered in [`AppManifest`](../../crates/trembita/src/app/m
 
 Opt out with [`.without_workflows_api()`](../../crates/trembita/src/app/builder.rs). Local dev: [`examples/workflows/trigger.sh`](../../examples/workflows/trigger.sh), or `./target/debug/trembita dev trigger workflows -- …` (debug CLI from repo root).
 
-Introspection: `GET /introspect/sagas` (ops/admin and embedded dashboard **Workflows** panel).
+Introspection: `GET /introspect/sagas` (ops HTTP on `TREMBITA_LISTEN` and embedded dashboard **Workflows** panel).
 
 ## Observability
 

@@ -2,7 +2,6 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-05  
-**Updated:** 2026-09-02 — learner join default, voter replacement
 
 ## Context
 
@@ -26,7 +25,7 @@ TREMBITA_JOIN_SEEDS=1@vps1:443 cargo run   # joiner — framework spawns workers
 
 | User intent | Production |
 |-------------|------------|
-| Add VPS | Deploy with `JOIN_ADDR` → joins as **learner** → auto worker on new node |
+| Add VPS | Deploy with `TREMBITA_JOIN_SEEDS` → joins as **learner** → auto worker on new node |
 | Match N VPSes | `scale_cluster(N)` or rely on auto workers = 1 per node |
 | Message workers | `registry.cluster("workers")?.send(...)` |
 
@@ -97,12 +96,12 @@ Disable: `.auto_workers([])` and manage manually.
 
 ## Voters vs learners (elastic scale-out)
 
-**Elastic VPS nodes must not become Raft voters by default.** Each machine is a full peer (mTLS, ingress, workers, actors), but only a **small, stable voter set** (typically the 3–5 seed nodes) participates in quorum and queue replication fan-out. Adding workers through `JOIN_ADDR` joins as a **learner**: same traffic and compute role, no vote, not counted in queue `replicate_ops` fan-out.
+**Elastic VPS nodes must not become Raft voters by default.** Each machine is a full peer (mTLS, ingress, workers, actors), but only a **small, stable voter set** (typically the 3–5 seed nodes) participates in quorum and queue replication fan-out. Adding workers through **`TREMBITA_JOIN_SEEDS`** joins as a **learner**: same traffic and compute role, no vote, not counted in queue `replicate_ops` fan-out.
 
 | Role | Quorum / queue replication | Workers / ingress | When |
 |------|---------------------------|-------------------|------|
 | **Voter** | yes | yes | Bootstrap seeds; rare expansion via `JoinRole::Voter` + `allow_voter_join` |
-| **Learner** | no (receives log) | yes | Default for every elastic `JOIN_ADDR` deploy |
+| **Learner** | no (receives log) | yes | Default for every elastic join deploy |
 
 When a voter is permanently unreachable, the leader **replaces** it: remove the dead voter, promote the **lowest-id caught-up learner** (deterministic). Brief reboots do not trigger replacement — grace is `6 ×` the reachability silence window.
 
@@ -128,7 +127,7 @@ Leader reconciliation is **declarative**: desired state = N auto workers on N no
 
 ## Consequences
 
-**Positive:** Deploy story: `JOIN_ADDR` + same binary → worker appears; clear 1 VPS = 1 worker ops model; single planner consistent with Raft leadership.
+**Positive:** Deploy story: `TREMBITA_JOIN_SEEDS` + same binary → worker appears; clear 1 VPS = 1 worker ops model; single planner consistent with Raft leadership.
 
 **Negative:** `scale_cluster` cannot exceed node count; dev/prod behavioral split; brief placement unavailability during election; supervisor reconciliation adds complexity.
 

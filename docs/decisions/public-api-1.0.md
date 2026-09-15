@@ -20,7 +20,7 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 | Workflows | `WorkflowBuilder`, `run_workflow` / `resume_workflow` on app | Saga journal durable |
 | Actor store | `RedbActorStateStore`, `ClusterActorStateStore`, `store_get` / `store_set` | Auto via `data_dir` |
 | Sessions | `ActorSession`, `TrembitaApp::session_keyed` | Sticky routing |
-| Observability | `init_tracing`, `Metrics`, `TrembitaEvent` | Admin port separate |
+| Observability | `init_tracing`, `Metrics`, `TrembitaEvent` | Ops routes on unified `TREMBITA_LISTEN` (or explicit gateway merge) |
 
 ## Cluster & client API (`trembita::cluster`)
 
@@ -33,7 +33,13 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 | HTTP product | `Gateway`, `RouteTable`, `GatewayOpts` (`http-jobs` feature) | Gateway layer — see [facade](facade.md) |
 | Optional adapters | `PgBacklog` (`external-backlog`), `PgEventOutboxSource` (`domain-outbox`), `RedisStore` (`redis-store`) | Feature-gated re-exports from facade |
 
-**Removed / hidden (0.4.1):** `trembita::advanced` module (renamed to `trembita::cluster`, no alias); root `use trembita::TrembitaCluster`; `TrembitaApp::cluster` / `into_cluster` / `TrembitaAppBuilder::inner_mut` (`#[doc(hidden)]`, tests only).
+## Not on the facade root
+
+| Item | Use instead |
+|------|-------------|
+| Low-level cluster handle | `trembita::cluster::{TrembitaCluster, TrembitaClusterBuilder, …}` |
+| `TrembitaApp::cluster` / `into_cluster` | Not public — use `TrembitaApp` product APIs or `trembita::cluster` |
+| `TrembitaAppBuilder::inner_mut` | `#[doc(hidden)]` — tests only |
 
 ## Out of semver scope
 
@@ -43,7 +49,7 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 | `pub(crate)` facade internals | Not public API |
 | `#[doc(hidden)]` re-exports | Do not use |
 | Sim / test crates | Unstable |
-| SemVer `0.x` minors | Breaking changes allowed on minor bumps with CHANGELOG entry ([library-and-publishing](library-and-publishing.md)) |
+| SemVer `0.x` minors | Breaking changes allowed until 1.0; public **change history** in [CHANGELOG.md](../../CHANGELOG.md) starts at 1.0 ([library-and-publishing](library-and-publishing.md)) |
 
 ## Facade re-export audit (`crates/trembita/src/lib.rs`)
 
@@ -57,7 +63,7 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 
 ## Maintenance checklist
 
-- [x] CHANGELOG documents breaking API surface cleanup (`advanced` → `cluster`, `TrembitaApp` delegates)
+- [ ] [CHANGELOG.md](../../CHANGELOG.md) — Keep a Changelog entries from **1.0.0**
 - [x] `missing_docs = deny` on published crates (see [missing-docs-1.0.md](missing-docs-1.0.md)) — shipped 2026-08-29
 - [ ] `./scripts/docs-missing-audit.sh --workspace` → 0 warnings
 - [ ] Scenario soak harness green in scheduled CI (B-10)

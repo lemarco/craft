@@ -79,7 +79,7 @@ Examples in this repo and hand-written binaries may call [`.jobs()`](../../crate
 | Gateway / custom HTTP surfaces live in `app.rs` + `src/http/` | Ops + registered product APIs auto-mount with [`from_env()`](../../crates/trembita/src/app/runtime.rs); custom routes and host splits stay explicit ([unified-listener](unified-listener.md)) |
 | `domain/` must not import `trembita::*` | Hexagon boundary ([architecture-style](architecture-style.md)) |
 | Consumers live in `consumers/`, actors in `actors/` | Predictable layout; `trembita doctor` checks wiring |
-| HTTP ingress via [`Gateway`](../../crates/trembita-http/src/gateway/mod.rs) + [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) | Virtual-host product surfaces (0.4.0) — see [gateway-0.4 migration](../migration/gateway-0.4.md) |
+| HTTP ingress via [`Gateway`](../../crates/trembita-http/src/gateway/mod.rs) + [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) | Virtual-host product surfaces — see [gateway-routing-v2](gateway-routing-v2.md) |
 | Inter-node communication uses trembita QUIC only | No ad-hoc gRPC/HTTP between cluster members |
 | Domain data in Postgres (or your DB); coordination in redb | [product-scenarios](product-scenarios.md) |
 | [`TrembitaCluster`](../../crates/trembita/src/cluster.rs) is an escape hatch, not the default | Product path is [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) |
@@ -115,11 +115,11 @@ CLI subcommands — **shipped** in [`trembita-cli`](../../crates/trembita-cli/):
 
 ### CLI
 
-The **`trembita`** binary lives in [`trembita-cli`](../../crates/trembita-cli/) (published with **0.4.0**):
+The **`trembita`** binary lives in [`trembita-cli`](../../crates/trembita-cli/) (published on crates.io):
 
 ```bash
 cargo install --path crates/trembita-cli          # from repo
-cargo install trembita-cli                        # after 0.4.0 on crates.io
+cargo install trembita-cli                        # from crates.io
 trembita new my-service --template jobs
 trembita new my-service --template realtime
 trembita new my-service --features jobs,gateway,telemetry   # advanced override

@@ -60,7 +60,7 @@ TrembitaApp::builder()
             enabled: true,
         },
     )])
-    .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?))
+    .gateway(GatewayOpts::from_env()?) // set TREMBITA_LISTEN=127.0.0.1:8090 (same port as QUIC wire)
     .run(RunOpts::default().with_wait_queue("emails"))
     .await?;
 ```
@@ -198,7 +198,7 @@ trembita runs **`claim` on the leader only**, tops the in-flight queue window to
 
 ### 4. HTTP mapping (recommended)
 
-Register the queue with [`.jobs([…]).http_enqueue(true)`](../../crates/trembita/src/job_opts.rs) (or [`TrembitaApp::from_env()`](../../crates/trembita/src/app/runtime.rs) + registration) — `/jobs/*` mounts on **`TREMBITA_LISTEN`** automatically. Opt out with [`.without_jobs_api()`](../../crates/trembita/src/app/builder.rs). Legacy `GatewayOpts::with_jobs_api` and `TREMBITA_GATEWAY_JOBS` were removed in 0.5 ([unified-listener](../decisions/unified-listener.md)). Request bodies: raw bytes or JSON `{ "payload": "…" }` / `{ "payload_b64": "…" }` ([facade `http-jobs`](../decisions/facade.md)).
+Register the queue with [`.jobs([…]).http_enqueue(true)`](../../crates/trembita/src/job_opts.rs) (or [`TrembitaApp::from_env()`](../../crates/trembita/src/app/runtime.rs) + registration) — `/jobs/*` mounts on **`TREMBITA_LISTEN`** automatically. Opt out with [`.without_jobs_api()`](../../crates/trembita/src/app/builder.rs). Request bodies: raw bytes or JSON `{ "payload": "…" }` / `{ "payload_b64": "…" }` ([facade `http-jobs`](../decisions/facade.md)).
 
 | Intent | Response | Route / API |
 |--------|----------|-------------|
@@ -412,7 +412,7 @@ The same number appears per stream in `/introspect/queues` and in the ops
 dashboard's **Job queues** table, highlighted when non-zero.
 
 ```console
-$ curl -s http://127.0.0.1:7443/introspect/queues | jq '.streams[]'
+$ curl -s http://127.0.0.1:8090/introspect/queues | jq '.streams[]'
 { "stream": "emails", "pending": 0, "leased": 1, "dead_letter": 0,
   "oldest_pending_age_ms": 0, "redelivered": 2 }
 ```

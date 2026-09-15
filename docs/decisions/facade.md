@@ -2,7 +2,6 @@
 
 **Status:** Accepted  
 **Date:** 2026-09-05  
-**Amended:** 2026-09-05 — optional integrations (`redis-store`, `external-backlog`, `domain-outbox`) behind facade features
 
 ## Context
 

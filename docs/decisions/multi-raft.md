@@ -2,7 +2,6 @@
 
 **Status:** Accepted (landed)  
 **Date:** 2026-07-06  
-**Updated:** 2026-08-28 — merged write-sharding, modulus/stable routing, meta-Raft, cross-shard transactions, production reliability
 
 ## Context
 

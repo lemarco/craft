@@ -4,7 +4,8 @@
 
 | | |
 |---|---|
-| **Version** | `0.4.0` (0.5.0 unified-listener in progress) |
+| **Stability** | Pre-**1.0** (APIs and env surface evolve — see [decisions/](decisions/)) |
+| **crates.io** | [`0.4.0`](https://crates.io/crates/trembita) (published snapshot; may lag `main`) |
 | **MSRV** | 1.94 |
 | **Distribution** | Published on [crates.io](https://crates.io/crates/trembita) — full test pyramid, E2E/chaos |
 
@@ -50,7 +51,7 @@ Details below ↓
 
 - Dynamic join via seed set + DNS discovery (`trembita::discovery`, `join_seeds`)
 - Cluster leave RPC (`TrembitaCluster::leave`, `TREMBITA_ALLOW_LEAVE`)
-- Unified ops + product HTTP on **`TREMBITA_LISTEN`** (same port as QUIC; [`TrembitaApp::from_env`](../crates/trembita/src/app/runtime.rs) default surfaces) — [env.md](env.md), [unified-listener](decisions/unified-listener.md), [migration](migration/unified-listener-0.5.md)
+- Unified ops + product HTTP on **`TREMBITA_LISTEN`** (same port as QUIC; [`TrembitaApp::from_env`](../crates/trembita/src/app/runtime.rs) default surfaces) — [env.md](env.md), [unified-listener](decisions/unified-listener.md)
 - Reachability signal distinct from membership; crash-driven supervisor reconcile against `reachable_nodes()`
 - Phi-accrual / tunable reachability (`ReachabilityConfig`)
 - `trembita-ops` snapshot backup/restore; rolling wire N/N−1 compatibility
@@ -121,7 +122,7 @@ Capabilities we deliberately do **not** provide — not missing work:
 
 ## Release & ops (process, not missing code)
 
-- **crates.io / docs.rs publish** — v0.4.0 (see [CHANGELOG.md](../CHANGELOG.md))
+- **crates.io / docs.rs publish** — periodic `0.x` snapshots; full semver history from **1.0** ([CHANGELOG.md](../CHANGELOG.md))
 - **Public API docs** — `missing_docs = "deny"` on published crates; `publish = false` crates exempt via crate lint override. Audit: `./scripts/docs-missing-audit.sh`
 - **Real-world soak** — scenario harness in `benchmarks/` (`soak`, `soak_queue`, `soak_multi_raft`, `soak_actor_store`, `soak_saga`, `soak_session`); scheduled CI `bench` job (60–120s budgets); long-running production soak is operator responsibility
 - **Heavy integration tests** — Redis/docker tests gated `#[ignore]` in fast CI; scheduled heavy lane
@@ -154,5 +155,5 @@ Documented in [future-work-and-risks](decisions/future-work-and-risks.md):
 | [architecture.md](architecture.md) | Crate graph, data flows |
 | [decisions/](decisions/) | Design decision records |
 | [testing-coverage.md](testing-coverage.md) | Test inventory |
-| [CHANGELOG.md](../CHANGELOG.md) | Version history |
+| [CHANGELOG.md](../CHANGELOG.md) | Changelog policy (detailed history from **1.0**) |
 | [releasing.md](releasing.md) | Publish workflow |

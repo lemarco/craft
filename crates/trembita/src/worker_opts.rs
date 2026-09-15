@@ -148,7 +148,7 @@ impl<A: UserActor> WorkerOpts<A> {
         self
     }
 
-    /// Mount cast/ask HTTP routes on the product gateway (`with_actors_api`).
+    /// Mount `/actors/*` on the product gateway (sets default gateway `actors` API flag).
     #[must_use]
     pub fn http_cast(mut self, enabled: bool) -> Self {
         self.http_cast = enabled;

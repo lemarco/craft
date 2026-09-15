@@ -62,7 +62,7 @@ Introspection JSON (`/introspect/cluster`, `/actors`, `/queues`, `/sagas`, …) 
 
 | Subtask | Wave | Description | Status |
 | ------- | ---- | ----------- | ------ |
-| B-19a   | 1 | **ADR** — `IntrospectApi`, routes, gateway wiring, admin port unchanged | ✅ |
+| B-19a   | 1 | **ADR** — `IntrospectApi`, routes, gateway wiring on unified `TREMBITA_LISTEN` | ✅ |
 | B-19b   | 1 | **`IntrospectApi` in `trembita-http`** — [`RouteTable`](../crates/trembita-http/src/routing/table.rs) over `Arc<dyn Observer>`, `AuthFn` | ✅ |
 | B-19c   | 1 | **Facade** — `TrembitaApp::introspect_api`, explicit ops/introspect route tables in `.surfaces()` | ✅ |
 | B-19d   | 1 | **Re-exports** — `Observer` + view types from `trembita` / `trembita-http` for app handlers | ✅ |
@@ -78,7 +78,7 @@ Introspection JSON (`/introspect/cluster`, `/actors`, `/queues`, `/sagas`, …) 
 | **MR-2** (tests + docs) | B-19e–f | 2 | ~1 day |
 
 
-**Acceptance:** App merges `ops_api().route_table()` and product API tables in `GatewayOpts::surfaces()`; operator UI fetches `/introspect/*` and `/jobs/*` on the same HTTP bind (host-separated surfaces optional); `AuthMode::Identity` / session gates as needed. See [migration/unified-listener-0.5.md](migration/unified-listener-0.5.md).
+**Acceptance:** App merges `ops_api().route_table()` and product API tables in `GatewayOpts::surfaces()`; operator UI fetches `/introspect/*` and `/jobs/*` on the same HTTP bind (host-separated surfaces optional); `AuthMode::Identity` / session gates as needed. See [unified-listener](decisions/unified-listener.md).
 
 
 ---
@@ -265,7 +265,7 @@ flowchart TB
 | Subtask | Description                                                     | Status |
 | ------- | --------------------------------------------------------------- | ------ |
 | B-04a   | [`examples/realtime/`](../examples/realtime/) — native WS + `ChatWorker` | ✅      |
-| B-04b   | Homogeneous cluster showcases (same binary every node; no role env) | ✅ (superseded role docs → B-16) |
+| B-04b   | Homogeneous cluster showcases (same binary every node; no role env) | ✅ |
 | B-04c   | Auth stub + `ActorSession` open on connect                      | ✅ `GATEWAY_TOKEN` |
 | B-04d   | Reconnect: handle `NoTarget`, session TTL expiry                | ✅ auto reopen in example |
 | B-04e   | Optional: checkpoint last N messages to SM (comment in example) | ✅ comment on `ChatWorker` |

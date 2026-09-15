@@ -49,7 +49,7 @@ Use [trembita-testing](../trembita-testing/SKILL.md):
 | New behavior | `docs/testing-coverage.md` |
 | Design choice | ADR in `docs/decisions/` or note in existing ADR |
 | Backlog item | `docs/status.md` |
-| Public API | rustdoc on facade types; CHANGELOG for user-visible changes |
+| Public API | rustdoc on facade types; update [status.md](../../docs/status.md) / ADR if behavior is user-visible (detailed CHANGELOG from 1.0) |
 
 ## 5. Verify
 

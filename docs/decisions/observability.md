@@ -5,9 +5,7 @@
 
 ## Context
 
-trembita is actor-native on `ractor` (modeled on Erlang/OTP). The user wants **BEAM-level monitoring** — everything Observer / LiveDashboard / `:telemetry` / supervision offers, mapped to trembita's distributed cross-node model.
-
-User chose **ALL** proposed capabilities in v1 (with tracing/dashboard performance caveats).
+trembita is actor-native on `ractor` (modeled on Erlang/OTP). Observability targets **BEAM-level monitoring** — metrics, telemetry, introspection, supervision visibility, and an optional live dashboard — mapped to trembita's distributed cross-node model, with heavy tracing opt-in ([Performance caveats](#performance-caveats-vs-beam)).
 
 ## Decision
 
@@ -150,7 +148,7 @@ Emits trace events to telemetry stream / logs; auto-expires. Never on for whole 
 | Crate | Add |
 |-------|-----|
 | `trembita-runtime` | telemetry emitter, mailbox metrics, restart policy |
-| `trembita-net` | admin routes: `/metrics`, `/introspect/*`, `/dashboard`, SSE |
+| `trembita-http` / gateway | ops routes on unified bind: `/metrics`, `/introspect/*`, `/dashboard`, SSE |
 | `trembita-core` | Raft metrics + events |
 | `trembita` (facade) | `cluster.events()`, `cluster.introspect()`, `cluster.trace()` |
 | `trembita-dashboard` (optional) | embedded UI assets |
@@ -164,9 +162,9 @@ Emits trace events to telemetry stream / logs; auto-expires. Never on for whole 
 
 **Negative**
 
-- Significant surface area; dashboard + introspection add v1 work
+- Large surface area to maintain (metrics, introspection, dashboard)
 - Must guard performance (opt-in heavy tracing)
-- Admin surface must stay private / access-controlled
+- Ops HTTP must stay private / access-controlled on production networks
 
 ## Related
 
