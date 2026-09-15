@@ -238,12 +238,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 AddTarget::Topic { name } => {
                     add_topic(&project, &AddTopicOpts { topic: name })?;
-                    let registry = if project.has_manifest() {
-                        project.manifest_rs()
-                    } else {
-                        project.app_rs()
-                    };
-                    eprintln!("Registered topic in {}", registry.display());
+                    eprintln!(
+                        "Registered topic in {}",
+                        project.manifest_rs().display()
+                    );
                 }
                 AddTarget::Actor { group, type_name } => {
                     add_actor(&project, &AddActorOpts { group, type_name })?;

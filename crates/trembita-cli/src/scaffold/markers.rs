@@ -1,4 +1,4 @@
-//! Marker-based patching of `src/app.rs`.
+//! Marker-based patching of `src/manifest.rs` (capabilities) and `src/app.rs` (gateway).
 
 /// Marker region names used by scaffold and `trembita add`.
 pub mod names {
@@ -20,9 +20,9 @@ pub enum PatchError {
     /// File missing.
     #[error("missing file: {0}")]
     MissingFile(String),
-    /// Marker not found (legacy app.rs).
+    /// Marker not found.
     #[error(
-        "marker `{marker}` not found in app.rs — re-scaffold or add `{marker}` / `{marker}-end` comments"
+        "marker `{marker}` not found — re-scaffold or add `{marker}` / `{marker}-end` comments"
     )]
     MissingMarker {
         /// Marker name.

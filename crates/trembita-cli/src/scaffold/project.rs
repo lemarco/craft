@@ -14,7 +14,7 @@ pub struct TrembitaProject {
 pub enum ProjectError {
     /// No trembita app found walking up from the start path.
     #[error(
-        "not a trembita product app (missing src/app.rs or trembita in Cargo.toml); run from project root or pass --path"
+        "not a trembita product app (missing src/app.rs, src/manifest.rs, or trembita in Cargo.toml); run from project root or pass --path"
     )]
     NotFound,
     /// I/O error.
@@ -47,8 +47,9 @@ impl TrembitaProject {
 
     fn looks_like_product_app(root: &Path) -> bool {
         let app_rs = root.join("src/app.rs");
+        let manifest_rs = root.join("src/manifest.rs");
         let cargo = root.join("Cargo.toml");
-        if !app_rs.is_file() || !cargo.is_file() {
+        if !app_rs.is_file() || !manifest_rs.is_file() || !cargo.is_file() {
             return false;
         }
         std::fs::read_to_string(cargo).is_ok_and(|c| c.contains("trembita"))
@@ -64,12 +65,6 @@ impl TrembitaProject {
     #[must_use]
     pub fn manifest_rs(&self) -> PathBuf {
         self.root.join("src/manifest.rs")
-    }
-
-    /// Whether this project uses the manifest registry (scaffold ≥ manifest layout).
-    #[must_use]
-    pub fn has_manifest(&self) -> bool {
-        self.manifest_rs().is_file()
     }
 
     /// `src/main.rs`

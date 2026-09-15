@@ -18,6 +18,9 @@ fn scaffolds_default_layout() {
     let root = scaffold_project(&opts).unwrap();
     assert!(root.join("src/main.rs").is_file());
     assert!(root.join("src/app.rs").is_file());
+    assert!(root.join("src/manifest.rs").is_file());
+    let app = std::fs::read_to_string(root.join("src/app.rs")).unwrap();
+    assert!(app.contains(".manifest(manifest::build())"));
     assert!(root.join("src/config.rs").is_file());
     assert!(root.join("src/consumers/sample.rs").is_file());
     assert!(root.join("src/domain/mod.rs").is_file());

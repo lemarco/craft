@@ -91,22 +91,26 @@ impl DoctorReport {
 pub fn run_doctor(project: &TrembitaProject, preflight: bool) -> DoctorReport {
     let mut report = DoctorReport::default();
     check_layout(project, &mut report);
-    if let Ok(app) = fs::read_to_string(project.app_rs()) {
-        let registry = registry_source(project, &app);
-        check_markers(project, &registry, &mut report);
-        check_main_rs(project, &mut report);
-        check_domain_boundary(project, &mut report);
-        check_consumers(project, &registry, &mut report);
-        check_actors(project, &registry, &mut report);
-        check_http(project, &app, &mut report);
-        check_topics(&registry, &mut report);
-        check_builtin_gateway_routes(&app, &mut report);
-        check_deprecated_api(project, &mut report);
-        if preflight || project.root.join("deploy").is_dir() {
-            check_deploy_preflight(project, preflight, &mut report);
-        }
-    } else {
+    let Ok(app) = fs::read_to_string(project.app_rs()) else {
         report.error(format!("missing {}", project.app_rs().display()));
+        return report;
+    };
+    let Ok(manifest) = fs::read_to_string(project.manifest_rs()) else {
+        report.error(format!("missing {}", project.manifest_rs().display()));
+        return report;
+    };
+    check_markers(&manifest, &mut report);
+    check_app_wiring(&app, &mut report);
+    check_main_rs(project, &mut report);
+    check_domain_boundary(project, &mut report);
+    check_consumers(project, &manifest, &mut report);
+    check_actors(project, &manifest, &mut report);
+    check_http(project, &app, &mut report);
+    check_topics(&manifest, &mut report);
+    check_builtin_gateway_routes(&app, &mut report);
+    check_deprecated_api(project, &mut report);
+    if preflight || project.root.join("deploy").is_dir() {
+        check_deploy_preflight(project, preflight, &mut report);
     }
     report
 }
@@ -125,6 +129,9 @@ pub fn doctor_fix(project: &TrembitaProject) -> DoctorFixReport {
         fixes += 1;
     }
     if project.http_dir().is_dir() && ensure_main_module(project, "http").unwrap_or(false) {
+        fixes += 1;
+    }
+    if ensure_main_module(project, "manifest").unwrap_or(false) {
         fixes += 1;
     }
     DoctorFixReport {
@@ -152,28 +159,15 @@ fn fix_mod_declarations(dir: &Path) -> usize {
     count
 }
 
-fn registry_source(project: &TrembitaProject, app_rs: &str) -> String {
-    let mut registry = app_rs.to_string();
-    if project.has_manifest() {
-        if let Ok(manifest) = fs::read_to_string(project.manifest_rs()) {
-            registry.push_str("\n");
-            registry.push_str(&manifest);
-        }
-    }
-    registry
-}
-
 fn check_layout(project: &TrembitaProject, report: &mut DoctorReport) {
-    let mut required = vec![
+    let required = [
         project.main_rs(),
         project.app_rs(),
+        project.manifest_rs(),
         project.root.join("src/config.rs"),
         project.consumers_dir(),
         project.domain_dir(),
     ];
-    if project.has_manifest() {
-        required.push(project.manifest_rs());
-    }
     for path in &required {
         if path.exists() {
             report.ok(format!("found {}", path.display()));
@@ -183,24 +177,32 @@ fn check_layout(project: &TrembitaProject, report: &mut DoctorReport) {
     }
 }
 
-fn check_markers(project: &TrembitaProject, registry: &str, report: &mut DoctorReport) {
-    let target = if project.has_manifest() {
-        "manifest.rs"
-    } else {
-        "app.rs"
-    };
+fn check_markers(manifest: &str, report: &mut DoctorReport) {
     for marker in [names::IMPORTS, names::JOBS, names::TOPICS, names::WORKERS] {
-        if registry.contains(&format!("// {marker}")) {
-            report.ok(format!("marker `{marker}` present ({target})"));
+        if manifest.contains(&format!("// {marker}")) {
+            report.ok(format!("marker `{marker}` present (manifest.rs)"));
         } else {
             report.warn(format!(
-                "marker `{marker}` missing — `trembita add` may not patch {target}; re-run `trembita new` or add markers manually"
+                "marker `{marker}` missing — `trembita add` may not patch manifest.rs; re-run `trembita new` or add markers manually"
             ));
         }
     }
-    if registry.contains(".gateway(") {
-        if registry.contains(&format!("// {}", names::SURFACES)) {
-            report.ok(format!("marker `{}` present", names::SURFACES));
+}
+
+fn check_app_wiring(app: &str, report: &mut DoctorReport) {
+    if app.contains(".manifest(") {
+        report.ok("app.rs applies manifest::build()");
+    } else {
+        report.error("app.rs must call .manifest(manifest::build()) — capabilities live in manifest.rs");
+    }
+    if app.contains(".jobs(") || app.contains(".topics(") || app.contains(".workers(") {
+        report.error(
+            "app.rs must not register .jobs/.topics/.workers — move registrations to manifest.rs",
+        );
+    }
+    if app.contains(".gateway(") {
+        if app.contains(&format!("// {}", names::SURFACES)) {
+            report.ok(format!("marker `{}` present (app.rs gateway)", names::SURFACES));
         } else {
             report.warn(format!(
                 "marker `{}` missing — `trembita add http-surface` / `ops-routes` may not patch app.rs",
@@ -290,7 +292,7 @@ fn check_consumers(project: &TrembitaProject, app: &str, report: &mut DoctorRepo
                 ));
             } else {
                 report.error(format!(
-                    "consumer `{stream}` in {} not registered in manifest.rs or app.rs (.jobs / JobOpts)",
+                    "consumer `{stream}` in {} not registered in manifest.rs (.jobs / JobOpts)",
                     entry.display()
                 ));
             }
@@ -321,10 +323,10 @@ fn check_actors(project: &TrembitaProject, app: &str, report: &mut DoctorReport)
         }
         for group in extract_worker_groups(&content) {
             if app.contains(&format!("::new(\"{group}\")")) {
-                report.ok(format!("actor group `{group}` registered in app.rs"));
+                report.ok(format!("actor group `{group}` registered in manifest.rs"));
             } else {
                 report.warn(format!(
-                    "actor file {} defines group `{group}` but app.rs has no WorkerOpts::new(\"{group}\")",
+                    "actor file {} defines group `{group}` but manifest.rs has no WorkerOpts::new(\"{group}\")",
                     entry.display()
                 ));
             }

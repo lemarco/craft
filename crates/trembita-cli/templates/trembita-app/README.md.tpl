@@ -7,7 +7,8 @@ trembita product app — scaffolded with [`trembita new`]({{TREMBITA_DOC_BASE}}/
 ```
 src/
   main.rs       boot
-  app.rs        TrembitaApp wiring
+  app.rs        TrembitaApp wiring (gateway + run)
+  manifest.rs   jobs / topics / workers registry (`trembita add` patches here)
   config.rs     env config
   consumers/    job handlers
   domain/       business logic (no trembita imports)

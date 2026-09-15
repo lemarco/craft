@@ -15,7 +15,7 @@ Target **0.5.0** — unified HTTP listener; migration draft: [unified-listener-0
 
 ### Added
 
-- **`AppManifest`** + **[`.manifest()`](crates/trembita/src/app/builder.rs)** — one registry for jobs, topics, workers, and workflows; scaffold emits `src/manifest.rs` and `trembita add` patches marker regions there (legacy apps still patch `app.rs`).
+- **`AppManifest`** + **[`.manifest()`](crates/trembita/src/app/builder.rs)** — one registry for jobs, topics, workers, and workflows; scaffold emits `src/manifest.rs` and `trembita add` patches marker regions there.
 - **`TrembitaApp::from_env`** / **`RunOpts::from_env`** — one product entry: cluster join/listen/data_dir/job queue from `TREMBITA_*`, default gateway surfaces (ops + jobs/actors/workflows from registration) on `TREMBITA_LISTEN`.
 - **Ops zero config** — `/health`, `/ready`, `/metrics`, `/dashboard`, `/introspect/*` on `TREMBITA_LISTEN` via default gateway; [`.without_ops()`](crates/trembita/src/app/builder.rs) to disable.
 - **`trembita doctor --preflight`** — deploy checks: `TREMBITA_LISTEN` / `DATA_DIR` / `CERT_DIR`, legacy env, compose join pattern, default ops gateway wiring.

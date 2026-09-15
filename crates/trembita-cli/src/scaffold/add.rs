@@ -97,7 +97,7 @@ pub struct AddStaticSiteOpts {
     pub module: Option<String>,
 }
 
-/// Add a job consumer: file + `app.rs` patch.
+/// Add a job consumer: file + `manifest.rs` patch.
 pub fn add_consumer(project: &TrembitaProject, opts: &AddConsumerOpts) -> Result<(), AddError> {
     validate_identifier(&opts.stream)?;
     let module = opts
