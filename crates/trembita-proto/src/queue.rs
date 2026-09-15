@@ -83,7 +83,7 @@ pub struct QueueEnqueueBatchReply {
 pub struct QueueLeaseRequest {
     /// Queue stream to pull from.
     pub stream: StreamName,
-    /// [`NodeId`](crate::NodeId) of the leasing worker (`.0` wire encoding).
+    /// [`NodeId`] of the leasing worker (`.0` wire encoding).
     pub worker_node: NodeId,
     /// Worker actor instance id on that node.
     pub worker_instance: u32,
