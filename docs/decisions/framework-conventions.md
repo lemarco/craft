@@ -78,7 +78,7 @@ Examples in this repo and hand-written binaries may call [`.jobs()`](../../crate
 | Jobs, topics, workers, workflows live in `manifest.rs` | One registry; marker comments show where to register |
 | Gateway / custom HTTP surfaces live in `app.rs` + `src/http/` | Route tables stay visible code ([unified-listener](unified-listener.md)) |
 | `domain/` must not import `trembita::*` | Hexagon boundary ([architecture-style](architecture-style.md)) |
-| Consumers live in `consumers/`, actors in `actors/` | Predictable discovery; generators know target dirs |
+| Consumers live in `consumers/`, actors in `actors/` | Predictable layout; `trembita doctor` checks wiring |
 | HTTP ingress via [`Gateway`](../../crates/trembita-http/src/gateway/mod.rs) + [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) | Virtual-host product surfaces (0.4.0) — see [gateway-0.4 migration](../migration/gateway-0.4.md) |
 | Inter-node communication uses trembita QUIC only | No ad-hoc gRPC/HTTP between cluster members |
 | Domain data in Postgres (or your DB); coordination in redb | [product-scenarios](product-scenarios.md) |
@@ -111,7 +111,7 @@ CLI subcommands — **shipped** in [`trembita-cli`](../../crates/trembita-cli/):
 |---------|------|
 | `new` | Generate this layout (one-time write) |
 | `doctor` | layout, manifest markers, consumer↔registry wiring, gateway hints (read-only) |
-| `dev` | Local showcase clusters from the trembita repo |
+| `dev` | Local showcase clusters (**debug CLI only**, trembita repo checkout — not in `cargo install` / `--release`) |
 
 ### CLI
 
@@ -128,7 +128,9 @@ trembita doctor
 trembita doctor --preflight   # deploy: listen, certs, compose join, ops gateway
 ```
 
-[`trembita-init.sh`](../../scripts/trembita-init.sh) remains as a thin wrapper delegating to the Rust CLI.
+[`trembita-init.sh`](../../scripts/trembita-init.sh) remains as a thin wrapper delegating to the Rust CLI (`new` only).
+
+**Published / release binary:** `new`, `doctor` (+ `--preflight`). **`dev`** exists only in **debug builds** of the CLI from this repo (showcase orchestration — not for end-user product apps).
 
 [`trembita-tools`](../../crates/trembita-tools/) stays workspace-only (`trembita-node`, `trembita-ops`, e2e clients).
 

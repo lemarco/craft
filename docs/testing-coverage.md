@@ -48,7 +48,7 @@ Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** sch
 | `trembita-ops` | 0 | 2 | **2** | Snapshot export/import, object-store push/pull |
 | `trembita-macros` | — | via trybuild in `trembita-actor` | — | Compile-pass/fail |
 | `trembita-node` | **10** | 0 | **0** | *(E2E smoke only)* |
-| `trembita-cli` | **18** | **14** | **32** | Scaffold, `manifest.rs` registry patches, doctor, `trembita dev` registry |
+| `trembita-cli` | **13** | **14** | **27** | `new` scaffold, read-only `doctor`, marker naming; `dev` registry (debug CLI only) |
 
 Count tests locally:
 
@@ -175,14 +175,14 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 
 ### Framework CLI (`trembita-cli`)
 
-Published binary **`trembita`** ([`crates/trembita-cli`](../crates/trembita-cli/)). Fast CI: `./scripts/test-fast.sh -p trembita-cli`.
+Published binary **`trembita`** ([`crates/trembita-cli`](../crates/trembita-cli/)) — release install exposes **`new`** and **`doctor`** only; **`dev`** is compiled in debug builds of the CLI (repo contributors). Fast CI: `./scripts/test-fast.sh -p trembita-cli`.
 
 | Command | Behavior under test | Tests |
 |---------|---------------------|-------|
 | **`new`** | Layout incl. `manifest.rs`, features → `Cargo.toml`, README | `tests/scaffold.rs`, `scaffold/features.rs` |
 | **`doctor`** | manifest ↔ consumers/actors/workflows; duplicate ids; `.manifest()` in `app.rs`; no inline capabilities in `app.rs`; missing `mod` declarations (reports only) | `scaffold/doctor.rs`, `tests/add_doctor.rs` |
 | **`doctor --preflight`** | deploy env / gateway ops hints | `scaffold/doctor.rs` (unit scenarios) |
-| **`dev list/setup/up/stop/status/trigger`** | showcase registry, workspace root, `trigger.sh` path | `tests/dev.rs`; full `dev up` 🔒 manual / `TREMBITA_DEV_INTEGRATION` |
+| **`dev *`** (debug CLI) | showcase registry, workspace root, `trigger.sh` path | `tests/dev.rs`; full `dev up` 🔒 manual / `TREMBITA_DEV_INTEGRATION` |
 | **Project discover** | walk parents; requires `app.rs` + `manifest.rs` | `tests/add_doctor.rs`, `scaffold/project.rs` |
 | **Marker names** | `// trembita:*` region constants + consumer type naming | `scaffold/markers.rs` |
 
@@ -242,14 +242,15 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 |----------|-----|-------------------------|--------|
 | Medium | Actor store redb contract at crate level | `trembita-actor-store/tests/redb_contract.rs` | S |
 | Low | `doctor --preflight` on full synthetic `deploy/` tree | `tests/add_doctor.rs` or `scaffold/doctor.rs` | S |
-| Low | `trembita dev up` multi-node smoke in CI | `tests/dev.rs` + job label `run-heavy` | M |
+| Low | `trembita dev up` multi-node smoke in CI (debug CLI) | `tests/dev.rs` + job label `run-heavy` | M |
 
 ### Closed gaps
 
 | Closed | What | Where |
 |--------|------|-------|
-| 2026-09 | Product **`AppManifest`** + scaffold **`manifest.rs`**; CLI patches registry not `app.rs` | `trembita/src/app/manifest.rs`, `trembita-cli/src/scaffold/{registry,render}.rs`, `tests/{scaffold,add_doctor}.rs` |
-| 2026-09 | **`trembita add workflow`** + doctor duplicate manifest ids + workflow wiring | `trembita-cli/src/scaffold/{add,doctor,registry}.rs`, `tests/add_doctor.rs` |
+| 2026-09-15 | CLI **`new`** + read-only **`doctor`**; removed **`trembita add`**, **`doctor --fix`**, release **`dev`** | `trembita-cli`, `docs/{getting-started,decisions/framework-conventions}.md` |
+| 2026-09 | Product **`AppManifest`** + scaffold **`manifest.rs`** (layout; manual edits in marker regions) | `trembita/src/app/manifest.rs`, `trembita-cli/src/scaffold/render.rs`, `tests/{scaffold,add_doctor}.rs` |
+| 2026-09 | Doctor duplicate manifest ids + workflow wiring checks | `trembita-cli/src/scaffold/doctor.rs`, `tests/add_doctor.rs` *(superseded: `trembita add` removed 2026-09-15)* |
 | 2026-09 | Topic replicate auth rejects non-leader caller | `trembita/tests/topic.rs` |
 | 2026-09 | Product gateway symmetry (topics/workflows HTTP + identity) | `trembita/tests/gateway_product_http.rs`, `gateway_product_symmetry.rs` |
 | 2026-09 | Introspect `GET /introspect/topics` | `trembita-dashboard/tests/admin.rs`, `trembita/tests/gateway_product_http.rs` |

@@ -1,6 +1,16 @@
 # Dev tooling (not product showcases)
 
-**Primary dev UX:** from the repo root, [`trembita dev`](../crates/trembita-cli/README.md) (`dev setup`, `dev up --showcase stateful-workers --nodes 3`, `dev trigger …`). Product HTTP without bash: `trembita dev http --showcase background-jobs -- job emails hello`, `… workflow run onboard-42`, `… topic orders evt` (uses `trembita-showcase-client` from `dev setup`). See [getting-started](../docs/getting-started.md#4-try-the-showcases).
+**Primary dev UX (repo contributors):** build the **debug** [`trembita` CLI](../crates/trembita-cli/README.md) — **`trembita dev` is not in `cargo build --release` or crates.io installs**.
+
+```bash
+cargo build -p trembita-cli
+./target/debug/trembita dev setup --showcase stateful-workers
+./target/debug/trembita dev up --showcase stateful-workers --nodes 3
+./target/debug/trembita dev trigger stateful-workers -- 1001
+./target/debug/trembita dev http --showcase background-jobs -- job emails hello
+```
+
+See [getting-started §4](../docs/getting-started.md#4-try-the-showcases).
 
 Infrastructure below supports legacy `./cluster.sh`, CI compose, and CA demos. Product scenarios live in [`examples/`](../examples/) only.
 
@@ -24,7 +34,7 @@ Infrastructure below supports legacy `./cluster.sh`, CI compose, and CA demos. P
 
 ## Local QUIC cluster (legacy `./cluster.sh`)
 
-Each showcase still provides `./cluster.sh` (used by scripts; prefer `trembita dev`):
+Each showcase still provides `./cluster.sh` (used by scripts; or use `./target/debug/trembita dev`):
 
 ```bash
 cd examples/background-jobs
@@ -35,4 +45,4 @@ cd examples/background-jobs
 ./cluster.sh stop
 ```
 
-Same pattern for `stateful-workers`, `realtime`, and `workflows`.
+Product apps from **`trembita new`** use **`trembita doctor`** (read-only) — not `trembita dev`.

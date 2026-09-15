@@ -47,7 +47,7 @@ Every process is a **QUIC cluster member**: solo `cargo run` is a one-node seed 
 
 | Style | When | Where capabilities go |
 |-------|------|------------------------|
-| **Scaffold** (`trembita new`) | Product services with CLI generators | [`manifest.rs`](decisions/framework-conventions.md) + thin [`app.rs`](decisions/framework-conventions.md) — see [§9](#9-scaffold-a-new-project) |
+| **Scaffold** (`trembita new`) | Product services with standard layout | [`manifest.rs`](decisions/framework-conventions.md) + thin [`app.rs`](decisions/framework-conventions.md); edit capabilities manually — see [§9](#9-scaffold-a-new-project) |
 | **Builder in `main`** | Examples, prototypes, custom layouts | [`.jobs()` / `.topics()` / `.workers()`](../crates/trembita/src/app/builder.rs) on [`TrembitaAppBuilder`](../crates/trembita/src/app/mod.rs), or [`.manifest()`](../crates/trembita/src/app/manifest.rs) with [`AppManifest`](../crates/trembita/src/app/manifest.rs) |
 
 Single-file minimal (same runtime as scaffold; no `manifest.rs`):

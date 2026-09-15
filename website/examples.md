@@ -22,7 +22,9 @@ Other showcases: replace `background-jobs` with `realtime`, `stateful-workers`, 
 
 ## Multi-node cluster
 
-Each example ships a `cluster.sh` that boots several QUIC peers with shared mTLS:
+From a trembita repo checkout, contributors can use the **debug** CLI (`cargo build -p trembita-cli` → `./target/debug/trembita dev up --showcase …`). Release installs from crates.io do not include `dev`.
+
+Each example also ships a `cluster.sh` that boots several QUIC peers with shared mTLS:
 
 ```sh
 cd examples/background-jobs

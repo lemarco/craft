@@ -1,4 +1,4 @@
-//! Trembita framework CLI library — scaffold generators and project doctor.
+//! Trembita framework CLI library — `trembita new` scaffold and read-only `doctor`.
 
 #![allow(missing_docs)]
 
