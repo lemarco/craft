@@ -10,7 +10,7 @@ Idempotent order processing with [`ActorStateStore`](../../crates/trembita-actor
 | [`trigger.sh`](trigger.sh) | Cast one order id via built-in `/actors/orders/cast` (`202 Accepted`) |
 | [`trigger-auth.sh`](trigger-auth.sh) | Same flow via custom `POST /orders/submit` + [`GatewayIdentity`](../../crates/trembita/src/gateway/identity.rs) |
 | [`trigger-batch.sh`](trigger-batch.sh) | Round-robin cast across gateways + idempotency re-send |
-| Admin | Dashboard + actor introspection |
+| Ops (same listener) | `/health`, `/metrics`, `/dashboard`, `/introspect/*` via merged [`OpsApi`](../../crates/trembita-http/src/ops_routes.rs) |
 
 ## Quick start (local — one terminal)
 
@@ -41,23 +41,23 @@ cargo run --release -- migrate-demo
 cd examples/stateful-workers
 ./cluster.sh setup
 
-./cluster.sh 1   # gateway :8190 + admin :9280
-./cluster.sh 2   # gateway :8191
-./cluster.sh 3   # gateway :8192
+./cluster.sh 1   # HTTP :8190 (product + ops)
+./cluster.sh 2   # :8191
+./cluster.sh 3   # :8192
 
 ./cluster.sh health
 ./trigger-batch.sh 10
 ```
 
-| Node | QUIC | Admin | Gateway |
-|------|------|-------|---------|
-| 1 | `:7643` | `:9280` | `:8190` |
-| 2 | `:7653` | `:9281` | `:8191` |
-| 3 | `:7663` | `:9282` | `:8192` |
+| Node | `TREMBITA_LISTEN` (wire + HTTP) |
+|------|----------------------------------|
+| 1 | `:8190` |
+| 2 | `:8191` |
+| 3 | `:8192` |
 
-Each gateway accepts `POST /actors/orders/cast` and forwards to the supervisor-placed `orders` actor. Re-send the same order id from any gateway — second call is an idempotent skip (check server logs + dashboard).
+Each listener accepts `POST /actors/orders/cast` and forwards to the supervisor-placed `orders` actor. Re-send the same order id from any node — second call is an idempotent skip (check server logs + `/dashboard`).
 
-Forward **8190** and **9280** in Cursor/SSH for browser access.
+Forward **8190** (or 8191/8192) in Cursor/SSH for browser access.
 
 ## curl equivalent
 
@@ -74,9 +74,13 @@ curl -X POST http://127.0.0.1:8190/actors/orders/cast \
 
 | Var | Default | Meaning |
 |-----|---------|---------|
-| `TREMBITA_GATEWAY` | `127.0.0.1:8190` (local) | Product HTTP bind (`-` disables) |
-| `TREMBITA_PEERS` | unset | When set → QUIC cluster mode |
-| `TREMBITA_DATA_DIR` | `/tmp/trembita-showcase-stateful-workers` | redb actor store per node |
-| `TREMBITA_GATEWAYS` | `8190 8191 8192` | Round-robin list for `trigger-batch.sh` |
+| `TREMBITA_LISTEN` | `127.0.0.1:8190` | One port — QUIC + HTTP product + ops |
+| `TREMBITA_JOIN_SEEDS` | unset | Joiners: `1@127.0.0.1:8190` (see `./cluster.sh`) |
+| `TREMBITA_DATA_DIR` | `/tmp/trembita-showcase-stateful-workers` | redb + assigned `node-id` per node |
+| `TREMBITA_GATEWAYS` | `8190 8191 8192` | Round-robin hosts for `trigger-batch.sh` |
+| `GATEWAY_TOKEN` | unset | When set, identity-protected routes require Bearer + `X-Trembita-User` |
+
+Built-in [`ActorsApi`](../../crates/trembita/src/app/runtime.rs) and custom `/orders/submit` use
+[`AuthMode::Identity`](../../crates/trembita-http/src/routing/auth.rs) on the route table (see `src/main.rs`).
 
 Guide: [docs/scenarios/stateful-workers.md](../../docs/scenarios/stateful-workers.md)

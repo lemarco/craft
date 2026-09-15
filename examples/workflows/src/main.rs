@@ -11,7 +11,9 @@ use trembita::{
     AuthMode, Gateway, GatewayBearerIdentity, GatewayOpts, ReadyOpts, RunOpts, TrembitaApp,
     TrembitaConfigure, WorkflowOpts,
 };
-use trembita_tools::showcase_common::{data_dir, display_addr};
+use trembita_tools::showcase_common::{
+    data_dir, display_addr, http_bind_display, http_bind_from_env, http_disabled,
+};
 
 use crate::onboarding::{apply_workers, build_plan, run_onboarding_plan};
 
@@ -20,10 +22,7 @@ const DATA_DIR_NAME: &str = "trembita-showcase-workflows";
 fn server_builder() -> trembita::TrembitaAppBuilder {
     let dir = data_dir(DATA_DIR_NAME);
     let _ = std::fs::create_dir_all(&dir);
-    let gateway: std::net::SocketAddr = env::var("TREMBITA_GATEWAY")
-        .unwrap_or_else(|_| "127.0.0.1:8490".into())
-        .parse()
-        .expect("gateway");
+    let gateway = http_bind_from_env("127.0.0.1:8490");
     apply_workers(
         TrembitaApp::builder()
             .data_dir(dir)
@@ -64,10 +63,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn print_banner() {
     println!("trembita showcase · workflows (coordination saga)");
     println!("  listen   {}", env::var("TREMBITA_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
-    if env::var("TREMBITA_GATEWAY").is_ok_and(|g| g != "-") {
-        let gw = env::var("TREMBITA_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8490".into());
-        println!("  gateway  http://{}/workflows/run", display_addr(&gw));
-        println!("  ops      http://{}/dashboard", display_addr(&gw));
+    if !http_disabled() {
+        let host = display_addr(&http_bind_display("127.0.0.1:8490"));
+        println!("  http     http://{host}  (workflows + ops)");
+        println!("  saga     POST http://{host}/workflows/run");
+        println!("  ops      http://{host}/dashboard  /health  /metrics");
     }
     if env::var("TREMBITA_JOIN_SEEDS").is_ok() {
         println!("  join     via TREMBITA_JOIN_SEEDS");

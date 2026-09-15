@@ -1,16 +1,17 @@
 # Real-time sessions (stateful actors)
 
-WebSocket **and authenticated HTTP** on one gateway → sticky [`ActorSession`](../../crates/trembita-runtime/src/session.rs) → in-memory chat workers.
+WebSocket **and authenticated HTTP** on one listener → sticky [`ActorSession`](../../crates/trembita-runtime/src/session.rs) → in-memory chat workers.
+
+Ops routes (`/health`, `/dashboard`, …) are merged on the same bind — same model as [getting-started.md](../../docs/getting-started.md).
 
 ## What you run
 
 | Piece | Role |
 |-------|------|
-| This binary | WS + HTTP gateway + `ChatWorker` actors |
+| This binary | WS + HTTP product routes + ops on `GatewayOpts` |
 | [`trigger.sh`](trigger.sh) | One WS message via `trembita-showcase-client` or [websocat](https://github.com/vi/websocat) |
-| [`trigger-http.sh`](trigger-http.sh) | One HTTP `POST /chat` (JSON body + Bearer or query auth) |
+| [`trigger-http.sh`](trigger-http.sh) | Session flow: login cookie → `POST /chat` |
 | [`trigger-batch.sh`](trigger-batch.sh) | Multi-user chat burst |
-| Admin | Dashboard + actor directory |
 
 ## Quick start (local — one terminal)
 
@@ -24,22 +25,27 @@ cargo run --release
 **Terminal 2:**
 
 ```bash
-./trigger.sh alice hello          # WebSocket
-./trigger-http.sh alice hello    # HTTP POST /chat
-curl 'http://127.0.0.1:8294/me?user=alice'   # GET /me (identity only)
+./trigger.sh alice hello                    # WebSocket (?user= or Bearer)
+./trigger-http.sh alice hello               # login + session cookie + POST /chat
+curl 'http://127.0.0.1:8290/me?user=alice'  # GET /me (identity)
+curl -s http://127.0.0.1:8290/health        # ops on same port
 ./trigger-batch.sh 6
 ```
 
 Manual WebSocket:
 
 ```bash
-websocat 'ws://127.0.0.1:8294/ws?user=alice'
+websocat 'ws://127.0.0.1:8290/ws?user=alice'
 ```
 
 Manual HTTP with Bearer (recommended when `GATEWAY_TOKEN` is set):
 
 ```bash
-curl -X POST 'http://127.0.0.1:8294/chat' \
+curl -X POST 'http://127.0.0.1:8290/login' \
+  -H 'Authorization: Bearer YOUR_TOKEN' \
+  -H 'X-Trembita-User: alice'
+
+curl -X POST 'http://127.0.0.1:8290/chat' \
   -H 'Authorization: Bearer YOUR_TOKEN' \
   -H 'X-Trembita-User: alice' \
   -H 'Content-Type: application/json' \
@@ -53,19 +59,20 @@ Dev without a token: `?user=alice` on WebSocket and HTTP still works.
 | Route | Auth | Body |
 |-------|------|------|
 | `GET /ws` | `?user=` or Bearer + `X-Trembita-User` | WebSocket upgrade |
-| `POST /chat` | Bearer + `X-Trembita-User` or `?user=` | `{"message":"…"}` |
-| `GET /me` | Bearer + `X-Trembita-User` or `?user=` | returns `{"user":"…"}` |
+| `POST /login` | Bearer + `X-Trembita-User` | issues `Set-Cookie: sess=…` |
+| `POST /chat` | session cookie (after login) or Bearer/`?user=` | `{"message":"…"}` |
+| `GET /me` | session or identity | returns `{"user":"…"}` |
+| `GET /health`, `/dashboard`, … | ops (typically open on dev bind) | merged `OpsApi` |
 
-Identity: [`GatewayBearerIdentity`](../../crates/trembita/src/gateway/identity.rs) via
-[`GatewayOpts::identity`](../../crates/trembita/src/gateway/mod.rs). Custom routes use
-route-level auth (`post_identity`, `post_session`, …). Mounting built-in `/jobs/*`,
-`/actors/*`, or `/workflows/*` tables uses
-[`.with_auth_mode(AuthMode::Identity)`](../../crates/trembita-http/src/routing/auth.rs)
-(import [`AuthMode`](../../crates/trembita/src/lib.rs) from `trembita`).
+Identity: [`GatewayBearerIdentity::from_env()`](../../crates/trembita/src/gateway/identity.rs) on
+[`GatewayOpts::identity`](../../crates/trembita/src/gateway/mod.rs). Product routes use
+`post_identity`, `post_session`, `get_session`, and `dev_fallback_session` (see `src/main.rs`).
 
-## Quick start (cluster — 3 terminals, QUIC)
+Optional session cookie tuning: `REALTIME_SESSION_COOKIE`, `REALTIME_SESSION_TTL` ([`CookieConfig`](../../crates/trembita-http/src/cookie_config.rs)).
 
-Three **identical** nodes — each runs WS + HTTP gateway + chat workers:
+## Quick start (cluster — QUIC)
+
+Three **identical** nodes — each runs WS + HTTP + chat workers:
 
 ```bash
 cd examples/realtime
@@ -76,21 +83,22 @@ cd examples/realtime
 ./trigger-batch.sh 9
 ```
 
-| Node | QUIC | Admin | Gateway |
-|------|------|-------|---------|
-| 1 | `:7743` | `:9380` | `:8294` |
-| 2 | `:7753` | `:9381` | `:8295` |
-| 3 | `:7763` | `:9382` | `:8296` |
+| Node | `TREMBITA_LISTEN` (QUIC + HTTP/WS) |
+|------|-------------------------------------|
+| 1 | `:8290` |
+| 2 | `:8291` |
+| 3 | `:8292` |
 
-Connect to any node's gateway URL; sessions stick to a worker instance cluster-wide. Forward **8294** (or 8295/8296) and **9380** in Cursor/SSH.
+Connect to any node's URL; sessions stick to a worker instance cluster-wide. Forward **8290** (or 8291/8292) in Cursor/SSH.
 
 ## Env
 
 | Var | Default | Meaning |
 |-----|---------|---------|
-| `TREMBITA_GATEWAY` | `127.0.0.1:8294` | HTTP/WS bind (`-` disables gateway on a node) |
-| `TREMBITA_PEERS` | unset | When set → QUIC cluster mode |
+| `TREMBITA_LISTEN` | `127.0.0.1:8290` | One port — QUIC wire + HTTP/WS product + ops |
+| `TREMBITA_JOIN_SEEDS` | unset | Joiners: `1@127.0.0.1:8290` (see `./cluster.sh`) |
+| `TREMBITA_HTTP` | *(omit)* | `-` disables TCP only (QUIC-only node) |
 | `GATEWAY_TOKEN` | unset | When set, require matching Bearer (or legacy `?token=` on WS) |
-| `TREMBITA_DATA_DIR` | `/tmp/trembita-showcase-realtime` | Cluster + actor data |
+| `TREMBITA_DATA_DIR` | `/tmp/trembita-showcase-realtime` | Persisted node id + actor data |
 
 Guide: [docs/scenarios/realtime-sessions.md](../../docs/scenarios/realtime-sessions.md)

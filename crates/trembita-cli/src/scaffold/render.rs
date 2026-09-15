@@ -161,10 +161,8 @@ fn generate_http_mod_rs(features: &HashSet<AppFeature>) -> String {
     format!(
         r"//! Custom HTTP surfaces — wired via `GatewayOpts::surfaces()` in `app.rs`.
 //!
-//! Add surfaces with:
-//! ```bash
-//! trembita add http-surface api --hosts api.example.com
-//! ```
+//! Built-in: `trembita add ops-routes`, `trembita add jobs-routes`.
+//! Custom: `trembita add http-surface api --hosts api.example.com`.
 //!
 //! Each module exports `route_table() -> RouteTable`.
 

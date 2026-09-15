@@ -18,7 +18,9 @@ use trembita::{
     ActorGroupOpts, AuthMode, ConsumerOpts, Gateway, GatewayBearerIdentity, GatewayOpts, JobOpts,
     RunOpts, TrembitaApp, TrembitaConfigure, TrembitaGatewayState, consumer,
 };
-use trembita_tools::showcase_common::{data_dir, display_addr};
+use trembita_tools::showcase_common::{
+    data_dir, display_addr, http_bind_display, http_bind_from_env, http_disabled, wire_bind_from_env,
+};
 
 use crate::bridge::register as register_bridge;
 use crate::ledger::LedgerWorker;
@@ -127,10 +129,7 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
 fn server_builder() -> trembita::TrembitaAppBuilder {
     let dir = data_dir(DATA_DIR_NAME);
     let _ = std::fs::create_dir_all(&dir);
-    let gateway: std::net::SocketAddr = env::var("TREMBITA_GATEWAY")
-        .unwrap_or_else(|_| "127.0.0.1:8090".into())
-        .parse()
-        .expect("gateway");
+    let gateway = http_bind_from_env("127.0.0.1:8090");
     let mut builder = TrembitaApp::builder()
         .data_dir(dir)
         .actors::<LedgerWorker>("ledger", ActorGroupOpts::new(0))
@@ -175,10 +174,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn print_banner() {
     println!("trembita showcase · background jobs (background jobs)");
-    println!("  listen   {}", env::var("TREMBITA_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
-    if env::var("TREMBITA_GATEWAY").is_ok_and(|g| g != "-") {
-        let gw = env::var("TREMBITA_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8090".into());
-        println!("  gateway  http://{}/jobs/{STREAM}", display_addr(&gw));
+    println!("  listen   {} (QUIC + HTTP same port)", wire_bind_from_env("127.0.0.1:8090"));
+    if !http_disabled() {
+        let gw = http_bind_display("127.0.0.1:8090");
+        println!("  http     http://{}/jobs/{STREAM}", display_addr(&gw));
         println!("  ops      http://{}/dashboard", display_addr(&gw));
     }
     if env::var("TREMBITA_JOIN_SEEDS").is_ok() {

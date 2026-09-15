@@ -1,10 +1,9 @@
-# One-command 3-node realtime cluster (stateful actor showcase).
+# One-command 3-node realtime cluster (dynamic join — no TREMBITA_NODE_ID).
 #
 #   cd dev/compose/realtime
 #   docker compose up --build
 #
-# WebSocket: ws://127.0.0.1:8294/ws?user=alice
-# Admin:     http://127.0.0.1:9380/dashboard
+# ws://127.0.0.1:8290/ws?user=alice  http://127.0.0.1:8290/dashboard
 
 x-showcase-build: &showcase-build
   build:
@@ -12,8 +11,9 @@ x-showcase-build: &showcase-build
     dockerfile: examples/realtime/Dockerfile
 
 x-node-env: &node-env
-  TREMBITA_PEERS: "1@node1:7743,2@node2:7753,3@node3:7763"
-  TREMBITA_CA_CERT: /certs/ca.pem
+  TREMBITA_CERT_DIR: /certs
+  TREMBITA_ALLOW_LEAVE: "1"
+  TREMBITA_GRACEFUL_LEAVE: "1"
   RUST_LOG: info,showcase=debug,trembita=info,trembita_net=warn
 
 services:
@@ -25,6 +25,7 @@ services:
         set -e
         if [ ! -f /certs/ca.pem ]; then
           /app/generate.sh --ca-only --out /certs
+          /app/generate.sh --node-id 0 --out /certs --ca /certs/ca.pem --ca-key /certs/ca.key
           for id in 1 2 3; do
             /app/generate.sh --node-id "$$id" --out /certs \
               --ca /certs/ca.pem --ca-key /certs/ca.key
@@ -41,61 +42,58 @@ services:
         condition: service_completed_successfully
     environment:
       <<: *node-env
-      TREMBITA_NODE_ID: "1"
-      TREMBITA_LISTEN: 0.0.0.0:7743
-      TREMBITA_HTTP: 0.0.0.0:9380
-      TREMBITA_GATEWAY: 0.0.0.0:8294
-      TREMBITA_NODE_CERT: /certs/node-1.pem
-      TREMBITA_NODE_KEY: /certs/node-1.key
+      TREMBITA_LISTEN: 0.0.0.0:8290
+      TREMBITA_ALLOW_JOIN: "1"
       TREMBITA_DATA_DIR: /data
     volumes:
       - certs:/certs
       - node1-data:/data
     ports:
-      - "8294:8294"
-      - "9380:9380"
+      - "8290:8290"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8290/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
 
   node2:
     <<: *showcase-build
     depends_on:
       certgen:
         condition: service_completed_successfully
+      node1:
+        condition: service_healthy
     environment:
       <<: *node-env
-      TREMBITA_NODE_ID: "2"
-      TREMBITA_LISTEN: 0.0.0.0:7753
-      TREMBITA_HTTP: 0.0.0.0:9381
-      TREMBITA_GATEWAY: 0.0.0.0:8295
-      TREMBITA_NODE_CERT: /certs/node-2.pem
-      TREMBITA_NODE_KEY: /certs/node-2.key
+      TREMBITA_LISTEN: 0.0.0.0:8291
+      TREMBITA_JOIN_SEEDS: 1@node1:8290
       TREMBITA_DATA_DIR: /data
     volumes:
       - certs:/certs
       - node2-data:/data
     ports:
-      - "8295:8295"
-      - "9381:9381"
+      - "8291:8291"
+    restart: on-failure
 
   node3:
     <<: *showcase-build
     depends_on:
       certgen:
         condition: service_completed_successfully
+      node1:
+        condition: service_healthy
     environment:
       <<: *node-env
-      TREMBITA_NODE_ID: "3"
-      TREMBITA_LISTEN: 0.0.0.0:7763
-      TREMBITA_HTTP: 0.0.0.0:9382
-      TREMBITA_GATEWAY: 0.0.0.0:8296
-      TREMBITA_NODE_CERT: /certs/node-3.pem
-      TREMBITA_NODE_KEY: /certs/node-3.key
+      TREMBITA_LISTEN: 0.0.0.0:8292
+      TREMBITA_JOIN_SEEDS: 1@node1:8290
       TREMBITA_DATA_DIR: /data
     volumes:
       - certs:/certs
       - node3-data:/data
     ports:
-      - "8296:8296"
-      - "9382:9382"
+      - "8292:8292"
+    restart: on-failure
 
 volumes:
   certs:

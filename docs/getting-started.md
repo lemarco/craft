@@ -70,7 +70,6 @@ Same code as above. [`cluster.sh`](../examples/background-jobs/cluster.sh) sets 
 
 | Variable | Purpose |
 |----------|---------|
-| `TREMBITA_LISTEN` | QUIC `host:port` (default `0.0.0.0:7443`) |
 | `TREMBITA_DATA_DIR` | redb + `node-id` file |
 | `TREMBITA_CERT_DIR` | Shared dir with `node-{id}.pem` + `ca.pem` |
 | `TREMBITA_JOIN_SEEDS` | Join existing cluster (`id@host:port`) |
@@ -78,8 +77,9 @@ Same code as above. [`cluster.sh`](../examples/background-jobs/cluster.sh) sets 
 | `TREMBITA_ALLOW_JOIN` | Seed accepts joins (default `1` when not joining) |
 | `TREMBITA_ALLOW_VOTER_JOIN` | Seed accepts voter joins (default `0`; joiners need `TREMBITA_JOIN_ROLE=voter`) |
 | `TREMBITA_PEERS` | Static voter bootstrap (`id@host:port,...`) — use for a fixed voter set without dynamic join |
-| `TREMBITA_HTTP` | Unified product + ops HTTP bind (`-` disables); [`trembita-node`](../crates/trembita-tools) defaults to `127.0.0.1:8080` |
-| `TREMBITA_GATEWAY` | Alias for `TREMBITA_HTTP` on [`TrembitaApp`](../crates/trembita/src/app/mod.rs) |
+| `TREMBITA_LISTEN` | **One port number:** QUIC (UDP wire) + product/ops HTTP (TCP) on the same `host:port` (default `0.0.0.0:443`). |
+| `TREMBITA_HTTP` | Optional: `-` disables TCP only (QUIC-only node). Any other value must **match** `TREMBITA_LISTEN` — prefer omitting it. [Migration](migration/unified-listener-0.5.md) |
+| `TREMBITA_GATEWAY` | Deprecated alias for `TREMBITA_HTTP` (same rules) on [`TrembitaApp`](../crates/trembita/src/app/mod.rs) |
 | `TREMBITA_CERT_WATCH_SECS` | PEM hot-reload poll interval (default `60`) |
 | `TREMBITA_HTTP_TLS_CERT` / `TREMBITA_HTTP_TLS_KEY` | HTTP HTTPS / WSS (optional; both required; `TREMBITA_GATEWAY_TLS_*` aliases) |
 | `TREMBITA_JOB_QUEUE` | Job stream name (optional) |
@@ -115,7 +115,7 @@ Internal HTTP/WS client (not on crates.io; built by `./cluster.sh setup`):
 ```bash
 cargo build -p trembita-showcase-client
 ./target/debug/trembita-showcase-client job 127.0.0.1:8090 emails hello
-./target/debug/trembita-showcase-client ws 127.0.0.1:8294 alice hello
+./target/debug/trembita-showcase-client ws 127.0.0.1:8290 alice hello
 ```
 
 Reference KV [`StateMachine`](../crates/trembita-core/src/kv.rs) (`trembita::kv` on the facade) for low-level Raft `propose` / `query` without a full product app.

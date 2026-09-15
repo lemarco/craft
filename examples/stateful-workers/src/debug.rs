@@ -14,7 +14,9 @@ pub fn startup(mode: &str, node_id: u64, data_dir: &std::path::Path) {
         mode,
         node_id,
         data_dir = %data_dir.display(),
-        gateway = ?std::env::var("TREMBITA_GATEWAY").ok(),
+        http = ?std::env::var("TREMBITA_HTTP")
+            .ok()
+            .or_else(|| std::env::var("TREMBITA_GATEWAY").ok()),
         peers = ?std::env::var("TREMBITA_PEERS").ok(),
         "showcase starting"
     );

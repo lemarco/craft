@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"
-GATEWAY="${TREMBITA_GATEWAY:-127.0.0.1:8090}"
+GATEWAY="${TREMBITA_HTTP:-${TREMBITA_GATEWAY:-127.0.0.1:8090}}"
 GATEWAY="${GATEWAY#http://}"
 GATEWAY="${GATEWAY#https://}"
 PAYLOAD="${1:-hello-from-trigger.sh}"

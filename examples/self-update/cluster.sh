@@ -7,7 +7,7 @@ source "$CRAFT_ROOT/dev/cluster-common.sh"
 
 DEV="${TREMBITA_SELF_UPDATE_CLUSTER_DIR:-$CRAFT_ROOT/target/trembita-self-update-cluster}"
 CERTS="$DEV/certs"
-SEED="1@127.0.0.1:7643"
+SEED="1@127.0.0.1:8190"
 BIN="trembita-showcase-self-update"
 
 cluster_common_init "$ROOT" "$BIN" "$DEV" "$CERTS" "$SEED"
@@ -16,8 +16,8 @@ stop() { cluster_stop; }
 status() { pgrep -af "$BIN" 2>/dev/null || echo "(no processes)"; }
 
 node_env() {
-    local id=$1 listen=$2 admin=$3 gateway=$4
-    cluster_prepare_node "$id" "$listen" "$admin" "$gateway"
+    local id=$1 listen=$2
+    cluster_prepare_node "$id" "$listen"
     export TREMBITA_NODE_ID="$id"
     export TREMBITA_UPGRADE_DRY_RUN="${TREMBITA_UPGRADE_DRY_RUN:-1}"
 }
@@ -25,7 +25,7 @@ node_env() {
 reset() {
     stop
     rm -rf "$DEV/data" "$DEV/logs" "$DEV/artifacts"
-    mkdir -p "$DEV/data"/{p7643,p7653,p7663} "$DEV/artifacts"
+    mkdir -p "$DEV/data"/{p8190,p8191,p8192} "$DEV/artifacts"
     echo "OK: ./cluster.sh up"
 }
 
@@ -37,23 +37,23 @@ setup() {
 }
 
 run_node() {
-    local id=$1 listen=$2 admin=$3 gateway=$4
-    node_env "$id" "$listen" "$admin" "$gateway"
-    cluster_run_node "$id" "$listen" "$admin" "$gateway"
+    local id=$1 listen=$2
+    node_env "$id" "$listen"
+    cluster_run_node "$id" "$listen"
 }
 
 run_node_bg() {
-    local id=$1 listen=$2 admin=$3 gateway=$4
-    node_env "$id" "$listen" "$admin" "$gateway"
-    cluster_run_node_bg "$id" "$listen" "$admin" "$gateway"
+    local id=$1 listen=$2
+    node_env "$id" "$listen"
+    cluster_run_node_bg "$id" "$listen"
 }
 
 up() {
     cluster_stop
     rm -rf "$DEV/logs"
-    run_node_bg 1 127.0.0.1:7643 "${CLUSTER_ADMIN_BIND}:9280" 127.0.0.1:8190
-    run_node_bg 2 127.0.0.1:7653 "${CLUSTER_ADMIN_BIND}:9281" 127.0.0.1:8191
-    run_node_bg 3 127.0.0.1:7663 "${CLUSTER_ADMIN_BIND}:9282" 127.0.0.1:8192
+    run_node_bg 1 127.0.0.1:8190
+    run_node_bg 2 127.0.0.1:8191
+    run_node_bg 3 127.0.0.1:8192
     sleep 3
     curl -sf http://127.0.0.1:8190/cluster/upgrade | head -c 200 || true
     echo
@@ -66,8 +66,8 @@ case "${1:-}" in
   up) up ;;
   logs) cluster_logs_tail "${2:-1}" ;;
   status) status ;;
-  1) run_node 1 127.0.0.1:7643 "${CLUSTER_ADMIN_BIND}:9280" 127.0.0.1:8190 ;;
-  2) run_node 2 127.0.0.1:7653 "${CLUSTER_ADMIN_BIND}:9281" 127.0.0.1:8191 ;;
-  3) run_node 3 127.0.0.1:7663 "${CLUSTER_ADMIN_BIND}:9282" 127.0.0.1:8192 ;;
+  1) run_node 1 127.0.0.1:8190 ;;
+  2) run_node 2 127.0.0.1:8191 ;;
+  3) run_node 3 127.0.0.1:8192 ;;
   *) echo "usage: $0 setup | reset | stop | up | logs [N] | status | 1 | 2 | 3" >&2; exit 1 ;;
 esac

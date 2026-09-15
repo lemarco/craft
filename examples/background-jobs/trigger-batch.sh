@@ -21,4 +21,4 @@ for i in $(seq 1 "$COUNT"); do
   fi
 done
 rm -f /tmp/trembita-job-$$.json
-echo "done: $OK ok, $FAIL failed — dashboard http://127.0.0.1:9180/dashboard"
+echo "done: $OK ok, $FAIL failed — dashboard http://127.0.0.1:8090/dashboard"

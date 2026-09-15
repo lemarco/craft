@@ -19,13 +19,13 @@ Dry-run mode reports `Ready` without process exit. For production-style restarts
 | `GET` | `/cluster/upgrade` | Fleet rolling status |
 | `POST` | `/cluster/upgrade/desired` | Start rolling (`202`) |
 
-## Ports (local)
+## Ports (local `./cluster.sh`)
 
-| Node | QUIC | Upgrade API | Admin |
-|------|------|-------------|-------|
-| 1 | 7643 | 8190 | 9280 |
-| 2 | 7653 | 8191 | 9281 |
-| 3 | 7663 | 8192 | 9282 |
+| Node | `TREMBITA_LISTEN` (wire + upgrade HTTP) |
+|------|----------------------------------------|
+| 1 | 8190 |
+| 2 | 8191 |
+| 3 | 8192 |
 
 ## Related
 

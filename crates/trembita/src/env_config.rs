@@ -108,6 +108,35 @@ fn env_bool(key: &str) -> bool {
     )
 }
 
+/// Product + ops TCP bind: **the same** `host:port` as QUIC wire ([`wire`]).
+///
+/// Wire and HTTP are different sockets (UDP vs TCP) on one port number — configured only
+/// via [`wire`]. Set `TREMBITA_HTTP=-` or `TREMBITA_GATEWAY=-` to skip the TCP listener
+/// (QUIC-only node).
+///
+/// # Errors
+/// Returns an error when `TREMBITA_HTTP` / `TREMBITA_GATEWAY` is set to an address that
+/// differs from [`wire`] (legacy split-port configs).
+pub fn product_http_from_wire(wire: SocketAddr) -> Result<Option<SocketAddr>, Box<dyn Error>> {
+    let raw = env("TREMBITA_HTTP").or_else(|| env("TREMBITA_GATEWAY"));
+    match raw.as_deref() {
+        None => Ok(Some(wire)),
+        Some("-") => Ok(None),
+        Some(addr) => {
+            let parsed: SocketAddr = addr.parse()?;
+            if parsed != wire {
+                return Err(format!(
+                    "TREMBITA_HTTP must use the same host:port as TREMBITA_LISTEN ({wire}); \
+                     got {parsed}. Use only TREMBITA_LISTEN for the port, or TREMBITA_HTTP=- \
+                     to disable TCP while keeping QUIC."
+                )
+                .into());
+            }
+            Ok(Some(wire))
+        }
+    }
+}
+
 fn join_role_from_env() -> Result<JoinRole, Box<dyn Error>> {
     match env("TREMBITA_JOIN_ROLE").as_deref() {
         None | Some("learner") => Ok(JoinRole::Learner),
@@ -276,14 +305,7 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         .unwrap_or("0.0.0.0:443")
         .parse()?;
     let data_dir = env("TREMBITA_DATA_DIR").map(PathBuf::from);
-    let http = match env("TREMBITA_HTTP")
-        .or_else(|| env("TREMBITA_GATEWAY"))
-        .as_deref()
-    {
-        Some("-") => None,
-        None => None,
-        Some(a) => Some(a.parse()?),
-    };
+    let http = product_http_from_wire(listen)?;
     let join_seeds = match env("TREMBITA_JOIN_SEEDS") {
         Some(raw) => parse_seeds(&raw)?,
         None => Vec::new(),

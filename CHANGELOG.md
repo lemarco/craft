@@ -11,18 +11,28 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ## [Unreleased]
 
+Target **0.5.0** — unified HTTP listener; migration draft: [unified-listener-0.5.md](docs/migration/unified-listener-0.5.md).
+
 ### Added
 
 - **`spawn_cluster_ops_http`** / **`cluster_ops_route_table`** — mount ops routes (`/health`, `/metrics`, `/dashboard`, `/introspect/*`) on a TCP listener for [`TrembitaCluster`](crates/trembita/src/cluster_handle/cluster.rs) without [`TrembitaApp`](crates/trembita/src/app/mod.rs).
+- **`trembita add ops-routes`** / **`trembita add jobs-routes`** — scaffold `src/http/ops.rs` / `jobs.rs` and wire merges in `app.rs` ([`trembita-cli`](crates/trembita-cli/)).
+- **`trembita doctor`** — scans sources and `deploy/.env.example` for removed `with_*_api`, `protect_product_apis`, `TREMBITA_ADMIN`, and missing ops/jobs route merges.
+- **Migration guides index** — [docs/migration/README.md](docs/migration/README.md).
 
 ### Changed
 
 - **MSRV 1.94** (was 1.90) — required by `sqlx` 0.9 and related dependency bumps; CI/`check-msrv.sh` aligned.
-- **`trembita-node`** — ops HTTP via `TREMBITA_HTTP` (replaces no-op `TREMBITA_ADMIN` / `.admin_addr()`); TLS via `TREMBITA_HTTP_TLS_*`.
+- **`trembita-node`** — ops HTTP via `TREMBITA_HTTP` (replaces `TREMBITA_ADMIN` / separate admin listener); TLS via `TREMBITA_HTTP_TLS_*`.
+- **`product_http_from_wire`** — TCP product/ops bind is always the same `host:port` as `TREMBITA_LISTEN`; split `TREMBITA_HTTP` on another port is rejected (`TREMBITA_HTTP=-` disables TCP only).
+- **Showcases / compose / `cluster-common.sh`** — configure **`TREMBITA_LISTEN` only** (one port per node for wire + HTTP).
+- **Showcase Docker Compose** — dynamic join (no `TREMBITA_NODE_ID` / static `TREMBITA_PEERS`); `node-0.pem` join bootstrap + post-assign `node-N.pem` reload.
 
 ### Removed
 
-- **`TrembitaClusterBuilder::admin_addr`** / **`admin_tls`** — use explicit [`OpsApi`](crates/trembita-http/src/ops_routes.rs) routes on the unified HTTP listener ([unified-listener](docs/decisions/unified-listener.md)).
+- **`TrembitaClusterBuilder::admin_addr`** / **`admin_tls`** — use [`spawn_cluster_ops_http`](crates/trembita/src/gateway/cluster_ops.rs) or app gateway merges.
+- **`GatewayOpts::with_jobs_api`**, **`with_actors_api`**, **`with_workflows_api`**, **`with_introspect_api`**, **`protect_product_apis`** — merge [`RouteTable`](crates/trembita-http/src/routing/table.rs) in `.surfaces()` with [`AuthMode::Identity`](crates/trembita-http/src/routing/auth.rs) where needed ([unified-listener](docs/decisions/unified-listener.md)).
+- **Env:** `TREMBITA_ADMIN`, `TREMBITA_ADMIN_TLS_*`, and `TREMBITA_GATEWAY_*` built-in API toggles — replaced by explicit routes + `TREMBITA_HTTP`.
 
 ## [0.4.0] — 2026-09-07
 

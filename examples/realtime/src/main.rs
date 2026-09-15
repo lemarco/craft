@@ -17,7 +17,9 @@ use trembita::{
     ActorGroupOpts, CookieConfig, Gateway, GatewayOpts, ReadyOpts, RequestCtx, RouteTable, RunOpts,
     TrembitaApp, TrembitaConfigure, TrembitaGatewayState, accept_websocket, routing_to_http_response,
 };
-use trembita_tools::showcase_common::{data_dir, display_addr};
+use trembita_tools::showcase_common::{
+    data_dir, display_addr, http_bind_display, http_bind_from_env, http_disabled,
+};
 
 use gateway_session::{SessionStore, session_gate};
 
@@ -156,10 +158,7 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
 fn server_builder() -> trembita::TrembitaAppBuilder {
     let dir = data_dir(DATA_DIR_NAME);
     let _ = std::fs::create_dir_all(&dir);
-    let gateway: std::net::SocketAddr = env::var("TREMBITA_GATEWAY")
-        .unwrap_or_else(|_| "127.0.0.1:8294".into())
-        .parse()
-        .expect("gateway");
+    let gateway = http_bind_from_env("127.0.0.1:8290");
     TrembitaApp::builder()
         .actors::<ChatWorker>("chat", ActorGroupOpts::new(0))
         .configure(TrembitaConfigure {
@@ -191,14 +190,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn print_banner() {
     println!("trembita showcase · real-time sessions (stateful actors)");
     println!("  listen   {}", env::var("TREMBITA_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
-    if env::var("TREMBITA_GATEWAY").is_ok_and(|g| g != "-") {
-        let gw = env::var("TREMBITA_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8294".into());
-        let host = display_addr(&gw);
+    if !http_disabled() {
+        let host = display_addr(&http_bind_display("127.0.0.1:8290"));
+        println!("  http      http://{host}  (product routes + ops on one listener)");
         println!("  websocket ws://{host}/ws?user=alice  (Bearer identity)");
         println!("  login     POST http://{host}/login  (Bearer + X-Trembita-User → Set-Cookie)");
         println!("  chat      POST http://{host}/chat   (session cookie)");
         println!("  me        GET  http://{host}/me      (session cookie)");
-        println!("  ops       http://{host}/dashboard");
+        println!("  ops       http://{host}/dashboard  /health  /metrics");
         let _ = CookieConfig::from_env("REALTIME", "sess");
     }
     if env::var("TREMBITA_JOIN_SEEDS").is_ok() {

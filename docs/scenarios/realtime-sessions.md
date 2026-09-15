@@ -233,7 +233,7 @@ See [read-consistency](../decisions/client-and-routing.md#read-consistency).
 
 | Concern | Action |
 |---------|--------|
-| LB | UDP/TCP to gateway `:7443` / admin `:8080`; workers need not be public |
+| LB | One port (e.g. `:443`) — QUIC (UDP) + HTTP/WS (TCP) on the same number; workers need not be public |
 | Rate limit | `TrafficPolicy` on client/actor classes ([future-work-and-risks](../decisions/future-work-and-risks.md) R2) |
 | Drain | Per-group `set_group_drain_timeout` for long sessions |
 

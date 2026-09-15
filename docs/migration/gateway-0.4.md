@@ -49,7 +49,7 @@ Keep `trembita` with feature `http-jobs` (or your app's `gateway` feature).
 | Gateway bearer / custom identity | `GatewayOpts::identity(...)` + `.get_identity()` / `.post_identity()` |
 | Cookie session on a surface | `Surface::session(SessionGate::...)` + `.get_session()` / `.post_session()` |
 | Protect whole module | `RouteTable::new().merge_authed(AuthMode::Session, submodule::ROUTE_TABLE)` |
-| Built-in `/jobs/*`, `/introspect/*` | unchanged — handler-level `AuthFn` when `protect_product_apis(true)` |
+| Built-in `/jobs/*`, `/introspect/*` | **0.5.0:** explicit route-table merges + `AuthMode::Identity` — [unified-listener-0.5.md](unified-listener-0.5.md) |
 
 ## WebSocket
 

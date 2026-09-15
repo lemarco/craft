@@ -96,6 +96,7 @@ pub fn run_doctor(project: &TrembitaProject) -> DoctorReport {
         check_actors(project, &app, &mut report);
         check_http(project, &app, &mut report);
         check_topics(&app, &mut report);
+        check_deprecated_api(project, &mut report);
     } else {
         report.error(format!("missing {}", project.app_rs().display()));
     }
@@ -175,7 +176,7 @@ fn check_markers(app: &str, report: &mut DoctorReport) {
             report.ok(format!("marker `{}` present", names::SURFACES));
         } else {
             report.warn(format!(
-                "marker `{}` missing — `trembita add http-surface` may not patch app.rs",
+                "marker `{}` missing — `trembita add http-surface` / `ops-routes` may not patch app.rs",
                 names::SURFACES
             ));
         }
@@ -378,20 +379,6 @@ fn check_topics(app: &str, report: &mut DoctorReport) {
                 report.warn("gateway surface with hosts but no .routes(...) or route_table()");
             }
         }
-        if app.contains("with_jobs_api(true)")
-            || app.contains("with_actors_api(true)")
-            || app.contains("with_workflows_api(true)")
-            || app.contains("with_introspect_api(true)")
-        {
-            report.error(
-                "GatewayOpts::with_*_api removed in 0.5.0 — merge explicit route tables in .surfaces()",
-            );
-        }
-        if app.contains("protect_product_apis(true)") {
-            report.error(
-                "protect_product_apis removed in 0.5.0 — use RouteTable::with_auth_mode(AuthMode::Identity)",
-            );
-        }
         if app.contains("AuthMode::Identity") {
             if app.contains("GatewayBearerIdentity") || app.contains(".identity(") {
                 report.ok("gateway has identity for protected routes");
@@ -399,8 +386,147 @@ fn check_topics(app: &str, report: &mut DoctorReport) {
                 report.warn("identity-protected routes without gateway identity");
             }
         }
-        if app.contains("admin_addr") {
-            report.warn("admin_addr removed — merge http::ops::route_table in gateway surfaces");
+        if !app.contains("http::ops::route_table") {
+            report.warn(
+                "gateway enabled but ops routes not merged — run `trembita add ops-routes` or merge http::ops::route_table",
+            );
+        }
+        if app.contains(".jobs(") && !app.contains("http::jobs::route_table") {
+            report.warn(
+                "jobs enabled but /jobs/* routes not merged — run `trembita add jobs-routes` or merge http::jobs::route_table",
+            );
+        }
+    }
+}
+
+fn check_deprecated_api(project: &TrembitaProject, report: &mut DoctorReport) {
+    let src = project.root.join("src");
+    for path in walk_tree_rs(&src) {
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let rel = path
+            .strip_prefix(&project.root)
+            .unwrap_or(&path)
+            .display()
+            .to_string();
+        scan_deprecated_source(&content, &rel, report);
+    }
+    for rel in ["deploy/.env.example", ".env.example"] {
+        let path = project.root.join(rel);
+        if path.is_file() {
+            let Ok(content) = fs::read_to_string(&path) else {
+                continue;
+            };
+            scan_deprecated_env(&content, rel, report);
+        }
+    }
+}
+
+fn scan_deprecated_source(content: &str, path: &str, report: &mut DoctorReport) {
+    let flags: &[(&str, &str, Level)] = &[
+        (
+            "with_jobs_api(",
+            "with_jobs_api removed in 0.5.0 — merge http::jobs::route_table in GatewayOpts::surfaces()",
+            Level::Error,
+        ),
+        (
+            "with_actors_api(",
+            "with_actors_api removed in 0.5.0 — merge explicit actors route table in .surfaces()",
+            Level::Error,
+        ),
+        (
+            "with_workflows_api(",
+            "with_workflows_api removed in 0.5.0 — merge explicit workflows route table in .surfaces()",
+            Level::Error,
+        ),
+        (
+            "with_introspect_api(",
+            "with_introspect_api removed in 0.5.0 — merge http::ops or introspect route table in .surfaces()",
+            Level::Error,
+        ),
+        (
+            "protect_product_apis(",
+            "protect_product_apis removed in 0.5.0 — use RouteTable::with_auth_mode(AuthMode::Identity)",
+            Level::Error,
+        ),
+        (
+            "collect_builtin_routes",
+            "collect_builtin_routes removed — merge OpsApi/JobsApi route tables explicitly",
+            Level::Error,
+        ),
+        (
+            "admin_addr(",
+            "admin_addr removed — merge http::ops::route_table on the unified HTTP listener",
+            Level::Warn,
+        ),
+        (
+            ".admin_addr",
+            "admin_addr removed — merge http::ops::route_table on the unified HTTP listener",
+            Level::Warn,
+        ),
+        (
+            "TrembitaClusterBuilder::admin",
+            "cluster admin listener removed — use spawn_cluster_ops_http / OpsApi route table",
+            Level::Warn,
+        ),
+    ];
+    for (needle, message, level) in flags {
+        if !content.contains(needle) {
+            continue;
+        }
+        let msg = format!("{path}: {message}");
+        match level {
+            Level::Error => report.error(msg),
+            Level::Warn => report.warn(msg),
+            Level::Ok => report.ok(msg),
+        }
+    }
+}
+
+fn scan_deprecated_env(content: &str, path: &str, report: &mut DoctorReport) {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("TREMBITA_NODE_ID") {
+            report.warn(format!(
+                "{path}: `{trimmed}` — node ids come from join assignment + TREMBITA_DATA_DIR/node-id; omit in product deploy"
+            ));
+        } else if trimmed.starts_with("TREMBITA_ADMIN")
+            || trimmed.starts_with("TREMBITA_ADMIN_TLS")
+            || trimmed.starts_with("TREMBITA_GATEWAY_JOBS")
+            || trimmed.starts_with("TREMBITA_GATEWAY_")
+        {
+            report.error(format!(
+                "{path}: `{trimmed}` — use TREMBITA_LISTEN (one port for wire + HTTP) and explicit route tables"
+            ));
+        } else if trimmed.starts_with("TREMBITA_HTTP=")
+            && !trimmed.contains("=-")
+            && !trimmed.starts_with("TREMBITA_HTTP=-")
+        {
+            report.warn(format!(
+                "{path}: `{trimmed}` — prefer TREMBITA_LISTEN only; HTTP uses the same port (TREMBITA_HTTP=- to disable TCP)"
+            ));
+        }
+    }
+}
+
+fn walk_tree_rs(dir: &Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    walk_tree_rs_inner(dir, &mut out);
+    out.sort();
+    out
+}
+
+fn walk_tree_rs_inner(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            walk_tree_rs_inner(&path, out);
+        } else if path.extension().is_some_and(|e| e == "rs") {
+            out.push(path);
         }
     }
 }
@@ -491,6 +617,38 @@ async fn handle_orphan(_: &[u8]) -> Result<(), ()> { Ok(()) }
         .unwrap();
         let report = run_doctor(&project);
         assert!(report.has_errors());
+    }
+
+    #[test]
+    fn doctor_flags_removed_gateway_flags_in_app_rs() {
+        let dir = tempdir().unwrap();
+        let opts = NewProjectOpts {
+            name: "legacy-gw".into(),
+            output: dir.path().to_path_buf(),
+            features: AppFeature::defaults(),
+            trembita_version: "0.3.2".into(),
+            trembita_path: None,
+        };
+        let root = scaffold_project(&opts).unwrap();
+        let project = TrembitaProject { root };
+        let app_path = project.app_rs();
+        let mut app = fs::read_to_string(&app_path).unwrap();
+        app.push_str("\n// legacy\n.with_jobs_api(true).protect_product_apis(true)\n");
+        fs::write(&app_path, app).unwrap();
+        let report = run_doctor(&project);
+        assert!(report.has_errors());
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|f| f.message.contains("with_jobs_api"))
+        );
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|f| f.message.contains("protect_product_apis"))
+        );
     }
 
     #[test]

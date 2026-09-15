@@ -7,6 +7,9 @@
 #
 # Multi-node layout uses dynamic join — only node 1 needs `TREMBITA_ALLOW_JOIN=1`;
 # nodes 2+ set `TREMBITA_JOIN_SEEDS` to the seed address (no static `TREMBITA_PEERS` mesh).
+#
+# One port number per node: TREMBITA_LISTEN → QUIC (UDP) + HTTP (TCP) on the same host:port.
+# Set TREMBITA_HTTP=- only for QUIC-only nodes (e.g. optional node 4).
 set -euo pipefail
 
 cluster_common_init() {
@@ -15,7 +18,6 @@ cluster_common_init() {
     CLUSTER_DEV="${3:?dev dir}"
     CLUSTER_CERTS="${4:?certs dir}"
     CLUSTER_SEED="${5:?seed id@host:port for node 1}"
-    export CLUSTER_ADMIN_BIND="${TREMBITA_DEV_ADMIN_BIND:-0.0.0.0}"
     CRAFT_ROOT="$(cd "$CLUSTER_ROOT/../.." && pwd)"
 }
 
@@ -52,11 +54,15 @@ cluster_display_addr() {
     fi
 }
 
+# $1 = QUIC+HTTP listen (host:port), $2 = optional `no-http` to set TREMBITA_HTTP=-
 cluster_node_env_base() {
-    local listen=$1 admin=$2 gateway=$3
+    local listen=$1
+    local http_mode=${2:-http}
     export TREMBITA_LISTEN="$listen"
-    export TREMBITA_HTTP="$admin"
-    export TREMBITA_GATEWAY="$gateway"
+    unset TREMBITA_HTTP TREMBITA_GATEWAY
+    if [ "$http_mode" = "no-http" ]; then
+        export TREMBITA_HTTP=-
+    fi
     export TREMBITA_DATA_DIR="$CLUSTER_DEV/data/p${listen##*:}"
     export TREMBITA_CERT_DIR="$CLUSTER_CERTS"
     unset TREMBITA_NODE_ID TREMBITA_NODE_CERT TREMBITA_NODE_KEY
@@ -79,6 +85,8 @@ cluster_setup_certs() {
     if [ ! -f "$CLUSTER_CERTS/ca.pem" ]; then
         echo ">> minting cluster CA + node certs in $CLUSTER_CERTS"
         bash "$CRAFT_ROOT/dev/certs/generate.sh" --ca-only --out "$CLUSTER_CERTS"
+        bash "$CRAFT_ROOT/dev/certs/generate.sh" --node-id 0 --out "$CLUSTER_CERTS" \
+            --ca "$CLUSTER_CERTS/ca.pem" --ca-key "$CLUSTER_CERTS/ca.key"
         for id in "${ids[@]}"; do
             bash "$CRAFT_ROOT/dev/certs/generate.sh" --node-id "$id" --out "$CLUSTER_CERTS" \
                 --ca "$CLUSTER_CERTS/ca.pem" --ca-key "$CLUSTER_CERTS/ca.key"
@@ -89,24 +97,25 @@ cluster_setup_certs() {
 }
 
 cluster_prepare_node() {
-    local id=$1 listen=$2 admin=$3 gateway=$4
+    local id=$1 listen=$2 http_mode=${3:-http}
     if [ "$id" = "1" ]; then
         unset TREMBITA_JOIN_SEEDS
     else
         export TREMBITA_JOIN_SEEDS="$CLUSTER_SEED"
     fi
-    cluster_node_env_base "$listen" "$admin" "$gateway"
+    cluster_node_env_base "$listen" "$http_mode"
 }
 
 cluster_run_node() {
-    local id=$1 listen=$2 admin=$3 gateway=$4
+    local id=$1 listen=$2 http_mode=${3:-http}
     [ -f "$CLUSTER_CERTS/ca.pem" ] || { echo "error: run ./cluster.sh setup first" >&2; exit 1; }
     cluster_require_port_free QUIC "${listen##*:}"
-    [ "$gateway" != "-" ] && cluster_require_port_free gateway "${gateway##*:}"
-    [ "$admin" != "-" ] && cluster_require_port_free admin "${admin##*:}"
-    cluster_prepare_node "$id" "$listen" "$admin" "$gateway"
+    if [ "$http_mode" != "no-http" ]; then
+        cluster_require_port_free HTTP "${listen##*:}"
+    fi
+    cluster_prepare_node "$id" "$listen" "$http_mode"
     mkdir -p "$TREMBITA_DATA_DIR"
-    echo ">> node $id  QUIC=$listen  admin=$admin  gateway=$gateway  data=$TREMBITA_DATA_DIR"
+    echo ">> node $id  wire+HTTP=$listen  data=$TREMBITA_DATA_DIR"
     if [ "$id" = "1" ]; then
         echo ">> seed node (TREMBITA_ALLOW_JOIN=1)"
     else
@@ -132,8 +141,8 @@ cluster_setup_all() {
 }
 
 cluster_run_node_bg() {
-    local id=$1 listen=$2 admin=$3 gateway=$4
-    cluster_prepare_node "$id" "$listen" "$admin" "$gateway"
+    local id=$1 listen=$2 http_mode=${3:-http}
+    cluster_prepare_node "$id" "$listen" "$http_mode"
     local log="$CLUSTER_DEV/logs/node-$id.log"
     mkdir -p "$CLUSTER_DEV/logs" "$TREMBITA_DATA_DIR"
     nohup "$CLUSTER_ROOT/target/release/$CLUSTER_BIN" >>"$log" 2>&1 &

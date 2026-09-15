@@ -1,19 +1,20 @@
 # Background jobs — Docker Compose cluster
 
-One command to start a 3-node QUIC cluster:
+Dynamic join (no `TREMBITA_NODE_ID`) — same model as `./examples/background-jobs/cluster.sh`.
 
 ```bash
 docker compose up --build
 ```
 
-## Endpoints
+## Endpoints (node 1)
 
-| Service | URL |
-|---------|-----|
-| Gateway (node 1) | http://127.0.0.1:8090/jobs/emails |
-| Admin dashboard | http://127.0.0.1:9180/dashboard |
+| URL |
+|-----|
+| http://127.0.0.1:8090/jobs/emails |
+| http://127.0.0.1:8090/dashboard |
+| http://127.0.0.1:8090/health |
 
-Nodes 2 and 3 expose `:8091` and `:8092` — same binary, each runs gateway + consumer.
+Nodes 2 and 3: `:8091`, `:8092` — same binary (gateway + consumer after join).
 
 ## Enqueue a job
 
@@ -31,6 +32,8 @@ Or with the internal showcase client (after `cargo build -p trembita-showcase-cl
 
 ## Layout
 
-- **node1**, **node2**, **node3** — identical processes (HTTP ingress + `#[consumer]` on each)
+- **certgen** — CA + join bootstrap (`node-0.pem`) + `node-1..3.pem`
+- **node1** — seed (`TREMBITA_ALLOW_JOIN=1`)
+- **node2/3** — `TREMBITA_JOIN_SEEDS=1@node1:8090`
 
-Same image as [`examples/background-jobs/Dockerfile`](../../../examples/background-jobs/Dockerfile).
+Image: [`examples/background-jobs/Dockerfile`](../../../examples/background-jobs/Dockerfile).

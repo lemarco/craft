@@ -25,4 +25,4 @@ echo "idempotency: re-cast order $BASE"
 host="${GW[0]#http://}"
 host="${host#https://}"
 TREMBITA_GATEWAY="$host" "$ROOT/trigger.sh" "$BASE" || true
-echo "done: $OK ok, $FAIL failed — dashboard http://127.0.0.1:9280/dashboard"
+echo "done: $OK ok, $FAIL failed — dashboard http://127.0.0.1:8190/dashboard"

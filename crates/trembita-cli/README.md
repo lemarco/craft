@@ -26,6 +26,8 @@ trembita new my-service --trembita-path ../trembita   # local checkout
 trembita add consumer emails --lease 300
 trembita add topic platform.events
 trembita add actor catalog
+trembita add ops-routes
+trembita add jobs-routes
 trembita add http-surface api --hosts api.example.com
 trembita add static-site app --hosts app.example.com --filesystem fe/app/dist
 

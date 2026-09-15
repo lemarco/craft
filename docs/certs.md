@@ -41,6 +41,7 @@ Artifacts written to `--out`:
 | `ca.pem` | Cluster CA certificate (public trust anchor) | **every** node and client |
 | `ca.key` | Cluster CA private key | **keep offline / secret** — signs new certs only |
 | `node-<id>.pem` / `.key` | One node's mTLS identity | that VPS only |
+| `node-0.pem` / `.key` | **Join bootstrap** only — mTLS before the leader assigns an id; reload to `node-<id>` after join ([`join_cluster_auto`](../crates/trembita/src/builder/join.rs)) | joiners at first boot (dev compose / `cluster.sh`) |
 | `client-<name>.pem` / `.key` | A `RemoteClient` identity | that client app only |
 
 Keys are P-256 (ECDSA), which the rustls `ring` provider trembita uses supports

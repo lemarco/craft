@@ -156,6 +156,20 @@ impl AppRsPatch {
         self.insert_before_end(names::SURFACES, surface_lines)
     }
 
+    /// Replace the first occurrence of `from` with `to`.
+    pub fn replace_once(&mut self, from: &str, to: &str) -> Result<(), PatchError> {
+        if !self.content.contains(from) {
+            return Err(PatchError::MissingMarker {
+                marker: from.to_string(),
+            });
+        }
+        if self.content.contains(to) {
+            return Err(PatchError::Duplicate(format!("already contains: {to}")));
+        }
+        self.content = self.content.replacen(from, to, 1);
+        Ok(())
+    }
+
     /// Write back to disk.
     pub fn save(&self, path: &std::path::Path) -> Result<(), PatchError> {
         std::fs::write(path, &self.content)?;

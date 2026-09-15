@@ -7,6 +7,7 @@ use super::markers::{
     module_name, names,
 };
 use super::project::TrembitaProject;
+use super::templates::{http_jobs_rs, http_ops_rs};
 
 /// `trembita add` failure.
 #[derive(Debug, thiserror::Error)]
@@ -343,6 +344,23 @@ pub fn route_table() -> RouteTable {{
     Ok(())
 }
 
+/// Add operational HTTP routes (`src/http/ops.rs` + merge in gateway surfaces).
+pub fn add_ops_routes(project: &TrembitaProject) -> Result<(), AddError> {
+    ensure_cargo_feature(project, "gateway")?;
+    write_http_module(project, "ops", http_ops_rs())?;
+    wire_builtin_http_routes(project, "ops")?;
+    Ok(())
+}
+
+/// Add job operator HTTP routes (`src/http/jobs.rs` + merge in gateway surfaces).
+pub fn add_jobs_routes(project: &TrembitaProject) -> Result<(), AddError> {
+    ensure_cargo_feature(project, "gateway")?;
+    ensure_cargo_feature(project, "jobs")?;
+    write_http_module(project, "jobs", http_jobs_rs())?;
+    wire_builtin_http_routes(project, "jobs")?;
+    Ok(())
+}
+
 /// Add a static SPA surface (`StaticSite` + gateway `.surface()`).
 pub fn add_static_site(
     project: &TrembitaProject,
@@ -474,6 +492,114 @@ fn wire_http_surface(
 
     app.save(&project.app_rs())?;
     ensure_main_module(project, "http").map_err(AddError::Patch)?;
+    Ok(())
+}
+
+fn write_http_module(project: &TrembitaProject, module: &str, body: &str) -> Result<(), AddError> {
+    fs::create_dir_all(project.http_dir())?;
+    let path = project.http_dir().join(format!("{module}.rs"));
+    if path.exists() {
+        return Err(AddError::Exists(path.display().to_string()));
+    }
+    fs::write(&path, body)?;
+    ensure_http_mod_rs(project, module)?;
+    ensure_main_module(project, "http").map_err(AddError::Patch)?;
+    Ok(())
+}
+
+fn ensure_http_mod_rs(project: &TrembitaProject, module: &str) -> Result<(), AddError> {
+    let mod_rs = project.http_dir().join("mod.rs");
+    if !mod_rs.is_file() {
+        fs::write(
+            &mod_rs,
+            format!(
+                r"//! HTTP route modules — merge in `GatewayOpts::surfaces()` (`app.rs`).
+
+pub mod {module};
+"
+            ),
+        )?;
+        return Ok(());
+    }
+    ensure_mod_declaration(&mod_rs, module)?;
+    Ok(())
+}
+
+fn wire_builtin_http_routes(project: &TrembitaProject, module: &str) -> Result<(), AddError> {
+    let route_call = format!("http::{module}::route_table(&state)");
+    let mut app = AppRsPatch::load(&project.app_rs())?;
+    if app.contains(&route_call) {
+        return Err(AddError::Patch(PatchError::Duplicate(format!(
+            "{route_call} already wired in app.rs"
+        ))));
+    }
+    if !app.contains(".gateway(") {
+        return Err(AddError::Patch(PatchError::MissingMarker {
+            marker: "gateway — enable `gateway` feature and add `.gateway(...)` to app.rs".into(),
+        }));
+    }
+    app.insert_import("use trembita::Gateway;")?;
+
+    if module == "ops" {
+        if app.contains("http::jobs::route_table(&state)") {
+            app.replace_once(
+                "http::jobs::route_table(&state)",
+                "http::jobs::route_table(&state).merge(http::ops::route_table(&state))",
+            )?;
+        } else if app.contains(".dev_fallback(") && !app.contains(".dev_fallback(http::") {
+            app.replace_once(
+                ".dev_fallback(",
+                ".dev_fallback(http::ops::route_table(&state)",
+            )?;
+        } else {
+            app.ensure_surfaces_block()?;
+            app.insert_before_end(
+                names::SURFACES,
+                "Gateway::new(false).dev_fallback(http::ops::route_table(&state))",
+            )?;
+        }
+    } else if app.contains("http::ops::route_table(&state)") {
+        app.replace_once(
+            "http::ops::route_table(&state)",
+            "http::jobs::route_table(&state).merge(http::ops::route_table(&state))",
+        )?;
+    } else if app.contains(".dev_fallback(") && !app.contains(".dev_fallback(http::") {
+        app.replace_once(
+            ".dev_fallback(",
+            ".dev_fallback(http::jobs::route_table(&state)",
+        )?;
+    } else {
+        app.ensure_surfaces_block()?;
+        app.insert_before_end(
+            names::SURFACES,
+            "Gateway::new(false).dev_fallback(http::jobs::route_table(&state))",
+        )?;
+    }
+
+    app.save(&project.app_rs())?;
+    Ok(())
+}
+
+fn ensure_cargo_feature(project: &TrembitaProject, feature: &str) -> Result<(), AddError> {
+    let path = project.cargo_toml();
+    let content = fs::read_to_string(&path)?;
+    let decl = format!("{feature} =");
+    if content
+        .lines()
+        .any(|line| line.trim_start().starts_with(&decl))
+    {
+        return Ok(());
+    }
+    let anchor = "[features]";
+    let Some(idx) = content.find(anchor) else {
+        return Err(AddError::InvalidName(
+            "Cargo.toml has no [features] section".into(),
+        ));
+    };
+    let insert_at = idx + anchor.len();
+    let mut out = content;
+    out.insert_str(insert_at, &format!("\n{feature} = []\n"));
+    fs::write(path, out)?;
     Ok(())
 }
 
@@ -641,5 +767,40 @@ mod tests {
         assert!(project.http_dir().join("app_static.rs").is_file());
         let app = fs::read_to_string(project.app_rs()).unwrap();
         assert!(app.contains("http::app_static::route_table()"));
+    }
+
+    #[test]
+    fn add_ops_routes_brownfield() {
+        let (_dir, project) = sample_project();
+        fs::remove_file(project.http_dir().join("ops.rs")).unwrap();
+        let app_path = project.app_rs();
+        let app = fs::read_to_string(&app_path).unwrap();
+        let app = app.replace(".merge(http::ops::route_table(&state))", "");
+        fs::write(&app_path, app).unwrap();
+        add_ops_routes(&project).unwrap();
+        assert!(project.http_dir().join("ops.rs").is_file());
+        let app = fs::read_to_string(&app_path).unwrap();
+        assert!(app.contains("http::ops::route_table(&state)"));
+    }
+
+    #[test]
+    fn add_jobs_routes_after_ops_only() {
+        let dir = tempdir().unwrap();
+        let opts = NewProjectOpts {
+            name: "ops-only".into(),
+            output: dir.path().to_path_buf(),
+            features: vec![AppFeature::Gateway],
+            trembita_version: "0.3.2".into(),
+            trembita_path: None,
+        };
+        let root = scaffold_project(&opts).unwrap();
+        let project = TrembitaProject { root };
+        assert!(!project.http_dir().join("jobs.rs").exists());
+        add_jobs_routes(&project).unwrap();
+        assert!(project.http_dir().join("jobs.rs").is_file());
+        let app = fs::read_to_string(project.app_rs()).unwrap();
+        assert!(
+            app.contains("http::jobs::route_table(&state).merge(http::ops::route_table(&state))")
+        );
     }
 }

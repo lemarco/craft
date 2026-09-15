@@ -28,7 +28,9 @@ use trembita::{
     TrembitaConfigure, TrembitaGatewayState, WorkerOpts, WorkerScale, workers,
 };
 use trembita_tools::gateway_auth::ShowcaseGatewayIdentity;
-use trembita_tools::showcase_common::{data_dir, display_addr, env_flag};
+use trembita_tools::showcase_common::{
+    data_dir, display_addr, env_flag, http_bind_display, http_bind_from_env, http_disabled,
+};
 
 use crate::migrate_counter::StatefulCounter;
 use crate::processor::{OrderProcessor, ProcessorCfg};
@@ -86,10 +88,7 @@ fn gateway_opts(addr: std::net::SocketAddr) -> GatewayOpts {
 fn server_builder() -> TrembitaAppBuilder {
     let dir = data_dir(DATA_DIR_NAME);
     let _ = std::fs::create_dir_all(&dir);
-    let gateway: std::net::SocketAddr = env::var("TREMBITA_GATEWAY")
-        .unwrap_or_else(|_| "127.0.0.1:8190".into())
-        .parse()
-        .expect("gateway");
+    let gateway = http_bind_from_env("127.0.0.1:8190");
     apply_actors(
         TrembitaApp::builder()
             .data_dir(dir)
@@ -135,11 +134,12 @@ fn print_banner() {
         println!("  migrate  ./cluster.sh migrate-run  (POST /demo/migrate/run)");
     } else {
         println!("  listen   {}", env::var("TREMBITA_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
-        if env::var("TREMBITA_GATEWAY").is_ok_and(|g| g != "-") {
-            let gw = env::var("TREMBITA_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8190".into());
-            let host = display_addr(&gw);
-            println!("  gateway  http://{host}/actors/orders/cast  (built-in ActorsApi)");
+        if !http_disabled() {
+            let host = display_addr(&http_bind_display("127.0.0.1:8190"));
+            println!("  http     http://{host}  (product + ops on one listener)");
+            println!("  cast     POST http://{host}/actors/orders/cast  (ActorsApi + AuthMode::Identity)");
             println!("  auth     POST http://{host}/orders/submit?user=tenant-1  (custom identity route)");
+            println!("  ops      http://{host}/dashboard  /health  /metrics");
         }
         if env::var("TREMBITA_JOIN_SEEDS").is_ok() {
             println!("  join     via TREMBITA_JOIN_SEEDS");
@@ -159,7 +159,7 @@ fn print_banner() {
 }
 
 async fn cast_order(order_id: u64) -> Result<(), Box<dyn std::error::Error>> {
-    let gateway = env::var("TREMBITA_GATEWAY").unwrap_or_else(|_| "127.0.0.1:8190".into());
+    let gateway = http_bind_display("127.0.0.1:8190");
     debug::order_cast(order_id, &gateway);
     let resp = trembita_tools::showcase_client::cast_actor(&gateway, "orders", &order_id.to_string()).await?;
     if resp.is_success() {

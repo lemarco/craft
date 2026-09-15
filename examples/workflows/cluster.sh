@@ -7,9 +7,9 @@ source "$CRAFT_ROOT/dev/cluster-common.sh"
 
 DEV="${TREMBITA_WORKFLOWS_CLUSTER_DIR:-$CRAFT_ROOT/target/trembita-workflows-cluster}"
 CERTS="$DEV/certs"
-SEED="1@127.0.0.1:7643"
+SEED="1@127.0.0.1:8490"
 BIN="trembita-showcase-workflows"
-CLUSTER_PORTS=(7643 7653 7663 7673 8490 8491 8492 9480 9481 9482 9483)
+CLUSTER_PORTS=(8490 8491 8492 7673)
 
 cluster_common_init "$ROOT" "$BIN" "$DEV" "$CERTS" "$SEED"
 
@@ -44,12 +44,12 @@ health() {
     for _ in 1 2 3 4 5 6 7 8 9 10; do
         gw=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8490/workflows/run \
             -H 'content-type: application/json' -d '{"saga_id":"health"}' 2>/dev/null || echo 000)
-        adm=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9480/health 2>/dev/null || echo 000)
+        adm=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8490/health 2>/dev/null || echo 000)
         [ "$gw" = 200 ] && [ "$adm" = 200 ] && break
         sleep 1
     done
-    echo "gateway POST /workflows/run → $gw"
-    echo "admin   GET  /health       → $adm"
+    echo "HTTP POST /workflows/run → $gw"
+    echo "HTTP GET  /health        → $adm"
     [ "$gw" = 200 ] && [ "$adm" = 200 ] && echo "OK: cluster ready" || echo "not ready"
 }
 
@@ -67,27 +67,27 @@ setup() {
 }
 
 run_node() {
-    local id=$1 listen=$2 admin=$3 gateway=$4
-    cluster_run_node "$id" "$listen" "$admin" "$gateway"
+    local id=$1 listen=$2
+    cluster_run_node "$id" "$listen" "${3:-http}"
 }
 
 node_env() {
-    local id=$1 listen=$2 admin=$3 gateway=$4
-    cluster_prepare_node "$id" "$listen" "$admin" "$gateway"
+    local id=$1 listen=$2
+    cluster_prepare_node "$id" "$listen" "${3:-http}"
     env | rg '^TREMBITA_' | sort
 }
 
 run_node_bg() {
-    local id=$1 listen=$2 admin=$3 gateway=$4
-    cluster_run_node_bg "$id" "$listen" "$admin" "$gateway"
+    local id=$1 listen=$2
+    cluster_run_node_bg "$id" "$listen" "${3:-http}"
 }
 
 up() {
     cluster_stop
     rm -rf "$DEV/logs"
-    run_node_bg 1 127.0.0.1:7643 "${CLUSTER_ADMIN_BIND}:9480" 127.0.0.1:8490
-    run_node_bg 2 127.0.0.1:7653 "${CLUSTER_ADMIN_BIND}:9481" 127.0.0.1:8491
-    run_node_bg 3 127.0.0.1:7663 "${CLUSTER_ADMIN_BIND}:9482" 127.0.0.1:8492
+    run_node_bg 1 127.0.0.1:8490
+    run_node_bg 2 127.0.0.1:8491
+    run_node_bg 3 127.0.0.1:8492
     echo ">> waiting for health"
     sleep 3
     health
@@ -101,9 +101,9 @@ case "${1:-}" in
   logs) cluster_logs_tail "${2:-1}" ;;
   status) status ;;
   health) health ;;
-  1) run_node 1 127.0.0.1:7643 "${CLUSTER_ADMIN_BIND}:9480" 127.0.0.1:8490 ;;
-  2) run_node 2 127.0.0.1:7653 "${CLUSTER_ADMIN_BIND}:9481" 127.0.0.1:8491 ;;
-  3) run_node 3 127.0.0.1:7663 "${CLUSTER_ADMIN_BIND}:9482" 127.0.0.1:8492 ;;
-  4) run_node 4 127.0.0.1:7673 "${CLUSTER_ADMIN_BIND}:9483" - ;;
+  1) run_node 1 127.0.0.1:8490 ;;
+  2) run_node 2 127.0.0.1:8491 ;;
+  3) run_node 3 127.0.0.1:8492 ;;
+  4) run_node 4 127.0.0.1:7673 no-http ;;
   *) echo "usage: $0 setup | reset | stop | up | logs [N] | status | health | 1 | 2 | 3 | 4" >&2; exit 1 ;;
 esac

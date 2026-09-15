@@ -27,8 +27,9 @@ Start with [`background-jobs/src/main.rs`](background-jobs/src/main.rs) — the 
 
 ### Shared cluster env
 
-Every showcase runs the **same binary on every node** — gateway + workers/consumers on each VPS. The cluster routes work (Raft leader, queue lease, actor directory); you do not split ingress vs worker roles in the happy path.
+Every showcase runs the **same binary on every node** — HTTP (product + merged ops routes) + workers/consumers on each VPS. The cluster routes work (Raft leader, queue lease, actor directory); you do not split ingress vs worker roles in the happy path.
 
+- **One port:** `TREMBITA_LISTEN` — UDP (QUIC wire) and TCP (HTTP product + ops) on the **same** `host:port`. `./cluster.sh` sets only `TREMBITA_LISTEN` (`TREMBITA_HTTP=-` on optional QUIC-only nodes).
 - Readiness: `RunOpts::default().with_wait_queue("emails")` (or `.with_wait_ready(...)`)
 - Optional: homogeneous cluster — same env on every node; see [workload governor](../docs/decisions/workload-governor.md) (`.workload()` compute tokens).
 
@@ -40,8 +41,8 @@ Built automatically by `./cluster.sh setup`:
 ./target/debug/trembita-showcase-client job 127.0.0.1:8090 emails hello
 ./target/debug/trembita-showcase-client cast 127.0.0.1:8190 orders 1001
 ./target/debug/trembita-showcase-client submit 127.0.0.1:8190 tenant-1 1001
-./target/debug/trembita-showcase-client chat 127.0.0.1:8294 alice hello
-./target/debug/trembita-showcase-client ws 127.0.0.1:8294 alice hello
+./target/debug/trembita-showcase-client chat 127.0.0.1:8290 alice hello
+./target/debug/trembita-showcase-client ws 127.0.0.1:8290 alice hello
 ./target/debug/trembita-showcase-client workflow run 127.0.0.1:8490 onboard-42
 ```
 
@@ -91,7 +92,7 @@ cd examples/background-jobs
 ./cluster.sh setup && ./cluster.sh up && ./trigger.sh hello
 ```
 
-Shared infra: [`dev/`](../dev/README.md) (`cluster-common.sh`, `certs/generate.sh`). Docker Compose per showcase: `dev/compose/<name>/`.
+Shared infra: [`dev/`](../dev/README.md) (`cluster-common.sh`, `certs/generate.sh`). Docker Compose per showcase: `dev/compose/<name>/` — **dynamic join** (no `TREMBITA_NODE_ID`; seed + `TREMBITA_JOIN_SEEDS`; ids in `TREMBITA_DATA_DIR/node-id`).
 
 ## Related
 

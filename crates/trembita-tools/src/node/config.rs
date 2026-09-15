@@ -227,11 +227,7 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
         .as_deref()
         .unwrap_or("0.0.0.0:7443")
         .parse()?;
-    let http = match env("TREMBITA_HTTP").as_deref() {
-        Some("-") => None,
-        Some(a) => Some(a.parse()?),
-        None => Some("127.0.0.1:8080".parse()?),
-    };
+    let http = trembita::env::product_http_from_wire(listen)?;
 
     let join_seeds = match env("TREMBITA_JOIN_SEEDS") {
         Some(raw) => parse_seeds(&raw)?,
@@ -485,6 +481,28 @@ mod tests {
         assert_eq!(parse_drain_timeout(None), DEFAULT_DRAIN_TIMEOUT);
         assert_eq!(parse_drain_timeout(Some("90")), Duration::from_secs(90));
         assert_eq!(parse_drain_timeout(Some("2m")), Duration::from_secs(120));
+    }
+
+    #[test]
+    fn config_from_env_http_defaults_to_listen_port() {
+        with_trembita_env(&[("TREMBITA_LISTEN", Some("127.0.0.1:9443"))], || {
+            let cfg = config_from_env().expect("config");
+            assert_eq!(cfg.listen.port(), 9443);
+            assert_eq!(cfg.http, Some(cfg.listen));
+        });
+    }
+
+    #[test]
+    fn config_from_env_rejects_split_http_port() {
+        with_trembita_env(
+            &[
+                ("TREMBITA_LISTEN", Some("127.0.0.1:9443")),
+                ("TREMBITA_HTTP", Some("127.0.0.1:8090")),
+            ],
+            || {
+                assert!(config_from_env().is_err());
+            },
+        );
     }
 
     #[test]

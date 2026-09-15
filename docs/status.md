@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Version** | `0.4.0` |
+| **Version** | `0.4.0` (0.5.0 unified-listener in progress) |
 | **MSRV** | 1.94 |
 | **Distribution** | Published on [crates.io](https://crates.io/crates/trembita) — full test pyramid, E2E/chaos |
 
@@ -50,7 +50,7 @@ Details below ↓
 
 - Dynamic join via seed set + DNS discovery (`trembita::discovery`, `join_seeds`)
 - Cluster leave RPC (`TrembitaCluster::leave`, `TREMBITA_ALLOW_LEAVE`)
-- Health/admin HTTP (`:8080`) with optional TLS
+- Unified ops + product HTTP on `TREMBITA_HTTP` (explicit [`OpsApi`](../crates/trembita-http/src/ops_routes.rs) / app gateway merges; optional TLS via `TREMBITA_HTTP_TLS_*`) — [unified-listener](decisions/unified-listener.md), [migration](migration/unified-listener-0.5.md)
 - Reachability signal distinct from membership; crash-driven supervisor reconcile against `reachable_nodes()`
 - Phi-accrual / tunable reachability (`ReachabilityConfig`)
 - `trembita-ops` snapshot backup/restore; rolling wire N/N−1 compatibility
@@ -71,7 +71,7 @@ Details below ↓
 
 **Event topics** ([event-topics](decisions/event-topics.md)): durable pub/sub, named subscriptions, voter replication; [`TopicOpts`](../crates/trembita/src/topic_opts.rs), [`.topics()`](../crates/trembita/src/app/mod.rs); **`EventOutboxSource`** ([event-outbox](decisions/event-outbox.md)) for transactional outbox drain.
 
-**Gateway & HTTP** ([facade `http-jobs`](decisions/facade.md), [gateway-identity](decisions/gateway-identity.md), [gateway-routing-v2](decisions/gateway-routing-v2.md)): separate listener, opt-in `/jobs/*`, `/actors/*`, `/workflows/*`, bearer auth, native `Gateway`/`RouteTable` + hyper WebSocket.
+**Gateway & HTTP** ([unified-listener](decisions/unified-listener.md), [gateway-routing-v2](decisions/gateway-routing-v2.md), [gateway-identity](decisions/gateway-identity.md)): one TCP bind (`TREMBITA_HTTP` / `TREMBITA_GATEWAY` on apps); product and ops routes merged explicitly in `.surfaces()`; `AuthMode` on route tables; native `Gateway`/`RouteTable` + hyper WebSocket. Cluster-only: [`spawn_cluster_ops_http`](../crates/trembita/src/gateway/cluster_ops.rs). Migrate: [unified-listener-0.5](migration/unified-listener-0.5.md).
 
 **Workload governor** ([workload-governor](decisions/workload-governor.md)): per-node compute tokens + consumer tuning from gateway load and queue depth.
 

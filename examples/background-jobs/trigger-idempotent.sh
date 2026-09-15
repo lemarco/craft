@@ -5,7 +5,7 @@
 #   1. `?dedup=` collapses duplicate *enqueues*   → one job id, one job
 #   2. the handler marker survives *redelivery*   → one side effect
 set -euo pipefail
-GATEWAY="${TREMBITA_GATEWAY:-127.0.0.1:8090}"
+GATEWAY="${TREMBITA_HTTP:-${TREMBITA_GATEWAY:-127.0.0.1:8090}}"
 GATEWAY="${GATEWAY#http://}"
 GATEWAY="${GATEWAY#https://}"
 PAYLOAD="${1:-welcome-user-42}"

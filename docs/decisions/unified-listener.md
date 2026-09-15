@@ -116,10 +116,12 @@ builders — apps choose what to merge and where.
 
 ## Migration (0.5.0)
 
-1. Replace `TREMBITA_ADMIN` + `TREMBITA_GATEWAY` with `TREMBITA_HTTP=0.0.0.0:443`
+Step-by-step guide: [unified-listener-0.5.md](../migration/unified-listener-0.5.md).
+
+1. Replace `TREMBITA_ADMIN` + split gateway/admin ports with `TREMBITA_HTTP=0.0.0.0:443` (or your bind)
 2. Replace `.with_jobs_api(true)` with `http::jobs::route_table(&state)` in surfaces
-3. Add `trembita add ops-routes` or copy from scaffold template
-4. Point probes at ops host: `GET /health`, `GET /ready`, `GET /metrics`
+3. Run `trembita add ops-routes` / `trembita add jobs-routes` or copy from scaffold template
+4. Point probes at the unified bind: `GET /health`, `GET /ready`, `GET /metrics`
 
 ## Related
 

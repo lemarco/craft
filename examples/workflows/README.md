@@ -8,13 +8,13 @@ Uses [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) — same onboarding p
 
 | Piece | Role |
 |-------|------|
-| This binary | `TrembitaApp` + gateway `/workflows/*` |
+| This binary | `TrembitaApp` + explicit `/workflows/*` + ops routes on one HTTP listener |
 | [`trigger.sh`](trigger.sh) | Run / resume saga via gateway HTTP |
-| Admin | Dashboard **Sagas** panel |
+| Ops (same listener) | `/dashboard` (Sagas panel), `/health`, `/metrics` |
 
 ## Quick start (local — two terminals)
 
-**Terminal 1** — start gateway + Raft:
+**Terminal 1** — start HTTP + Raft:
 
 ```bash
 cd examples/workflows
@@ -37,7 +37,7 @@ cargo run --release -- resume onboard-42
 
 ## Quick start (cluster)
 
-Three **identical** nodes — each runs admin + workflow gateway:
+Three **identical** nodes — each runs workflows + ops on the same HTTP port:
 
 ```bash
 cd examples/workflows
@@ -48,13 +48,13 @@ cd examples/workflows
 ./trigger.sh resume onboard-42
 ```
 
-| Node | QUIC | Admin | Gateway |
-|------|------|-------|---------|
-| 1 | `:7843` | `:9480` | `:8490` |
-| 2 | `:7853` | `:9481` | `:8491` |
-| 3 | `:7863` | `:9482` | `:8492` |
+| Node | `TREMBITA_LISTEN` (wire + HTTP) |
+|------|----------------------------------|
+| 1 | `:8490` |
+| 2 | `:8491` |
+| 3 | `:8492` |
 
-Connect to any node's gateway URL. Forward **8490** and **9480** in Cursor/SSH.
+Connect to any node's HTTP URL. Forward **8490** (or 8491/8492) in Cursor/SSH.
 
 Docker Compose: `cd dev/compose/workflows && docker compose up --build`
 
@@ -62,10 +62,11 @@ Docker Compose: `cd dev/compose/workflows && docker compose up --build`
 
 | Var | Default | Meaning |
 |-----|---------|---------|
-| `TREMBITA_GATEWAY` | `127.0.0.1:8490` (local) | Product HTTP bind (`/workflows/run`, `/workflows/resume`) |
-| `TREMBITA_DATA_DIR` | `/tmp/trembita-showcase-workflows` | Raft + Meta-Raft redb |
-| `TREMBITA_PEERS` | unset | When set → QUIC cluster mode |
-| `TREMBITA_GATEWAY_WORKFLOWS` | unset | Set `1` to mount `/workflows/*` when gateway comes from env only |
+| `TREMBITA_LISTEN` | `127.0.0.1:8490` | One port — QUIC + HTTP workflows + ops |
+| `TREMBITA_JOIN_SEEDS` | unset | Joiners: `1@127.0.0.1:8490` (see `./cluster.sh`) |
+| `TREMBITA_DATA_DIR` | `/tmp/trembita-showcase-workflows` | Raft + Meta-Raft redb + `node-id` |
 | `GATEWAY_TOKEN` | unset | When set, `/workflows/*` requires `Authorization: Bearer` + `X-Trembita-User` ([`AuthMode::Identity`](../../crates/trembita-http/src/routing/auth.rs)) |
+
+Workflow and ops route tables are merged explicitly in `src/main.rs` (no `with_workflows_api` env flags).
 
 Guide: [docs/scenarios/workflows.md](../../docs/scenarios/workflows.md)

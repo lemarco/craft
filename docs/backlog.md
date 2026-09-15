@@ -57,16 +57,16 @@ For new feature epics, use the next **B-NN** id and link the scenario + ADR.
 **Scenario:** all — custom operator / admin UIs (session auth, multi-page apps)  
 **ADR:** [introspect-api](decisions/introspect-api.md)
 
-Introspection JSON (`/introspect/cluster`, `/actors`, `/queues`, `/sagas`, …) is served only by the admin hyper server on `:8080`. Product teams mounting Jobs/Actors/Workflows on the gateway still hand-write the same read-only handlers to feed their admin UI. `list_jobs` / `requeue_dead_letter_batch` are already on `JobsApi`; the gap is the **Observer snapshots** as a fourth mountable [`RouteTable`](../crates/trembita-http/src/routing/table.rs) with `AuthFn`.
+Introspection JSON (`/introspect/cluster`, `/actors`, `/queues`, `/sagas`, …) ships on the **unified HTTP listener** via [`OpsApi`](../crates/trembita-http/src/ops_routes.rs) (merged in app gateway or `trembita-node` / `spawn_cluster_ops_http`). Product teams mount Jobs/Actors/Workflows alongside ops using explicit [`RouteTable`](../crates/trembita-http/src/routing/table.rs) merges — see [unified-listener](decisions/unified-listener.md).
 
 
 | Subtask | Wave | Description | Status |
 | ------- | ---- | ----------- | ------ |
 | B-19a   | 1 | **ADR** — `IntrospectApi`, routes, gateway wiring, admin port unchanged | ✅ |
 | B-19b   | 1 | **`IntrospectApi` in `trembita-http`** — [`RouteTable`](../crates/trembita-http/src/routing/table.rs) over `Arc<dyn Observer>`, `AuthFn` | ✅ |
-| B-19c   | 1 | **Facade** — `TrembitaApp::introspect_api`, `GatewayOpts::with_introspect_api`, `build_gateway_service` merge | ✅ |
+| B-19c   | 1 | **Facade** — `TrembitaApp::introspect_api`, explicit ops/introspect route tables in `.surfaces()` | ✅ |
 | B-19d   | 1 | **Re-exports** — `Observer` + view types from `trembita` / `trembita-http` for app handlers | ✅ |
-| B-19e   | 2 | **Tests** — route unit tests; integration `protect_product_apis` + JSON parity with admin | ✅ |
+| B-19e   | 2 | **Tests** — route unit tests; integration auth + JSON parity for introspect routes | ✅ |
 | B-19f   | 2 | **Docs** — `trembita-http` README, [observability](decisions/observability.md) cross-link, [testing-coverage.md](testing-coverage.md) | ✅ |
 
 
@@ -78,7 +78,7 @@ Introspection JSON (`/introspect/cluster`, `/actors`, `/queues`, `/sagas`, …) 
 | **MR-2** (tests + docs) | B-19e–f | 2 | ~1 day |
 
 
-**Acceptance:** App enables `.with_introspect_api(true).with_jobs_api(true).protect_product_apis(true)`; admin pages fetch `/introspect/*` and `/jobs/*` on the gateway behind session auth; JSON matches admin port; admin `:8080` introspection unchanged for ops/dashboard.
+**Acceptance:** App merges `ops_api().route_table()` and product API tables in `GatewayOpts::surfaces()`; operator UI fetches `/introspect/*` and `/jobs/*` on the same HTTP bind (host-separated surfaces optional); `AuthMode::Identity` / session gates as needed. See [migration/unified-listener-0.5.md](migration/unified-listener-0.5.md).
 
 
 ---

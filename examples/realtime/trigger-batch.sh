@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Send chat lines for several users (round-robin gateways 8294/8295/8296 in cluster).
+# Send chat lines for several users (round-robin gateways 8290/8291/8292 in cluster).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"
 CLIENT="$CRAFT_ROOT/target/debug/trembita-showcase-client"
-GATEWAYS=(127.0.0.1:8294 127.0.0.1:8295 127.0.0.1:8296)
+GATEWAYS=(127.0.0.1:8290 127.0.0.1:8291 127.0.0.1:8292)
 
 USERS=(alice bob carol)
 COUNT="${1:-6}"
@@ -29,4 +29,4 @@ for i in $(seq 1 "$COUNT"); do
         echo "  $user @ $gw → failed ($out)"
     fi
 done
-echo "done: $OK/$COUNT — dashboard http://127.0.0.1:9380/dashboard"
+echo "done: $OK/$COUNT — dashboard http://127.0.0.1:8290/dashboard"

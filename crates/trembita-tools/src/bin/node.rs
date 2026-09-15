@@ -13,7 +13,7 @@
 //! |-----|---------|---------|
 //! | `TREMBITA_NODE_ID` | This node's id (`u64`) | `1` |
 //! | `TREMBITA_LISTEN` | QUIC listen `addr:port` | `0.0.0.0:7443` |
-//! | `TREMBITA_HTTP` | Ops HTTP `addr:port` (`-` to disable) | `127.0.0.1:8080` |
+//! | `TREMBITA_HTTP` | `-` disables TCP; otherwise same as `TREMBITA_LISTEN` | same as listen |
 //! | `TREMBITA_HTTP_TLS_CERT` / `TREMBITA_HTTP_TLS_KEY` | PEM paths for HTTPS (both required) | *plain HTTP* |
 //! | `TREMBITA_PEERS` | `id@host:port` list of **all** members (static membership) | *self only* |
 //! | `TREMBITA_JOIN_SEEDS` | `id@host:port` seed list for a **dynamic** join (discovery) | *none* |

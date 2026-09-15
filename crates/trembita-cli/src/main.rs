@@ -9,8 +9,8 @@ use clap::{Parser, Subcommand, ValueHint};
 use trembita_cli::{
     AddActorOpts, AddConsumerOpts, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts,
     NewProjectOpts, StaticSiteSource, TrembitaProject, add_actor, add_consumer, add_http_surface,
-    add_static_site, add_topic, default_output, doctor_fix, parse_feature_list, run_doctor,
-    scaffold_project,
+    add_jobs_routes, add_ops_routes, add_static_site, add_topic, default_output, doctor_fix,
+    parse_feature_list, run_doctor, scaffold_project,
 };
 
 #[derive(Parser)]
@@ -89,6 +89,10 @@ enum AddTarget {
         #[arg(long)]
         type_name: Option<String>,
     },
+    /// Add operational routes (`src/http/ops.rs` + gateway merge).
+    OpsRoutes,
+    /// Add job operator routes (`src/http/jobs.rs` + gateway merge).
+    JobsRoutes,
     /// Register a custom HTTP surface (`src/http/` + gateway `.surface()`).
     HttpSurface {
         /// Surface name (default module name).
@@ -159,6 +163,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 root.file_name().unwrap().to_string_lossy()
             );
             eprintln!("  trembita add consumer <stream>  — register more job handlers");
+            eprintln!("  trembita add ops-routes | jobs-routes — built-in /health, /jobs/* tables");
             eprintln!("  trembita add http-surface <name> --hosts … — custom HTTP routes");
             eprintln!("  trembita doctor                 — verify layout and wiring");
         }
@@ -187,6 +192,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 AddTarget::Actor { group, type_name } => {
                     add_actor(&project, &AddActorOpts { group, type_name })?;
                     eprintln!("Added actor in {}", project.actors_dir().display());
+                }
+                AddTarget::OpsRoutes => {
+                    add_ops_routes(&project)?;
+                    eprintln!("Added ops routes in {}", project.http_dir().display());
+                }
+                AddTarget::JobsRoutes => {
+                    add_jobs_routes(&project)?;
+                    eprintln!("Added jobs routes in {}", project.http_dir().display());
                 }
                 AddTarget::HttpSurface {
                     name,

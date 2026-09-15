@@ -9,8 +9,7 @@ Sidekiq-style async work on trembita: clients get **HTTP 202**, jobs survive res
 | This binary | `TrembitaApp` + gateway + `#[consumer]` email worker + `LedgerWorker` (queue → actor) |
 | [`trigger.sh`](trigger.sh) | Enqueue via HTTP (product gateway, not admin) |
 | [`trigger-idempotent.sh`](trigger-idempotent.sh) | Same job twice with one `?dedup=` key — duplicate enqueue + redelivery |
-| Admin (local) | `:9080` — dashboard in single-process mode |
-| Admin (cluster) | `:9180` on node 1 — dashboard in cluster mode |
+| Ops / dashboard | Same HTTP bind as gateway — `/dashboard`, `/health` on `:8090` (local or cluster node 1) |
 
 ## Quick start (local — one terminal)
 
@@ -40,18 +39,18 @@ cd examples/background-jobs
 ./trigger-batch.sh 30
 ```
 
-Open **http://127.0.0.1:9180/dashboard** — event feed shows workers on different nodes as jobs are leased.
+Open **http://127.0.0.1:8090/dashboard** — event feed shows workers on different nodes as jobs are leased.
 
-| Node | QUIC | Admin | Gateway |
-|------|------|-------|---------|
-| 1 | `:7543` | `:9180` | `:8090` |
-| 2 | `:7553` | `:9181` | `:8091` |
-| 3 | `:7563` | `:9182` | `:8092` |
-| 4 | `:7573` | `:9183` | — (optional) |
+| Node | `TREMBITA_LISTEN` (wire + HTTP) |
+|------|----------------------------------|
+| 1 | `:8090` |
+| 2 | `:8091` |
+| 3 | `:8092` |
+| 4 | `:7573` (QUIC only — `./cluster.sh 4` sets `TREMBITA_HTTP=-`) |
 
 `./trigger-batch.sh` round-robins across `:8090`, `:8091`, `:8092` — each gateway forwards enqueue to the queue leader; any node can lease and process jobs.
 
-You should see `[worker] email #… sent` in server terminals and the **Job queues** panel move on [http://127.0.0.1:9180/dashboard](http://127.0.0.1:9180/dashboard).
+You should see `[worker] email #… sent` in server terminals and the **Job queues** panel move on [http://127.0.0.1:8090/dashboard](http://127.0.0.1:8090/dashboard).
 
 ## curl equivalents
 
@@ -116,9 +115,9 @@ Guide: [background-jobs § Queue → actor bridge](../../docs/scenarios/backgrou
 
 | Var | Default | Meaning |
 |-----|---------|---------|
-| `TREMBITA_GATEWAY` | `127.0.0.1:8090` (local) | Product HTTP bind (`-` disables gateway on a node) |
+| `TREMBITA_LISTEN` | `127.0.0.1:8090` (local) | One port — QUIC + HTTP product + ops |
+| `TREMBITA_JOIN_SEEDS` | unset | Joiners: `1@127.0.0.1:8090` (see `./cluster.sh`) |
 | `TREMBITA_WORKERS` | `1` | Consumer instances **on this node only** (local dev) |
-| `TREMBITA_PEERS` | unset | When set → QUIC cluster mode (`cluster.sh`) |
 | `TREMBITA_DATA_DIR` | `/tmp/trembita-showcase-background-jobs` | redb queue + actor store |
 | `GATEWAY_TOKEN` | unset | When set, product `/jobs/*` routes require Bearer auth |
 | `TREMBITA_SIMULATE_REDELIVERY` | `1` | First delivery of each key fails after the marker is written; `0` disables |
@@ -128,9 +127,9 @@ Guide: [background-jobs § Queue → actor bridge](../../docs/scenarios/backgrou
 **`ERR_CONNECTION_REFUSED` in the browser**
 
 1. **Same machine** — run `curl` / `./trigger.sh` in a terminal on the host where `cargo run` is running, not only in a browser on another machine.
-2. **SSH / remote dev** — forward ports: `ssh -L 8090:127.0.0.1:8090 -L 9180:127.0.0.1:9180 user@host`
-3. **Port busy** — startup now prints `trembita: gateway listening on http://…` or panics; try `TREMBITA_GATEWAY=127.0.0.1:8091 cargo run`
-4. **Wrong URL** — `/jobs/emails` is **POST only** (enqueue). For monitoring use [dashboard](http://127.0.0.1:9180/dashboard) in cluster mode (or `:9080` in local mode); a GET in the browser returns `405`, not a HTML page.
+2. **SSH / remote dev** — forward HTTP: `ssh -L 8090:127.0.0.1:8090 user@host`
+3. **Port busy** — startup prints the HTTP bind in the banner; try `TREMBITA_HTTP=127.0.0.1:8091 cargo run`
+4. **Wrong URL** — `/jobs/emails` is **POST only** (enqueue). For monitoring use [dashboard](http://127.0.0.1:8090/dashboard); a GET on `/jobs/emails` in the browser returns `405`, not HTML.
 
 Verify:
 
