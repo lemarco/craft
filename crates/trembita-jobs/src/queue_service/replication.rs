@@ -8,8 +8,7 @@ use trembita_proto::{
     NodeId, ProductWireError, QueueReplicateOp, QueueReplicateReply, QueueReplicateRequest,
 };
 use trembita_runtime::{
-    fanout_product_replicate, follower_apply_product_replicate, forward_to_leader,
-    replicate_reply_err,
+    authorize_replicate_leader, fanout_product_replicate, forward_to_leader, replicate_reply_err,
 };
 
 use super::wire::shard_stream_name;
@@ -113,24 +112,24 @@ impl QueueService {
         _from: Option<NodeId>,
         request: QueueReplicateRequest,
     ) -> QueueReplicateReply {
+        if let Err(e) = authorize_replicate_leader(
+            self.state.as_ref(),
+            NodeId(request.leader_id),
+            REPLICATE_NOT_LEADER,
+        ) {
+            return QueueReplicateReply { error: Some(e) };
+        }
         match self.local_stream(&request.stream) {
             Err(e) => QueueReplicateReply { error: Some(e) },
             Ok(queue) => {
-                let result = follower_apply_product_replicate(
-                    self.state.as_ref(),
-                    NodeId(request.leader_id),
-                    REPLICATE_NOT_LEADER,
-                    &request.ops,
-                    |op| {
-                        let queue = Arc::clone(&queue);
-                        async move { queue.apply_replicate(&op).await }
-                    },
-                    |e| ProductWireError::ReplicateApply(e.to_string()),
-                )
-                .await;
-                QueueReplicateReply {
-                    error: result.err(),
+                for op in &request.ops {
+                    if let Err(e) = queue.apply_replicate(op).await {
+                        return QueueReplicateReply {
+                            error: Some(ProductWireError::ReplicateApply(e.to_string())),
+                        };
+                    }
                 }
+                QueueReplicateReply { error: None }
             }
         }
     }
