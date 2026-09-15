@@ -55,7 +55,7 @@ Runtime behaviour ([`run_event_outbox_drainer`](../../crates/trembita-events/src
 `trembita` does not link Postgres by default — enable feature `domain-outbox` for the bundled [`PgEventOutboxSource`](../../crates/trembita-events-postgres/) adapter ([facade](facade.md)). Custom stores implement [`EventOutboxSource`](../../crates/trembita-events/src/event_outbox.rs) in application code (same as [`ScheduleSource`](schedule-source.md)).
 
 ```toml
-trembita = { version = "0.4", features = ["domain-outbox"] }
+trembita = { version = "0.5", features = ["domain-outbox"] }
 ```
 
 ```rust

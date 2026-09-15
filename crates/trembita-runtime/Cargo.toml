@@ -35,7 +35,7 @@ opentelemetry = { version = "0.31", optional = true }
 opentelemetry_sdk = { version = "0.31", optional = true, features = ["trace", "rt-tokio"] }
 opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic"], optional = true }
 tracing-opentelemetry = { version = "0.32", optional = true }
-trembita-metrics-otlp = { path = "../trembita-metrics-otlp", version = "0.4.0", optional = true }
+trembita-metrics-otlp = { path = "../trembita-metrics-otlp", version = "0.5.0", optional = true }
 
 [features]
 default = []

@@ -39,7 +39,7 @@ Other backends may implement the same trait (PostgreSQL, Valkey, etc.).
 Shipped as [`trembita-store-redis`](../../crates/trembita-store-redis/) — enable on the facade via `redis-store` ([facade](facade.md)):
 
 ```toml
-trembita = { version = "0.4", features = ["redis-store"] }
+trembita = { version = "0.5", features = ["redis-store"] }
 ```
 
 ```rust

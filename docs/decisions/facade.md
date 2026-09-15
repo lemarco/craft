@@ -45,25 +45,25 @@ Core crates (`core`, `jobs`, `events`, `runtime`, `net`, `macros`, …) are **al
 **Minimal product app (embedded redb, no Postgres/Redis):**
 
 ```toml
-trembita = { version = "0.4", features = ["dev-certs"] }
+trembita = { version = "0.5", features = ["dev-certs"] }
 ```
 
 **HTTP jobs + gateway product APIs (default):**
 
 ```toml
-trembita = { version = "0.4", features = ["http-jobs", "dev-certs"] }
+trembita = { version = "0.5", features = ["http-jobs", "dev-certs"] }
 ```
 
 **Postgres-backed external job backlog:**
 
 ```toml
-trembita = { version = "0.4", features = ["http-jobs", "external-backlog"] }
+trembita = { version = "0.5", features = ["http-jobs", "external-backlog"] }
 ```
 
 **Redis actor state + transactional domain outbox:**
 
 ```toml
-trembita = { version = "0.4", features = ["redis-store", "domain-outbox"] }
+trembita = { version = "0.5", features = ["redis-store", "domain-outbox"] }
 ```
 
 ### Rust imports
@@ -99,7 +99,7 @@ App-level **Cargo** features:
 
 ```toml
 [dependencies]
-trembita = { version = "0.4", features = ["dev-certs", "http-jobs", "external-backlog"] }
+trembita = { version = "0.5", features = ["dev-certs", "http-jobs", "external-backlog"] }
 
 [features]
 default = ["jobs", "gateway", "telemetry", "external-backlog"]

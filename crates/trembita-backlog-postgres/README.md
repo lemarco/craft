@@ -6,7 +6,7 @@ adapter for trembita job queue streams.
 ## Product apps — use the facade
 
 ```toml
-trembita = { version = "0.4", features = ["external-backlog"] }
+trembita = { version = "0.5", features = ["external-backlog"] }
 ```
 
 ```rust

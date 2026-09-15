@@ -44,7 +44,7 @@ One dependency; optional integrations via [facade features](facade.md):
 
 ```toml
 [dependencies]
-trembita = { version = "0.4", features = ["http-jobs", "dev-certs"] }
+trembita = { version = "0.5", features = ["http-jobs", "dev-certs"] }
 # optional:
 # trembita = { features = ["external-backlog", "redis-store", "domain-outbox"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }

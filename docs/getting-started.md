@@ -15,7 +15,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 The default feature set includes `http-jobs` (product HTTP gateway helpers). For local QUIC without PEM files, add `dev-certs`:
 
 ```toml
-trembita = { version = "0.4", features = ["dev-certs"] }
+trembita = { version = "0.5", features = ["dev-certs"] }
 ```
 
 ### Optional integrations (facade features)
@@ -31,7 +31,7 @@ Enable on the same `trembita` dependency — no separate adapter crates in your 
 | `domain-outbox` | Postgres transactional outbox → event topic drainer ([event-outbox](decisions/event-outbox.md)) |
 
 ```toml
-trembita = { version = "0.4", features = ["http-jobs", "dev-certs", "external-backlog"] }
+trembita = { version = "0.5", features = ["http-jobs", "dev-certs", "external-backlog"] }
 ```
 
 ```rust
@@ -186,7 +186,7 @@ Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store
 Prefer [`.jobs()`](../crates/trembita/src/job_opts.rs) to register queue + consumer + HTTP enqueue in one call. Enable the `http-jobs` feature (default on the facade):
 
 ```toml
-trembita = { version = "0.4", features = ["http-jobs"] }
+trembita = { version = "0.5", features = ["http-jobs"] }
 ```
 
 ```rust

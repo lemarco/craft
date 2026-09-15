@@ -206,7 +206,7 @@ Weighted acquire limits concurrent subprocess jobs; `ExternalLoad` throttles con
 When the **authoritative backlog** lives outside trembita (Postgres `pending` rows, legacy job table), enable `external-backlog` and use [`ExternalBacklog`](../../crates/trembita-jobs/src/external_backlog.rs):
 
 ```toml
-trembita = { version = "0.4", features = ["external-backlog"] }
+trembita = { version = "0.5", features = ["external-backlog"] }
 ```
 
 ```rust
