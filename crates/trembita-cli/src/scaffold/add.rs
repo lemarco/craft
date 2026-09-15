@@ -433,6 +433,35 @@ pub fn route_table() -> RouteTable {{
     Ok(())
 }
 
+fn ensure_gateway_surfaces_block(app: &mut AppRsPatch) -> Result<(), PatchError> {
+    if app.contains(".gateway(") || app.has_marker(names::SURFACES) {
+        return Ok(());
+    }
+    app.insert_import(
+        "use trembita::{DefaultGatewayApis, Gateway, GatewayOpts, TrembitaApp};",
+    )?;
+    app.insert_block_before_configure(
+        r"
+            .gateway(
+                GatewayOpts::from_env()?.surfaces(|state| {
+                    // trembita:surfaces
+                    TrembitaApp::default_surfaces(
+                        state,
+                        false,
+                        DefaultGatewayApis {
+                            jobs: true,
+                            ops: true,
+                            ..DefaultGatewayApis::default()
+                        },
+                    )
+                    // trembita:surfaces-end
+                }),
+            )
+",
+    )?;
+    Ok(())
+}
+
 fn wire_http_surface(
     project: &TrembitaProject,
     module: &str,
@@ -444,11 +473,7 @@ fn wire_http_surface(
     ensure_mod_declaration(&mod_rs, module)?;
 
     let mut app = AppRsPatch::load(&project.app_rs())?;
-    if !app.contains(".gateway(") {
-        return Err(AddError::Patch(PatchError::MissingMarker {
-            marker: "gateway — enable `gateway` feature or add `.gateway(...)` to app.rs".into(),
-        }));
-    }
+    ensure_gateway_surfaces_block(&mut app).map_err(AddError::Patch)?;
     app.insert_import("use trembita::Gateway;")?;
     if session {
         app.insert_import("use trembita::{HttpError, SessionGate};")?;
@@ -533,11 +558,17 @@ fn wire_builtin_http_routes(project: &TrembitaProject, module: &str) -> Result<(
             "{route_call} already wired in app.rs"
         ))));
     }
-    if !app.contains(".gateway(") {
-        return Err(AddError::Patch(PatchError::MissingMarker {
-            marker: "gateway — enable `gateway` feature and add `.gateway(...)` to app.rs".into(),
-        }));
+    ensure_gateway_surfaces_block(&mut app).map_err(AddError::Patch)?;
+
+    if app.contains("TrembitaApp::default_surfaces") {
+        let merge_line = format!(".merge_routes(http::{module}::route_table(&state))");
+        if !app.contains(&merge_line) {
+            app.insert_before_end(names::SURFACES, &merge_line)?;
+        }
+        app.save(&project.app_rs())?;
+        return Ok(());
     }
+
     app.insert_import("use trembita::Gateway;")?;
 
     if module == "ops" {
@@ -799,8 +830,6 @@ mod tests {
         add_jobs_routes(&project).unwrap();
         assert!(project.http_dir().join("jobs.rs").is_file());
         let app = fs::read_to_string(project.app_rs()).unwrap();
-        assert!(
-            app.contains("http::jobs::route_table(&state).merge(http::ops::route_table(&state))")
-        );
+        assert!(app.contains("http::jobs::route_table(&state)"));
     }
 }

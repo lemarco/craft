@@ -142,6 +142,10 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
                 &vars.apply(app_tpl!("src/http/jobs.rs.tpl")),
             )?;
         }
+        write_file(
+            &root.join("src/http/product.rs"),
+            &vars.apply(app_tpl!("src/http/product.rs.tpl")),
+        )?;
     }
     if features.contains(&AppFeature::Workflows) {
         write_file(
@@ -154,17 +158,15 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
 }
 
 fn generate_http_mod_rs(features: &HashSet<AppFeature>) -> String {
-    let mut mods = String::from("pub mod ops;\n");
+    let mut mods = String::from("pub mod ops;\npub mod product;\n");
     if features.contains(&AppFeature::Jobs) {
         mods.push_str("pub mod jobs;\n");
     }
     format!(
-        r"//! Custom HTTP surfaces — wired via `GatewayOpts::surfaces()` in `app.rs`.
+        r"//! HTTP route modules — ops/jobs tables are defaults via [`TrembitaApp::from_env`](trembita::TrembitaApp::from_env).
 //!
-//! Built-in: `trembita add ops-routes`, `trembita add jobs-routes`.
-//! Custom: `trembita add http-surface api --hosts api.example.com`.
-//!
-//! Each module exports `route_table() -> RouteTable`.
+//! Edit [`product::route_table`](product::route_table) for app-specific routes (`.gateway_routes()` in `app.rs`).
+//! Host split: [`Gateway::surface_hosts`](trembita::Gateway::surface_hosts) in a custom `.gateway(GatewayOpts::from_env()?.surfaces(...))`.
 
 {mods}"
     )
@@ -318,10 +320,6 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     }
 
     if features.contains(&AppFeature::Gateway) {
-        imports.push(
-            "use trembita::{Gateway, GatewayBearerIdentity, GatewayOpts, TrembitaGatewayState};"
-                .to_string(),
-        );
         imports.push("use crate::http;".to_string());
     }
 
@@ -337,7 +335,7 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
         imports.join("\n")
     );
 
-    let mut builder = String::from("        TrembitaApp::builder()\n");
+    let mut builder = String::from("        TrembitaApp::from_env()?\n");
     builder.push_str("            .data_dir(&self.config.data_dir)\n");
 
     if features.contains(&AppFeature::Jobs) {
@@ -405,37 +403,14 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     }
 
     if features.contains(&AppFeature::Gateway) {
-        if features.contains(&AppFeature::Jobs) {
-            builder.push_str(
-                r"            .gateway(
-                GatewayOpts::new(self.config.http_addr)
-                    .identity(GatewayBearerIdentity::from_env())
-                    .surfaces(|state| {
-                        // trembita:surfaces
-                        Gateway::new(false).dev_fallback(
-                            http::jobs::route_table(&state)
-                                .merge(http::ops::route_table(&state)),
-                        )
-                        // trembita:surfaces-end
-                    }),
-            )
+        builder.push_str(
+            r"            .gateway_routes(|state| {
+                // trembita:gateway-routes
+                http::product::route_table(&state)
+                // trembita:gateway-routes-end
+            })
 ",
-            );
-        } else {
-            builder.push_str(
-                r"            .gateway(
-                GatewayOpts::new(self.config.http_addr)
-                    .identity(GatewayBearerIdentity::from_env())
-                    .surfaces(|state| {
-                        // trembita:surfaces
-                        Gateway::new(false)
-                            .dev_fallback(http::ops::route_table(&state))
-                        // trembita:surfaces-end
-                    }),
-            )
-",
-            );
-        }
+        );
     }
 
     builder.push_str(
@@ -446,9 +421,9 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     );
 
     let run_opts = if features.contains(&AppFeature::Jobs) {
-        "RunOpts::default().with_wait_queue(SAMPLE_STREAM)"
+        "RunOpts::from_env().with_wait_queue(SAMPLE_STREAM)"
     } else {
-        "RunOpts::default()"
+        "RunOpts::from_env()"
     };
     builder.push_str(&format!("            .run({run_opts})\n"));
     builder.push_str("            .await\n");

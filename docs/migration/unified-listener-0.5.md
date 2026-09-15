@@ -16,18 +16,21 @@ See [unified-listener](../decisions/unified-listener.md) for rationale.
 
 ## Environment variables
 
+Product deploys use **four variables** (+ optional auth): see **[env.md](../env.md)**.
+
 | Removed / deprecated | Replacement |
 |---------------------|-------------|
 | `TREMBITA_ADMIN`, separate gateway/admin TCP ports | **`TREMBITA_LISTEN` only** (same port number for UDP + TCP) |
-| `TREMBITA_GATEWAY_JOBS`, `TREMBITA_GATEWAY_WORKFLOWS`, … | Explicit route tables (no env flags) |
+| `TREMBITA_GATEWAY_JOBS`, `TREMBITA_GATEWAY_WORKFLOWS`, … | App registration / [`TrembitaApp::from_env`](../crates/trembita/src/app/runtime.rs) default gateway surfaces |
 | `TREMBITA_HTTP=0.0.0.0:8090` while wire is `:7543` | **Rejected** — one `host:port` for wire and HTTP |
+| `TREMBITA_NODE_ID`, static `TREMBITA_PEERS` on app compose | Dynamic join + `TREMBITA_DATA_DIR/node-id` |
+| Per-file `TREMBITA_NODE_CERT` / `KEY` / `CA_CERT` | `TREMBITA_CERT_DIR` + `node-{id}.pem` |
 
 | Variable | Role |
 |----------|------|
-| `TREMBITA_LISTEN` | **Single port config:** QUIC (UDP) + product/ops HTTP (TCP) on this address (default `0.0.0.0:443`) |
-| `TREMBITA_HTTP` | Optional `-` to disable TCP only; any other value must equal `TREMBITA_LISTEN` |
-| `TREMBITA_GATEWAY` | Deprecated alias for `TREMBITA_HTTP` (same rules) |
-| `TREMBITA_HTTP_TLS_CERT` / `TREMBITA_HTTP_TLS_KEY` | Server TLS for TCP listener |
+| `TREMBITA_LISTEN` | **Single port config:** QUIC (UDP) + product/ops HTTP (TCP) (default `0.0.0.0:443`) |
+| `TREMBITA_HTTP` / `TREMBITA_GATEWAY` | **Internal:** `-` disables TCP only; otherwise omit |
+| `TREMBITA_HTTP_TLS_CERT` / `TREMBITA_HTTP_TLS_KEY` | Server TLS for TCP listener (advanced) |
 
 Probes and dashboards: `GET /health`, `GET /ready`, `GET /metrics` on the **same** host/port as product APIs (often a dedicated ops hostname in production).
 
@@ -51,24 +54,29 @@ src/http/
 └── …         # custom surfaces via trembita add http-surface
 ```
 
-Wire in `app.rs`:
+Default (local dev — ops + registered product APIs on loopback):
+
+```rust
+TrembitaApp::from_env()?
+    .jobs([JobOpts::new("jobs", Duration::from_secs(60)).http_enqueue(true)])
+    .gateway_routes(|state| http::product::route_table(&state))
+    .run(RunOpts::from_env())
+    .await?;
+```
+
+Host split (production):
 
 ```rust
 .gateway(
-    GatewayOpts::new(cfg.http_addr)
-        .identity(GatewayBearerIdentity::from_env())
-        .surfaces(|state| {
-            Gateway::new(cfg.is_production())
-                .surface(|s| {
-                    s.hosts(["api.example.com"]).routes(
-                        http::product::route_table()
-                            .merge(http::jobs::route_table(&state)),
-                    )
-                })
-                .surface(|s| {
-                    s.hosts(["ops.internal"]).routes(http::ops::route_table(&state))
-                })
-        }),
+    GatewayOpts::from_env()?.surfaces(|state| {
+        let apis = DefaultGatewayApis { jobs: true, ..DefaultGatewayApis::default() };
+        let product = TrembitaApp::default_product_routes(&state, apis)
+            .merge(http::product::route_table(&state));
+        let ops = state.app.ops_api().route_table();
+        Gateway::new(true)
+            .surface_hosts(["api.example.com"], product)
+            .surface_hosts(["ops.internal"], ops)
+    }),
 )
 ```
 
@@ -78,6 +86,7 @@ Brownfield apps:
 trembita add ops-routes
 trembita add jobs-routes
 trembita doctor   # flags leftover with_*_api / protect_product_apis / TREMBITA_ADMIN in src/
+trembita doctor --preflight   # before deploy: env, compose, certs, default ops on LISTEN
 ```
 
 Ops table from runtime:

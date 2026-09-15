@@ -45,20 +45,20 @@ Every process is a **QUIC cluster member**: solo `cargo run` is a one-node seed 
 
 ```rust
 use std::time::Duration;
-use trembita::{TrembitaApp, GatewayOpts, QueueOpts, RunOpts};
+use trembita::{JobOpts, RunOpts, TrembitaApp};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     trembita::init_tracing();
 
-    TrembitaApp::builder()
-        .data_dir("/tmp/my-app")
-        .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
-        .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?)) // add `.surfaces(...)` and opt-in APIs as needed
-        .run(RunOpts::default().with_wait_queue("jobs"))
+    TrembitaApp::from_env()?
+        .jobs([JobOpts::new("jobs", Duration::from_secs(60)).http_enqueue(true)])
+        .run(RunOpts::from_env())
         .await
 }
 ```
+
+Wire + HTTP bind to **`TREMBITA_LISTEN`**; ops + `/jobs/*` mount automatically ([`TrembitaApp::from_env`](../crates/trembita/src/app/runtime.rs)). Add app routes in `src/http/product.rs` via [`.gateway_routes()`](../crates/trembita/src/app/builder.rs). Host split: [`Gateway::surface_hosts`](../crates/trembita-http/src/gateway/mod.rs) + [`GatewayOpts::from_env()`](../crates/trembita/src/gateway/opts.rs).
 
 With `dev-certs` and no PEM env vars, a solo seed uses ephemeral mTLS automatically.
 
@@ -68,47 +68,49 @@ With `data_dir`, trembita opens `{data_dir}/actor-store.redb`, `{data_dir}/queue
 
 Same code as above. [`cluster.sh`](../examples/background-jobs/cluster.sh) sets env per process — no separate “cluster main”.
 
+**Product env (4–5 variables)** — full reference: **[env.md](env.md)**.
+
 | Variable | Purpose |
 |----------|---------|
-| `TREMBITA_DATA_DIR` | redb + `node-id` file |
-| `TREMBITA_CERT_DIR` | Shared dir with `node-{id}.pem` + `ca.pem` |
-| `TREMBITA_JOIN_SEEDS` | Join existing cluster (`id@host:port`) |
-| `TREMBITA_JOIN_ROLE` | Role for dynamic join: `learner` (default) or `voter` (requires seed `TREMBITA_ALLOW_VOTER_JOIN=1`) |
-| `TREMBITA_ALLOW_JOIN` | Seed accepts joins (default `1` when not joining) |
-| `TREMBITA_ALLOW_VOTER_JOIN` | Seed accepts voter joins (default `0`; joiners need `TREMBITA_JOIN_ROLE=voter`) |
-| `TREMBITA_PEERS` | Static voter bootstrap (`id@host:port,...`) — use for a fixed voter set without dynamic join |
-| `TREMBITA_LISTEN` | **One port number:** QUIC (UDP wire) + product/ops HTTP (TCP) on the same `host:port` (default `0.0.0.0:443`). |
-| `TREMBITA_HTTP` | Optional: `-` disables TCP only (QUIC-only node). Any other value must **match** `TREMBITA_LISTEN` — prefer omitting it. [Migration](migration/unified-listener-0.5.md) |
-| `TREMBITA_GATEWAY` | Deprecated alias for `TREMBITA_HTTP` (same rules) on [`TrembitaApp`](../crates/trembita/src/app/mod.rs) |
-| `TREMBITA_CERT_WATCH_SECS` | PEM hot-reload poll interval (default `60`) |
-| `TREMBITA_HTTP_TLS_CERT` / `TREMBITA_HTTP_TLS_KEY` | HTTP HTTPS / WSS (optional; both required; `TREMBITA_GATEWAY_TLS_*` aliases) |
-| `TREMBITA_JOB_QUEUE` | Job stream name (optional) |
+| `TREMBITA_LISTEN` | One port: QUIC (UDP) + HTTP (TCP) on the same `host:port` |
+| `TREMBITA_DATA_DIR` | redb + persisted `node-id` after join |
+| `TREMBITA_CERT_DIR` | `ca.pem` + `node-{id}.pem` (or `dev-certs` locally) |
+| `TREMBITA_JOIN_SEEDS` | Joiners only: `1@seed:443` |
+| `GATEWAY_TOKEN` | Optional Bearer auth for product HTTP |
 
-Node id is **not** configured — seed gets `1`, joiners are assigned by the leader and persisted under `TREMBITA_DATA_DIR`.
+Optional: `TREMBITA_JOB_QUEUE`, `TREMBITA_ALLOW_JOIN` (seed, default on).
 
-**Dynamic join is learner-only by default.** Joiners always request `learner` unless you set `TREMBITA_JOIN_ROLE=voter` (and the seed has `TREMBITA_ALLOW_VOTER_JOIN=1`). For a fixed multi-voter cluster at first boot, use `TREMBITA_PEERS` instead of join seeds.
+**Do not set** `TREMBITA_NODE_ID` or static `TREMBITA_PEERS` on elastic product clusters. **`TREMBITA_HTTP` / `TREMBITA_GATEWAY`** — internal only (`-` = QUIC-only node); omit otherwise.
+
+**Dynamic join is learner-only by default.** Voter join needs `TREMBITA_JOIN_ROLE=voter` and seed `TREMBITA_ALLOW_VOTER_JOIN=1` ([env.md](env.md#advanced-same-binary-explicit-tuning)). Static voter bootstrap (`TREMBITA_PEERS`) is for `trembita-node` / ops, not typical app compose.
+
+**Ops (zero config):** `/health`, `/ready`, `/metrics`, `/dashboard`, `/introspect/*` on **`TREMBITA_LISTEN`** — enabled with [`TrembitaApp::from_env()`](../crates/trembita/src/app/runtime.rs) until you call [`.without_ops()`](../crates/trembita/src/app/builder.rs).
+
+**Pre-deploy:** from your app repo, run `trembita doctor --preflight` (ports/listen format, cert dir, missing ops/jobs route merges, deprecated env). CI-friendly: non-zero exit when any `[error]` finding.
 
 **Homogeneous nodes:** every VPS runs the same binary (gateway + consumers when configured). Local **API vs jobs** fairness uses [`.workload()`](../crates/trembita/src/workload.rs) compute tokens ([workload governor](decisions/workload-governor.md)) — not static node roles. Edge-only ingress without local consumers: omit `.jobs()` / `.workers()` on those nodes (deployment choice), not a role env var.
 
 ## 4. Try the showcases
 
-Four standalone projects under [`examples/`](../examples/README.md) — excluded from workspace default-members; each has `Cargo.toml`, README, `trigger.sh`, and QUIC `cluster.sh`:
-
-| Showcase | Pattern | Run |
-|----------|---------|-----|
-| [background-jobs](../examples/background-jobs/) | Durable job queue | `./scripts/run-example.sh background-jobs` |
-| [stateful-workers](../examples/stateful-workers/) | Stateful actors + migration | `./scripts/run-example.sh stateful-workers` |
-| [realtime](../examples/realtime/) | Sticky sessions / WebSocket | `./scripts/run-example.sh realtime` |
-| [workflows](../examples/workflows/) | Saga journal + steps | `./scripts/run-example.sh workflows` |
-
-3-node QUIC cluster (any showcase):
+From the **trembita repo root** (set `TREMBITA_ROOT` if needed):
 
 ```bash
-cd examples/background-jobs
-./cluster.sh setup && ./cluster.sh up && ./trigger.sh hello
+cargo build -p trembita-cli --release   # once
+./target/release/trembita dev list
+./target/release/trembita dev setup --showcase stateful-workers
+./target/release/trembita dev up --showcase stateful-workers --nodes 3
+./target/release/trembita dev trigger stateful-workers -- 1001
+./target/release/trembita dev stop --showcase stateful-workers
 ```
 
-Shared infra: [`dev/`](../dev/README.md) (`cluster-common.sh`, `certs/generate.sh`). Docker Compose per showcase: `dev/compose/<name>/`.
+| Showcase | Pattern |
+|----------|---------|
+| [background-jobs](../examples/background-jobs/) | Durable job queue |
+| [stateful-workers](../examples/stateful-workers/) | Stateful actors + migration |
+| [realtime](../examples/realtime/) | Sticky sessions / WebSocket |
+| [workflows](../examples/workflows/) | Saga journal + steps |
+
+Solo node: `cargo run --release` inside `examples/<name>/`. Legacy: `./cluster.sh` in each example. **Compose** under [`dev/compose/`](../dev/compose/) is for CI/demo — not the primary dev path.
 
 Internal HTTP/WS client (not on crates.io; built by `./cluster.sh setup`):
 

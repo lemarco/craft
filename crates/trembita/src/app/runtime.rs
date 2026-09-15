@@ -47,6 +47,16 @@ impl TrembitaApp {
         TrembitaAppBuilder::new_default()
     }
 
+    /// Load cluster + optional job-queue registration from `TREMBITA_*`, then add domain wiring (`.jobs`, `.consumers`, …).
+    ///
+    /// Product HTTP on `TREMBITA_LISTEN` gets default ops/jobs/actors/workflow surfaces from registration flags.
+    ///
+    /// # Errors
+    /// Invalid or missing required environment variables ([`crate::env_config::app_config_from_env`]).
+    pub fn from_env() -> Result<TrembitaAppBuilder, Box<dyn std::error::Error>> {
+        TrembitaAppBuilder::from_env()
+    }
+
     pub(crate) async fn install_gateway(&self, handle: GatewayHandle) {
         *self.gateway.lock().await = Some(handle);
     }

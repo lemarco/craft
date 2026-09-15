@@ -51,6 +51,10 @@ natively. The private-key files are written `chmod 600`.
 
 ## Running `trembita-node` with the certs
 
+> **Product apps** use [`TREMBITA_CERT_DIR`](env.md#trembita_cert_dir) + dynamic join — not the static layout below.
+
+### Static multi-node bootstrap
+
 `trembita-node` reads its cert material from the environment. Give **every** node
 the shared `ca.pem`, its own `node-<id>` pair, and the full member list:
 

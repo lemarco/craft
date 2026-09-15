@@ -15,6 +15,12 @@ Target **0.5.0** — unified HTTP listener; migration draft: [unified-listener-0
 
 ### Added
 
+- **`TrembitaApp::from_env`** / **`RunOpts::from_env`** — one product entry: cluster join/listen/data_dir/job queue from `TREMBITA_*`, default gateway surfaces (ops + jobs/actors/workflows from registration) on `TREMBITA_LISTEN`.
+- **Ops zero config** — `/health`, `/ready`, `/metrics`, `/dashboard`, `/introspect/*` on `TREMBITA_LISTEN` via default gateway; [`.without_ops()`](crates/trembita/src/app/builder.rs) to disable.
+- **`trembita doctor --preflight`** — deploy checks: `TREMBITA_LISTEN` / `DATA_DIR` / `CERT_DIR`, legacy env, compose join pattern, default ops gateway wiring.
+- **`trembita dev`** — `dev up|setup|stop|status|trigger|list` for product showcases (replaces `./cluster.sh` as primary dev path; compose stays CI/demo).
+- **`GatewayOpts::from_env`**, **`GatewayOpts::default_surfaces`**, **`TrembitaApp::default_surfaces`**, **`DefaultGatewayApis`**, **`.gateway_routes()`** — convention over manual `Gateway::new().surface()`; **`Gateway::surface_hosts`** for api/ops host split.
+- **[docs/env.md](docs/env.md)** — product env surface (listen, data_dir, cert_dir, join_seeds, optional `GATEWAY_TOKEN`); boot warns on legacy `TREMBITA_NODE_ID` / `TREMBITA_PEERS` / split HTTP / removed `TREMBITA_GATEWAY_*` toggles.
 - **`spawn_cluster_ops_http`** / **`cluster_ops_route_table`** — mount ops routes (`/health`, `/metrics`, `/dashboard`, `/introspect/*`) on a TCP listener for [`TrembitaCluster`](crates/trembita/src/cluster_handle/cluster.rs) without [`TrembitaApp`](crates/trembita/src/app/mod.rs).
 - **`trembita add ops-routes`** / **`trembita add jobs-routes`** — scaffold `src/http/ops.rs` / `jobs.rs` and wire merges in `app.rs` ([`trembita-cli`](crates/trembita-cli/)).
 - **`trembita doctor`** — scans sources and `deploy/.env.example` for removed `with_*_api`, `protect_product_apis`, `TREMBITA_ADMIN`, and missing ops/jobs route merges.

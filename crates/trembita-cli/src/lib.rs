@@ -2,8 +2,13 @@
 
 #![allow(missing_docs)]
 
+pub mod dev;
 pub mod scaffold;
 
+pub use dev::{
+    DevError, all_showcases, dev_setup, dev_status, dev_stop, dev_trigger, dev_up,
+    find_showcase, list_showcases, showcase_ids, workspace_root,
+};
 pub use scaffold::{
     AddActorOpts, AddConsumerOpts, AddError, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts,
     AppFeature, AppRsPatch, DoctorFixReport, DoctorReport, Level, NewProjectOpts, PatchError,

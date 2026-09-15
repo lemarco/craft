@@ -1,6 +1,8 @@
 # Product showcases
 
-Five standalone projects — four [product scenarios](../docs/scenarios/README.md) plus a self-update ops showcase. Each has its own `Cargo.toml`, README, `cluster.sh` (QUIC/mTLS), and `trigger.sh`.
+Five standalone projects — four [product scenarios](../docs/scenarios/README.md) plus a self-update ops showcase. Each has its own `Cargo.toml`, README, and `trigger.sh`.
+
+**Dev UX (preferred):** from the repo root, [`trembita dev`](../crates/trembita-cli/README.md) — `dev setup`, `dev up --showcase … --nodes 3`, `dev trigger …`. Legacy `./cluster.sh` remains for scripts/CI.
 
 Shared helpers: [`trembita-showcase-common`](../crates/trembita-tools/) (env/cluster utilities). HTTP/WS client: [`trembita-showcase-client`](../crates/trembita-tools/) (built by `./cluster.sh setup`).
 
@@ -8,11 +10,11 @@ Excluded from the root workspace `cargo check` (like `benchmarks/`). CI runs `./
 
 | Folder | Pattern | Local | Cluster |
 |--------|---------|-------|---------|
-| [`background-jobs/`](background-jobs/) | HTTP `202` → queue → `#[consumer]` | `cargo run --release` | `./cluster.sh up` |
-| [`realtime/`](realtime/) | WebSocket + HTTP → sticky `ActorSession` | `cargo run --release` | `./cluster.sh up` |
-| [`stateful-workers/`](stateful-workers/) | `ActorStateStore` + idempotent cast + auth HTTP | `cargo run --release` | `./cluster.sh up` |
-| [`workflows/`](workflows/) | Saga journal + actor/queue steps | `cargo run --release` | `./cluster.sh up` |
-| [`self-update/`](self-update/) | Leader-coordinated rolling self-update | `cargo run --release` | `./cluster.sh up` |
+| [`background-jobs/`](background-jobs/) | HTTP `202` → queue → `#[consumer]` | `cargo run --release` | `trembita dev up --showcase background-jobs` |
+| [`realtime/`](realtime/) | WebSocket + HTTP → sticky `ActorSession` | `cargo run --release` | `trembita dev up --showcase realtime` |
+| [`stateful-workers/`](stateful-workers/) | `ActorStateStore` + idempotent cast + auth HTTP | `cargo run --release` | `trembita dev up --showcase stateful-workers` |
+| [`workflows/`](workflows/) | Saga journal + actor/queue steps | `cargo run --release` | `trembita dev up --showcase workflows` |
+| [`self-update/`](self-update/) | Leader-coordinated rolling self-update | `cargo run --release` | `trembita dev up --showcase self-update` |
 
 ## Reading the code
 

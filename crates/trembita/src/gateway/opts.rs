@@ -6,9 +6,12 @@ use std::time::Duration;
 
 use trembita_http::Gateway;
 
+use crate::app::DefaultGatewayApis;
+use crate::env_config::app_config_from_env;
+
 use super::GatewayTlsPaths;
 use super::config::{DEFAULT_GATEWAY_DRAIN_TIMEOUT, GatewayConfig, GatewaySurfacesFn};
-use super::identity::{self, GatewayIdentity, SessionKey};
+use super::identity::{self, GatewayBearerIdentity, GatewayIdentity, SessionKey};
 use super::state::TrembitaGatewayState;
 
 /// Product + ops HTTP listener: bind address, custom surfaces, optional TLS.
@@ -35,7 +38,28 @@ impl fmt::Debug for GatewayOpts {
 }
 
 impl GatewayOpts {
-    /// Bind address with no routes — wire surfaces via [`.surfaces`](Self::surfaces).
+    /// TCP bind, TLS, drain, and identity from `TREMBITA_LISTEN` / `TREMBITA_HTTP_TLS_*` ([env.md](../../../docs/env.md)).
+    ///
+    /// # Errors
+    /// Invalid env or `TREMBITA_HTTP=-` (no TCP listener).
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        let cfg = app_config_from_env()?;
+        let Some(addr) = cfg.http else {
+            return Err(
+                "TREMBITA_HTTP=- disables the TCP gateway; omit .gateway() or enable HTTP on TREMBITA_LISTEN"
+                    .into(),
+            );
+        };
+        let mut opts = Self::new(addr)
+            .drain_timeout(cfg.http_drain_timeout)
+            .identity(GatewayBearerIdentity::from_env());
+        if let Some((cert, key)) = cfg.http_tls {
+            opts = opts.tls(cert, key);
+        }
+        Ok(opts)
+    }
+
+    /// Bind address with no routes — wire surfaces via [`.surfaces`](Self::surfaces) or [`.default_surfaces`](Self::default_surfaces).
     #[must_use]
     pub fn new(addr: SocketAddr) -> Self {
         Self {
@@ -98,6 +122,15 @@ impl GatewayOpts {
     #[must_use]
     pub fn rate_limit_per_sec(mut self, limit: u32) -> Self {
         self.rate_limit_per_sec = Some(limit.max(1));
+        self
+    }
+
+    /// Built-in ops + product APIs ([`crate::TrembitaApp::default_surfaces`]).
+    #[must_use]
+    pub fn default_surfaces(mut self, is_production: bool, apis: DefaultGatewayApis) -> Self {
+        self.surfaces = Some(Box::new(move |state| {
+            crate::TrembitaApp::default_surfaces(state, is_production, apis)
+        }));
         self
     }
 

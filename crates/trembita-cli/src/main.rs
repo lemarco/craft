@@ -9,8 +9,9 @@ use clap::{Parser, Subcommand, ValueHint};
 use trembita_cli::{
     AddActorOpts, AddConsumerOpts, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts,
     NewProjectOpts, StaticSiteSource, TrembitaProject, add_actor, add_consumer, add_http_surface,
-    add_jobs_routes, add_ops_routes, add_static_site, add_topic, default_output, doctor_fix,
-    parse_feature_list, run_doctor, scaffold_project,
+    add_jobs_routes, add_ops_routes, add_static_site, add_topic, default_output, dev_setup,
+    dev_status, dev_stop, dev_trigger, dev_up, doctor_fix, list_showcases, parse_feature_list,
+    run_doctor, scaffold_project,
 };
 
 #[derive(Parser)]
@@ -52,6 +53,11 @@ enum Command {
         #[arg(long, value_hint = ValueHint::DirPath)]
         path: Option<PathBuf>,
     },
+    /// Local showcase clusters (preferred over `./cluster.sh` for dev).
+    Dev {
+        #[command(subcommand)]
+        command: DevCommand,
+    },
     /// Check layout and wiring consistency.
     Doctor {
         /// Project root (default: discover from cwd).
@@ -60,6 +66,51 @@ enum Command {
         /// Apply safe auto-fixes (missing mod declarations).
         #[arg(long)]
         fix: bool,
+        /// Stricter deploy checks (`deploy/.env`, compose, certs/listen env).
+        #[arg(long)]
+        preflight: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum DevCommand {
+    /// List built-in product showcases and default ports.
+    List,
+    /// Build release binary, mint dev certs, build showcase client.
+    Setup {
+        /// Showcase id (`background-jobs`, `stateful-workers`, …).
+        #[arg(long)]
+        showcase: String,
+    },
+    /// Start a local multi-node cluster in the background.
+    Up {
+        /// Showcase id.
+        #[arg(long)]
+        showcase: String,
+        /// Number of nodes (1–8).
+        #[arg(long, default_value_t = 3)]
+        nodes: u32,
+        /// Run setup (certs + build) before starting.
+        #[arg(long)]
+        setup: bool,
+    },
+    /// Stop showcase processes.
+    Stop {
+        #[arg(long)]
+        showcase: String,
+    },
+    /// Show running processes for a showcase.
+    Status {
+        #[arg(long)]
+        showcase: String,
+    },
+    /// Run the showcase `trigger.sh` (same as manual `./trigger.sh`).
+    Trigger {
+        /// Showcase id.
+        showcase: String,
+        /// Arguments passed to `trigger.sh` (after `--`).
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
     },
 }
 
@@ -248,9 +299,24 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        Command::Doctor { path, fix } => {
+        Command::Dev { command } => match command {
+            DevCommand::List => list_showcases(),
+            DevCommand::Setup { showcase } => dev_setup(&showcase)?,
+            DevCommand::Up {
+                showcase,
+                nodes,
+                setup,
+            } => dev_up(&showcase, nodes, setup)?,
+            DevCommand::Stop { showcase } => dev_stop(&showcase)?,
+            DevCommand::Status { showcase } => dev_status(&showcase)?,
+            DevCommand::Trigger { showcase, args } => dev_trigger(&showcase, &args)?,
+        },
+        Command::Doctor { path, fix, preflight } => {
             let project = resolve_project(path.as_deref())?;
             eprintln!("Checking {} …", project.root.display());
+            if preflight {
+                eprintln!("Preflight mode (deploy env / compose / gateway ops)");
+            }
             if fix {
                 let fix_report = doctor_fix(&project);
                 if fix_report.fixes_applied > 0 {
@@ -259,7 +325,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     eprintln!("No auto-fixes needed");
                 }
             }
-            let report = run_doctor(&project);
+            let report = run_doctor(&project, preflight);
             let code = report.print_and_exit_code();
             if code != 0 {
                 process::exit(code);

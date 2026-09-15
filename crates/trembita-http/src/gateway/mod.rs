@@ -130,6 +130,21 @@ impl Gateway {
         self
     }
 
+    /// Host-scoped surface — shorthand for `.surface(|s| s.hosts(hosts).routes(routes))`.
+    #[must_use]
+    pub fn surface_hosts(
+        mut self,
+        hostnames: impl IntoIterator<Item = impl Into<String>>,
+        routes: RouteTable,
+    ) -> Self {
+        self.surfaces.push(
+            Surface::new()
+                .hosts(hostnames)
+                .routes(routes),
+        );
+        self
+    }
+
     /// Loopback-only routes (`localhost`, `127.0.0.1`, `::1`) — omitted when `is_production`.
     #[must_use]
     pub fn dev_fallback(mut self, routes: RouteTable) -> Self {
@@ -274,6 +289,16 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn surface_hosts_registers_host_scoped_routes() {
+        let table = RouteTable::new().get("/ping", |_: RequestCtx| async {
+            Ok(Response::status(StatusCode::OK))
+        });
+        let g = Gateway::new(false).surface_hosts(["api.example.com"], table);
+        assert_eq!(g.surfaces().len(), 1);
+        assert_eq!(g.surfaces()[0].host_list(), &["api.example.com"]);
+    }
+
     fn dev_fallback_hidden_in_production() {
         let g =
             Gateway::new(true).dev_fallback(RouteTable::new().get("/x", |_: RequestCtx| async {

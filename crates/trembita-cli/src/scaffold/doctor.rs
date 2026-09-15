@@ -1,7 +1,8 @@
 //! `trembita doctor` — layout and wiring consistency checks.
 
 use std::fs;
-use std::path::Path;
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
 
 use super::markers::{ensure_main_module, ensure_mod_declaration, names};
 use super::project::TrembitaProject;
@@ -84,8 +85,10 @@ impl DoctorReport {
 }
 
 /// Run all doctor checks on `project`.
+///
+/// With `preflight`, deploy env / compose checks are stricter (pre-push / pre-deploy).
 #[must_use]
-pub fn run_doctor(project: &TrembitaProject) -> DoctorReport {
+pub fn run_doctor(project: &TrembitaProject, preflight: bool) -> DoctorReport {
     let mut report = DoctorReport::default();
     check_layout(project, &mut report);
     if let Ok(app) = fs::read_to_string(project.app_rs()) {
@@ -96,7 +99,11 @@ pub fn run_doctor(project: &TrembitaProject) -> DoctorReport {
         check_actors(project, &app, &mut report);
         check_http(project, &app, &mut report);
         check_topics(&app, &mut report);
+        check_builtin_gateway_routes(&app, &mut report);
         check_deprecated_api(project, &mut report);
+        if preflight || project.root.join("deploy").is_dir() {
+            check_deploy_preflight(project, preflight, &mut report);
+        }
     } else {
         report.error(format!("missing {}", project.app_rs().display()));
     }
@@ -386,16 +393,265 @@ fn check_topics(app: &str, report: &mut DoctorReport) {
                 report.warn("identity-protected routes without gateway identity");
             }
         }
-        if !app.contains("http::ops::route_table") {
+    }
+}
+
+fn check_builtin_gateway_routes(app: &str, report: &mut DoctorReport) {
+    if app.contains("without_ops()") {
+        report.ok("ops HTTP disabled (.without_ops())");
+        return;
+    }
+    if ops_routes_zero_config(app) {
+        report.ok(
+            "ops on unified listener (/health, /ready, /metrics, /dashboard, /introspect/*) — default gateway",
+        );
+    } else if app.contains(".gateway(") || app.contains("GatewayOpts::") {
+        if app.contains("http::ops::route_table") {
+            report.ok("ops routes merged explicitly in custom gateway");
+        } else {
             report.warn(
-                "gateway enabled but ops routes not merged — run `trembita add ops-routes` or merge http::ops::route_table",
+                "custom gateway without ops — prefer TrembitaApp::from_env() or merge http::ops::route_table",
             );
         }
-        if app.contains(".jobs(") && !app.contains("http::jobs::route_table") {
+    }
+    if app.contains(".jobs(") || app.contains("http_enqueue(true)") {
+        if product_jobs_zero_config(app) || app.contains("http::jobs::route_table") {
+            if product_jobs_zero_config(app) {
+                report.ok("jobs HTTP API via default gateway (registration + .http_enqueue)");
+            }
+        } else if app.contains(".gateway(") {
             report.warn(
-                "jobs enabled but /jobs/* routes not merged — run `trembita add jobs-routes` or merge http::jobs::route_table",
+                "jobs registered but /jobs/* not on gateway — use .http_enqueue(true) + from_env or `trembita add jobs-routes`",
             );
         }
+    }
+}
+
+fn ops_routes_zero_config(app: &str) -> bool {
+    app.contains("TrembitaApp::from_env")
+        || app.contains("default_surfaces")
+        || app.contains("default_product_routes")
+        || app.contains("gateway_routes(")
+}
+
+fn product_jobs_zero_config(app: &str) -> bool {
+    ops_routes_zero_config(app) && app.contains("http_enqueue(true)")
+}
+
+fn check_deploy_preflight(project: &TrembitaProject, strict: bool, report: &mut DoctorReport) {
+    let deploy = project.root.join("deploy");
+    if !deploy.is_dir() {
+        if strict {
+            report.warn("preflight: no deploy/ — add deploy/.env.example before production");
+        }
+        return;
+    }
+    report.ok("deploy/ present — running deploy preflight checks");
+    for rel in ["deploy/.env.example", "deploy/.env"] {
+        let path = project.root.join(rel);
+        if !path.is_file() {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        preflight_env_vars(&content, rel, strict, report);
+    }
+    let compose = deploy.join("docker-compose.yml");
+    if compose.is_file() {
+        let Ok(content) = fs::read_to_string(&compose) else {
+            return;
+        };
+        preflight_compose(&content, "deploy/docker-compose.yml", strict, report);
+    }
+    check_deploy_cert_material(project, strict, report);
+}
+
+fn preflight_env_vars(content: &str, path: &str, strict: bool, report: &mut DoctorReport) {
+    let has = |key: &str| {
+        content.lines().any(|line| {
+            let t = line.trim();
+            !t.starts_with('#') && (t.starts_with(key) || t.starts_with(&format!("{key}=")))
+        })
+    };
+    if has("TREMBITA_LISTEN") {
+        for line in content.lines() {
+            if let Some(addr) = env_assign_value(line, "TREMBITA_LISTEN") {
+                if listen_addr_valid(&addr) {
+                    report.ok(format!("{path}: TREMBITA_LISTEN={addr}"));
+                } else if strict {
+                    report.error(format!(
+                        "{path}: TREMBITA_LISTEN={addr} — expected host:port (see docs/env.md)"
+                    ));
+                } else {
+                    report.warn(format!("{path}: invalid TREMBITA_LISTEN={addr}"));
+                }
+                break;
+            }
+        }
+    } else if strict {
+        report.error(format!(
+            "{path}: missing TREMBITA_LISTEN — one port for QUIC + HTTP (see docs/env.md)"
+        ));
+    } else {
+        report.warn(format!("{path}: add TREMBITA_LISTEN"));
+    }
+    if has("TREMBITA_DATA_DIR") {
+        report.ok(format!("{path}: TREMBITA_DATA_DIR set"));
+    } else if strict {
+        report.error(format!("{path}: missing TREMBITA_DATA_DIR"));
+    }
+    if has("TREMBITA_CERT_DIR") {
+        report.ok(format!("{path}: TREMBITA_CERT_DIR set"));
+    } else if strict {
+        report.warn(format!(
+            "{path}: missing TREMBITA_CERT_DIR — required in prod (or enable dev-certs locally)"
+        ));
+    }
+    if has("TREMBITA_NODE_ID") {
+        let level = if strict {
+            Level::Error
+        } else {
+            Level::Warn
+        };
+        let msg = format!(
+            "{path}: TREMBITA_NODE_ID — omit; id comes from join + TREMBITA_DATA_DIR/node-id"
+        );
+        match level {
+            Level::Error => report.error(msg),
+            Level::Warn => report.warn(msg),
+            Level::Ok => report.ok(msg),
+        }
+    }
+    if has("TREMBITA_PEERS") {
+        report.warn(format!(
+            "{path}: TREMBITA_PEERS — static bootstrap only; product deploys use TREMBITA_JOIN_SEEDS"
+        ));
+    }
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("TREMBITA_HTTP=")
+            && !trimmed.contains("=-")
+            && !trimmed.starts_with('#')
+        {
+            report.warn(format!(
+                "{path}: `{trimmed}` — omit; use TREMBITA_LISTEN only (docs/env.md)"
+            ));
+        }
+    }
+}
+
+fn preflight_compose(content: &str, path: &str, strict: bool, report: &mut DoctorReport) {
+    let _ = strict;
+    for line in content.lines() {
+        let t = line.trim();
+        if t.starts_with('#') {
+            continue;
+        }
+        if t.contains("TREMBITA_NODE_ID") {
+            report.error(format!(
+                "{path}: remove TREMBITA_NODE_ID — use dynamic join + persisted node-id"
+            ));
+            break;
+        }
+    }
+    for line in content.lines() {
+        let t = line.trim();
+        if t.starts_with('#') {
+            continue;
+        }
+        if t.contains("TREMBITA_PEERS") {
+            report.warn(format!(
+                "{path}: prefer TREMBITA_JOIN_SEEDS over static TREMBITA_PEERS"
+            ));
+            break;
+        }
+    }
+    if content.contains("TREMBITA_LISTEN") {
+        report.ok(format!("{path}: TREMBITA_LISTEN in compose"));
+    } else {
+        report.warn(format!("{path}: set TREMBITA_LISTEN per service"));
+    }
+}
+
+fn env_assign_value(line: &str, key: &str) -> Option<String> {
+    let t = line.trim();
+    if t.starts_with('#') {
+        return None;
+    }
+    let prefix = format!("{key}=");
+    if !t.starts_with(&prefix) {
+        return None;
+    }
+    let raw = t[prefix.len()..].trim();
+    let unquoted = raw.trim_matches('"').trim_matches('\'');
+    Some(unquoted.to_string())
+}
+
+fn listen_addr_valid(value: &str) -> bool {
+    let v = value.trim();
+    if v.is_empty() {
+        return false;
+    }
+    v.parse::<SocketAddr>().is_ok()
+}
+
+fn check_deploy_cert_material(project: &TrembitaProject, strict: bool, report: &mut DoctorReport) {
+    let deploy_certs = project.root.join("deploy/certs");
+    if deploy_certs.is_dir() {
+        let ca = deploy_certs.join("ca.pem");
+        if ca.is_file() {
+            report.ok("deploy/certs/ca.pem present");
+        } else {
+            let msg = "deploy/certs/ missing ca.pem — mint with dev/certs/generate.sh or copy prod PEMs";
+            if strict {
+                report.error(msg);
+            } else {
+                report.warn(msg);
+            }
+        }
+    }
+
+    for rel in ["deploy/.env.example", "deploy/.env"] {
+        let path = project.root.join(rel);
+        if !path.is_file() {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        for line in content.lines() {
+            let Some(dir) = env_assign_value(line, "TREMBITA_CERT_DIR") else {
+                continue;
+            };
+            if dir == "/certs" || dir.starts_with("/var/") {
+                report.ok(format!(
+                    "{rel}: TREMBITA_CERT_DIR={dir} — mount ca.pem + node-{{id}}.pem at runtime"
+                ));
+                continue;
+            }
+            let cert_root = cert_dir_on_disk(project, &dir);
+            if cert_root.join("ca.pem").is_file() {
+                report.ok(format!("{rel}: ca.pem under {dir}"));
+            } else if cert_root.is_dir() {
+                report.warn(format!(
+                    "{rel}: TREMBITA_CERT_DIR={dir} — directory exists but ca.pem missing"
+                ));
+            } else if strict && !deploy_certs.is_dir() {
+                report.warn(format!(
+                    "{rel}: TREMBITA_CERT_DIR={dir} — path not found locally (ok if only mounted in compose)"
+                ));
+            }
+        }
+    }
+}
+
+fn cert_dir_on_disk(project: &TrembitaProject, dir: &str) -> PathBuf {
+    let trimmed = dir.trim_start_matches("./");
+    if Path::new(trimmed).is_absolute() {
+        PathBuf::from(trimmed)
+    } else {
+        project.root.join("deploy").join(trimmed)
     }
 }
 
@@ -491,6 +747,23 @@ fn scan_deprecated_env(content: &str, path: &str, report: &mut DoctorReport) {
             report.warn(format!(
                 "{path}: `{trimmed}` — node ids come from join assignment + TREMBITA_DATA_DIR/node-id; omit in product deploy"
             ));
+        } else if trimmed.starts_with("TREMBITA_PEERS") {
+            report.warn(format!(
+                "{path}: `{trimmed}` — static voter bootstrap; product elastic clusters use TREMBITA_JOIN_SEEDS only (see docs/env.md)"
+            ));
+        } else if trimmed.starts_with("TREMBITA_NODE_CERT")
+            || trimmed.starts_with("TREMBITA_NODE_KEY")
+            || trimmed.starts_with("TREMBITA_CA_CERT")
+        {
+            report.warn(format!(
+                "{path}: `{trimmed}` — prefer TREMBITA_CERT_DIR with node-{{id}}.pem (docs/env.md)"
+            ));
+        } else if trimmed.starts_with("TREMBITA_GATEWAY=")
+            && !trimmed.contains("=-")
+        {
+            report.warn(format!(
+                "{path}: `{trimmed}` — deprecated alias for TREMBITA_HTTP; omit and use TREMBITA_LISTEN only"
+            ));
         } else if trimmed.starts_with("TREMBITA_ADMIN")
             || trimmed.starts_with("TREMBITA_ADMIN_TLS")
             || trimmed.starts_with("TREMBITA_GATEWAY_JOBS")
@@ -581,6 +854,30 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
+    fn preflight_requires_listen_in_env_example() {
+        let dir = tempdir().unwrap();
+        let opts = NewProjectOpts {
+            name: "preflight".into(),
+            output: dir.path().to_path_buf(),
+            features: AppFeature::defaults(),
+            trembita_version: "0.3.2".into(),
+            trembita_path: None,
+        };
+        let root = scaffold_project(&opts).unwrap();
+        let project = TrembitaProject { root };
+        let env = project.root.join("deploy/.env.example");
+        let content = fs::read_to_string(&env).unwrap().replace("TREMBITA_LISTEN=", "X=");
+        fs::write(&env, content).unwrap();
+        let report = run_doctor(&project, true);
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|f| f.message.contains("TREMBITA_LISTEN") && f.level == Level::Error)
+        );
+    }
+
+    #[test]
     fn doctor_passes_fresh_scaffold() {
         let dir = tempdir().unwrap();
         let opts = NewProjectOpts {
@@ -592,7 +889,7 @@ mod tests {
         };
         let root = scaffold_project(&opts).unwrap();
         let project = TrembitaProject { root };
-        let report = run_doctor(&project);
+        let report = run_doctor(&project, false);
         assert!(!report.has_errors());
     }
 
@@ -615,7 +912,7 @@ async fn handle_orphan(_: &[u8]) -> Result<(), ()> { Ok(()) }
 "#,
         )
         .unwrap();
-        let report = run_doctor(&project);
+        let report = run_doctor(&project, false);
         assert!(report.has_errors());
     }
 
@@ -635,7 +932,7 @@ async fn handle_orphan(_: &[u8]) -> Result<(), ()> { Ok(()) }
         let mut app = fs::read_to_string(&app_path).unwrap();
         app.push_str("\n// legacy\n.with_jobs_api(true).protect_product_apis(true)\n");
         fs::write(&app_path, app).unwrap();
-        let report = run_doctor(&project);
+        let report = run_doctor(&project, false);
         assert!(report.has_errors());
         assert!(
             report
@@ -676,7 +973,7 @@ async fn handle_extra(_: &[u8]) -> Result<(), ()> { Ok(()) }
         assert!(fix.fixes_applied >= 1);
         let mod_rs = fs::read_to_string(project.consumers_dir().join("mod.rs")).unwrap();
         assert!(mod_rs.contains("pub mod extra;"));
-        let report = run_doctor(&project);
+        let report = run_doctor(&project, false);
         assert!(
             !report
                 .findings

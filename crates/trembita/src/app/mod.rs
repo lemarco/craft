@@ -2,6 +2,13 @@
 //! ([product-scenarios](../../../docs/decisions/product-scenarios.md)).
 
 mod builder;
+#[cfg(feature = "http-jobs")]
+mod gateway;
+#[cfg(feature = "http-jobs")]
+mod gateway_defaults;
+
+#[cfg(feature = "http-jobs")]
+pub use gateway::DefaultGatewayApis;
 mod runtime;
 mod shutdown;
 mod types;

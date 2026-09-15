@@ -9,17 +9,15 @@ mod ledger;
 
 use std::collections::HashMap;
 use std::env;
-use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use trembita::{
-    ActorGroupOpts, AuthMode, ConsumerOpts, Gateway, GatewayBearerIdentity, GatewayOpts, JobOpts,
-    RunOpts, TrembitaApp, TrembitaConfigure, TrembitaGatewayState, consumer,
+    ActorGroupOpts, ConsumerOpts, JobOpts, RunOpts, TrembitaApp, TrembitaConfigure, consumer,
 };
 use trembita_tools::showcase_common::{
-    data_dir, display_addr, http_bind_display, http_bind_from_env, http_disabled, wire_bind_from_env,
+    data_dir, display_addr, http_bind_display, http_disabled, wire_bind_from_env,
 };
 
 use crate::bridge::register as register_bridge;
@@ -116,21 +114,10 @@ fn worker_count() -> u32 {
         .max(1)
 }
 
-fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
-    let app = Arc::clone(&state.app);
-    Gateway::new(false).dev_fallback(
-        TrembitaApp::jobs_api(app)
-            .route_table()
-            .with_auth_mode(AuthMode::Identity)
-            .merge(state.app.ops_api().route_table()),
-    )
-}
-
-fn server_builder() -> trembita::TrembitaAppBuilder {
+fn server_builder() -> Result<trembita::TrembitaAppBuilder, Box<dyn std::error::Error>> {
     let dir = data_dir(DATA_DIR_NAME);
     let _ = std::fs::create_dir_all(&dir);
-    let gateway = http_bind_from_env("127.0.0.1:8090");
-    let mut builder = TrembitaApp::builder()
+    let mut builder = TrembitaApp::from_env()?
         .data_dir(dir)
         .actors::<LedgerWorker>("ledger", ActorGroupOpts::new(0))
         .jobs([JobOpts::new(STREAM)
@@ -141,12 +128,7 @@ fn server_builder() -> trembita::TrembitaAppBuilder {
             tick_period: Duration::from_millis(10),
             reconcile_period: Duration::from_millis(20),
             ..TrembitaConfigure::default()
-        })
-        .gateway(
-            GatewayOpts::new(gateway)
-                .identity(GatewayBearerIdentity::from_env())
-                .surfaces(gateway_surfaces),
-        );
+        });
     for instance in 0..worker_count() {
         builder = builder.consumer(
             SendEmailConsumer,
@@ -157,7 +139,7 @@ fn server_builder() -> trembita::TrembitaAppBuilder {
                 .on_app(register_bridge),
         );
     }
-    builder
+    Ok(builder)
 }
 
 #[tokio::main]
@@ -165,8 +147,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     debug::init_tracing();
     debug::startup("quic", 0, &data_dir(DATA_DIR_NAME));
     print_banner();
-    server_builder()
-        .run(RunOpts::default().with_wait_queue(STREAM))
+    server_builder()?
+        .run(RunOpts::from_env().with_wait_queue(STREAM))
         .await?;
     debug::shutdown(worker_count() as usize);
     Ok(())

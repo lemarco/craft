@@ -89,6 +89,7 @@ trembita add http-surface api --hosts api.example.com
 trembita add static-site app --hosts app.example.com
 trembita doctor
 trembita doctor --fix
+trembita doctor --preflight   # deploy: listen, certs, compose join, ops gateway
 ```
 
 [`trembita-init.sh`](../../scripts/trembita-init.sh) remains as a thin wrapper delegating to the Rust CLI.

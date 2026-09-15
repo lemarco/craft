@@ -12,7 +12,9 @@ use crate::consumer::ConsumerSpawnFn;
 use crate::cron_opts::CronOpts;
 use crate::env_config::{AppConfig, app_config_from_env};
 use crate::gateway::spawn_gateway as spawn_gateway_task;
-use crate::gateway::{GatewayConfig, GatewayOpts};
+#[cfg(feature = "http-jobs")]
+use super::gateway_defaults::default_product_surfaces;
+use crate::gateway::{GatewayBearerIdentity, GatewayConfig, GatewayOpts};
 use crate::job_opts::JobOpts;
 use crate::queue_opts::QueueOpts;
 use crate::worker_opts::{WorkerGroup, WorkerOpts};
@@ -38,6 +40,13 @@ pub struct TrembitaAppBuilder {
     pub(crate) config_errors: Vec<String>,
     pub(crate) gateway_api: TrembitaAppGatewayApiFlags,
     pub(crate) worker_autoscale_streams: Vec<String>,
+    #[cfg(feature = "http-jobs")]
+    gateway_extra_routes: Option<
+        Arc<dyn Fn(crate::gateway::TrembitaGatewayState) -> trembita_http::RouteTable + Send + Sync>,
+    >,
+    /// Operational routes on the unified listener ([`super::gateway::DefaultGatewayApis::ops`]).
+    #[cfg(feature = "http-jobs")]
+    gateway_include_ops: bool,
 }
 
 impl TrembitaAppBuilder {
@@ -57,7 +66,47 @@ impl TrembitaAppBuilder {
             config_errors: Vec::new(),
             gateway_api: TrembitaAppGatewayApiFlags::default(),
             worker_autoscale_streams: Vec::new(),
+            #[cfg(feature = "http-jobs")]
+            gateway_extra_routes: None,
+            #[cfg(feature = "http-jobs")]
+            gateway_include_ops: true,
         }
+    }
+
+    /// Disable built-in ops HTTP (`/health`, `/ready`, `/metrics`, `/dashboard`, `/introspect/*`).
+    ///
+    /// Default product gateways include ops on `TREMBITA_LISTEN` without manual route merges.
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn without_ops(mut self) -> Self {
+        self.gateway_include_ops = false;
+        self
+    }
+
+    #[cfg(feature = "http-jobs")]
+    fn default_gateway_apis(&self) -> super::gateway::DefaultGatewayApis {
+        super::gateway::DefaultGatewayApis {
+            ops: self.gateway_include_ops,
+            jobs: self.gateway_api.jobs,
+            actors: self.gateway_api.actors,
+            workflows: !self.workflows.is_empty(),
+        }
+    }
+
+    /// Merge extra HTTP routes into the env/default gateway ([`TrembitaApp::default_surfaces`] + your tables).
+    ///
+    /// Scaffold: `http/product.rs` → `.gateway_routes(|state| http::product::route_table(&state))`.
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn gateway_routes<F>(mut self, routes: F) -> Self
+    where
+        F: Fn(crate::gateway::TrembitaGatewayState) -> trembita_http::RouteTable
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.gateway_extra_routes = Some(Arc::new(routes));
+        self
     }
 
     /// Merge env-only settings into `builder` when not already set in code.
@@ -70,21 +119,77 @@ impl TrembitaAppBuilder {
             self.queue_streams.insert(stream.clone());
             self = self.queue([QueueOpts::new(stream, cfg.job_queue_lease)]);
         }
-        if self.gateway.is_none()
-            && let Some(addr) = cfg.http
-        {
-            let mut opts = GatewayOpts::new(addr).drain_timeout(cfg.http_drain_timeout);
-            if let Some((cert, key)) = cfg.http_tls.clone() {
-                opts = opts.tls(cert, key);
-            }
-            self.gateway = Some(opts.into_config());
-        } else if let Some(gateway) = self.gateway.as_mut()
+        if let Some(gateway) = self.gateway.as_mut()
             && gateway.tls.is_none()
             && let Some((cert, key)) = cfg.http_tls.clone()
         {
             gateway.tls = Some(crate::gateway::GatewayTlsPaths { cert, key });
         }
         self
+    }
+
+    /// Env-first builder: cluster join/listen/data_dir/job queue from `TREMBITA_*` (see [`crate::env_config::app_config_from_env`]).
+    ///
+    /// Register domain wiring (`.jobs`, `.consumers`, …) after this, then [`.run`](Self::run)([`RunOpts::from_env`](crate::app_opts::RunOpts::from_env)).
+    ///
+    /// # Errors
+    /// Invalid or missing required environment variables.
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        let cfg = app_config_from_env()?;
+        Ok(Self::new_default().apply_env_config(&cfg))
+    }
+
+    fn ensure_product_gateway(mut self, cfg: Option<&AppConfig>) -> Self {
+        #[cfg(feature = "http-jobs")]
+        {
+            let http = cfg.and_then(|c| c.http).or_else(|| self.gateway.as_ref().map(|g| g.addr));
+            let Some(http) = http else {
+                return self;
+            };
+            if self.gateway.is_none() {
+                self.gateway = Some(self.default_gateway_config(http, cfg));
+                return self;
+            }
+            let apis = self.default_gateway_apis();
+            let extra = self.gateway_extra_routes.clone();
+            let Some(gateway) = self.gateway.as_mut() else {
+                return self;
+            };
+            if gateway.surfaces.is_none() {
+                gateway.surfaces = Some(default_product_surfaces(apis, extra));
+            }
+            if gateway.identity.is_none() {
+                gateway.identity = GatewayOpts::new(gateway.addr)
+                    .identity(GatewayBearerIdentity::from_env())
+                    .into_config()
+                    .identity;
+            }
+        }
+        let _ = cfg;
+        self
+    }
+
+    #[cfg(feature = "http-jobs")]
+    fn default_gateway_config(
+        &self,
+        addr: std::net::SocketAddr,
+        cfg: Option<&AppConfig>,
+    ) -> GatewayConfig {
+        use crate::gateway::DEFAULT_GATEWAY_DRAIN_TIMEOUT;
+        let drain = cfg
+            .map(|c| c.http_drain_timeout)
+            .unwrap_or(DEFAULT_GATEWAY_DRAIN_TIMEOUT);
+        let mut opts = GatewayOpts::new(addr)
+            .drain_timeout(drain)
+            .identity(GatewayBearerIdentity::from_env())
+            .surfaces(default_product_surfaces(
+                self.default_gateway_apis(),
+                self.gateway_extra_routes.clone(),
+            ));
+        if let Some((cert, key)) = cfg.and_then(|c| c.http_tls.clone()) {
+            opts = opts.tls(cert, key);
+        }
+        opts.into_config()
     }
 
     /// Register [`crate::JobConsumer`] loops (started in [`Self::run`]).
@@ -288,8 +393,8 @@ impl TrembitaAppBuilder {
     /// Use [`WorkflowOpts::new`] + [`crate::journal_workflow`] when the default keyed client is enough.
     ///
     /// # Errors
-    /// [`Self::run`] / [`Self::boot_for_test`] fail at boot unless [`.gateway`](Self::gateway)
-    /// enables workflows via `.with_workflows_api(true)` (or `TREMBITA_GATEWAY_WORKFLOWS=1` at boot).
+    /// [`Self::run`] / [`Self::boot_for_test`] fail at boot unless a product HTTP listener
+    /// is available (`TREMBITA_LISTEN` or [`.gateway`](Self::gateway)) with workflow routes.
     #[must_use]
     pub fn workflows(mut self, specs: impl IntoIterator<Item = WorkflowOpts>) -> Self {
         self.workflows
@@ -407,7 +512,7 @@ impl TrembitaAppBuilder {
         self
     }
 
-    fn validate(&self) -> Result<(), StartError> {
+    fn validate(&self, product_http: Option<std::net::SocketAddr>) -> Result<(), StartError> {
         if let Some(err) = self.config_errors.first() {
             return Err(StartError::Config(err.clone()));
         }
@@ -446,9 +551,9 @@ impl TrembitaAppBuilder {
                 )));
             }
         }
-        if !self.workflows.is_empty() && self.gateway.is_none() {
+        if !self.workflows.is_empty() && self.gateway.is_none() && product_http.is_none() {
             return Err(StartError::Config(
-                "`.workflows([…])` requires `.gateway(GatewayOpts::new(addr).surfaces(...))` with workflow routes"
+                "`.workflows([…])` requires a product HTTP listener (`TREMBITA_LISTEN` / `.gateway(...)`) with workflow routes"
                     .into(),
             ));
         }
@@ -476,10 +581,12 @@ impl TrembitaAppBuilder {
 
     async fn boot(self, opts: &mut RunOpts) -> Result<Arc<TrembitaApp>, StartError> {
         if let Some(net) = opts.local_net.as_ref() {
-            self.validate()?;
-            let workflows = self.workflows;
-            let gateway = self.gateway;
-            let cluster = self.inner.start_local(net).await;
+            let builder = self.ensure_product_gateway(None);
+            let product_http = builder.gateway.as_ref().map(|g| g.addr);
+            builder.validate(product_http)?;
+            let workflows = builder.workflows;
+            let gateway = builder.gateway;
+            let cluster = builder.inner.start_local(net).await;
             return Self::finish_start(
                 TrembitaApp::assemble(cluster, workflows),
                 gateway,
@@ -490,7 +597,8 @@ impl TrembitaAppBuilder {
         let cfg = app_config_from_env().map_err(|e| StartError::Config(e.to_string()))?;
         let mut builder = self;
         builder = builder.apply_env_config(&cfg);
-        builder.validate()?;
+        builder = builder.ensure_product_gateway(Some(&cfg));
+        builder.validate(cfg.http)?;
         let workflows = builder.workflows;
         let gateway = builder.gateway;
         let cluster = builder

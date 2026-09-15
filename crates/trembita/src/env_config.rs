@@ -1,4 +1,10 @@
 //! Environment parsing shared by [`TrembitaApp`](super::app::TrembitaApp) and reference binaries.
+//!
+//! **Product surface** (typical [`TrembitaApp::from_env`](super::app::TrembitaApp::from_env) deploy):
+//! `TREMBITA_LISTEN`, `TREMBITA_DATA_DIR`, `TREMBITA_CERT_DIR` (or `dev-certs`), `TREMBITA_JOIN_SEEDS`
+//! on joiners, optional `GATEWAY_TOKEN` / `TREMBITA_JOB_QUEUE`.
+//!
+//! Full reference: [env.md](../../../docs/env.md).
 
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -111,8 +117,8 @@ fn env_bool(key: &str) -> bool {
 /// Product + ops TCP bind: **the same** `host:port` as QUIC wire ([`wire`]).
 ///
 /// Wire and HTTP are different sockets (UDP vs TCP) on one port number — configured only
-/// via [`wire`]. Set `TREMBITA_HTTP=-` or `TREMBITA_GATEWAY=-` to skip the TCP listener
-/// (QUIC-only node).
+/// via [`wire`]. **`TREMBITA_HTTP` / `TREMBITA_GATEWAY` are internal:** set to `-` only to
+/// skip the TCP listener (QUIC-only node). Product deploys should omit them.
 ///
 /// # Errors
 /// Returns an error when `TREMBITA_HTTP` / `TREMBITA_GATEWAY` is set to an address that
@@ -414,6 +420,8 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         Duration::from_secs(60)
     };
 
+    log_non_product_env_warnings();
+
     Ok(AppConfig {
         node_id,
         listen,
@@ -440,4 +448,61 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         http_drain_timeout: http_drain_timeout_from_env(),
         env: env_overrides,
     })
+}
+
+/// Warn once per boot when legacy / ops-only env vars are set ([env.md](../../../docs/env.md)).
+pub fn log_non_product_env_warnings() {
+    if env("TREMBITA_NODE_ID").is_some() {
+        tracing::warn!(
+            target: "trembita::env",
+            "TREMBITA_NODE_ID is set — product apps persist id under TREMBITA_DATA_DIR/node-id; \
+             use only for static clusters (trembita-node) or tests"
+        );
+    }
+    if env("TREMBITA_PEERS").is_some() {
+        tracing::warn!(
+            target: "trembita::env",
+            "TREMBITA_PEERS is set — static voter bootstrap; prefer TREMBITA_JOIN_SEEDS for elastic clusters"
+        );
+    }
+    if env("TREMBITA_JOIN_SEEDS").is_some() && env("TREMBITA_PEERS").is_some() {
+        tracing::warn!(
+            target: "trembita::env",
+            "both TREMBITA_JOIN_SEEDS and TREMBITA_PEERS are set — pick one bootstrap model"
+        );
+    }
+    for key in ["TREMBITA_HTTP", "TREMBITA_GATEWAY"] {
+        if let Some(raw) = env(key)
+            && raw != "-"
+        {
+            tracing::warn!(
+                target: "trembita::env",
+                "{key}={raw} — prefer TREMBITA_LISTEN only (same port for wire + HTTP); \
+                 use {key}=- for QUIC-only nodes"
+            );
+        }
+    }
+    let split_pem = env("TREMBITA_NODE_CERT").is_some()
+        || env("TREMBITA_NODE_KEY").is_some()
+        || env("TREMBITA_CA_CERT").is_some();
+    if split_pem && env("TREMBITA_CERT_DIR").is_none() {
+        tracing::warn!(
+            target: "trembita::env",
+            "TREMBITA_NODE_CERT/KEY/CA_CERT without TREMBITA_CERT_DIR — prefer cert dir + node-{{id}}.pem"
+        );
+    }
+    for key in [
+        "TREMBITA_GATEWAY_JOBS",
+        "TREMBITA_GATEWAY_WORKFLOWS",
+        "TREMBITA_GATEWAY_ACTORS",
+        "TREMBITA_GATEWAY_INTROSPECT",
+        "TREMBITA_ADMIN",
+    ] {
+        if env(key).is_some() {
+            tracing::warn!(
+                target: "trembita::env",
+                "{key} is no longer read — use app registration / default gateway surfaces (0.5+)"
+            );
+        }
+    }
 }

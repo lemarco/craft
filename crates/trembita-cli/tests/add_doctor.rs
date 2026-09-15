@@ -68,7 +68,7 @@ fn add_and_doctor_integration() {
     )
     .unwrap();
 
-    let report = run_doctor(&project);
+    let report = run_doctor(&project, false);
     assert!(
         !report.has_errors(),
         "doctor errors: {:?}",
@@ -103,7 +103,7 @@ async fn handle_orphan(_: &[u8]) -> Result<(), ()> { Ok(()) }
     )
     .unwrap();
 
-    let report = run_doctor(&project);
+    let report = run_doctor(&project, false);
     assert!(report.has_errors());
 }
 

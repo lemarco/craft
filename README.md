@@ -68,7 +68,9 @@ lefthook install
 
 **Read next:** [docs/status.md](docs/status.md) → [docs/architecture.md](docs/architecture.md) → [crates/trembita/src/builder/cluster/mod.rs](crates/trembita/src/builder/cluster/mod.rs)
 
-**`trembita-node` env:** `TREMBITA_NODE_ID`, `TREMBITA_LISTEN` (`:7443`), `TREMBITA_HTTP` (`:8080` ops), `TREMBITA_PEERS`, `TREMBITA_JOIN_SEEDS`, `TREMBITA_DISCOVERY` — [docs/certs.md](docs/certs.md)
+**Product app env:** `TREMBITA_LISTEN`, `TREMBITA_DATA_DIR`, `TREMBITA_CERT_DIR`, `TREMBITA_JOIN_SEEDS` (joiners), optional `GATEWAY_TOKEN` — [docs/env.md](docs/env.md)
+
+**`trembita-node` (reference KV):** may still use static `TREMBITA_PEERS` + `TREMBITA_NODE_ID` — [docs/certs.md](docs/certs.md)
 
 **Job queue on `trembita-node`** (optional, requires `TREMBITA_DATA_DIR`):
 

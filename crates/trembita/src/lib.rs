@@ -7,23 +7,13 @@
 //! ```no_run
 //! use std::time::Duration;
 //! use trembita::prelude::*;
-//! use trembita::Gateway;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     init_tracing();
-//!     TrembitaApp::builder()
-//!         .data_dir("/var/lib/trembita")
-//!         .queue([QueueOpts::new("jobs", Duration::from_secs(300))])
-//!         .gateway(
-//!             GatewayOpts::new("127.0.0.1:8090".parse()?)
-//!                 .surfaces(|state| {
-//!                     Gateway::new(false).dev_fallback(
-//!                         TrembitaApp::jobs_api(std::sync::Arc::clone(&state.app)).route_table(),
-//!                     )
-//!                 }),
-//!         )
-//!         .run(RunOpts::default().with_wait_queue("jobs"))
+//!     TrembitaApp::from_env()?
+//!         .jobs([JobOpts::new("jobs", Duration::from_secs(300)).http_enqueue(true)])
+//!         .run(RunOpts::from_env())
 //!         .await
 //! }
 //! ```
@@ -108,7 +98,7 @@ pub use trembita_storage as storage;
 // --- Product facade (also available via `prelude`) ---------------------------
 
 pub use actor_group::ActorGroupOpts;
-pub use app::{ShutdownOpts, TrembitaApp, TrembitaAppBuilder, journal_workflow};
+pub use app::{DefaultGatewayApis, ShutdownOpts, TrembitaApp, TrembitaAppBuilder, journal_workflow};
 pub use app_opts::RunOpts;
 pub use builder::StartError;
 pub use configure::TrembitaConfigure;

@@ -1,6 +1,8 @@
 # Dev tooling (not product showcases)
 
-Infrastructure for local QUIC clusters, certificates, and CA demos. Product scenarios live in [`examples/`](../examples/) only.
+**Primary dev UX:** from the repo root, [`trembita dev`](../crates/trembita-cli/README.md) (`dev setup`, `dev up --showcase stateful-workers --nodes 3`, `dev trigger …`). See [getting-started](../docs/getting-started.md#4-try-the-showcases).
+
+Infrastructure below supports legacy `./cluster.sh`, CI compose, and CA demos. Product scenarios live in [`examples/`](../examples/) only.
 
 | Path | Purpose |
 |------|---------|
@@ -11,7 +13,7 @@ Infrastructure for local QUIC clusters, certificates, and CA demos. Product scen
 | [`compose/`](compose/) | One-command Docker Compose clusters per showcase |
 | [`gitlab-runner/`](gitlab-runner/) | Self-hosted GitLab CI runner (Docker on local PC) |
 
-## Docker Compose showcases
+## Docker Compose (CI / demo — not primary dev path)
 
 | Showcase | Command |
 |----------|---------|
@@ -20,9 +22,9 @@ Infrastructure for local QUIC clusters, certificates, and CA demos. Product scen
 | realtime | `cd dev/compose/realtime && docker compose up --build` |
 | workflows | `cd dev/compose/workflows && docker compose up --build` |
 
-## Local QUIC cluster (examples)
+## Local QUIC cluster (legacy `./cluster.sh`)
 
-Each showcase provides `./cluster.sh`:
+Each showcase still provides `./cluster.sh` (used by scripts; prefer `trembita dev`):
 
 ```bash
 cd examples/background-jobs

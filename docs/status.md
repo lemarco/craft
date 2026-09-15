@@ -50,7 +50,7 @@ Details below ↓
 
 - Dynamic join via seed set + DNS discovery (`trembita::discovery`, `join_seeds`)
 - Cluster leave RPC (`TrembitaCluster::leave`, `TREMBITA_ALLOW_LEAVE`)
-- Unified ops + product HTTP on `TREMBITA_HTTP` (explicit [`OpsApi`](../crates/trembita-http/src/ops_routes.rs) / app gateway merges; optional TLS via `TREMBITA_HTTP_TLS_*`) — [unified-listener](decisions/unified-listener.md), [migration](migration/unified-listener-0.5.md)
+- Unified ops + product HTTP on **`TREMBITA_LISTEN`** (same port as QUIC; [`TrembitaApp::from_env`](../crates/trembita/src/app/runtime.rs) default surfaces) — [env.md](env.md), [unified-listener](decisions/unified-listener.md), [migration](migration/unified-listener-0.5.md)
 - Reachability signal distinct from membership; crash-driven supervisor reconcile against `reachable_nodes()`
 - Phi-accrual / tunable reachability (`ReachabilityConfig`)
 - `trembita-ops` snapshot backup/restore; rolling wire N/N−1 compatibility
@@ -71,7 +71,7 @@ Details below ↓
 
 **Event topics** ([event-topics](decisions/event-topics.md)): durable pub/sub, named subscriptions, voter replication; [`TopicOpts`](../crates/trembita/src/topic_opts.rs), [`.topics()`](../crates/trembita/src/app/mod.rs); **`EventOutboxSource`** ([event-outbox](decisions/event-outbox.md)) for transactional outbox drain.
 
-**Gateway & HTTP** ([unified-listener](decisions/unified-listener.md), [gateway-routing-v2](decisions/gateway-routing-v2.md), [gateway-identity](decisions/gateway-identity.md)): one TCP bind (`TREMBITA_HTTP` / `TREMBITA_GATEWAY` on apps); product and ops routes merged explicitly in `.surfaces()`; `AuthMode` on route tables; native `Gateway`/`RouteTable` + hyper WebSocket. Cluster-only: [`spawn_cluster_ops_http`](../crates/trembita/src/gateway/cluster_ops.rs). Migrate: [unified-listener-0.5](migration/unified-listener-0.5.md).
+**Gateway & HTTP** ([unified-listener](decisions/unified-listener.md), [gateway-routing-v2](decisions/gateway-routing-v2.md), [gateway-identity](decisions/gateway-identity.md)): one TCP bind on `TREMBITA_LISTEN`; default ops/jobs surfaces from env boot or explicit `.surfaces()`; `AuthMode` on route tables; native `Gateway`/`RouteTable` + hyper WebSocket. Cluster-only: [`spawn_cluster_ops_http`](../crates/trembita/src/gateway/cluster_ops.rs). Env: [env.md](env.md).
 
 **Workload governor** ([workload-governor](decisions/workload-governor.md)): per-node compute tokens + consumer tuning from gateway load and queue depth.
 

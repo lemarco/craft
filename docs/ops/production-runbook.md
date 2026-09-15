@@ -7,24 +7,30 @@ Operational checklist for running trembita on **N identical VPS or bare-metal no
 
 ## VPS deployment checklist
 
-1. **Build once** — same artifact on every node (`trembita-node` or your app embedding `trembita`).
-2. **Unique node id** — set `TREMBITA_NODE_ID` (1…N) per host.
-3. **Listen address** — `TREMBITA_LISTEN=0.0.0.0:7443` (QUIC/mTLS trembita wire).
-4. **Data directory** — `TREMBITA_DATA_DIR=/var/lib/trembita/data` (redb: Raft groups, queues, actor store).
-5. **Peers** — static `TREMBITA_PEERS=id@host:7443,...` **or** dynamic `TREMBITA_JOIN_SEEDS` on first boot.
-6. **TLS** — `TREMBITA_NODE_CERT`, `TREMBITA_NODE_KEY`, `TREMBITA_CA_CERT` (see [certs.md](../certs.md)).
-7. **Ops HTTP (optional)** — merge [`OpsApi`](../../crates/trembita-http/src/ops_routes.rs) on a private bind (`TREMBITA_HTTP` for `trembita-node`). Dashboard at `/dashboard`, Prometheus at `/metrics`.
-8. **Firewall** — allow **UDP/TCP 7443** between cluster members; restrict admin port to ops networks only.
+**Product app** ([env.md](../env.md)) — typical elastic cluster:
+
+1. **Build once** — same artifact on every node.
+2. **`TREMBITA_LISTEN`** — one port (QUIC + HTTP), e.g. `0.0.0.0:443`.
+3. **`TREMBITA_DATA_DIR`** — redb + persisted `node-id` after join.
+4. **`TREMBITA_CERT_DIR`** — shared PKI layout (`ca.pem`, `node-{id}.pem`); see [certs.md](../certs.md).
+5. **Seed** — `TREMBITA_ALLOW_JOIN=1`; **joiners** — `TREMBITA_JOIN_SEEDS=1@seed:443` (no static `TREMBITA_PEERS`).
+6. **Optional `GATEWAY_TOKEN`** — protect product HTTP in non-dev environments.
+7. **Firewall** — allow **UDP + TCP** on the listen port between members; restrict HTTP to ingress/LB as needed.
+
+Ops routes (`/health`, `/ready`, `/metrics`, `/dashboard`) are on the **same** TCP port as product APIs when using [`TrembitaApp::from_env`](../crates/trembita/src/app/runtime.rs).
 
 ### First node (bootstrap)
 
-- Set `TREMBITA_PEERS` to itself or leave join seeds empty for a single-node dev cluster.
-- For multi-node: node 1 starts with voter config; subsequent nodes use `TREMBITA_JOIN_SEEDS` pointing at an existing member.
+- Solo or seed: omit `TREMBITA_JOIN_SEEDS`; id `1` until join assigns others.
 
 ### Adding nodes
 
-- New VPS gets the same binary, certs signed by the same CA, a new `TREMBITA_NODE_ID`, and join seeds / peer list.
-- Wait for `/ready` (HTTP 200) before sending traffic.
+- Same binary + `TREMBITA_CERT_DIR` (join bootstrap cert `node-0.pem` in compose); set `TREMBITA_JOIN_SEEDS` to a live seed.
+- Wait for `GET /ready` (HTTP 200) before traffic.
+
+### Static clusters (`trembita-node`, e2e)
+
+Legacy ops layout: explicit `TREMBITA_NODE_ID`, static `TREMBITA_PEERS`, per-file PEM paths — see [certs.md](../certs.md#static-multi-node-bootstrap).
 
 ### Join troubleshooting
 

@@ -37,6 +37,18 @@ impl Default for RunOpts {
 }
 
 impl RunOpts {
+    /// Boot/shutdown options from `TREMBITA_*` (`TREMBITA_GRACEFUL_LEAVE`, `TREMBITA_JOB_QUEUE` → wait-for-queue).
+    #[must_use]
+    pub fn from_env() -> Self {
+        let mut opts = Self::default();
+        if let Ok(stream) = std::env::var("TREMBITA_JOB_QUEUE") {
+            if !stream.is_empty() {
+                opts = opts.with_wait_queue(&stream);
+            }
+        }
+        opts
+    }
+
     /// Poll until the cluster (and optional queue) is ready after boot.
     #[must_use]
     pub fn with_wait_ready(mut self, opts: ReadyOpts) -> Self {

@@ -33,6 +33,14 @@ trembita add static-site app --hosts app.example.com --filesystem fe/app/dist
 
 trembita doctor
 trembita doctor --fix
+trembita doctor --preflight   # deploy: env, compose, certs/listen, gateway ops
+
+# From trembita repo root — local showcase clusters
+trembita dev list
+trembita dev setup --showcase stateful-workers
+trembita dev up --showcase stateful-workers --nodes 3
+trembita dev trigger stateful-workers -- 1001
+trembita dev stop --showcase stateful-workers
 ```
 
 See [`framework-conventions`](../../docs/decisions/framework-conventions.md) for the generated
