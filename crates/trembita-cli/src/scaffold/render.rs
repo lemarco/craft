@@ -103,6 +103,10 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
         &root.join("src/main.rs"),
         &generate_main_rs(opts, &features),
     )?;
+    write_file(
+        &root.join("src/manifest.rs"),
+        &generate_manifest_rs(opts, &features),
+    )?;
     write_file(&root.join("src/app.rs"), &generate_app_rs(opts, &features))?;
     write_file(
         &root.join("src/config.rs"),
@@ -254,6 +258,7 @@ fn generate_main_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> St
         "mod config;".to_string(),
         "mod consumers;".to_string(),
         "mod domain;".to_string(),
+        "mod manifest;".to_string(),
     ];
     if features.contains(&AppFeature::Actors) {
         mods.push("mod actors;".to_string());
@@ -299,35 +304,110 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {{
     )
 }
 
-fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> String {
-    let mut imports = vec![
-        "use std::sync::Arc;".to_string(),
-        "use std::time::Duration;".to_string(),
-        "use crate::config::AppConfig;".to_string(),
-    ];
-    let mut body = String::new();
+fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> String {
+    let mut imports = vec!["use trembita::AppManifest;".to_string()];
 
     if features.contains(&AppFeature::Jobs) {
+        imports.push("use std::sync::Arc;".to_string());
+        imports.push("use std::time::Duration;".to_string());
         imports.push(
             "use crate::consumers::sample::{HandleSampleConsumer, STREAM as SAMPLE_STREAM};"
                 .to_string(),
         );
-        imports.push(
-            "use trembita::{IdempotencyOpts, InMemoryStore, JobOpts, RunOpts, TrembitaApp, TrembitaConfigure};".to_string(),
+        imports.push("use trembita::{IdempotencyOpts, InMemoryStore, JobOpts};".to_string());
+    }
+    if features.contains(&AppFeature::Topics) {
+        imports.push("use trembita::TopicOpts;".to_string());
+    }
+    imports.push("use trembita::{WorkerOpts, WorkerScale, workers};".to_string());
+
+    let imports_block = format!(
+        "// trembita:imports\n{}\n// trembita:imports-end",
+        imports.join("\n")
+    );
+
+    let mut body = String::new();
+    let mut chain = String::from("    AppManifest::new()");
+
+    if features.contains(&AppFeature::Jobs) {
+        body.push_str("    let idem_store = Arc::new(InMemoryStore::new());\n\n");
+        chain.push_str(
+            r#"
+        .jobs([
+            // trembita:jobs
+            JobOpts::new(SAMPLE_STREAM)
+                .lease(Duration::from_secs(300))
+                .default_max_attempts(5)
+                .idempotency(IdempotencyOpts::by_dedup_key(
+                    Arc::clone(&idem_store) as Arc<dyn trembita::actor_store::ActorStateStore>,
+                    "job:",
+                ))
+                .consumer(&HandleSampleConsumer)
+                .http_enqueue(true),
+            // trembita:jobs-end
+        ])"#,
         );
-    } else {
-        imports.push("use trembita::{RunOpts, TrembitaApp, TrembitaConfigure};".to_string());
+    }
+
+    if features.contains(&AppFeature::Topics) {
+        chain.push_str(
+            "
+        .topics([
+            // trembita:topics
+            TopicOpts::topic(\"app.events\"),
+            // trembita:topics-end
+        ])",
+        );
+    }
+
+    chain.push_str(
+        r"
+        .workers(workers!(
+            // trembita:workers
+            // trembita:workers-end
+        ))",
+    );
+
+    if features.contains(&AppFeature::Workflows) {
+        chain.push_str(
+            r"
+        // Register workflows in src/workflows/ and add `.workflows([...])` here.",
+        );
+    }
+
+    format!(
+        r"//! {name} — product capability registry ([`AppManifest`](trembita::AppManifest)).
+//!
+//! `trembita add` patches the `// trembita:*` marker regions below.
+
+{imports}
+
+/// Jobs, topics, workers, and workflows for this app.
+#[must_use]
+pub fn build() -> AppManifest {{
+{body}{chain}
+}}
+",
+        name = opts.name,
+        imports = imports_block,
+        body = body,
+        chain = chain,
+    )
+}
+
+fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> String {
+    let mut imports = vec![
+        "use crate::config::AppConfig;".to_string(),
+        "use crate::manifest;".to_string(),
+        "use trembita::{RunOpts, TrembitaApp, TrembitaConfigure};".to_string(),
+    ];
+
+    if features.contains(&AppFeature::Jobs) {
+        imports.push("use crate::consumers::sample::STREAM as SAMPLE_STREAM;".to_string());
     }
 
     if features.contains(&AppFeature::Gateway) {
         imports.push("use crate::http;".to_string());
-    }
-
-    if features.contains(&AppFeature::Topics) {
-        imports.push("use trembita::TopicOpts;".to_string());
-    }
-    if features.contains(&AppFeature::Actors) {
-        imports.push("use trembita::{WorkerOpts, WorkerScale, workers};".to_string());
     }
 
     let imports_block = format!(
@@ -337,70 +417,7 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
 
     let mut builder = String::from("        TrembitaApp::from_env()?\n");
     builder.push_str("            .data_dir(&self.config.data_dir)\n");
-
-    if features.contains(&AppFeature::Jobs) {
-        body.push_str(
-            r"        let idem_store = Arc::new(InMemoryStore::new());
-
-",
-        );
-        builder.push_str(
-            r#"            .jobs([
-                // trembita:jobs
-                JobOpts::new(SAMPLE_STREAM)
-                .lease(Duration::from_secs(300))
-                .default_max_attempts(5)
-                .idempotency(IdempotencyOpts::by_dedup_key(
-                    Arc::clone(&idem_store) as Arc<dyn trembita::actor_store::ActorStateStore>,
-                    "job:",
-                ))
-                .consumer(&HandleSampleConsumer)
-                .http_enqueue(true),
-                // trembita:jobs-end
-            ])
-"#,
-        );
-    }
-
-    if features.contains(&AppFeature::Topics) {
-        builder.push_str(
-            r#"            .topics([
-                // trembita:topics
-                TopicOpts::topic("app.events"),
-                // trembita:topics-end
-            ])
-"#,
-        );
-    } else {
-        builder.push_str(
-            r"            // trembita:topics
-            // trembita:topics-end
-",
-        );
-    }
-
-    if features.contains(&AppFeature::Actors) {
-        builder.push_str(
-            r"            .workers(workers!(
-                // trembita:workers
-                // trembita:workers-end
-            ))
-",
-        );
-    } else {
-        builder.push_str(
-            r"            // trembita:workers
-            // trembita:workers-end
-",
-        );
-    }
-
-    if features.contains(&AppFeature::Workflows) {
-        builder.push_str(
-            r"            // Register workflows in src/workflows/ and wire .workflows([...]) here.
-",
-        );
-    }
+    builder.push_str("            .manifest(manifest::build())\n");
 
     if features.contains(&AppFeature::Gateway) {
         builder.push_str(
@@ -447,12 +464,11 @@ impl App {{
 
     /// Start the trembita cluster and block until shutdown.
     pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {{
-{body}{builder}    }}
+{builder}    }}
 }}
 ",
         name = opts.name,
         imports = imports_block,
-        body = body,
         builder = builder,
     )
 }

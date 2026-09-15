@@ -1,4 +1,4 @@
-//! Stateful worker groups — register via `.workers([...])` in `app.rs`.
+//! Stateful worker groups — register in `src/manifest.rs` (`trembita add actor`).
 
 // Example:
 // use trembita::{actor, UserActor};

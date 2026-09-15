@@ -19,7 +19,9 @@ pub fn workspace_root() -> Result<PathBuf, DevError> {
     }
     if let Ok(exe) = std::env::current_exe() {
         dir = exe;
-        if dir.pop() && let Some(found) = walk_up(&dir) {
+        if dir.pop()
+            && let Some(found) = walk_up(&dir)
+        {
             return Ok(found);
         }
     }

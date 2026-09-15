@@ -6,8 +6,8 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
-use super::showcases::Showcase;
 use super::DevError;
+use super::showcases::Showcase;
 
 /// Build release binary + optional showcase client.
 pub fn setup(showcase: &Showcase, workspace: &Path) -> Result<(), DevError> {
@@ -19,7 +19,11 @@ pub fn setup(showcase: &Showcase, workspace: &Path) -> Result<(), DevError> {
     if !certs.join("ca.pem").is_file() {
         eprintln!(">> minting cluster CA + node certs in {}", certs.display());
         let generate = workspace.join("dev/certs/generate.sh");
-        run_bash(&generate, workspace, &["--ca-only", "--out", certs.to_str().expect("utf8")])?;
+        run_bash(
+            &generate,
+            workspace,
+            &["--ca-only", "--out", certs.to_str().expect("utf8")],
+        )?;
         run_bash(
             &generate,
             workspace,
@@ -130,10 +134,7 @@ pub fn up(showcase: &Showcase, workspace: &Path, nodes: u32) -> Result<(), DevEr
     thread::sleep(Duration::from_secs(2));
     if wait_health(showcase.base_port) {
         eprintln!("OK: {} cluster ready ({} nodes)", showcase.id, nodes);
-        eprintln!(
-            "  trigger: trembita dev trigger {} -- …",
-            showcase.id
-        );
+        eprintln!("  trigger: trembita dev trigger {} -- …", showcase.id);
     } else {
         eprintln!(
             "warn: /health not ready yet — check {}/logs/",

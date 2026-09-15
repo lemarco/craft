@@ -4,7 +4,8 @@
 pub use crate::AuthMode;
 pub use crate::actor_group::ActorGroupOpts;
 pub use crate::app::{
-    DefaultGatewayApis, ShutdownOpts, TrembitaApp, TrembitaAppBuilder, journal_workflow,
+    AppManifest, DefaultGatewayApis, ShutdownOpts, TrembitaApp, TrembitaAppBuilder,
+    journal_workflow,
 };
 pub use crate::app_opts::RunOpts;
 pub use crate::builder::StartError;

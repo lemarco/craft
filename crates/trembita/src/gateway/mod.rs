@@ -23,11 +23,11 @@ use trembita_dashboard::AdminTlsPaths;
 /// PEM paths for server-only TLS on the product gateway (HTTPS / WSS).
 pub type GatewayTlsPaths = AdminTlsPaths;
 
+pub(crate) use config::GatewaySurfacesFn;
 pub use config::{
     DEFAULT_CONSUMER_DRAIN_TIMEOUT, DEFAULT_GATEWAY_DRAIN_TIMEOUT, GATEWAY_MAX_BODY_BYTES,
     GatewayConfig, GatewayConfigError, gateway_token_from_env, validate_gateway_config,
 };
-pub(crate) use config::GatewaySurfacesFn;
 pub use drain::{ConnectionGuard, ConnectionTracker, GatewayHandle};
 pub use identity::{
     ExtractedIdentity, GatewayBearerIdentity, GatewayIdentity, GatewayRequest,

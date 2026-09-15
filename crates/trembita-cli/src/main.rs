@@ -238,7 +238,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 AddTarget::Topic { name } => {
                     add_topic(&project, &AddTopicOpts { topic: name })?;
-                    eprintln!("Registered topic in {}", project.app_rs().display());
+                    let registry = if project.has_manifest() {
+                        project.manifest_rs()
+                    } else {
+                        project.app_rs()
+                    };
+                    eprintln!("Registered topic in {}", registry.display());
                 }
                 AddTarget::Actor { group, type_name } => {
                     add_actor(&project, &AddActorOpts { group, type_name })?;
@@ -311,7 +316,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             DevCommand::Status { showcase } => dev_status(&showcase)?,
             DevCommand::Trigger { showcase, args } => dev_trigger(&showcase, &args)?,
         },
-        Command::Doctor { path, fix, preflight } => {
+        Command::Doctor {
+            path,
+            fix,
+            preflight,
+        } => {
             let project = resolve_project(path.as_deref())?;
             eprintln!("Checking {} …", project.root.display());
             if preflight {

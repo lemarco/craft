@@ -3,6 +3,8 @@ use std::sync::Arc;
 
 use trembita_dashboard::MetricsSink;
 
+#[cfg(feature = "http-jobs")]
+use super::gateway_defaults::default_product_surfaces;
 use crate::NodeId;
 use crate::actor_group::ActorGroupOpts;
 use crate::app_opts::RunOpts;
@@ -12,8 +14,6 @@ use crate::consumer::ConsumerSpawnFn;
 use crate::cron_opts::CronOpts;
 use crate::env_config::{AppConfig, app_config_from_env};
 use crate::gateway::spawn_gateway as spawn_gateway_task;
-#[cfg(feature = "http-jobs")]
-use super::gateway_defaults::default_product_surfaces;
 use crate::gateway::{GatewayBearerIdentity, GatewayConfig, GatewayOpts};
 use crate::job_opts::JobOpts;
 use crate::queue_opts::QueueOpts;
@@ -21,6 +21,7 @@ use crate::worker_opts::{WorkerGroup, WorkerOpts};
 use crate::workflow_opts::{WorkflowOpts, WorkflowRegistration};
 use trembita_runtime::{LeaderGate, LeaderLoopOpts, UserActor};
 
+use super::manifest::AppManifest;
 use super::runtime::TrembitaApp;
 use super::types::{EmptyStateMachine, TrembitaAppGatewayApiFlags, TrembitaAppRegistrationFlags};
 
@@ -42,7 +43,9 @@ pub struct TrembitaAppBuilder {
     pub(crate) worker_autoscale_streams: Vec<String>,
     #[cfg(feature = "http-jobs")]
     gateway_extra_routes: Option<
-        Arc<dyn Fn(crate::gateway::TrembitaGatewayState) -> trembita_http::RouteTable + Send + Sync>,
+        Arc<
+            dyn Fn(crate::gateway::TrembitaGatewayState) -> trembita_http::RouteTable + Send + Sync,
+        >,
     >,
     /// Operational routes on the unified listener ([`super::gateway::DefaultGatewayApis::ops`]).
     #[cfg(feature = "http-jobs")]
@@ -142,7 +145,9 @@ impl TrembitaAppBuilder {
     fn ensure_product_gateway(mut self, cfg: Option<&AppConfig>) -> Self {
         #[cfg(feature = "http-jobs")]
         {
-            let http = cfg.and_then(|c| c.http).or_else(|| self.gateway.as_ref().map(|g| g.addr));
+            let http = cfg
+                .and_then(|c| c.http)
+                .or_else(|| self.gateway.as_ref().map(|g| g.addr));
             let Some(http) = http else {
                 return self;
             };
@@ -222,6 +227,12 @@ impl TrembitaAppBuilder {
         self.consumer_streams.extend(streams);
         self.pending_consumers.extend(spawners);
         self
+    }
+
+    /// Apply a declarative [`AppManifest`] (jobs, topics, workers, workflows).
+    #[must_use]
+    pub fn manifest(self, manifest: AppManifest) -> Self {
+        manifest.apply(self)
     }
 
     /// Register durable job streams with handlers via [`JobOpts`] (queue + consumer + optional HTTP enqueue).

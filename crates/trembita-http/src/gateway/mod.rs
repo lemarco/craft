@@ -137,11 +137,8 @@ impl Gateway {
         hostnames: impl IntoIterator<Item = impl Into<String>>,
         routes: RouteTable,
     ) -> Self {
-        self.surfaces.push(
-            Surface::new()
-                .hosts(hostnames)
-                .routes(routes),
-        );
+        self.surfaces
+            .push(Surface::new().hosts(hostnames).routes(routes));
         self
     }
 

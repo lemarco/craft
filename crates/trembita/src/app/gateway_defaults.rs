@@ -10,7 +10,11 @@ use super::runtime::TrembitaApp;
 #[must_use]
 pub(super) fn default_product_surfaces(
     apis: DefaultGatewayApis,
-    extra_routes: Option<Arc<dyn Fn(crate::gateway::TrembitaGatewayState) -> trembita_http::RouteTable + Send + Sync>>,
+    extra_routes: Option<
+        Arc<
+            dyn Fn(crate::gateway::TrembitaGatewayState) -> trembita_http::RouteTable + Send + Sync,
+        >,
+    >,
 ) -> GatewaySurfacesFn {
     Box::new(move |state| {
         let mut gateway = TrembitaApp::default_surfaces(state.clone(), false, apis);

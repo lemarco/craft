@@ -5,7 +5,9 @@ mod showcases;
 mod trigger;
 mod workspace;
 
-pub use showcases::{Showcase, all as all_showcases, find as find_showcase, id_list as showcase_ids};
+pub use showcases::{
+    Showcase, all as all_showcases, find as find_showcase, id_list as showcase_ids,
+};
 pub use workspace::workspace_root;
 
 use std::path::PathBuf;
@@ -53,10 +55,7 @@ pub enum DevError {
 pub fn list_showcases() {
     eprintln!("Showcases:");
     for s in all_showcases() {
-        eprintln!(
-            "  {:<18} port {}  examples/{}/",
-            s.id, s.base_port, s.dir
-        );
+        eprintln!("  {:<18} port {}  examples/{}/", s.id, s.base_port, s.dir);
     }
 }
 

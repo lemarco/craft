@@ -98,7 +98,10 @@ pub use trembita_storage as storage;
 // --- Product facade (also available via `prelude`) ---------------------------
 
 pub use actor_group::ActorGroupOpts;
-pub use app::{DefaultGatewayApis, ShutdownOpts, TrembitaApp, TrembitaAppBuilder, journal_workflow};
+pub use app::{
+    AppManifest, DefaultGatewayApis, ShutdownOpts, TrembitaApp, TrembitaAppBuilder,
+    journal_workflow,
+};
 pub use app_opts::RunOpts;
 pub use builder::StartError;
 pub use configure::TrembitaConfigure;

@@ -6,6 +6,7 @@ mod features;
 mod markers;
 mod new;
 mod project;
+mod registry;
 mod render;
 mod templates;
 

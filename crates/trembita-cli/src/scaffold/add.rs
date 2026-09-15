@@ -7,6 +7,7 @@ use super::markers::{
     module_name, names,
 };
 use super::project::TrembitaProject;
+use super::registry::CapabilityRegistry;
 use super::templates::{http_jobs_rs, http_ops_rs};
 
 /// `trembita add` failure.
@@ -138,37 +139,23 @@ async fn {handler}(payload: &[u8]) -> Result<(), String> {{
     let mod_rs = project.consumers_dir().join("mod.rs");
     ensure_mod_declaration(&mod_rs, &module)?;
 
-    let mut app = AppRsPatch::load(&project.app_rs())?;
-    app.insert_import(&format!("use crate::consumers::{module}::{consumer_type};"))?;
+    let mut registry = CapabilityRegistry::load(project)?;
+    registry
+        .patch_mut()
+        .insert_import(&format!("use crate::consumers::{module}::{consumer_type};"))?;
 
     let job_line = format!(
         r#"JobOpts::new("{stream}")
-                    .lease(Duration::from_secs({lease}))
-                    .consumer(&{consumer_type})
-                    .http_enqueue(true),"#,
+                .lease(Duration::from_secs({lease}))
+                .consumer(&{consumer_type})
+                .http_enqueue(true),"#,
         stream = opts.stream,
         lease = opts.lease_secs,
         consumer_type = consumer_type,
     );
 
-    if app.has_marker(names::JOBS) {
-        app.insert_before_end(names::JOBS, &format!("    {job_line}"))?;
-    } else if app.contains(".jobs(") {
-        return Err(AddError::Patch(PatchError::MissingMarker {
-            marker: names::JOBS.into(),
-        }));
-    } else {
-        app.insert_block_before_configure(&format!(
-            r"            .jobs([
-                // trembita:jobs
-                {job_line}
-                // trembita:jobs-end
-            ])
-",
-        ))?;
-    }
-
-    app.save(&project.app_rs())?;
+    registry.register_job_line(&job_line)?;
+    registry.save()?;
     ensure_main_module(project, "consumers").map_err(AddError::Patch)?;
     Ok(())
 }
@@ -177,29 +164,15 @@ async fn {handler}(payload: &[u8]) -> Result<(), String> {{
 pub fn add_topic(project: &TrembitaProject, opts: &AddTopicOpts) -> Result<(), AddError> {
     validate_identifier(&opts.topic.replace('.', "_"))?;
 
-    let mut app = AppRsPatch::load(&project.app_rs())?;
-    app.insert_import("use trembita::TopicOpts;")?;
+    let mut registry = CapabilityRegistry::load(project)?;
+    registry
+        .patch_mut()
+        .insert_import("use trembita::TopicOpts;")?;
 
     let topic_line = format!(r#"TopicOpts::topic("{topic}"),"#, topic = opts.topic);
 
-    if app.has_marker(names::TOPICS) {
-        app.insert_before_end(names::TOPICS, &format!("    {topic_line}"))?;
-    } else if app.contains(".topics(") {
-        return Err(AddError::Patch(PatchError::MissingMarker {
-            marker: names::TOPICS.into(),
-        }));
-    } else {
-        app.insert_block_before_configure(&format!(
-            r"            .topics([
-                // trembita:topics
-                {topic_line}
-                // trembita:topics-end
-            ])
-",
-        ))?;
-    }
-
-    app.save(&project.app_rs())?;
+    registry.register_topic_line(&topic_line)?;
+    registry.save()?;
     Ok(())
 }
 
@@ -265,36 +238,24 @@ impl UserActor for {type_name} {{
     let mod_rs = project.actors_dir().join("mod.rs");
     ensure_mod_declaration(&mod_rs, &module)?;
 
-    let mut app = AppRsPatch::load(&project.app_rs())?;
-    app.insert_import(&format!("use crate::actors::{module}::{type_name};"))?;
-    app.insert_import("use trembita::{WorkerOpts, WorkerScale, workers};")?;
+    let mut registry = CapabilityRegistry::load(project)?;
+    registry
+        .patch_mut()
+        .insert_import(&format!("use crate::actors::{module}::{type_name};"))?;
+    registry
+        .patch_mut()
+        .insert_import("use trembita::{WorkerOpts, WorkerScale, workers};")?;
 
     let worker_line = format!(
         r#"WorkerOpts::<{type_name}>::new("{group}")
-                    .config(())
-                    .scale(WorkerScale::PerNode(1)),"#,
+                .config(())
+                .scale(WorkerScale::PerNode(1)),"#,
         type_name = type_name,
         group = opts.group,
     );
 
-    if app.has_marker(names::WORKERS) {
-        app.insert_before_end(names::WORKERS, &format!("    {worker_line}"))?;
-    } else if app.contains(".workers(") {
-        return Err(AddError::Patch(PatchError::MissingMarker {
-            marker: names::WORKERS.into(),
-        }));
-    } else {
-        app.insert_block_before_configure(&format!(
-            r"            .workers(workers!(
-                // trembita:workers
-                {worker_line}
-                // trembita:workers-end
-            ))
-",
-        ))?;
-    }
-
-    app.save(&project.app_rs())?;
+    registry.register_worker_line(&worker_line)?;
+    registry.save()?;
     ensure_main_module(project, "actors").map_err(AddError::Patch)?;
     Ok(())
 }
@@ -437,9 +398,7 @@ fn ensure_gateway_surfaces_block(app: &mut AppRsPatch) -> Result<(), PatchError>
     if app.contains(".gateway(") || app.has_marker(names::SURFACES) {
         return Ok(());
     }
-    app.insert_import(
-        "use trembita::{DefaultGatewayApis, Gateway, GatewayOpts, TrembitaApp};",
-    )?;
+    app.insert_import("use trembita::{DefaultGatewayApis, Gateway, GatewayOpts, TrembitaApp};")?;
     app.insert_block_before_configure(
         r"
             .gateway(
@@ -725,9 +684,9 @@ mod tests {
         )
         .unwrap();
         assert!(project.consumers_dir().join("emails.rs").is_file());
-        let app = fs::read_to_string(project.app_rs()).unwrap();
-        assert!(app.contains("JobOpts::new(\"emails\")"));
-        assert!(app.contains("HandleEmailsConsumer"));
+        let manifest = fs::read_to_string(project.manifest_rs()).unwrap();
+        assert!(manifest.contains("JobOpts::new(\"emails\")"));
+        assert!(manifest.contains("HandleEmailsConsumer"));
     }
 
     #[test]
@@ -740,8 +699,8 @@ mod tests {
             },
         )
         .unwrap();
-        let app = fs::read_to_string(project.app_rs()).unwrap();
-        assert!(app.contains("TopicOpts::topic(\"platform.events\")"));
+        let manifest = fs::read_to_string(project.manifest_rs()).unwrap();
+        assert!(manifest.contains("TopicOpts::topic(\"platform.events\")"));
     }
 
     #[test]
@@ -756,8 +715,8 @@ mod tests {
         )
         .unwrap();
         assert!(project.actors_dir().join("catalog.rs").is_file());
-        let app = fs::read_to_string(project.app_rs()).unwrap();
-        assert!(app.contains("WorkerOpts::<CatalogWorker>::new(\"catalog\")"));
+        let manifest = fs::read_to_string(project.manifest_rs()).unwrap();
+        assert!(manifest.contains("WorkerOpts::<CatalogWorker>::new(\"catalog\")"));
     }
 
     #[test]

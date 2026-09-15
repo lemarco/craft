@@ -113,16 +113,25 @@ impl AppRsPatch {
 
     /// Insert a full block before `.configure(TrembitaConfigure` when marker region absent.
     pub fn insert_block_before_configure(&mut self, block: &str) -> Result<(), PatchError> {
+        self.insert_block_before_anchor(".configure(TrembitaConfigure", block)
+    }
+
+    /// Insert `block` immediately after the first occurrence of `anchor`.
+    pub fn insert_block_before_anchor(
+        &mut self,
+        anchor: &str,
+        block: &str,
+    ) -> Result<(), PatchError> {
         if self.contains(block.trim()) {
             return Err(PatchError::Duplicate("block already present".into()));
         }
-        let anchor = ".configure(TrembitaConfigure";
         let Some(idx) = self.content.find(anchor) else {
             return Err(PatchError::MissingMarker {
-                marker: "configure anchor".into(),
+                marker: anchor.to_string(),
             });
         };
-        self.content.insert_str(idx, block);
+        let insert_at = idx + anchor.len();
+        self.content.insert_str(insert_at, block);
         Ok(())
     }
 
