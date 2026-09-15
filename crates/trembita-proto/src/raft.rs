@@ -67,6 +67,45 @@ impl Membership {
     pub fn is_joint(&self) -> bool {
         !self.voters_outgoing.is_empty()
     }
+
+    /// Validate membership invariants for a stable (non-joint) configuration.
+    ///
+    /// # Errors
+    /// Returns a human-readable reason when voters are empty or lists overlap.
+    pub fn validate_stable(&self) -> Result<(), crate::ValueError> {
+        if self.is_joint() {
+            return Ok(());
+        }
+        if self.voters.is_empty() {
+            return Err(crate::ValueError::Invariant(
+                "membership voters must not be empty".into(),
+            ));
+        }
+        if has_duplicates(&self.voters) {
+            return Err(crate::ValueError::Invariant(
+                "duplicate node id in voters".into(),
+            ));
+        }
+        if has_duplicates(&self.learners) {
+            return Err(crate::ValueError::Invariant(
+                "duplicate node id in learners".into(),
+            ));
+        }
+        for learner in &self.learners {
+            if self.voters.contains(learner) {
+                return Err(crate::ValueError::Invariant(
+                    "learner must not also be a voter".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+fn has_duplicates(ids: &[NodeId]) -> bool {
+    let mut seen = ids.to_vec();
+    seen.sort_unstable();
+    seen.windows(2).any(|w| w[0] == w[1])
 }
 
 /// A Raft RPC request sent over `/peer/wire`.

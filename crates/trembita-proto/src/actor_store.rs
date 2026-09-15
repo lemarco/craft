@@ -3,17 +3,18 @@
 use serde::{Deserialize, Serialize};
 
 use crate::product::ProductWireError;
+use crate::{NodeId, StoreKey, TtlSecs, UnixMillis};
 
 /// Set a workflow key on the leader (`POST /raft/v1/actor-store/set`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoreSetRequest {
     /// UTF-8 key.
-    pub key: String,
+    pub key: StoreKey,
     /// Opaque value bytes.
     pub value: Vec<u8>,
     /// TTL in seconds (`0` = no expiry).
     #[serde(default)]
-    pub ttl_secs: u64,
+    pub ttl_secs: TtlSecs,
 }
 
 /// Response to [`StoreSetRequest`].
@@ -27,7 +28,7 @@ pub struct StoreSetReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoreDeleteRequest {
     /// Key to remove.
-    pub key: String,
+    pub key: StoreKey,
 }
 
 /// Response to [`StoreDeleteRequest`].
@@ -41,14 +42,14 @@ pub struct StoreDeleteReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoreCompareAndSetRequest {
     /// Key to update.
-    pub key: String,
+    pub key: StoreKey,
     /// Expected current value (`None` = key must be absent).
     pub expected: Option<Vec<u8>>,
     /// New value when the precondition holds.
     pub value: Vec<u8>,
     /// TTL in seconds for the new value (`0` = no expiry).
     #[serde(default)]
-    pub ttl_secs: u64,
+    pub ttl_secs: TtlSecs,
 }
 
 /// Response to [`StoreCompareAndSetRequest`].
@@ -66,17 +67,17 @@ pub enum StoreReplicateOp {
     /// Upsert a key.
     Set {
         /// Key.
-        key: String,
+        key: StoreKey,
         /// Value bytes.
         value: Vec<u8>,
         /// Expiry unix ms (`0` = never).
         #[serde(default)]
-        expires_at_ms: u64,
+        expires_at_ms: UnixMillis,
     },
     /// Remove a key (no-op when absent).
     Delete {
         /// Key.
-        key: String,
+        key: StoreKey,
     },
 }
 
@@ -86,7 +87,7 @@ pub struct StoreReplicateRequest {
     /// Idempotent mutations to apply in order.
     pub ops: Vec<StoreReplicateOp>,
     /// Declared Raft leader id (must match the receiver's leader hint).
-    pub leader_id: u64,
+    pub leader_id: NodeId,
 }
 
 /// Response to [`StoreReplicateRequest`].

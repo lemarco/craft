@@ -58,7 +58,7 @@ Use **`postcard`** with **`serde`** for all hot-path wire bodies.
 
 **HTTP header:** `Content-Type: application/x-postcard`
 
-Centralize encode/decode in `trembita-proto/src/codec.rs`. Not self-describing — wire compatibility requires matching Rust types.
+Centralize encode/decode in `trembita-proto` (`encode` / `decode` in `lib.rs`). Domain names, ids, and protocol fields use validated **value objects** ([domain-value-objects](domain-value-objects.md)) with `serde(transparent)` so postcard layouts stay stable. Not self-describing — wire compatibility requires matching Rust types.
 
 Optional dev-only JSON for debugging may be added later; not the default wire format.
 

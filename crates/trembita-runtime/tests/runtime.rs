@@ -17,9 +17,9 @@ use trembita_runtime::trembita_net::{
     send_leave_request,
 };
 use trembita_runtime::trembita_proto::{
-    AppendEntries, ClientRequest, ClientResponse, JoinRejection, JoinRequest, JoinResponse,
-    JoinRole, LeaveRejection, LeaveRequest, LeaveResponse, LogEntry, LogId, LogIndex, NodeId,
-    PROTOCOL_VERSION, RaftRpc, Round, SagaJournalCommand, Term,
+    AdvertiseAddr, AppendEntries, ClientRequest, ClientResponse, JoinRejection, JoinRequest,
+    JoinResponse, JoinRole, LeaveRejection, LeaveRequest, LeaveResponse, LogEntry, LogId, LogIndex,
+    NodeId, PROTOCOL_VERSION, ProtocolVersion, RaftRpc, Round, SagaId, SagaJournalCommand, Term,
 };
 use trembita_runtime::trembita_storage::{
     HardState, HardStateStore, LogStore, MemoryStorage, Snapshot, SnapshotStore, StorageError,
@@ -369,9 +369,9 @@ async fn a_new_node_joins_a_running_cluster_as_learner() {
 
     let entry = ids.into_iter().find(|id| *id != leader).unwrap();
     let request = JoinRequest {
-        protocol_version: PROTOCOL_VERSION,
+        protocol_version: ProtocolVersion(PROTOCOL_VERSION),
         node_id: Some(joiner),
-        advertise_addr: "node4.local:7443".to_string(),
+        advertise_addr: AdvertiseAddr::try_new("node4.local:7443").unwrap(),
         role: JoinRole::Learner,
     };
     let response = send_join_request(&cluster.net, entry, &request)
@@ -426,9 +426,9 @@ async fn a_new_node_joins_a_running_cluster_as_learner() {
     );
 
     let skew = JoinRequest {
-        protocol_version: PROTOCOL_VERSION + 1,
+        protocol_version: ProtocolVersion(PROTOCOL_VERSION + 1),
         node_id: Some(NodeId(5)),
-        advertise_addr: "node5.local:7443".to_string(),
+        advertise_addr: AdvertiseAddr::try_new("node5.local:7443").unwrap(),
         role: JoinRole::Learner,
     };
     let skew_resp = send_join_request(&cluster.net, leader, &skew)
@@ -454,9 +454,9 @@ async fn voter_join_requires_explicit_opt_in() {
     let leader = cluster.wait_for_leader().await;
 
     let request = JoinRequest {
-        protocol_version: PROTOCOL_VERSION,
+        protocol_version: ProtocolVersion(PROTOCOL_VERSION),
         node_id: Some(NodeId(4)),
-        advertise_addr: "node4.local:7443".to_string(),
+        advertise_addr: AdvertiseAddr::try_new("node4.local:7443").unwrap(),
         role: JoinRole::Voter,
     };
     let response = send_join_request(&cluster.net, leader, &request)
@@ -517,9 +517,9 @@ async fn a_new_node_joins_as_voter_when_enabled() {
     cluster.ids.push(joiner);
 
     let request = JoinRequest {
-        protocol_version: PROTOCOL_VERSION,
+        protocol_version: ProtocolVersion(PROTOCOL_VERSION),
         node_id: Some(joiner),
-        advertise_addr: "node4.local:7443".to_string(),
+        advertise_addr: AdvertiseAddr::try_new("node4.local:7443").unwrap(),
         role: JoinRole::Voter,
     };
     let response = send_join_request(&cluster.net, leader, &request)
@@ -546,9 +546,9 @@ async fn leader_assigns_node_id_when_join_request_omits_it() {
     let leader = cluster.wait_for_leader().await;
 
     let request = JoinRequest {
-        protocol_version: PROTOCOL_VERSION,
+        protocol_version: ProtocolVersion(PROTOCOL_VERSION),
         node_id: None,
-        advertise_addr: "auto.local:7443".to_string(),
+        advertise_addr: AdvertiseAddr::try_new("auto.local:7443").unwrap(),
         role: JoinRole::Learner,
     };
     let response = send_join_request(&cluster.net, leader, &request)
@@ -580,9 +580,9 @@ async fn a_node_leaves_a_running_cluster() {
     cluster.ids.push(NodeId(4));
     let joiner = NodeId(4);
     let join_request = JoinRequest {
-        protocol_version: PROTOCOL_VERSION,
+        protocol_version: ProtocolVersion(PROTOCOL_VERSION),
         node_id: Some(joiner),
-        advertise_addr: "node4.local:7443".to_string(),
+        advertise_addr: AdvertiseAddr::try_new("node4.local:7443").unwrap(),
         role: JoinRole::Learner,
     };
     let join_resp = send_join_request(&cluster.net, leader, &join_request)
@@ -591,7 +591,7 @@ async fn a_node_leaves_a_running_cluster() {
     assert!(matches!(join_resp, JoinResponse::Accepted { .. }));
 
     let leave_request = LeaveRequest {
-        protocol_version: PROTOCOL_VERSION,
+        protocol_version: ProtocolVersion(PROTOCOL_VERSION),
         node_id: joiner,
     };
     let leave_resp = send_leave_request(&cluster.net, leader, &leave_request)
@@ -660,9 +660,9 @@ async fn unreachable_voter_is_replaced_by_caught_up_learner() {
     cluster.ids.push(joiner);
 
     let join_request = JoinRequest {
-        protocol_version: PROTOCOL_VERSION,
+        protocol_version: ProtocolVersion(PROTOCOL_VERSION),
         node_id: Some(joiner),
-        advertise_addr: "node4.local:7443".to_string(),
+        advertise_addr: AdvertiseAddr::try_new("node4.local:7443").unwrap(),
         role: JoinRole::Learner,
     };
     let join_resp = send_join_request(&cluster.net, leader, &join_request)
@@ -869,7 +869,7 @@ async fn upsert_saga_journal_invokes_hook_on_commit() {
     );
 
     let command = SagaJournalCommand {
-        saga_id: b"journal-hook".to_vec(),
+        saga_id: SagaId::try_new(b"journal-hook").unwrap(),
         record: vec![1, 2],
     };
     handle
@@ -896,7 +896,7 @@ async fn upsert_saga_journal_on_follower_returns_not_leader() {
 
     let err = cluster.handles[&follower]
         .upsert_saga_journal(SagaJournalCommand {
-            saga_id: b"x".to_vec(),
+            saga_id: SagaId::try_new(b"x").unwrap(),
             record: vec![1],
         })
         .await

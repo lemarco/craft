@@ -116,7 +116,11 @@ async fn http_post_job_returns_202_and_enqueues() {
     );
 
     let poison_id = app
-        .enqueue_opts("jobs", b"poison", EnqueueOptions::max_attempts(1))
+        .enqueue_opts(
+            "jobs",
+            b"poison",
+            EnqueueOptions::max_attempts(trembita::proto::MaxAttempts(1)),
+        )
         .await
         .expect("enqueue poison");
     let queue = app.job_queue("jobs").expect("queue");

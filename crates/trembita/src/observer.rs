@@ -315,14 +315,14 @@ impl<M: StateMachine> Observer for TrembitaObserver<M> {
                 for reg in self.directory.lookup(&name) {
                     let (mailbox_depth, uptime_secs) = if reg.id.node == self.node_id {
                         local
-                            .get(&(reg.id.name.clone(), reg.id.instance))
+                            .get(&(reg.id.name.as_str().to_string(), reg.id.instance))
                             .copied()
                             .unwrap_or((reg.mailbox_depth, reg.uptime_secs))
                     } else {
                         (reg.mailbox_depth, reg.uptime_secs)
                     };
                     let messages_per_sec = if reg.id.node == self.node_id {
-                        *group_rates.get(&reg.id.name).unwrap_or(&0.0)
+                        *group_rates.get(reg.id.name.as_str()).unwrap_or(&0.0)
                     } else {
                         reg.messages_per_sec
                     };

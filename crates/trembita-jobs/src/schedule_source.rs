@@ -144,8 +144,8 @@ pub fn wire_to_recurring_job(wire: &RecurringScheduleWire) -> RecurringJob {
         name: wire.name.clone(),
         cron: wire.cron.clone(),
         payload: wire.payload.clone(),
-        priority: wire.priority,
-        max_attempts: wire.max_attempts,
+        priority: wire.priority.0,
+        max_attempts: wire.max_attempts.0,
         enabled: wire.enabled,
     }
 }

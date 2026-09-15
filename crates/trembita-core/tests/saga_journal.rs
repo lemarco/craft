@@ -2,15 +2,15 @@
 
 use trembita_core::{CatalogProposeError, Config, Output, RaftNode};
 use trembita_proto::{
-    AppendEntries, EntryPayload, LogEntry, LogId, LogIndex, NodeId, RaftRpc, RaftRpcReply,
-    RequestVoteReply, Round, SagaJournalCommand, Term,
+    AppendEntries, EntryPayload, LogEntry, LogId, LogIndex, LogicalTick, NodeId, RaftRpc,
+    RaftRpcReply, RequestVoteReply, Round, SagaId, SagaJournalCommand, Term,
 };
 
 fn cfg() -> Config {
     Config {
-        election_timeout_min: 100,
-        election_timeout_max: 100,
-        heartbeat_interval: 5,
+        election_timeout_min: LogicalTick(100),
+        election_timeout_max: LogicalTick(100),
+        heartbeat_interval: LogicalTick(5),
         seed: 1,
         ..Default::default()
     }
@@ -41,7 +41,7 @@ fn elect_leader_term1(n: &mut RaftNode) {
 
 fn sample_command() -> SagaJournalCommand {
     SagaJournalCommand {
-        saga_id: b"transfer-x".to_vec(),
+        saga_id: SagaId::try_new(b"transfer-x").unwrap(),
         record: vec![9, 8, 7],
     }
 }

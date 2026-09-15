@@ -301,7 +301,7 @@ impl ClusterMessaging {
     ) -> Result<(), CastError> {
         let target = self
             .resolve_session(session)
-            .ok_or_else(|| CastError::NoTarget(session.target().name.clone()))?;
+            .ok_or_else(|| CastError::NoTarget(session.target().name.as_str().to_string()))?;
         self.deliver(target, payload).await
     }
 
@@ -366,7 +366,7 @@ impl ClusterMessaging {
     ) -> Result<Vec<u8>, AskError> {
         let target = self
             .resolve_session(session)
-            .ok_or_else(|| AskError::NoTarget(session.target().name.clone()))?;
+            .ok_or_else(|| AskError::NoTarget(session.target().name.as_str().to_string()))?;
         self.deliver_ask(target, payload).await
     }
 

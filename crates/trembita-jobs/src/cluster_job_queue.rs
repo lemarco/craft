@@ -10,10 +10,10 @@ use trembita_net::{
 };
 use trembita_proto::ProductWireError;
 use trembita_proto::{
-    NodeId, QueueAckBatchRequest, QueueBatchEnqueueJob, QueueEnqueueBatchRequest,
-    QueueEnqueueRequest, QueueExtendLeaseRequest, QueueJobLifecycleWire, QueueJobStatusRequest,
-    QueueLeaseRequest, QueueListJobsRequest, QueueMetricsRequest, QueueNackRequest,
-    QueueReplicateOp, QueueRequeueDeadLetterBatchRequest,
+    DedupKey, MaxAttempts, NodeId, QueueAckBatchRequest, QueueBatchEnqueueJob,
+    QueueEnqueueBatchRequest, QueueEnqueueRequest, QueueExtendLeaseRequest, QueueJobLifecycleWire,
+    QueueJobStatusRequest, QueueLeaseRequest, QueueListJobsRequest, QueueMetricsRequest,
+    QueueNackRequest, QueueReplicateOp, QueueRequeueDeadLetterBatchRequest, StreamName, UnixMillis,
 };
 use trembita_runtime::ClusterState;
 
@@ -24,6 +24,18 @@ use crate::{
 
 fn replication_unsupported() -> QueueError {
     QueueError::Backend("cluster queue client does not apply replication locally".into())
+}
+
+fn wire_stream(stream: &str) -> StreamName {
+    StreamName::try_new(stream.to_string()).expect("cluster queue stream name is valid")
+}
+
+fn wire_dedup_key(key: Option<Vec<u8>>) -> Option<DedupKey> {
+    key.and_then(|k| DedupKey::try_new(k).ok())
+}
+
+fn resolve_max_attempts(options: &EnqueueOptions, default: u32) -> MaxAttempts {
+    options.max_attempts.unwrap_or(MaxAttempts(default))
 }
 
 /// Cluster-facing [`JobQueue`] that routes through the leader wire service.
@@ -136,13 +148,13 @@ impl JobQueue for ClusterJobQueue {
                 self.transport.as_ref(),
                 leader,
                 &QueueEnqueueRequest {
-                    stream: self.stream.clone(),
+                    stream: wire_stream(&self.stream),
                     payload: payload.to_vec(),
                     priority: options.priority,
-                    not_before_ms: options.not_before_ms.unwrap_or(0),
+                    not_before_ms: UnixMillis(options.not_before_ms.unwrap_or(0)),
                     shard_key: options.shard_key.clone(),
-                    dedup_key: options.dedup_key.clone(),
-                    max_attempts: options.max_attempts.unwrap_or(self.default_max_attempts),
+                    dedup_key: wire_dedup_key(options.dedup_key.clone()),
+                    max_attempts: resolve_max_attempts(&options, self.default_max_attempts),
                 },
             )
             .await
@@ -155,7 +167,6 @@ impl JobQueue for ClusterJobQueue {
             }
             reply
                 .job_id
-                .map(JobId)
                 .ok_or_else(|| QueueError::Backend("missing job_id".into()))
         })
     }
@@ -196,17 +207,17 @@ impl JobQueue for ClusterJobQueue {
                 .map(|(payload, options)| QueueBatchEnqueueJob {
                     payload: payload.clone(),
                     priority: options.priority,
-                    not_before_ms: options.not_before_ms.unwrap_or(0),
+                    not_before_ms: UnixMillis(options.not_before_ms.unwrap_or(0)),
                     shard_key: options.shard_key.clone(),
-                    dedup_key: options.dedup_key.clone(),
-                    max_attempts: options.max_attempts.unwrap_or(self.default_max_attempts),
+                    dedup_key: wire_dedup_key(options.dedup_key.clone()),
+                    max_attempts: resolve_max_attempts(options, self.default_max_attempts),
                 })
                 .collect();
             let reply = send_queue_enqueue_batch(
                 self.transport.as_ref(),
                 leader,
                 &QueueEnqueueBatchRequest {
-                    stream: self.stream.clone(),
+                    stream: wire_stream(&self.stream),
                     jobs: wire_jobs,
                 },
             )
@@ -215,7 +226,7 @@ impl JobQueue for ClusterJobQueue {
             if let Some(err) = reply.error {
                 return Err(QueueError::Backend(err.to_string()));
             }
-            Ok((reply.job_ids.into_iter().map(JobId).collect(), Vec::new()))
+            Ok((reply.job_ids, Vec::new()))
         })
     }
 
@@ -230,8 +241,8 @@ impl JobQueue for ClusterJobQueue {
                 self.transport.as_ref(),
                 leader,
                 &QueueLeaseRequest {
-                    stream: self.stream.clone(),
-                    worker_node: worker.node.0,
+                    stream: wire_stream(&self.stream),
+                    worker_node: worker.node,
                     worker_instance: worker.instance,
                     max,
                 },
@@ -245,11 +256,11 @@ impl JobQueue for ClusterJobQueue {
                 .jobs
                 .into_iter()
                 .map(|j| LeasedJob {
-                    lease_id: LeaseId(j.lease_id),
-                    job_id: JobId(j.job_id),
+                    lease_id: j.lease_id,
+                    job_id: j.job_id,
                     payload: j.payload,
                     attempts: j.attempts,
-                    dedup_key: j.dedup_key,
+                    dedup_key: j.dedup_key.map(|k| k.as_bytes().to_vec()),
                 })
                 .collect())
         })
@@ -276,10 +287,10 @@ impl JobQueue for ClusterJobQueue {
                 self.transport.as_ref(),
                 leader,
                 &QueueAckBatchRequest {
-                    stream: self.stream.clone(),
-                    worker_node: worker.node.0,
+                    stream: wire_stream(&self.stream),
+                    worker_node: worker.node,
                     worker_instance: worker.instance,
-                    lease_ids: lease_ids.iter().map(|id| id.0).collect(),
+                    lease_ids: lease_ids.to_vec(),
                 },
             )
             .await
@@ -298,10 +309,10 @@ impl JobQueue for ClusterJobQueue {
                 self.transport.as_ref(),
                 leader,
                 &QueueNackRequest {
-                    stream: self.stream.clone(),
-                    worker_node: worker.node.0,
+                    stream: wire_stream(&self.stream),
+                    worker_node: worker.node,
                     worker_instance: worker.instance,
-                    lease_id: lease_id.0,
+                    lease_id,
                 },
             )
             .await
@@ -324,10 +335,10 @@ impl JobQueue for ClusterJobQueue {
                 self.transport.as_ref(),
                 leader,
                 &QueueExtendLeaseRequest {
-                    stream: self.stream.clone(),
-                    worker_node: worker.node.0,
+                    stream: wire_stream(&self.stream),
+                    worker_node: worker.node,
                     worker_instance: worker.instance,
-                    lease_id: lease_id.0,
+                    lease_id,
                 },
             )
             .await
@@ -346,7 +357,7 @@ impl JobQueue for ClusterJobQueue {
                 self.transport.as_ref(),
                 leader,
                 &QueueMetricsRequest {
-                    stream: self.stream.clone(),
+                    stream: wire_stream(&self.stream),
                 },
             )
             .await
@@ -371,8 +382,8 @@ impl JobQueue for ClusterJobQueue {
                 self.transport.as_ref(),
                 leader,
                 &QueueJobStatusRequest {
-                    stream: self.stream.clone(),
-                    job_id: job_id.0,
+                    stream: wire_stream(&self.stream),
+                    job_id,
                 },
             )
             .await
@@ -397,15 +408,12 @@ impl JobQueue for ClusterJobQueue {
                 payload_len: reply.payload_len,
                 priority: reply.priority,
                 leased_by: match (reply.leased_worker_node, reply.leased_worker_instance) {
-                    (Some(node), Some(instance)) => Some(WorkerId {
-                        node: NodeId(node),
-                        instance,
-                    }),
+                    (Some(node), Some(instance)) => Some(WorkerId { node, instance }),
                     _ => None,
                 },
                 attempts: reply.attempts,
                 max_attempts: reply.max_attempts,
-                dedup_key: reply.dedup_key.clone(),
+                dedup_key: reply.dedup_key.as_ref().map(|k| k.as_bytes().to_vec()),
             }))
         })
     }
@@ -420,7 +428,7 @@ impl JobQueue for ClusterJobQueue {
                 self.transport.as_ref(),
                 leader,
                 &QueueListJobsRequest {
-                    stream: self.stream.clone(),
+                    stream: wire_stream(&self.stream),
                     lifecycle: filter.lifecycle.map(|l| match l {
                         JobLifecycle::Pending => QueueJobLifecycleWire::Pending,
                         JobLifecycle::Leased => QueueJobLifecycleWire::Leased,
@@ -428,9 +436,9 @@ impl JobQueue for ClusterJobQueue {
                         JobLifecycle::DeadLetter => QueueJobLifecycleWire::DeadLetter,
                     }),
                     min_attempts: filter.min_attempts,
-                    dedup_key: filter.dedup_key.clone(),
+                    dedup_key: wire_dedup_key(filter.dedup_key.clone()),
                     limit: u32::try_from(filter.effective_limit()).unwrap_or(u32::MAX),
-                    after_job_id: filter.after_job_id.map_or(0, |id| id.0),
+                    after_job_id: filter.after_job_id.unwrap_or(JobId(0)),
                 },
             )
             .await
@@ -443,7 +451,7 @@ impl JobQueue for ClusterJobQueue {
                     .jobs
                     .into_iter()
                     .map(|entry| JobStatus {
-                        job_id: JobId(entry.job_id),
+                        job_id: entry.job_id,
                         lifecycle: match entry.lifecycle {
                             QueueJobLifecycleWire::Pending => JobLifecycle::Pending,
                             QueueJobLifecycleWire::Leased => JobLifecycle::Leased,
@@ -453,15 +461,12 @@ impl JobQueue for ClusterJobQueue {
                         payload_len: entry.payload_len,
                         priority: entry.priority,
                         leased_by: match (entry.leased_worker_node, entry.leased_worker_instance) {
-                            (Some(node), Some(instance)) => Some(WorkerId {
-                                node: NodeId(node),
-                                instance,
-                            }),
+                            (Some(node), Some(instance)) => Some(WorkerId { node, instance }),
                             _ => None,
                         },
                         attempts: entry.attempts,
                         max_attempts: entry.max_attempts,
-                        dedup_key: entry.dedup_key,
+                        dedup_key: entry.dedup_key.map(|k| k.as_bytes().to_vec()),
                     })
                     .collect(),
                 has_more: reply.has_more,
@@ -490,8 +495,8 @@ impl JobQueue for ClusterJobQueue {
                 self.transport.as_ref(),
                 leader,
                 &trembita_proto::QueueRequeueDeadLetterRequest {
-                    stream: self.stream.clone(),
-                    job_id: job_id.0,
+                    stream: wire_stream(&self.stream),
+                    job_id,
                 },
             )
             .await
@@ -507,14 +512,14 @@ impl JobQueue for ClusterJobQueue {
         &self,
         job_ids: &[JobId],
     ) -> BoxFuture<'_, Result<crate::BatchRequeueResult, QueueError>> {
-        let ids: Vec<u64> = job_ids.iter().map(|id| id.0).collect();
+        let ids = job_ids.to_vec();
         Box::pin(async move {
             let leader = self.leader()?;
             let reply = send_queue_requeue_dead_letter_batch(
                 self.transport.as_ref(),
                 leader,
                 &QueueRequeueDeadLetterBatchRequest {
-                    stream: self.stream.clone(),
+                    stream: wire_stream(&self.stream),
                     job_ids: ids,
                 },
             )
@@ -524,11 +529,11 @@ impl JobQueue for ClusterJobQueue {
                 return Err(QueueError::Backend(err.to_string()));
             }
             Ok(crate::BatchRequeueResult {
-                requeued: reply.requeued.into_iter().map(JobId).collect(),
+                requeued: reply.requeued,
                 failures: reply
                     .failures
                     .into_iter()
-                    .map(|f| (JobId(f.job_id), QueueError::Backend(f.error)))
+                    .map(|f| (f.job_id, QueueError::Backend(f.error)))
                     .collect(),
             })
         })

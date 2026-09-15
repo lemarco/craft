@@ -4,7 +4,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::NodeId;
+use crate::{NodeId, StoreKey, StreamName, TopicName};
 
 /// Shared product-service wire error (queue / topic / actor-store).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,17 +27,17 @@ pub enum ProductWireError {
     /// Queue stream name is not registered on this node.
     UnknownStream {
         /// Requested stream name.
-        stream: String,
+        stream: StreamName,
     },
     /// Topic name is not registered on this node.
     UnknownTopic {
         /// Requested topic name.
-        topic: String,
+        topic: TopicName,
     },
     /// Actor-store key operation referred to an unknown resource.
     UnknownKey {
         /// Store key or identifier from the request.
-        key: String,
+        key: StoreKey,
     },
     /// Local backend or application logic rejected the operation.
     Backend(String),
@@ -91,15 +91,15 @@ impl ProductWireError {
         if msg.contains("other voters exist but none are reachable") {
             return Self::NoReachableVoters;
         }
-        if let Some(stream) = msg.strip_prefix("unknown queue stream ") {
-            return Self::UnknownStream {
-                stream: stream.trim_matches('"').to_string(),
-            };
+        if let Some(stream) = msg.strip_prefix("unknown queue stream ")
+            && let Ok(stream) = StreamName::try_new(stream.trim_matches('"'))
+        {
+            return Self::UnknownStream { stream };
         }
-        if let Some(topic) = msg.strip_prefix("unknown topic ") {
-            return Self::UnknownTopic {
-                topic: topic.trim_matches('"').to_string(),
-            };
+        if let Some(topic) = msg.strip_prefix("unknown topic ")
+            && let Ok(topic) = TopicName::try_new(topic.trim_matches('"'))
+        {
+            return Self::UnknownTopic { topic };
         }
         if let Some(rest) = msg.strip_prefix("forward to leader ")
             && let Some((leader_part, reason)) = rest.split_once(" failed: ")

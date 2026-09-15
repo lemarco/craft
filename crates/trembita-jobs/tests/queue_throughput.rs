@@ -10,8 +10,13 @@ use trembita_net::{
     send_queue_ack_batch, send_queue_enqueue_batch, send_queue_lease,
 };
 use trembita_proto::{
-    NodeId, QueueAckBatchRequest, QueueBatchEnqueueJob, QueueEnqueueBatchRequest, QueueLeaseRequest,
+    JobPriority, MaxAttempts, NodeId, QueueAckBatchRequest, QueueBatchEnqueueJob,
+    QueueEnqueueBatchRequest, QueueLeaseRequest, StreamName, UnixMillis,
 };
+
+fn stream_name(stream: &str) -> StreamName {
+    StreamName::try_from(stream).expect("valid stream name")
+}
 use trembita_runtime::ClusterState;
 
 struct MockState {
@@ -48,11 +53,11 @@ impl RequestHandler for QueueHandler {
 fn batch_job(payload: &[u8], priority: u8) -> QueueBatchEnqueueJob {
     QueueBatchEnqueueJob {
         payload: payload.to_vec(),
-        priority,
-        not_before_ms: 0,
+        priority: JobPriority(priority),
+        not_before_ms: UnixMillis(0),
         shard_key: None,
         dedup_key: None,
-        max_attempts: 0,
+        max_attempts: MaxAttempts(0),
     }
 }
 
@@ -82,7 +87,7 @@ async fn queue_service_batch_prefetch_priority_and_ack_eviction() {
         &client,
         NodeId(1),
         &QueueEnqueueBatchRequest {
-            stream: "jobs".into(),
+            stream: stream_name("jobs"),
             jobs: vec![batch_job(b"low", 0), batch_job(b"high", 9)],
         },
     )
@@ -99,8 +104,8 @@ async fn queue_service_batch_prefetch_priority_and_ack_eviction() {
         &client,
         NodeId(1),
         &QueueLeaseRequest {
-            stream: "jobs".into(),
-            worker_node: worker.node.0,
+            stream: stream_name("jobs"),
+            worker_node: worker.node,
             worker_instance: worker.instance,
             max: 1,
         },
@@ -115,8 +120,8 @@ async fn queue_service_batch_prefetch_priority_and_ack_eviction() {
         &client,
         NodeId(1),
         &QueueLeaseRequest {
-            stream: "jobs".into(),
-            worker_node: worker.node.0,
+            stream: stream_name("jobs"),
+            worker_node: worker.node,
             worker_instance: worker.instance,
             max: 1,
         },
@@ -131,8 +136,8 @@ async fn queue_service_batch_prefetch_priority_and_ack_eviction() {
         &client,
         NodeId(1),
         &QueueAckBatchRequest {
-            stream: "jobs".into(),
-            worker_node: worker.node.0,
+            stream: stream_name("jobs"),
+            worker_node: worker.node,
             worker_instance: worker.instance,
             lease_ids: lease_ids.to_vec(),
         },
@@ -145,8 +150,8 @@ async fn queue_service_batch_prefetch_priority_and_ack_eviction() {
         &client,
         NodeId(1),
         &QueueLeaseRequest {
-            stream: "jobs".into(),
-            worker_node: worker.node.0,
+            stream: stream_name("jobs"),
+            worker_node: worker.node,
             worker_instance: worker.instance,
             max: 4,
         },

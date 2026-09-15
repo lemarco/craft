@@ -9,7 +9,14 @@ use trembita_net::{
     LocalNetwork, LocalTransport, RequestHandler, Route, Transport, TransportError,
     send_queue_enqueue, send_queue_lease,
 };
-use trembita_proto::{NodeId, QueueEnqueueRequest, QueueLeaseRequest};
+use trembita_proto::{
+    JobPriority, MaxAttempts, NodeId, QueueEnqueueRequest, QueueLeaseRequest, StreamName,
+    UnixMillis,
+};
+
+fn stream_name(stream: &str) -> StreamName {
+    StreamName::try_from(stream).expect("valid stream name")
+}
 use trembita_runtime::ClusterState;
 
 struct MockState {
@@ -99,13 +106,13 @@ async fn enqueue_replicates_only_to_reachable_voters() {
         leader_transport.as_ref(),
         NodeId(1),
         &QueueEnqueueRequest {
-            stream: "jobs".into(),
+            stream: stream_name("jobs"),
             payload: b"payload".to_vec(),
-            priority: 0,
-            not_before_ms: 0,
+            priority: JobPriority(0),
+            not_before_ms: UnixMillis(0),
             shard_key: None,
             dedup_key: None,
-            max_attempts: 0,
+            max_attempts: MaxAttempts(0),
         },
     )
     .await
@@ -174,13 +181,13 @@ async fn lease_succeeds_when_unreachable_voter_is_excluded() {
             leader_transport.as_ref(),
             NodeId(1),
             &QueueEnqueueRequest {
-                stream: "jobs".into(),
+                stream: stream_name("jobs"),
                 payload: b"work".to_vec(),
-                priority: 0,
-                not_before_ms: 0,
+                priority: JobPriority(0),
+                not_before_ms: UnixMillis(0),
                 shard_key: None,
                 dedup_key: None,
-                max_attempts: 0,
+                max_attempts: MaxAttempts(0),
             },
         )
         .await
@@ -194,8 +201,8 @@ async fn lease_succeeds_when_unreachable_voter_is_excluded() {
         leader_transport.as_ref(),
         NodeId(1),
         &QueueLeaseRequest {
-            stream: "jobs".into(),
-            worker_node: 1,
+            stream: stream_name("jobs"),
+            worker_node: NodeId(1),
             worker_instance: 1,
             max: 1,
         },

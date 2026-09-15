@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use trembita_runtime::trembita_net::{LocalNetwork, Transport};
 use trembita_runtime::trembita_proto::{
-    self, ActorId, ActorRegistration, ActorTypeId, DirectoryUpdate, NodeId,
+    self, ActorGroupName, ActorId, ActorRegistration, ActorTypeId, DirectoryUpdate, NodeId,
 };
 use trembita_runtime::{
     ActorDirectory, ActorRegistry, ClusterControl, ConfigCodecError, MigrationError, RpcReplyPort,
@@ -142,7 +142,7 @@ fn worker_reg(node: u64, name: &str) -> ActorRegistration {
     ActorRegistration::new(
         ActorId {
             node: NodeId(node),
-            name: name.to_string(),
+            name: ActorGroupName::try_from(name).unwrap(),
             instance: 0,
             generation: 0,
         },
@@ -222,7 +222,7 @@ async fn stateful_actor_migrates_across_two_hops_preserving_state() {
         .migrate::<Counter>(
             ActorId {
                 node: NodeId(1),
-                name: "c".into(),
+                name: ActorGroupName::try_from("c").unwrap(),
                 instance: 0,
                 generation: 0,
             },

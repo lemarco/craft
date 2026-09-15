@@ -155,7 +155,7 @@ impl RaftNode {
     pub fn reachability_window_ticks(&self) -> u64 {
         self.config
             .reachability
-            .window(self.config.election_timeout_max)
+            .window(self.config.election_timeout_max.raw())
     }
 
     /// Drain accumulated effects. The runtime calls this after every event.

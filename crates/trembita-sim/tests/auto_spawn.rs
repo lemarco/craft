@@ -3,7 +3,9 @@
 use std::sync::Arc;
 
 use trembita_runtime::trembita_net::{LocalNetwork, Transport};
-use trembita_runtime::trembita_proto::{ActorId, ActorRegistration, ActorTypeId, NodeId};
+use trembita_runtime::trembita_proto::{
+    ActorGroupName, ActorId, ActorRegistration, ActorTypeId, NodeId,
+};
 use trembita_runtime::{
     ActorDirectory, ActorRegistry, ClusterControl, ClusterState, ClusterSupervisor,
     ConfigCodecError, UserActor,
@@ -102,7 +104,7 @@ fn reg(node: u64, name: &str) -> ActorRegistration {
     ActorRegistration::new(
         ActorId {
             node: NodeId(node),
-            name: name.to_string(),
+            name: ActorGroupName::try_from(name).unwrap(),
             instance: 0,
             generation: 0,
         },

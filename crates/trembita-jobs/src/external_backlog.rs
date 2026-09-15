@@ -8,7 +8,7 @@ use std::time::Duration;
 use super::backlog_settle_outbox::{
     BacklogSettleOutbox, BacklogSettleOutboxOpts, push_backlog_settle,
 };
-use crate::{EnqueueOptions, JobId, JobQueue};
+use crate::{EnqueueOptions, JobQueue};
 use trembita_proto::BoxFuture;
 use trembita_proto::QueueReplicateOp;
 use trembita_runtime::ClusterState;
@@ -268,7 +268,7 @@ pub async fn emit_backlog_settle_for_terminal_ops(
             _ => continue,
         };
         let dedup_key = queue
-            .job_status(JobId(job_id))
+            .job_status(job_id)
             .await
             .ok()
             .flatten()
@@ -403,7 +403,7 @@ async fn feed_backlog_once(
     for item in items {
         let claim_key = item.key.clone();
         let options = EnqueueOptions {
-            priority: item.priority,
+            priority: trembita_proto::JobPriority(item.priority),
             dedup_key: Some(item.key),
             ..EnqueueOptions::default()
         };
@@ -832,11 +832,11 @@ mod tests {
             .unwrap();
 
         let reclaim_ops = [QueueReplicateOp::Reclaim {
-            lease_id: 1,
-            job_id: job_id.0,
+            lease_id: trembita_proto::LeaseId(1),
+            job_id,
             attempts: 1,
             dead_letter: false,
-            not_before_ms: 0,
+            not_before_ms: trembita_proto::UnixMillis::IMMEDIATE,
         }];
 
         let backlog = Arc::new(InMemoryExternalBacklog::new());

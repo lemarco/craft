@@ -95,7 +95,10 @@ async fn trembita_app_publishes_and_tracks_topic_metrics() {
 #[tokio::test(start_paused = true)]
 async fn topic_replicate_rejects_non_leader_caller() {
     use trembita::net::{LocalTransport, send_topic_replicate};
-    use trembita_proto::{ProductWireError, TopicReplicateOp, TopicReplicateRequest};
+    use trembita_proto::{
+        ProductWireError, TopicEventId, TopicName, TopicReplicateOp, TopicReplicateRequest,
+        UnixMillis,
+    };
 
     let base = std::env::temp_dir().join(format!(
         "trembita-topic-auth-{}",
@@ -129,13 +132,13 @@ async fn topic_replicate_rejects_non_leader_caller() {
         &follower,
         NodeId(3),
         &TopicReplicateRequest {
-            topic: "orders.events".into(),
-            leader_id: NodeId(3).0,
+            topic: TopicName::try_from("orders.events").unwrap(),
+            leader_id: NodeId(3),
             ops: vec![TopicReplicateOp::Publish {
-                event_id: 1,
+                event_id: TopicEventId(1),
                 payload: b"x".to_vec(),
-                published_at_ms: 1,
-                next_event_id: 2,
+                published_at_ms: UnixMillis(1),
+                next_event_id: TopicEventId(2),
             }],
         },
     )

@@ -79,7 +79,11 @@ async fn trembita_app_requeue_dead_letter() {
     advance(Duration::from_millis(200)).await;
 
     let id = app
-        .enqueue_opts("jobs", b"poison", EnqueueOptions::max_attempts(1))
+        .enqueue_opts(
+            "jobs",
+            b"poison",
+            EnqueueOptions::max_attempts(trembita::proto::MaxAttempts(1)),
+        )
         .await
         .expect("enqueue");
     let queue = app.job_queue("jobs").expect("queue");

@@ -13,6 +13,22 @@ Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases
 
 ## [Unreleased]
 
+_(empty — see **0.5.1** below and [status.md](../status.md).)_
+
+## [0.5.1] — 2026-09-15
+
+Patch release: typed wire/domain value objects without changing postcard field shapes.
+
+### Added
+
+- **`trembita-proto::value`** — `StreamName`, `TopicName`, `SubscriptionName`, `ActorGroupName`, `StoreKey`, `ProtocolVersion`, `JobId` / `LeaseId` on queue wire, opaque keys (`DedupKey`, `SagaId`, 2PC ids), `LogicalTick`, `Membership::validate_stable`, `RaftGroupId::META`. See [domain-value-objects](../decisions/domain-value-objects.md).
+
+### Changed
+
+- Product wire structs (queue, topic, join, actor store, 2PC, saga) use transparent newtypes; adapters convert at storage boundaries.
+
+## [0.5.0] (prior)
+
 Target **0.5.0** — unified HTTP listener; see [unified-listener](../decisions/unified-listener.md) and [env.md](../env.md).
 
 ### Added

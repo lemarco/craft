@@ -12,7 +12,10 @@ use trembita::cluster::{
 use trembita::net::LocalNetwork;
 use trembita::net::send_join_request;
 use trembita::proto::{self, NodeId};
-use trembita::proto::{JoinRequest, JoinResponse, JoinRole, PROTOCOL_VERSION};
+use trembita::proto::{
+    AdvertiseAddr, JobId, JobPriority, JoinRequest, JoinResponse, JoinRole, MaxAttempts,
+    PROTOCOL_VERSION, ProtocolVersion, StreamName, UnixMillis,
+};
 use trembita_jobs::WorkerId;
 use trembita_runtime::{ConfigCodecError, UserActor};
 use trembita_test_support::{
@@ -368,7 +371,7 @@ async fn priority_enqueue_through_wire() {
     let queue = leader.job_queue("jobs").expect("queue");
     queue.enqueue(b"low").await.expect("enqueue");
     queue
-        .enqueue_opts(b"high", EnqueueOptions::priority(9))
+        .enqueue_opts(b"high", EnqueueOptions::priority(JobPriority(9)))
         .await
         .expect("enqueue");
 
@@ -540,7 +543,7 @@ async fn dedup_key_held_on_dead_letter() {
             b"poison",
             EnqueueOptions {
                 dedup_key: Some(b"row-99".to_vec()),
-                max_attempts: Some(1),
+                max_attempts: Some(MaxAttempts(1)),
                 ..EnqueueOptions::default()
             },
         )
@@ -642,9 +645,9 @@ async fn membership_autoscale_invokes_join_hook() {
                     &net,
                     NodeId(1),
                     &JoinRequest {
-                        protocol_version: PROTOCOL_VERSION,
+                        protocol_version: ProtocolVersion(PROTOCOL_VERSION),
                         node_id: Some(joiner_id),
-                        advertise_addr: "node4.local:7443".to_string(),
+                        advertise_addr: AdvertiseAddr::try_new("node4.local:7443").unwrap(),
                         role: JoinRole::Learner,
                     },
                 )
@@ -751,18 +754,18 @@ async fn queue_replicate_rejects_non_leader_caller() {
         follower.as_ref(),
         NodeId(3),
         &QueueReplicateRequest {
-            stream: "jobs".into(),
-            leader_id: 2,
+            stream: StreamName::try_from("jobs").unwrap(),
+            leader_id: NodeId(2),
             ops: vec![QueueReplicateOp::Enqueue {
-                job_id: 99,
+                job_id: JobId(99),
                 payload: b"x".to_vec(),
-                enqueued_at_ms: 1,
-                next_job_id: 100,
-                priority: 0,
-                not_before_ms: 1,
+                enqueued_at_ms: UnixMillis(1),
+                next_job_id: JobId(100),
+                priority: JobPriority(0),
+                not_before_ms: UnixMillis(1),
                 dedup_key: None,
                 attempts: 0,
-                max_attempts: 0,
+                max_attempts: MaxAttempts(0),
             }],
         },
     )

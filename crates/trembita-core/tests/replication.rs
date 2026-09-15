@@ -2,15 +2,15 @@
 
 use trembita_core::{Config, NotLeader, Output, RaftNode};
 use trembita_proto::{
-    AppendEntries, AppendEntriesReply, EntryPayload, LogEntry, LogId, LogIndex, NodeId, RaftRpc,
-    RaftRpcReply, RequestVoteReply, Round, Term,
+    AppendEntries, AppendEntriesReply, EntryPayload, LogEntry, LogId, LogIndex, LogicalTick,
+    NodeId, RaftRpc, RaftRpcReply, RequestVoteReply, Round, Term,
 };
 
 fn cfg() -> Config {
     Config {
-        election_timeout_min: 100,
-        election_timeout_max: 100,
-        heartbeat_interval: 5,
+        election_timeout_min: LogicalTick(100),
+        election_timeout_max: LogicalTick(100),
+        heartbeat_interval: LogicalTick(5),
         seed: 1,
         ..Default::default()
     }
@@ -219,7 +219,7 @@ fn heartbeat_carries_updated_commit_index() {
     assert_eq!(n.commit_index(), LogIndex(2));
 
     // Next heartbeat should advertise the advanced commit index to followers.
-    for _ in 0..cfg().heartbeat_interval {
+    for _ in 0..cfg().heartbeat_interval.raw() {
         n.tick();
     }
     let outs = n.take_outputs();

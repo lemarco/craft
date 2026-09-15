@@ -3,36 +3,37 @@
 use serde::{Deserialize, Serialize};
 
 use crate::product::ProductWireError;
+use crate::{DedupKey, JobId, JobPriority, LeaseId, MaxAttempts, NodeId, StreamName, UnixMillis};
 
 /// Enqueue a job on stream `stream` (`POST /raft/v1/queue/enqueue`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueEnqueueRequest {
     /// Logical queue stream name (e.g. `"jobs"` or sharded `"jobs~0"`).
-    pub stream: String,
+    pub stream: StreamName,
     /// Opaque job body handed to workers after lease.
     pub payload: Vec<u8>,
     /// Higher values are leased before lower (default `0`).
     #[serde(default)]
-    pub priority: u8,
+    pub priority: JobPriority,
     /// Earliest wall time (unix ms) the job may be leased; `0` = immediately.
     #[serde(default)]
-    pub not_before_ms: u64,
+    pub not_before_ms: UnixMillis,
     /// Optional routing key for sharded streams (defaults to hashing `payload`).
     #[serde(default)]
     pub shard_key: Option<Vec<u8>>,
     /// Idempotency key — retries return the same `job_id` while the job exists.
     #[serde(default)]
-    pub dedup_key: Option<Vec<u8>>,
+    pub dedup_key: Option<DedupKey>,
     /// Maximum delivery attempts before dead letter (`0` = unlimited).
     #[serde(default)]
-    pub max_attempts: u32,
+    pub max_attempts: MaxAttempts,
 }
 
 /// Response to [`QueueEnqueueRequest`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueEnqueueReply {
     /// Assigned job id when enqueue succeeded.
-    pub job_id: Option<u64>,
+    pub job_id: Option<JobId>,
     /// Human-readable error when enqueue failed.
     pub error: Option<ProductWireError>,
 }
@@ -44,26 +45,26 @@ pub struct QueueBatchEnqueueJob {
     pub payload: Vec<u8>,
     /// Higher values are leased before lower (default `0`).
     #[serde(default)]
-    pub priority: u8,
+    pub priority: JobPriority,
     /// Earliest wall time (unix ms) the job may be leased; `0` = immediately.
     #[serde(default)]
-    pub not_before_ms: u64,
+    pub not_before_ms: UnixMillis,
     /// Optional routing key for sharded streams.
     #[serde(default)]
     pub shard_key: Option<Vec<u8>>,
     /// Idempotency key — retries return the same `job_id` while the job exists.
     #[serde(default)]
-    pub dedup_key: Option<Vec<u8>>,
+    pub dedup_key: Option<DedupKey>,
     /// Maximum delivery attempts before dead letter (`0` = unlimited).
     #[serde(default)]
-    pub max_attempts: u32,
+    pub max_attempts: MaxAttempts,
 }
 
 /// Enqueue many jobs in one leader transaction (`POST /raft/v1/queue/enqueue-batch`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueEnqueueBatchRequest {
     /// Logical queue stream name.
-    pub stream: String,
+    pub stream: StreamName,
     /// Jobs to append (leader caps batch size).
     pub jobs: Vec<QueueBatchEnqueueJob>,
 }
@@ -72,7 +73,7 @@ pub struct QueueEnqueueBatchRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueEnqueueBatchReply {
     /// Assigned ids in the same order as the request (dedup hits echo existing ids).
-    pub job_ids: Vec<u64>,
+    pub job_ids: Vec<JobId>,
     /// Set when the batch failed before any job was committed.
     pub error: Option<ProductWireError>,
 }
@@ -81,9 +82,9 @@ pub struct QueueEnqueueBatchReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueLeaseRequest {
     /// Queue stream to pull from.
-    pub stream: String,
+    pub stream: StreamName,
     /// [`NodeId`](crate::NodeId) of the leasing worker (`.0` wire encoding).
-    pub worker_node: u64,
+    pub worker_node: NodeId,
     /// Worker actor instance id on that node.
     pub worker_instance: u32,
     /// Maximum jobs to lease in one call.
@@ -94,15 +95,15 @@ pub struct QueueLeaseRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueLeasedJobWire {
     /// Lease token — required for ack/nack.
-    pub lease_id: u64,
+    pub lease_id: LeaseId,
     /// Job id within the stream.
-    pub job_id: u64,
+    pub job_id: JobId,
     /// Job body copied at enqueue time.
     pub payload: Vec<u8>,
     /// Delivery attempts including this one (`1` on first delivery).
     pub attempts: u32,
     /// Client idempotency token supplied at enqueue, when there was one.
-    pub dedup_key: Option<Vec<u8>>,
+    pub dedup_key: Option<DedupKey>,
 }
 
 /// Response to [`QueueLeaseRequest`].
@@ -118,13 +119,13 @@ pub struct QueueLeaseReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueAckRequest {
     /// Queue stream the lease belongs to.
-    pub stream: String,
+    pub stream: StreamName,
     /// Leasing worker node id.
-    pub worker_node: u64,
+    pub worker_node: NodeId,
     /// Leasing worker instance id.
     pub worker_instance: u32,
     /// Lease token from [`QueueLeasedJobWire::lease_id`].
-    pub lease_id: u64,
+    pub lease_id: LeaseId,
 }
 
 /// Response to [`QueueAckRequest`].
@@ -139,13 +140,13 @@ pub struct QueueAckReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueAckBatchRequest {
     /// Queue stream the leases belong to.
-    pub stream: String,
+    pub stream: StreamName,
     /// Leasing worker node id.
-    pub worker_node: u64,
+    pub worker_node: NodeId,
     /// Leasing worker instance id.
     pub worker_instance: u32,
     /// Lease tokens from [`QueueLeasedJobWire::lease_id`].
-    pub lease_ids: Vec<u64>,
+    pub lease_ids: Vec<LeaseId>,
 }
 
 /// Response to [`QueueAckBatchRequest`].
@@ -159,13 +160,13 @@ pub struct QueueAckBatchReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueNackRequest {
     /// Queue stream the lease belongs to.
-    pub stream: String,
+    pub stream: StreamName,
     /// Leasing worker node id.
-    pub worker_node: u64,
+    pub worker_node: NodeId,
     /// Leasing worker instance id.
     pub worker_instance: u32,
     /// Lease token to release.
-    pub lease_id: u64,
+    pub lease_id: LeaseId,
 }
 
 /// Response to [`QueueNackRequest`].
@@ -179,13 +180,13 @@ pub struct QueueNackReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueExtendLeaseRequest {
     /// Queue stream the lease belongs to.
-    pub stream: String,
+    pub stream: StreamName,
     /// Leasing worker node id.
-    pub worker_node: u64,
+    pub worker_node: NodeId,
     /// Leasing worker instance id.
     pub worker_instance: u32,
     /// Lease token to extend.
-    pub lease_id: u64,
+    pub lease_id: LeaseId,
 }
 
 /// Response to [`QueueExtendLeaseRequest`].
@@ -199,7 +200,7 @@ pub struct QueueExtendLeaseReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueMetricsRequest {
     /// Stream to inspect.
-    pub stream: String,
+    pub stream: StreamName,
 }
 
 /// Depth and age gauges for autoscale / observability.
@@ -237,9 +238,9 @@ pub enum QueueJobLifecycleWire {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueJobStatusRequest {
     /// Stream to inspect.
-    pub stream: String,
+    pub stream: StreamName,
     /// Job id within the stream (global id when sharded).
-    pub job_id: u64,
+    pub job_id: JobId,
 }
 
 /// Metadata for a single job (`POST /raft/v1/queue/job-status`).
@@ -248,24 +249,24 @@ pub struct QueueJobStatusReply {
     /// `true` when the job exists (pending, leased, or delayed).
     pub found: bool,
     /// Echo of the requested id.
-    pub job_id: u64,
+    pub job_id: JobId,
     /// Set when [`Self::found`] is true.
     pub lifecycle: Option<QueueJobLifecycleWire>,
     /// Byte length of stored payload.
     pub payload_len: u64,
     /// Enqueue priority.
-    pub priority: u8,
+    pub priority: JobPriority,
     /// Worker node when leased.
-    pub leased_worker_node: Option<u64>,
+    pub leased_worker_node: Option<NodeId>,
     /// Worker instance when leased.
     pub leased_worker_instance: Option<u32>,
     /// Delivery attempts so far (including the attempt that dead-lettered).
     pub attempts: u32,
     /// Configured retry ceiling (`0` = unlimited).
-    pub max_attempts: u32,
+    pub max_attempts: MaxAttempts,
     /// Client idempotency token from enqueue, when set.
     #[serde(default)]
-    pub dedup_key: Option<Vec<u8>>,
+    pub dedup_key: Option<DedupKey>,
     /// Set when lookup failed.
     pub error: Option<ProductWireError>,
 }
@@ -285,10 +286,10 @@ pub struct RecurringScheduleWire {
     pub payload: Vec<u8>,
     /// Passed to [`QueueEnqueueRequest::priority`].
     #[serde(default)]
-    pub priority: u8,
+    pub priority: JobPriority,
     /// Passed to [`QueueEnqueueRequest::max_attempts`].
     #[serde(default)]
-    pub max_attempts: u32,
+    pub max_attempts: MaxAttempts,
     /// When false the schedule is stored but does not fire.
     #[serde(default = "default_true")]
     pub enabled: bool,
@@ -304,57 +305,57 @@ pub enum QueueReplicateOp {
     /// Append a job and advance the stream's `next_job_id`.
     Enqueue {
         /// Assigned job id.
-        job_id: u64,
+        job_id: JobId,
         /// Job body.
         payload: Vec<u8>,
         /// Leader wall time at enqueue (unix ms).
-        enqueued_at_ms: u64,
+        enqueued_at_ms: UnixMillis,
         /// Monotonic id generator after this enqueue.
-        next_job_id: u64,
+        next_job_id: JobId,
         #[serde(default)]
         /// Lease priority (higher first).
-        priority: u8,
+        priority: JobPriority,
         #[serde(default)]
         /// Earliest lease time (unix ms).
-        not_before_ms: u64,
+        not_before_ms: UnixMillis,
         #[serde(default)]
         /// Optional dedup key index update.
-        dedup_key: Option<Vec<u8>>,
+        dedup_key: Option<DedupKey>,
         #[serde(default)]
         /// Attempts already recorded for this job.
         attempts: u32,
         #[serde(default)]
         /// Retry ceiling (`0` = unlimited).
-        max_attempts: u32,
+        max_attempts: MaxAttempts,
     },
     /// Move a job from pending to leased.
     Lease {
         /// New lease token.
-        lease_id: u64,
+        lease_id: LeaseId,
         /// Job being leased.
-        job_id: u64,
+        job_id: JobId,
         /// Worker node id.
-        worker_node: u64,
+        worker_node: NodeId,
         /// Worker instance id.
         worker_instance: u32,
         /// Lease expiry (unix ms; followers may use local timeout).
-        expires_at_ms: u64,
+        expires_at_ms: UnixMillis,
         /// Monotonic lease id generator after this lease.
-        next_lease_id: u64,
+        next_lease_id: LeaseId,
     },
     /// Job completed — remove job and lease rows.
     Ack {
         /// Released lease.
-        lease_id: u64,
+        lease_id: LeaseId,
         /// Completed job.
-        job_id: u64,
+        job_id: JobId,
     },
     /// Worker rejected the job — return to pending or dead letter.
     Nack {
         /// Released lease.
-        lease_id: u64,
+        lease_id: LeaseId,
         /// Requeued or dead-lettered job.
-        job_id: u64,
+        job_id: JobId,
         #[serde(default)]
         /// Attempt count after this failure.
         attempts: u32,
@@ -363,14 +364,14 @@ pub enum QueueReplicateOp {
         dead_letter: bool,
         #[serde(default)]
         /// Earliest re-lease time (unix ms) when requeued.
-        not_before_ms: u64,
+        not_before_ms: UnixMillis,
     },
     /// Visibility timeout expired — job returns to pending or dead letter.
     Reclaim {
         /// Expired lease.
-        lease_id: u64,
+        lease_id: LeaseId,
         /// Requeued or dead-lettered job.
-        job_id: u64,
+        job_id: JobId,
         #[serde(default)]
         /// Attempt count after this failure.
         attempts: u32,
@@ -379,23 +380,23 @@ pub enum QueueReplicateOp {
         dead_letter: bool,
         #[serde(default)]
         /// Earliest re-lease time (unix ms) when requeued.
-        not_before_ms: u64,
+        not_before_ms: UnixMillis,
     },
     /// Worker heartbeat — push lease expiry forward without completing the job.
     ExtendLease {
         /// Live lease token.
-        lease_id: u64,
+        lease_id: LeaseId,
         /// Leasing worker node id.
-        worker_node: u64,
+        worker_node: NodeId,
         /// Leasing worker instance id.
         worker_instance: u32,
         /// New lease expiry (unix ms).
-        expires_at_ms: u64,
+        expires_at_ms: UnixMillis,
     },
     /// Operator moved a dead-letter job back to pending.
     RequeueDeadLetter {
         /// Job id to retry.
-        job_id: u64,
+        job_id: JobId,
         #[serde(default)]
         /// Reset attempt counter (usually `0`).
         attempts: u32,
@@ -423,11 +424,11 @@ pub enum QueueReplicateOp {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueReplicateRequest {
     /// Target stream.
-    pub stream: String,
+    pub stream: StreamName,
     /// Idempotent mutations to apply in order.
     pub ops: Vec<QueueReplicateOp>,
     /// Declared Raft leader id (must match the receiver's leader hint).
-    pub leader_id: u64,
+    pub leader_id: NodeId,
 }
 
 /// Response to [`QueueReplicateRequest`].
@@ -442,9 +443,9 @@ pub struct QueueReplicateReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueRequeueDeadLetterRequest {
     /// Queue stream.
-    pub stream: String,
+    pub stream: StreamName,
     /// Job id in the dead-letter set.
-    pub job_id: u64,
+    pub job_id: JobId,
 }
 
 /// Response to [`QueueRequeueDeadLetterRequest`].
@@ -458,20 +459,20 @@ pub struct QueueRequeueDeadLetterReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueListJobsRequest {
     /// Queue stream.
-    pub stream: String,
+    pub stream: StreamName,
     /// When set, only jobs in this lifecycle phase.
     pub lifecycle: Option<QueueJobLifecycleWire>,
     /// When set, only jobs with `attempts >= min_attempts`.
     pub min_attempts: Option<u32>,
     /// When set, only jobs with this exact dedup key.
     #[serde(default)]
-    pub dedup_key: Option<Vec<u8>>,
+    pub dedup_key: Option<DedupKey>,
     /// Maximum rows to return (capped server-side).
     #[serde(default = "default_list_jobs_limit")]
     pub limit: u32,
     /// Pagination cursor — return jobs with id strictly greater than this.
     #[serde(default)]
-    pub after_job_id: u64,
+    pub after_job_id: JobId,
 }
 
 const fn default_list_jobs_limit() -> u32 {
@@ -482,24 +483,24 @@ const fn default_list_jobs_limit() -> u32 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueJobListEntryWire {
     /// Job id within the stream (global id when sharded).
-    pub job_id: u64,
+    pub job_id: JobId,
     /// Current lifecycle phase.
     pub lifecycle: QueueJobLifecycleWire,
     /// Byte length of stored payload.
     pub payload_len: u64,
     /// Enqueue priority.
-    pub priority: u8,
+    pub priority: JobPriority,
     /// Worker node when leased.
-    pub leased_worker_node: Option<u64>,
+    pub leased_worker_node: Option<NodeId>,
     /// Worker instance when leased.
     pub leased_worker_instance: Option<u32>,
     /// Delivery attempts so far.
     pub attempts: u32,
     /// Configured retry ceiling (`0` = unlimited).
-    pub max_attempts: u32,
+    pub max_attempts: MaxAttempts,
     /// Client idempotency token from enqueue, when set.
     #[serde(default)]
-    pub dedup_key: Option<Vec<u8>>,
+    pub dedup_key: Option<DedupKey>,
 }
 
 /// Response to [`QueueListJobsRequest`].
@@ -517,16 +518,16 @@ pub struct QueueListJobsReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueRequeueDeadLetterBatchRequest {
     /// Queue stream.
-    pub stream: String,
+    pub stream: StreamName,
     /// Dead-letter job ids to move back to pending.
-    pub job_ids: Vec<u64>,
+    pub job_ids: Vec<JobId>,
 }
 
 /// Per-job failure in a batch requeue response.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueRequeueFailureWire {
     /// Job id that could not be requeued.
-    pub job_id: u64,
+    pub job_id: JobId,
     /// Why requeue failed for this id.
     pub error: String,
 }
@@ -535,7 +536,7 @@ pub struct QueueRequeueFailureWire {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueRequeueDeadLetterBatchReply {
     /// Job ids successfully moved back to pending.
-    pub requeued: Vec<u64>,
+    pub requeued: Vec<JobId>,
     /// Per-id failures (not dead letter, unknown id, …).
     pub failures: Vec<QueueRequeueFailureWire>,
     /// Set when the whole request failed before per-id processing.

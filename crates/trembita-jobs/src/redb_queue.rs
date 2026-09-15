@@ -9,13 +9,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
-use trembita_proto::{QueueReplicateOp, decode, encode};
+use trembita_proto::{
+    DedupKey, JobId, JobPriority, LeaseId, MaxAttempts, NodeId, QueueReplicateOp, UnixMillis,
+    decode, encode,
+};
 use trembita_storage::{now_ms, open_mutex_database};
 
 use super::queue_prefetch::CachedPendingJob;
 use super::{
-    EnqueueOptions, JobId, JobLifecycle, JobListFilter, JobListPage, JobQueue, JobStatus, LeaseId,
-    LeasedJob, QueueError, QueueMetrics, QueueReplicationOps, WorkerId, after_failed_attempt,
+    EnqueueOptions, JobLifecycle, JobListFilter, JobListPage, JobQueue, JobStatus, LeasedJob,
+    QueueError, QueueMetrics, QueueReplicationOps, WorkerId, after_failed_attempt,
     job_status_matches_filter,
 };
 use trembita_proto::BoxFuture;
@@ -213,11 +216,11 @@ impl RedbJobQueue {
                             pending.insert(job_id, &[] as &[u8]).map_err(backend)?;
                         }
                         ops.push(QueueReplicateOp::Reclaim {
-                            lease_id,
-                            job_id,
+                            lease_id: LeaseId(lease_id),
+                            job_id: JobId(job_id),
                             attempts: outcome.attempts,
                             dead_letter: outcome.dead_letter,
-                            not_before_ms: outcome.not_before_ms,
+                            not_before_ms: UnixMillis(outcome.not_before_ms),
                         });
                     }
                 }
@@ -310,7 +313,7 @@ impl RedbJobQueue {
                 } => {
                     let mut duplicate = false;
                     if let Some(key) = &dedup_key
-                        && let Some(existing) = dedup.get(key.as_slice()).map_err(backend)?
+                        && let Some(existing) = dedup.get(key.as_bytes()).map_err(backend)?
                     {
                         duplicate = jobs.get(existing.value()).map_err(backend)?.is_some();
                     }
@@ -322,30 +325,30 @@ impl RedbJobQueue {
                         drop(meta);
                         {
                             let mut meta = txn.open_table(META).map_err(backend)?;
-                            Self::bump_meta_u64(&mut meta, K_NEXT_JOB, *next_job_id)?;
+                            Self::bump_meta_u64(&mut meta, K_NEXT_JOB, next_job_id.0)?;
                         }
                         txn.commit().map_err(backend)?;
                         return Ok(());
                     }
-                    if jobs.get(*job_id).map_err(backend)?.is_none() {
+                    if jobs.get(job_id.0).map_err(backend)?.is_none() {
                         let stored = StoredJob {
                             payload: payload.clone(),
-                            enqueued_at_ms: *enqueued_at_ms,
-                            priority: *priority,
-                            not_before_ms: *not_before_ms,
-                            dedup_key: dedup_key.clone(),
+                            enqueued_at_ms: enqueued_at_ms.0,
+                            priority: priority.0,
+                            not_before_ms: not_before_ms.0,
+                            dedup_key: dedup_key.as_ref().map(|k| k.as_bytes().to_vec()),
                             attempts: *attempts,
-                            max_attempts: *max_attempts,
+                            max_attempts: max_attempts.0,
                             dead_letter: false,
                         };
-                        jobs.insert(*job_id, encode(&stored).map_err(codec)?.as_slice())
+                        jobs.insert(job_id.0, encode(&stored).map_err(codec)?.as_slice())
                             .map_err(backend)?;
-                        pending.insert(*job_id, &[] as &[u8]).map_err(backend)?;
+                        pending.insert(job_id.0, &[] as &[u8]).map_err(backend)?;
                         if let Some(key) = dedup_key {
-                            dedup.insert(key.as_slice(), *job_id).map_err(backend)?;
+                            dedup.insert(key.as_bytes(), job_id.0).map_err(backend)?;
                         }
                     }
-                    Self::bump_meta_u64(&mut meta, K_NEXT_JOB, *next_job_id)?;
+                    Self::bump_meta_u64(&mut meta, K_NEXT_JOB, next_job_id.0)?;
                 }
                 QueueReplicateOp::Lease {
                     lease_id,
@@ -355,23 +358,23 @@ impl RedbJobQueue {
                     expires_at_ms,
                     next_lease_id,
                 } => {
-                    if leases.get(*lease_id).map_err(backend)?.is_none() {
-                        pending.remove(*job_id).map_err(backend)?;
+                    if leases.get(lease_id.0).map_err(backend)?.is_none() {
+                        pending.remove(job_id.0).map_err(backend)?;
                         let lease = StoredLease {
-                            job_id: *job_id,
-                            worker_node: *worker_node,
+                            job_id: job_id.0,
+                            worker_node: worker_node.0,
                             worker_instance: *worker_instance,
-                            expires_at_ms: *expires_at_ms,
+                            expires_at_ms: expires_at_ms.0,
                         };
                         leases
-                            .insert(*lease_id, encode(&lease).map_err(codec)?.as_slice())
+                            .insert(lease_id.0, encode(&lease).map_err(codec)?.as_slice())
                             .map_err(backend)?;
                     }
-                    Self::bump_meta_u64(&mut meta, K_NEXT_LEASE, *next_lease_id)?;
+                    Self::bump_meta_u64(&mut meta, K_NEXT_LEASE, next_lease_id.0)?;
                 }
                 QueueReplicateOp::Ack { lease_id, job_id } => {
-                    leases.remove(*lease_id).map_err(backend)?;
-                    Self::remove_job_and_dedup(&mut jobs, &mut dedup, *job_id)?;
+                    leases.remove(lease_id.0).map_err(backend)?;
+                    Self::remove_job_and_dedup(&mut jobs, &mut dedup, job_id.0)?;
                 }
                 QueueReplicateOp::Nack {
                     lease_id,
@@ -387,26 +390,26 @@ impl RedbJobQueue {
                     dead_letter,
                     not_before_ms,
                 } => {
-                    leases.remove(*lease_id).map_err(backend)?;
+                    leases.remove(lease_id.0).map_err(backend)?;
                     let job_update = jobs
-                        .get(*job_id)
+                        .get(job_id.0)
                         .map_err(backend)?
                         .map(|bytes| decode::<StoredJob>(bytes.value()).map_err(codec))
                         .transpose()?;
                     if let Some(mut stored) = job_update {
                         stored.attempts = *attempts;
                         stored.dead_letter = *dead_letter;
-                        stored.not_before_ms = *not_before_ms;
-                        jobs.insert(*job_id, encode(&stored).map_err(codec)?.as_slice())
+                        stored.not_before_ms = not_before_ms.0;
+                        jobs.insert(job_id.0, encode(&stored).map_err(codec)?.as_slice())
                             .map_err(backend)?;
                         if !dead_letter {
-                            pending.insert(*job_id, &[] as &[u8]).map_err(backend)?;
+                            pending.insert(job_id.0, &[] as &[u8]).map_err(backend)?;
                         }
                     }
                 }
                 QueueReplicateOp::RequeueDeadLetter { job_id, attempts } => {
                     let job_update = jobs
-                        .get(*job_id)
+                        .get(job_id.0)
                         .map_err(backend)?
                         .map(|bytes| decode::<StoredJob>(bytes.value()).map_err(codec))
                         .transpose()?;
@@ -414,9 +417,9 @@ impl RedbJobQueue {
                         stored.dead_letter = false;
                         stored.attempts = *attempts;
                         stored.not_before_ms = now_ms();
-                        jobs.insert(*job_id, encode(&stored).map_err(codec)?.as_slice())
+                        jobs.insert(job_id.0, encode(&stored).map_err(codec)?.as_slice())
                             .map_err(backend)?;
-                        pending.insert(*job_id, &[] as &[u8]).map_err(backend)?;
+                        pending.insert(job_id.0, &[] as &[u8]).map_err(backend)?;
                     }
                 }
                 QueueReplicateOp::ExtendLease {
@@ -426,17 +429,17 @@ impl RedbJobQueue {
                     expires_at_ms,
                 } => {
                     let stored_update = leases
-                        .get(*lease_id)
+                        .get(lease_id.0)
                         .map_err(backend)?
                         .map(|bytes| decode::<StoredLease>(bytes.value()).map_err(codec))
                         .transpose()?;
                     if let Some(mut stored) = stored_update
-                        && stored.worker_node == *worker_node
+                        && stored.worker_node == worker_node.0
                         && stored.worker_instance == *worker_instance
                     {
-                        stored.expires_at_ms = *expires_at_ms;
+                        stored.expires_at_ms = expires_at_ms.0;
                         leases
-                            .insert(*lease_id, encode(&stored).map_err(codec)?.as_slice())
+                            .insert(lease_id.0, encode(&stored).map_err(codec)?.as_slice())
                             .map_err(backend)?;
                     }
                 }
@@ -504,7 +507,7 @@ impl RedbJobQueue {
             let lease: StoredLease = decode(bytes.value()).map_err(codec)?;
             if lease.job_id == job_id.0 {
                 leased_by = Some(WorkerId {
-                    node: trembita_proto::NodeId(lease.worker_node),
+                    node: NodeId(lease.worker_node),
                     instance: lease.worker_instance,
                 });
                 break;
@@ -525,10 +528,10 @@ impl RedbJobQueue {
             job_id,
             lifecycle,
             payload_len: u64::try_from(stored.payload.len()).unwrap_or(u64::MAX),
-            priority: stored.priority,
+            priority: JobPriority(stored.priority),
             leased_by,
             attempts: stored.attempts,
-            max_attempts: stored.max_attempts,
+            max_attempts: MaxAttempts(stored.max_attempts),
             dedup_key: stored.dedup_key.clone(),
         }))
     }
@@ -554,7 +557,7 @@ impl RedbJobQueue {
             leased_by_job.insert(
                 lease.job_id,
                 WorkerId {
-                    node: trembita_proto::NodeId(lease.worker_node),
+                    node: NodeId(lease.worker_node),
                     instance: lease.worker_instance,
                 },
             );
@@ -584,10 +587,10 @@ impl RedbJobQueue {
                 job_id: JobId(job_id),
                 lifecycle,
                 payload_len: u64::try_from(stored.payload.len()).unwrap_or(u64::MAX),
-                priority: stored.priority,
+                priority: JobPriority(stored.priority),
                 leased_by,
                 attempts: stored.attempts,
-                max_attempts: stored.max_attempts,
+                max_attempts: MaxAttempts(stored.max_attempts),
                 dedup_key: stored.dedup_key.clone(),
             };
             if !job_status_matches_filter(&status, filter) {
@@ -711,12 +714,12 @@ impl RedbJobQueue {
                     .insert(lease_id, encode(&lease).map_err(codec)?.as_slice())
                     .map_err(backend)?;
                 ops.push(QueueReplicateOp::Lease {
-                    lease_id,
-                    job_id: cached.job_id,
-                    worker_node: worker.node.0,
+                    lease_id: LeaseId(lease_id),
+                    job_id: JobId(cached.job_id),
+                    worker_node: worker.node,
                     worker_instance: worker.instance,
-                    expires_at_ms,
-                    next_lease_id: lease_id_start,
+                    expires_at_ms: UnixMillis(expires_at_ms),
+                    next_lease_id: LeaseId(lease_id_start),
                 });
                 out.push(LeasedJob {
                     lease_id: LeaseId(lease_id),
@@ -788,11 +791,14 @@ impl RedbJobQueue {
                 let job_id = next_job_id;
                 next_job_id += 1;
                 let not_before_ms = options.not_before_ms.unwrap_or(enqueued_at_ms);
-                let max_attempts = options.max_attempts.unwrap_or(self.default_max_attempts);
+                let max_attempts = options
+                    .max_attempts
+                    .unwrap_or(MaxAttempts(self.default_max_attempts))
+                    .0;
                 let stored = StoredJob {
                     payload: payload.clone(),
                     enqueued_at_ms,
-                    priority: options.priority,
+                    priority: options.priority.0,
                     not_before_ms,
                     dedup_key: options.dedup_key.clone(),
                     attempts: 0,
@@ -807,15 +813,18 @@ impl RedbJobQueue {
                     dedup.insert(key.as_slice(), job_id).map_err(backend)?;
                 }
                 ops.push(QueueReplicateOp::Enqueue {
-                    job_id,
+                    job_id: JobId(job_id),
                     payload: payload.clone(),
-                    enqueued_at_ms,
-                    next_job_id,
+                    enqueued_at_ms: UnixMillis(enqueued_at_ms),
+                    next_job_id: JobId(next_job_id),
                     priority: options.priority,
-                    not_before_ms,
-                    dedup_key: options.dedup_key.clone(),
+                    not_before_ms: UnixMillis(not_before_ms),
+                    dedup_key: options
+                        .dedup_key
+                        .as_ref()
+                        .and_then(|k| DedupKey::try_new(k.clone()).ok()),
                     attempts: 0,
-                    max_attempts,
+                    max_attempts: MaxAttempts(max_attempts),
                 });
                 assigned.push(JobId(job_id));
             }
@@ -856,8 +865,8 @@ impl RedbJobQueue {
                 }
                 Self::remove_job_and_dedup(&mut jobs, &mut dedup, stored.job_id)?;
                 ops.push(QueueReplicateOp::Ack {
-                    lease_id: lease_id.0,
-                    job_id: stored.job_id,
+                    lease_id: *lease_id,
+                    job_id: JobId(stored.job_id),
                 });
             }
             Ok(())
@@ -1003,12 +1012,12 @@ impl JobQueue for RedbJobQueue {
                         .map_err(backend)?;
 
                     ops.push(QueueReplicateOp::Lease {
-                        lease_id,
-                        job_id,
-                        worker_node: worker.node.0,
+                        lease_id: LeaseId(lease_id),
+                        job_id: JobId(job_id),
+                        worker_node: worker.node,
                         worker_instance: worker.instance,
-                        expires_at_ms,
-                        next_lease_id: lease_id_start,
+                        expires_at_ms: UnixMillis(expires_at_ms),
+                        next_lease_id: LeaseId(lease_id_start),
                     });
 
                     out.push(LeasedJob {
@@ -1105,11 +1114,11 @@ impl JobQueue for RedbJobQueue {
                 result?
             };
             Ok(vec![QueueReplicateOp::Nack {
-                lease_id: lease_id.0,
-                job_id,
+                lease_id,
+                job_id: JobId(job_id),
                 attempts: outcome.attempts,
                 dead_letter: outcome.dead_letter,
-                not_before_ms: outcome.not_before_ms,
+                not_before_ms: UnixMillis(outcome.not_before_ms),
             }])
         })
     }
@@ -1150,10 +1159,10 @@ impl JobQueue for RedbJobQueue {
                 txn.commit().map_err(backend)?;
             }
             Ok(vec![QueueReplicateOp::ExtendLease {
-                lease_id: lease_id.0,
-                worker_node: worker.node.0,
+                lease_id,
+                worker_node: worker.node,
                 worker_instance: worker.instance,
-                expires_at_ms,
+                expires_at_ms: UnixMillis(expires_at_ms),
             }])
         })
     }
@@ -1195,7 +1204,7 @@ impl JobQueue for RedbJobQueue {
             }
             txn.commit().map_err(backend)?;
             Ok(vec![QueueReplicateOp::RequeueDeadLetter {
-                job_id: job_id.0,
+                job_id,
                 attempts: 0,
             }])
         })
@@ -1245,7 +1254,7 @@ impl JobQueue for RedbJobQueue {
             let ops = requeued
                 .iter()
                 .map(|job_id| QueueReplicateOp::RequeueDeadLetter {
-                    job_id: job_id.0,
+                    job_id: *job_id,
                     attempts: 0,
                 })
                 .collect();
@@ -1362,7 +1371,10 @@ mod tests {
         let q = RedbJobQueue::open(dir.path().join("q.redb"), Duration::from_secs(30)).unwrap();
         let batch = vec![
             (b"a".to_vec(), EnqueueOptions::default()),
-            (b"b".to_vec(), EnqueueOptions::priority(1)),
+            (
+                b"b".to_vec(),
+                EnqueueOptions::priority(trembita_proto::JobPriority(1)),
+            ),
         ];
         let (ids, ops) = q.enqueue_batch_opts_replicated(&batch).await.unwrap();
         assert_eq!(ids.len(), 2);

@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex};
 
 use trembita_runtime::trembita_core::{Config, RaftNode, ReadId, Role, StateMachine};
 use trembita_runtime::trembita_proto::{
-    EntryPayload, LogEntry, LogId, LogIndex, Membership, NodeId, SagaJournalCommand, Term,
-    TwoPhasePrepareCommand,
+    EntryPayload, LogEntry, LogId, LogIndex, LogicalTick, Membership, NodeId, RouteKey, SagaId,
+    SagaJournalCommand, Term, TransactionId, TwoPhasePrepareCommand, UnixMillis,
 };
 use trembita_runtime::trembita_storage::{
     HardState, HardStateStore, LogStore, MemoryStorage, Snapshot, SnapshotMeta, SnapshotStore,
@@ -28,9 +28,9 @@ use trembita_test_support::{KvCommand, KvQuery, KvResponse, TrackedKv};
 
 fn config() -> Config {
     Config {
-        election_timeout_min: 10,
-        election_timeout_max: 20,
-        heartbeat_interval: 3,
+        election_timeout_min: LogicalTick(10),
+        election_timeout_max: LogicalTick(20),
+        heartbeat_interval: LogicalTick(3),
         seed: 42,
         ..Default::default()
     }
@@ -1006,7 +1006,7 @@ fn propose_saga_journal_commits_without_user_sm_apply() {
     d.campaign().unwrap();
 
     let command = SagaJournalCommand {
-        saga_id: b"saga-a".to_vec(),
+        saga_id: SagaId::try_new(b"saga-a").unwrap(),
         record: vec![4, 5, 6],
     };
     let (index, step) = d
@@ -1026,10 +1026,10 @@ fn propose_two_phase_prepare_commits_without_user_sm_apply() {
     d.campaign().unwrap();
 
     let command = TwoPhasePrepareCommand {
-        tx_id: b"tx-a".to_vec(),
-        route_key: b"key-a".to_vec(),
+        tx_id: TransactionId::try_new(b"tx-a").unwrap(),
+        route_key: RouteKey::try_new(b"key-a").unwrap(),
         command: vec![7, 8, 9],
-        prepared_at_ms: 0,
+        prepared_at_ms: UnixMillis::IMMEDIATE,
     };
     let (index, step) = d
         .propose_two_phase_prepare(command.clone())

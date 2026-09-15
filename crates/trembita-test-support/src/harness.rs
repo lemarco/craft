@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use trembita_core::Config;
+use trembita_proto::LogicalTick;
 
 /// Default runtime tick used when spawning test clusters.
 pub const TICK_PERIOD: Duration = Duration::from_millis(10);
@@ -18,9 +19,9 @@ pub fn fast_raft_config() -> Config {
 #[must_use]
 pub fn fast_raft_config_with_seed(seed: u64) -> Config {
     Config {
-        election_timeout_min: 5,
-        election_timeout_max: 10,
-        heartbeat_interval: 2,
+        election_timeout_min: LogicalTick(5),
+        election_timeout_max: LogicalTick(10),
+        heartbeat_interval: LogicalTick(2),
         seed,
         ..Default::default()
     }

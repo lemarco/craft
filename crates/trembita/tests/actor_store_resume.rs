@@ -164,9 +164,9 @@ impl UserActor for OrderWorker {
 
 fn reachability_raft_config() -> Config {
     Config {
-        election_timeout_min: 3,
-        election_timeout_max: 5,
-        heartbeat_interval: 1,
+        election_timeout_min: trembita::proto::LogicalTick(3),
+        election_timeout_max: trembita::proto::LogicalTick(5),
+        heartbeat_interval: trembita::proto::LogicalTick(1),
         seed: 21,
         ..Default::default()
     }

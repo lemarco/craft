@@ -3,12 +3,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::NodeId;
+use crate::value::{ActorGroupName, RoutingKey};
 
-/// A compile-time actor type tag. In v1 this is the Rust type name of the
-/// `UserActor`, which is stable within a build; two nodes running the same
-/// binary agree on it (cross-node-actors).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct ActorTypeId(pub String);
+pub use crate::value::ActorTypeId;
 
 /// A globally-unique address for a single actor instance in the cluster
 /// (cross-node-actors). `generation` is bumped on respawn/migration so stale references
@@ -18,7 +15,7 @@ pub struct ActorId {
     /// Node currently hosting the instance.
     pub node: NodeId,
     /// Logical group / pool name (e.g. `"workers"`).
-    pub name: String,
+    pub name: ActorGroupName,
     /// Instance index within the group (`0` for a singleton).
     pub instance: u32,
     /// Bumped on respawn / migration to invalidate stale references.
@@ -87,10 +84,10 @@ pub struct RegisterAck {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActorRef {
     /// Logical group / pool name (e.g. `"workers"`).
-    pub group: String,
+    pub group: ActorGroupName,
     /// Optional routing key for consistent-hash routing (cluster-routing); when
     /// `None`, round-robin routing is used.
-    pub key: Option<String>,
+    pub key: Option<RoutingKey>,
     /// Pin to a specific node; when `None`, the registry chooses placement.
     pub node: Option<NodeId>,
 }
@@ -143,7 +140,7 @@ pub struct DeliverAck {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SpawnRequest {
     /// The group name to register the actor under.
-    pub name: String,
+    pub name: ActorGroupName,
     /// The actor's type tag; the target must have a factory registered for it.
     pub actor_type: ActorTypeId,
     /// `postcard`-encoded `A::Config`.
@@ -171,7 +168,7 @@ pub struct SpawnReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScaleRequest {
     /// The group name to scale.
-    pub name: String,
+    pub name: ActorGroupName,
     /// The actor's type tag; every hosting node must have a factory for it.
     pub actor_type: ActorTypeId,
     /// Desired cluster-wide instance count (one worker per node, one-worker-per-vps).
@@ -199,7 +196,7 @@ pub struct ScaleReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StopRequest {
     /// The group name to stop on the target node.
-    pub name: String,
+    pub name: ActorGroupName,
 }
 
 /// Reply to a [`StopRequest`]: `None` error on success (stopping an absent
@@ -220,7 +217,7 @@ pub struct MigrateRequest {
     /// The instance being migrated away (its current address on the source).
     pub from: ActorId,
     /// The group name to register the replacement under (usually `from.name`).
-    pub name: String,
+    pub name: ActorGroupName,
     /// The actor's type tag; the target must have a factory registered for it.
     pub actor_type: ActorTypeId,
     /// `postcard`-encoded `A::Config` for constructing the replacement.

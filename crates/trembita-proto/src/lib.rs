@@ -29,12 +29,13 @@ pub mod saga_journal;
 pub mod topic;
 pub mod two_phase;
 pub mod two_phase_journal;
+pub mod value;
 pub mod worker;
 
 pub use actor::{
-    ActorEnvelope, ActorId, ActorRef, ActorRegistration, ActorTypeId, DeliverAck, DirectoryUpdate,
-    MigrateReply, MigrateRequest, RegisterAck, ScaleReply, ScaleRequest, SpawnReply, SpawnRequest,
-    StopReply, StopRequest,
+    ActorEnvelope, ActorId, ActorRef, ActorRegistration, DeliverAck, DirectoryUpdate, MigrateReply,
+    MigrateRequest, RegisterAck, ScaleReply, ScaleRequest, SpawnReply, SpawnRequest, StopReply,
+    StopRequest,
 };
 pub use actor_store::{
     StoreCompareAndSetReply, StoreCompareAndSetRequest, StoreDeleteReply, StoreDeleteRequest,
@@ -71,25 +72,34 @@ pub use raft::{
 pub use saga_journal::SagaJournalCommand;
 pub use topic::{
     DEFAULT_TOPIC_MAX_EVENT_AGE_MS, DEFAULT_TOPIC_MAX_RETAINED_EVENTS, TopicAckReply,
-    TopicAckRequest, TopicLeaseReply, TopicLeaseRequest, TopicLeasedEventWire, TopicMetricsReply,
-    TopicMetricsRequest, TopicNackReply, TopicNackRequest, TopicPublishReply, TopicPublishRequest,
-    TopicReplicateOp, TopicReplicateReply, TopicReplicateRequest, TopicSubscriptionMetricsWire,
-    duration_to_ms,
+    TopicAckRequest, TopicEventId, TopicLeaseId, TopicLeaseReply, TopicLeaseRequest,
+    TopicLeasedEventWire, TopicMetricsReply, TopicMetricsRequest, TopicNackReply, TopicNackRequest,
+    TopicPublishReply, TopicPublishRequest, TopicReplicateOp, TopicReplicateReply,
+    TopicReplicateRequest, TopicSubscriptionMetricsWire, duration_to_ms,
 };
 pub use two_phase::{TwoPhaseAbortCommand, TwoPhasePrepareCommand};
 pub use two_phase_journal::TwoPhaseJournalCommand;
+pub use value::{
+    ActorGroupName, ActorTypeId, AdvertiseAddr, DedupKey, JobId, JobPriority, LeaseId, LogicalTick,
+    MaxAttempts, NotBefore, ProtocolVersion, RouteKey, RoutingKey, SagaId, StoreKey, StreamName,
+    SubscriptionName, TopicName, TransactionId, TtlSecs, UnixMillis, ValueError,
+    parse_sharded_stream, worker_id_from_wire, worker_id_to_wire,
+};
 pub use worker::WorkerId;
 
+pub(crate) const PROTOCOL_VERSION_RAW: u32 = 1;
+pub(crate) const MIN_COMPATIBLE_PROTOCOL_VERSION_RAW: u32 = 1;
+
 /// Wire/protocol version negotiated on join (join-version-skew: hard reject on mismatch).
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = PROTOCOL_VERSION_RAW;
 
 /// Oldest wire protocol this release accepts during rolling upgrades (N/N−1).
-pub const MIN_COMPATIBLE_PROTOCOL_VERSION: u32 = 1;
+pub const MIN_COMPATIBLE_PROTOCOL_VERSION: u32 = MIN_COMPATIBLE_PROTOCOL_VERSION_RAW;
 
 /// Whether `got` is in the supported compatibility band `[MIN..=PROTOCOL]`.
 #[must_use]
-pub fn protocol_version_compatible(got: u32) -> bool {
-    got >= MIN_COMPATIBLE_PROTOCOL_VERSION && got <= PROTOCOL_VERSION
+pub fn protocol_version_compatible(got: ProtocolVersion) -> bool {
+    got.0 >= MIN_COMPATIBLE_PROTOCOL_VERSION && got.0 <= PROTOCOL_VERSION
 }
 
 /// Stable identifier for a cluster node.
@@ -238,6 +248,7 @@ pub fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, CodecError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{RouteKey, SagaId, TransactionId, UnixMillis};
 
     #[test]
     fn term_and_index_advance() {
@@ -263,7 +274,7 @@ mod tests {
             term: Term(2),
             index: LogIndex(4),
             payload: EntryPayload::SagaJournal(SagaJournalCommand {
-                saga_id: b"saga-1".to_vec(),
+                saga_id: SagaId::try_new(b"saga-1").expect("test saga id"),
                 record: vec![1, 2, 3],
             }),
         };
@@ -278,10 +289,10 @@ mod tests {
             term: Term(2),
             index: LogIndex(5),
             payload: EntryPayload::TwoPhasePrepare(TwoPhasePrepareCommand {
-                tx_id: b"tx".to_vec(),
-                route_key: b"key".to_vec(),
+                tx_id: TransactionId::try_new(b"tx").expect("test tx"),
+                route_key: RouteKey::try_new(b"key").expect("test route"),
                 command: vec![1, 2],
-                prepared_at_ms: 0,
+                prepared_at_ms: UnixMillis::IMMEDIATE,
             }),
         };
         let bytes = encode(&entry).expect("encode");
@@ -333,10 +344,16 @@ mod tests {
 
     #[test]
     fn protocol_version_compatible_accepts_current_and_min() {
-        assert!(protocol_version_compatible(PROTOCOL_VERSION));
-        assert!(protocol_version_compatible(MIN_COMPATIBLE_PROTOCOL_VERSION));
-        assert!(!protocol_version_compatible(0));
-        assert!(!protocol_version_compatible(PROTOCOL_VERSION + 1));
+        assert!(protocol_version_compatible(ProtocolVersion(
+            PROTOCOL_VERSION
+        )));
+        assert!(protocol_version_compatible(ProtocolVersion(
+            MIN_COMPATIBLE_PROTOCOL_VERSION
+        )));
+        assert!(!protocol_version_compatible(ProtocolVersion(0)));
+        assert!(!protocol_version_compatible(ProtocolVersion(
+            PROTOCOL_VERSION + 1
+        )));
     }
 
     #[test]

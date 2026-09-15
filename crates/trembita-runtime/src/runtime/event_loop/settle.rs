@@ -98,8 +98,8 @@ impl<M: StateMachine> Runtime<M> {
         }
         for (index, command) in step.two_phase_prepare_applied {
             if let Err(e) = self.two_phase_prepares.prepare(
-                command.tx_id.clone(),
-                command.route_key.clone(),
+                command.tx_id.as_bytes().to_vec(),
+                command.route_key.as_bytes().to_vec(),
                 command.command.clone(),
                 self.two_phase_tick,
             ) {

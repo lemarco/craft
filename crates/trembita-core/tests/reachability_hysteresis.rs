@@ -1,13 +1,15 @@
 //! Reachability hysteresis via [`RaftNode::reachable_now`] (reachability tuning).
 
 use trembita_core::{Config, FailureDetectorKind, ReachabilityConfig, Role};
-use trembita_proto::{AppendEntriesReply, NodeId, RaftRpcReply, RequestVoteReply, Round, Term};
+use trembita_proto::{
+    AppendEntriesReply, LogicalTick, NodeId, RaftRpcReply, RequestVoteReply, Round, Term,
+};
 
 fn cfg() -> Config {
     Config {
-        election_timeout_min: 10,
-        election_timeout_max: 20,
-        heartbeat_interval: 2,
+        election_timeout_min: LogicalTick(10),
+        election_timeout_max: LogicalTick(20),
+        heartbeat_interval: LogicalTick(2),
         seed: 1,
         reachability: ReachabilityConfig {
             window_ticks: Some(15),

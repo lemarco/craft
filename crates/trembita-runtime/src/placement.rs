@@ -30,8 +30,8 @@ use trembita_net::{
     send_actor_migrate, send_actor_scale, send_actor_spawn, send_actor_stop,
 };
 use trembita_proto::{
-    ActorId, ActorRegistration, ActorTypeId, MigrateReply, MigrateRequest, NodeId, ScaleReply,
-    ScaleRequest, SpawnReply, SpawnRequest, StopReply, StopRequest,
+    ActorGroupName, ActorId, ActorRegistration, ActorTypeId, MigrateReply, MigrateRequest, NodeId,
+    ScaleReply, ScaleRequest, SpawnReply, SpawnRequest, StopReply, StopRequest,
 };
 
 use crate::directory::ActorDirectory;
@@ -129,6 +129,9 @@ pub fn plan_scale(
 /// Why a [`spawn_remote`](ClusterControl::spawn_remote) failed (E9).
 #[derive(Debug, thiserror::Error)]
 pub enum RemoteSpawnError {
+    /// Actor group name failed validation.
+    #[error("invalid actor group name: {0}")]
+    InvalidName(#[from] trembita_proto::ValueError),
     /// A local spawn (target node is us) failed.
     #[error(transparent)]
     Local(#[from] SpawnError),
@@ -301,14 +304,14 @@ impl ClusterControl {
             }
             return Ok(ActorId {
                 node,
-                name: name.to_string(),
+                name: ActorGroupName::try_from(name)?,
                 instance: 0,
                 generation: 0,
             });
         }
         let config = A::encode_config(&config).map_err(RemoteSpawnError::Config)?;
         let request = SpawnRequest {
-            name: name.to_string(),
+            name: ActorGroupName::try_from(name)?,
             actor_type: Self::type_id::<A>(),
             config,
             generation: 0,
@@ -376,7 +379,7 @@ impl ClusterControl {
         let plan = plan_scale(total, live_nodes, &current)?;
         for &node in &plan.spawns {
             let request = SpawnRequest {
-                name: name.to_string(),
+                name: ActorGroupName::try_from(name).map_err(RemoteSpawnError::InvalidName)?,
                 actor_type: actor_type.clone(),
                 config: config.to_vec(),
                 generation: 0,
@@ -416,6 +419,9 @@ impl ClusterControl {
     /// error; its instances are reaped when it leaves, and the next reconcile
     /// re-plans any residual removal.
     async fn enact_removes(&self, name: &str, removes: &[ActorId]) -> Result<(), RemoteError> {
+        let group = ActorGroupName::try_from(name).map_err(|e| {
+            RemoteError::rejected(self.node_id, format!("invalid actor group name: {e}"))
+        })?;
         let mut remote_nodes: BTreeSet<NodeId> = BTreeSet::new();
         for id in removes {
             if id.node == self.node_id {
@@ -426,7 +432,7 @@ impl ClusterControl {
         }
         for node in remote_nodes {
             let request = StopRequest {
-                name: name.to_string(),
+                name: group.clone(),
             };
             let reply = send_actor_stop(self.transport.as_ref(), node, &request)
                 .await

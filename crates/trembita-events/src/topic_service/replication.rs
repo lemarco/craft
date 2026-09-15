@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use trembita_net::send_topic_replicate;
 use trembita_net::transport::{BoxFuture, TransportError};
-use trembita_proto::{NodeId, ProductWireError, TopicReplicateReply, TopicReplicateRequest};
+use trembita_proto::{
+    NodeId, ProductWireError, TopicName, TopicReplicateReply, TopicReplicateRequest,
+};
 use trembita_runtime::{
     authorize_replicate_leader, fanout_product_replicate, forward_to_leader, replicate_reply_err,
 };
@@ -16,15 +18,26 @@ use super::TopicService;
 pub(super) const REPLICATE_NOT_LEADER: &str = "topic replicate rejected: caller is not raft leader";
 
 impl TopicService {
-    pub(super) fn local_topic(&self, name: &str) -> Result<Arc<dyn EventTopic>, ProductWireError> {
+    pub(super) fn local_topic(
+        &self,
+        topic: &TopicName,
+    ) -> Result<Arc<dyn EventTopic>, ProductWireError> {
         self.topics
             .lock()
             .expect("poisoned")
-            .get(name)
+            .get(topic.as_str())
             .cloned()
-            .ok_or_else(|| ProductWireError::UnknownTopic {
-                topic: name.to_string(),
+            .ok_or(ProductWireError::UnknownTopic {
+                topic: topic.clone(),
             })
+    }
+
+    pub(super) fn local_topic_str(
+        &self,
+        name: &str,
+    ) -> Result<Arc<dyn EventTopic>, ProductWireError> {
+        let topic = TopicName::try_new(name.to_string()).expect("registered topic name is valid");
+        self.local_topic(&topic)
     }
 
     pub(super) async fn forward_leader<R>(
@@ -43,9 +56,9 @@ impl TopicService {
             return Ok(());
         }
         let request = TopicReplicateRequest {
-            topic: topic.to_string(),
+            topic: TopicName::try_new(topic.to_string()).expect("registered topic name is valid"),
             ops: ops.clone(),
-            leader_id: self.node_id.0,
+            leader_id: self.node_id,
         };
         let transport = Arc::clone(&self.transport);
         fanout_product_replicate(self.state.as_ref(), self.node_id, move |peer| {
@@ -66,11 +79,9 @@ impl TopicService {
         _from: Option<NodeId>,
         request: TopicReplicateRequest,
     ) -> TopicReplicateReply {
-        if let Err(e) = authorize_replicate_leader(
-            self.state.as_ref(),
-            NodeId(request.leader_id),
-            REPLICATE_NOT_LEADER,
-        ) {
+        if let Err(e) =
+            authorize_replicate_leader(self.state.as_ref(), request.leader_id, REPLICATE_NOT_LEADER)
+        {
             return TopicReplicateReply { error: Some(e) };
         }
         match self.local_topic(&request.topic) {

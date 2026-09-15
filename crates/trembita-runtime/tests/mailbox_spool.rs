@@ -47,7 +47,7 @@ fn reg(node: u64, name: &str, instance: u32) -> ActorRegistration {
     ActorRegistration::new(
         ActorId {
             node: NodeId(node),
-            name: name.to_string(),
+            name: trembita_runtime::trembita_proto::ActorGroupName::try_from(name).unwrap(),
             instance,
             generation: 0,
         },

@@ -2,15 +2,16 @@
 
 use trembita_core::{CatalogProposeError, Config, Output, RaftNode};
 use trembita_proto::{
-    AppendEntries, EntryPayload, LogEntry, LogId, LogIndex, NodeId, RaftRpc, RaftRpcReply,
-    RequestVoteReply, Round, Term, TwoPhaseAbortCommand, TwoPhasePrepareCommand,
+    AppendEntries, EntryPayload, LogEntry, LogId, LogIndex, LogicalTick, NodeId, RaftRpc,
+    RaftRpcReply, RequestVoteReply, Round, RouteKey, Term, TransactionId, TwoPhaseAbortCommand,
+    TwoPhasePrepareCommand, UnixMillis,
 };
 
 fn cfg() -> Config {
     Config {
-        election_timeout_min: 100,
-        election_timeout_max: 100,
-        heartbeat_interval: 5,
+        election_timeout_min: LogicalTick(100),
+        election_timeout_max: LogicalTick(100),
+        heartbeat_interval: LogicalTick(5),
         seed: 1,
         ..Default::default()
     }
@@ -41,10 +42,10 @@ fn elect_leader_term1(n: &mut RaftNode) {
 
 fn sample_prepare() -> TwoPhasePrepareCommand {
     TwoPhasePrepareCommand {
-        tx_id: b"tx-1".to_vec(),
-        route_key: b"shard-key".to_vec(),
+        tx_id: TransactionId::try_new(b"tx-1").unwrap(),
+        route_key: RouteKey::try_new(b"shard-key").unwrap(),
         command: vec![1, 2, 3],
-        prepared_at_ms: 1_000,
+        prepared_at_ms: UnixMillis(1_000),
     }
 }
 
@@ -140,8 +141,8 @@ fn leader_propose_two_phase_abort_emits_applied() {
     let _ = n.take_outputs();
 
     let cmd = TwoPhaseAbortCommand {
-        tx_id: b"tx-1".to_vec(),
-        route_key: b"shard-key".to_vec(),
+        tx_id: TransactionId::try_new(b"tx-1").unwrap(),
+        route_key: RouteKey::try_new(b"shard-key").unwrap(),
     };
     let index = n
         .propose_two_phase_abort(cmd.clone())

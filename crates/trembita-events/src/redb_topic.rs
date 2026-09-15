@@ -8,7 +8,11 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
-use trembita_proto::{TopicReplicateOp, decode, encode};
+use trembita_proto::{MaxAttempts, SubscriptionName, TopicReplicateOp, UnixMillis, decode, encode};
+
+fn wire_subscription(name: impl AsRef<str>) -> SubscriptionName {
+    SubscriptionName::try_new(name.as_ref().to_string()).expect("subscription name is valid")
+}
 use trembita_storage::{now_ms, open_mutex_database};
 
 use super::topic::{
@@ -279,17 +283,17 @@ impl RedbEventTopic {
                 } => {
                     let mut events = txn.open_table(EVENTS).map_err(backend)?;
                     let mut meta = txn.open_table(META).map_err(backend)?;
-                    if events.get(*event_id).map_err(backend)?.is_none() {
+                    if events.get(event_id.0).map_err(backend)?.is_none() {
                         let stored = StoredEvent {
                             payload: payload.clone(),
-                            published_at_ms: *published_at_ms,
+                            published_at_ms: published_at_ms.0,
                         };
                         events
-                            .insert(*event_id, encode(&stored).map_err(codec)?.as_slice())
+                            .insert(event_id.0, encode(&stored).map_err(codec)?.as_slice())
                             .map_err(backend)?;
-                        Self::fanout_pending(&txn, *event_id)?;
+                        Self::fanout_pending(&txn, event_id.0)?;
                     }
-                    Self::bump_meta_u64(&mut meta, K_NEXT_EVENT, *next_event_id)?;
+                    Self::bump_meta_u64(&mut meta, K_NEXT_EVENT, next_event_id.0)?;
                 }
                 TopicReplicateOp::RegisterSubscription {
                     name,
@@ -302,7 +306,7 @@ impl RedbEventTopic {
                     }
                     let stored = StoredSub {
                         cursor: *cursor,
-                        max_attempts: *max_attempts,
+                        max_attempts: max_attempts.0,
                         retention_discards: 0,
                     };
                     subs.insert(name.as_str(), encode(&stored).map_err(codec)?.as_slice())
@@ -314,7 +318,7 @@ impl RedbEventTopic {
                             let (id, _) = row.map_err(backend)?;
                             if id.value() > *cursor {
                                 pending
-                                    .insert(pending_key(name, id.value()).as_slice(), ())
+                                    .insert(pending_key(name.as_str(), id.value()).as_slice(), ())
                                     .map_err(backend)?;
                             }
                         }
@@ -330,7 +334,7 @@ impl RedbEventTopic {
                         .filter_map(|row| {
                             let (key, _) = row.ok()?;
                             let (sub, _) = parse_pending_key(key.value())?;
-                            (sub == *name).then_some(key.value().to_vec())
+                            (sub == name.as_str()).then_some(key.value().to_vec())
                         })
                         .collect();
                     for key in keys {
@@ -343,7 +347,7 @@ impl RedbEventTopic {
                         .filter_map(|row| {
                             let (id, bytes) = row.ok()?;
                             let lease: StoredLease = decode(bytes.value()).ok()?;
-                            (lease.subscription == *name).then_some(id.value())
+                            (lease.subscription == name.as_str()).then_some(id.value())
                         })
                         .collect();
                     for id in lease_remove {
@@ -356,7 +360,7 @@ impl RedbEventTopic {
                         .filter_map(|row| {
                             let (key, _) = row.ok()?;
                             let (sub, _) = parse_pending_key(key.value())?;
-                            (sub == *name).then_some(key.value().to_vec())
+                            (sub == name.as_str()).then_some(key.value().to_vec())
                         })
                         .collect();
                     for key in dead_remove {
@@ -375,24 +379,24 @@ impl RedbEventTopic {
                 } => {
                     let mut leases = txn.open_table(SUB_LEASES).map_err(backend)?;
                     let mut meta = txn.open_table(META).map_err(backend)?;
-                    if leases.get(*lease_id).map_err(backend)?.is_none() {
+                    if leases.get(lease_id.0).map_err(backend)?.is_none() {
                         let mut pending = txn.open_table(SUB_PENDING).map_err(backend)?;
                         pending
-                            .remove(pending_key(subscription, *event_id).as_slice())
+                            .remove(pending_key(subscription.as_str(), event_id.0).as_slice())
                             .map_err(backend)?;
                         let lease = StoredLease {
-                            subscription: subscription.clone(),
-                            event_id: *event_id,
-                            worker_node: *worker_node,
+                            subscription: subscription.as_str().to_string(),
+                            event_id: event_id.0,
+                            worker_node: worker_node.0,
                             worker_instance: *worker_instance,
-                            expires_at_ms: *expires_at_ms,
+                            expires_at_ms: expires_at_ms.0,
                             attempts: *attempts,
                         };
                         leases
-                            .insert(*lease_id, encode(&lease).map_err(codec)?.as_slice())
+                            .insert(lease_id.0, encode(&lease).map_err(codec)?.as_slice())
                             .map_err(backend)?;
                     }
-                    Self::bump_meta_u64(&mut meta, K_NEXT_LEASE, *next_lease_id)?;
+                    Self::bump_meta_u64(&mut meta, K_NEXT_LEASE, next_lease_id.0)?;
                 }
                 TopicReplicateOp::Ack {
                     subscription,
@@ -401,7 +405,7 @@ impl RedbEventTopic {
                     cursor,
                 } => {
                     let mut leases = txn.open_table(SUB_LEASES).map_err(backend)?;
-                    leases.remove(*lease_id).map_err(backend)?;
+                    leases.remove(lease_id.0).map_err(backend)?;
                     let mut subs = txn.open_table(SUBS).map_err(backend)?;
                     let mut stored: Option<StoredSub> = subs
                         .get(subscription.as_str())
@@ -409,7 +413,7 @@ impl RedbEventTopic {
                         .map(|b| decode(b.value()).map_err(codec))
                         .transpose()?;
                     if let Some(stored) = stored.as_mut() {
-                        stored.cursor = stored.cursor.max(*cursor).max(*event_id);
+                        stored.cursor = stored.cursor.max(*cursor).max(event_id.0);
                         subs.insert(
                             subscription.as_str(),
                             encode(stored).map_err(codec)?.as_slice(),
@@ -417,7 +421,7 @@ impl RedbEventTopic {
                         .map_err(backend)?;
                     }
                     let mut dead = txn.open_table(SUB_DEAD).map_err(backend)?;
-                    dead.remove(pending_key(subscription, *event_id).as_slice())
+                    dead.remove(pending_key(subscription.as_str(), event_id.0).as_slice())
                         .map_err(backend)?;
                 }
                 TopicReplicateOp::Nack {
@@ -435,18 +439,21 @@ impl RedbEventTopic {
                     dead_letter,
                 } => {
                     let mut leases = txn.open_table(SUB_LEASES).map_err(backend)?;
-                    leases.remove(*lease_id).map_err(backend)?;
+                    leases.remove(lease_id.0).map_err(backend)?;
                     if *dead_letter {
                         let mut dead = txn.open_table(SUB_DEAD).map_err(backend)?;
                         dead.insert(
-                            pending_key(subscription, *event_id).as_slice(),
+                            pending_key(subscription.as_str(), event_id.0).as_slice(),
                             encode(attempts).map_err(codec)?.as_slice(),
                         )
                         .map_err(backend)?;
                     } else {
                         let mut pending = txn.open_table(SUB_PENDING).map_err(backend)?;
                         pending
-                            .insert(pending_key(subscription, *event_id).as_slice(), ())
+                            .insert(
+                                pending_key(subscription.as_str(), event_id.0).as_slice(),
+                                (),
+                            )
                             .map_err(backend)?;
                     }
                 }
@@ -478,7 +485,8 @@ impl RedbEventTopic {
                         .filter_map(|row| {
                             let (key, _) = row.ok()?;
                             let (sub, eid) = parse_pending_key(key.value())?;
-                            (sub == *subscription && eid <= *cursor).then_some(key.value().to_vec())
+                            (sub == subscription.as_str() && eid <= *cursor)
+                                .then_some(key.value().to_vec())
                         })
                         .collect();
                     for key in keys {
@@ -491,7 +499,8 @@ impl RedbEventTopic {
                         .filter_map(|row| {
                             let (id, bytes) = row.ok()?;
                             let lease: StoredLease = decode(bytes.value()).ok()?;
-                            (lease.subscription == *subscription && lease.event_id <= *cursor)
+                            (lease.subscription == subscription.as_str()
+                                && lease.event_id <= *cursor)
                                 .then_some(id.value())
                         })
                         .collect();
@@ -505,7 +514,8 @@ impl RedbEventTopic {
                         .filter_map(|row| {
                             let (key, _) = row.ok()?;
                             let (sub, eid) = parse_pending_key(key.value())?;
-                            (sub == *subscription && eid <= *cursor).then_some(key.value().to_vec())
+                            (sub == subscription.as_str() && eid <= *cursor)
+                                .then_some(key.value().to_vec())
                         })
                         .collect();
                     for key in dead_remove {
@@ -574,9 +584,9 @@ impl RedbEventTopic {
                 (o.attempts, o.dead_letter)
             };
             ops.push(TopicReplicateOp::Reclaim {
-                subscription: lease.subscription,
-                lease_id,
-                event_id: lease.event_id,
+                subscription: wire_subscription(&lease.subscription),
+                lease_id: TopicLeaseId(lease_id),
+                event_id: EventId(lease.event_id),
                 attempts,
                 dead_letter: dead,
             });
@@ -599,10 +609,10 @@ impl EventTopic for RedbEventTopic {
             let published_at_ms = now_ms();
             let next_event_id = event_id.saturating_add(1);
             ops.push(TopicReplicateOp::Publish {
-                event_id,
+                event_id: EventId(event_id),
                 payload: payload.to_vec(),
-                published_at_ms,
-                next_event_id,
+                published_at_ms: UnixMillis(published_at_ms),
+                next_event_id: EventId(next_event_id),
             });
             for op in &ops {
                 let _ = self.apply_replicate_inner(op)?;
@@ -636,9 +646,9 @@ impl EventTopic for RedbEventTopic {
                     SubscriptionStart::Latest => head,
                 };
                 ops.push(TopicReplicateOp::RegisterSubscription {
-                    name: def.name.clone(),
+                    name: wire_subscription(&def.name),
                     cursor,
-                    max_attempts: def.max_attempts,
+                    max_attempts: MaxAttempts(def.max_attempts),
                 });
             }
             for op in &ops {
@@ -705,13 +715,13 @@ impl EventTopic for RedbEventTopic {
                     let lease_id = next_lease;
                     next_lease = next_lease.saturating_add(1);
                     ops.push(TopicReplicateOp::Lease {
-                        subscription: subscription.to_string(),
-                        lease_id,
-                        event_id,
-                        worker_node: worker.node.0,
+                        subscription: wire_subscription(subscription),
+                        lease_id: TopicLeaseId(lease_id),
+                        event_id: EventId(event_id),
+                        worker_node: worker.node,
                         worker_instance: worker.instance,
-                        expires_at_ms,
-                        next_lease_id: next_lease,
+                        expires_at_ms: UnixMillis(expires_at_ms),
+                        next_lease_id: TopicLeaseId(next_lease),
                         attempts,
                     });
                     out.push(LeasedEvent {
@@ -761,9 +771,9 @@ impl EventTopic for RedbEventTopic {
             drop(txn);
             drop(db);
             let ops = vec![TopicReplicateOp::Ack {
-                subscription: subscription.to_string(),
-                lease_id: lease_id.0,
-                event_id: lease.event_id,
+                subscription: wire_subscription(subscription),
+                lease_id,
+                event_id: EventId(lease.event_id),
                 cursor,
             }];
             if let Some(compact) = self.apply_replicate_inner(&ops[0])? {
@@ -808,9 +818,9 @@ impl EventTopic for RedbEventTopic {
             drop(txn);
             drop(db);
             let ops = vec![TopicReplicateOp::Nack {
-                subscription: subscription.to_string(),
-                lease_id: lease_id.0,
-                event_id: lease.event_id,
+                subscription: wire_subscription(subscription),
+                lease_id,
+                event_id: EventId(lease.event_id),
                 attempts,
                 dead_letter: dead,
             }];
@@ -915,7 +925,7 @@ impl EventTopic for RedbEventTopic {
                         continue;
                     }
                     ops.push(TopicReplicateOp::RetentionDiscard {
-                        subscription: sub.subscription,
+                        subscription: wire_subscription(&sub.subscription),
                         cursor: head,
                         discarded: lag,
                     });

@@ -1,7 +1,7 @@
 use trembita_proto::{
-    CatalogCommand, LogEntry, LogId, LogIndex, Membership, NodeId, QueueAutoscalePolicyCommand,
-    RaftRpc, RaftRpcReply, SagaJournalCommand, Term, TwoPhaseAbortCommand, TwoPhaseJournalCommand,
-    TwoPhasePrepareCommand,
+    CatalogCommand, LogEntry, LogId, LogIndex, LogicalTick, Membership, NodeId,
+    QueueAutoscalePolicyCommand, RaftRpc, RaftRpcReply, SagaJournalCommand, Term,
+    TwoPhaseAbortCommand, TwoPhaseJournalCommand, TwoPhasePrepareCommand, ValueError,
 };
 
 use crate::failure_detector::ReachabilityConfig;
@@ -24,23 +24,55 @@ pub enum Role {
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Lower bound of the randomized election timeout (ticks).
-    pub election_timeout_min: u64,
+    pub election_timeout_min: LogicalTick,
     /// Upper bound of the randomized election timeout (ticks).
-    pub election_timeout_max: u64,
+    pub election_timeout_max: LogicalTick,
     /// Ticks between leader heartbeats.
-    pub heartbeat_interval: u64,
+    pub heartbeat_interval: LogicalTick,
     /// Seed mixed with the node id for deterministic timeout jitter.
     pub seed: u64,
     /// Leader-side reachability tuning (reachability tuning).
     pub reachability: ReachabilityConfig,
 }
 
+impl Config {
+    /// Construct a config after checking timing invariants.
+    ///
+    /// # Errors
+    /// Returns [`ValueError`] when bounds are inconsistent.
+    pub fn try_new(
+        election_timeout_min: LogicalTick,
+        election_timeout_max: LogicalTick,
+        heartbeat_interval: LogicalTick,
+        seed: u64,
+        reachability: ReachabilityConfig,
+    ) -> Result<Self, ValueError> {
+        if election_timeout_min.0 > election_timeout_max.0 {
+            return Err(ValueError::Invariant(
+                "election_timeout_min must be <= election_timeout_max".into(),
+            ));
+        }
+        if heartbeat_interval.0 == 0 {
+            return Err(ValueError::Invariant(
+                "heartbeat_interval must be > 0".into(),
+            ));
+        }
+        Ok(Self {
+            election_timeout_min,
+            election_timeout_max,
+            heartbeat_interval,
+            seed,
+            reachability,
+        })
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
-            election_timeout_min: 10,
-            election_timeout_max: 20,
-            heartbeat_interval: 3,
+            election_timeout_min: LogicalTick(10),
+            election_timeout_max: LogicalTick(20),
+            heartbeat_interval: LogicalTick(3),
             seed: 0,
             reachability: ReachabilityConfig::default(),
         }

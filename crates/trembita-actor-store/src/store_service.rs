@@ -13,8 +13,8 @@ use trembita_net::{
 };
 use trembita_proto::{
     BoxFuture as StoreBoxFuture, NodeId, ProductWireError, StoreCompareAndSetReply,
-    StoreCompareAndSetRequest, StoreDeleteReply, StoreDeleteRequest, StoreReplicateReply,
-    StoreReplicateRequest, StoreSetReply, StoreSetRequest,
+    StoreCompareAndSetRequest, StoreDeleteReply, StoreDeleteRequest, StoreKey, StoreReplicateReply,
+    StoreReplicateRequest, StoreSetReply, StoreSetRequest, TtlSecs,
 };
 
 use crate::store::{ActorStateStore, StoreError};
@@ -75,7 +75,7 @@ impl StoreService {
         }
         let request = StoreReplicateRequest {
             ops: ops.clone(),
-            leader_id: self.node_id.0,
+            leader_id: self.node_id,
         };
         let transport = Arc::clone(&self.transport);
         fanout_product_replicate(self.state.as_ref(), self.node_id, move |peer| {
@@ -94,9 +94,9 @@ impl StoreService {
     async fn handle_set(&self, request: StoreSetRequest) -> StoreSetReply {
         if self.state.is_leader() {
             match self.local.set_replicated(
-                &request.key,
+                request.key.as_str(),
                 &request.value,
-                ttl_from_secs(request.ttl_secs),
+                ttl_from_secs(request.ttl_secs.0),
             ) {
                 Ok(ops) => {
                     if let Err(e) = self.replicate_ops(&ops).await {
@@ -127,7 +127,7 @@ impl StoreService {
 
     async fn handle_delete(&self, request: StoreDeleteRequest) -> StoreDeleteReply {
         if self.state.is_leader() {
-            match self.local.delete_replicated(&request.key) {
+            match self.local.delete_replicated(request.key.as_str()) {
                 Ok(ops) => {
                     if let Err(e) = self.replicate_ops(&ops).await {
                         return StoreDeleteReply { error: Some(e) };
@@ -162,10 +162,10 @@ impl StoreService {
         if self.state.is_leader() {
             let expected = request.expected.as_deref();
             match self.local.compare_and_set_replicated(
-                &request.key,
+                request.key.as_str(),
                 expected,
                 &request.value,
-                ttl_from_secs(request.ttl_secs),
+                ttl_from_secs(request.ttl_secs.0),
             ) {
                 Ok((applied, ops)) => {
                     if applied && let Err(e) = self.replicate_ops(&ops).await {
@@ -209,11 +209,9 @@ impl StoreService {
         _from: Option<NodeId>,
         request: &StoreReplicateRequest,
     ) -> StoreReplicateReply {
-        if let Err(e) = authorize_replicate_leader(
-            self.state.as_ref(),
-            NodeId(request.leader_id),
-            REPLICATE_NOT_LEADER,
-        ) {
+        if let Err(e) =
+            authorize_replicate_leader(self.state.as_ref(), request.leader_id, REPLICATE_NOT_LEADER)
+        {
             return StoreReplicateReply { error: Some(e) };
         }
         for op in &request.ops {
@@ -333,9 +331,9 @@ impl ActorStateStore for ClusterActorStateStore {
                 self.transport.as_ref(),
                 leader,
                 &StoreSetRequest {
-                    key: key.to_string(),
+                    key: StoreKey::try_new(key).map_err(|e| StoreError::Backend(e.to_string()))?,
                     value: value.to_vec(),
-                    ttl_secs,
+                    ttl_secs: TtlSecs(ttl_secs),
                 },
             )
             .await
@@ -357,7 +355,7 @@ impl ActorStateStore for ClusterActorStateStore {
                 self.transport.as_ref(),
                 leader,
                 &StoreDeleteRequest {
-                    key: key.to_string(),
+                    key: StoreKey::try_new(key).map_err(|e| StoreError::Backend(e.to_string()))?,
                 },
             )
             .await
@@ -383,10 +381,10 @@ impl ActorStateStore for ClusterActorStateStore {
                 self.transport.as_ref(),
                 leader,
                 &StoreCompareAndSetRequest {
-                    key: key.to_string(),
+                    key: StoreKey::try_new(key).map_err(|e| StoreError::Backend(e.to_string()))?,
                     expected: expected.map(<[u8]>::to_vec),
                     value: value.to_vec(),
-                    ttl_secs,
+                    ttl_secs: TtlSecs(ttl_secs),
                 },
             )
             .await

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use trembita_runtime::trembita_net::{LocalNetwork, Transport};
 use trembita_runtime::trembita_proto::{
-    ActorId, ActorRegistration, ActorTypeId, DirectoryUpdate, NodeId,
+    ActorGroupName, ActorId, ActorRegistration, ActorTypeId, DirectoryUpdate, NodeId,
 };
 use trembita_runtime::{ActorDirectory, ActorRegistry, DirectorySync, UserActor};
 
@@ -21,7 +21,7 @@ fn reg(node: u64, name: &str, instance: u32) -> ActorRegistration {
     ActorRegistration::new(
         ActorId {
             node: NodeId(node),
-            name: name.to_string(),
+            name: ActorGroupName::try_from(name).unwrap(),
             instance,
             generation: 0,
         },
@@ -199,7 +199,7 @@ async fn three_nodes_converge_on_a_merged_directory() {
 
     // Node 3 (hosting nothing locally) can still route to remote instances.
     let target = dir3.cluster("workers").pick().unwrap();
-    assert_eq!(target.id.name, "workers");
+    assert_eq!(target.id.name, ActorGroupName::try_from("workers").unwrap());
     assert!([NodeId(1), NodeId(2)].contains(&target.id.node));
 }
 

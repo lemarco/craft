@@ -2,13 +2,13 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Membership, NodeId};
+use crate::{Membership, NodeId, ProtocolVersion};
 
 /// A request to remove a node from the cluster registry (group 0).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LeaveRequest {
     /// Wire/protocol version (join-version-skew).
-    pub protocol_version: u32,
+    pub protocol_version: ProtocolVersion,
     /// Node id to remove from committed voters or learners.
     pub node_id: NodeId,
 }

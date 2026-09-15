@@ -20,7 +20,7 @@ impl RaftNode {
             // when campaigning and would otherwise livelock elections.
             let leader_recent = self.leader_id.is_some()
                 && self.logical_clock.saturating_sub(self.last_leader_contact)
-                    < self.config.election_timeout_min;
+                    < self.config.election_timeout_min.raw();
             let granted = rv.term >= self.current_term && up_to_date && !leader_recent;
             if !granted {
                 tracing::debug!(

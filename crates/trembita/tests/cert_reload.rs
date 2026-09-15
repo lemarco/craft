@@ -57,9 +57,9 @@ async fn pem_hot_reload_reissues_leaf_without_restart() {
     peers.insert(NodeId(2), listen2);
 
     let raft = trembita::core::Config {
-        election_timeout_min: 5,
-        election_timeout_max: 10,
-        heartbeat_interval: 2,
+        election_timeout_min: trembita::proto::LogicalTick(5),
+        election_timeout_max: trembita::proto::LogicalTick(10),
+        heartbeat_interval: trembita::proto::LogicalTick(2),
         seed: 11,
         ..Default::default()
     };

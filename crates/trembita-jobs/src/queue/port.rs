@@ -147,7 +147,7 @@ pub trait JobQueue: Send + Sync {
         Box::pin(async move {
             self.requeue_dead_letter(job_id).await?;
             Ok(vec![QueueReplicateOp::RequeueDeadLetter {
-                job_id: job_id.0,
+                job_id,
                 attempts: 0,
             }])
         })

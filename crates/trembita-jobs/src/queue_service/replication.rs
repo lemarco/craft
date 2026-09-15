@@ -6,6 +6,7 @@ use trembita_net::send_queue_replicate;
 use trembita_net::transport::{BoxFuture, TransportError};
 use trembita_proto::{
     NodeId, ProductWireError, QueueReplicateOp, QueueReplicateReply, QueueReplicateRequest,
+    StreamName,
 };
 use trembita_runtime::{
     authorize_replicate_leader, fanout_product_replicate, forward_to_leader, replicate_reply_err,
@@ -37,7 +38,7 @@ fn local_rollback_op(op: &QueueReplicateOp) -> Option<QueueReplicateOp> {
             job_id: *job_id,
             attempts: 0,
             dead_letter: false,
-            not_before_ms: 0,
+            not_before_ms: trembita_proto::UnixMillis(0),
         }),
         _ => None,
     }
@@ -52,7 +53,8 @@ impl QueueService {
             .get(stream)
             .cloned()
             .ok_or_else(|| ProductWireError::UnknownStream {
-                stream: stream.to_string(),
+                stream: StreamName::try_new(stream.to_string())
+                    .expect("registered stream name is valid"),
             })
     }
 
@@ -74,9 +76,10 @@ impl QueueService {
             return Ok(());
         }
         let request = QueueReplicateRequest {
-            stream: stream.to_string(),
+            stream: StreamName::try_new(stream.to_string())
+                .expect("registered stream name is valid"),
             ops: ops.clone(),
-            leader_id: self.node_id.0,
+            leader_id: self.node_id,
         };
         let transport = Arc::clone(&self.transport);
         fanout_product_replicate(self.state.as_ref(), self.node_id, move |peer| {
@@ -112,14 +115,12 @@ impl QueueService {
         _from: Option<NodeId>,
         request: QueueReplicateRequest,
     ) -> QueueReplicateReply {
-        if let Err(e) = authorize_replicate_leader(
-            self.state.as_ref(),
-            NodeId(request.leader_id),
-            REPLICATE_NOT_LEADER,
-        ) {
+        if let Err(e) =
+            authorize_replicate_leader(self.state.as_ref(), request.leader_id, REPLICATE_NOT_LEADER)
+        {
             return QueueReplicateReply { error: Some(e) };
         }
-        match self.local_stream(&request.stream) {
+        match self.local_stream(request.stream.as_str()) {
             Err(e) => QueueReplicateReply { error: Some(e) },
             Ok(queue) => {
                 for op in &request.ops {

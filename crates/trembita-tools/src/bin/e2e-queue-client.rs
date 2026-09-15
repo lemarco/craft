@@ -16,8 +16,13 @@ use trembita_net::{
     send_queue_enqueue, send_queue_lease, send_queue_metrics,
 };
 use trembita_proto::{
-    NodeId, QueueAckRequest, QueueEnqueueRequest, QueueLeaseRequest, QueueMetricsRequest,
+    JobPriority, MaxAttempts, NodeId, QueueAckRequest, QueueEnqueueRequest, QueueLeaseRequest,
+    QueueMetricsRequest, StreamName, UnixMillis,
 };
+
+fn stream_name(stream: &str) -> StreamName {
+    StreamName::try_from(stream).expect("valid stream name")
+}
 
 fn env(key: &str) -> Result<String, String> {
     env::var(key).map_err(|_| format!("missing env {key}"))
@@ -71,7 +76,7 @@ async fn metrics_pending(
         transport,
         peer,
         &QueueMetricsRequest {
-            stream: stream.into(),
+            stream: stream_name(stream),
         },
     )
     .await
@@ -103,7 +108,7 @@ async fn before_failover(
     stream: &str,
     submit: NodeId,
     worker_peer: NodeId,
-    worker_node: u64,
+    worker_node: NodeId,
     worker_instance: u32,
 ) -> Result<(), String> {
     wait_queue_ready(transport.as_ref(), submit, stream).await?;
@@ -114,13 +119,13 @@ async fn before_failover(
             transport.as_ref(),
             submit,
             &QueueEnqueueRequest {
-                stream: stream.into(),
+                stream: stream_name(stream),
                 payload: payload.into_bytes(),
-                priority: 0,
-                not_before_ms: 0,
+                priority: JobPriority(0),
+                not_before_ms: UnixMillis(0),
                 shard_key: None,
                 dedup_key: None,
-                max_attempts: 0,
+                max_attempts: MaxAttempts(0),
             },
         )
         .await
@@ -137,7 +142,7 @@ async fn before_failover(
         transport.as_ref(),
         worker_peer,
         &QueueLeaseRequest {
-            stream: stream.into(),
+            stream: stream_name(stream),
             worker_node,
             worker_instance,
             max: 2,
@@ -160,7 +165,7 @@ async fn before_failover(
             transport.as_ref(),
             worker_peer,
             &QueueAckRequest {
-                stream: stream.into(),
+                stream: stream_name(stream),
                 worker_node,
                 worker_instance,
                 lease_id: job.lease_id,
@@ -185,7 +190,7 @@ async fn after_failover(
     transport: Arc<QuicTransport>,
     stream: &str,
     contact: NodeId,
-    worker_node: u64,
+    worker_node: NodeId,
     worker_instance: u32,
 ) -> Result<(), String> {
     wait_queue_ready(transport.as_ref(), contact, stream).await?;
@@ -199,7 +204,7 @@ async fn after_failover(
         transport.as_ref(),
         contact,
         &QueueLeaseRequest {
-            stream: stream.into(),
+            stream: stream_name(stream),
             worker_node,
             worker_instance,
             max: 5,
@@ -222,7 +227,7 @@ async fn after_failover(
             transport.as_ref(),
             contact,
             &QueueAckRequest {
-                stream: stream.into(),
+                stream: stream_name(stream),
                 worker_node,
                 worker_instance,
                 lease_id: job.lease_id,
@@ -260,7 +265,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let worker_node = env("TREMBITA_QUEUE_WORKER_NODE")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(worker_peer.0);
+        .map(NodeId)
+        .unwrap_or(worker_peer);
     let worker_instance = env("TREMBITA_QUEUE_WORKER_INSTANCE")
         .ok()
         .and_then(|v| v.parse().ok())

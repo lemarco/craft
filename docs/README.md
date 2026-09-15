@@ -17,6 +17,7 @@ Architecture and decision records for the distributive Raft actor system.
 | State machine API (trait + macros) | [state-machine](decisions/state-machine.md) |
 | Client API, routing & read consistency | [client-and-routing](decisions/client-and-routing.md) |
 | Architecture style (ports & adapters) | [architecture-style](decisions/architecture-style.md) |
+| Wire value objects (names, ids, validation) | [domain-value-objects](decisions/domain-value-objects.md) |
 | Naming (`trembita-*` + facade `trembita`) | [naming](decisions/naming.md) |
 | Facade crate + Cargo features | [facade](decisions/facade.md) |
 | Library distribution & publishing | [library-and-publishing](decisions/library-and-publishing.md) |

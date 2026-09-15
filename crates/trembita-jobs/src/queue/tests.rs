@@ -1,9 +1,9 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use trembita_proto::{NodeId, WorkerId};
+use trembita_proto::{JobId, NodeId, WorkerId};
 
 use super::{
-    EnqueueOptions, InMemoryJobQueue, JobId, JobLifecycle, JobListFilter, JobQueue, QueueError,
+    EnqueueOptions, InMemoryJobQueue, JobLifecycle, JobListFilter, JobQueue, QueueError,
     run_queue_consumer,
 };
 
@@ -116,9 +116,12 @@ async fn priority_jobs_leased_first() {
     q.enqueue_opts(b"low", EnqueueOptions::default())
         .await
         .unwrap();
-    q.enqueue_opts(b"high", EnqueueOptions::priority(10))
-        .await
-        .unwrap();
+    q.enqueue_opts(
+        b"high",
+        EnqueueOptions::priority(trembita_proto::JobPriority(10)),
+    )
+    .await
+    .unwrap();
 
     let leased = q.lease(worker(0), 1).await.unwrap();
     assert_eq!(leased[0].payload, b"high");
@@ -179,7 +182,10 @@ async fn job_status_reports_lifecycle() {
 async fn max_attempts_moves_job_to_dead_letter() {
     let q = InMemoryJobQueue::new(Duration::from_secs(30));
     let id = q
-        .enqueue_opts(b"poison", EnqueueOptions::max_attempts(2))
+        .enqueue_opts(
+            b"poison",
+            EnqueueOptions::max_attempts(trembita_proto::MaxAttempts(2)),
+        )
         .await
         .unwrap();
     for _ in 0..2 {
@@ -243,7 +249,8 @@ async fn stream_default_max_attempts_applies_when_job_leaves_it_unset() {
             .await
             .unwrap()
             .expect("status")
-            .max_attempts,
+            .max_attempts
+            .0,
         2
     );
 
@@ -264,7 +271,10 @@ async fn explicit_max_attempts_overrides_stream_default() {
 
     // Explicit `0` is a request for unlimited retries, not "unset".
     let unlimited = q
-        .enqueue_opts(b"unlimited", EnqueueOptions::max_attempts(0))
+        .enqueue_opts(
+            b"unlimited",
+            EnqueueOptions::max_attempts(trembita_proto::MaxAttempts(0)),
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -272,13 +282,17 @@ async fn explicit_max_attempts_overrides_stream_default() {
             .await
             .unwrap()
             .expect("status")
-            .max_attempts,
+            .max_attempts
+            .0,
         0
     );
 
     // A non-zero explicit ceiling wins over the stream default too.
     let capped = q
-        .enqueue_opts(b"capped", EnqueueOptions::max_attempts(5))
+        .enqueue_opts(
+            b"capped",
+            EnqueueOptions::max_attempts(trembita_proto::MaxAttempts(5)),
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -286,7 +300,8 @@ async fn explicit_max_attempts_overrides_stream_default() {
             .await
             .unwrap()
             .expect("status")
-            .max_attempts,
+            .max_attempts
+            .0,
         5
     );
 }
@@ -300,7 +315,8 @@ async fn zero_stream_default_keeps_retries_unlimited() {
             .await
             .unwrap()
             .expect("status")
-            .max_attempts,
+            .max_attempts
+            .0,
         0
     );
     for _ in 0..3 {

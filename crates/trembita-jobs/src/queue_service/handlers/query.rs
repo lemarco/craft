@@ -2,12 +2,13 @@ use std::sync::Arc;
 
 use trembita_net::{send_queue_job_status, send_queue_list_jobs, send_queue_metrics};
 use trembita_proto::{
-    QueueJobStatusReply, QueueJobStatusRequest, QueueListJobsReply, QueueListJobsRequest,
-    QueueMetricsReply, QueueMetricsRequest,
+    JobPriority, MaxAttempts, QueueJobStatusReply, QueueJobStatusRequest, QueueListJobsReply,
+    QueueListJobsRequest, QueueMetricsReply, QueueMetricsRequest,
 };
 
-use super::super::wire::{filter_from_list_request, job_status_to_list_entry, job_status_to_reply};
-use crate::JobId;
+use super::super::wire::{
+    filter_from_list_request, job_status_to_list_entry, job_status_to_reply, stream_key,
+};
 use crate::JobQueue;
 
 use super::super::QueueService;
@@ -18,10 +19,10 @@ impl QueueService {
         request: QueueMetricsRequest,
     ) -> QueueMetricsReply {
         if self.state.is_leader() {
-            let metrics = if let Some(sharded) = self.sharded_stream(&request.stream) {
+            let metrics = if let Some(sharded) = self.sharded_stream(stream_key(&request.stream)) {
                 sharded.metrics().await
             } else {
-                match self.local_stream(&request.stream) {
+                match self.local_stream(stream_key(&request.stream)) {
                     Err(e) => {
                         return QueueMetricsReply {
                             pending: 0,
@@ -83,26 +84,26 @@ impl QueueService {
         request: QueueJobStatusRequest,
     ) -> QueueJobStatusReply {
         if self.state.is_leader() {
-            let status = if let Some(sharded) = self.sharded_stream(&request.stream) {
-                sharded.job_status(JobId(request.job_id)).await
+            let status = if let Some(sharded) = self.sharded_stream(stream_key(&request.stream)) {
+                sharded.job_status(request.job_id).await
             } else {
-                match self.local_stream(&request.stream) {
+                match self.local_stream(stream_key(&request.stream)) {
                     Err(e) => {
                         return QueueJobStatusReply {
                             found: false,
                             job_id: request.job_id,
                             lifecycle: None,
                             payload_len: 0,
-                            priority: 0,
+                            priority: JobPriority(0),
                             leased_worker_node: None,
                             leased_worker_instance: None,
                             attempts: 0,
-                            max_attempts: 0,
+                            max_attempts: MaxAttempts(0),
                             dedup_key: None,
                             error: Some(e),
                         };
                     }
-                    Ok(queue) => queue.job_status(JobId(request.job_id)).await,
+                    Ok(queue) => queue.job_status(request.job_id).await,
                 }
             };
             match status {
@@ -112,11 +113,11 @@ impl QueueService {
                     job_id: request.job_id,
                     lifecycle: None,
                     payload_len: 0,
-                    priority: 0,
+                    priority: JobPriority(0),
                     leased_worker_node: None,
                     leased_worker_instance: None,
                     attempts: 0,
-                    max_attempts: 0,
+                    max_attempts: MaxAttempts(0),
                     dedup_key: None,
                     error: Some(trembita_proto::ProductWireError::backend(e)),
                 },
@@ -139,11 +140,11 @@ impl QueueService {
                     job_id,
                     lifecycle: None,
                     payload_len: 0,
-                    priority: 0,
+                    priority: JobPriority(0),
                     leased_worker_node: None,
                     leased_worker_instance: None,
                     attempts: 0,
-                    max_attempts: 0,
+                    max_attempts: MaxAttempts(0),
                     dedup_key: None,
                     error: Some(e),
                 },
@@ -157,10 +158,10 @@ impl QueueService {
     ) -> QueueListJobsReply {
         if self.state.is_leader() {
             let filter = filter_from_list_request(&request);
-            let page = if let Some(sharded) = self.sharded_stream(&request.stream) {
+            let page = if let Some(sharded) = self.sharded_stream(stream_key(&request.stream)) {
                 sharded.list_jobs(filter).await
             } else {
-                match self.local_stream(&request.stream) {
+                match self.local_stream(stream_key(&request.stream)) {
                     Err(e) => {
                         return QueueListJobsReply {
                             jobs: Vec::new(),

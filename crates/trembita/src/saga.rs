@@ -176,7 +176,7 @@ impl SagaJournal for StoreSagaJournal {
 }
 
 /// In-memory view of saga records applied from Meta-Raft (all replicas).
-pub type SagaRegistry = Arc<Mutex<BTreeMap<Vec<u8>, SagaJournalRecord>>>;
+pub type SagaRegistry = Arc<Mutex<BTreeMap<trembita_proto::SagaId, SagaJournalRecord>>>;
 
 type SagaJournalUpsertFn = dyn Fn(SagaJournalCommand) -> Pin<Box<dyn Future<Output = Result<(), SagaJournalError>> + Send>>
     + Send
@@ -204,7 +204,8 @@ impl MetaRaftSagaJournal {
     }
 
     fn read(&self, saga_id: &[u8]) -> Option<SagaJournalRecord> {
-        self.registry.lock().expect("lock").get(saga_id).cloned()
+        let id = trembita_proto::SagaId::try_new(saga_id.to_vec()).ok()?;
+        self.registry.lock().expect("lock").get(&id).cloned()
     }
 
     async fn update(
@@ -215,7 +216,8 @@ impl MetaRaftSagaJournal {
         let prev = self.read(saga_id);
         let updated = f(prev.unwrap_or_else(|| fresh_record(saga_id)));
         let command = SagaJournalCommand {
-            saga_id: saga_id.to_vec(),
+            saga_id: trembita_proto::SagaId::try_new(saga_id.to_vec())
+                .map_err(|e| SagaJournalError::Backend(format!("invalid saga id: {e}")))?,
             record: encode_journal_record(&updated)?,
         };
         (self.upsert)(command).await

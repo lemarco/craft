@@ -34,7 +34,7 @@ Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `trembita-core`,
 ```
 crates/
 ├── trembita/              # facade — primary user dependency (TrembitaApp, features → optional crates)
-├── trembita-proto/        # IDs, log, wire types, encode/decode
+├── trembita-proto/        # IDs, log, wire types, value objects (`value.rs`), encode/decode
 ├── trembita-core/         # pure Raft FSM + shard planners + reference `kv` StateMachine
 ├── trembita-storage/      # LogStore, HardState, Snapshot (+ redb)
 ├── trembita-net/          # HTTP/3 server, QUIC transport, PeerDirectory

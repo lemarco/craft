@@ -152,9 +152,9 @@ pub use gateway::ws::{
 pub use trembita_http::{
     AuthMode, CookieConfig, CorsPolicy, EmbeddedAssets, EmbeddedFile, Gateway, GatewayBuildError,
     GatewayService, HttpError, IntrospectApi, IntrospectApiError, Observer, OpsApi, Precompressed,
-    RequestCtx, Response, RouteDescriptor, RouteTable, RouteTableDiff, SessionGate, StaticSite,
-    StaticSource, Surface, UpgradeStream, accept_websocket, embedded_from_dir, is_local_dev_host,
-    normalize_host, routing_to_http_response,
+    RequestCtx, Response, ResponseBody, RouteDescriptor, RouteTable, RouteTableDiff, SessionGate,
+    StaticSite, StaticSource, Surface, UpgradeStream, accept_websocket, embedded_from_dir,
+    is_local_dev_host, normalize_host, routing_to_http_response,
 };
 
 #[cfg(feature = "redis-store")]

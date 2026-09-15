@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use trembita_net::{QuicTransport, fetch_peers, send_join_request};
 use trembita_proto::{
-    JoinRejection, JoinRequest, JoinResponse, JoinRole, Membership, NodeId, PROTOCOL_VERSION,
+    AdvertiseAddr, JoinRejection, JoinRequest, JoinResponse, JoinRole, Membership, NodeId,
+    PROTOCOL_VERSION, ProtocolVersion,
 };
 
 use crate::discovery::Seed;
@@ -56,7 +57,7 @@ pub(crate) async fn join_cluster(
             match fetch_peers(&**quic, seed.node_id).await {
                 Ok(book) => {
                     for entry in book.entries {
-                        if let Ok(addr) = entry.addr.parse::<SocketAddr>() {
+                        if let Ok(addr) = entry.addr.as_str().parse::<SocketAddr>() {
                             quic.learn_peer(entry.node, addr);
                         }
                     }
@@ -79,9 +80,10 @@ pub(crate) async fn join_cluster(
     // Phase 2: ask to join. Any seed forwards to the leader on our behalf, so a
     // `Redirect` means "no leader yet" — retry against the next seed.
     let request = JoinRequest {
-        protocol_version: PROTOCOL_VERSION,
+        protocol_version: ProtocolVersion(PROTOCOL_VERSION),
         node_id: Some(node_id),
-        advertise_addr: advertise.to_string(),
+        advertise_addr: AdvertiseAddr::try_new(advertise.to_string())
+            .map_err(|e| StartError::Join(format!("invalid advertise address: {e}")))?,
         role,
     };
     for attempt in 0..JOIN_ATTEMPTS {
@@ -140,7 +142,7 @@ pub(crate) async fn join_cluster_auto(
             match fetch_peers(&**quic, seed.node_id).await {
                 Ok(book) => {
                     for entry in book.entries {
-                        if let Ok(addr) = entry.addr.parse::<SocketAddr>() {
+                        if let Ok(addr) = entry.addr.as_str().parse::<SocketAddr>() {
                             quic.learn_peer(entry.node, addr);
                         }
                     }
@@ -161,9 +163,10 @@ pub(crate) async fn join_cluster_auto(
     }
 
     let request = JoinRequest {
-        protocol_version: PROTOCOL_VERSION,
+        protocol_version: ProtocolVersion(PROTOCOL_VERSION),
         node_id: None,
-        advertise_addr: advertise.to_string(),
+        advertise_addr: AdvertiseAddr::try_new(advertise.to_string())
+            .map_err(|e| StartError::Join(format!("invalid advertise address: {e}")))?,
         role,
     };
     for attempt in 0..JOIN_ATTEMPTS {

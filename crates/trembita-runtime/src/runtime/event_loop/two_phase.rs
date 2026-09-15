@@ -1,5 +1,6 @@
 use tokio::sync::oneshot;
 use trembita_core::{Command as _, StateMachine};
+use trembita_proto::{RouteKey, TransactionId, UnixMillis};
 
 use crate::DriverError;
 
@@ -32,8 +33,20 @@ impl<M: StateMachine> Runtime<M> {
             )));
             return;
         }
+        let Ok(tx_id) = TransactionId::try_new(tx_id) else {
+            let _ = respond.send(Err(ClientError::Driver(
+                "invalid 2PC transaction id".to_string(),
+            )));
+            return;
+        };
+        let Ok(route_key) = RouteKey::try_new(route_key) else {
+            let _ = respond.send(Err(ClientError::Driver(
+                "invalid 2PC route key".to_string(),
+            )));
+            return;
+        };
         if self.durable_cross_shard_2pc {
-            let prepared_at_ms = crate::two_phase::unix_now_ms();
+            let prepared_at_ms = UnixMillis(crate::two_phase::unix_now_ms());
             let journal_cmd = trembita_proto::TwoPhasePrepareCommand {
                 tx_id,
                 route_key,
@@ -54,10 +67,12 @@ impl<M: StateMachine> Runtime<M> {
             }
             return;
         }
-        match self
-            .two_phase_prepares
-            .prepare(tx_id, route_key, command, self.two_phase_tick)
-        {
+        match self.two_phase_prepares.prepare(
+            tx_id.as_bytes().to_vec(),
+            route_key.as_bytes().to_vec(),
+            command,
+            self.two_phase_tick,
+        ) {
             Ok(()) => {
                 let _ = respond.send(Ok(()));
             }
@@ -133,6 +148,18 @@ impl<M: StateMachine> Runtime<M> {
             }));
             return;
         }
+        let Ok(tx_id) = TransactionId::try_new(tx_id) else {
+            let _ = respond.send(Err(ClientError::Driver(
+                "invalid 2PC transaction id".to_string(),
+            )));
+            return;
+        };
+        let Ok(route_key) = RouteKey::try_new(route_key) else {
+            let _ = respond.send(Err(ClientError::Driver(
+                "invalid 2PC route key".to_string(),
+            )));
+            return;
+        };
         if self.durable_cross_shard_2pc {
             let journal_cmd = trembita_proto::TwoPhaseAbortCommand { tx_id, route_key };
             match self.driver.propose_two_phase_abort(journal_cmd) {
@@ -149,7 +176,9 @@ impl<M: StateMachine> Runtime<M> {
             }
             return;
         }
-        let _ = self.two_phase_prepares.abort(&tx_id, &route_key);
+        let _ = self
+            .two_phase_prepares
+            .abort(tx_id.as_bytes(), route_key.as_bytes());
         let _ = respond.send(Ok(()));
     }
 
@@ -178,6 +207,11 @@ impl<M: StateMachine> Runtime<M> {
             .expired_ticks(self.two_phase_tick, timeout_ticks);
         for (tx_id, route_key) in expired {
             if self.durable_cross_shard_2pc {
+                let (Ok(tx_id), Ok(route_key)) =
+                    (TransactionId::try_new(tx_id), RouteKey::try_new(route_key))
+                else {
+                    continue;
+                };
                 let journal_cmd = trembita_proto::TwoPhaseAbortCommand { tx_id, route_key };
                 match self.driver.propose_two_phase_abort(journal_cmd)? {
                     Ok((_, step)) => {

@@ -358,13 +358,13 @@ const fn lifecycle_name(lifecycle: JobLifecycle) -> &'static str {
 fn enqueue_options_from_query(query: &EnqueueQuery) -> EnqueueOptions {
     let mut opts = EnqueueOptions::default();
     if let Some(p) = query.priority {
-        opts.priority = p;
+        opts.priority = trembita_proto::JobPriority(p);
     }
     if let Some(key) = &query.dedup {
         opts.dedup_key = Some(key.as_bytes().to_vec());
     }
     if let Some(max) = query.max_attempts {
-        opts.max_attempts = Some(max);
+        opts.max_attempts = Some(trembita_proto::MaxAttempts(max));
     }
     opts
 }
@@ -374,9 +374,9 @@ fn status_to_response(status: &trembita_jobs::JobStatus) -> JobStatusResponse {
         job_id: status.job_id.0,
         state: lifecycle_name(status.lifecycle),
         payload_len: status.payload_len,
-        priority: status.priority,
+        priority: status.priority.0,
         attempts: status.attempts,
-        max_attempts: status.max_attempts,
+        max_attempts: status.max_attempts.0,
         is_redelivery: status.attempts > 1,
         dedup: status
             .dedup_key
@@ -432,9 +432,9 @@ fn parse_batch_job(job: EnqueueBatchJobBody) -> Result<(Vec<u8>, EnqueueOptions)
         ));
     };
     let opts = EnqueueOptions {
-        priority: job.priority,
+        priority: trembita_proto::JobPriority(job.priority),
         dedup_key: job.dedup.map(String::into_bytes),
-        max_attempts: job.max_attempts,
+        max_attempts: job.max_attempts.map(trembita_proto::MaxAttempts),
         ..Default::default()
     };
     Ok((payload, opts))

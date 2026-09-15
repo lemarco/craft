@@ -5,10 +5,10 @@ use trembita_proto::{
     QueueRequeueDeadLetterBatchReply, QueueRequeueDeadLetterBatchRequest, QueueRequeueFailureWire,
 };
 
-use crate::JobId;
 use crate::queue_prefetch::DEFAULT_QUEUE_BATCH_MAX;
 
 use super::super::QueueService;
+use super::super::wire::stream_key;
 
 impl QueueService {
     pub(in crate::queue_service) async fn handle_requeue_dead_letter(
@@ -16,25 +16,21 @@ impl QueueService {
         request: trembita_proto::QueueRequeueDeadLetterRequest,
     ) -> trembita_proto::QueueRequeueDeadLetterReply {
         if self.state.is_leader() {
-            match self.local_stream(&request.stream) {
+            match self.local_stream(stream_key(&request.stream)) {
                 Err(e) => trembita_proto::QueueRequeueDeadLetterReply { error: Some(e) },
-                Ok(queue) => {
-                    match queue
-                        .requeue_dead_letter_replicated(JobId(request.job_id))
-                        .await
-                    {
-                        Ok(ops) => {
-                            if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
-                                trembita_proto::QueueRequeueDeadLetterReply { error: Some(e) }
-                            } else {
-                                trembita_proto::QueueRequeueDeadLetterReply { error: None }
-                            }
+                Ok(queue) => match queue.requeue_dead_letter_replicated(request.job_id).await {
+                    Ok(ops) => {
+                        if let Err(e) = self.replicate_ops(stream_key(&request.stream), &ops).await
+                        {
+                            trembita_proto::QueueRequeueDeadLetterReply { error: Some(e) }
+                        } else {
+                            trembita_proto::QueueRequeueDeadLetterReply { error: None }
                         }
-                        Err(e) => trembita_proto::QueueRequeueDeadLetterReply {
-                            error: Some(trembita_proto::ProductWireError::backend(e)),
-                        },
                     }
-                }
+                    Err(e) => trembita_proto::QueueRequeueDeadLetterReply {
+                        error: Some(trembita_proto::ProductWireError::backend(e)),
+                    },
+                },
             }
         } else {
             let transport = Arc::clone(&self.transport);
@@ -74,14 +70,17 @@ impl QueueService {
             };
         }
         if self.state.is_leader() {
-            let job_ids: Vec<JobId> = request.job_ids.iter().map(|id| JobId(*id)).collect();
-            if let Some(sharded) = self.sharded_stream(&request.stream) {
+            let job_ids = &request.job_ids;
+            if let Some(sharded) = self.sharded_stream(stream_key(&request.stream)) {
                 match sharded
-                    .requeue_dead_letter_batch_replicated_sharded(&job_ids)
+                    .requeue_dead_letter_batch_replicated_sharded(job_ids)
                     .await
                 {
                     Ok((requeued, failures, reps)) => {
-                        if let Err(e) = self.replicate_sharded(&request.stream, &reps).await {
+                        if let Err(e) = self
+                            .replicate_sharded(stream_key(&request.stream), &reps)
+                            .await
+                        {
                             return QueueRequeueDeadLetterBatchReply {
                                 requeued: Vec::new(),
                                 failures: Vec::new(),
@@ -89,11 +88,11 @@ impl QueueService {
                             };
                         }
                         return QueueRequeueDeadLetterBatchReply {
-                            requeued: requeued.into_iter().map(|id| id.0).collect(),
+                            requeued,
                             failures: failures
                                 .into_iter()
                                 .map(|(id, err)| QueueRequeueFailureWire {
-                                    job_id: id.0,
+                                    job_id: id,
                                     error: err.to_string(),
                                 })
                                 .collect(),
@@ -109,15 +108,16 @@ impl QueueService {
                     }
                 }
             }
-            match self.local_stream(&request.stream) {
+            match self.local_stream(stream_key(&request.stream)) {
                 Err(e) => QueueRequeueDeadLetterBatchReply {
                     requeued: Vec::new(),
                     failures: Vec::new(),
                     error: Some(e),
                 },
-                Ok(queue) => match queue.requeue_dead_letter_batch_replicated(&job_ids).await {
+                Ok(queue) => match queue.requeue_dead_letter_batch_replicated(job_ids).await {
                     Ok((requeued, failures, ops)) => {
-                        if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
+                        if let Err(e) = self.replicate_ops(stream_key(&request.stream), &ops).await
+                        {
                             return QueueRequeueDeadLetterBatchReply {
                                 requeued: Vec::new(),
                                 failures: Vec::new(),
@@ -125,11 +125,11 @@ impl QueueService {
                             };
                         }
                         QueueRequeueDeadLetterBatchReply {
-                            requeued: requeued.into_iter().map(|id| id.0).collect(),
+                            requeued,
                             failures: failures
                                 .into_iter()
                                 .map(|(id, err)| QueueRequeueFailureWire {
-                                    job_id: id.0,
+                                    job_id: id,
                                     error: err.to_string(),
                                 })
                                 .collect(),

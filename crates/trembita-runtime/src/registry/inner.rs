@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use tokio::sync::oneshot;
-use trembita_proto::{ActorId, ActorRegistration, ActorTypeId, NodeId};
+use trembita_proto::{ActorGroupName, ActorId, ActorRegistration, ActorTypeId, NodeId};
 
 use super::actor::UserActor;
 use super::errors::{
@@ -531,7 +531,7 @@ impl ActorRegistry {
                 out.push(ActorRegistration {
                     id: ActorId {
                         node: node_id,
-                        name: name.clone(),
+                        name: ActorGroupName::try_from(name.as_str()).expect("valid pool name"),
                         instance,
                         generation: 0,
                     },

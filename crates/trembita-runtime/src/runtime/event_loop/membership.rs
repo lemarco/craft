@@ -39,7 +39,7 @@ impl<M: StateMachine> Runtime<M> {
             let _ = respond.send(JoinResponse::Rejected {
                 reason: JoinRejection::VersionSkew {
                     expected: PROTOCOL_VERSION,
-                    got: request.protocol_version,
+                    got: request.protocol_version.0,
                 },
             });
             return Ok(());
@@ -120,7 +120,7 @@ impl<M: StateMachine> Runtime<M> {
             let _ = respond.send(LeaveResponse::Rejected {
                 reason: LeaveRejection::VersionSkew {
                     expected: PROTOCOL_VERSION,
-                    got: request.protocol_version,
+                    got: request.protocol_version.0,
                 },
             });
             return Ok(());

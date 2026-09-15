@@ -6,8 +6,8 @@ use trembita::cluster::TrembitaCluster;
 use trembita::core::RaftGroupId;
 use trembita::net::{LocalNetwork, send_client_request, send_group_migrate, send_join_request};
 use trembita::proto::{
-    ClientRequest, ClientResponse, GroupMigrateRequest, JoinRequest, JoinResponse, JoinRole,
-    NodeId, PROTOCOL_VERSION,
+    AdvertiseAddr, ClientRequest, ClientResponse, GroupMigrateRequest, JoinRequest, JoinResponse,
+    JoinRole, NodeId, PROTOCOL_VERSION, ProtocolVersion,
 };
 use trembita::storage::LogStore;
 use trembita_test_support::{
@@ -356,9 +356,9 @@ async fn join_fourth_node(
         .await;
 
     let request = JoinRequest {
-        protocol_version: PROTOCOL_VERSION,
+        protocol_version: ProtocolVersion(PROTOCOL_VERSION),
         node_id: Some(joiner_id),
-        advertise_addr: "node4.local:7443".to_string(),
+        advertise_addr: AdvertiseAddr::try_new("node4.local:7443").unwrap(),
         role: JoinRole::Learner,
     };
     let response = send_join_request(net, leader.node_id(), &request)

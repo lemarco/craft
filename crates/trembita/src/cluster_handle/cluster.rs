@@ -710,7 +710,7 @@ impl<M: StateMachine> TrembitaCluster<M> {
             transport,
             contact,
             &LeaveRequest {
-                protocol_version: PROTOCOL_VERSION,
+                protocol_version: trembita_proto::ProtocolVersion(PROTOCOL_VERSION),
                 node_id: self.node_id,
             },
         )
@@ -841,7 +841,7 @@ impl<M: StateMachine> TrembitaCluster<M> {
                 continue;
             };
             let request = CatalogAddRequest {
-                protocol_version: PROTOCOL_VERSION,
+                protocol_version: trembita_proto::ProtocolVersion(PROTOCOL_VERSION),
                 add_groups: count,
             };
             let response = send_catalog_add_request(&*self.transport, leader, &request)
@@ -867,7 +867,7 @@ impl<M: StateMachine> TrembitaCluster<M> {
 
     async fn catalog_add_local(&self, count: u32) -> Result<Vec<u32>, CatalogAddLocalError> {
         let request = CatalogAddRequest {
-            protocol_version: PROTOCOL_VERSION,
+            protocol_version: trembita_proto::ProtocolVersion(PROTOCOL_VERSION),
             add_groups: count,
         };
         let response = if let Some(meta) = &self.meta_handle {
@@ -945,7 +945,12 @@ impl<M: StateMachine> TrembitaCluster<M> {
                 return Err(ScaleClusterError::NoLeader);
             };
             let request = ScaleRequest {
-                name: name.to_string(),
+                name: trembita_proto::ActorGroupName::try_from(name).map_err(|e| {
+                    ScaleClusterError::Remote(trembita_net::RemoteError::rejected(
+                        leader,
+                        format!("invalid actor group name: {e}"),
+                    ))
+                })?,
                 actor_type: ClusterControl::type_id::<A>(),
                 total: total as u64,
                 config: encoded.clone(),

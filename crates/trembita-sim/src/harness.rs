@@ -8,7 +8,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use trembita_core::{Config, Output, RaftNode, ReadId, Role};
-use trembita_proto::{LogIndex, Membership, NodeId, RaftRpc, RaftRpcReply, TwoPhasePrepareCommand};
+use trembita_proto::{
+    LogIndex, LogicalTick, Membership, NodeId, RaftRpc, RaftRpcReply, TwoPhasePrepareCommand,
+};
 
 use crate::rng::Rng;
 
@@ -83,9 +85,9 @@ impl Cluster {
         assert!(objects >= 1, "cluster needs at least one node");
         let ids: Vec<NodeId> = (1..=objects).map(NodeId).collect();
         let config = Config {
-            election_timeout_min: 5,
-            election_timeout_max: 10,
-            heartbeat_interval: 1,
+            election_timeout_min: LogicalTick(5),
+            election_timeout_max: LogicalTick(10),
+            heartbeat_interval: LogicalTick(1),
             seed,
             ..Default::default()
         };

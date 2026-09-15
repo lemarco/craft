@@ -21,7 +21,10 @@ impl RaftNode {
     #[must_use]
     pub fn with_membership(id: NodeId, membership: Membership, config: Config) -> Self {
         let mut rng = Rng::new(config.seed ^ id.0 ^ 0x9E37_79B9_7F4A_7C15);
-        let election_timeout = rng.range(config.election_timeout_min, config.election_timeout_max);
+        let election_timeout = rng.range(
+            config.election_timeout_min.raw(),
+            config.election_timeout_max.raw(),
+        );
         let phi_threshold = config.reachability.phi_threshold;
         Self {
             id,

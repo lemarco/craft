@@ -2,15 +2,15 @@
 
 use trembita_core::{Config, Output, RaftNode, Role};
 use trembita_proto::{
-    AppendEntries, LogId, LogIndex, NodeId, RaftRpc, RaftRpcReply, RequestVote, RequestVoteReply,
-    Round, Term,
+    AppendEntries, LogId, LogIndex, LogicalTick, NodeId, RaftRpc, RaftRpcReply, RequestVote,
+    RequestVoteReply, Round, Term,
 };
 
 fn cfg() -> Config {
     Config {
-        election_timeout_min: 100,
-        election_timeout_max: 100,
-        heartbeat_interval: 3,
+        election_timeout_min: LogicalTick(100),
+        election_timeout_max: LogicalTick(100),
+        heartbeat_interval: LogicalTick(3),
         seed: 1,
         ..Default::default()
     }

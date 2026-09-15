@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use trembita_runtime::trembita_net::{LocalNetwork, Transport};
-use trembita_runtime::trembita_proto::{self, ActorId, NodeId};
+use trembita_runtime::trembita_proto::{self, ActorGroupName, ActorId, NodeId};
 use trembita_runtime::{
     ActorDirectory, ActorRegistry, ClusterControl, ConfigCodecError, DrainOutcome, MigrateError,
     MigrationError, RpcReplyPort, UserActor,
@@ -217,7 +217,7 @@ async fn migration_transfers_state_and_stops_the_source() {
 
     let from = ActorId {
         node: NodeId(1),
-        name: "c".to_string(),
+        name: ActorGroupName::try_from("c").unwrap(),
         instance: 0,
         generation: 0,
     };
@@ -246,7 +246,7 @@ async fn migrate_rejects_a_non_local_instance() {
 
     let foreign = ActorId {
         node: NodeId(2),
-        name: "c".to_string(),
+        name: ActorGroupName::try_from("c").unwrap(),
         instance: 0,
         generation: 0,
     };
@@ -269,7 +269,7 @@ async fn migrate_to_the_same_node_is_rejected() {
         .unwrap();
     let from = ActorId {
         node: NodeId(1),
-        name: "c".to_string(),
+        name: ActorGroupName::try_from("c").unwrap(),
         instance: 0,
         generation: 0,
     };

@@ -7,7 +7,9 @@ use std::time::Duration;
 use chrono::{TimeZone, Utc};
 use cron::Schedule;
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
-use trembita_proto::{QueueReplicateOp, RecurringScheduleWire, decode, encode};
+use trembita_proto::{
+    JobPriority, MaxAttempts, QueueReplicateOp, RecurringScheduleWire, decode, encode,
+};
 use trembita_storage::now_ms;
 
 use super::redb_queue::RedbJobQueue;
@@ -80,8 +82,8 @@ impl RecurringJob {
             name: self.name.clone(),
             cron: self.cron.clone(),
             payload: self.payload.clone(),
-            priority: self.priority,
-            max_attempts: self.max_attempts,
+            priority: JobPriority(self.priority),
+            max_attempts: MaxAttempts(self.max_attempts),
             enabled: self.enabled,
             next_run_ms,
         }
@@ -184,7 +186,8 @@ impl RedbJobQueue {
                         // Schedules persist the ceiling as a plain `u32`, so `0`
                         // (never configured) inherits the stream default rather
                         // than forcing unlimited retries.
-                        max_attempts: (schedule.max_attempts != 0).then_some(schedule.max_attempts),
+                        max_attempts: (schedule.max_attempts != MaxAttempts(0))
+                            .then_some(schedule.max_attempts),
                         ..EnqueueOptions::default()
                     },
                 )

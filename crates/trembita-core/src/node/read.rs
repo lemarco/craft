@@ -54,7 +54,7 @@ impl RaftNode {
     /// Halving leaves generous headroom for cross-node clock drift (read-consistency;
     /// this is why lease reads were originally deferred as "clock-sensitive").
     fn lease_ticks(&self) -> u64 {
-        self.config.election_timeout_min / 2
+        self.config.election_timeout_min.raw() / 2
     }
 
     /// Extend the leader lease if a quorum has acked the current lease round.
@@ -190,7 +190,7 @@ impl RaftNode {
                     let window = self
                         .config
                         .reachability
-                        .window(self.config.election_timeout_max);
+                        .window(self.config.election_timeout_max.raw());
                     self.last_ack_clock
                         .get(&peer)
                         .is_some_and(|&acked| now.saturating_sub(acked) <= window)
@@ -211,11 +211,11 @@ impl RaftNode {
                 let window = self
                     .config
                     .reachability
-                    .window(self.config.election_timeout_max);
+                    .window(self.config.election_timeout_max.raw());
                 let hysteresis = self
                     .config
                     .reachability
-                    .hysteresis(self.config.election_timeout_min);
+                    .hysteresis(self.config.election_timeout_min.raw());
                 self.ack_liveness.update(
                     now,
                     self.id,

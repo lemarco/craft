@@ -7,7 +7,8 @@ use std::sync::Arc;
 
 use trembita_runtime::trembita_net::{LocalNetwork, RemoteError, Transport};
 use trembita_runtime::trembita_proto::{
-    self, ActorId, ActorRegistration, ActorTypeId, NodeId, ScaleRequest, StopRequest,
+    self, ActorGroupName, ActorId, ActorRegistration, ActorTypeId, NodeId, ScaleRequest,
+    StopRequest,
 };
 use trembita_runtime::{
     ActorDirectory, ActorRegistry, ClusterControl, ClusterScaleError, ClusterState,
@@ -71,7 +72,7 @@ fn reg(node: u64, name: &str, instance: u32) -> ActorRegistration {
     ActorRegistration::new(
         ActorId {
             node: NodeId(node),
-            name: name.to_string(),
+            name: ActorGroupName::try_from(name).unwrap(),
             instance,
             generation: 0,
         },
@@ -209,7 +210,7 @@ fn node_inner(
 /// `req_live` as the requester's observed voter set.
 fn worker_scale_request(name: &str, total: u64, req_live: &[u64]) -> ScaleRequest {
     ScaleRequest {
-        name: name.to_string(),
+        name: ActorGroupName::try_from(name).unwrap(),
         actor_type: ClusterControl::type_id::<Worker>(),
         total,
         config: trembita_proto::encode(&7u32).unwrap(),
@@ -359,14 +360,14 @@ async fn handle_stop_removes_the_group_and_is_idempotent() {
     assert!(n1.registry.contains("w"));
 
     let first = n1.control.handle_stop(&StopRequest {
-        name: "w".to_string(),
+        name: ActorGroupName::try_from("w").unwrap(),
     });
     assert!(first.error.is_none());
     assert!(!n1.registry.contains("w"), "the group was stopped");
 
     // Stopping an already-absent group is still a success (it is already gone).
     let second = n1.control.handle_stop(&StopRequest {
-        name: "w".to_string(),
+        name: ActorGroupName::try_from("w").unwrap(),
     });
     assert!(second.error.is_none(), "idempotent: {:?}", second.error);
 }

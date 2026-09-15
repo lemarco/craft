@@ -5,7 +5,9 @@ use trembita_proto::{
     QueueEnqueueBatchReply, QueueEnqueueBatchRequest, QueueEnqueueReply, QueueEnqueueRequest,
 };
 
-use super::super::wire::{enqueue_options_from_batch_job, enqueue_options_from_request};
+use super::super::wire::{
+    enqueue_options_from_batch_job, enqueue_options_from_request, stream_key,
+};
 use crate::EnqueueOptions;
 use crate::queue_prefetch::DEFAULT_QUEUE_BATCH_MAX;
 
@@ -18,7 +20,7 @@ impl QueueService {
         request: QueueEnqueueRequest,
     ) -> QueueEnqueueReply {
         if self.state.is_leader() {
-            if let Some(sharded) = self.sharded_stream(&request.stream) {
+            if let Some(sharded) = self.sharded_stream(stream_key(&request.stream)) {
                 let options = enqueue_options_from_request(&request);
                 match sharded
                     .enqueue_opts_replicated_sharded(&request.payload, options)
@@ -26,28 +28,31 @@ impl QueueService {
                 {
                     Ok((id, rep)) => {
                         self.emit_backlog_settle_for_sharded_reps(
-                            &request.stream,
+                            stream_key(&request.stream),
                             std::slice::from_ref(&rep),
                             "reclaim",
                         )
                         .await;
-                        if let Err(e) = self.replicate_sharded(&request.stream, &[rep]).await {
+                        if let Err(e) = self
+                            .replicate_sharded(stream_key(&request.stream), &[rep])
+                            .await
+                        {
                             return QueueEnqueueReply {
                                 job_id: None,
                                 error: Some(e),
                             };
                         }
                         self.cache_enqueued_sharded(
-                            &request.stream,
+                            stream_key(&request.stream),
                             id.0,
                             request.payload.clone(),
-                            request.priority,
-                            request.not_before_ms,
-                            request.dedup_key.clone(),
+                            request.priority.0,
+                            request.not_before_ms.0,
+                            request.dedup_key.as_ref().map(|k| k.as_bytes().to_vec()),
                         );
-                        self.emit_enqueued(&request.stream, id.0);
+                        self.emit_enqueued(stream_key(&request.stream), id.0);
                         return QueueEnqueueReply {
-                            job_id: Some(id.0),
+                            job_id: Some(id),
                             error: None,
                         };
                     }
@@ -59,7 +64,7 @@ impl QueueService {
                     }
                 }
             }
-            match self.local_stream(&request.stream) {
+            match self.local_stream(stream_key(&request.stream)) {
                 Err(e) => QueueEnqueueReply {
                     job_id: None,
                     error: Some(e),
@@ -71,30 +76,32 @@ impl QueueService {
                         .await
                     {
                         Ok((id, ops)) => {
-                            if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
+                            if let Err(e) =
+                                self.replicate_ops(stream_key(&request.stream), &ops).await
+                            {
                                 return QueueEnqueueReply {
                                     job_id: None,
                                     error: Some(e),
                                 };
                             }
                             self.emit_backlog_settle_for_terminal_ops(
-                                &request.stream,
+                                stream_key(&request.stream),
                                 queue.as_ref(),
                                 &ops,
                                 "reclaim",
                             )
                             .await;
                             self.cache_enqueued(
-                                &request.stream,
+                                stream_key(&request.stream),
                                 id.0,
                                 request.payload.clone(),
-                                request.priority,
-                                request.not_before_ms,
-                                request.dedup_key.clone(),
+                                request.priority.0,
+                                request.not_before_ms.0,
+                                request.dedup_key.as_ref().map(|k| k.as_bytes().to_vec()),
                             );
-                            self.emit_enqueued(&request.stream, id.0);
+                            self.emit_enqueued(stream_key(&request.stream), id.0);
                             QueueEnqueueReply {
-                                job_id: Some(id.0),
+                                job_id: Some(id),
                                 error: None,
                             }
                         }
@@ -142,7 +149,7 @@ impl QueueService {
             };
         }
         if self.state.is_leader() {
-            if let Some(sharded) = self.sharded_stream(&request.stream) {
+            if let Some(sharded) = self.sharded_stream(stream_key(&request.stream)) {
                 let batch: Vec<(Vec<u8>, EnqueueOptions)> = request
                     .jobs
                     .iter()
@@ -150,31 +157,34 @@ impl QueueService {
                     .collect();
                 match sharded.enqueue_batch_opts_replicated_sharded(&batch).await {
                     Ok((ids, reps)) => {
-                        if let Err(e) = self.replicate_sharded(&request.stream, &reps).await {
+                        if let Err(e) = self
+                            .replicate_sharded(stream_key(&request.stream), &reps)
+                            .await
+                        {
                             return QueueEnqueueBatchReply {
                                 job_ids: Vec::new(),
                                 error: Some(e),
                             };
                         }
                         self.emit_backlog_settle_for_sharded_reps(
-                            &request.stream,
+                            stream_key(&request.stream),
                             &reps,
                             "reclaim",
                         )
                         .await;
                         for (job, id) in request.jobs.iter().zip(&ids) {
                             self.cache_enqueued_sharded(
-                                &request.stream,
+                                stream_key(&request.stream),
                                 id.0,
                                 job.payload.clone(),
-                                job.priority,
-                                job.not_before_ms,
-                                job.dedup_key.clone(),
+                                job.priority.0,
+                                job.not_before_ms.0,
+                                job.dedup_key.as_ref().map(|k| k.as_bytes().to_vec()),
                             );
-                            self.emit_enqueued(&request.stream, id.0);
+                            self.emit_enqueued(stream_key(&request.stream), id.0);
                         }
                         return QueueEnqueueBatchReply {
-                            job_ids: ids.into_iter().map(|id| id.0).collect(),
+                            job_ids: ids,
                             error: None,
                         };
                     }
@@ -186,7 +196,7 @@ impl QueueService {
                     }
                 }
             }
-            match self.local_stream(&request.stream) {
+            match self.local_stream(stream_key(&request.stream)) {
                 Err(e) => QueueEnqueueBatchReply {
                     job_ids: Vec::new(),
                     error: Some(e),
@@ -199,14 +209,16 @@ impl QueueService {
                         .collect();
                     match queue.enqueue_batch_opts_replicated(&batch).await {
                         Ok((ids, ops)) => {
-                            if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
+                            if let Err(e) =
+                                self.replicate_ops(stream_key(&request.stream), &ops).await
+                            {
                                 return QueueEnqueueBatchReply {
                                     job_ids: Vec::new(),
                                     error: Some(e),
                                 };
                             }
                             self.emit_backlog_settle_for_terminal_ops(
-                                &request.stream,
+                                stream_key(&request.stream),
                                 queue.as_ref(),
                                 &ops,
                                 "reclaim",
@@ -214,17 +226,17 @@ impl QueueService {
                             .await;
                             for (job, id) in request.jobs.iter().zip(&ids) {
                                 self.cache_enqueued(
-                                    &request.stream,
+                                    stream_key(&request.stream),
                                     id.0,
                                     job.payload.clone(),
-                                    job.priority,
-                                    job.not_before_ms,
-                                    job.dedup_key.clone(),
+                                    job.priority.0,
+                                    job.not_before_ms.0,
+                                    job.dedup_key.as_ref().map(|k| k.as_bytes().to_vec()),
                                 );
-                                self.emit_enqueued(&request.stream, id.0);
+                                self.emit_enqueued(stream_key(&request.stream), id.0);
                             }
                             QueueEnqueueBatchReply {
-                                job_ids: ids.into_iter().map(|id| id.0).collect(),
+                                job_ids: ids,
                                 error: None,
                             }
                         }

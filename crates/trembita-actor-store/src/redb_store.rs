@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
-use trembita_proto::{StoreReplicateOp, decode, encode};
+use trembita_proto::{StoreKey, StoreReplicateOp, UnixMillis, decode, encode};
 use trembita_storage::{now_ms, open_mutex_database};
 
 use trembita_proto::BoxFuture;
@@ -151,8 +151,8 @@ impl RedbActorStateStore {
                 key,
                 value,
                 expires_at_ms,
-            } => self.apply_set(key, value, *expires_at_ms),
-            StoreReplicateOp::Delete { key } => self.apply_delete(key),
+            } => self.apply_set(key.as_str(), value, expires_at_ms.0),
+            StoreReplicateOp::Delete { key } => self.apply_delete(key.as_str()),
         }
     }
 
@@ -169,9 +169,9 @@ impl RedbActorStateStore {
         let expires_at_ms = ttl_to_expires_at_ms(ttl);
         self.apply_set(key, value, expires_at_ms)?;
         Ok(vec![StoreReplicateOp::Set {
-            key: key.to_string(),
+            key: StoreKey::try_new(key).map_err(backend)?,
             value: value.to_vec(),
-            expires_at_ms,
+            expires_at_ms: UnixMillis(expires_at_ms),
         }])
     }
 
@@ -182,7 +182,7 @@ impl RedbActorStateStore {
     pub fn delete_replicated(&self, key: &str) -> Result<StoreReplicationOps, StoreError> {
         self.apply_delete(key)?;
         Ok(vec![StoreReplicateOp::Delete {
-            key: key.to_string(),
+            key: StoreKey::try_new(key).map_err(backend)?,
         }])
     }
 
@@ -243,7 +243,9 @@ impl RedbActorStateStore {
         let mut ops = Vec::with_capacity(expired.len());
         for key in expired {
             self.apply_delete(&key)?;
-            ops.push(StoreReplicateOp::Delete { key });
+            ops.push(StoreReplicateOp::Delete {
+                key: StoreKey::try_new(key).map_err(backend)?,
+            });
         }
         Ok((ops.len(), ops))
     }
@@ -341,9 +343,9 @@ mod tests {
         // Backdate expiry (store TTL uses wall clock, not tokio test clock).
         store
             .apply_replicate(&StoreReplicateOp::Set {
-                key: "k".into(),
+                key: StoreKey::try_from("k").unwrap(),
                 value: b"v".to_vec(),
-                expires_at_ms: 1,
+                expires_at_ms: UnixMillis(1),
             })
             .expect("expire");
 
@@ -356,16 +358,16 @@ mod tests {
         let store = RedbActorStateStore::open(dir.path().join("actor-store.redb")).expect("open");
         store
             .apply_replicate(&StoreReplicateOp::Set {
-                key: "stale".into(),
+                key: StoreKey::try_from("stale").unwrap(),
                 value: b"1".to_vec(),
-                expires_at_ms: 1,
+                expires_at_ms: UnixMillis(1),
             })
             .expect("set stale");
         store
             .apply_replicate(&StoreReplicateOp::Set {
-                key: "live".into(),
+                key: StoreKey::try_from("live").unwrap(),
                 value: b"2".to_vec(),
-                expires_at_ms: 0,
+                expires_at_ms: UnixMillis(0),
             })
             .expect("set live");
 

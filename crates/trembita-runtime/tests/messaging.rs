@@ -11,8 +11,8 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize, Serializer};
 use trembita_runtime::trembita_net::{LocalNetwork, RemoteError, Transport};
 use trembita_runtime::trembita_proto::{
-    self, ActorEnvelope, ActorId, ActorRegistration, ActorTypeId, DeliverAck, DirectoryUpdate,
-    NodeId,
+    self, ActorEnvelope, ActorGroupName, ActorId, ActorRegistration, ActorTypeId, DeliverAck,
+    DirectoryUpdate, NodeId,
 };
 use trembita_runtime::{
     ActorDirectory, ActorRegistry, CastError, ClusterAskError, ClusterMessaging, DeliverError,
@@ -264,7 +264,7 @@ fn reg(node: u64, name: &str, instance: u32) -> ActorRegistration {
     ActorRegistration::new(
         ActorId {
             node: NodeId(node),
-            name: name.to_string(),
+            name: ActorGroupName::try_from(name).unwrap(),
             instance,
             generation: 0,
         },
@@ -496,7 +496,7 @@ async fn duplicate_ask_runs_the_handler_once_and_replays_the_reply() {
     let envelope = ActorEnvelope {
         to: ActorId {
             node: NodeId(1),
-            name: "bump".to_string(),
+            name: ActorGroupName::try_from("bump").unwrap(),
             instance: 0,
             generation: 0,
         },
@@ -541,7 +541,7 @@ async fn reply_encode_failure_surfaces_as_a_real_error() {
     let envelope = ActorEnvelope {
         to: ActorId {
             node: NodeId(1),
-            name: "bad".to_string(),
+            name: ActorGroupName::try_from("bad").unwrap(),
             instance: 0,
             generation: 0,
         },

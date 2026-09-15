@@ -140,11 +140,11 @@ async fn store_replicate_rejects_non_leader_caller() {
         NodeId(3),
         &StoreReplicateRequest {
             ops: vec![StoreReplicateOp::Set {
-                key: "k".into(),
+                key: trembita_proto::StoreKey::try_from("k").unwrap(),
                 value: b"v".to_vec(),
-                expires_at_ms: 0,
+                expires_at_ms: trembita_proto::UnixMillis(0),
             }],
-            leader_id: NodeId(3).0,
+            leader_id: NodeId(3),
         },
     )
     .await

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::NodeId;
+use crate::{NodeId, ProtocolVersion};
 
 /// Catalog metadata replicated through group 0's Raft log (not the user SM).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -20,7 +20,7 @@ pub enum CatalogCommand {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CatalogAddRequest {
     /// Wire/protocol version of the caller.
-    pub protocol_version: u32,
+    pub protocol_version: ProtocolVersion,
     /// Number of contiguous Raft groups to append.
     pub add_groups: u32,
 }

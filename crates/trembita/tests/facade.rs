@@ -115,9 +115,9 @@ async fn find_attached_leader(
 
 fn reachability_raft_config() -> Config {
     Config {
-        election_timeout_min: 3,
-        election_timeout_max: 5,
-        heartbeat_interval: 1,
+        election_timeout_min: proto::LogicalTick(3),
+        election_timeout_max: proto::LogicalTick(5),
+        heartbeat_interval: proto::LogicalTick(1),
         seed: 7,
         ..Default::default()
     }
@@ -125,9 +125,9 @@ fn reachability_raft_config() -> Config {
 
 fn phi_accrual_raft_config() -> Config {
     Config {
-        election_timeout_min: 5,
-        election_timeout_max: 10,
-        heartbeat_interval: 1,
+        election_timeout_min: proto::LogicalTick(5),
+        election_timeout_max: proto::LogicalTick(10),
+        heartbeat_interval: proto::LogicalTick(1),
         seed: 11,
         reachability: ReachabilityConfig {
             window_ticks: None,

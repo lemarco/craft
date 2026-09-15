@@ -66,7 +66,7 @@ impl QueueService {
         self.evict_prefetch(
             stream,
             ops.iter().filter_map(|op| match op {
-                QueueReplicateOp::Ack { job_id, .. } => Some(*job_id),
+                QueueReplicateOp::Ack { job_id, .. } => Some(job_id.0),
                 _ => None,
             }),
         );
@@ -190,11 +190,13 @@ impl QueueService {
     pub(super) fn leased_to_wire(jobs: Vec<LeasedJob>) -> Vec<QueueLeasedJobWire> {
         jobs.into_iter()
             .map(|j| QueueLeasedJobWire {
-                lease_id: j.lease_id.0,
-                job_id: j.job_id.0,
+                lease_id: j.lease_id,
+                job_id: j.job_id,
                 payload: j.payload,
                 attempts: j.attempts,
-                dedup_key: j.dedup_key,
+                dedup_key: j
+                    .dedup_key
+                    .and_then(|k| trembita_proto::DedupKey::try_new(k).ok()),
             })
             .collect()
     }

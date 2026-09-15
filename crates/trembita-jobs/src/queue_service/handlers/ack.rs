@@ -2,15 +2,15 @@ use std::sync::Arc;
 
 use trembita_net::{send_queue_ack, send_queue_ack_batch, send_queue_nack};
 use trembita_proto::{
-    NodeId, QueueAckBatchReply, QueueAckBatchRequest, QueueAckReply, QueueAckRequest,
-    QueueNackReply, QueueNackRequest,
+    QueueAckBatchReply, QueueAckBatchRequest, QueueAckReply, QueueAckRequest, QueueNackReply,
+    QueueNackRequest,
 };
 
 use crate::external_backlog::BacklogSettleOutcome;
 use crate::queue_prefetch::DEFAULT_QUEUE_BATCH_MAX;
-use crate::{LeaseId, WorkerId};
 
 use super::super::QueueService;
+use super::super::wire::{stream_key, worker_from_wire};
 
 impl QueueService {
     pub(in crate::queue_service) async fn handle_ack_batch(
@@ -27,31 +27,38 @@ impl QueueService {
             };
         }
         if self.state.is_leader() {
-            let worker = WorkerId {
-                node: NodeId(request.worker_node),
-                instance: request.worker_instance,
-            };
-            let lease_ids: Vec<LeaseId> = request.lease_ids.iter().map(|id| LeaseId(*id)).collect();
+            let worker = worker_from_wire(request.worker_node, request.worker_instance);
+            let lease_ids = &request.lease_ids;
             let mut lease_metas = Vec::with_capacity(lease_ids.len());
-            for lease_id in &lease_ids {
-                lease_metas.push(self.peek_lease_meta(&request.stream, *lease_id).await);
+            for lease_id in lease_ids {
+                lease_metas.push(
+                    self.peek_lease_meta(stream_key(&request.stream), *lease_id)
+                        .await,
+                );
             }
-            if let Some(sharded) = self.sharded_stream(&request.stream) {
+            if let Some(sharded) = self.sharded_stream(stream_key(&request.stream)) {
                 match sharded
-                    .ack_batch_replicated_sharded(worker, &lease_ids)
+                    .ack_batch_replicated_sharded(worker, lease_ids)
                     .await
                 {
                     Ok(reps) => {
-                        if let Err(e) = self.replicate_sharded(&request.stream, &reps).await {
+                        if let Err(e) = self
+                            .replicate_sharded(stream_key(&request.stream), &reps)
+                            .await
+                        {
                             return QueueAckBatchReply { error: Some(e) };
                         }
-                        self.evict_prefetch_sharded_acks(&request.stream, &reps);
+                        self.evict_prefetch_sharded_acks(stream_key(&request.stream), &reps);
                         for (lease_id, (dedup_key, attempts)) in
                             request.lease_ids.iter().zip(lease_metas)
                         {
-                            self.emit_acked(&request.stream, *lease_id, request.worker_node);
+                            self.emit_acked(
+                                stream_key(&request.stream),
+                                lease_id.0,
+                                request.worker_node.0,
+                            );
                             self.emit_backlog_settle(
-                                &request.stream,
+                                stream_key(&request.stream),
                                 dedup_key,
                                 BacklogSettleOutcome::Done { attempts },
                             );
@@ -65,20 +72,25 @@ impl QueueService {
                     }
                 }
             }
-            match self.local_stream(&request.stream) {
+            match self.local_stream(stream_key(&request.stream)) {
                 Err(e) => QueueAckBatchReply { error: Some(e) },
-                Ok(queue) => match queue.ack_batch_replicated(worker, &lease_ids).await {
+                Ok(queue) => match queue.ack_batch_replicated(worker, lease_ids).await {
                     Ok(ops) => {
-                        if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
+                        if let Err(e) = self.replicate_ops(stream_key(&request.stream), &ops).await
+                        {
                             QueueAckBatchReply { error: Some(e) }
                         } else {
-                            self.evict_prefetch_ack_ops(&request.stream, &ops);
+                            self.evict_prefetch_ack_ops(stream_key(&request.stream), &ops);
                             for (lease_id, (dedup_key, attempts)) in
                                 request.lease_ids.iter().zip(lease_metas)
                             {
-                                self.emit_acked(&request.stream, *lease_id, request.worker_node);
+                                self.emit_acked(
+                                    stream_key(&request.stream),
+                                    lease_id.0,
+                                    request.worker_node.0,
+                                );
                                 self.emit_backlog_settle(
-                                    &request.stream,
+                                    stream_key(&request.stream),
                                     dedup_key,
                                     BacklogSettleOutcome::Done { attempts },
                                 );
@@ -114,32 +126,36 @@ impl QueueService {
         request: QueueAckRequest,
     ) -> QueueAckReply {
         if self.state.is_leader() {
-            let worker = WorkerId {
-                node: NodeId(request.worker_node),
-                instance: request.worker_instance,
-            };
+            let worker = worker_from_wire(request.worker_node, request.worker_instance);
             let (dedup_key, attempts) = self
-                .peek_lease_meta(&request.stream, LeaseId(request.lease_id))
+                .peek_lease_meta(stream_key(&request.stream), request.lease_id)
                 .await;
-            if let Some(sharded) = self.sharded_stream(&request.stream) {
+            if let Some(sharded) = self.sharded_stream(stream_key(&request.stream)) {
                 match sharded
-                    .ack_replicated_sharded(worker, LeaseId(request.lease_id))
+                    .ack_replicated_sharded(worker, request.lease_id)
                     .await
                 {
                     Ok(rep) => {
                         if let Err(e) = self
-                            .replicate_sharded(&request.stream, std::slice::from_ref(&rep))
+                            .replicate_sharded(
+                                stream_key(&request.stream),
+                                std::slice::from_ref(&rep),
+                            )
                             .await
                         {
                             return QueueAckReply { error: Some(e) };
                         }
                         self.evict_prefetch_sharded_acks(
-                            &request.stream,
+                            stream_key(&request.stream),
                             std::slice::from_ref(&rep),
                         );
-                        self.emit_acked(&request.stream, request.lease_id, request.worker_node);
+                        self.emit_acked(
+                            stream_key(&request.stream),
+                            request.lease_id.0,
+                            request.worker_node.0,
+                        );
                         self.emit_backlog_settle(
-                            &request.stream,
+                            stream_key(&request.stream),
                             dedup_key.clone(),
                             BacklogSettleOutcome::Done { attempts },
                         );
@@ -152,20 +168,22 @@ impl QueueService {
                     }
                 }
             }
-            match self.local_stream(&request.stream) {
+            match self.local_stream(stream_key(&request.stream)) {
                 Err(e) => QueueAckReply { error: Some(e) },
-                Ok(queue) => match queue
-                    .ack_replicated(worker, LeaseId(request.lease_id))
-                    .await
-                {
+                Ok(queue) => match queue.ack_replicated(worker, request.lease_id).await {
                     Ok(ops) => {
-                        if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
+                        if let Err(e) = self.replicate_ops(stream_key(&request.stream), &ops).await
+                        {
                             return QueueAckReply { error: Some(e) };
                         }
-                        self.evict_prefetch_ack_ops(&request.stream, &ops);
-                        self.emit_acked(&request.stream, request.lease_id, request.worker_node);
+                        self.evict_prefetch_ack_ops(stream_key(&request.stream), &ops);
+                        self.emit_acked(
+                            stream_key(&request.stream),
+                            request.lease_id.0,
+                            request.worker_node.0,
+                        );
                         self.emit_backlog_settle(
-                            &request.stream,
+                            stream_key(&request.stream),
                             dedup_key,
                             BacklogSettleOutcome::Done { attempts },
                         );
@@ -198,23 +216,23 @@ impl QueueService {
         request: QueueNackRequest,
     ) -> QueueNackReply {
         if self.state.is_leader() {
-            let worker = WorkerId {
-                node: NodeId(request.worker_node),
-                instance: request.worker_instance,
-            };
-            if let Some(sharded) = self.sharded_stream(&request.stream) {
+            let worker = worker_from_wire(request.worker_node, request.worker_instance);
+            if let Some(sharded) = self.sharded_stream(stream_key(&request.stream)) {
                 match sharded
-                    .nack_replicated_sharded(worker, LeaseId(request.lease_id))
+                    .nack_replicated_sharded(worker, request.lease_id)
                     .await
                 {
                     Ok(rep) => {
                         self.emit_backlog_settle_for_sharded_reps(
-                            &request.stream,
+                            stream_key(&request.stream),
                             std::slice::from_ref(&rep),
                             "nack",
                         )
                         .await;
-                        if let Err(e) = self.replicate_sharded(&request.stream, &[rep]).await {
+                        if let Err(e) = self
+                            .replicate_sharded(stream_key(&request.stream), &[rep])
+                            .await
+                        {
                             return QueueNackReply { error: Some(e) };
                         }
                         return QueueNackReply { error: None };
@@ -226,31 +244,27 @@ impl QueueService {
                     }
                 }
             }
-            match self.local_stream(&request.stream) {
+            match self.local_stream(stream_key(&request.stream)) {
                 Err(e) => QueueNackReply { error: Some(e) },
-                Ok(queue) => {
-                    match queue
-                        .nack_replicated(worker, LeaseId(request.lease_id))
-                        .await
-                    {
-                        Ok(ops) => {
-                            if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
-                                return QueueNackReply { error: Some(e) };
-                            }
-                            self.emit_backlog_settle_for_terminal_ops(
-                                &request.stream,
-                                queue.as_ref(),
-                                &ops,
-                                "nack",
-                            )
-                            .await;
-                            QueueNackReply { error: None }
+                Ok(queue) => match queue.nack_replicated(worker, request.lease_id).await {
+                    Ok(ops) => {
+                        if let Err(e) = self.replicate_ops(stream_key(&request.stream), &ops).await
+                        {
+                            return QueueNackReply { error: Some(e) };
                         }
-                        Err(e) => QueueNackReply {
-                            error: Some(trembita_proto::ProductWireError::backend(e)),
-                        },
+                        self.emit_backlog_settle_for_terminal_ops(
+                            stream_key(&request.stream),
+                            queue.as_ref(),
+                            &ops,
+                            "nack",
+                        )
+                        .await;
+                        QueueNackReply { error: None }
                     }
-                }
+                    Err(e) => QueueNackReply {
+                        error: Some(trembita_proto::ProductWireError::backend(e)),
+                    },
+                },
             }
         } else {
             let transport = Arc::clone(&self.transport);

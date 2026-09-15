@@ -124,8 +124,8 @@ impl RaftNode {
     pub(in crate::node) fn reset_election_timer(&mut self) {
         self.elapsed = 0;
         self.election_timeout = self.rng.range(
-            self.config.election_timeout_min,
-            self.config.election_timeout_max,
+            self.config.election_timeout_min.raw(),
+            self.config.election_timeout_max.raw(),
         );
     }
 

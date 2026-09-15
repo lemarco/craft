@@ -10,7 +10,7 @@ impl RaftNode {
         if self.role == Role::Leader {
             self.update_liveness();
             self.heartbeat_elapsed += 1;
-            if self.heartbeat_elapsed >= self.config.heartbeat_interval {
+            if self.heartbeat_elapsed >= self.config.heartbeat_interval.raw() {
                 self.heartbeat_elapsed = 0;
                 self.broadcast_append();
             }

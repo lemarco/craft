@@ -33,16 +33,27 @@ pub struct ShardId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RaftGroupId(pub u32);
 
+impl RaftGroupId {
+    /// Meta-Raft coordinator group (cluster registry, catalog, saga journal).
+    pub const META: Self = Self(u32::MAX);
+
+    /// Whether this id is the Meta-Raft coordinator group.
+    #[must_use]
+    pub const fn is_meta(self) -> bool {
+        self.0 == Self::META.0
+    }
+}
+
 /// Reserved Raft group id for the cluster coordinator (Meta-Raft).
 ///
 /// Hosts cluster registry (join/leave), dynamic catalog, and saga journal metadata.
 /// Not part of the user catalog or keyed shard routing.
-pub const META_RAFT_GROUP_ID: u32 = u32::MAX;
+pub const META_RAFT_GROUP_ID: u32 = RaftGroupId::META.0;
 
 /// Whether `group` is the Meta-Raft coordinator group.
 #[must_use]
 pub const fn is_meta_raft_group(group: u32) -> bool {
-    group == META_RAFT_GROUP_ID
+    RaftGroupId(group).is_meta()
 }
 
 /// Default replication factor for per-group voter sets (per-group-raft-membership).

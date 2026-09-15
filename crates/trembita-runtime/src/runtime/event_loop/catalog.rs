@@ -21,7 +21,7 @@ impl<M: StateMachine> Runtime<M> {
             let _ = respond.send(CatalogAddResponse::Rejected {
                 reason: CatalogRejection::VersionSkew {
                     expected: PROTOCOL_VERSION,
-                    got: request.protocol_version,
+                    got: request.protocol_version.0,
                 },
             });
             return Ok(());

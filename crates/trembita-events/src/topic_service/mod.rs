@@ -75,7 +75,7 @@ impl TopicService {
         if subscriptions.is_empty() {
             return Ok(());
         }
-        let topic = self.local_topic(name).map_err(|e| e.to_string())?;
+        let topic = self.local_topic_str(name).map_err(|e| e.to_string())?;
         let ops = topic
             .register_subscriptions(subscriptions)
             .await
@@ -107,7 +107,7 @@ impl TopicService {
             .cloned()
             .collect();
         for name in names {
-            let topic = self.local_topic(&name).map_err(|e| e.to_string())?;
+            let topic = self.local_topic_str(&name).map_err(|e| e.to_string())?;
             let ops = topic
                 .enforce_retention_replicated()
                 .await

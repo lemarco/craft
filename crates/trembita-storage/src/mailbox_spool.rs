@@ -311,7 +311,7 @@ mod tests {
         ActorEnvelope {
             to: ActorId {
                 node: trembita_proto::NodeId(2),
-                name: "w".into(),
+                name: trembita_proto::ActorGroupName::try_from("w").expect("test name"),
                 instance: 0,
                 generation: 1,
             },

@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use trembita_net::transport::{Body, BoxFuture, RequestHandler};
 use trembita_net::{QuicTransport, Route, TransportError, decode_body, encode_body};
-use trembita_proto::{JoinRequest, NodeId, PeerBook, PeerEntry, ScaleRequest};
+use trembita_proto::{AdvertiseAddr, JoinRequest, NodeId, PeerBook, PeerEntry, ScaleRequest};
 
 use trembita_actor_store::StoreService;
 use trembita_events::TopicService;
@@ -50,7 +50,8 @@ impl PeerSource for QuicPeers {
                 .iter()
                 .map(|(node, addr)| PeerEntry {
                     node,
-                    addr: addr.to_string(),
+                    addr: AdvertiseAddr::try_new(addr.to_string())
+                        .expect("transport peer address must be valid"),
                 })
                 .collect(),
         }

@@ -1,26 +1,11 @@
 use std::fmt;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use trembita_proto::{QueueReplicateOp, WorkerId};
+use trembita_proto::{JobPriority, MaxAttempts, QueueReplicateOp, WorkerId};
 
 use super::port::JobQueue;
 
-/// Opaque job identifier (monotonic per queue stream).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct JobId(pub u64);
-
-/// Lease token returned by [`JobQueue::lease`], required for ack/nack/extend.
-///
-/// Within a stream, ids are **monotonically increasing** and the counter survives
-/// leader failover (replicated via [`QueueReplicateOp::Lease`] with a `max()` bump).
-/// Redelivery (nack, timeout, worker loss) issues a **new** id; ack/nack with a
-/// stale token returns [`QueueError::InvalidLease`].
-///
-/// This is a queue ownership token, not an application fencing token for external
-/// side effects — see [background-jobs § Delivery
-/// semantics](../../../docs/scenarios/background-jobs.md#delivery-semantics).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct LeaseId(pub u64);
+pub use trembita_proto::{JobId, LeaseId};
 
 /// A job handed to a worker under lease.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -143,7 +128,7 @@ impl JobContext<'_> {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct EnqueueOptions {
     /// Higher priority jobs are leased first (default `0`).
-    pub priority: u8,
+    pub priority: JobPriority,
     /// Do not lease before this unix timestamp in milliseconds (`None` = now).
     pub not_before_ms: Option<u64>,
     /// Routes to a shard when using [`ShardedJobQueue`](crate::sharded_queue::ShardedJobQueue).
@@ -161,13 +146,13 @@ pub struct EnqueueOptions {
     /// [`crate::InMemoryJobQueue::default_max_attempts`] (or `QueueOpts`/`JobOpts` at the
     /// app layer). `Some(0)` is an explicit request for unlimited retries and
     /// overrides the stream default.
-    pub max_attempts: Option<u32>,
+    pub max_attempts: Option<MaxAttempts>,
 }
 
 impl EnqueueOptions {
     /// Job with elevated priority.
     #[must_use]
-    pub fn priority(priority: u8) -> Self {
+    pub fn priority(priority: JobPriority) -> Self {
         Self {
             priority,
             ..Self::default()
@@ -208,7 +193,7 @@ impl EnqueueOptions {
     ///
     /// Overrides the stream default. `max_attempts(0)` means unlimited retries.
     #[must_use]
-    pub fn max_attempts(max: u32) -> Self {
+    pub fn max_attempts(max: MaxAttempts) -> Self {
         Self {
             max_attempts: Some(max),
             ..Self::default()
@@ -239,13 +224,13 @@ pub struct JobStatus {
     /// Byte length of the stored payload (payload itself is not returned).
     pub payload_len: u64,
     /// Enqueue priority.
-    pub priority: u8,
+    pub priority: JobPriority,
     /// Set when [`JobLifecycle::Leased`].
     pub leased_by: Option<WorkerId>,
     /// Delivery attempts recorded so far.
     pub attempts: u32,
     /// Configured retry ceiling (`0` = unlimited).
-    pub max_attempts: u32,
+    pub max_attempts: MaxAttempts,
     /// Client idempotency token from enqueue, when set.
     pub dedup_key: Option<Vec<u8>>,
 }

@@ -129,7 +129,7 @@ impl ActorDirectory {
             .by_node
             .values()
             .flat_map(|e| e.registrations.iter())
-            .map(|r| r.id.name.clone())
+            .map(|r| r.id.name.as_str().to_string())
             .collect();
         names.sort();
         names.dedup();
@@ -228,7 +228,7 @@ impl ActorDirectory {
             .by_node
             .values()
             .flat_map(|e| e.registrations.iter())
-            .filter(|r| r.id.name == name)
+            .filter(|r| r.id.name.as_str() == name)
             .cloned()
             .collect();
         out.sort_by(|a, b| a.id.cmp(&b.id));

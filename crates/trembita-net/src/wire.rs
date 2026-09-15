@@ -98,7 +98,7 @@ pub fn check_content_type(content_type: &str) -> Result<(), WireError> {
 /// Returns [`WireError::ProtocolVersion`] when outside the supported band.
 pub fn check_protocol_version(version: Option<u32>) -> Result<(), WireError> {
     let got = version.unwrap_or(1);
-    if trembita_proto::protocol_version_compatible(got) {
+    if trembita_proto::protocol_version_compatible(trembita_proto::ProtocolVersion(got)) {
         Ok(())
     } else {
         Err(WireError::ProtocolVersion {

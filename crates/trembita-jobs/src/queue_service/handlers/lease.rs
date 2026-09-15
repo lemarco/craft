@@ -2,15 +2,13 @@ use std::sync::Arc;
 
 use trembita_net::{send_queue_extend_lease, send_queue_lease};
 use trembita_proto::{
-    NodeId, QueueExtendLeaseReply, QueueExtendLeaseRequest, QueueLeaseReply, QueueLeaseRequest,
+    QueueExtendLeaseReply, QueueExtendLeaseRequest, QueueLeaseReply, QueueLeaseRequest,
     QueueLeasedJobWire,
 };
 
-use crate::{LeaseId, WorkerId};
-
 use super::super::QueueService;
 use super::super::replication::rollback_local_ops;
-use super::super::wire::shard_stream_name;
+use super::super::wire::{shard_stream_name, stream_key, worker_from_wire};
 
 impl QueueService {
     #[allow(clippy::too_many_lines)]
@@ -19,21 +17,27 @@ impl QueueService {
         request: QueueLeaseRequest,
     ) -> QueueLeaseReply {
         if self.state.is_leader() {
-            let worker = WorkerId {
-                node: NodeId(request.worker_node),
-                instance: request.worker_instance,
-            };
-            if let Some(sharded) = self.sharded_stream(&request.stream) {
+            let worker = worker_from_wire(request.worker_node, request.worker_instance);
+            if let Some(sharded) = self.sharded_stream(stream_key(&request.stream)) {
                 match self
-                    .lease_sharded_with_prefetch(&request.stream, &sharded, worker, request.max)
+                    .lease_sharded_with_prefetch(
+                        stream_key(&request.stream),
+                        &sharded,
+                        worker,
+                        request.max,
+                    )
                     .await
                 {
                     Ok((jobs, reps)) => {
-                        if let Err(e) = self.replicate_sharded(&request.stream, &reps).await {
+                        if let Err(e) = self
+                            .replicate_sharded(stream_key(&request.stream), &reps)
+                            .await
+                        {
                             for rep in &reps {
-                                if let Ok(queue) = self
-                                    .local_stream(&shard_stream_name(&request.stream, rep.shard))
-                                {
+                                if let Ok(queue) = self.local_stream(&shard_stream_name(
+                                    stream_key(&request.stream),
+                                    rep.shard,
+                                )) {
                                     rollback_local_ops(queue.as_ref(), &rep.ops).await;
                                 }
                             }
@@ -43,17 +47,17 @@ impl QueueService {
                             };
                         }
                         self.emit_backlog_settle_for_sharded_reps(
-                            &request.stream,
+                            stream_key(&request.stream),
                             &reps,
                             "reclaim",
                         )
                         .await;
                         for j in &jobs {
                             self.emit_leased(
-                                &request.stream,
+                                stream_key(&request.stream),
                                 j.job_id.0,
                                 j.lease_id.0,
-                                request.worker_node,
+                                request.worker_node.0,
                                 request.worker_instance,
                                 j.attempts,
                             );
@@ -62,11 +66,13 @@ impl QueueService {
                             jobs: jobs
                                 .into_iter()
                                 .map(|j| QueueLeasedJobWire {
-                                    lease_id: j.lease_id.0,
-                                    job_id: j.job_id.0,
+                                    lease_id: j.lease_id,
+                                    job_id: j.job_id,
                                     payload: j.payload,
                                     attempts: j.attempts,
-                                    dedup_key: j.dedup_key,
+                                    dedup_key: j
+                                        .dedup_key
+                                        .and_then(|k| trembita_proto::DedupKey::try_new(k).ok()),
                                 })
                                 .collect(),
                             error: None,
@@ -80,7 +86,7 @@ impl QueueService {
                     }
                 }
             }
-            match self.local_stream(&request.stream) {
+            match self.local_stream(stream_key(&request.stream)) {
                 Err(e) => QueueLeaseReply {
                     jobs: Vec::new(),
                     error: Some(e),
@@ -91,17 +97,24 @@ impl QueueService {
                         .lock()
                         .expect("poisoned")
                         .redb_streams
-                        .get(&request.stream)
+                        .get(stream_key(&request.stream))
                         .cloned();
                     let lease_result = if let Some(redb) = redb {
-                        self.lease_redb_with_prefetch(&request.stream, &redb, worker, request.max)
-                            .await
+                        self.lease_redb_with_prefetch(
+                            stream_key(&request.stream),
+                            &redb,
+                            worker,
+                            request.max,
+                        )
+                        .await
                     } else {
                         queue.lease_replicated(worker, request.max).await
                     };
                     match lease_result {
                         Ok((jobs, ops)) => {
-                            if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
+                            if let Err(e) =
+                                self.replicate_ops(stream_key(&request.stream), &ops).await
+                            {
                                 rollback_local_ops(queue.as_ref(), &ops).await;
                                 return QueueLeaseReply {
                                     jobs: Vec::new(),
@@ -109,7 +122,7 @@ impl QueueService {
                                 };
                             }
                             self.emit_backlog_settle_for_terminal_ops(
-                                &request.stream,
+                                stream_key(&request.stream),
                                 queue.as_ref(),
                                 &ops,
                                 "reclaim",
@@ -117,10 +130,10 @@ impl QueueService {
                             .await;
                             for j in &jobs {
                                 self.emit_leased(
-                                    &request.stream,
+                                    stream_key(&request.stream),
                                     j.job_id.0,
                                     j.lease_id.0,
-                                    request.worker_node,
+                                    request.worker_node.0,
                                     request.worker_instance,
                                     j.attempts,
                                 );
@@ -162,17 +175,17 @@ impl QueueService {
         request: QueueExtendLeaseRequest,
     ) -> QueueExtendLeaseReply {
         if self.state.is_leader() {
-            let worker = WorkerId {
-                node: NodeId(request.worker_node),
-                instance: request.worker_instance,
-            };
-            if let Some(sharded) = self.sharded_stream(&request.stream) {
+            let worker = worker_from_wire(request.worker_node, request.worker_instance);
+            if let Some(sharded) = self.sharded_stream(stream_key(&request.stream)) {
                 match sharded
-                    .extend_lease_replicated_sharded(worker, LeaseId(request.lease_id))
+                    .extend_lease_replicated_sharded(worker, request.lease_id)
                     .await
                 {
                     Ok(rep) => {
-                        if let Err(e) = self.replicate_sharded(&request.stream, &[rep]).await {
+                        if let Err(e) = self
+                            .replicate_sharded(stream_key(&request.stream), &[rep])
+                            .await
+                        {
                             return QueueExtendLeaseReply { error: Some(e) };
                         }
                         return QueueExtendLeaseReply { error: None };
@@ -184,15 +197,17 @@ impl QueueService {
                     }
                 }
             }
-            match self.local_stream(&request.stream) {
+            match self.local_stream(stream_key(&request.stream)) {
                 Err(e) => QueueExtendLeaseReply { error: Some(e) },
                 Ok(queue) => {
                     match queue
-                        .extend_lease_replicated(worker, LeaseId(request.lease_id))
+                        .extend_lease_replicated(worker, request.lease_id)
                         .await
                     {
                         Ok(ops) => {
-                            if let Err(e) = self.replicate_ops(&request.stream, &ops).await {
+                            if let Err(e) =
+                                self.replicate_ops(stream_key(&request.stream), &ops).await
+                            {
                                 return QueueExtendLeaseReply { error: Some(e) };
                             }
                             QueueExtendLeaseReply { error: None }

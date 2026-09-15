@@ -10,19 +10,18 @@ use std::future::Future;
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use trembita_proto::{NodeId, TopicReplicateOp};
+use trembita_proto::{MaxAttempts, SubscriptionName, TopicReplicateOp, UnixMillis};
+
+fn wire_subscription(name: impl AsRef<str>) -> SubscriptionName {
+    SubscriptionName::try_new(name.as_ref().to_string()).expect("subscription name is valid")
+}
 
 pub use trembita_proto::BoxFuture;
 pub use trembita_proto::WorkerId;
 pub use trembita_runtime::after_failed_attempt;
 
-/// Monotonic event id within a topic.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct EventId(pub u64);
-
-/// Lease token for an in-flight event delivery on a subscription.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TopicLeaseId(pub u64);
+pub use trembita_proto::TopicEventId as EventId;
+pub use trembita_proto::TopicLeaseId;
 
 /// Batch of idempotent topic mutations replicated from the leader.
 pub type TopicReplicationOps = Vec<TopicReplicateOp>;
@@ -402,21 +401,18 @@ impl InMemoryEventTopic {
             } => {
                 let mut events = self.events.lock().expect("poisoned");
                 let mut subs = self.subs.lock().expect("poisoned");
-                if !events.contains_key(event_id) {
-                    events.insert(
-                        *event_id,
-                        StoredEvent {
-                            payload: payload.clone(),
-                            published_at_ms: *published_at_ms,
-                        },
-                    );
+                if let std::collections::btree_map::Entry::Vacant(e) = events.entry(event_id.0) {
+                    e.insert(StoredEvent {
+                        payload: payload.clone(),
+                        published_at_ms: published_at_ms.0,
+                    });
                     for sub in subs.values_mut() {
-                        if *event_id > sub.cursor {
-                            sub.pending.push_back(*event_id);
+                        if event_id.0 > sub.cursor {
+                            sub.pending.push_back(event_id.0);
                         }
                     }
                 }
-                *self.next_event_id.lock().expect("poisoned") = *next_event_id;
+                *self.next_event_id.lock().expect("poisoned") = next_event_id.0;
             }
             TopicReplicateOp::RegisterSubscription {
                 name,
@@ -424,12 +420,12 @@ impl InMemoryEventTopic {
                 max_attempts,
             } => {
                 let mut subs = self.subs.lock().expect("poisoned");
-                if subs.contains_key(name) {
+                if subs.contains_key(name.as_str()) {
                     return Ok(());
                 }
                 let mut sub = SubState {
                     cursor: *cursor,
-                    max_attempts: *max_attempts,
+                    max_attempts: max_attempts.0,
                     retention_discards: 0,
                     pending: VecDeque::new(),
                     leases: HashMap::new(),
@@ -443,11 +439,11 @@ impl InMemoryEventTopic {
                         }
                     }
                 }
-                subs.insert(name.clone(), sub);
+                subs.insert(name.as_str().to_string(), sub);
             }
             TopicReplicateOp::RemoveSubscription { name } => {
                 let mut subs = self.subs.lock().expect("poisoned");
-                subs.remove(name);
+                subs.remove(name.as_str());
             }
             TopicReplicateOp::Lease {
                 subscription,
@@ -460,25 +456,25 @@ impl InMemoryEventTopic {
                 attempts,
             } => {
                 let mut subs = self.subs.lock().expect("poisoned");
-                let sub = subs
-                    .get_mut(subscription)
-                    .ok_or_else(|| TopicError::SubscriptionNotFound(subscription.clone()))?;
-                if !sub.leases.contains_key(lease_id) {
-                    sub.pending.retain(|id| id != event_id);
+                let sub = subs.get_mut(subscription.as_str()).ok_or_else(|| {
+                    TopicError::SubscriptionNotFound(subscription.as_str().to_string())
+                })?;
+                if !sub.leases.contains_key(&lease_id.0) {
+                    sub.pending.retain(|id| *id != event_id.0);
                     sub.leases.insert(
-                        *lease_id,
+                        lease_id.0,
                         (
-                            *event_id,
+                            event_id.0,
                             WorkerId {
-                                node: NodeId(*worker_node),
+                                node: *worker_node,
                                 instance: *worker_instance,
                             },
                             *attempts,
-                            instant_from_unix_ms(*expires_at_ms),
+                            instant_from_unix_ms(expires_at_ms.0),
                         ),
                     );
                 }
-                *self.next_lease_id.lock().expect("poisoned") = *next_lease_id;
+                *self.next_lease_id.lock().expect("poisoned") = next_lease_id.0;
             }
             TopicReplicateOp::Ack {
                 subscription,
@@ -487,12 +483,12 @@ impl InMemoryEventTopic {
                 cursor,
             } => {
                 let mut subs = self.subs.lock().expect("poisoned");
-                let sub = subs
-                    .get_mut(subscription)
-                    .ok_or_else(|| TopicError::SubscriptionNotFound(subscription.clone()))?;
-                sub.leases.remove(lease_id);
-                sub.dead_letter.remove(event_id);
-                sub.cursor = sub.cursor.max(*cursor).max(*event_id);
+                let sub = subs.get_mut(subscription.as_str()).ok_or_else(|| {
+                    TopicError::SubscriptionNotFound(subscription.as_str().to_string())
+                })?;
+                sub.leases.remove(&lease_id.0);
+                sub.dead_letter.remove(&event_id.0);
+                sub.cursor = sub.cursor.max(*cursor).max(event_id.0);
             }
             TopicReplicateOp::Nack {
                 subscription,
@@ -509,14 +505,14 @@ impl InMemoryEventTopic {
                 dead_letter,
             } => {
                 let mut subs = self.subs.lock().expect("poisoned");
-                let sub = subs
-                    .get_mut(subscription)
-                    .ok_or_else(|| TopicError::SubscriptionNotFound(subscription.clone()))?;
-                sub.leases.remove(lease_id);
+                let sub = subs.get_mut(subscription.as_str()).ok_or_else(|| {
+                    TopicError::SubscriptionNotFound(subscription.as_str().to_string())
+                })?;
+                sub.leases.remove(&lease_id.0);
                 if *dead_letter {
-                    sub.dead_letter.insert(*event_id, *attempts);
+                    sub.dead_letter.insert(event_id.0, *attempts);
                 } else {
-                    sub.pending.push_back(*event_id);
+                    sub.pending.push_back(event_id.0);
                 }
             }
             TopicReplicateOp::RetentionDiscard {
@@ -525,9 +521,9 @@ impl InMemoryEventTopic {
                 discarded,
             } => {
                 let mut subs = self.subs.lock().expect("poisoned");
-                let sub = subs
-                    .get_mut(subscription)
-                    .ok_or_else(|| TopicError::SubscriptionNotFound(subscription.clone()))?;
+                let sub = subs.get_mut(subscription.as_str()).ok_or_else(|| {
+                    TopicError::SubscriptionNotFound(subscription.as_str().to_string())
+                })?;
                 sub.pending.retain(|id| *id > *cursor);
                 sub.leases.retain(|_, (eid, _, _, _)| *eid > *cursor);
                 sub.dead_letter.retain(|id, _| *id > *cursor);
@@ -578,9 +574,9 @@ impl InMemoryEventTopic {
                     sub.pending.push_back(event_id);
                 }
                 ops.push(TopicReplicateOp::Reclaim {
-                    subscription: sub_name.clone(),
-                    lease_id,
-                    event_id,
+                    subscription: wire_subscription(&sub_name),
+                    lease_id: TopicLeaseId(lease_id),
+                    event_id: EventId(event_id),
                     attempts,
                     dead_letter: dead,
                 });
@@ -606,10 +602,10 @@ impl EventTopic for InMemoryEventTopic {
             let published_at_ms = unix_ms_now();
             let next_event_id = *self.next_event_id.lock().expect("poisoned");
             ops.push(TopicReplicateOp::Publish {
-                event_id,
+                event_id: EventId(event_id),
                 payload: payload.to_vec(),
-                published_at_ms,
-                next_event_id,
+                published_at_ms: UnixMillis(published_at_ms),
+                next_event_id: EventId(next_event_id),
             });
             for op in &ops {
                 self.apply_op_inner(op)?;
@@ -662,9 +658,9 @@ impl EventTopic for InMemoryEventTopic {
                     SubscriptionStart::Latest => head,
                 };
                 ops.push(TopicReplicateOp::RegisterSubscription {
-                    name: def.name.clone(),
+                    name: wire_subscription(&def.name),
                     cursor,
-                    max_attempts: def.max_attempts,
+                    max_attempts: MaxAttempts(def.max_attempts),
                 });
             }
             for op in &ops {
@@ -717,13 +713,13 @@ impl EventTopic for InMemoryEventTopic {
                     ),
                 );
                 ops.push(TopicReplicateOp::Lease {
-                    subscription: subscription.to_string(),
-                    lease_id,
-                    event_id,
-                    worker_node: worker.node.0,
+                    subscription: wire_subscription(subscription),
+                    lease_id: TopicLeaseId(lease_id),
+                    event_id: EventId(event_id),
+                    worker_node: worker.node,
                     worker_instance: worker.instance,
-                    expires_at_ms,
-                    next_lease_id: next_lease,
+                    expires_at_ms: UnixMillis(expires_at_ms),
+                    next_lease_id: TopicLeaseId(next_lease),
                     attempts,
                 });
                 out.push(LeasedEvent {
@@ -761,9 +757,9 @@ impl EventTopic for InMemoryEventTopic {
             sub.cursor = cursor;
             sub.dead_letter.remove(&event_id);
             let mut ops = vec![TopicReplicateOp::Ack {
-                subscription: subscription.to_string(),
-                lease_id: lease_id.0,
-                event_id,
+                subscription: wire_subscription(subscription),
+                lease_id,
+                event_id: EventId(event_id),
                 cursor,
             }];
             drop(subs);
@@ -806,9 +802,9 @@ impl EventTopic for InMemoryEventTopic {
                 sub.pending.push_back(event_id);
             }
             let ops = vec![TopicReplicateOp::Nack {
-                subscription: subscription.to_string(),
-                lease_id: lease_id.0,
-                event_id,
+                subscription: wire_subscription(subscription),
+                lease_id,
+                event_id: EventId(event_id),
                 attempts,
                 dead_letter: dead,
             }];
@@ -886,7 +882,7 @@ impl EventTopic for InMemoryEventTopic {
                     sub.cursor = new_cursor;
                     sub.retention_discards = sub.retention_discards.saturating_add(discarded);
                     ops.push(TopicReplicateOp::RetentionDiscard {
-                        subscription: name.clone(),
+                        subscription: wire_subscription(name),
                         cursor: new_cursor,
                         discarded,
                     });
@@ -962,6 +958,7 @@ pub async fn run_topic_subscriber<T, F, Fut, E>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use trembita_proto::NodeId;
 
     fn worker(id: u64) -> WorkerId {
         WorkerId {
@@ -1099,11 +1096,15 @@ mod tests {
         let ev = topic.lease("a", worker(1), 1).await.unwrap();
         topic.ack("a", worker(1), ev[0].lease_id).await.unwrap();
         topic
-            .apply_replicate(&TopicReplicateOp::RemoveSubscription { name: "b".into() })
+            .apply_replicate(&TopicReplicateOp::RemoveSubscription {
+                name: wire_subscription("b"),
+            })
             .await
             .unwrap();
         topic
-            .apply_replicate(&TopicReplicateOp::RemoveSubscription { name: "c".into() })
+            .apply_replicate(&TopicReplicateOp::RemoveSubscription {
+                name: wire_subscription("c"),
+            })
             .await
             .unwrap();
         let metrics = topic.metrics().await.unwrap();

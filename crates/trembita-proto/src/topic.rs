@@ -5,6 +5,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::product::ProductWireError;
+use crate::{MaxAttempts, NodeId, SubscriptionName, TopicName, UnixMillis};
 
 /// Monotonic event id within a topic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -18,7 +19,7 @@ pub struct TopicLeaseId(pub u64);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TopicPublishRequest {
     /// Topic name.
-    pub topic: String,
+    pub topic: TopicName,
     /// Opaque event body.
     pub payload: Vec<u8>,
 }
@@ -27,7 +28,7 @@ pub struct TopicPublishRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TopicPublishReply {
     /// Assigned event id when successful.
-    pub event_id: u64,
+    pub event_id: TopicEventId,
     /// Set when publish failed.
     pub error: Option<ProductWireError>,
 }
@@ -36,11 +37,11 @@ pub struct TopicPublishReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TopicLeaseRequest {
     /// Topic name.
-    pub topic: String,
+    pub topic: TopicName,
     /// Named subscription within the topic.
-    pub subscription: String,
+    pub subscription: SubscriptionName,
     /// Worker node id.
-    pub worker_node: u64,
+    pub worker_node: NodeId,
     /// Worker instance index on the node.
     pub worker_instance: u32,
     /// Maximum events to lease.
@@ -51,9 +52,9 @@ pub struct TopicLeaseRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TopicLeasedEventWire {
     /// Lease handle for ack/nack.
-    pub lease_id: u64,
+    pub lease_id: TopicLeaseId,
     /// Event id.
-    pub event_id: u64,
+    pub event_id: TopicEventId,
     /// Event body.
     pub payload: Vec<u8>,
     /// Delivery attempts so far (including this lease).
@@ -73,15 +74,15 @@ pub struct TopicLeaseReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TopicAckRequest {
     /// Topic name.
-    pub topic: String,
+    pub topic: TopicName,
     /// Subscription name.
-    pub subscription: String,
+    pub subscription: SubscriptionName,
     /// Worker node id.
-    pub worker_node: u64,
+    pub worker_node: NodeId,
     /// Worker instance index.
     pub worker_instance: u32,
     /// Lease to acknowledge.
-    pub lease_id: u64,
+    pub lease_id: TopicLeaseId,
 }
 
 /// Response to [`TopicAckRequest`].
@@ -95,15 +96,15 @@ pub struct TopicAckReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TopicNackRequest {
     /// Topic name.
-    pub topic: String,
+    pub topic: TopicName,
     /// Subscription name.
-    pub subscription: String,
+    pub subscription: SubscriptionName,
     /// Worker node id.
-    pub worker_node: u64,
+    pub worker_node: NodeId,
     /// Worker instance index.
     pub worker_instance: u32,
     /// Lease to return.
-    pub lease_id: u64,
+    pub lease_id: TopicLeaseId,
 }
 
 /// Response to [`TopicNackRequest`].
@@ -117,7 +118,7 @@ pub struct TopicNackReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TopicSubscriptionMetricsWire {
     /// Subscription name.
-    pub subscription: String,
+    pub subscription: SubscriptionName,
     /// Committed cursor (last ack'd event id).
     pub cursor: u64,
     /// Events behind the log head (`head - cursor`).
@@ -134,7 +135,7 @@ pub struct TopicSubscriptionMetricsWire {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TopicMetricsRequest {
     /// Topic name.
-    pub topic: String,
+    pub topic: TopicName,
 }
 
 /// Response to [`TopicMetricsRequest`].
@@ -160,52 +161,52 @@ pub enum TopicReplicateOp {
     /// Append one event and fan out to every registered subscription pending set.
     Publish {
         /// Assigned event id.
-        event_id: u64,
+        event_id: TopicEventId,
         /// Event body.
         payload: Vec<u8>,
         /// Publish timestamp (unix ms).
-        published_at_ms: u64,
+        published_at_ms: UnixMillis,
         /// Next event id after this publish.
-        next_event_id: u64,
+        next_event_id: TopicEventId,
     },
     /// Move an event from pending to leased for one subscription.
     Lease {
         /// Subscription name.
-        subscription: String,
+        subscription: SubscriptionName,
         /// Lease id.
-        lease_id: u64,
+        lease_id: TopicLeaseId,
         /// Event id.
-        event_id: u64,
+        event_id: TopicEventId,
         /// Worker node.
-        worker_node: u64,
+        worker_node: NodeId,
         /// Worker instance.
         worker_instance: u32,
         /// Lease expiry (unix ms).
-        expires_at_ms: u64,
+        expires_at_ms: UnixMillis,
         /// Next lease id counter.
-        next_lease_id: u64,
+        next_lease_id: TopicLeaseId,
         /// Attempt count for this delivery.
         attempts: u32,
     },
     /// Terminal success — advance subscription cursor.
     Ack {
         /// Subscription name.
-        subscription: String,
+        subscription: SubscriptionName,
         /// Released lease id.
-        lease_id: u64,
+        lease_id: TopicLeaseId,
         /// Acknowledged event id.
-        event_id: u64,
+        event_id: TopicEventId,
         /// New committed cursor for the subscription.
         cursor: u64,
     },
     /// Retry or dead-letter one leased event.
     Nack {
         /// Subscription name.
-        subscription: String,
+        subscription: SubscriptionName,
         /// Released lease id.
-        lease_id: u64,
+        lease_id: TopicLeaseId,
         /// Event id.
-        event_id: u64,
+        event_id: TopicEventId,
         /// Updated attempt count.
         attempts: u32,
         /// When true the event is not requeued.
@@ -214,11 +215,11 @@ pub enum TopicReplicateOp {
     /// Visibility timeout expired — requeue or dead-letter.
     Reclaim {
         /// Subscription name.
-        subscription: String,
+        subscription: SubscriptionName,
         /// Released lease id.
-        lease_id: u64,
+        lease_id: TopicLeaseId,
         /// Event id.
-        event_id: u64,
+        event_id: TopicEventId,
         /// Updated attempt count.
         attempts: u32,
         /// When true the event is not requeued.
@@ -227,21 +228,21 @@ pub enum TopicReplicateOp {
     /// Register a subscription at boot with an initial cursor.
     RegisterSubscription {
         /// Subscription name.
-        name: String,
+        name: SubscriptionName,
         /// Initial cursor (`0` = before first event; `head` = only new events).
         cursor: u64,
         /// Retry ceiling (`0` = unlimited).
-        max_attempts: u32,
+        max_attempts: MaxAttempts,
     },
     /// Remove a subscription and advance compaction floor if it was the minimum cursor.
     RemoveSubscription {
         /// Subscription name.
-        name: String,
+        name: SubscriptionName,
     },
     /// Retention forced cursor forward for a lagging subscription.
     RetentionDiscard {
         /// Subscription name.
-        subscription: String,
+        subscription: SubscriptionName,
         /// New cursor after discarding lagging events.
         cursor: u64,
         /// Number of events discarded in this operation.
@@ -258,11 +259,11 @@ pub enum TopicReplicateOp {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TopicReplicateRequest {
     /// Target topic.
-    pub topic: String,
+    pub topic: TopicName,
     /// Idempotent mutations in order.
     pub ops: Vec<TopicReplicateOp>,
     /// Declared Raft leader id.
-    pub leader_id: u64,
+    pub leader_id: NodeId,
 }
 
 /// Response to [`TopicReplicateRequest`].

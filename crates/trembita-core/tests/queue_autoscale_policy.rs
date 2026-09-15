@@ -2,15 +2,15 @@
 
 use trembita_core::{CatalogProposeError, Config, Output, RaftNode};
 use trembita_proto::{
-    AppendEntries, AutoscalePolicyWire, EntryPayload, LogEntry, LogId, LogIndex, NodeId,
-    QueueAutoscalePolicyCommand, RaftRpc, Round, Term,
+    AppendEntries, AutoscalePolicyWire, EntryPayload, LogEntry, LogId, LogIndex, LogicalTick,
+    NodeId, QueueAutoscalePolicyCommand, RaftRpc, Round, Term,
 };
 
 fn cfg() -> Config {
     Config {
-        election_timeout_min: 100,
-        election_timeout_max: 100,
-        heartbeat_interval: 5,
+        election_timeout_min: LogicalTick(100),
+        election_timeout_max: LogicalTick(100),
+        heartbeat_interval: LogicalTick(5),
         seed: 1,
         ..Default::default()
     }

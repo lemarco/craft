@@ -6,8 +6,8 @@ use trembita_net::{
     send_topic_ack, send_topic_lease, send_topic_metrics, send_topic_nack, send_topic_publish,
 };
 use trembita_proto::{
-    BoxFuture, NodeId, TopicAckRequest, TopicLeaseRequest, TopicMetricsRequest, TopicNackRequest,
-    TopicPublishRequest, TopicReplicateOp, WorkerId,
+    BoxFuture, NodeId, SubscriptionName, TopicAckRequest, TopicLeaseRequest, TopicMetricsRequest,
+    TopicNackRequest, TopicName, TopicPublishRequest, TopicReplicateOp, WorkerId,
 };
 use trembita_runtime::ClusterState;
 
@@ -18,6 +18,14 @@ use crate::{
 
 fn replication_unsupported() -> TopicError {
     TopicError::Backend("cluster topic client does not apply replication locally".into())
+}
+
+fn wire_topic(topic: &str) -> TopicName {
+    TopicName::try_new(topic.to_string()).expect("cluster topic name is valid")
+}
+
+fn wire_subscription(subscription: &str) -> SubscriptionName {
+    SubscriptionName::try_new(subscription.to_string()).expect("cluster subscription name is valid")
 }
 
 /// Cluster-facing [`EventTopic`] that routes through the leader wire service.
@@ -55,8 +63,8 @@ impl ClusterEventTopic {
         self.state.leader_id().ok_or(TopicError::NotLeader)
     }
 
-    fn worker_ids(worker: WorkerId) -> (u64, u32) {
-        (worker.node.0, worker.instance)
+    fn worker_ids(worker: WorkerId) -> (NodeId, u32) {
+        (worker.node, worker.instance)
     }
 }
 
@@ -72,7 +80,7 @@ impl EventTopic for ClusterEventTopic {
                 self.transport.as_ref(),
                 leader,
                 &TopicPublishRequest {
-                    topic: self.topic.clone(),
+                    topic: wire_topic(&self.topic),
                     payload,
                 },
             )
@@ -81,7 +89,7 @@ impl EventTopic for ClusterEventTopic {
             if let Some(err) = reply.error {
                 return Err(TopicError::Backend(err.to_string()));
             }
-            Ok((EventId(reply.event_id), Vec::new()))
+            Ok((reply.event_id, Vec::new()))
         })
     }
 
@@ -112,8 +120,8 @@ impl EventTopic for ClusterEventTopic {
                 self.transport.as_ref(),
                 leader,
                 &TopicLeaseRequest {
-                    topic: self.topic.clone(),
-                    subscription: subscription.to_string(),
+                    topic: wire_topic(&self.topic),
+                    subscription: wire_subscription(subscription),
                     worker_node,
                     worker_instance,
                     max: u32::try_from(max).unwrap_or(u32::MAX),
@@ -129,8 +137,8 @@ impl EventTopic for ClusterEventTopic {
                     .events
                     .into_iter()
                     .map(|e| LeasedEvent {
-                        lease_id: TopicLeaseId(e.lease_id),
-                        event_id: EventId(e.event_id),
+                        lease_id: e.lease_id,
+                        event_id: e.event_id,
                         payload: e.payload,
                         attempts: e.attempts,
                     })
@@ -153,11 +161,11 @@ impl EventTopic for ClusterEventTopic {
                 self.transport.as_ref(),
                 leader,
                 &TopicAckRequest {
-                    topic: self.topic.clone(),
-                    subscription: subscription.to_string(),
+                    topic: wire_topic(&self.topic),
+                    subscription: wire_subscription(subscription),
                     worker_node,
                     worker_instance,
-                    lease_id: lease_id.0,
+                    lease_id,
                 },
             )
             .await
@@ -182,11 +190,11 @@ impl EventTopic for ClusterEventTopic {
                 self.transport.as_ref(),
                 leader,
                 &TopicNackRequest {
-                    topic: self.topic.clone(),
-                    subscription: subscription.to_string(),
+                    topic: wire_topic(&self.topic),
+                    subscription: wire_subscription(subscription),
                     worker_node,
                     worker_instance,
-                    lease_id: lease_id.0,
+                    lease_id,
                 },
             )
             .await
@@ -205,7 +213,7 @@ impl EventTopic for ClusterEventTopic {
                 self.transport.as_ref(),
                 leader,
                 &TopicMetricsRequest {
-                    topic: self.topic.clone(),
+                    topic: wire_topic(&self.topic),
                 },
             )
             .await
@@ -222,7 +230,7 @@ impl EventTopic for ClusterEventTopic {
                     .subscriptions
                     .into_iter()
                     .map(|s| crate::TopicSubscriptionMetrics {
-                        subscription: s.subscription,
+                        subscription: s.subscription.as_str().to_string(),
                         cursor: s.cursor,
                         lag: s.lag,
                         pending: s.pending,

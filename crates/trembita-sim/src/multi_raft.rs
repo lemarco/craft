@@ -1,7 +1,7 @@
 //! Multi-Raft simulation — independent Raft groups with shard-aware routing.
 
 use trembita_core::{RaftGroupId, ShardRouter, place_shard};
-use trembita_proto::TwoPhasePrepareCommand;
+use trembita_proto::{RouteKey, TransactionId, TwoPhasePrepareCommand, UnixMillis};
 
 use crate::harness::{Cluster, Fault};
 
@@ -120,10 +120,10 @@ impl MultiRaftCluster {
             return false;
         }
         self.groups[idx].propose_two_phase_prepare(TwoPhasePrepareCommand {
-            tx_id,
-            route_key,
+            tx_id: TransactionId::try_new(tx_id).expect("valid tx id"),
+            route_key: RouteKey::try_new(route_key).expect("valid route key"),
             command,
-            prepared_at_ms: 0,
+            prepared_at_ms: UnixMillis::IMMEDIATE,
         })
     }
 
@@ -133,6 +133,6 @@ impl MultiRaftCluster {
         self.groups[group as usize]
             .two_phase_prepares()
             .iter()
-            .any(|p| p.tx_id == tx_id && p.route_key == route_key)
+            .any(|p| p.tx_id.as_bytes() == tx_id && p.route_key.as_bytes() == route_key)
     }
 }

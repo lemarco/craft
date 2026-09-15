@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use trembita_proto::{BoxFuture, NodeId, QueueReplicateOp, WorkerId};
+use trembita_proto::{
+    BoxFuture, DedupKey, JobPriority, MaxAttempts, QueueReplicateOp, UnixMillis, WorkerId,
+};
 use trembita_runtime::{AttemptOutcome, after_failed_attempt};
 
 use super::port::JobQueue;
@@ -232,10 +234,10 @@ impl Inner {
             job_id,
             lifecycle,
             payload_len: u64::try_from(entry.payload.len()).unwrap_or(u64::MAX),
-            priority: entry.priority,
+            priority: JobPriority(entry.priority),
             leased_by,
             attempts: entry.attempts,
-            max_attempts: entry.max_attempts,
+            max_attempts: MaxAttempts(entry.max_attempts),
             dedup_key: entry.dedup_key.clone(),
         })
     }
@@ -356,7 +358,9 @@ impl JobQueue for InMemoryJobQueue {
             )
             .unwrap_or(u64::MAX);
             let not_before_ms = options.not_before_ms.unwrap_or(enqueued_at_ms);
-            let max_attempts = options.max_attempts.unwrap_or(self.default_max_attempts);
+            let max_attempts = options
+                .max_attempts
+                .unwrap_or(MaxAttempts(self.default_max_attempts));
             let (job_id, ops) = self.with_inner(|inner| {
                 if let Some(key) = &options.dedup_key
                     && let Some(existing) = inner.dedup_lookup(key)
@@ -371,11 +375,11 @@ impl JobQueue for InMemoryJobQueue {
                     JobEntry {
                         payload: payload.to_vec(),
                         enqueued_at: Instant::now(),
-                        priority: options.priority,
+                        priority: options.priority.0,
                         not_before_ms,
                         dedup_key: dedup_key.clone(),
                         attempts: 0,
-                        max_attempts,
+                        max_attempts: max_attempts.0,
                         dead_letter: false,
                     },
                 );
@@ -386,13 +390,16 @@ impl JobQueue for InMemoryJobQueue {
                 (
                     JobId(job_id),
                     vec![QueueReplicateOp::Enqueue {
-                        job_id,
+                        job_id: JobId(job_id),
                         payload: payload.to_vec(),
-                        enqueued_at_ms,
-                        next_job_id: inner.next_job_id,
+                        enqueued_at_ms: UnixMillis(enqueued_at_ms),
+                        next_job_id: JobId(inner.next_job_id),
                         priority: options.priority,
-                        not_before_ms,
-                        dedup_key: options.dedup_key.clone(),
+                        not_before_ms: UnixMillis(not_before_ms),
+                        dedup_key: options
+                            .dedup_key
+                            .as_ref()
+                            .and_then(|k| DedupKey::try_new(k.clone()).ok()),
                         attempts: 0,
                         max_attempts,
                     }],
@@ -421,30 +428,30 @@ impl JobQueue for InMemoryJobQueue {
                     max_attempts,
                 } => {
                     if let Some(key) = dedup_key
-                        && inner.dedup_lookup(key).is_some()
+                        && inner.dedup_lookup(key.as_bytes()).is_some()
                     {
-                        inner.next_job_id = inner.next_job_id.max(*next_job_id);
+                        inner.next_job_id = inner.next_job_id.max(next_job_id.0);
                         return Ok(());
                     }
                     if let std::collections::btree_map::Entry::Vacant(entry) =
-                        inner.jobs.entry(JobId(*job_id))
+                        inner.jobs.entry(*job_id)
                     {
                         entry.insert(JobEntry {
                             payload: payload.clone(),
                             enqueued_at: Instant::now(),
-                            priority: *priority,
-                            not_before_ms: *not_before_ms,
-                            dedup_key: dedup_key.clone(),
+                            priority: priority.0,
+                            not_before_ms: not_before_ms.0,
+                            dedup_key: dedup_key.as_ref().map(|k| k.as_bytes().to_vec()),
                             attempts: *attempts,
-                            max_attempts: *max_attempts,
+                            max_attempts: max_attempts.0,
                             dead_letter: false,
                         });
-                        inner.pending.push_back(JobId(*job_id));
+                        inner.pending.push_back(*job_id);
                         if let Some(key) = dedup_key {
-                            inner.dedup.insert(key.clone(), JobId(*job_id));
+                            inner.dedup.insert(key.as_bytes().to_vec(), *job_id);
                         }
                     }
-                    inner.next_job_id = inner.next_job_id.max(*next_job_id);
+                    inner.next_job_id = inner.next_job_id.max(next_job_id.0);
                     Ok(())
                 }
                 QueueReplicateOp::Lease {
@@ -455,24 +462,21 @@ impl JobQueue for InMemoryJobQueue {
                     expires_at_ms: _,
                     next_lease_id,
                 } => {
-                    inner.pending.retain(|id| id.0 != *job_id);
-                    inner
-                        .leases
-                        .entry(LeaseId(*lease_id))
-                        .or_insert(LeaseEntry {
-                            job_id: JobId(*job_id),
-                            worker: WorkerId {
-                                node: NodeId(*worker_node),
-                                instance: *worker_instance,
-                            },
-                            expires_at: Instant::now() + Duration::from_secs(3600),
-                        });
-                    inner.next_lease_id = inner.next_lease_id.max(*next_lease_id);
+                    inner.pending.retain(|id| *id != *job_id);
+                    inner.leases.entry(*lease_id).or_insert(LeaseEntry {
+                        job_id: *job_id,
+                        worker: WorkerId {
+                            node: *worker_node,
+                            instance: *worker_instance,
+                        },
+                        expires_at: Instant::now() + Duration::from_secs(3600),
+                    });
+                    inner.next_lease_id = inner.next_lease_id.max(next_lease_id.0);
                     Ok(())
                 }
                 QueueReplicateOp::Ack { lease_id, job_id } => {
-                    inner.leases.remove(&LeaseId(*lease_id));
-                    inner.remove_job(JobId(*job_id));
+                    inner.leases.remove(lease_id);
+                    inner.remove_job(*job_id);
                     Ok(())
                 }
                 QueueReplicateOp::Nack {
@@ -489,19 +493,19 @@ impl JobQueue for InMemoryJobQueue {
                     dead_letter,
                     not_before_ms,
                 } => {
-                    inner.leases.remove(&LeaseId(*lease_id));
-                    if let Some(entry) = inner.jobs.get_mut(&JobId(*job_id)) {
+                    inner.leases.remove(lease_id);
+                    if let Some(entry) = inner.jobs.get_mut(job_id) {
                         entry.attempts = *attempts;
                         entry.dead_letter = *dead_letter;
-                        entry.not_before_ms = *not_before_ms;
+                        entry.not_before_ms = not_before_ms.0;
                         if !dead_letter {
-                            inner.pending.push_back(JobId(*job_id));
+                            inner.pending.push_back(*job_id);
                         }
                     }
                     Ok(())
                 }
                 QueueReplicateOp::RequeueDeadLetter { job_id, attempts } => {
-                    if let Some(entry) = inner.jobs.get_mut(&JobId(*job_id)) {
+                    if let Some(entry) = inner.jobs.get_mut(job_id) {
                         entry.dead_letter = false;
                         entry.attempts = *attempts;
                         entry.not_before_ms = u64::try_from(
@@ -511,7 +515,7 @@ impl JobQueue for InMemoryJobQueue {
                                 .as_millis(),
                         )
                         .unwrap_or(u64::MAX);
-                        inner.pending.push_back(JobId(*job_id));
+                        inner.pending.push_back(*job_id);
                     }
                     Ok(())
                 }
@@ -521,11 +525,11 @@ impl JobQueue for InMemoryJobQueue {
                     worker_instance,
                     expires_at_ms,
                 } => {
-                    if let Some(lease) = inner.leases.get_mut(&LeaseId(*lease_id))
-                        && lease.worker.node.0 == *worker_node
+                    if let Some(lease) = inner.leases.get_mut(lease_id)
+                        && lease.worker.node == *worker_node
                         && lease.worker.instance == *worker_instance
                     {
-                        lease.expires_at = instant_from_unix_ms(*expires_at_ms);
+                        lease.expires_at = instant_from_unix_ms(expires_at_ms.0);
                     }
                     Ok(())
                 }
@@ -576,11 +580,11 @@ impl JobQueue for InMemoryJobQueue {
                 let op = self.with_inner(|inner| {
                     let (job_id, outcome) = inner.release_expired_lease(lease_id, now_ms)?;
                     Ok::<_, QueueError>(QueueReplicateOp::Reclaim {
-                        lease_id: lease_id.0,
-                        job_id: job_id.0,
+                        lease_id,
+                        job_id,
                         attempts: outcome.attempts,
                         dead_letter: outcome.dead_letter,
-                        not_before_ms: outcome.not_before_ms,
+                        not_before_ms: UnixMillis(outcome.not_before_ms),
                     })
                 });
                 if let Ok(op) = op {
@@ -615,12 +619,12 @@ impl JobQueue for InMemoryJobQueue {
                         },
                     );
                     lease_ops.push(QueueReplicateOp::Lease {
-                        lease_id,
-                        job_id: job_id.0,
-                        worker_node: worker.node.0,
+                        lease_id: LeaseId(lease_id),
+                        job_id,
+                        worker_node: worker.node,
                         worker_instance: worker.instance,
-                        expires_at_ms: 0,
-                        next_lease_id: inner.next_lease_id,
+                        expires_at_ms: UnixMillis(0),
+                        next_lease_id: LeaseId(inner.next_lease_id),
                     });
                     out.push(LeasedJob {
                         lease_id: LeaseId(lease_id),
@@ -659,12 +663,9 @@ impl JobQueue for InMemoryJobQueue {
                     return Err(QueueError::InvalidLease);
                 }
                 inner.remove_job(lease.job_id);
-                Ok(lease.job_id.0)
+                Ok(lease.job_id)
             })?;
-            Ok(vec![QueueReplicateOp::Ack {
-                lease_id: lease_id.0,
-                job_id,
-            }])
+            Ok(vec![QueueReplicateOp::Ack { lease_id, job_id }])
         })
     }
 
@@ -688,11 +689,11 @@ impl JobQueue for InMemoryJobQueue {
             let (job_id, outcome) =
                 self.with_inner(|inner| inner.release_lease(lease_id, worker, now_ms))?;
             Ok(vec![QueueReplicateOp::Nack {
-                lease_id: lease_id.0,
-                job_id: job_id.0,
+                lease_id,
+                job_id,
                 attempts: outcome.attempts,
                 dead_letter: outcome.dead_letter,
-                not_before_ms: outcome.not_before_ms,
+                not_before_ms: UnixMillis(outcome.not_before_ms),
             }])
         })
     }
@@ -717,10 +718,10 @@ impl JobQueue for InMemoryJobQueue {
                 Ok(())
             })?;
             Ok(vec![QueueReplicateOp::ExtendLease {
-                lease_id: lease_id.0,
-                worker_node: worker.node.0,
+                lease_id,
+                worker_node: worker.node,
                 worker_instance: worker.instance,
-                expires_at_ms,
+                expires_at_ms: UnixMillis(expires_at_ms),
             }])
         })
     }
@@ -747,7 +748,7 @@ impl JobQueue for InMemoryJobQueue {
             .unwrap_or(u64::MAX);
             self.with_inner(|inner| inner.requeue_dead_letter(job_id, now_ms))?;
             Ok(vec![QueueReplicateOp::RequeueDeadLetter {
-                job_id: job_id.0,
+                job_id,
                 attempts: 0,
             }])
         })
@@ -785,7 +786,7 @@ impl JobQueue for InMemoryJobQueue {
             let ops: QueueReplicationOps = requeued
                 .iter()
                 .map(|job_id| QueueReplicateOp::RequeueDeadLetter {
-                    job_id: job_id.0,
+                    job_id: *job_id,
                     attempts: 0,
                 })
                 .collect();

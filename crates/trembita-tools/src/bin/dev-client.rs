@@ -18,15 +18,20 @@ use trembita_net::{
     send_queue_ack, send_queue_enqueue, send_queue_lease, send_queue_metrics,
 };
 use trembita_proto::{
-    NodeId, QueueAckRequest, QueueEnqueueRequest, QueueLeaseRequest, QueueLeasedJobWire,
-    QueueMetricsReply, QueueMetricsRequest, decode, encode,
+    JobPriority, LeaseId, MaxAttempts, NodeId, QueueAckRequest, QueueEnqueueRequest,
+    QueueLeaseRequest, QueueLeasedJobWire, QueueMetricsReply, QueueMetricsRequest, StreamName,
+    UnixMillis, decode, encode,
 };
+
+fn stream_name(stream: &str) -> StreamName {
+    StreamName::try_from(stream).expect("valid stream name")
+}
 
 struct DemoConfig {
     propose_via: NodeId,
     query_via: NodeId,
     worker_peer: NodeId,
-    worker_node: u64,
+    worker_node: NodeId,
     worker_instance: u32,
     stream: String,
 }
@@ -82,7 +87,8 @@ fn demo_config() -> DemoConfig {
         worker_node: env("TREMBITA_DEMO_WORKER_NODE")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(worker_peer.0),
+            .map(NodeId)
+            .unwrap_or(worker_peer),
         worker_instance: env("TREMBITA_DEMO_WORKER_INSTANCE")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -143,7 +149,7 @@ async fn wait_queue_ready(
             transport,
             peer,
             &QueueMetricsRequest {
-                stream: stream.into(),
+                stream: stream_name(stream),
             },
         )
         .await;
@@ -172,13 +178,13 @@ async fn enqueue_via_leader(
             transport,
             peer,
             &QueueEnqueueRequest {
-                stream: stream.into(),
+                stream: stream_name(stream),
                 payload: payload.clone(),
-                priority: 0,
-                not_before_ms: 0,
+                priority: JobPriority(0),
+                not_before_ms: UnixMillis(0),
                 shard_key: None,
                 dedup_key: None,
-                max_attempts: 0,
+                max_attempts: MaxAttempts(0),
             },
         )
         .await;
@@ -194,7 +200,7 @@ async fn enqueue_via_leader(
                 let job_id = r
                     .job_id
                     .ok_or_else(|| String::from("enqueue returned no job_id"))?;
-                return Ok((peer, job_id));
+                return Ok((peer, job_id.0));
             }
             Err(e) => last_err = format!("enqueue on {peer:?}: {e}"),
         }
@@ -209,7 +215,7 @@ async fn queue_metrics(transport: &dyn Transport, stream: &str) -> Result<QueueS
             transport,
             peer,
             &QueueMetricsRequest {
-                stream: stream.into(),
+                stream: stream_name(stream),
             },
         )
         .await
@@ -249,7 +255,7 @@ async fn lease_jobs(
         transport,
         cfg.worker_peer,
         &QueueLeaseRequest {
-            stream: cfg.stream.clone(),
+            stream: stream_name(&cfg.stream),
             worker_node: cfg.worker_node,
             worker_instance: cfg.worker_instance,
             max,
@@ -263,12 +269,16 @@ async fn lease_jobs(
     Ok(lease.jobs)
 }
 
-async fn ack_job(transport: &dyn Transport, cfg: &DemoConfig, lease_id: u64) -> Result<(), String> {
+async fn ack_job(
+    transport: &dyn Transport,
+    cfg: &DemoConfig,
+    lease_id: LeaseId,
+) -> Result<(), String> {
     let reply = send_queue_ack(
         transport,
         cfg.worker_peer,
         &QueueAckRequest {
-            stream: cfg.stream.clone(),
+            stream: stream_name(&cfg.stream),
             worker_node: cfg.worker_node,
             worker_instance: cfg.worker_instance,
             lease_id,

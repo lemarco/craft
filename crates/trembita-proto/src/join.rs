@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Membership, NodeId};
+use crate::{AdvertiseAddr, Membership, NodeId, ProtocolVersion};
 
 /// Whether a joining node enters the committed voter set or the learner set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -21,12 +21,12 @@ pub enum JoinRole {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JoinRequest {
     /// Wire/protocol version of the joining node (join-version-skew).
-    pub protocol_version: u32,
+    pub protocol_version: ProtocolVersion,
     /// Desired node id, or `None` to have the leader assign the next free id.
     #[serde(default)]
     pub node_id: Option<NodeId>,
     /// Address peers should use to reach the joining node.
-    pub advertise_addr: String,
+    pub advertise_addr: AdvertiseAddr,
     /// Voter (rare, seed expansion) or learner (default elastic join).
     #[serde(default)]
     pub role: JoinRole,
@@ -62,7 +62,7 @@ pub struct PeerEntry {
     /// The node this address belongs to.
     pub node: NodeId,
     /// The address peers should dial to reach it (`host:port`).
-    pub addr: String,
+    pub addr: AdvertiseAddr,
 }
 
 /// A snapshot of a node's known peer addresses, served over `/cluster/peers`

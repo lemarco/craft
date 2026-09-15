@@ -4,12 +4,10 @@ use trembita_net::{
     send_topic_ack, send_topic_lease, send_topic_metrics, send_topic_nack, send_topic_publish,
 };
 use trembita_proto::{
-    NodeId, TopicAckReply, TopicAckRequest, TopicLeaseReply, TopicLeaseRequest, TopicMetricsReply,
-    TopicMetricsRequest, TopicNackReply, TopicNackRequest, TopicPublishReply, TopicPublishRequest,
-    WorkerId,
+    SubscriptionName, TopicAckReply, TopicAckRequest, TopicEventId, TopicLeaseReply,
+    TopicLeaseRequest, TopicMetricsReply, TopicMetricsRequest, TopicNackReply, TopicNackRequest,
+    TopicPublishReply, TopicPublishRequest, WorkerId,
 };
-
-use crate::TopicLeaseId;
 
 use super::TopicService;
 
@@ -21,24 +19,24 @@ impl TopicService {
         if self.state.is_leader() {
             match self.local_topic(&request.topic) {
                 Err(e) => TopicPublishReply {
-                    event_id: 0,
+                    event_id: TopicEventId(0),
                     error: Some(e),
                 },
                 Ok(topic) => match topic.publish_replicated(&request.payload).await {
                     Ok((id, ops)) => {
-                        if let Err(e) = self.replicate_ops(&request.topic, &ops).await {
+                        if let Err(e) = self.replicate_ops(request.topic.as_str(), &ops).await {
                             return TopicPublishReply {
-                                event_id: 0,
+                                event_id: TopicEventId(0),
                                 error: Some(e),
                             };
                         }
                         TopicPublishReply {
-                            event_id: id.0,
+                            event_id: id,
                             error: None,
                         }
                     }
                     Err(e) => TopicPublishReply {
-                        event_id: 0,
+                        event_id: TopicEventId(0),
                         error: Some(trembita_proto::ProductWireError::backend(e)),
                     },
                 },
@@ -56,7 +54,7 @@ impl TopicService {
             {
                 Ok(reply) => reply,
                 Err(e) => TopicPublishReply {
-                    event_id: 0,
+                    event_id: TopicEventId(0),
                     error: Some(e),
                 },
             }
@@ -68,7 +66,7 @@ impl TopicService {
         request: TopicLeaseRequest,
     ) -> TopicLeaseReply {
         let worker = WorkerId {
-            node: NodeId(request.worker_node),
+            node: request.worker_node,
             instance: request.worker_instance,
         };
         if self.state.is_leader() {
@@ -79,11 +77,15 @@ impl TopicService {
                 },
                 Ok(topic) => {
                     match topic
-                        .lease_replicated(&request.subscription, worker, request.max as usize)
+                        .lease_replicated(
+                            request.subscription.as_str(),
+                            worker,
+                            request.max as usize,
+                        )
                         .await
                     {
                         Ok((events, ops)) => {
-                            if let Err(e) = self.replicate_ops(&request.topic, &ops).await {
+                            if let Err(e) = self.replicate_ops(request.topic.as_str(), &ops).await {
                                 return TopicLeaseReply {
                                     events: Vec::new(),
                                     error: Some(e),
@@ -93,8 +95,8 @@ impl TopicService {
                                 events: events
                                     .into_iter()
                                     .map(|e| trembita_proto::TopicLeasedEventWire {
-                                        lease_id: e.lease_id.0,
-                                        event_id: e.event_id.0,
+                                        lease_id: e.lease_id,
+                                        event_id: e.event_id,
                                         payload: e.payload,
                                         attempts: e.attempts,
                                     })
@@ -134,7 +136,7 @@ impl TopicService {
         request: TopicAckRequest,
     ) -> TopicAckReply {
         let worker = WorkerId {
-            node: NodeId(request.worker_node),
+            node: request.worker_node,
             instance: request.worker_instance,
         };
         if self.state.is_leader() {
@@ -142,15 +144,11 @@ impl TopicService {
                 Err(e) => TopicAckReply { error: Some(e) },
                 Ok(topic) => {
                     match topic
-                        .ack_replicated(
-                            &request.subscription,
-                            worker,
-                            TopicLeaseId(request.lease_id),
-                        )
+                        .ack_replicated(request.subscription.as_str(), worker, request.lease_id)
                         .await
                     {
                         Ok(ops) => {
-                            if let Err(e) = self.replicate_ops(&request.topic, &ops).await {
+                            if let Err(e) = self.replicate_ops(request.topic.as_str(), &ops).await {
                                 return TopicAckReply { error: Some(e) };
                             }
                             TopicAckReply { error: None }
@@ -183,7 +181,7 @@ impl TopicService {
         request: TopicNackRequest,
     ) -> TopicNackReply {
         let worker = WorkerId {
-            node: NodeId(request.worker_node),
+            node: request.worker_node,
             instance: request.worker_instance,
         };
         if self.state.is_leader() {
@@ -191,15 +189,11 @@ impl TopicService {
                 Err(e) => TopicNackReply { error: Some(e) },
                 Ok(topic) => {
                     match topic
-                        .nack_replicated(
-                            &request.subscription,
-                            worker,
-                            TopicLeaseId(request.lease_id),
-                        )
+                        .nack_replicated(request.subscription.as_str(), worker, request.lease_id)
                         .await
                     {
                         Ok(ops) => {
-                            if let Err(e) = self.replicate_ops(&request.topic, &ops).await {
+                            if let Err(e) = self.replicate_ops(request.topic.as_str(), &ops).await {
                                 return TopicNackReply { error: Some(e) };
                             }
                             TopicNackReply { error: None }
@@ -252,7 +246,8 @@ impl TopicService {
                             .subscriptions
                             .into_iter()
                             .map(|s| trembita_proto::TopicSubscriptionMetricsWire {
-                                subscription: s.subscription,
+                                subscription: SubscriptionName::try_new(s.subscription)
+                                    .expect("subscription name is valid"),
                                 cursor: s.cursor,
                                 lag: s.lag,
                                 pending: s.pending,
