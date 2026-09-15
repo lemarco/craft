@@ -15,7 +15,7 @@ Epics **B-01 … B-18** are **shipped** (see [Shipped epics](#shipped-epics-arch
 | Id | Item | Status | Notes |
 |----|------|--------|-------|
 | B-19 | Event outbox port | ✅ | [ADR](decisions/event-outbox.md) — `EventOutboxSource` + leader drainer |
-| B-19 | Introspect API gateway router | ✅ | [ADR](decisions/introspect-api.md) — `IntrospectApi` on default / merged gateway surfaces |
+| B-19 | Introspect API (`RouteTable`) | ✅ | [ADR](decisions/introspect-api.md) — `IntrospectApi` on default / merged gateway surfaces |
 | CF-010 | `dedup_key` lifecycle docs | shipped | Rustdoc on [`EnqueueOptions::dedup_key`](../crates/trembita-jobs/src/queue/mod.rs); scenario table already in [background-jobs](scenarios/background-jobs.md) |
 | CF-017 | Stale external backlog `Done` settle | shipped | `Settlement::Done { attempts }`; [`PgBacklog`](../crates/trembita-backlog-postgres/src/lib.rs) guards on `claimed` + attempts |
 | O-01 | `trembita-store-redis` maintenance | ongoing | Keep as optional adapter |
@@ -51,10 +51,10 @@ For new feature epics, use the next **B-NN** id and link the scenario + ADR.
 
 ---
 
-### B-19 — Introspect API gateway router
+### B-19 — Introspect API (`RouteTable`)
 
 **Priority:** P1  
-**Scenario:** all — custom operator / admin UIs (session auth, multi-page apps)  
+**Scenario:** all — custom operator UIs (session auth, multi-page apps)  
 **ADR:** [introspect-api](decisions/introspect-api.md)
 
 Introspection JSON (`/introspect/cluster`, `/actors`, `/queues`, `/sagas`, …) ships on the **unified HTTP listener** via [`OpsApi`](../crates/trembita-http/src/ops_routes.rs) ([`TrembitaApp::from_env`](../crates/trembita/src/app/runtime.rs) default surfaces, explicit gateway merges, or `trembita-node` / `spawn_cluster_ops_http`). Product `/jobs/*`, `/actors/*`, `/workflows/*` mount from app registration on the same bind unless opted out — see [env.md](env.md) and [unified-listener](decisions/unified-listener.md).
@@ -245,7 +245,7 @@ flowchart TB
 
 | Subtask | Description                                                                 | Status                        |
 | ------- | --------------------------------------------------------------------------- | ----------------------------- |
-| B-03a   | Axum route `POST /jobs/{stream}` → `202` + `{ "job_id": … }`; raw or JSON envelope body | ✅ `trembita-http`               |
+| B-03a   | `JobsApi` route `POST /jobs/{stream}` → `202` + `{ "job_id": … }`; raw or JSON envelope body ([`RouteTable`](../crates/trembita-http/src/routing/table.rs)) | ✅ `trembita-http`               |
 | B-03b   | `#[trembita::consumer("stream")]` + `TrembitaApp::spawn_consumer` (no manual `run_queue_consumer` + `tokio::spawn`) | ✅ `trembita-macros`, `trembita/tests/consumer.rs` |
 | B-03c   | Optional `GET /jobs/{stream}/{id}` if queue metadata extended               | ✅ `JobQueue::job_status` + HTTP GET |
 | B-03d   | Optional `trembita/http-jobs` feature or `trembita-http` crate (decide in impl) | ✅ `trembita-http` + feature     |

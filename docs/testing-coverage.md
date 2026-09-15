@@ -39,8 +39,8 @@ Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** sch
 | `trembita-runtime` | 10 | 99 | **109** | `RaftDriver`, runtime, registry, placement, supervision, migration, trybuild |
 | `trembita-net` | 12 | 32 | **44** | Wire framing, `LocalNetwork`, TLS handshake, loopback QUIC, protocol compat |
 | `trembita-sim` | 8 | 22 | **30** | Safety/liveness under faults, linearizability, actor scenarios, multi-Raft |
-| `trembita-dashboard` | 8 | **8** | **16** | Admin HTTP, admin TLS, metrics, telemetry |
-| `trembita` (facade) | 2 | **24** | **26** | `TrembitaCluster` builder, multi-Raft, keyed client, live QUIC cluster, reachability reconcile, actor store resume, graceful leave, admin TLS, DNS discovery |
+| `trembita-dashboard` | 8 | **8** | **16** | Ops HTTP handlers (`/introspect/*`, dashboard), ops TLS, metrics, telemetry |
+| `trembita` (facade) | 2 | **24** | **26** | `TrembitaCluster` builder, multi-Raft, keyed client, live QUIC cluster, reachability reconcile, actor store resume, gateway ops TLS, DNS discovery |
 | `trembita-storage` | 0 | 7 | **7** | Store contract (Memory + Redb), namespaced groups, reopen |
 | `trembita-proto` | 7 | 0 | **7** | Encode/decode roundtrips, protocol compat band |
 | `trembita-store-redis` | 0 | 10 (7 `redis` + 3 `tls`, `#[ignore]` except 2 fast) | **10** | Redis CAS/TTL, dual conn, idempotent worker, reconnect, `rediss://` |
@@ -92,7 +92,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Leader-side reachability / hysteresis / phi-accrual | ✅ | ✅ | — | — | ✅ |
 | Wire protocol N/N−1 compat band | ✅ | ✅ | — | — | ✅ |
 | Rolling upgrade coordinator (`trembita_core::upgrade`, leader-last grant) | ✅ | ✅ `upgrade`, `upgrade_coordinator` | — | — | ✅ |
-| Admin HTTPS (server TLS) | ✅ | ✅ `admin`, `facade` | — | 🔒 nightly | ✅ |
+| Ops HTTP TLS (server TLS on unified bind) | ✅ | ✅ `admin`, `facade` | — | 🔒 nightly | ✅ |
 | Snapshot backup CLI (`trembita-ops`) | — | ✅ | — | — | ✅ |
 | External linearizability (Jepsen-lite) | — | — | ✅ | ✅ `linearizability.sh` | ✅ |
 | Malformed persistence payloads | — | ✅ driver | — | — | ✅ |
@@ -276,7 +276,7 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-08 | Shared KV fixtures + harness helpers (dedupe ~8 copies) | `trembita-test-support` (`Kv`, `TrackedKv`, `find_keys_for_two_groups`, cluster polling) |
 | 2026-08 | Stable shard router runtime (`StableShardRouter`, `activate_shards`, builder default) | `trembita-runtime/sharded`, `trembita/tests/multi_raft.rs`, `trembita-runtime/tests/sharded.rs` |
 | 2026-08 | Linearizability E2E phase 2 (QUIC `trembita-e2e-client` + external checker) | `crates/trembita-e2e-client`, `e2e/linearizability.sh`, `e2e/docker-compose.yml` |
-| 2026-08 | Hardening: graceful leave integration, admin HTTPS E2E | `trembita/tests/graceful_leave.rs`, `trembita/tests/facade.rs`, `trembita-dashboard/tests/admin.rs` |
+| 2026-08 | Hardening: graceful leave integration, ops HTTP TLS E2E | `trembita/tests/graceful_leave.rs`, `trembita/tests/facade.rs`, `trembita-dashboard/tests/admin.rs` |
 | 2026-08 | Wire decode fuzz (`cargo-fuzz` wire_decode, scheduled CI) | `crates/trembita-fuzz/`, `.gitlab-ci.yml` `fuzz` job |
 | 2026-08 | Multi-Raft modulus routing: learners planner, shard expansion, keyed batch, `/introspect/raft-groups` | `trembita-core`, `trembita-client`, `trembita-dashboard`, `trembita/tests/multi_raft.rs`, `docs/decisions/multi-raft.md#modulus-routing--keyed-batch` |
 | 2026-08 | Client retry edge cases (`NoTargets`, timeout, `NotLeader`, unreachable) | `trembita-client/tests/retry.rs` |

@@ -37,3 +37,4 @@ Until **1.0**, docs describe **what to do now**, not what changed between `0.x` 
 - No version-to-version migration guides ([docs/README.md](../../docs/README.md))
 - No detailed [CHANGELOG.md](../../CHANGELOG.md) entries (archive only: [docs/archive/](../../docs/archive/))
 - ADRs: problem + decision + consequences — avoid “removed in 0.x”, “breaking from 0.y”, and old-vs-new comparison tables unless essential to the decision
+- Prefer **ops HTTP** / **`TREMBITA_LISTEN`** over separate “admin port” or third-party router names; backlog items describe shipped [`RouteTable`](../crates/trembita-http/src/routing/table.rs) APIs, not removed stacks

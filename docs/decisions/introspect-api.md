@@ -120,7 +120,7 @@ Inventory: [testing-coverage.md](../testing-coverage.md).
 
 - Operator UIs mount trembita snapshots beside their own handlers — no duplicate REST glue.
 - Same JSON contract as ops/dashboard; frontend code can share fetch paths.
-- Pairs naturally with `JobsApi` for full admin coverage (depth gauges + per-job list/requeue).
+- Pairs naturally with `JobsApi` for full operator coverage (depth gauges + per-job list/requeue).
 - Reuses existing [`Observer`](../../crates/trembita-dashboard/src/views.rs) port — no new data layer.
 
 **Negative**
