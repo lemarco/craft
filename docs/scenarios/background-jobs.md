@@ -175,6 +175,32 @@ Patterns:
 
 See [state placement cheat sheet](state-placement.md) for where queue backlog vs actor state vs saga journal live.
 
+### Subprocess-heavy handlers (ffmpeg, shell, browsers)
+
+Job handlers that **`Command::spawn`** or drive headless browsers hold a cooperative compute token while awaiting IO, but **CPU runs in a child process** the pool cannot see. On homogeneous nodes (gateway + consumers on one VPS), use [external-load](../decisions/external-load.md):
+
+```rust
+use std::sync::Arc;
+
+use trembita::{JobOpts, TrembitaApp, WorkloadOpts};
+use trembita_runtime::ManualExternalLoad; // replace with your tracker in production
+
+let external = Arc::new(ManualExternalLoad::new());
+
+TrembitaApp::builder()
+    .data_dir("/var/lib/trembita")
+    .workload(WorkloadOpts::balanced().external_load(external.clone()))
+    .jobs([JobOpts::new("transcode")
+        .compute_cost(4) // reserve 4 token units for the whole handler
+        .consumer(&TranscodeConsumer)])
+    // …
+```
+
+- **`compute_cost(n)`** — static reservation via [`ComputeTokenPool::acquire_weighted`](../../crates/trembita-runtime/src/compute_token.rs) for the handler lifetime.
+- **`ExternalLoad::units()`** — dynamic pressure (browser pool size, cgroup estimate, …); governor maps it like hot gateway ingress.
+
+Weighted acquire limits concurrent subprocess jobs; `ExternalLoad` throttles consumers when external CPU is high even with few open HTTP connections.
+
 ### External backlog (Postgres / existing work table)
 
 When the **authoritative backlog** lives outside trembita (Postgres `pending` rows, legacy job table), enable `external-backlog` and use [`ExternalBacklog`](../../crates/trembita-jobs/src/external_backlog.rs):

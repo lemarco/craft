@@ -205,13 +205,30 @@ For a product-oriented checklist and gaps, see [status.md](../status.md) and [ba
 
 **Negative**
 
-- Leader-hosted queue is a **throughput hotspot** at very large enqueue rates (mitigation: batch append, prefetch, future sharding). Replication adds one RTT to each reachable voter before client ack. Measure with `benchmarks/benches/queue.rs` (criterion) and `soak_queue` (sustained enqueue + follower drain).
+- Leader-hosted queue is a **throughput hotspot** at very large enqueue rates (mitigation today: batch append, prefetch, **manual** [`job_queue_sharded`](../../crates/trembita/src/builder/cluster/mod.rs); automatic sharding under load is [future](#future-work)). Replication adds one RTT to each reachable voter before client ack. Measure with `benchmarks/benches/queue.rs` (criterion) and `soak_queue` (sustained enqueue + follower drain).
 - At-least-once requires **idempotent** handlers and visibility-timeout tuning. Optional **`dedup_key`** on enqueue makes client retries safe while the job exists; the key is **released on ack** (job removed) and **held on dead letter** until `requeue_dead_letter` — see [background-jobs § `dedup_key` lifecycle](../scenarios/background-jobs.md#dedup_key-lifecycle).
 - **`LeaseId` is monotonic per stream** (replicated `next_lease_id` with `max()` on failover). Redelivery issues a new id; stale tokens return `InvalidLease`. It is **not** documented as an external fencing token — side-effect guards belong in the handler ([effectively-once recipe](../scenarios/background-jobs.md#effectively-once-recipe)).
 - **An exactly-once delivery mode is not planned.** `dedup_key` deduplicates *enqueues*, not *deliveries*; effectively-once remains a handler-side property. The recipe (enqueue key → CAS marker in a store → side effect → durable `done` → ack) is in [background-jobs § Effectively-once recipe](../scenarios/background-jobs.md#effectively-once-recipe).
 - Two durability stories (`ActorStateStore` vs `JobQueue`) — docs must keep boundaries explicit ([R4](future-work-and-risks.md)).
 - Extra wire surface and ops metrics for queue lag.
 - Enqueue is unavailable while any **reachable** voter cannot accept replication (strict sync); unreachable departed nodes are excluded via `reachable_nodes()`.
+
+## Future work
+
+### Automatic queue sharding at extreme enqueue
+
+**Shipped today:** operators choose `shard_count` up front via **`job_queue_sharded(name, N, …)`** — independent `queue-{name}~{i}.redb` files and hash routing ([`ShardedJobQueue`](../../crates/trembita-jobs/src/sharded_queue.rs)). That spreads leader write + replicate load without putting jobs in the Raft log.
+
+**Not shipped:** adaptive sharding when a **single** stream saturates the leader despite batch append and prefetch.
+
+**Planned mitigation (future epic):**
+
+1. **Observe** leader-side enqueue latency / replicate stall / `pending` growth rate (metrics already exposed via `GET .../metrics`).
+2. **Split** hot stream into additional physical shards (new redb files + stream names) when sustained pressure exceeds policy thresholds — either operator-triggered via ops API or automatic with a documented upper bound on shard count.
+3. **Route** new enqueues by hash; existing backlog stays on the original shard until drained or explicitly migrated (no silent cross-shard move in v1 of this feature).
+4. **Document** trade-offs: no global FIFO across shards; autoscale and governor depth aggregation must sum shards (already true for manual sharding).
+
+Until then, teams expecting **sustained** high enqueue should provision **`job_queue_sharded`** at deploy time or split streams by business key at the application layer.
 
 ## Related
 

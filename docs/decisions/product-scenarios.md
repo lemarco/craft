@@ -66,7 +66,7 @@ Every VPS runs the **same binary** (gateway when configured + job consumers + ac
 
 When ingress is quiet, **job consumers use spare CPU** on that node (night batch scenario). When gateway load rises, a per-node **workload governor** throttles consumer parallelism so API latency stays bounded — without rescaling the cluster.
 
-See [workload-governor](workload-governor.md).
+See [workload-governor](workload-governor.md). Subprocess / shell-out CPU: [external-load](external-load.md) (`JobOpts::compute_cost`, optional `ExternalLoad` on `WorkloadOpts`).
 
 ### Unified product surface
 

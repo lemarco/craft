@@ -21,6 +21,8 @@ Epics **B-01 … B-18** are **shipped** (see [Shipped epics](#shipped-epics-arch
 | O-01 | `trembita-store-redis` maintenance | ongoing | Keep as optional adapter |
 | O-02 | PostgreSQL `ActorStateStore` | deferred | Only if external integration demand |
 | O-03 | Optional OTLP metrics adapter (`trembita-metrics-otlp`) | deferred | Builds on shipped [`MetricsSink`](decisions/observability.md#metrics-export-port) port |
+| O-04 | Governor finer signals (in-flight HTTP, consumer in-flight, optional `ConsumerTune::max_in_flight`) | deferred | [workload-governor § Future work](decisions/workload-governor.md#future-work) |
+| O-06 | Automatic queue sharding under sustained enqueue pressure | deferred | [job-queue § Future work](decisions/job-queue.md#future-work); manual `job_queue_sharded` shipped |
 
 
 
@@ -106,7 +108,7 @@ Introspection JSON (`/introspect/cluster`, `/actors`, `/queues`, `/sagas`, …) 
 | **P1**       | 6     | B-03 ✅ … B-06 ✅, B-14 ✅, B-16 ✅ |
 | **P2**       | 4     | B-07 ✅ … B-09 ✅, B-13 ✅        |
 | **P3**       | 3     | B-10 ✅ … B-12 ✅                 |
-| **Optional** | 4 open | O-01 … O-04 (O-05 ✅ shipped) |
+| **Optional** | 5 open | O-01 … O-04, O-06 (O-05 self-update ✅ shipped) |
 | **Subtasks** | 58 | B-01a … B-16i — all shipped (see archive) |
 
 

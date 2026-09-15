@@ -1,4 +1,4 @@
-//! Shared leader→voter replication helpers for product wire services.
+//! Shared leader→voter replication helpers for product wire services (queue, topic, store).
 
 use std::future::Future;
 use std::pin::Pin;
@@ -130,6 +130,53 @@ pub fn replicate_reply_err(error: Option<ProductWireError>) -> Result<(), Produc
         None => Ok(()),
         Some(err) => Err(err),
     }
+}
+
+/// Follower path: verify declared leader, then apply replicated ops sequentially.
+///
+/// # Errors
+/// Leader mismatch or first apply failure (mapped via `map_apply_err`).
+pub async fn follower_apply_product_replicate<T, F, Fut, E>(
+    state: &dyn ClusterState,
+    declared_leader: NodeId,
+    not_leader_msg: &str,
+    ops: &[T],
+    apply_one: F,
+    map_apply_err: impl Fn(E) -> ProductWireError,
+) -> Result<(), ProductWireError>
+where
+    F: Fn(&T) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    authorize_replicate_leader(state, declared_leader, not_leader_msg)?;
+    for op in ops {
+        apply_one(op)
+            .await
+            .map_err(map_apply_err)?;
+    }
+    Ok(())
+}
+
+/// Sync follower apply (e.g. actor store redb backend).
+///
+/// # Errors
+/// Leader mismatch or first apply failure (mapped via `map_apply_err`).
+pub fn follower_apply_product_replicate_sync<T, F, E>(
+    state: &dyn ClusterState,
+    declared_leader: NodeId,
+    not_leader_msg: &str,
+    ops: &[T],
+    apply_one: F,
+    map_apply_err: impl Fn(E) -> ProductWireError,
+) -> Result<(), ProductWireError>
+where
+    F: Fn(&T) -> Result<(), E>,
+{
+    authorize_replicate_leader(state, declared_leader, not_leader_msg)?;
+    for op in ops {
+        apply_one(op).map_err(map_apply_err)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -15,7 +15,7 @@ Guides for building on trembita **without mandatory Redis or Kubernetes**. Each 
 | WebSocket / live session to one worker | [Real-time sessions](realtime-sessions.md) · [WebSocket wiring](websocket-wiring.md) | ✅ `ActorSession`, gateway showcase | `GatewayBearerIdentity` + `AuthMode::Identity` on protected routes |
 | Multi-step process with compensation | [Workflows](workflows.md) | ✅ `WorkflowBuilder`, Meta-Raft journal | Dashboard saga view |
 | Where to put state (queue vs SM vs store) | [State placement](state-placement.md) | ✅ cheat sheet | — |
-| Same binary everywhere; API vs jobs on one node | [Workload governor](../decisions/workload-governor.md) | ✅ compute tokens + consumer tune | — |
+| Same binary everywhere; API vs jobs on one node | [Workload governor](../decisions/workload-governor.md) | ✅ compute tokens + consumer tune; subprocess [`ExternalLoad`](../decisions/external-load.md) | Finer HTTP / consumer in-flight signals (ADR future) |
 
 ## Shared persistence model
 
