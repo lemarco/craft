@@ -8,8 +8,8 @@ use trembita_proto::{
     NodeId, ProductWireError, QueueReplicateOp, QueueReplicateReply, QueueReplicateRequest,
 };
 use trembita_runtime::{
-    authorize_replicate_leader, fanout_product_replicate, follower_apply_product_replicate,
-    forward_to_leader, replicate_reply_err,
+    fanout_product_replicate, follower_apply_product_replicate, forward_to_leader,
+    replicate_reply_err,
 };
 
 use super::wire::shard_stream_name;
@@ -106,13 +106,6 @@ impl QueueService {
                 .await?;
         }
         Ok(())
-    }
-
-    pub(super) fn authorize_replicate(
-        &self,
-        declared_leader: NodeId,
-    ) -> Result<(), ProductWireError> {
-        authorize_replicate_leader(self.state.as_ref(), declared_leader, REPLICATE_NOT_LEADER)
     }
 
     pub(super) async fn handle_replicate(

@@ -6,8 +6,8 @@ use trembita_net::send_topic_replicate;
 use trembita_net::transport::{BoxFuture, TransportError};
 use trembita_proto::{NodeId, ProductWireError, TopicReplicateReply, TopicReplicateRequest};
 use trembita_runtime::{
-    authorize_replicate_leader, fanout_product_replicate, follower_apply_product_replicate,
-    forward_to_leader, replicate_reply_err,
+    fanout_product_replicate, follower_apply_product_replicate, forward_to_leader,
+    replicate_reply_err,
 };
 
 use crate::{EventTopic, TopicReplicationOps};
@@ -60,13 +60,6 @@ impl TopicService {
             })
         })
         .await
-    }
-
-    pub(super) fn authorize_replicate(
-        &self,
-        declared_leader: NodeId,
-    ) -> Result<(), ProductWireError> {
-        authorize_replicate_leader(self.state.as_ref(), declared_leader, REPLICATE_NOT_LEADER)
     }
 
     pub(in crate::topic_service) async fn handle_replicate(
