@@ -8,10 +8,10 @@ use std::process;
 use clap::{Parser, Subcommand, ValueHint};
 use trembita_cli::{
     AddActorOpts, AddConsumerOpts, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts,
-    NewProjectOpts, StaticSiteSource, TrembitaProject, add_actor, add_consumer, add_http_surface,
-    add_jobs_routes, add_ops_routes, add_static_site, add_topic, default_output, dev_setup,
-    dev_status, dev_stop, dev_trigger, dev_up, doctor_fix, list_showcases, parse_feature_list,
-    run_doctor, scaffold_project,
+    AddWorkflowOpts, NewProjectOpts, StaticSiteSource, TrembitaProject, add_actor, add_consumer,
+    add_http_surface, add_jobs_routes, add_ops_routes, add_static_site, add_topic, add_workflow,
+    default_output, dev_setup, dev_status, dev_stop, dev_trigger, dev_up, doctor_fix,
+    list_showcases, parse_feature_list, run_doctor, scaffold_project,
 };
 
 #[derive(Parser)]
@@ -140,6 +140,14 @@ enum AddTarget {
         #[arg(long)]
         type_name: Option<String>,
     },
+    /// Register a saga workflow (`workflows/` + `manifest.rs`).
+    Workflow {
+        /// Saga id prefix (e.g. `onboard` matches `onboard-42`).
+        prefix: String,
+        /// Rust module file name (default: derived from `prefix`).
+        #[arg(long)]
+        module: Option<String>,
+    },
     /// Add operational routes (`src/http/ops.rs` + gateway merge).
     OpsRoutes,
     /// Add job operator routes (`src/http/jobs.rs` + gateway merge).
@@ -243,6 +251,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 AddTarget::Actor { group, type_name } => {
                     add_actor(&project, &AddActorOpts { group, type_name })?;
                     eprintln!("Added actor in {}", project.actors_dir().display());
+                }
+                AddTarget::Workflow { prefix, module } => {
+                    add_workflow(&project, &AddWorkflowOpts { prefix, module })?;
+                    eprintln!("Added workflow in {}", project.workflows_dir().display());
                 }
                 AddTarget::OpsRoutes => {
                     add_ops_routes(&project)?;

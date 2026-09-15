@@ -109,6 +109,7 @@ impl AdminServer {
             "/metrics" => {
                 // Refresh queue/saga gauges so Prometheus scrapes see current depth.
                 let _ = self.observer.queues().await;
+                let _ = self.observer.topics().await;
                 let _ = self.observer.sagas().await;
                 text(
                     StatusCode::OK,
@@ -121,6 +122,7 @@ impl AdminServer {
             "/introspect/actors" => json(StatusCode::OK, &self.observer.actors().await),
             "/introspect/queues" => json(StatusCode::OK, &self.observer.queues().await),
             "/introspect/sagas" => json(StatusCode::OK, &self.observer.sagas().await),
+            "/introspect/topics" => json(StatusCode::OK, &self.observer.topics().await),
             "/dashboard" => text(
                 StatusCode::OK,
                 "text/html; charset=utf-8",

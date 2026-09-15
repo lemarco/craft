@@ -167,6 +167,45 @@ pub struct QueuesView {
     pub streams: Vec<QueueStreamView>,
 }
 
+/// Per-subscription gauges in [`TopicStreamView`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopicSubscriptionView {
+    /// Subscription name.
+    pub subscription: String,
+    /// Events behind log head.
+    pub lag: u64,
+    /// Ready but not yet leased.
+    pub pending: u64,
+    /// Currently leased to workers.
+    pub leased: u64,
+    /// Events discarded by retention while this subscription lagged.
+    pub retention_discards: u64,
+}
+
+/// One event topic's depth gauges for `GET /introspect/topics`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopicStreamView {
+    /// Topic name.
+    pub name: String,
+    /// Retained events in the log.
+    pub event_count: u64,
+    /// Log head (last assigned event id).
+    pub head: u64,
+    /// Compaction floor.
+    pub compact_head: u64,
+    /// Age of the oldest retained event, in whole seconds.
+    pub oldest_event_age_secs: u64,
+    /// Per-subscription lag and counters.
+    pub subscriptions: Vec<TopicSubscriptionView>,
+}
+
+/// All registered event topics on this node.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopicsView {
+    /// Per-topic depth and subscription lag.
+    pub topics: Vec<TopicStreamView>,
+}
+
 /// One saga journal record for `GET /introspect/sagas`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SagaRecordView {
@@ -212,6 +251,9 @@ pub trait Observer: Send + Sync + 'static {
 
     /// Registered job streams and depth gauges (background-jobs observability).
     fn queues(&self) -> BoxFuture<'_, QueuesView>;
+
+    /// Registered event topics and subscription lag (event-topics observability).
+    fn topics(&self) -> BoxFuture<'_, TopicsView>;
 
     /// Saga journal records known on this node (workflow observability).
     fn sagas(&self) -> BoxFuture<'_, Vec<SagaRecordView>>;

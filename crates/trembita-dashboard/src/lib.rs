@@ -37,5 +37,6 @@ pub use telemetry::{EventBus, EventSubscription, StopReason, TraceOpts, Trembita
 pub use trembita_runtime::init_tracing;
 pub use views::{
     ActorView, BoxFuture, ClusterView, NodeSummary, NodeView, Observer, QueueStreamView,
-    QueuesView, RaftGroupSummary, RaftGroupsView, Readiness, SagaRecordView,
+    QueuesView, RaftGroupSummary, RaftGroupsView, Readiness, SagaRecordView, TopicStreamView,
+    TopicSubscriptionView, TopicsView,
 };

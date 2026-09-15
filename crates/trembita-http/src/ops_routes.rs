@@ -112,6 +112,7 @@ async fn ready_response(state: &OpsApiState) -> Result<Response, HttpError> {
 
 async fn metrics_response(state: &OpsApiState) -> Result<Response, HttpError> {
     let _ = state.observer.queues().await;
+    let _ = state.observer.topics().await;
     let _ = state.observer.sagas().await;
     let body = state.metrics.render();
     let mut resp = Response::text(StatusCode::OK, body);
@@ -226,6 +227,10 @@ mod tests {
 
         fn sagas(&self) -> BoxFuture<'_, Vec<trembita_dashboard::SagaRecordView>> {
             Box::pin(async { Vec::new() })
+        }
+
+        fn topics(&self) -> BoxFuture<'_, trembita_dashboard::TopicsView> {
+            Box::pin(async { trembita_dashboard::TopicsView { topics: Vec::new() } })
         }
     }
 

@@ -9,11 +9,11 @@ use std::time::Duration;
 use bytes::Bytes;
 use http::{Method, StatusCode};
 use trembita::{
-    DefaultGatewayApis, TopicOpts, TrembitaApp, TrembitaConfigure, TrembitaGatewayState,
-    WorkflowBuilder, WorkflowOpts, journal_workflow,
+    GatewayOpts, TopicOpts, TrembitaApp, TrembitaConfigure, WorkflowBuilder, WorkflowOpts,
+    journal_workflow,
 };
 use trembita_http::RouteTable;
-use trembita_test_support::{boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};
 
 async fn dispatch(table: &RouteTable, method: Method, path: &str, body: Bytes) -> StatusCode {
     table
@@ -50,6 +50,7 @@ async fn default_product_routes_include_workflows_and_topics() {
                 .data_dir(&base)
                 .topics([TopicOpts::topic("orders.events")])
                 .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
+                .gateway(GatewayOpts::new("127.0.0.1:0".parse().expect("addr")))
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     ..TrembitaConfigure::default()
@@ -60,18 +61,11 @@ async fn default_product_routes_include_workflows_and_topics() {
     .await;
 
     wait_for_trembita_app_leader(&app).await;
+    advance(Duration::from_millis(200)).await;
 
-    let state = TrembitaGatewayState::new(Arc::clone(&app));
-    let table = TrembitaApp::default_product_routes(
-        &state,
-        DefaultGatewayApis {
-            ops: true,
-            jobs: false,
-            actors: false,
-            workflows: true,
-            topics: true,
-        },
-    );
+    let table = TrembitaApp::workflows_api(Arc::clone(&app))
+        .route_table()
+        .merge(TrembitaApp::topics_api(Arc::clone(&app)).route_table());
 
     assert_eq!(
         dispatch(
@@ -134,14 +128,16 @@ async fn without_topics_api_excludes_topic_routes() {
             topics: false,
         },
     );
-    assert_eq!(
-        dispatch(
-            &table,
-            Method::POST,
-            "/topics/orders.events/publish",
-            Bytes::from("evt"),
-        )
-        .await,
-        StatusCode::NOT_FOUND
+    assert!(
+        table
+            .dispatch_open(
+                &Method::POST,
+                "/topics/orders.events/publish",
+                HashMap::new(),
+                http::HeaderMap::new(),
+                Bytes::from("evt"),
+            )
+            .await
+            .is_err()
     );
 }

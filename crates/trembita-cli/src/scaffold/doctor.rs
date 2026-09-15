@@ -106,8 +106,12 @@ pub fn run_doctor(project: &TrembitaProject, preflight: bool) -> DoctorReport {
     check_consumers(project, &manifest, &mut report);
     check_actors(project, &manifest, &mut report);
     check_http(project, &app, &mut report);
+    check_gateway_wiring(&app, &mut report);
     check_topics(&manifest, &mut report);
-    check_builtin_gateway_routes(&app, &mut report);
+    check_workflows(project, &manifest, &mut report);
+    check_manifest_product_http(&manifest, &app, &mut report);
+    check_manifest_duplicates(&manifest, &mut report);
+    check_builtin_gateway_routes(&app, &manifest, &mut report);
     check_deprecated_api(project, &mut report);
     if preflight || project.root.join("deploy").is_dir() {
         check_deploy_preflight(project, preflight, &mut report);
@@ -122,6 +126,7 @@ pub fn doctor_fix(project: &TrembitaProject) -> DoctorFixReport {
     fixes += fix_mod_declarations(&project.consumers_dir());
     fixes += fix_mod_declarations(&project.actors_dir());
     fixes += fix_mod_declarations(&project.http_dir());
+    fixes += fix_mod_declarations(&project.workflows_dir());
     if ensure_main_module(project, "consumers").unwrap_or(false) {
         fixes += 1;
     }
@@ -129,6 +134,10 @@ pub fn doctor_fix(project: &TrembitaProject) -> DoctorFixReport {
         fixes += 1;
     }
     if project.http_dir().is_dir() && ensure_main_module(project, "http").unwrap_or(false) {
+        fixes += 1;
+    }
+    if project.workflows_dir().is_dir() && ensure_main_module(project, "workflows").unwrap_or(false)
+    {
         fixes += 1;
     }
     if ensure_main_module(project, "manifest").unwrap_or(false) {
@@ -187,6 +196,19 @@ fn check_markers(manifest: &str, report: &mut DoctorReport) {
             ));
         }
     }
+    if manifest.contains(".workflows(") {
+        if manifest.contains(&format!("// {}", names::WORKFLOWS)) {
+            report.ok(format!(
+                "marker `{}` present (manifest.rs)",
+                names::WORKFLOWS
+            ));
+        } else {
+            report.warn(format!(
+                "marker `{}` missing — `trembita add workflow` may not patch manifest.rs",
+                names::WORKFLOWS
+            ));
+        }
+    }
 }
 
 fn check_app_wiring(app: &str, report: &mut DoctorReport) {
@@ -197,9 +219,13 @@ fn check_app_wiring(app: &str, report: &mut DoctorReport) {
             "app.rs must call .manifest(manifest::build()) — capabilities live in manifest.rs",
         );
     }
-    if app.contains(".jobs(") || app.contains(".topics(") || app.contains(".workers(") {
+    if app.contains(".jobs(")
+        || app.contains(".topics(")
+        || app.contains(".workers(")
+        || app.contains(".workflows(")
+    {
         report.error(
-            "app.rs must not register .jobs/.topics/.workers — move registrations to manifest.rs",
+            "app.rs must not register .jobs/.topics/.workers/.workflows — move registrations to manifest.rs",
         );
     }
     if app.contains(".gateway(") {
@@ -376,56 +402,182 @@ fn content_has_route_table(path: &Path) -> bool {
     fs::read_to_string(path).is_ok_and(|c| c.contains("pub fn route_table()"))
 }
 
-fn check_topics(app: &str, report: &mut DoctorReport) {
-    if app.contains(".topics(") {
-        if app.contains("TopicOpts::topic") {
-            report.ok("topics registered via TopicOpts");
-        } else {
-            report.warn(".topics() present but no TopicOpts::topic entries found");
-        }
+fn check_workflows(project: &TrembitaProject, manifest: &str, report: &mut DoctorReport) {
+    let workflows_dir = project.workflows_dir();
+    if !workflows_dir.is_dir() {
+        return;
     }
-    if app.contains(".gateway(") {
-        if app.contains(".routes(|") {
-            report.error(
-                "GatewayOpts::routes() removed in 0.4.0 — use .surfaces(|state| Gateway::new(...))",
-            );
-        } else if app.contains(".surfaces(") {
-            report.ok("gateway uses GatewayOpts::surfaces()");
+    let mod_rs = workflows_dir.join("mod.rs");
+    let mod_content = fs::read_to_string(&mod_rs).unwrap_or_default();
+    let main = fs::read_to_string(project.main_rs()).unwrap_or_default();
+    if !main.contains("mod workflows;") {
+        report.warn(
+            "src/workflows/ exists but main.rs has no `mod workflows;` — run `trembita doctor --fix`",
+        );
+    }
+    for entry in walk_rs_files(&workflows_dir) {
+        if entry.file_name().is_some_and(|n| n == "mod.rs") {
+            continue;
         }
-        if app.contains("SessionGate") && !app.contains(".session(") {
-            report.warn("SessionGate imported but no .session(...) on a surface");
+        let Ok(content) = fs::read_to_string(&entry) else {
+            continue;
+        };
+        let module = entry
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+        if !mod_content.contains(&format!("pub mod {module};")) {
+            report.error(format!(
+                "workflows/{module}.rs not declared in workflows/mod.rs"
+            ));
         }
-        if app.contains(".session(")
-            && app.contains(".cors(")
-            && !app.contains("CorsPolicy::credentials")
-        {
-            report.warn(
-                "SessionGate with CORS — prefer CorsPolicy::credentials(...) so browsers send cookies",
-            );
-        }
-        if app.contains("Gateway::new(true)") && app.contains("dev_fallback") {
-            report.warn("dev_fallback on Gateway::new(true) — disable in production");
-        }
-        if app.contains(".surface(") && app.contains(".hosts(") {
-            let surfaces = app.matches(".surface(").count();
-            let routes = app.matches(".routes(").count()
-                + app.matches("route_table()").count()
-                + app.matches("StaticSite").count();
-            if routes < surfaces {
-                report.warn("gateway surface with hosts but no .routes(...) or route_table()");
-            }
-        }
-        if app.contains("AuthMode::Identity") {
-            if app.contains("GatewayBearerIdentity") || app.contains(".identity(") {
-                report.ok("gateway has identity for protected routes");
-            } else {
-                report.warn("identity-protected routes without gateway identity");
-            }
+        let Some(prefix) = extract_workflow_prefix(&content) else {
+            report.warn(format!(
+                "workflows/{module}.rs has no `pub const PREFIX` — doctor cannot verify manifest wiring"
+            ));
+            continue;
+        };
+        let wired = manifest.contains(&format!("WorkflowOpts::named(\"{prefix}\""))
+            || manifest.contains(&format!("workflows::{module}::"));
+        if wired {
+            report.ok(format!("workflow prefix `{prefix}` wired in manifest.rs"));
+        } else {
+            report.error(format!(
+                "workflow `{prefix}` in {} not registered in manifest.rs (.workflows / WorkflowOpts)",
+                entry.display()
+            ));
         }
     }
 }
 
-fn check_builtin_gateway_routes(app: &str, report: &mut DoctorReport) {
+fn check_manifest_duplicates(manifest: &str, report: &mut DoctorReport) {
+    report_duplicate_ids(report, "job stream", extract_job_stream_literals(manifest));
+    report_duplicate_ids(
+        report,
+        "topic",
+        extract_string_literals_after(manifest, "TopicOpts::topic(\""),
+    );
+    report_duplicate_ids(
+        report,
+        "worker group",
+        extract_worker_group_literals(manifest),
+    );
+    report_duplicate_ids(
+        report,
+        "workflow prefix",
+        extract_string_literals_after(manifest, "WorkflowOpts::named(\""),
+    );
+}
+
+fn report_duplicate_ids(report: &mut DoctorReport, kind: &str, ids: Vec<String>) {
+    let mut seen = std::collections::BTreeMap::<&str, usize>::new();
+    for id in &ids {
+        *seen.entry(id.as_str()).or_default() += 1;
+    }
+    let unique = seen.len();
+    for (id, count) in &seen {
+        if *count > 1 {
+            report.error(format!(
+                "manifest.rs registers duplicate {kind} `{id}` ({count} times)"
+            ));
+        }
+    }
+    if ids.is_empty() {
+        return;
+    }
+    if unique == ids.len() {
+        report.ok(format!("manifest.rs has no duplicate {kind} names"));
+    }
+}
+
+fn check_gateway_wiring(app: &str, report: &mut DoctorReport) {
+    if !app.contains(".gateway(") {
+        return;
+    }
+    if app.contains(".routes(|") {
+        report.error(
+            "GatewayOpts::routes() removed in 0.4.0 — use .surfaces(|state| Gateway::new(...))",
+        );
+    } else if app.contains(".surfaces(") {
+        report.ok("gateway uses GatewayOpts::surfaces()");
+    }
+    if app.contains("SessionGate") && !app.contains(".session(") {
+        report.warn("SessionGate imported but no .session(...) on a surface");
+    }
+    if app.contains(".session(")
+        && app.contains(".cors(")
+        && !app.contains("CorsPolicy::credentials")
+    {
+        report.warn(
+            "SessionGate with CORS — prefer CorsPolicy::credentials(...) so browsers send cookies",
+        );
+    }
+    if app.contains("Gateway::new(true)") && app.contains("dev_fallback") {
+        report.warn("dev_fallback on Gateway::new(true) — disable in production");
+    }
+    if app.contains(".surface(") && app.contains(".hosts(") {
+        let surfaces = app.matches(".surface(").count();
+        let routes = app.matches(".routes(").count()
+            + app.matches("route_table()").count()
+            + app.matches("StaticSite").count();
+        if routes < surfaces {
+            report.warn("gateway surface with hosts but no .routes(...) or route_table()");
+        }
+    }
+    if app.contains("AuthMode::Identity") {
+        if app.contains("GatewayBearerIdentity") || app.contains(".identity(") {
+            report.ok("gateway has identity for protected routes");
+        } else {
+            report.warn("identity-protected routes without gateway identity");
+        }
+    }
+}
+
+fn check_topics(manifest: &str, report: &mut DoctorReport) {
+    if manifest.contains(".topics(") {
+        if manifest.contains("TopicOpts::topic") {
+            report.ok("topics registered in manifest.rs");
+        } else {
+            report.warn(".topics() in manifest.rs but no TopicOpts::topic entries found");
+        }
+    }
+}
+
+fn check_manifest_product_http(manifest: &str, app: &str, report: &mut DoctorReport) {
+    let needs_listener = manifest.contains(".workflows(")
+        || (manifest.contains(".topics(") && !app.contains("without_topics_api()"));
+    let has_listener = app.contains("TrembitaApp::from_env")
+        || app.contains(".gateway(")
+        || app.contains("GatewayOpts::");
+    if needs_listener && !has_listener {
+        report.warn(
+            "manifest registers workflows/topics but app.rs has no TrembitaApp::from_env() or .gateway() — set TREMBITA_LISTEN or .gateway(...)",
+        );
+    }
+    if manifest.contains(".workflows(") && app.contains("without_workflows_api()") {
+        report.warn(
+            "manifest .workflows() with .without_workflows_api() — HTTP /workflows/* disabled",
+        );
+    }
+    if manifest.contains(".topics(") && app.contains("without_topics_api()") {
+        report.warn("manifest .topics() with .without_topics_api() — HTTP /topics/* disabled");
+    }
+    if manifest.contains(".workflows(") && has_listener && ops_routes_zero_config(app) {
+        report.ok(
+            "workflows HTTP via default gateway (.workflows in manifest + from_env/gateway_routes)",
+        );
+    }
+    if manifest.contains(".topics(")
+        && !app.contains("without_topics_api()")
+        && has_listener
+        && ops_routes_zero_config(app)
+    {
+        report
+            .ok("topics HTTP via default gateway (.topics in manifest + from_env/gateway_routes)");
+    }
+}
+
+fn check_builtin_gateway_routes(app: &str, manifest: &str, report: &mut DoctorReport) {
     if app.contains("without_ops()") {
         report.ok("ops HTTP disabled (.without_ops())");
         return;
@@ -443,7 +595,7 @@ fn check_builtin_gateway_routes(app: &str, report: &mut DoctorReport) {
             );
         }
     }
-    if app.contains(".jobs(") || app.contains("http_enqueue(true)") {
+    if manifest.contains("http_enqueue(true)") || app.contains("http_enqueue(true)") {
         if product_jobs_zero_config(app) || app.contains("http::jobs::route_table") {
             if product_jobs_zero_config(app) {
                 report.ok("jobs HTTP API via default gateway (registration + .http_enqueue)");
@@ -454,6 +606,24 @@ fn check_builtin_gateway_routes(app: &str, report: &mut DoctorReport) {
             );
         }
     }
+    if manifest.contains(".workflows(") && !app.contains("without_workflows_api()") {
+        if manual_product_api_merge(app, "workflows_api") {
+            report.warn(
+                "manual TrembitaApp::workflows_api route merge — remove; .workflows in manifest mounts /workflows/* on the default gateway",
+            );
+        }
+    }
+    if manifest.contains(".topics(") && !app.contains("without_topics_api()") {
+        if manual_product_api_merge(app, "topics_api") {
+            report.warn(
+                "manual TrembitaApp::topics_api route merge — remove; .topics in manifest mounts /topics/* on the default gateway",
+            );
+        }
+    }
+}
+
+fn manual_product_api_merge(app: &str, api_fn: &str) -> bool {
+    app.contains(api_fn) && (app.contains(".route_table()") || app.contains(".merge("))
 }
 
 fn ops_routes_zero_config(app: &str) -> bool {
@@ -719,8 +889,18 @@ fn scan_deprecated_source(content: &str, path: &str, report: &mut DoctorReport) 
         ),
         (
             "with_workflows_api(",
-            "with_workflows_api removed in 0.5.0 — merge explicit workflows route table in .surfaces()",
+            "with_workflows_api removed in 0.5.0 — register .workflows([…]) in manifest.rs (default gateway mounts /workflows/*)",
             Level::Error,
+        ),
+        (
+            "TrembitaApp::workflows_api(",
+            "manual workflows_api merge — .workflows in manifest + from_env mounts /workflows/* automatically",
+            Level::Warn,
+        ),
+        (
+            "TrembitaApp::topics_api(",
+            "manual topics_api merge — .topics in manifest + from_env mounts /topics/* automatically",
+            Level::Warn,
         ),
         (
             "with_introspect_api(",
@@ -854,6 +1034,73 @@ fn extract_consumer_streams(source: &str) -> Vec<String> {
         }
     }
     streams
+}
+
+fn extract_workflow_prefix(source: &str) -> Option<String> {
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("pub const PREFIX: &str = \"") {
+            return rest.split('"').next().map(str::to_string);
+        }
+    }
+    None
+}
+
+fn extract_job_stream_literals(manifest: &str) -> Vec<String> {
+    let mut streams = Vec::new();
+    for line in manifest.lines() {
+        if !line.contains("JobOpts::new(") {
+            continue;
+        }
+        let Some(idx) = line.find("JobOpts::new(") else {
+            continue;
+        };
+        let rest = line[idx + "JobOpts::new(".len()..].trim_start();
+        if let Some(lit) = rest.strip_prefix('"') {
+            if let Some(end) = lit.find('"') {
+                streams.push(lit[..end].to_string());
+            }
+        } else {
+            let ident: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if !ident.is_empty() {
+                streams.push(ident);
+            }
+        }
+    }
+    streams
+}
+
+fn extract_string_literals_after(source: &str, needle: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut search_from = 0usize;
+    while let Some(rel) = source[search_from..].find(needle) {
+        let start = search_from + rel + needle.len();
+        let rest = source[start..].trim_start();
+        if let Some(end) = rest.find('"') {
+            values.push(rest[..end].to_string());
+        }
+        search_from = start.saturating_add(1);
+    }
+    values
+}
+
+fn extract_worker_group_literals(manifest: &str) -> Vec<String> {
+    let mut groups = Vec::new();
+    for line in manifest.lines() {
+        if !line.contains("WorkerOpts") {
+            continue;
+        }
+        if let Some(idx) = line.find("::new(\"") {
+            let rest = &line[idx + "::new(\"".len()..];
+            if let Some(end) = rest.find('"') {
+                groups.push(rest[..end].to_string());
+            }
+        }
+    }
+    groups
 }
 
 fn extract_worker_groups(source: &str) -> Vec<String> {
@@ -1005,6 +1252,34 @@ async fn handle_extra(_: &[u8]) -> Result<(), ()> { Ok(()) }
                 .findings
                 .iter()
                 .any(|f| f.message.contains("not declared in consumers/mod.rs"))
+        );
+    }
+
+    #[test]
+    fn doctor_flags_duplicate_job_stream_in_manifest() {
+        let dir = tempdir().unwrap();
+        let opts = NewProjectOpts {
+            name: "dup-jobs".into(),
+            output: dir.path().to_path_buf(),
+            features: AppFeature::defaults(),
+            trembita_version: "0.3.2".into(),
+            trembita_path: None,
+        };
+        let root = scaffold_project(&opts).unwrap();
+        let project = TrembitaProject { root };
+        let manifest_path = project.manifest_rs();
+        let mut manifest = fs::read_to_string(&manifest_path).unwrap();
+        manifest = manifest.replace(
+            "// trembita:jobs-end",
+            "JobOpts::new(SAMPLE_STREAM).lease(Duration::from_secs(1)),\n            // trembita:jobs-end",
+        );
+        fs::write(&manifest_path, manifest).unwrap();
+        let report = run_doctor(&project, false);
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|f| { f.level == Level::Error && f.message.contains("duplicate job stream") })
         );
     }
 }

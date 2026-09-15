@@ -10,6 +10,8 @@ pub mod names {
     pub const TOPICS: &str = "trembita:topics";
     /// Worker registrations inside `.workers(workers!(...))`.
     pub const WORKERS: &str = "trembita:workers";
+    /// Workflow registrations inside `.workflows([...])`.
+    pub const WORKFLOWS: &str = "trembita:workflows";
     /// Custom gateway surfaces inside `.surfaces(|…| { … })`.
     pub const SURFACES: &str = "trembita:surfaces";
 }

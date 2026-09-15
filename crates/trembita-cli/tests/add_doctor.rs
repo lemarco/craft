@@ -2,9 +2,10 @@
 
 use tempfile::tempdir;
 use trembita_cli::{
-    AddActorOpts, AddConsumerOpts, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts, AppFeature,
-    Level, NewProjectOpts, StaticSiteSource, TrembitaProject, add_actor, add_consumer,
-    add_http_surface, add_static_site, add_topic, run_doctor, scaffold_project,
+    AddActorOpts, AddConsumerOpts, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts,
+    AddWorkflowOpts, AppFeature, Level, NewProjectOpts, StaticSiteSource, TrembitaProject,
+    add_actor, add_consumer, add_http_surface, add_static_site, add_topic, add_workflow,
+    run_doctor, scaffold_project,
 };
 
 #[test]
@@ -67,7 +68,47 @@ fn add_and_doctor_integration() {
         },
     )
     .unwrap();
+    add_workflow(
+        &project,
+        &AddWorkflowOpts {
+            prefix: "onboard".into(),
+            module: None,
+        },
+    )
+    .unwrap();
 
+    let report = run_doctor(&project, false);
+    assert!(
+        !report.has_errors(),
+        "doctor errors: {:?}",
+        report
+            .findings
+            .iter()
+            .filter(|f| f.level == Level::Error)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn add_workflow_and_doctor_passes() {
+    let dir = tempdir().unwrap();
+    let opts = NewProjectOpts {
+        name: "workflow-app".into(),
+        output: dir.path().to_path_buf(),
+        features: vec![AppFeature::Jobs, AppFeature::Gateway, AppFeature::Workflows],
+        trembita_version: "0.3.2".into(),
+        trembita_path: None,
+    };
+    let root = scaffold_project(&opts).unwrap();
+    let project = TrembitaProject { root };
+    add_workflow(
+        &project,
+        &AddWorkflowOpts {
+            prefix: "onboard".into(),
+            module: None,
+        },
+    )
+    .unwrap();
     let report = run_doctor(&project, false);
     assert!(
         !report.has_errors(),

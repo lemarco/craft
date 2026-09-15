@@ -23,7 +23,8 @@ pub fn route_table(state: Arc<IntrospectApiState>) -> RouteTable {
     let s4 = Arc::clone(&state);
     let s5 = Arc::clone(&state);
     let s6 = Arc::clone(&state);
-    let s7 = state;
+    let s7 = Arc::clone(&state);
+    let s8 = state;
     RouteTable::new()
         .get("/introspect/cluster", move |ctx| {
             let state = Arc::clone(&s1);
@@ -52,6 +53,10 @@ pub fn route_table(state: Arc<IntrospectApiState>) -> RouteTable {
         .get("/introspect/sagas", move |ctx| {
             let state = Arc::clone(&s7);
             async move { get_sagas(state, ctx).await }
+        })
+        .get("/introspect/topics", move |ctx| {
+            let state = Arc::clone(&s8);
+            async move { get_topics(state, ctx).await }
         })
 }
 
@@ -187,6 +192,23 @@ async fn get_sagas_inner(
     json_ok(state.observer.sagas().await)
 }
 
+async fn get_topics(
+    state: Arc<IntrospectApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match get_topics_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn get_topics_inner(
+    state: &IntrospectApiState,
+    _ctx: RequestCtx,
+) -> Result<Response, IntrospectApiError> {
+    json_ok(state.observer.topics().await)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,7 +219,7 @@ mod tests {
     use std::sync::Arc;
     use trembita_dashboard::{
         ActorView, BoxFuture, ClusterView, NodeSummary, NodeView, Observer, QueuesView,
-        RaftGroupsView, Readiness, SagaRecordView,
+        RaftGroupsView, Readiness, SagaRecordView, TopicsView,
     };
 
     struct FakeObserver {
@@ -296,6 +318,10 @@ mod tests {
 
         fn sagas(&self) -> BoxFuture<'_, Vec<SagaRecordView>> {
             Box::pin(async move { vec![] })
+        }
+
+        fn topics(&self) -> BoxFuture<'_, TopicsView> {
+            Box::pin(async move { TopicsView { topics: vec![] } })
         }
     }
 

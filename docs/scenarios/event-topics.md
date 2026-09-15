@@ -45,7 +45,7 @@ curl -X POST "http://127.0.0.1:443/topics/platform.events/publish" \
 # → 202 {"event_id":…}
 ```
 
-Metrics snapshot: `GET /topics/{name}`. Opt out of topic HTTP with [`.without_topics_api()`](../../crates/trembita/src/app/builder.rs).
+Metrics snapshot: `GET /topics/{name}`. Ops/dashboard: `GET /introspect/topics` (all registered topics). Opt out of topic HTTP with [`.without_topics_api()`](../../crates/trembita/src/app/builder.rs).
 
 ### Transactional outbox
 

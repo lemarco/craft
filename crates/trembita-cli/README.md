@@ -57,6 +57,7 @@ What each subcommand touches and where it is tested ([testing-coverage](../../do
 | `add consumer` | `consumers/`, `manifest.rs` (`trembita:jobs`) | `src/scaffold/add.rs`, `tests/add_doctor.rs` |
 | `add topic` | `manifest.rs` (`trembita:topics`) | same |
 | `add actor` | `actors/`, `manifest.rs` (`trembita:workers`) | same |
+| `add workflow` | `workflows/`, `manifest.rs` (`trembita:workflows`) | same |
 | `add ops-routes` / `jobs-routes` | `src/http/`, `app.rs` gateway merges | `src/scaffold/add.rs` |
 | `add http-surface` / `static-site` | `src/http/`, `app.rs` surfaces | `tests/add_doctor.rs` |
 | `doctor` | `manifest.rs` ↔ handlers; `app.rs` `.manifest()` only | `src/scaffold/doctor.rs`, `tests/{add_doctor,manifest_doctor}.rs` |
@@ -65,8 +66,6 @@ What each subcommand touches and where it is tested ([testing-coverage](../../do
 | `dev *` | Repo `examples/` showcases | `tests/dev.rs` |
 
 Run locally: `./scripts/test-fast.sh -p trembita-cli` from the repo root.
-
-**Not implemented:** `add workflow` (workflows still edited manually in `manifest.rs`).
 
 ## Relation to `trembita-tools`
 

@@ -11,8 +11,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use trembita_core::{Role, StateMachine};
 use trembita_dashboard::{
     ActorView, BoxFuture, ClusterView, Metrics, NodeSummary, NodeView, Observer, QueueStreamView,
-    QueuesView, RaftGroupSummary, RaftGroupsView, Readiness, SagaRecordView,
+    QueuesView, RaftGroupSummary, RaftGroupsView, Readiness, SagaRecordView, TopicStreamView,
+    TopicSubscriptionView, TopicsView,
 };
+use trembita_events::EventTopic;
 use trembita_proto::NodeId;
 
 use trembita_client::SagaJournalPhase;
@@ -47,6 +49,7 @@ pub(crate) fn build_introspect_observer<M: StateMachine>(
         cluster.multi_raft.clone(),
         Arc::clone(&cluster.catalog_version),
         cluster.job_queues.clone(),
+        cluster.event_topics.clone(),
         Arc::clone(&cluster.saga_registry),
         cluster.metrics.clone(),
     ))
@@ -66,6 +69,7 @@ pub(crate) struct TrembitaObserver<M: StateMachine> {
     multi_raft: Option<Arc<MultiRaftState<M>>>,
     catalog_version: Arc<AtomicU32>,
     job_queues: HashMap<String, Arc<dyn JobQueue>>,
+    event_topics: HashMap<String, Arc<dyn EventTopic>>,
     saga_registry: SagaRegistry,
     metrics: Metrics,
 }
@@ -85,6 +89,7 @@ impl<M: StateMachine> TrembitaObserver<M> {
         multi_raft: Option<Arc<MultiRaftState<M>>>,
         catalog_version: Arc<AtomicU32>,
         job_queues: HashMap<String, Arc<dyn JobQueue>>,
+        event_topics: HashMap<String, Arc<dyn EventTopic>>,
         saga_registry: SagaRegistry,
         metrics: Metrics,
     ) -> Self {
@@ -101,6 +106,7 @@ impl<M: StateMachine> TrembitaObserver<M> {
             multi_raft,
             catalog_version,
             job_queues,
+            event_topics,
             saga_registry,
             metrics,
         }
@@ -432,6 +438,39 @@ impl<M: StateMachine> Observer for TrembitaObserver<M> {
             }
             streams.sort_by(|a, b| a.stream.cmp(&b.stream));
             QueuesView { streams }
+        })
+    }
+
+    fn topics(&self) -> BoxFuture<'_, TopicsView> {
+        let topics = self.event_topics.clone();
+        Box::pin(async move {
+            let mut out = Vec::new();
+            for (name, topic) in topics {
+                if let Ok(m) = topic.metrics().await {
+                    let oldest_event_age_secs =
+                        u64::try_from(m.oldest_event_age.as_secs()).unwrap_or(u64::MAX);
+                    out.push(TopicStreamView {
+                        name,
+                        event_count: m.event_count,
+                        head: m.head,
+                        compact_head: m.compact_head,
+                        oldest_event_age_secs,
+                        subscriptions: m
+                            .subscriptions
+                            .into_iter()
+                            .map(|s| TopicSubscriptionView {
+                                subscription: s.subscription,
+                                lag: s.lag,
+                                pending: s.pending,
+                                leased: s.leased,
+                                retention_discards: s.retention_discards,
+                            })
+                            .collect(),
+                    });
+                }
+            }
+            out.sort_by(|a, b| a.name.cmp(&b.name));
+            TopicsView { topics: out }
         })
     }
 

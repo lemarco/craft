@@ -105,4 +105,29 @@ impl CapabilityRegistry {
             ),
         )
     }
+
+    /// Insert a workflow registration line or bootstrap `.workflows([…])`.
+    pub fn register_workflow_line(&mut self, workflow_line: &str) -> Result<(), PatchError> {
+        if self.patch.has_marker(names::WORKFLOWS) {
+            return self
+                .patch
+                .insert_before_end(names::WORKFLOWS, &format!("    {workflow_line}"));
+        }
+        if self.patch.contains(".workflows(") {
+            return Err(PatchError::MissingMarker {
+                marker: names::WORKFLOWS.into(),
+            });
+        }
+        self.patch.insert_block_before_anchor(
+            "AppManifest::new()",
+            &format!(
+                r".workflows([
+                // trembita:workflows
+                {workflow_line}
+                // trembita:workflows-end
+            ])
+            "
+            ),
+        )
+    }
 }

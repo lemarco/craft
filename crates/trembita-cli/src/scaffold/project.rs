@@ -97,6 +97,12 @@ impl TrembitaProject {
         self.root.join("src/http")
     }
 
+    /// `src/workflows/`
+    #[must_use]
+    pub fn workflows_dir(&self) -> PathBuf {
+        self.root.join("src/workflows")
+    }
+
     /// `Cargo.toml`
     #[must_use]
     pub fn cargo_toml(&self) -> PathBuf {

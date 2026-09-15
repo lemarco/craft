@@ -45,6 +45,15 @@ pub struct AddTopicOpts {
     pub topic: String,
 }
 
+/// Options for `add workflow`.
+#[derive(Debug, Clone)]
+pub struct AddWorkflowOpts {
+    /// Saga id prefix (e.g. `onboard` matches `onboard-42`).
+    pub prefix: String,
+    /// Rust module file name (default: derived from `prefix`).
+    pub module: Option<String>,
+}
+
 /// Options for `add actor`.
 #[derive(Debug, Clone)]
 pub struct AddActorOpts {
@@ -173,6 +182,74 @@ pub fn add_topic(project: &TrembitaProject, opts: &AddTopicOpts) -> Result<(), A
 
     registry.register_topic_line(&topic_line)?;
     registry.save()?;
+    Ok(())
+}
+
+/// Add a saga workflow stub + `manifest.rs` registration.
+pub fn add_workflow(project: &TrembitaProject, opts: &AddWorkflowOpts) -> Result<(), AddError> {
+    validate_identifier(&opts.prefix)?;
+    let module = opts
+        .module
+        .clone()
+        .unwrap_or_else(|| module_name(&opts.prefix));
+    validate_identifier(&module)?;
+
+    fs::create_dir_all(project.workflows_dir())?;
+    let workflow_path = project.workflows_dir().join(format!("{module}.rs"));
+    if workflow_path.exists() {
+        return Err(AddError::Exists(workflow_path.display().to_string()));
+    }
+
+    fs::write(
+        &workflow_path,
+        format!(
+            r#"//! `{prefix}` saga workflow.
+
+use std::sync::Arc;
+
+use trembita::TrembitaApp;
+use trembita::WorkflowBuilder;
+use trembita::client::{{SagaError, SagaOutcome, SagaPlan}};
+use trembita::journal_workflow;
+
+/// Saga id prefix for this workflow.
+pub const PREFIX: &str = "{prefix}";
+
+/// Build saga plan for `{prefix}` workflows.
+#[must_use]
+pub fn plan_for(saga_id: &str) -> SagaPlan {{
+    WorkflowBuilder::new(PREFIX)
+        .step("noop", saga_id, b"ok")
+        .build()
+        .expect("valid workflow plan")
+}}
+
+/// Run plan on the cluster journal.
+pub async fn run_plan(app: Arc<TrembitaApp>, plan: SagaPlan) -> Result<SagaOutcome, SagaError> {{
+    journal_workflow(app, plan).await
+}}
+"#,
+            prefix = opts.prefix,
+        ),
+    )?;
+
+    let mod_rs = project.workflows_dir().join("mod.rs");
+    ensure_mod_declaration(&mod_rs, &module)?;
+
+    let mut registry = CapabilityRegistry::load(project)?;
+    registry
+        .patch_mut()
+        .insert_import("use trembita::WorkflowOpts;")?;
+
+    let workflow_line = format!(
+        r#"WorkflowOpts::named("{prefix}", crate::workflows::{module}::plan_for, crate::workflows::{module}::run_plan),"#,
+        prefix = opts.prefix,
+        module = module,
+    );
+
+    registry.register_workflow_line(&workflow_line)?;
+    registry.save()?;
+    ensure_main_module(project, "workflows").map_err(AddError::Patch)?;
     Ok(())
 }
 
@@ -701,6 +778,25 @@ mod tests {
         .unwrap();
         let manifest = fs::read_to_string(project.manifest_rs()).unwrap();
         assert!(manifest.contains("TopicOpts::topic(\"platform.events\")"));
+    }
+
+    #[test]
+    fn add_workflow_creates_stub() {
+        let (_dir, project) = sample_project();
+        add_workflow(
+            &project,
+            &AddWorkflowOpts {
+                prefix: "onboard".into(),
+                module: None,
+            },
+        )
+        .unwrap();
+        assert!(project.workflows_dir().join("onboard.rs").is_file());
+        let manifest = fs::read_to_string(project.manifest_rs()).unwrap();
+        assert!(manifest.contains("WorkflowOpts::named("));
+        assert!(manifest.contains("workflows::onboard::plan_for"));
+        let main_rs = fs::read_to_string(project.main_rs()).unwrap();
+        assert!(main_rs.contains("mod workflows;"));
     }
 
     #[test]

@@ -369,9 +369,13 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
     );
 
     if features.contains(&AppFeature::Workflows) {
+        imports.push("use trembita::WorkflowOpts;".to_string());
         chain.push_str(
             r"
-        // Register workflows in src/workflows/ and add `.workflows([...])` here.",
+        .workflows([
+            // trembita:workflows
+            // trembita:workflows-end
+        ])",
         );
     }
 

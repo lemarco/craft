@@ -135,6 +135,21 @@ impl Observer for Fake {
             }]
         })
     }
+
+    fn topics(&self) -> BoxFuture<'_, trembita_dashboard::TopicsView> {
+        Box::pin(async move {
+            trembita_dashboard::TopicsView {
+                topics: vec![trembita_dashboard::TopicStreamView {
+                    name: "app.events".into(),
+                    event_count: 2,
+                    head: 2,
+                    compact_head: 0,
+                    oldest_event_age_secs: 0,
+                    subscriptions: vec![],
+                }],
+            }
+        })
+    }
 }
 
 async fn spawn(ready: bool) -> (SocketAddr, Metrics, EventBus) {
@@ -332,6 +347,10 @@ async fn introspection_routes_return_json() {
     let (status, body) = get(addr, "/introspect/sagas").await;
     assert_eq!(status, 200);
     assert!(body.contains("\"phase\":\"running\""));
+
+    let (status, body) = get(addr, "/introspect/topics").await;
+    assert_eq!(status, 200);
+    assert!(body.contains("\"name\":\"app.events\""));
 }
 
 #[tokio::test]

@@ -48,7 +48,7 @@ Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** sch
 | `trembita-ops` | 0 | 2 | **2** | Snapshot export/import, object-store push/pull |
 | `trembita-macros` | — | via trybuild in `trembita-actor` | — | Compile-pass/fail |
 | `trembita-node` | **10** | 0 | **0** | *(E2E smoke only)* |
-| `trembita-cli` | **16** | **13** | **29** | Scaffold, `manifest.rs` registry patches, doctor, `trembita dev` registry |
+| `trembita-cli` | **18** | **14** | **32** | Scaffold, `manifest.rs` registry patches, doctor, `trembita dev` registry |
 
 Count tests locally:
 
@@ -183,10 +183,11 @@ Published binary **`trembita`** ([`crates/trembita-cli`](../crates/trembita-cli/
 | **`add consumer`** | `consumers/*.rs` + `manifest.rs` `trembita:jobs` | `scaffold/add.rs`, `tests/add_doctor.rs` |
 | **`add topic`** | `manifest.rs` `trembita:topics` | `scaffold/add.rs`, `tests/add_doctor.rs` |
 | **`add actor`** | `actors/*.rs` + `manifest.rs` `trembita:workers` | `scaffold/add.rs`, `tests/add_doctor.rs` |
+| **`add workflow`** | `workflows/*.rs` + `manifest.rs` `trembita:workflows` | `scaffold/add.rs`, `tests/add_doctor.rs` |
 | **`add http-surface`** | `src/http/` + gateway surface in `app.rs` | `scaffold/add.rs`, `tests/add_doctor.rs` |
 | **`add static-site`** | static module + gateway surface | `scaffold/add.rs`, `tests/add_doctor.rs` |
 | **`add ops-routes` / `jobs-routes`** | `http/ops.rs` or `jobs.rs` + route merge | `scaffold/add.rs` |
-| **`doctor`** | manifest ↔ consumers/actors; `.manifest()` in `app.rs`; no inline `.jobs()` in `app.rs` | `scaffold/doctor.rs`, `tests/add_doctor.rs` |
+| **`doctor`** | manifest ↔ consumers/actors/workflows; duplicate ids; `.manifest()` in `app.rs`; no inline capabilities in `app.rs` | `scaffold/doctor.rs`, `tests/add_doctor.rs` |
 | **`doctor --fix`** | missing `mod` in `consumers/`, `main.rs` modules | `scaffold/doctor.rs` |
 | **`doctor --preflight`** | deploy env / gateway ops hints | `scaffold/doctor.rs` (unit scenarios) |
 | **`dev list/setup/up/stop/status/trigger`** | showcase registry, workspace root, `trigger.sh` path | `tests/dev.rs`; full `dev up` 🔒 manual / `TREMBITA_DEV_INTEGRATION` |
@@ -248,7 +249,6 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | Priority | Gap | Suggested test location | Effort |
 |----------|-----|-------------------------|--------|
 | Medium | Actor store redb contract at crate level | `trembita-actor-store/tests/redb_contract.rs` | S |
-| Low | `trembita add workflow` (patch `manifest.rs` workflows) | `scaffold/add.rs`, `tests/add_doctor.rs` | S |
 | Low | `doctor --preflight` on full synthetic `deploy/` tree | `tests/add_doctor.rs` or `scaffold/doctor.rs` | S |
 | Low | `trembita dev up` multi-node smoke in CI | `tests/dev.rs` + job label `run-heavy` | M |
 
@@ -257,7 +257,10 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | Closed | What | Where |
 |--------|------|-------|
 | 2026-09 | Product **`AppManifest`** + scaffold **`manifest.rs`**; CLI patches registry not `app.rs` | `trembita/src/app/manifest.rs`, `trembita-cli/src/scaffold/{registry,render}.rs`, `tests/{scaffold,add_doctor}.rs` |
+| 2026-09 | **`trembita add workflow`** + doctor duplicate manifest ids + workflow wiring | `trembita-cli/src/scaffold/{add,doctor,registry}.rs`, `tests/add_doctor.rs` |
 | 2026-09 | Topic replicate auth rejects non-leader caller | `trembita/tests/topic.rs` |
+| 2026-09 | Product gateway symmetry (topics/workflows HTTP + identity) | `trembita/tests/gateway_product_http.rs`, `gateway_product_symmetry.rs` |
+| 2026-09 | Introspect `GET /introspect/topics` | `trembita-dashboard/tests/admin.rs`, `trembita/tests/gateway_product_http.rs` |
 | 2026-09 | Gateway rate limit HTTP integration (`429`) | `trembita/tests/gateway_jobs_http.rs` |
 | 2026-09 | Typed product wire errors (`ProductWireError` on queue/topic/store replies) | `trembita-proto/src/product.rs`, service handlers |
 | 2026-09 | Gateway bearer identity header-only user + no query token | `trembita/src/gateway/identity.rs` (unit) |
