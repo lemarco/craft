@@ -132,7 +132,7 @@ See [multi-raft](docs/decisions/multi-raft.md), [job-queue](docs/decisions/job-q
 
 ```toml
 [dependencies]
-trembita = "0.4"
+trembita = "0.5"
 ```
 
 Product apps: default `http-jobs` enables HTTP job routes; add `dev-certs` for local QUIC without PEM files. Optional Postgres/Redis adapters: `external-backlog`, `domain-outbox`, `redis-store` — see [facade ADR](docs/decisions/facade.md) and [getting-started](docs/getting-started.md).
