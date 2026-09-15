@@ -109,7 +109,7 @@ Behaviour:
 - When `run_on_acquire` and `first_in_term`: invoke `tick` once before the first `interval.tick()` (covers membership-triggered reconcile + periodic reconcile unification).
 - Uses `tokio::select!` between interval and `stop.changed()` (same as feeder / drainer today).
 
-**Not** included in v1: automatic cooldown reset on release, `OncePerTerm` registry — callers that need those pass explicit logic inside `tick` (document patterns in rustdoc).
+**Not** built into `run_leader_loop`: automatic cooldown reset on release, `OncePerTerm` registry — callers implement those inside `tick` when needed (see rustdoc patterns).
 
 ### 3. Facade wiring
 

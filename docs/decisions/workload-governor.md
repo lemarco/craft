@@ -101,7 +101,7 @@ Homogeneous nodes use `.workload()` for local API vs jobs fairness. To run gatew
 | Option | Verdict |
 |--------|---------|
 | `TREMBITA_ROLE=gateway/worker` pools | Rejected — ops burden; contradicts night-time utilisation goal |
-| Separate tokio runtime for gateway vs jobs | Rejected for v1 — heavy; tokens + tuning sufficient |
+| Separate tokio runtime for gateway vs jobs | Rejected — heavy; tokens + tuning sufficient |
 | Kubernetes pod roles | **Non-goal** ([product-scenarios](product-scenarios.md)) |
 | Queue depth autoscale only | Keep, but insufficient alone for API vs jobs on same node |
 

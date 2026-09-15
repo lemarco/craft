@@ -34,7 +34,7 @@ app.publish("platform.events", payload).await?;
 async fn on_event(payload: &[u8], ctx: TopicContext<'_>) -> Result<(), MyError> { … }
 ```
 
-Subscriptions are declared at **build time** for v1 (code property, not operational data).
+Subscriptions are declared at **build time** in app code (not operational data in Meta-Raft). Runtime subscription registration is not shipped — see [backlog.md](../backlog.md).
 
 ### Retention
 
@@ -52,7 +52,7 @@ Leader applies mutations locally, then synchronously replicates `TopicReplicateO
 reachable voters (same pattern as `QueueService`). Cursors and pending/lease state survive
 leader election.
 
-### Out of scope (v1)
+### Out of scope
 
 - Kafka-style partitioning or external offset replay
 - Cross-cluster topics

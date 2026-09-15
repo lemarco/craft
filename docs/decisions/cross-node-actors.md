@@ -1,24 +1,24 @@
-# Cross-node actors (v1)
+# Cross-node actors
 
 **Status:** Accepted  
 **Date:** 2026-07-05  
 
 ## Context
 
-Users deploy multiple VPSes with the same app. **All use cases are actors that scale on demand** across the cluster from v1:
+Users deploy multiple VPSes with the same app. **All use cases are actors that scale on demand** across the cluster:
 
 - Cross-node **messaging**
 - Cross-node **spawn and scale** from code (`spawn_remote`, `scale_cluster`)
 - **Automatic actor migration** when a node leaves or fails
 
-This ADR defines addressing, transport, directory, placement, migration, and the v1 API.
+This ADR defines addressing, transport, directory, placement, migration, and the registry API.
 
 ## Decision
 
-### v1 scope (full)
+### Capabilities
 
-| Capability | v1 |
-|------------|-----|
+| Capability | Shipped |
+|------------|---------|
 | Local `spawn` / `spawn_pool` / `scale_local` / `stop` | ✓ |
 | Cross-node `send` / `ask` | ✓ |
 | Cluster directory + `cluster(name)` routing | ✓ |
@@ -29,7 +29,7 @@ This ADR defines addressing, transport, directory, placement, migration, and the
 ### Actor identity
 
 ```rust
-// crates/raft-proto/src/actor.rs
+// crates/trembita-proto/src/actor.rs
 
 pub struct ActorId {
     pub node_id: NodeId,
@@ -108,7 +108,7 @@ pub struct MigrateRequest {
 
 Target spawns replacement, applies snapshot via `UserActor::restore_migration`, publishes registration; source stops after ACK.
 
-### Remote spawn & cluster scale (v1 API)
+### Remote spawn & cluster scale
 
 ```rust
 impl ActorRegistry {
@@ -117,7 +117,7 @@ impl ActorRegistry {
     pub async fn spawn_pool<A: UserActor>(&self, name: &str, count: usize, config: A::Config) -> Result<(), SpawnError>;
     pub async fn scale_local(&self, name: &str, count: usize) -> Result<(), ScaleError>;
 
-    // remote / cluster (v1)
+    // remote / cluster
     pub async fn spawn_remote<A: UserActor>(
         &self,
         node_id: NodeId,
@@ -234,23 +234,23 @@ Actor placement is **operational**, not consensus-logged. Only user **commands**
 
 ## Crate changes
 
-| Crate | Add |
-|-------|-----|
-| `raft-proto` | `actor.rs` — all wire types |
-| `raft-net` | `/actor/*` handlers |
-| `raft-actor` | `directory`, `remote`, `placement`, `supervisor`, `migration` |
-| `raft-macros` | `UserActor`, optional `#[actor(migratable)]` |
+| Crate | Role |
+|-------|------|
+| `trembita-proto` | `actor.rs` — wire types (`ActorId`, envelopes, spawn/migrate) |
+| `trembita-net` | HTTP/3 `/raft/v1/actor/*` handlers |
+| `trembita-runtime` | directory, remote delivery, placement, supervisor, migration |
+| `trembita-macros` | `UserActor`, optional `#[actor(migratable)]` |
 
 ## Consequences
 
 **Positive**
 
-- Full elastic actor fabric from v1: scale, place, migrate, message
+- Elastic actor fabric: scale, place, migrate, message across VPSes
 - Matches VPS chain-deploy mental model
 
 **Negative**
 
-- Highest v1 complexity: placement, migration races, directory consistency
+- Highest complexity: placement, migration races, directory consistency
 - Crash migration of stateful actors limited without Raft-backed state
 - `scale_cluster` reconciliation must be idempotent
 
@@ -258,7 +258,7 @@ Actor placement is **operational**, not consensus-logged. Only user **commands**
 
 - Leader-coordinated supervisor actions to avoid split placement decisions
 - Idempotent spawn by `(name, node_id, instance, generation)`
-- Extensive `raft-sim` tests: leave, crash, scale_cluster, deliver during migrate
+- Extensive `trembita-sim` / integration tests: leave, crash, scale_cluster, deliver during migrate
 
 ## Related
 

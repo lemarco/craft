@@ -32,7 +32,7 @@ Adopt a **testing pyramid** with deterministic simulation at its core.
 | **E2E** | real **processes/containers**, real network, real mTLS, chaos | `docker-compose` + `pumba`/`toxiproxy` | nightly |
 | **External deps** | Redis `ActorStateStore` against real Redis | **`testcontainers-rs`** | fast |
 | **Bench / soak** | throughput, latency, leak/soak over hours | `criterion` + long-run harness | nightly |
-| **Concurrency (deferred)** | lock-free/atomics interleavings, if any introduced | `loom` | on-demand |
+| **Concurrency (optional)** | lock-free/atomics interleavings, if any introduced | `loom` | on-demand only |
 
 ### Principles
 

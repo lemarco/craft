@@ -43,7 +43,7 @@ Architecture and decision records for the distributive Raft actor system.
 
 | Topic | Record |
 |-------|--------|
-| Cross-node actors (v1) | [cross-node-actors](decisions/cross-node-actors.md) |
+| Cross-node actors | [cross-node-actors](decisions/cross-node-actors.md) |
 | Product scenarios (actor-first platform) | [product-scenarios](decisions/product-scenarios.md) |
 | Stateful actors → workflow store (redb-first) | [actor-state-store](decisions/actor-state-store.md) |
 | Stateful actors → Redis (optional adapter) | [actor-state-redis](decisions/actor-state-redis.md) |

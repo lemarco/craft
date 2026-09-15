@@ -1,7 +1,9 @@
-# Gateway routing v2 — native HTTP model
+# Gateway routing — native HTTP model
 
 **Status:** Accepted  
 **Date:** 2026-09-05
+
+Filename keeps the historical `gateway-routing-v2` slug (post-Axum); this document describes the **current** product HTTP stack only.
 
 ## Context
 

@@ -115,14 +115,14 @@ Restart events surface in telemetry + metrics. Exhausted restart budget → esca
 
 ### 6. Live web dashboard (`GET /dashboard`)
 
-Read-only UI on the ops HTTP bind (v1, minimal but real):
+Read-only UI on the ops HTTP bind (minimal but real):
 
 - Cluster map: nodes, leader, health
 - Per-node workers + mailbox depth + message rate
 - Live event feed (from telemetry stream via SSE/WebSocket)
 - Raft state: term, commit index, recent leader changes
 
-Implementation: small embedded static assets + admin HTTP + SSE. **Read-only** (no cluster mutation from dashboard in v1).
+Implementation: small embedded static assets + ops HTTP + SSE. **Read-only** — no cluster mutation from the dashboard.
 
 ### 7. Message tracing (opt-in)
 

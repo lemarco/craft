@@ -22,13 +22,13 @@ Trembita already has the primitives: Raft **leader-only** reconciliation
 ([cluster-elasticity#supervisor--leader-only-reconciliation](cluster-elasticity.md#supervisor--leader-only-reconciliation)),
 graceful `leave()` + drain ([drain-timeout](drain-timeout.md)), wire N/N−1
 ([cluster-membership#version-skew--hard-reject](cluster-membership.md#version-skew--hard-reject)),
-admin `/ready`.
+ops HTTP `GET /ready` on `TREMBITA_LISTEN` ([unified-listener](unified-listener.md)).
 
 This ADR defines a **reference pattern** for application authors: upgrade state lives in the
 user's **StateMachine**; the Raft leader runs a declarative reconcile loop; each node executes
 locally when granted a slot.
 
-**Non-goals for trembita core (v1 of this ADR):**
+**Non-goals for trembita core:**
 
 - Embedding download/replace logic inside the `trembita` crate.
 - Replacing systemd or artifact hosting.
@@ -179,7 +179,7 @@ mv "$tmp" "/opt/app/current"   # running process keeps old inode until exit
 
 ### Operator surface
 
-Minimal HTTP on admin/gateway (forward to leader if needed):
+Minimal HTTP on the unified gateway bind (forward to leader when the handler is local-only):
 
 ```http
 POST /cluster/upgrade/desired
@@ -230,8 +230,7 @@ Pre-upgrade: `trembita-ops backup export` remains recommended ([backup-restore.m
 - Manifest URL over HTTPS; pin CA or use object storage with signed URLs.
 - **Verify SHA-256** before install; prefer **minisign/cosign** in manifest for production.
 - Install path owned by service user; runtime need not run as root.
-- Admin `POST /cluster/upgrade/desired` must be authenticated (mTLS admin, `GATEWAY_TOKEN`, or
-  network ACL) — same bar as other cluster mutations.
+- `POST /cluster/upgrade/desired` must be authenticated ([`UpgradeApi`](../../crates/trembita-http/src/upgrade_routes.rs) + [`AuthMode::Identity`](../../crates/trembita-http/src/routing/auth.rs), gateway token, or network ACL) — same bar as other cluster mutations.
 
 ### What stays outside trembita core
 
@@ -246,7 +245,7 @@ Pre-upgrade: `trembita-ops backup export` remains recommended ([backup-restore.m
 Optional future **trembita** crate additions (not required for the pattern):
 
 - `trembita::upgrade` reference SM + reconcile helper (like `trembita_core::kv`).
-- Admin routes in `trembita-dashboard` for `GET/POST /cluster/upgrade`.
+- [`UpgradeApi::route_table`](../../crates/trembita-http/src/upgrade_routes.rs) for `GET/POST /cluster/upgrade/*` merges on the gateway.
 - Example in `examples/` or template in `trembita init`.
 
 ## Consequences

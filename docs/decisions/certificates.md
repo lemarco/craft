@@ -5,9 +5,9 @@
 
 ## Context
 
-Users need mTLS material for VPS deploys ([security](security.md)). v1 ships manual PKI; operators also want **automatic issuance and renewal** without full process restarts. Public ACME (Let's Encrypt) is **out of scope** — trembita mTLS requires a private cluster CA with `serverAuth` + `clientAuth` EKU and SAN/CN of `trembita-node-<NodeId>`.
+Users need mTLS material for VPS deploys ([security](security.md)). The workspace ships **manual PKI** scripts and docs; operators also want **automatic issuance and renewal** without full process restarts (step-ca + hot reload). Public ACME (Let's Encrypt) is **out of scope** — trembita mTLS requires a private cluster CA with `serverAuth` + `clientAuth` EKU and SAN/CN of `trembita-node-<NodeId>`.
 
-## Manual provisioning (v1 baseline)
+## Manual provisioning
 
 Ship **both**:
 
@@ -60,7 +60,7 @@ When PEM paths are configured, reload TLS without exiting:
 | **File poll** | on when `PemSecurity` used; every `TREMBITA_CERT_WATCH_SECS` (default 60) |
 | **`SIGHUP`** | on when PEM paths set |
 
-Builder: `Security::from_pem_files` → `PemSecurity`; `.cert_watch(period)` enables polling. Admin HTTP stays read-only — no POST reload endpoint.
+Builder: `Security::from_pem_files` → `PemSecurity`; `.cert_watch(period)` enables polling. Ops HTTP stays read-only — no POST reload endpoint for certs.
 
 ### Rolling order
 

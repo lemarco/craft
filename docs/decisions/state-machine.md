@@ -43,9 +43,7 @@ derive**: `Command` and `Query` are marker traits with blanket impls over any
 + 'static`, `Query: Send + 'static`). Users therefore just derive
 `#[derive(Clone, Serialize, Deserialize)]` on their command/query types; a type
 that borrows a lifetime or is not `Clone` fails to satisfy `Command` and will
-not compile. This keeps the public macro surface smaller (a plus for a
-published library, library-and-publishing), so the originally planned `StateMachine` derive is
-not needed. Actor message ergonomics use the `actor` attribute macro in `trembita-macros`.
+not compile. This keeps the public macro surface smaller ([library-and-publishing](library-and-publishing.md)). Actor message ergonomics use the `actor` attribute macro in `trembita-macros`.
 
 ## Consequences
 

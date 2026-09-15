@@ -1,6 +1,6 @@
 # Wire protocol
 
-**HTTP/3 over QUIC** for all network traffic ([wire-protocol](decisions/wire-protocol.md)). Bodies are **`postcard`-encoded** Rust types from `raft-proto`. No gRPC, no JSON on the hot path.
+**HTTP/3 over QUIC** for all network traffic ([wire-protocol](decisions/wire-protocol.md)). Bodies are **`postcard`-encoded** Rust types from `trembita-proto`. No gRPC, no JSON on the hot path.
 
 ## Transport
 

@@ -37,7 +37,7 @@ Runtime behaviour:
 
 - Apps with DB-backed schedules avoid bespoke leader-elected tickers
 - trembita does not depend on Postgres — adapters live in application code
-- Imperative `TrembitaApp::upsert_schedule` deferred; the port covers the “notify trembita after DB write” case via polling
+- Imperative `TrembitaApp::upsert_schedule` is not on the facade; DB-backed schedules use [`ScheduleSource`](../../crates/trembita-jobs/src/schedule_source.rs) polling (open work: [backlog.md](../backlog.md))
 - Custom leader-only loops beyond schedules use [`TrembitaClusterBuilder::on_leader`](../../crates/trembita/src/builder/cluster/mod.rs) / [`run_leader_loop`](../../crates/trembita-runtime/src/leader_task.rs) ([leader-task](leader-task.md))
 
 ## Related

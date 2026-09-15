@@ -19,7 +19,7 @@ All network I/O uses one stack: **HTTP/3 over QUIC** with **postcard** bodies. O
 
 **One QUIC listener per node.** Path-based routing distinguishes peer vs client traffic.
 
-### Routes (v1)
+### Core wire routes (`/raft/v1/…`)
 
 ```
 POST /raft/v1/peer/wire     # inter-node; mTLS with peer identity

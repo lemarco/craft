@@ -94,7 +94,7 @@ Raft gives **consistent replicated state** (via user `StateMachine`). **Actors**
 
 **Negative**
 
-- Join/membership via joint consensus in v1 ([cluster-membership](cluster-membership.md))
+- Join/membership uses joint consensus ([cluster-membership](cluster-membership.md))
 - User must operate certs, firewall (**UDP + TCP** on `TREMBITA_LISTEN`, often 443), and seed node availability
 - Actor placement across nodes needs explicit design ([cluster-elasticity](cluster-elasticity.md))
 

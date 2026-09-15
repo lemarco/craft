@@ -63,12 +63,12 @@ When `raft_groups > 1`, a dedicated **Meta-Raft** group isolates coordinator tra
 
 ## Stable shards & dynamic catalog
 
-| Phase | Item | Status |
-|-------|------|--------|
-| **1** | Pure planners (`validate_catalog`, `plan_catalog_expansion`, `StableShardRouter`) | landed |
-| **2** | Dynamic catalog (`add_raft_groups`, `CatalogCommand::AddGroups`) | landed |
-| **3** | Stable shard activation (default router; `switch_to_stable_shards`) | landed |
-| **4** | Cross-shard transactions (saga + optional 2PC) | landed |
+| Area | Item | Status |
+|------|------|--------|
+| Planners | `validate_catalog`, `plan_catalog_expansion`, `StableShardRouter` | shipped |
+| Catalog | Dynamic `add_raft_groups`, `CatalogCommand::AddGroups` | shipped |
+| Routing | Stable shard activation (default router; `switch_to_stable_shards`) | shipped |
+| Transactions | Cross-shard saga + optional 2PC | shipped |
 
 ### Dynamic catalog
 
@@ -96,7 +96,7 @@ Multi-Raft routes each keyed write to one group. For atomicity across shards:
 
 Neither saga nor 2PC provides **global serializable isolation** — explicit non-goal.
 
-Rejected for v1: Percolator/Spanner-style global timestamps.
+Rejected: Percolator/Spanner-style global timestamps.
 
 ## Production reliability
 
