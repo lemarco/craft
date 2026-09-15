@@ -193,7 +193,9 @@ fn check_app_wiring(app: &str, report: &mut DoctorReport) {
     if app.contains(".manifest(") {
         report.ok("app.rs applies manifest::build()");
     } else {
-        report.error("app.rs must call .manifest(manifest::build()) — capabilities live in manifest.rs");
+        report.error(
+            "app.rs must call .manifest(manifest::build()) — capabilities live in manifest.rs",
+        );
     }
     if app.contains(".jobs(") || app.contains(".topics(") || app.contains(".workers(") {
         report.error(
@@ -202,7 +204,10 @@ fn check_app_wiring(app: &str, report: &mut DoctorReport) {
     }
     if app.contains(".gateway(") {
         if app.contains(&format!("// {}", names::SURFACES)) {
-            report.ok(format!("marker `{}` present (app.rs gateway)", names::SURFACES));
+            report.ok(format!(
+                "marker `{}` present (app.rs gateway)",
+                names::SURFACES
+            ));
         } else {
             report.warn(format!(
                 "marker `{}` missing — `trembita add http-surface` / `ops-routes` may not patch app.rs",

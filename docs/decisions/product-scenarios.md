@@ -94,6 +94,8 @@ TrembitaApp::builder()
 
 Declarative [`.jobs()`](../../crates/trembita/src/job_opts.rs) registers queue + consumer (+ optional HTTP enqueue). [`.workers()`](../../crates/trembita/src/worker_opts.rs) registers actor groups with explicit [`WorkerScale`](../../crates/trembita/src/worker_opts.rs) (`Fixed` / `PerNode` / queue `Auto`). Legacy [`.actors()`](../../crates/trembita/src/app/mod.rs) + [`ActorGroupOpts`](../../crates/trembita/src/actor_group.rs) remain supported ([examples/](../../examples/README.md)).
 
+**Scaffolded product apps** ([`trembita new`](framework-conventions.md)) collect the same opts in [`manifest.rs`](../../crates/trembita/src/app/manifest.rs) via [`AppManifest`](../../crates/trembita/src/app/manifest.rs) and [`.manifest()`](../../crates/trembita/src/app/builder.rs) — see [framework-conventions](framework-conventions.md).
+
 ### Scenario composition
 
 ```mermaid

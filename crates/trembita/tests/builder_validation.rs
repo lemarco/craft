@@ -122,14 +122,14 @@ mod workflows {
     }
 
     #[tokio::test]
-    async fn workflows_boot_without_workflow_http_routes() {
+    async fn workflows_boot_with_auto_gateway_routes() {
         let dir = tempfile::tempdir().expect("tempdir");
         let app = local_builder(dir.path())
             .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
             .gateway(GatewayOpts::new("127.0.0.1:0".parse().expect("addr")))
             .boot_for_test(RunOpts::local())
             .await
-            .expect("workflows run without explicit HTTP routes until merged in surfaces");
+            .expect("workflows boot with default gateway surfaces");
         app.shutdown();
     }
 }

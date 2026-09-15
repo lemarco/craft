@@ -12,6 +12,13 @@
 //! - `POST /jobs/{stream}/{id}/requeue` → `200 OK` + `{ "job_id": … }`
 //! - `GET /jobs/{stream}/{id}` → job metadata when the queue supports lookup
 //!
+//! # Topics API
+//!
+//! [`TopicsApi`] exposes:
+//!
+//! - `POST /topics/{name}/publish` → `202 Accepted` + `{ "event_id": … }`
+//! - `GET /topics/{name}` → topic depth / subscription lag snapshot
+//!
 //! # Gateway surfaces
 //!
 //! [`Gateway`] and [`Surface`] declare host-based product HTTP in 0.4.0 — see
@@ -33,6 +40,8 @@ mod ops_routes;
 mod routes;
 mod routing;
 mod static_site;
+mod topic_routes;
+mod topic_types;
 mod types;
 mod upgrade_routes;
 mod upgrade_types;
@@ -71,6 +80,9 @@ pub use static_site::{
 };
 #[cfg(feature = "static-s3")]
 pub use static_site::{ObjectStoreConfig, S3Delivery};
+pub use topic_types::{
+    PublishAccepted, TopicMetricsResponse, TopicSubscriptionMetricsResponse, TopicsApiError,
+};
 pub use trembita_dashboard::{
     ActorView, ClusterView, NodeSummary, NodeView, Observer, QueueStreamView, QueuesView,
     RaftGroupSummary, RaftGroupsView, Readiness, SagaRecordView,
@@ -336,6 +348,74 @@ impl ActorsApi {
 }
 
 pub use workflow_types::{SagaBody, WorkflowAccepted, WorkflowsApiError};
+
+/// Async publish hook used by [`TopicsApi`].
+pub type PublishTopicFn = Arc<
+    dyn Fn(String, Vec<u8>) -> Pin<Box<dyn Future<Output = Result<u64, String>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// Async metrics hook used by [`TopicsApi`].
+pub type TopicMetricsFn = Arc<
+    dyn Fn(String) -> Pin<Box<dyn Future<Output = Result<TopicMetricsResponse, String>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// Shared state for topic routes.
+pub struct TopicsApiState {
+    pub(crate) publish: PublishTopicFn,
+    pub(crate) metrics: TopicMetricsFn,
+}
+
+/// HTTP event topic publish + metrics API.
+#[derive(Clone)]
+pub struct TopicsApi {
+    publish: PublishTopicFn,
+    metrics: TopicMetricsFn,
+}
+
+impl TopicsApi {
+    /// Build from custom publish and metrics closures.
+    #[must_use]
+    pub fn new(publish: PublishTopicFn, metrics: TopicMetricsFn) -> Self {
+        Self { publish, metrics }
+    }
+
+    /// Route table for topic publish and metrics.
+    #[must_use]
+    pub fn route_table(&self) -> RouteTable {
+        self.route_table_with_auth(None)
+    }
+
+    /// Route table with optional gateway auth hook.
+    #[must_use]
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
+        let table = topic_routes::route_table(Arc::new(self.clone().into_state()));
+        if auth.is_some() {
+            table.with_auth_mode(routing::AuthMode::Identity)
+        } else {
+            table
+        }
+    }
+
+    /// State handle for route tables.
+    #[must_use]
+    pub fn into_state(self) -> TopicsApiState {
+        TopicsApiState {
+            publish: self.publish,
+            metrics: self.metrics,
+        }
+    }
+
+    /// Alias of [`Self::into_state`]. Auth is applied via [`Self::route_table_with_auth`].
+    #[must_use]
+    pub fn into_state_with_auth(self, _auth: Option<AuthFn>) -> TopicsApiState {
+        self.into_state()
+    }
+}
 
 /// Async run hook used by [`WorkflowsApi`].
 pub type RunWorkflowFn = Arc<

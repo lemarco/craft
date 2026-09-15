@@ -52,3 +52,12 @@ pub(crate) struct TrembitaAppGatewayApiFlags {
     pub(crate) jobs: bool,
     pub(crate) actors: bool,
 }
+
+/// Opt-out flags for registration-driven product HTTP on the default gateway.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GatewayProductApiExclusions {
+    pub(crate) jobs: bool,
+    pub(crate) actors: bool,
+    pub(crate) workflows: bool,
+    pub(crate) topics: bool,
+}

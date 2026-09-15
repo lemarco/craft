@@ -116,7 +116,7 @@ enum DevCommand {
 
 #[derive(Subcommand)]
 enum AddTarget {
-    /// Register a job consumer (`consumers/` + `.jobs()`).
+    /// Register a job consumer (`consumers/` + `manifest.rs`).
     Consumer {
         /// Job stream name.
         stream: String,
@@ -127,12 +127,12 @@ enum AddTarget {
         #[arg(long, default_value_t = 300)]
         lease: u64,
     },
-    /// Register an event topic (`.topics()`).
+    /// Register an event topic (`manifest.rs`).
     Topic {
         /// Topic name.
         name: String,
     },
-    /// Register a stateful worker group (`actors/` + `.workers()`).
+    /// Register a stateful worker group (`actors/` + `manifest.rs`).
     Actor {
         /// Actor group / routing name.
         group: String,
@@ -238,10 +238,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 AddTarget::Topic { name } => {
                     add_topic(&project, &AddTopicOpts { topic: name })?;
-                    eprintln!(
-                        "Registered topic in {}",
-                        project.manifest_rs().display()
-                    );
+                    eprintln!("Registered topic in {}", project.manifest_rs().display());
                 }
                 AddTarget::Actor { group, type_name } => {
                     add_actor(&project, &AddActorOpts { group, type_name })?;

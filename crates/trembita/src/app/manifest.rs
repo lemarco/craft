@@ -48,7 +48,7 @@ impl AppManifest {
         self
     }
 
-    /// Durable event topics.
+    /// Durable event topics (`POST /topics/{name}/publish` on the default gateway).
     #[must_use]
     pub fn topics(mut self, topics: impl IntoIterator<Item = TopicOpts>) -> Self {
         self.topics.extend(topics);

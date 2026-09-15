@@ -27,6 +27,17 @@ Single published port per node. Wire and HTTP share the port **number** (differe
 
 **Ops (zero config):** `/health`, `/ready`, `/metrics`, `/dashboard`, `/introspect/*` on the same listener — no manual `http::ops` merge. Opt out with [`.without_ops()`](../crates/trembita/src/app/builder.rs) only when ops live on another host.
 
+**Product APIs (registration-driven):** on the same listener when using [`from_env()`](../crates/trembita/src/app/runtime.rs) / default gateway surfaces:
+
+| Registration | Routes (identity-protected by default) | Opt-out |
+|--------------|----------------------------------------|---------|
+| [`.jobs([…]).http_enqueue(true)`](../crates/trembita/src/job_opts.rs) | `POST/GET /jobs/*` | [`.without_jobs_api()`](../crates/trembita/src/app/builder.rs) |
+| [`.topics([…])`](../crates/trembita/src/app/builder.rs) | `POST /topics/{name}/publish`, `GET /topics/{name}` | [`.without_topics_api()`](../crates/trembita/src/app/builder.rs) |
+| [`.workflows([…])`](../crates/trembita/src/app/builder.rs) | `POST /workflows/run`, `POST /workflows/resume` | [`.without_workflows_api()`](../crates/trembita/src/app/builder.rs) |
+| Workers with HTTP cast/ask | `/actors/*` | [`.without_actors_api()`](../crates/trembita/src/app/builder.rs) |
+
+Declare capabilities in [`AppManifest`](../crates/trembita/src/app/manifest.rs) (`src/manifest.rs` in scaffolded apps). Custom routes still merge via [`.gateway_routes()`](../crates/trembita/src/app/builder.rs); explicit [`.gateway().surfaces()`](../../crates/trembita/src/gateway/opts.rs) is merged with these defaults automatically.
+
 ### `TREMBITA_DATA_DIR`
 
 Enables durable job queue, actor store, and node id persistence. Required when `TREMBITA_JOB_QUEUE` is set.
@@ -80,6 +91,6 @@ Also accepted as `TREMBITA_GATEWAY_TOKEN` (legacy name). Unset = open product HT
 | [`trembita-node`](../crates/trembita-tools/src/bin/node.rs) | May still use `TREMBITA_PEERS` + explicit node id for KV demos |
 | [`dev-client`](../crates/trembita-tools/src/bin/dev-client.rs) | Client tooling; requires `TREMBITA_PEERS` |
 
-Run `trembita doctor` on scaffold projects — it warns on legacy keys in `deploy/.env.example`. Before deploy, use **`trembita doctor --preflight`**: stricter checks for `TREMBITA_LISTEN` / `DATA_DIR` / `CERT_DIR`, compose join pattern (no `TREMBITA_NODE_ID`), default ops gateway wiring, and local `deploy/certs/ca.pem` when present.
+Run `trembita doctor` on scaffold projects — it checks `manifest.rs` ↔ `consumers/` wiring, gateway merges in `app.rs`, and legacy keys in `deploy/.env.example`. Before deploy, use **`trembita doctor --preflight`**: stricter checks for `TREMBITA_LISTEN` / `DATA_DIR` / `CERT_DIR`, compose join pattern (no `TREMBITA_NODE_ID`), default ops gateway wiring, and local `deploy/certs/ca.pem` when present.
 
 See also: [getting-started.md](getting-started.md), [certs.md](certs.md), [migration/unified-listener-0.5.md](migration/unified-listener-0.5.md).

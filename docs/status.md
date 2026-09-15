@@ -21,7 +21,7 @@
 | Stateful workers | [scenarios/stateful-workers.md](scenarios/stateful-workers.md) | ✅ `RedbActorStateStore`, migration |
 | Real-time / session | [scenarios/realtime-sessions.md](scenarios/realtime-sessions.md) | ✅ `ActorSession`, gateway WS |
 | Workflows | [scenarios/workflows.md](scenarios/workflows.md) | ✅ Meta-Raft saga journal |
-| Product API | [getting-started.md](getting-started.md) | ✅ `TrembitaApp` + gateway |
+| Product API | [getting-started.md](getting-started.md) | ✅ `TrembitaApp` + gateway; scaffold [`AppManifest`](../crates/trembita/src/app/manifest.rs) / `manifest.rs` |
 
 **Platform core:** pure Raft FSM, HTTP/3/mTLS, redb persistence, cross-node actors, multi-Raft sharding, cross-shard saga/2PC, self-update coordinator, E2E/chaos.
 
@@ -64,7 +64,7 @@ Details below ↓
 - **Durable mailbox spool** — redb outbox/inbox for cross-node `/actor/deliver` (`.durable_mailbox(true)` + `data_dir`)
 - **Durable actor workflow store** — `RedbActorStateStore` + voter replication; auto with `.data_dir()` ([actor-state-store](decisions/actor-state-store.md))
 - **Actor store TTL + GC** — per-key TTL on `set`/`set_with_ttl`; periodic leader GC ticker replicates expired-key deletes to voters
-- **Product API** — [`TrembitaApp`](../crates/trembita/src/app/mod.rs), [getting-started.md](getting-started.md)
+- **Product API** — [`TrembitaApp`](../crates/trembita/src/app/mod.rs), [`AppManifest`](../crates/trembita/src/app/manifest.rs) (scaffold registry), [getting-started.md](getting-started.md)
 - Redis-backed `ActorStateStore` (`trembita` feature `redis-store`); actor migration RPC
 
 **Job queue** ([job-queue](decisions/job-queue.md)): `RedbJobQueue`, batch enqueue/ack, prefetch, DLQ, cron, `ClusterJobQueue`, `#[trembita::consumer]`, autoscale; **`ExternalBacklog`** ([external-backlog](decisions/external-backlog.md), facade feature `external-backlog`); **`ScheduleSource`** ([schedule-source](decisions/schedule-source.md)).

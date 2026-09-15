@@ -8,15 +8,16 @@ Distributed Raft + actor framework in Rust. Read before making changes.
 
 1. [docs/status.md](docs/status.md) — current capabilities and limits
 2. [docs/env.md](docs/env.md) — product `TREMBITA_*` surface (listen, data_dir, cert_dir, join)
-3. [docs/scenarios/README.md](docs/scenarios/README.md) — product scenarios (jobs, topics, workers, sessions, workflows)
-4. [examples/README.md](examples/README.md) — product showcases (local + QUIC cluster)
-5. [docs/backlog.md](docs/backlog.md) — implementation backlog
-6. [docs/architecture.md](docs/architecture.md) — crate graph
-7. [docs/decisions/architecture-style.md](docs/decisions/architecture-style.md) — pure core, trait ports
-8. [docs/decisions/product-scenarios.md](docs/decisions/product-scenarios.md) — actor-first platform, no mandatory Redis
-9. [docs/decisions/testing-strategy.md](docs/decisions/testing-strategy.md) — test pyramid
-10. [docs/testing-coverage.md](docs/testing-coverage.md) — test inventory
-11. [docs/process.md](docs/process.md) — gates, CI, release flow
+3. [docs/decisions/framework-conventions.md](docs/decisions/framework-conventions.md) — scaffold layout (`manifest.rs` registry + `app.rs` gateway)
+4. [docs/scenarios/README.md](docs/scenarios/README.md) — product scenarios (jobs, topics, workers, sessions, workflows)
+5. [examples/README.md](examples/README.md) — product showcases (local + QUIC cluster)
+6. [docs/backlog.md](docs/backlog.md) — implementation backlog
+7. [docs/architecture.md](docs/architecture.md) — crate graph
+8. [docs/decisions/architecture-style.md](docs/decisions/architecture-style.md) — pure core, trait ports
+9. [docs/decisions/product-scenarios.md](docs/decisions/product-scenarios.md) — actor-first platform, no mandatory Redis
+10. [docs/decisions/testing-strategy.md](docs/decisions/testing-strategy.md) — test pyramid
+11. [docs/testing-coverage.md](docs/testing-coverage.md) — test inventory
+12. [docs/process.md](docs/process.md) — gates, CI, release flow
 
 ## Cursor config
 

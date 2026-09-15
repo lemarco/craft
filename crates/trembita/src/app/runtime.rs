@@ -511,6 +511,34 @@ impl TrembitaApp {
         self.resume_workflow(client.as_ref(), &plan).await
     }
 
+    /// HTTP event topic API (`POST /topics/{name}/publish`, `GET /topics/{name}`).
+    #[cfg(feature = "http-jobs")]
+    pub fn topics_api(app: Arc<Self>) -> trembita_http::TopicsApi {
+        let publish_app = Arc::clone(&app);
+        let metrics_app = app;
+        trembita_http::TopicsApi::new(
+            Arc::new(move |topic, payload| {
+                let app = Arc::clone(&publish_app);
+                Box::pin(async move {
+                    app.publish(&topic, &payload)
+                        .await
+                        .map(|id| id.0)
+                        .map_err(|e| e.to_string())
+                })
+            }),
+            Arc::new(move |topic| {
+                let app = Arc::clone(&metrics_app);
+                Box::pin(async move {
+                    let t = app
+                        .event_topic(&topic)
+                        .ok_or_else(|| format!("unknown topic {topic:?}"))?;
+                    let m = t.metrics().await.map_err(|e| e.to_string())?;
+                    Ok(topic_metrics_response(m))
+                })
+            }),
+        )
+    }
+
     /// HTTP workflow trigger API. Requires `http-jobs` feature and `.workflows(plan, runner)`.
     #[cfg(feature = "http-jobs")]
     pub fn workflows_api(app: Arc<Self>) -> trembita_http::WorkflowsApi {
@@ -696,6 +724,29 @@ impl TrembitaApp {
         self.cluster
             .resume_keyed_saga(client, plan, journal.as_ref())
             .await
+    }
+}
+
+#[cfg(feature = "http-jobs")]
+fn topic_metrics_response(
+    metrics: trembita_events::TopicMetrics,
+) -> trembita_http::TopicMetricsResponse {
+    trembita_http::TopicMetricsResponse {
+        event_count: metrics.event_count,
+        head: metrics.head,
+        compact_head: metrics.compact_head,
+        oldest_event_age_secs: metrics.oldest_event_age.as_secs(),
+        subscriptions: metrics
+            .subscriptions
+            .into_iter()
+            .map(|s| trembita_http::TopicSubscriptionMetricsResponse {
+                name: s.subscription,
+                lag: s.lag,
+                pending: s.pending,
+                leased: s.leased,
+                retention_discards: s.retention_discards,
+            })
+            .collect(),
     }
 }
 

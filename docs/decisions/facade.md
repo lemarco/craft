@@ -92,7 +92,10 @@ Types from optional integrations are **`#[cfg(feature = "...")]`** — enable th
 
 ### Scaffolded apps (`trembita new`)
 
-The CLI generates **app-level** features that forward to the facade ([framework-conventions](framework-conventions.md)):
+The CLI generates **app-level** features that forward to the facade ([framework-conventions](framework-conventions.md)).
+Product capabilities (jobs, topics, workers) are registered in **`src/manifest.rs`** via [`AppManifest`](../../crates/trembita/src/app/manifest.rs); `app.rs` calls [`.manifest(manifest::build())`](../../crates/trembita/src/app/builder.rs) and wires HTTP. [`trembita add consumer|topic|actor`](../../crates/trembita-cli/) patches marker regions in `manifest.rs`.
+
+App-level **Cargo** features:
 
 ```toml
 [dependencies]

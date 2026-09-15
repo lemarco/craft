@@ -43,6 +43,15 @@ use trembita::{PgBacklog, JobOpts, BacklogFeedOpts};
 
 Every process is a **QUIC cluster member**: solo `cargo run` is a one-node seed (`TREMBITA_ALLOW_JOIN=1` by default); add nodes with `TREMBITA_JOIN_SEEDS`. Same binary, same `.run()`.
 
+**Two wiring styles:**
+
+| Style | When | Where capabilities go |
+|-------|------|------------------------|
+| **Scaffold** (`trembita new`) | Product services with CLI generators | [`manifest.rs`](decisions/framework-conventions.md) + thin [`app.rs`](decisions/framework-conventions.md) — see [§9](#9-scaffold-a-new-project) |
+| **Builder in `main`** | Examples, prototypes, custom layouts | [`.jobs()` / `.topics()` / `.workers()`](../crates/trembita/src/app/builder.rs) on [`TrembitaAppBuilder`](../crates/trembita/src/app/mod.rs), or [`.manifest()`](../crates/trembita/src/app/manifest.rs) with [`AppManifest`](../crates/trembita/src/app/manifest.rs) |
+
+Single-file minimal (same runtime as scaffold; no `manifest.rs`):
+
 ```rust
 use std::time::Duration;
 use trembita::{JobOpts, RunOpts, TrembitaApp};
@@ -58,7 +67,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Wire + HTTP bind to **`TREMBITA_LISTEN`**; ops + `/jobs/*` mount automatically ([`TrembitaApp::from_env`](../crates/trembita/src/app/runtime.rs)). Add app routes in `src/http/product.rs` via [`.gateway_routes()`](../crates/trembita/src/app/builder.rs). Host split: [`Gateway::surface_hosts`](../crates/trembita-http/src/gateway/mod.rs) + [`GatewayOpts::from_env()`](../crates/trembita/src/gateway/opts.rs).
+Equivalent using the registry type (what scaffold generates under the hood):
+
+```rust
+use std::time::Duration;
+use trembita::{AppManifest, JobOpts, RunOpts, TrembitaApp};
+
+let manifest = AppManifest::new()
+    .jobs([JobOpts::new("jobs", Duration::from_secs(60)).http_enqueue(true)]);
+
+TrembitaApp::from_env()?
+    .manifest(manifest)
+    .run(RunOpts::from_env())
+    .await?;
+```
+
+Wire + HTTP bind to **`TREMBITA_LISTEN`**; ops + `/jobs/*` mount automatically ([`TrembitaApp::from_env`](../crates/trembita/src/app/runtime.rs)). **Scaffolded** apps add product routes in `src/http/product.rs` via [`.gateway_routes()`](../crates/trembita/src/app/builder.rs) in `app.rs`. Host split: [`Gateway::surface_hosts`](../crates/trembita-http/src/gateway/mod.rs) + [`GatewayOpts::from_env()`](../crates/trembita/src/gateway/opts.rs).
 
 With `dev-certs` and no PEM env vars, a solo seed uses ephemeral mTLS automatically.
 
@@ -262,8 +286,26 @@ cargo run -p trembita-cli -- new my-app \
   --features jobs,gateway,telemetry,topics,external-backlog
 ```
 
-Generates the [framework layout](decisions/framework-conventions.md): `main.rs` (boot), `app.rs` (wiring),
-`config.rs`, `consumers/`, `domain/`, plus `deploy/` for local cluster. See [`trembita new --help`](../crates/trembita-cli/src/main.rs).
+Generates the [framework layout](decisions/framework-conventions.md):
+
+| Path | Role |
+|------|------|
+| `main.rs` | Boot only — `App::new(AppConfig::from_env()).run().await` |
+| `manifest.rs` | [`AppManifest::build()`](../../crates/trembita/src/app/manifest.rs) — jobs, topics, workers (`// trembita:*` markers for CLI) |
+| `app.rs` | [`.manifest(manifest::build())`](../crates/trembita/src/app/builder.rs), gateway [`.gateway_routes()`](../crates/trembita/src/app/builder.rs), `.run()` |
+| `consumers/`, `actors/`, `http/`, `domain/` | Handlers, surfaces, hexagon |
+| `deploy/` | Local cluster env + compose |
+
+Register more capabilities without editing builder chains by hand:
+
+```bash
+trembita add consumer emails --lease 300   # patches manifest.rs + creates consumers/emails.rs
+trembita add topic platform.events
+trembita add actor catalog
+trembita doctor                            # manifest ↔ files consistency
+```
+
+HTTP surfaces and ops/jobs route merges still patch **`app.rs`** / `src/http/` ([`trembita add http-surface`](../crates/trembita-cli/README.md)). See [`trembita new --help`](../crates/trembita-cli/src/main.rs).
 
 ## 10. Observability & ops
 

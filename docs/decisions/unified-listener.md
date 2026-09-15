@@ -16,7 +16,8 @@ Trembita ran **three HTTP-related listeners** per node:
 
 Built-in routes (`/jobs/*`, `/introspect/*`, …) were mounted via `.with_*_api(true)` flags
 and merged invisibly in `collect_builtin_routes()`. Apps could not see the full route table in
-`src/http/` or `app.rs`.
+`src/http/` or `app.rs`. (Product **capabilities** — job streams, topics, workers — now live in
+scaffold `src/manifest.rs`; HTTP wiring stays in `app.rs` / `src/http/`.)
 
 [framework-conventions](framework-conventions.md) prescribes HTTP ingress via explicit
 [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) in `src/http/`, but the framework
@@ -57,7 +58,7 @@ src/http/
 └── product.rs       # custom business routes (via trembita add http-surface)
 ```
 
-`app.rs` wires routes in `.surfaces()` — no hidden merge:
+`app.rs` wires HTTP in [`.gateway_routes()` / `.surfaces()`](../crates/trembita/src/app/builder.rs) — no hidden merge (capabilities are in `manifest.rs` on scaffold projects):
 
 ```rust
 .surfaces(|state| {

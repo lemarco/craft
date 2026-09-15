@@ -6,7 +6,7 @@ closing a gap.
 
 **Strategy:** [testing-strategy](decisions/testing-strategy.md)  
 **Feature status:** [status.md](status.md)  
-**Last audit:** 2026-08-31
+**Last audit:** 2026-09-15
 
 Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** scheduled / `#[ignore]` only
 
@@ -48,6 +48,7 @@ Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** sch
 | `trembita-ops` | 0 | 2 | **2** | Snapshot export/import, object-store push/pull |
 | `trembita-macros` | — | via trybuild in `trembita-actor` | — | Compile-pass/fail |
 | `trembita-node` | **10** | 0 | **0** | *(E2E smoke only)* |
+| `trembita-cli` | **16** | **13** | **29** | Scaffold, `manifest.rs` registry patches, doctor, `trembita dev` registry |
 
 Count tests locally:
 
@@ -172,6 +173,28 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Keyed propose/query (multi-Raft) | — | ✅ `client_keyed` | — | — | ✅ |
 | Cross-shard keyed batch (`propose_keyed_batch`, partial failure) | ✅ `batch` | ✅ `multi_raft` | — | — | ✅ |
 
+### Framework CLI (`trembita-cli`)
+
+Published binary **`trembita`** ([`crates/trembita-cli`](../crates/trembita-cli/)). Fast CI: `./scripts/test-fast.sh -p trembita-cli`.
+
+| Command | Behavior under test | Tests |
+|---------|---------------------|-------|
+| **`new`** | Layout incl. `manifest.rs`, features → `Cargo.toml`, README | `tests/scaffold.rs`, `scaffold/features.rs` |
+| **`add consumer`** | `consumers/*.rs` + `manifest.rs` `trembita:jobs` | `scaffold/add.rs`, `tests/add_doctor.rs` |
+| **`add topic`** | `manifest.rs` `trembita:topics` | `scaffold/add.rs`, `tests/add_doctor.rs` |
+| **`add actor`** | `actors/*.rs` + `manifest.rs` `trembita:workers` | `scaffold/add.rs`, `tests/add_doctor.rs` |
+| **`add http-surface`** | `src/http/` + gateway surface in `app.rs` | `scaffold/add.rs`, `tests/add_doctor.rs` |
+| **`add static-site`** | static module + gateway surface | `scaffold/add.rs`, `tests/add_doctor.rs` |
+| **`add ops-routes` / `jobs-routes`** | `http/ops.rs` or `jobs.rs` + route merge | `scaffold/add.rs` |
+| **`doctor`** | manifest ↔ consumers/actors; `.manifest()` in `app.rs`; no inline `.jobs()` in `app.rs` | `scaffold/doctor.rs`, `tests/add_doctor.rs` |
+| **`doctor --fix`** | missing `mod` in `consumers/`, `main.rs` modules | `scaffold/doctor.rs` |
+| **`doctor --preflight`** | deploy env / gateway ops hints | `scaffold/doctor.rs` (unit scenarios) |
+| **`dev list/setup/up/stop/status/trigger`** | showcase registry, workspace root, `trigger.sh` path | `tests/dev.rs`; full `dev up` 🔒 manual / `TREMBITA_DEV_INTEGRATION` |
+| **Project discover** | walk parents; requires `app.rs` + `manifest.rs` | `tests/add_doctor.rs`, `scaffold/project.rs` |
+| **Marker patcher** | `AppRsPatch` / `CapabilityRegistry` insert + dedupe | `scaffold/markers.rs`, `scaffold/registry.rs` |
+
+Facade registry type: [`AppManifest`](../crates/trembita/src/app/manifest.rs) unit test in `trembita` crate (`manifest_chains_into_builder`).
+
 ### Facade & reference binary
 
 | Area | Unit | Integration | Sim | E2E | Status |
@@ -225,11 +248,15 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | Priority | Gap | Suggested test location | Effort |
 |----------|-----|-------------------------|--------|
 | Medium | Actor store redb contract at crate level | `trembita-actor-store/tests/redb_contract.rs` | S |
+| Low | `trembita add workflow` (patch `manifest.rs` workflows) | `scaffold/add.rs`, `tests/add_doctor.rs` | S |
+| Low | `doctor --preflight` on full synthetic `deploy/` tree | `tests/add_doctor.rs` or `scaffold/doctor.rs` | S |
+| Low | `trembita dev up` multi-node smoke in CI | `tests/dev.rs` + job label `run-heavy` | M |
 
 ### Closed gaps
 
 | Closed | What | Where |
 |--------|------|-------|
+| 2026-09 | Product **`AppManifest`** + scaffold **`manifest.rs`**; CLI patches registry not `app.rs` | `trembita/src/app/manifest.rs`, `trembita-cli/src/scaffold/{registry,render}.rs`, `tests/{scaffold,add_doctor}.rs` |
 | 2026-09 | Topic replicate auth rejects non-leader caller | `trembita/tests/topic.rs` |
 | 2026-09 | Gateway rate limit HTTP integration (`429`) | `trembita/tests/gateway_jobs_http.rs` |
 | 2026-09 | Typed product wire errors (`ProductWireError` on queue/topic/store replies) | `trembita-proto/src/product.rs`, service handlers |

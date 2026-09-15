@@ -30,9 +30,22 @@ TrembitaAppBuilder::new()
 
 ## Publish
 
+In-process:
+
 ```rust
 app.publish("platform.events", postcard::to_allocvec(&event)?).await?;
 ```
+
+HTTP (default gateway when [`.topics([…])`](../../crates/trembita/src/app/builder.rs) is registered on `TREMBITA_LISTEN` — same body shapes as job enqueue: raw bytes or JSON `{ "payload": "…" }` / `{ "payload_b64": "…" }`):
+
+```bash
+curl -X POST "http://127.0.0.1:443/topics/platform.events/publish" \
+  -H 'Content-Type: application/json' \
+  -d '{"payload":"..."}'
+# → 202 {"event_id":…}
+```
+
+Metrics snapshot: `GET /topics/{name}`. Opt out of topic HTTP with [`.without_topics_api()`](../../crates/trembita/src/app/builder.rs).
 
 ### Transactional outbox
 

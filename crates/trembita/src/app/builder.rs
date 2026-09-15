@@ -23,7 +23,10 @@ use trembita_runtime::{LeaderGate, LeaderLoopOpts, UserActor};
 
 use super::manifest::AppManifest;
 use super::runtime::TrembitaApp;
-use super::types::{EmptyStateMachine, TrembitaAppGatewayApiFlags, TrembitaAppRegistrationFlags};
+use super::types::{
+    EmptyStateMachine, GatewayProductApiExclusions, TrembitaAppGatewayApiFlags,
+    TrembitaAppRegistrationFlags,
+};
 
 /// Fluent builder for [`TrembitaApp`].
 pub struct TrembitaAppBuilder {
@@ -50,6 +53,9 @@ pub struct TrembitaAppBuilder {
     /// Operational routes on the unified listener ([`super::gateway::DefaultGatewayApis::ops`]).
     #[cfg(feature = "http-jobs")]
     gateway_include_ops: bool,
+    /// Disable registration-driven product APIs on the default gateway.
+    #[cfg(feature = "http-jobs")]
+    gateway_exclude_apis: GatewayProductApiExclusions,
 }
 
 impl TrembitaAppBuilder {
@@ -73,6 +79,8 @@ impl TrembitaAppBuilder {
             gateway_extra_routes: None,
             #[cfg(feature = "http-jobs")]
             gateway_include_ops: true,
+            #[cfg(feature = "http-jobs")]
+            gateway_exclude_apis: GatewayProductApiExclusions::default(),
         }
     }
 
@@ -86,13 +94,46 @@ impl TrembitaAppBuilder {
         self
     }
 
+    /// Disable `POST /jobs/*` on the default gateway (queue registration unchanged).
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn without_jobs_api(mut self) -> Self {
+        self.gateway_exclude_apis.jobs = true;
+        self
+    }
+
+    /// Disable actor cast/ask HTTP on the default gateway.
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn without_actors_api(mut self) -> Self {
+        self.gateway_exclude_apis.actors = true;
+        self
+    }
+
+    /// Disable `POST /workflows/*` on the default gateway (in-process saga API unchanged).
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn without_workflows_api(mut self) -> Self {
+        self.gateway_exclude_apis.workflows = true;
+        self
+    }
+
+    /// Disable `POST /topics/*` and topic metrics on the default gateway.
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn without_topics_api(mut self) -> Self {
+        self.gateway_exclude_apis.topics = true;
+        self
+    }
+
     #[cfg(feature = "http-jobs")]
     fn default_gateway_apis(&self) -> super::gateway::DefaultGatewayApis {
         super::gateway::DefaultGatewayApis {
             ops: self.gateway_include_ops,
-            jobs: self.gateway_api.jobs,
-            actors: self.gateway_api.actors,
-            workflows: !self.workflows.is_empty(),
+            jobs: self.gateway_api.jobs && !self.gateway_exclude_apis.jobs,
+            actors: self.gateway_api.actors && !self.gateway_exclude_apis.actors,
+            workflows: !self.workflows.is_empty() && !self.gateway_exclude_apis.workflows,
+            topics: !self.topic_streams.is_empty() && !self.gateway_exclude_apis.topics,
         }
     }
 
@@ -160,7 +201,13 @@ impl TrembitaAppBuilder {
             let Some(gateway) = self.gateway.as_mut() else {
                 return self;
             };
-            if gateway.surfaces.is_none() {
+            if let Some(user_surfaces) = gateway.surfaces.take() {
+                gateway.surfaces = Some(super::gateway_defaults::composite_product_surfaces(
+                    apis,
+                    extra,
+                    user_surfaces,
+                ));
+            } else {
                 gateway.surfaces = Some(default_product_surfaces(apis, extra));
             }
             if gateway.identity.is_none() {

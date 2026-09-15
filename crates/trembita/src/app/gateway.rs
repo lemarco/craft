@@ -19,6 +19,8 @@ pub struct DefaultGatewayApis {
     pub actors: bool,
     /// Workflow trigger HTTP API.
     pub workflows: bool,
+    /// Event topic publish + metrics HTTP API.
+    pub topics: bool,
 }
 
 impl Default for DefaultGatewayApis {
@@ -28,12 +30,13 @@ impl Default for DefaultGatewayApis {
             jobs: false,
             actors: false,
             workflows: false,
+            topics: false,
         }
     }
 }
 
 impl DefaultGatewayApis {
-    /// Ops routes only (no jobs/actors/workflows product APIs).
+    /// Ops routes only (no jobs/actors/workflows/topics product APIs).
     #[must_use]
     pub const fn ops_only() -> Self {
         Self {
@@ -41,6 +44,7 @@ impl DefaultGatewayApis {
             jobs: false,
             actors: false,
             workflows: false,
+            topics: false,
         }
     }
 }
@@ -75,6 +79,13 @@ impl TrembitaApp {
         if apis.workflows {
             table = table.merge(
                 Self::workflows_api(Arc::clone(&state.app))
+                    .route_table()
+                    .with_auth_mode(AuthMode::Identity),
+            );
+        }
+        if apis.topics {
+            table = table.merge(
+                Self::topics_api(Arc::clone(&state.app))
                     .route_table()
                     .with_auth_mode(AuthMode::Identity),
             );

@@ -86,6 +86,10 @@ See [job-queue](docs/decisions/job-queue.md) and [protocol.md](docs/protocol.md#
 
 ## Quick API sketch (product)
 
+**Scaffolded apps** (`trembita new`): register jobs/topics/workers in `src/manifest.rs` ([`AppManifest`](crates/trembita/src/app/manifest.rs)); `app.rs` calls `.manifest(manifest::build())` — [framework conventions](docs/decisions/framework-conventions.md).
+
+**Library / examples** — builder API directly:
+
 ```rust
 use std::time::Duration;
 use trembita::{Gateway, GatewayOpts, JobOpts, RunOpts, TrembitaApp, TrembitaConfigure, consumer};

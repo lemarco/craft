@@ -67,6 +67,6 @@ Docker Compose: `cd dev/compose/workflows && docker compose up --build`
 | `TREMBITA_DATA_DIR` | `/tmp/trembita-showcase-workflows` | Raft + Meta-Raft redb + `node-id` |
 | `GATEWAY_TOKEN` | unset | When set, `/workflows/*` requires `Authorization: Bearer` + `X-Trembita-User` ([`AuthMode::Identity`](../../crates/trembita-http/src/routing/auth.rs)) |
 
-Workflow and ops route tables are merged explicitly in `src/main.rs` (no `with_workflows_api` env flags).
+`POST /workflows/*` and ops routes mount on `TREMBITA_LISTEN` from `.workflows([…])` + default gateway (no manual `RouteTable` merge). Opt out with `.without_workflows_api()`.
 
 Guide: [docs/scenarios/workflows.md](../../docs/scenarios/workflows.md)

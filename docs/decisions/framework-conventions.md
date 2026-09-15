@@ -1,7 +1,7 @@
 # Framework conventions — product app layout and CLI
 
 **Status:** Accepted  
-**Date:** 2026-09-05
+**Date:** 2026-09-05 (layout updated 2026-09-15 — `manifest.rs` capability registry)
 
 ## Context
 
@@ -28,7 +28,8 @@ my-app/
 │   └── docker-compose.yml  # optional local 3-node cluster
 └── src/
     ├── main.rs             # boot only: tracing init + App::run()
-    ├── app.rs              # TrembitaApp::builder() — single wiring surface
+    ├── app.rs              # TrembitaApp run loop — gateway routes + `.manifest(...)`
+    ├── manifest.rs         # capability registry — jobs, topics, workers, workflows
     ├── config.rs           # typed config from env
     ├── consumers/          # #[consumer] handlers (one file per stream)
     ├── actors/             # UserActor groups (when actors feature enabled)
@@ -37,12 +38,43 @@ my-app/
     └── domain/             # business logic — no trembita imports
 ```
 
+### Capability registry (`manifest.rs`)
+
+Scaffolded apps declare **what the cluster runs** in one place via [`AppManifest`](../../crates/trembita/src/app/manifest.rs):
+
+```rust
+// manifest.rs — `trembita add` patches `// trembita:jobs` / `:topics` / `:workers` markers
+pub fn build() -> AppManifest {
+    AppManifest::new()
+        .jobs([/* JobOpts … */])
+        .topics([/* TopicOpts … */])
+        .workers(workers!(/* WorkerOpts … */))
+}
+```
+
+`app.rs` applies it and owns **ingress + lifecycle** only:
+
+```rust
+TrembitaApp::from_env()?
+    .data_dir(&self.config.data_dir)
+    .manifest(manifest::build())
+    .gateway_routes(|state| http::product::route_table(&state))
+    .configure(TrembitaConfigure::default())
+    .run(RunOpts::from_env())
+    .await?;
+```
+
+[`trembita doctor`](../../crates/trembita-cli/) errors if `.jobs()` / `.topics()` / `.workers()` appear in `app.rs` instead of `manifest.rs`.
+
+Examples in this repo and hand-written binaries may call [`.jobs()`](../../crates/trembita/src/app/builder.rs) on the builder directly — same runtime, no separate layout.
+
 ### Rules
 
 | Rule | Rationale |
 |------|-----------|
-| `main.rs` is thin boot only | CLI and `trembita doctor` (future) know where to look |
-| All trembita wiring lives in `app.rs` | One file to patch when adding features |
+| `main.rs` is thin boot only | CLI and `trembita doctor` know where to look |
+| Jobs, topics, workers, workflows live in `manifest.rs` | One registry; `trembita add` patches marker regions there |
+| Gateway / custom HTTP surfaces live in `app.rs` + `src/http/` | Route tables stay visible code ([unified-listener](unified-listener.md)) |
 | `domain/` must not import `trembita::*` | Hexagon boundary ([architecture-style](architecture-style.md)) |
 | Consumers live in `consumers/`, actors in `actors/` | Predictable discovery; generators know target dirs |
 | HTTP ingress via [`Gateway`](../../crates/trembita-http/src/gateway/mod.rs) + [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) | Virtual-host product surfaces (0.4.0) — see [gateway-0.4 migration](../migration/gateway-0.4.md) |
@@ -71,7 +103,13 @@ Generated `Cargo.toml` keeps **one** runtime dependency:
 trembita = { version = "0.3", features = ["dev-certs", "http-jobs", "external-backlog"] }
 ```
 
-Future CLI subcommands (`trembita add`, `trembita doctor`) operate on this layout — **shipped** in [`trembita-cli`](../../crates/trembita-cli/) (`trembita add consumer|topic|actor|http-surface|static-site`, `trembita doctor`).
+CLI subcommands operate on this layout — **shipped** in [`trembita-cli`](../../crates/trembita-cli/):
+
+| Command | Patches |
+|---------|---------|
+| `add consumer` / `add topic` / `add actor` | `manifest.rs` (+ handler stub under `consumers/` or `actors/`) |
+| `add http-surface` / `ops-routes` / `jobs-routes` / `add static-site` | `app.rs` gateway surfaces + `src/http/` |
+| `doctor` / `doctor --fix` | layout, manifest markers, consumer↔registry wiring, gateway merges |
 
 ### CLI
 
