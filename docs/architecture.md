@@ -1,6 +1,6 @@
 # Architecture overview
 
-Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `trembita-core`, I/O at the edges (network, storage, client). Consensus and actors run on **tokio** tasks in `trembita-actor` (one `RaftDriver` per Raft group on a physical node).
+Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `trembita-core`, I/O at the edges (network, storage, client). Consensus and actors run on **tokio** tasks in `trembita-runtime` (one `RaftDriver` per Raft group on a physical node).
 
 > Decision records in [decisions/](decisions/) are authoritative for design detail. Current capability list: [status.md](status.md).
 
@@ -73,7 +73,7 @@ flowchart TB
         RD[RaftDriver + RaftNode FSM]
         SM[StateMachine]
         ST[Storage]
-        H3[HTTP/3 :7443/udp]
+        H3[HTTP/3 :443/udp default]
         AR[ActorRegistry + User actors]
 
         H3 --> NR

@@ -225,7 +225,7 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
     let node_id = node_id_from_env()?;
     let listen: SocketAddr = env("TREMBITA_LISTEN")
         .as_deref()
-        .unwrap_or("0.0.0.0:7443")
+        .unwrap_or("0.0.0.0:443")
         .parse()?;
     let http = trembita::env::product_http_from_wire(listen)?;
 

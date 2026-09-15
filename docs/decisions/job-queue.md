@@ -52,7 +52,7 @@ Typical HTTP mapping:
 
 ### `JobQueue` port
 
-New trait in **`trembita-actor`** (object-safe, boxed futures — same pattern as [`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs)):
+New trait in **`trembita-jobs`** (object-safe, boxed futures — same pattern as [`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs)):
 
 ```rust
 pub struct JobId(u64);
@@ -90,8 +90,8 @@ Semantics:
 
 | Adapter | Crate | Role |
 |---------|-------|------|
-| **`InMemoryJobQueue`** | `trembita-actor` | Tests, sim, single-node dev |
-| **`RedbJobQueue`** | `trembita-actor` | Default production backend (embedded `redb`) |
+| **`InMemoryJobQueue`** | `trembita-jobs` | Tests, sim, single-node dev |
+| **`RedbJobQueue`** | `trembita-jobs` | Default production backend (embedded `redb`) |
 | **`RedisJobQueue`** (optional) | `trembita-store-redis` or sibling | Remote/shared queue when user already runs Redis |
 
 **Default:** `RedbJobQueue` — `{data_dir}/queue-{stream}.redb`, separate from `group-*.redb` Raft files.

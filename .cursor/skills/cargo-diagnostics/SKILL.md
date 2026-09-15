@@ -36,7 +36,7 @@ If lock present and cargo processes exist, wait or clean up **before** starting 
 ./scripts/test-with-log.sh --workspace --all-features
 
 # Compile-only gate
-./scripts/check-with-log.sh -p trembita-actor
+./scripts/check-with-log.sh -p trembita-runtime
 ```
 
 Install parallel test runner once: `./scripts/install-dev-tools.sh`
@@ -50,7 +50,7 @@ unless `TREMBITA_FORCE_CHECK=1`.
 
 ```bash
 # Narrow (preferred while fixing)
-./scripts/test-fast.sh -p trembita-actor --test group_rebalance
+./scripts/test-fast.sh -p trembita-runtime --test group_rebalance
 
 # Full quality gate (only when ready; one invocation)
 ./scripts/test-with-log.sh --workspace --all-features

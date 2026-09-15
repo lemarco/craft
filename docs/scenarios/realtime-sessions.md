@@ -241,7 +241,7 @@ See [read-consistency](../decisions/client-and-routing.md#read-consistency).
 
 | Asset | Purpose |
 |-------|---------|
-| `trembita-actor/tests/messaging.rs` — `cast_session` | ✅ |
+| `trembita-runtime/tests/messaging.rs` — `cast_session` | ✅ |
 | [`examples/realtime/`](../../examples/realtime/) | WebSocket + `ActorSession` showcase |
 | `trembita/tests/http_actors.rs` | HTTP cast/ask on gateway |
 

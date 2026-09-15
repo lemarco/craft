@@ -15,7 +15,7 @@ Epics **B-01 … B-18** are **shipped** (see [Shipped epics](#shipped-epics-arch
 | Id | Item | Status | Notes |
 |----|------|--------|-------|
 | B-19 | Event outbox port | ✅ | [ADR](decisions/event-outbox.md) — `EventOutboxSource` + leader drainer |
-| B-19 | Introspect API gateway router | ✅ | [ADR](decisions/introspect-api.md) — `IntrospectApi` + `.with_introspect_api(true)` |
+| B-19 | Introspect API gateway router | ✅ | [ADR](decisions/introspect-api.md) — `IntrospectApi` on default / merged gateway surfaces |
 | CF-010 | `dedup_key` lifecycle docs | shipped | Rustdoc on [`EnqueueOptions::dedup_key`](../crates/trembita-jobs/src/queue/mod.rs); scenario table already in [background-jobs](scenarios/background-jobs.md) |
 | CF-017 | Stale external backlog `Done` settle | shipped | `Settlement::Done { attempts }`; [`PgBacklog`](../crates/trembita-backlog-postgres/src/lib.rs) guards on `claimed` + attempts |
 | O-01 | `trembita-store-redis` maintenance | ongoing | Keep as optional adapter |
@@ -57,7 +57,7 @@ For new feature epics, use the next **B-NN** id and link the scenario + ADR.
 **Scenario:** all — custom operator / admin UIs (session auth, multi-page apps)  
 **ADR:** [introspect-api](decisions/introspect-api.md)
 
-Introspection JSON (`/introspect/cluster`, `/actors`, `/queues`, `/sagas`, …) ships on the **unified HTTP listener** via [`OpsApi`](../crates/trembita-http/src/ops_routes.rs) (merged in app gateway or `trembita-node` / `spawn_cluster_ops_http`). Product teams mount Jobs/Actors/Workflows alongside ops using explicit [`RouteTable`](../crates/trembita-http/src/routing/table.rs) merges — see [unified-listener](decisions/unified-listener.md).
+Introspection JSON (`/introspect/cluster`, `/actors`, `/queues`, `/sagas`, …) ships on the **unified HTTP listener** via [`OpsApi`](../crates/trembita-http/src/ops_routes.rs) ([`TrembitaApp::from_env`](../crates/trembita/src/app/runtime.rs) default surfaces, explicit gateway merges, or `trembita-node` / `spawn_cluster_ops_http`). Product `/jobs/*`, `/actors/*`, `/workflows/*` mount from app registration on the same bind unless opted out — see [env.md](env.md) and [unified-listener](decisions/unified-listener.md).
 
 
 | Subtask | Wave | Description | Status |
@@ -212,7 +212,7 @@ flowchart TB
 | B-01a … B-01f | ✅      |
 
 
-**Acceptance:** `trembita/tests/store.rs`, `trembita-actor/src/redb_store.rs` tests.
+**Acceptance:** `trembita/tests/store.rs`, `trembita-actor-store/src/redb_store.rs` tests.
 
 ---
 

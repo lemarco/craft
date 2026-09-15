@@ -42,7 +42,7 @@ Wait ~5–10 s after starting nodes for leader election.
 | Lease + ack | QUIC → node **2** | Follower worker consumes jobs |
 | Admin snapshot | HTTP → node **1** | Prints `/introspect/cluster` and `/introspect/queues` |
 
-All writes go over **QUIC/mTLS** (ports 7443/7453/7463). Admin HTTP is read-only.
+All writes go over **QUIC/mTLS** (ports 7443/7453/7463). Ops HTTP (9080–9082) is read-only introspect for this demo.
 
 ## Dashboard
 

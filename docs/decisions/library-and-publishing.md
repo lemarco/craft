@@ -24,7 +24,7 @@
 | `trembita-events-postgres` | Yes (optional) | Postgres outbox — `trembita/domain-outbox` |
 | `trembita-dashboard` | Yes (optional) | Monitoring UI (always linked by facade today) |
 | `trembita-sim` | Yes (dev) | Testing / simulation |
-| `trembita-node` | **No** (`publish = false`) | Reference/demo runner — build from repo or e2e Docker |
+| `trembita-tools` (`trembita-node` binary) | **No** (`publish = false`) | Reference/demo runner — build from repo or e2e Docker |
 
 `trembita` facade re-exports the stable public API so users typically add **one dependency** and enable integrations with features ([facade.md](facade.md)).
 
@@ -55,7 +55,7 @@
 ### Release process
 
 - `cargo release` (or workspace script) publishes crates in dependency order:
-  `trembita-proto → trembita-core / trembita-storage / trembita-macros → trembita-net → trembita-actor → trembita-client → trembita-store-redis / trembita-dashboard / trembita-sim → trembita`.
+  `trembita-proto → trembita-core / trembita-storage / trembita-macros → trembita-net → trembita-runtime (+ trembita-jobs / trembita-events / trembita-actor-store) → trembita-client → optional adapters → trembita`.
 - Tag `vX.Y.Z`; GitLab release with CHANGELOG excerpt.
 - `docs.rs` builds automatically on publish.
 

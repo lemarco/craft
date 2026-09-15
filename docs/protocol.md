@@ -7,7 +7,7 @@
 | Property | Value |
 |----------|-------|
 | Protocol | HTTP/3 (QUIC, UDP) |
-| Default port | `7443` (configurable) |
+| Default port | `443` ([`TREMBITA_LISTEN`](env.md); e2e / `trembita-node` demos often use `7443` explicitly) |
 | TLS | Required (QUIC) — see [security](decisions/security.md) |
 | Body codec | `postcard` |
 | Content-Type | `application/x-postcard` |

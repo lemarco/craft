@@ -41,7 +41,7 @@ A `Clock` port is injected wherever timing matters (election/heartbeat timers). 
 Adapters depend on the core, never the reverse:
 
 ```
-trembita-node → trembita → trembita-actor → { trembita-core, trembita-net, trembita-storage }
+trembita-tools (`trembita-node`) → trembita → trembita-runtime → { trembita-core, trembita-net, trembita-storage, trembita-jobs, … }
                           │                  ▲  (adapters implement traits the
                           └── trembita-client ──┘   inner crates/core define)
 ```

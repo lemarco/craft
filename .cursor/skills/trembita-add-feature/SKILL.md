@@ -13,7 +13,7 @@ description: >-
 Use [`docs/architecture.md`](../../docs/architecture.md) dependency graph:
 
 ```
-trembita-node → trembita (facade) → trembita-actor → { trembita-core, trembita-net, trembita-storage }
+trembita-tools → trembita (facade) → trembita-runtime → { trembita-core, trembita-net, trembita-storage, trembita-jobs, … }
 ```
 
 | Change type | Crate |
@@ -22,7 +22,7 @@ trembita-node → trembita (facade) → trembita-actor → { trembita-core, trem
 | Wire types | `trembita-proto` |
 | Storage backend | `trembita-storage` (implement existing traits) |
 | Transport / routes | `trembita-net` |
-| Runtime / actors | `trembita-actor` |
+| Runtime / actors | `trembita-runtime` |
 | Client API | `trembita-client` |
 | Public API | `trembita` facade re-exports |
 | Sim / faults | `trembita-sim` |

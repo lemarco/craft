@@ -94,4 +94,4 @@ Call `EventTopic::metrics()` (cluster client or local redb) for:
 ## Leader failover
 
 Topic mutations replicate to voters before the leader acks. After election, the new leader
-continues from replicated cursors (see `trembita-actor/tests/topic_failover.rs`).
+continues from replicated cursors (see `trembita-events/tests/topic_failover.rs`).

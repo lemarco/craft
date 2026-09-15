@@ -30,7 +30,7 @@ The user ships **one binary** built from their app. Production runs **N processe
 async fn main() -> Result<()> {
     let cluster = TrembitaCluster::builder()
         .node_id(env("NODE_ID"))
-        .listen(env("LISTEN_ADDR"))           // e.g. 0.0.0.0:7443
+        .listen(env("LISTEN_ADDR"))           // e.g. 0.0.0.0:443 (TREMBITA_LISTEN)
         .join(env_optional("JOIN_ADDR"))      // None = seed/first node; Some = join existing
         .allow_join(env_bool("RAFT_ALLOW_JOIN")) // seed/members: accept joins only when true
         .state_machine(MyAppState::default())
@@ -55,8 +55,8 @@ sequenceDiagram
     participant V3 as VPS 3
 
     V1->>V1: JOIN_ADDR unset; --allow-join → accept joins
-    V2->>V1: JOIN_ADDR=vps1:7443 → join cluster (membership)
-    V3->>V1: JOIN_ADDR=vps1:7443 (or any member) → join cluster
+    V2->>V1: TREMBITA_JOIN_SEEDS=1@vps1:443 → join cluster (membership)
+    V3->>V1: TREMBITA_JOIN_SEEDS=1@vps1:443 (or any member) → join cluster
     Note over V1,V3: Same binary, same actor definitions; scale by adding VPSes
 ```
 
@@ -96,7 +96,7 @@ Raft gives **consistent replicated state** (via user `StateMachine`). **Actors**
 **Negative**
 
 - Join/membership via joint consensus in v1 ([cluster-membership](cluster-membership.md))
-- User must operate certs, firewall (UDP 7443), and seed node availability
+- User must operate certs, firewall (**UDP + TCP** on `TREMBITA_LISTEN`, often 443), and seed node availability
 - Actor placement across nodes needs explicit design ([cluster-elasticity](cluster-elasticity.md))
 
 ## Related

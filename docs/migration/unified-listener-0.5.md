@@ -9,8 +9,9 @@ See [unified-listener](../decisions/unified-listener.md) for rationale.
 
 | Deployment | Action |
 |------------|--------|
-| [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) product apps | Merge ops/jobs/workflows/actors route tables in `GatewayOpts::surfaces()` |
-| [`trembita-node`](../../crates/trembita-tools/src/bin/node.rs) | Replace `TREMBITA_ADMIN` with ops TCP on **`TREMBITA_LISTEN`**; [`spawn_cluster_ops_http`](../../crates/trembita/src/gateway/cluster_ops.rs) when not using `TrembitaApp` |
+| [`TrembitaApp::from_env`](../../crates/trembita/src/app/runtime.rs) product apps | Set **`TREMBITA_LISTEN`** (+ data_dir / cert_dir / join); ops + registered `/jobs/*`, `/topics/*`, … mount automatically — [env.md](../env.md). Host split or brownfield: merge route tables in [`.gateway_routes()`](../../crates/trembita/src/app/builder.rs) / `.surfaces()` |
+| Custom [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) (no `from_env`) | Merge ops/jobs/workflows/actors route tables in `GatewayOpts::surfaces()` or use [`.default_surfaces()`](../../crates/trembita/src/gateway/opts.rs) |
+| [`trembita-node`](../../crates/trembita-tools/src/bin/node.rs) | Replace `TREMBITA_ADMIN` with ops TCP on **`TREMBITA_LISTEN`** (default = same as wire); [`spawn_cluster_ops_http`](../../crates/trembita/src/gateway/cluster_ops.rs) unless `TREMBITA_HTTP=-` |
 | [`TrembitaCluster`](../../crates/trembita/src/cluster_handle/cluster.rs) without app gateway | Use [`cluster_ops_route_table`](../../crates/trembita/src/gateway/cluster_ops.rs) / `spawn_cluster_ops_http` |
 | Showcases / compose | One published port per node (product + `/health`, `/dashboard`, …) |
 
@@ -122,7 +123,7 @@ Removed:
 Added:
 
 - [`cluster_ops_route_table`](../../crates/trembita/src/gateway/cluster_ops.rs) — ops routes for a cluster handle
-- [`spawn_cluster_ops_http`](../../crates/trembita/src/gateway/cluster_ops.rs) — TCP listener (used by `trembita-node` when `TREMBITA_HTTP` is set)
+- [`spawn_cluster_ops_http`](../../crates/trembita/src/gateway/cluster_ops.rs) — TCP listener (used by `trembita-node` when HTTP is enabled — default co-host on `TREMBITA_LISTEN`; `TREMBITA_HTTP=-` disables)
 
 `TrembitaApp::ops_api()` remains the same route builders; only **where** you mount them changed (explicit merge or cluster helper).
 
@@ -149,7 +150,7 @@ Do **not** set `TREMBITA_HTTP` / `TREMBITA_GATEWAY` to a different host:port tha
 ## Checklist
 
 - [ ] Replace `TREMBITA_ADMIN` / split ports with **`TREMBITA_LISTEN`** (wire + TCP)
-- [ ] Merge `http::ops::route_table` (and product APIs) in `.surfaces()`
+- [ ] If not using `from_env` defaults: merge `http::ops::route_table` (and product APIs) in `.surfaces()` / `.gateway_routes()`
 - [ ] Run `trembita doctor`; fix errors for removed gateway flags
 - [ ] Point monitoring at `/health` and `/metrics` on the unified bind
 - [ ] Read [gateway-0.4.md](gateway-0.4.md) if still on Axum / `.routes()` from 0.3.x

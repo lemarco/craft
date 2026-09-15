@@ -76,7 +76,7 @@ Examples in this repo and hand-written binaries may call [`.jobs()`](../../crate
 |------|-----------|
 | `main.rs` is thin boot only | CLI and `trembita doctor` know where to look |
 | Jobs, topics, workers, workflows live in `manifest.rs` | One registry; marker comments show where to register |
-| Gateway / custom HTTP surfaces live in `app.rs` + `src/http/` | Route tables stay visible code ([unified-listener](unified-listener.md)) |
+| Gateway / custom HTTP surfaces live in `app.rs` + `src/http/` | Ops + registered product APIs auto-mount with [`from_env()`](../../crates/trembita/src/app/runtime.rs); custom routes and host splits stay explicit ([unified-listener](unified-listener.md)) |
 | `domain/` must not import `trembita::*` | Hexagon boundary ([architecture-style](architecture-style.md)) |
 | Consumers live in `consumers/`, actors in `actors/` | Predictable layout; `trembita doctor` checks wiring |
 | HTTP ingress via [`Gateway`](../../crates/trembita-http/src/gateway/mod.rs) + [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) | Virtual-host product surfaces (0.4.0) — see [gateway-0.4 migration](../migration/gateway-0.4.md) |

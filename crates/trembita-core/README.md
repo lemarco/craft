@@ -7,7 +7,7 @@ no wall clock.
 Includes [`kv`](src/kv.rs) — a reference key/value [`StateMachine`](src/state_machine.rs) for tutorials and tests (re-exported by the `trembita` facade as `trembita::kv`).
 
 Consensus is modeled as `RaftInput → (state, RaftOutput)`; side effects are
-returned as data and executed by the outer runtime (`trembita-actor`).
+returned as data and executed by the outer runtime (`trembita-runtime`).
 
 Most applications should depend on the [`trembita`](https://crates.io/crates/trembita)
 facade rather than this crate directly.

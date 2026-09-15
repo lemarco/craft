@@ -63,16 +63,17 @@ Centralize encode/decode in `trembita-proto/src/codec.rs`. Not self-describing �
 
 Optional dev-only JSON for debugging may be added later; not the default wire format.
 
-## Default listen port — 7443/udp
+## Default listen port — 443 (wire + HTTP)
 
-**Default listen address:** `0.0.0.0:7443` (UDP, HTTP/3).
+**Default listen address:** `0.0.0.0:443` — QUIC wire (UDP) and product/ops HTTP (TCP) share the **port number** ([unified-listener](unified-listener.md)).
 
 | Source | Key | Default |
 |--------|-----|---------|
-| Builder | `.listen(addr)` | `0.0.0.0:7443` if omitted |
-| Environment | `LISTEN_ADDR` / `TREMBITA_LISTEN` | same |
+| Product env | `TREMBITA_LISTEN` | `0.0.0.0:443` ([`env_config.rs`](../../crates/trembita/src/env_config.rs)) |
+| Reference `trembita-node` | `TREMBITA_LISTEN` | `0.0.0.0:443` (same as product; local demos may set another port) |
+| Low-level builder | `.listen(addr)` | caller-supplied (no implicit default in all APIs) |
 
-All trembita wire traffic on one listener: peer, client, join, actor routes. Firewall: open **UDP 7443** (or chosen port) for peer and client mTLS.
+All trembita wire traffic on one QUIC listener: peer, client, join, actor routes. Firewall: open **UDP and TCP** on the chosen listen port (often **443**) for mTLS wire and HTTP.
 
 ## Ops HTTP (TCP on `TREMBITA_LISTEN`)
 

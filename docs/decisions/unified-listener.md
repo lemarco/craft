@@ -83,7 +83,7 @@ builders — apps choose what to merge and where.
 - `GatewayOpts::with_jobs_api`, `with_actors_api`, `with_workflows_api`, `with_introspect_api`
 - `GatewayOpts::protect_product_apis`
 - `collect_builtin_routes()` in `router.rs`
-- `TrembitaConfigure::admin_addr` and admin listener spawn in `assemble.rs`
+- `TrembitaClusterBuilder::admin_addr` and admin listener spawn in `assemble.rs`
 - Separate `AdminServer` production path (ops routes live in `OpsApi` → `RouteTable`)
 
 `AdminServer` in `trembita-dashboard` remains for dashboard-crate unit tests only.
@@ -106,16 +106,20 @@ builders — apps choose what to merge and where.
 **Negative**
 
 - Breaking: all apps using `TREMBITA_ADMIN`, `.with_jobs_api(true)`, examples, docker-compose
-- Apps must merge ops/jobs routes explicitly (scaffold template + manual edits)
+- Brownfield / host-split apps still merge ops/jobs route tables explicitly (scaffold template + `app.rs`)
 - SSE `/dashboard/events` requires `RouteTable::sse()` support in gateway dispatch
+
+### Amended (0.5.0) — `TrembitaApp::from_env` defaults
+
+Product apps using [`TrembitaApp::from_env()`](../../crates/trembita/src/app/runtime.rs) get **ops + registration-driven product APIs** on `TREMBITA_LISTEN` via [`default_surfaces`](../../crates/trembita/src/app/gateway.rs) — no manual `http::ops` merge unless you opt out ([`.without_ops()`](../../crates/trembita/src/app/builder.rs), [`.without_jobs_api()`](../../crates/trembita/src/app/builder.rs), …). Scaffold projects still keep explicit `src/http/` modules for custom routes and host splits.
 
 ## Migration (0.5.0)
 
 Step-by-step guide: [unified-listener-0.5.md](../migration/unified-listener-0.5.md).
 
 1. Replace `TREMBITA_ADMIN` + split gateway/admin ports with **`TREMBITA_LISTEN=0.0.0.0:443`** (or your bind) — wire (UDP) and HTTP (TCP) share the port number
-2. Replace `.with_jobs_api(true)` with `http::jobs::route_table(&state)` in surfaces
-3. Copy or enable `src/http/ops.rs` / `jobs.rs` from the scaffold template and merge in `app.rs`
+2. Prefer **`TrembitaApp::from_env()`** + `.jobs()` / `.topics()` / `.workers()` registration (automatic `/jobs/*`, ops, introspect on the unified bind)
+3. Brownfield: replace `.with_jobs_api(true)` with `http::jobs::route_table(&state)` (or `.gateway_routes()`) in surfaces; copy scaffold `src/http/ops.rs` when ops are not on the default gateway
 4. Point probes at the unified bind: `GET /health`, `GET /ready`, `GET /metrics`
 
 ## Related

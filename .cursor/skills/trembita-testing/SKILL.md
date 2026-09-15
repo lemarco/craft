@@ -16,7 +16,7 @@ Read [`docs/testing-coverage.md`](../../docs/testing-coverage.md) for gaps.
 | Symptom | Layer | Location |
 |---------|-------|----------|
 | Pure FSM / log / RNG | Unit | `trembita-core/src/` or `tests/` |
-| Persist / recover / `take_persist` | Driver | `trembita-actor/tests/driver.rs` |
+| Persist / recover / `take_persist` | Driver | `trembita-runtime/tests/driver.rs` |
 | Partition, drop, safety invariant | Sim | `trembita-sim/tests/` + seed |
 | Runtime, actors, client wire | Integration | `crates/*/tests/` + `LocalNetwork` |
 | Real QUIC + mTLS + processes | E2E | `e2e/` only |

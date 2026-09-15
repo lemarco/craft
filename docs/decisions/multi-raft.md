@@ -32,7 +32,7 @@ A single Raft group funnels all writes through one leader (risk **R1** in [futur
 | Component | Location |
 |-----------|----------|
 | Shard planners | `trembita-core::shard` |
-| Sharded runtime | `trembita-actor::sharded`, `group_rebalance` |
+| Sharded runtime | `trembita-runtime::sharded`, `group_rebalance` |
 | Keyed client | `trembita-client` |
 | Facade builder | `TrembitaClusterBuilder::raft_groups`, `stable_shards`, `data_dir` |
 

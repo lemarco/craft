@@ -14,7 +14,7 @@ This record covers operator and application UX for sticky sessions, smoother sca
 ### Consistent hash ring (replaces `hash % N`)
 
 Actor keyed routing (`ActorDirectory::pick_keyed`, local `PoolInner::pick_keyed`)
-uses a **virtual-node ring** ([`trembita-actor/src/ring.rs`](../../crates/trembita-runtime/src/ring.rs)):
+uses a **virtual-node ring** ([`trembita-runtime/src/ring.rs`](../../crates/trembita-runtime/src/ring.rs)):
 64 vnodes per member, clockwise successor from `hash(key)`, salted per group name.
 Adding/removing an instance remaps roughly `1/N` of keys instead of almost all keys.
 

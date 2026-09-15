@@ -12,13 +12,14 @@ Users deploy the **same app** to multiple VPSes. Actors scale on demand across t
 
 | Step | Behavior |
 |------|----------|
-| Seed node | `JOIN_ADDR` empty; **`--allow-join`** to accept joins |
-| Joining node | `JOIN_ADDR=<host:port>` → after membership → **auto workers spawned** |
+| Seed node | omit `TREMBITA_JOIN_SEEDS`; `TREMBITA_ALLOW_JOIN=1` to accept joins |
+| Joining node | `TREMBITA_JOIN_SEEDS=id@seed:port` → after membership → **auto workers spawned** |
 | Leave | `cluster.leave().await?` → migrate actors, then Raft remove |
 
 ```bash
-NODE_ID=1 LISTEN_ADDR=0.0.0.0:7443 cargo run -- --allow-join
-NODE_ID=2 JOIN_ADDR=vps1:7443 cargo run   # framework spawns workers when joined
+# Product app (see env.md):
+TREMBITA_LISTEN=0.0.0.0:443 TREMBITA_ALLOW_JOIN=1 cargo run          # seed
+TREMBITA_JOIN_SEEDS=1@vps1:443 cargo run   # joiner — framework spawns workers when joined
 ```
 
 ### On-demand scale scenarios

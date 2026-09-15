@@ -11,7 +11,7 @@ alwaysApply: false
 | Layer | When | Tooling |
 |-------|------|---------|
 | Unit | Pure logic, no I/O | `#[cfg(test)]` in `src/` |
-| Driver | Persistence, `RaftDriver` glue | sync tests in `trembita-actor/tests/` |
+| Driver | Persistence, `RaftDriver` glue | sync tests in `trembita-runtime/tests/` |
 | Sim | Timing, partition, safety | `trembita-sim` + **seed** |
 | Integration | Async runtime, actors | `LocalNetwork`, `#[tokio::test]` |
 | E2E | Real QUIC, processes | `e2e/` only — not for correctness |

@@ -37,7 +37,7 @@ Legacy ops layout: explicit `TREMBITA_NODE_ID`, static `TREMBITA_PEERS`, per-fil
 | Symptom | Likely cause |
 |---------|----------------|
 | Join succeeds but node stays in `learners`, not `voters` | Default dynamic join requests `learner`. Set joiner `TREMBITA_JOIN_ROLE=voter` **and** seed `TREMBITA_ALLOW_VOTER_JOIN=1`, or bootstrap voters with `TREMBITA_PEERS`. |
-| No leader for minutes after boot | Often mTLS mismatch (wrong CA, SAN, or cert for `TREMBITA_NODE_ID`). Check `RUST_LOG=trembita::net=warn,trembita::raft=debug` for QUIC handshake and pre-vote reject lines, then verify [certs.md](../certs.md), `/ready`, and UDP 7443 reachability. |
+| No leader for minutes after boot | Often mTLS mismatch (wrong CA, SAN, or cert for `TREMBITA_NODE_ID`). Check `RUST_LOG=trembita::net=warn,trembita::raft=debug` for QUIC handshake and pre-vote reject lines, then verify [certs.md](../certs.md), `/ready`, and **UDP on `TREMBITA_LISTEN`** (often port 443) between peers. |
 | `cluster rejected join: VoterJoinDisabled` | Seed has not enabled `TREMBITA_ALLOW_VOTER_JOIN=1`. |
 
 ## Operations (deep dives)

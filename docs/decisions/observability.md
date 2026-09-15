@@ -27,7 +27,7 @@ All read surfaces live on the **ops HTTP bind** ([wire-protocol](wire-protocol.m
 
 ### 1. Tracing
 
-`tracing` spans across `trembita-core`, `trembita-net`, `trembita-actor`. Correlated by `NodeId`, `ActorId`, `req_id`. Configurable level via `RUST_LOG` / `TREMBITA_LOG`.
+`tracing` spans across `trembita-core`, `trembita-net`, `trembita-runtime`. Correlated by `NodeId`, `ActorId`, `req_id`. Configurable level via `RUST_LOG` / `TREMBITA_LOG`.
 
 ### 2. Metrics (`GET /metrics`, Prometheus)
 
@@ -149,7 +149,7 @@ Emits trace events to telemetry stream / logs; auto-expires. Never on for whole 
 
 | Crate | Add |
 |-------|-----|
-| `trembita-actor` | telemetry emitter, mailbox metrics, restart policy |
+| `trembita-runtime` | telemetry emitter, mailbox metrics, restart policy |
 | `trembita-net` | admin routes: `/metrics`, `/introspect/*`, `/dashboard`, SSE |
 | `trembita-core` | Raft metrics + events |
 | `trembita` (facade) | `cluster.events()`, `cluster.introspect()`, `cluster.trace()` |

@@ -28,11 +28,15 @@ crates/
 ├── trembita-core/
 ├── trembita-storage/
 ├── trembita-net/
-├── trembita-actor/
+├── trembita-runtime/      # RaftDriver, actors, supervisor, multi-Raft
+├── trembita-jobs/         # JobQueue port + redb adapter
+├── trembita-events/       # EventTopic port + redb adapter
+├── trembita-actor-store/  # ActorStateStore port + redb adapter
 ├── trembita-client/
 ├── trembita-macros/
 ├── trembita-sim/
-└── trembita-node/         # optional reference binary
+├── trembita-http/         # product gateway (facade `http-jobs`)
+└── trembita-tools/        # reference binaries (`trembita-node`, ops, e2e clients)
 ```
 
 ### User `Cargo.toml`
@@ -62,7 +66,7 @@ Public builder type renamed to match the product:
 ```rust
 TrembitaCluster::builder()
     .node_id(1)
-    .listen("0.0.0.0:7443")
+    .listen("0.0.0.0:443")
     .spawn()
     .await?;
 ```

@@ -61,8 +61,8 @@ the shared `ca.pem`, its own `node-<id>` pair, and the full member list:
 ```bash
 # on VPS 1
 export TREMBITA_NODE_ID=1
-export TREMBITA_LISTEN=0.0.0.0:7443
-export TREMBITA_PEERS="1@10.0.0.1:7443,2@10.0.0.2:7443,3@10.0.0.3:7443"
+export TREMBITA_LISTEN=0.0.0.0:443
+export TREMBITA_PEERS="1@10.0.0.1:443,2@10.0.0.2:443,3@10.0.0.3:443"
 export TREMBITA_CA_CERT=/etc/trembita/ca.pem
 export TREMBITA_NODE_CERT=/etc/trembita/node-1.pem
 export TREMBITA_NODE_KEY=/etc/trembita/node-1.key
@@ -98,7 +98,7 @@ let security = Security::from_ca_certs(identity, &ca_certs)?;
 
 let cluster = TrembitaCluster::builder(NodeId(1), my_state_machine)
     .members([NodeId(1), NodeId(2), NodeId(3)])
-    .start_quic(security, "0.0.0.0:7443".parse()?, peers)
+    .start_quic(security, "0.0.0.0:443".parse()?, peers)
     .await?;
 ```
 

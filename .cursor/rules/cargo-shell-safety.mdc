@@ -16,8 +16,8 @@ a hang but is a lock queue.
 Prefer the fast wrapper while iterating; use check when you only need compile errors:
 
 ```bash
-./scripts/test-fast.sh -p trembita-actor --test group_rebalance   # fastest (nextest, no duplicate check)
-./scripts/check-with-log.sh -p trembita-actor                     # compile-only
+./scripts/test-fast.sh -p trembita-runtime --test group_rebalance   # fastest (nextest, no duplicate check)
+./scripts/check-with-log.sh -p trembita-runtime                     # compile-only
 ./scripts/test-with-log.sh --workspace --all-features          # CI parity
 ```
 
@@ -39,7 +39,7 @@ Prefer project scripts over raw `cargo test`:
 
 ```bash
 ./scripts/cargo-status.sh
-./scripts/test-fast.sh -p trembita-actor --test group_rebalance
+./scripts/test-fast.sh -p trembita-runtime --test group_rebalance
 ./scripts/test-with-log.sh --workspace --all-features
 ```
 
