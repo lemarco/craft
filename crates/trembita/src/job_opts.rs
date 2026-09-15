@@ -143,7 +143,7 @@ impl JobOpts {
         self
     }
 
-    /// Mount `POST /jobs/{stream}` on the product gateway (`with_jobs_api`).
+    /// Mount `POST /jobs/{stream}` on the product gateway when registration enables the jobs API.
     #[must_use]
     pub fn http_enqueue(mut self, enabled: bool) -> Self {
         self.http_enqueue = enabled;

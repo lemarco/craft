@@ -49,7 +49,7 @@ crates/
 ├── trembita-store-redis/  # optional ActorStateStore (Redis) — `trembita/redis-store`
 ├── trembita-backlog-postgres/  # optional ExternalBacklog — `trembita/external-backlog`
 ├── trembita-events-postgres/   # optional EventOutboxSource — `trembita/domain-outbox`
-├── trembita-dashboard/    # admin HTTP + observability views
+├── trembita-dashboard/    # ops HTTP views + embedded dashboard
 ├── trembita-http/         # product HTTP gateway — `trembita/http-jobs`
 └── trembita-test-support/ # shared test harness helpers
 

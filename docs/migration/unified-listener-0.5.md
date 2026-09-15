@@ -10,7 +10,7 @@ See [unified-listener](../decisions/unified-listener.md) for rationale.
 | Deployment | Action |
 |------------|--------|
 | [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) product apps | Merge ops/jobs/workflows/actors route tables in `GatewayOpts::surfaces()` |
-| [`trembita-node`](../../crates/trembita-tools/src/bin/node.rs) | Replace `TREMBITA_ADMIN` with `TREMBITA_HTTP`; ops via [`spawn_cluster_ops_http`](../../crates/trembita/src/gateway/cluster_ops.rs) or app gateway |
+| [`trembita-node`](../../crates/trembita-tools/src/bin/node.rs) | Replace `TREMBITA_ADMIN` with ops TCP on **`TREMBITA_LISTEN`**; [`spawn_cluster_ops_http`](../../crates/trembita/src/gateway/cluster_ops.rs) when not using `TrembitaApp` |
 | [`TrembitaCluster`](../../crates/trembita/src/cluster_handle/cluster.rs) without app gateway | Use [`cluster_ops_route_table`](../../crates/trembita/src/gateway/cluster_ops.rs) / `spawn_cluster_ops_http` |
 | Showcases / compose | One published port per node (product + `/health`, `/dashboard`, …) |
 
