@@ -55,7 +55,7 @@ src/http/
 ├── mod.rs           # re-exports + merge helpers
 ├── ops.rs           # /health, /ready, /metrics, /introspect/*, /dashboard
 ├── jobs.rs          # /jobs/* (when jobs feature enabled)
-└── product.rs       # custom business routes (via trembita add http-surface)
+└── product.rs       # custom business routes (manual module + `.surface()`)
 ```
 
 `app.rs` wires HTTP in [`.gateway_routes()` / `.surfaces()`](../crates/trembita/src/app/builder.rs) — no hidden merge (capabilities are in `manifest.rs` on scaffold projects):
@@ -73,13 +73,7 @@ src/http/
 })
 ```
 
-CLI:
-
-```bash
-trembita add ops-routes
-trembita add jobs-routes
-trembita add http-surface api --hosts api.example.com
-```
+Scaffolded apps ship `ops.rs` / `jobs.rs` in the template; extend `src/http/` and wire merges in `app.rs`.
 
 Framework provides **`OpsApi`**, **`JobsApi`**, **`IntrospectApi`**, etc. as route-table
 builders — apps choose what to merge and where.
@@ -112,7 +106,7 @@ builders — apps choose what to merge and where.
 **Negative**
 
 - Breaking: all apps using `TREMBITA_ADMIN`, `.with_jobs_api(true)`, examples, docker-compose
-- Apps must merge ops/jobs routes explicitly (scaffold + CLI handle this)
+- Apps must merge ops/jobs routes explicitly (scaffold template + manual edits)
 - SSE `/dashboard/events` requires `RouteTable::sse()` support in gateway dispatch
 
 ## Migration (0.5.0)
@@ -121,7 +115,7 @@ Step-by-step guide: [unified-listener-0.5.md](../migration/unified-listener-0.5.
 
 1. Replace `TREMBITA_ADMIN` + split gateway/admin ports with `TREMBITA_HTTP=0.0.0.0:443` (or your bind)
 2. Replace `.with_jobs_api(true)` with `http::jobs::route_table(&state)` in surfaces
-3. Run `trembita add ops-routes` / `trembita add jobs-routes` or copy from scaffold template
+3. Copy or enable `src/http/ops.rs` / `jobs.rs` from the scaffold template and merge in `app.rs`
 4. Point probes at the unified bind: `GET /health`, `GET /ready`, `GET /metrics`
 
 ## Related

@@ -10,7 +10,7 @@ use super::TrembitaAppBuilder;
 /// Registered jobs, topics, workers, and workflows — one place to wire product capabilities.
 ///
 /// Scaffolded apps define this in `src/manifest.rs`; [`TrembitaAppBuilder::manifest`] applies it.
-/// CLI `trembita add` patches marker regions inside `manifest.rs`.
+/// Scaffolded apps use `// trembita:*` marker comments in `manifest.rs` as edit guides.
 ///
 /// ```
 /// # use std::time::Duration;

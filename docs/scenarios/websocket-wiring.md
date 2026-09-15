@@ -10,7 +10,7 @@ How to add WebSocket endpoints on the product HTTP listener (`TREMBITA_LISTEN` /
 | Extra paths on **default** product gateway (ops + jobs + …) | `GatewayOpts::websocket_routes(\|state\| …)` | Builder only — merged with env default surfaces |
 | Sticky chat / session actor | `GatewayOpts::realtime_ws` / `realtime_ws_auth` | Builder `.gateway(...)` |
 | Ticker feed / notify hub (no custom handler) | `GatewayOpts::ws(WsMount::…)` | Builder `.gateway(...)` |
-| Generated module | `trembita add ws-surface /ws --group chat` | `src/http/ws.rs` + merge in `app.rs` |
+| WebSocket module | Copy/adapt from [`examples/`](../../examples/) or scaffold `http/` | `src/http/ws.rs` + merge in `app.rs` |
 
 **Rule of thumb:** custom `surfaces` closure → put WS in that `RouteTable`. Env/default gateway → `websocket_routes`, `realtime_ws`, or `ws`.
 
@@ -41,8 +41,8 @@ Product apps need only `trembita` with `http-jobs`. Use `trembita::tokio_tungste
 
 | Example | Command |
 |---------|---------|
-| Cluster showcases | `trembita dev up --showcase realtime` |
-| Solo HTTP WS demos | `trembita dev up --showcase ws-minimal` (or `market-ws`, `ws-notify`) |
+| Cluster showcases | `./target/debug/trembita dev up --showcase realtime` (debug CLI; repo root) |
+| Solo HTTP WS demos | `./target/debug/trembita dev up --showcase ws-minimal` (or `market-ws`, `ws-notify`) |
 
 Solo showcases bind HTTP on the showcase `base_port` only (no multi-node QUIC layout).
 

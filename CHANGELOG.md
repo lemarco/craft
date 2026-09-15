@@ -20,7 +20,7 @@ Target **0.5.0** — unified HTTP listener; migration draft: [unified-listener-0
 - **`GET /introspect/topics`** — read-only topic lag snapshot on ops/default gateway ([`Observer::topics`](crates/trembita-dashboard/src/views.rs)); embedded **Event topics** dashboard panel.
 - **`trembita dev http`** — `job` / `topic` / `workflow` product HTTP via `trembita-showcase-client`; `dev trigger … -- job|topic|workflow …` uses the same path.
 - **`trembita doctor`** — manifest workflows/topics vs `TREMBITA_LISTEN`; warns on manual `workflows_api` / `topics_api` merges.
-- **`AppManifest`** + **[`.manifest()`](crates/trembita/src/app/builder.rs)** — one registry for jobs, topics, workers, and workflows; scaffold emits `src/manifest.rs` and `trembita add` patches marker regions there.
+- **`AppManifest`** + **[`.manifest()`](crates/trembita/src/app/builder.rs)** — one registry for jobs, topics, workers, and workflows; scaffold emits `src/manifest.rs` with `// trembita:*` marker regions.
 - **`TrembitaApp::from_env`** / **`RunOpts::from_env`** — one product entry: cluster join/listen/data_dir/job queue from `TREMBITA_*`, default gateway surfaces (ops + jobs/actors/workflows from registration) on `TREMBITA_LISTEN`.
 - **Ops zero config** — `/health`, `/ready`, `/metrics`, `/dashboard`, `/introspect/*` on `TREMBITA_LISTEN` via default gateway; [`.without_ops()`](crates/trembita/src/app/builder.rs) to disable.
 - **`trembita doctor --preflight`** — deploy checks: `TREMBITA_LISTEN` / `DATA_DIR` / `CERT_DIR`, legacy env, compose join pattern, default ops gateway wiring.
@@ -28,12 +28,12 @@ Target **0.5.0** — unified HTTP listener; migration draft: [unified-listener-0
 - **`GatewayOpts::from_env`**, **`GatewayOpts::default_surfaces`**, **`TrembitaApp::default_surfaces`**, **`DefaultGatewayApis`**, **`.gateway_routes()`** — convention over manual `Gateway::new().surface()`; **`Gateway::surface_hosts`** for api/ops host split.
 - **[docs/env.md](docs/env.md)** — product env surface (listen, data_dir, cert_dir, join_seeds, optional `GATEWAY_TOKEN`); boot warns on legacy `TREMBITA_NODE_ID` / `TREMBITA_PEERS` / split HTTP / removed `TREMBITA_GATEWAY_*` toggles.
 - **`spawn_cluster_ops_http`** / **`cluster_ops_route_table`** — mount ops routes (`/health`, `/metrics`, `/dashboard`, `/introspect/*`) on a TCP listener for [`TrembitaCluster`](crates/trembita/src/cluster_handle/cluster.rs) without [`TrembitaApp`](crates/trembita/src/app/mod.rs).
-- **`trembita add ops-routes`** / **`trembita add jobs-routes`** — scaffold `src/http/ops.rs` / `jobs.rs` and wire merges in `app.rs` ([`trembita-cli`](crates/trembita-cli/)).
 - **`trembita doctor`** — scans sources and `deploy/.env.example` for removed `with_*_api`, `protect_product_apis`, `TREMBITA_ADMIN`, and missing ops/jobs route merges.
 - **Migration guides index** — [docs/migration/README.md](docs/migration/README.md).
 
 ### Changed
 
+- **`trembita-cli`** — removed **`trembita add`** (no CLI patching of `manifest.rs` / `app.rs`); register capabilities manually. **`trembita doctor`** is read-only (removed **`--fix`**). **`trembita dev`** is **debug-build only** (not in `cargo build --release` / `cargo install`).
 - **MSRV 1.94** (was 1.90) — required by `sqlx` 0.9 and related dependency bumps; CI/`check-msrv.sh` aligned.
 - **`trembita-node`** — ops HTTP via `TREMBITA_HTTP` (replaces `TREMBITA_ADMIN` / separate admin listener); TLS via `TREMBITA_HTTP_TLS_*`.
 - **`product_http_from_wire`** — TCP product/ops bind is always the same `host:port` as `TREMBITA_LISTEN`; split `TREMBITA_HTTP` on another port is rejected (`TREMBITA_HTTP=-` disables TCP only).

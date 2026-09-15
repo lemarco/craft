@@ -61,7 +61,7 @@ impl TrembitaProject {
         self.root.join("src/app.rs")
     }
 
-    /// `src/manifest.rs` — product capability registry (`trembita add` patches marker regions here).
+    /// `src/manifest.rs` — product capability registry (`// trembita:*` marker regions).
     #[must_use]
     pub fn manifest_rs(&self) -> PathBuf {
         self.root.join("src/manifest.rs")

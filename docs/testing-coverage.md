@@ -180,19 +180,11 @@ Published binary **`trembita`** ([`crates/trembita-cli`](../crates/trembita-cli/
 | Command | Behavior under test | Tests |
 |---------|---------------------|-------|
 | **`new`** | Layout incl. `manifest.rs`, features → `Cargo.toml`, README | `tests/scaffold.rs`, `scaffold/features.rs` |
-| **`add consumer`** | `consumers/*.rs` + `manifest.rs` `trembita:jobs` | `scaffold/add.rs`, `tests/add_doctor.rs` |
-| **`add topic`** | `manifest.rs` `trembita:topics` | `scaffold/add.rs`, `tests/add_doctor.rs` |
-| **`add actor`** | `actors/*.rs` + `manifest.rs` `trembita:workers` | `scaffold/add.rs`, `tests/add_doctor.rs` |
-| **`add workflow`** | `workflows/*.rs` + `manifest.rs` `trembita:workflows` | `scaffold/add.rs`, `tests/add_doctor.rs` |
-| **`add http-surface`** | `src/http/` + gateway surface in `app.rs` | `scaffold/add.rs`, `tests/add_doctor.rs` |
-| **`add static-site`** | static module + gateway surface | `scaffold/add.rs`, `tests/add_doctor.rs` |
-| **`add ops-routes` / `jobs-routes`** | `http/ops.rs` or `jobs.rs` + route merge | `scaffold/add.rs` |
-| **`doctor`** | manifest ↔ consumers/actors/workflows; duplicate ids; `.manifest()` in `app.rs`; no inline capabilities in `app.rs` | `scaffold/doctor.rs`, `tests/add_doctor.rs` |
-| **`doctor --fix`** | missing `mod` in `consumers/`, `main.rs` modules | `scaffold/doctor.rs` |
+| **`doctor`** | manifest ↔ consumers/actors/workflows; duplicate ids; `.manifest()` in `app.rs`; no inline capabilities in `app.rs`; missing `mod` declarations (reports only) | `scaffold/doctor.rs`, `tests/add_doctor.rs` |
 | **`doctor --preflight`** | deploy env / gateway ops hints | `scaffold/doctor.rs` (unit scenarios) |
 | **`dev list/setup/up/stop/status/trigger`** | showcase registry, workspace root, `trigger.sh` path | `tests/dev.rs`; full `dev up` 🔒 manual / `TREMBITA_DEV_INTEGRATION` |
 | **Project discover** | walk parents; requires `app.rs` + `manifest.rs` | `tests/add_doctor.rs`, `scaffold/project.rs` |
-| **Marker patcher** | `AppRsPatch` / `CapabilityRegistry` insert + dedupe | `scaffold/markers.rs`, `scaffold/registry.rs` |
+| **Marker names** | `// trembita:*` region constants + consumer type naming | `scaffold/markers.rs` |
 
 Facade registry type: [`AppManifest`](../crates/trembita/src/app/manifest.rs) unit test in `trembita` crate (`manifest_chains_into_builder`).
 

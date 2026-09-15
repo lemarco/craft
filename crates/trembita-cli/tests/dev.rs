@@ -1,4 +1,6 @@
-//! Tests for `trembita dev` showcase registry and workspace discovery.
+//! Tests for `trembita dev` showcase registry and workspace discovery (debug CLI only).
+
+#![cfg(debug_assertions)]
 
 use trembita_cli::{dev_trigger, find_showcase, showcase_ids, workspace_root};
 

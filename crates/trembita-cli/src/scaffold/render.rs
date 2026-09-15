@@ -406,7 +406,7 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
     format!(
         r"//! {name} — product capability registry ([`AppManifest`](trembita::AppManifest)).
 //!
-//! `trembita add` patches the `// trembita:*` marker regions below.
+//! Edit the `// trembita:*` marker regions below when adding capabilities.
 
 {imports}
 

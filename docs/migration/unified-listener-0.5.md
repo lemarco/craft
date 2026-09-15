@@ -51,7 +51,7 @@ src/http/
 ├── mod.rs
 ├── ops.rs    # /health, /ready, /metrics, /dashboard, /introspect/*
 ├── jobs.rs   # /jobs/* (optional)
-└── …         # custom surfaces via trembita add http-surface
+└── …         # custom surfaces (manual modules + gateway `.surface()`)
 ```
 
 Default (local dev — ops + registered product APIs on loopback):
@@ -83,8 +83,7 @@ Host split (production):
 Brownfield apps:
 
 ```bash
-trembita add ops-routes
-trembita add jobs-routes
+# Copy scaffold src/http/ops.rs and jobs.rs (or from examples/) and wire merges in app.rs
 trembita doctor   # flags leftover with_*_api / protect_product_apis / TREMBITA_ADMIN in src/
 trembita doctor --preflight   # before deploy: env, compose, certs, default ops on LISTEN
 ```

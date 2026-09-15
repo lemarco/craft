@@ -1,8 +1,9 @@
 # trembita-cli
 
 Framework CLI for [trembita](https://crates.io/crates/trembita) product apps — scaffold the
-standard layout (`src/manifest.rs` capability registry + `app.rs` gateway/run), register
-consumers/topics/actors/HTTP surfaces, and verify wiring with `trembita doctor`.
+standard layout (`src/manifest.rs` capability registry + `app.rs` gateway/run) and verify wiring
+with read-only `trembita doctor`. Capability registration is **manual** in `manifest.rs` / `app.rs`
+(copy from [`examples/`](../../examples/) or scaffold templates).
 
 ## Install
 
@@ -24,26 +25,18 @@ cargo install trembita-cli
 trembita new my-service --features jobs,gateway,telemetry
 trembita new my-service --trembita-path ../trembita   # local checkout
 
-trembita add consumer emails --lease 300   # manifest.rs + consumers/
-trembita add topic platform.events         # manifest.rs
-trembita add actor catalog                 # manifest.rs + actors/
-trembita add ops-routes
-trembita add jobs-routes
-trembita add http-surface api --hosts api.example.com
-trembita add static-site app --hosts app.example.com --filesystem fe/app/dist
-
-trembita doctor
-trembita doctor --fix
+trembita doctor                 # read-only layout / wiring checks
 trembita doctor --preflight   # deploy: env, compose, certs/listen, gateway ops
 
-# From trembita repo root — local showcase clusters
-trembita dev list
-trembita dev setup --showcase stateful-workers
-trembita dev up --showcase stateful-workers --nodes 3
-trembita dev trigger stateful-workers -- 1001
-trembita dev trigger background-jobs -- job emails hello   # built-in HTTP (no trigger.sh)
-trembita dev http --showcase workflows -- workflow run onboard-42
-trembita dev stop --showcase stateful-workers
+# From trembita repo root — local showcase clusters (debug `trembita` only; not in `--release`)
+cargo build -p trembita-cli
+./target/debug/trembita dev list
+./target/debug/trembita dev setup --showcase stateful-workers
+./target/debug/trembita dev up --showcase stateful-workers --nodes 3
+./target/debug/trembita dev trigger stateful-workers -- 1001
+./target/debug/trembita dev trigger background-jobs -- job emails hello   # built-in HTTP (no trigger.sh)
+./target/debug/trembita dev http --showcase workflows -- workflow run onboard-42
+./target/debug/trembita dev stop --showcase stateful-workers
 ```
 
 See [`framework-conventions`](../../docs/decisions/framework-conventions.md) for the generated
@@ -56,16 +49,9 @@ What each subcommand touches and where it is tested ([testing-coverage](../../do
 | Command | Writes / checks | Automated tests |
 |---------|-----------------|-----------------|
 | `new` | Full tree + `manifest.rs` | `tests/scaffold.rs` |
-| `add consumer` | `consumers/`, `manifest.rs` (`trembita:jobs`) | `src/scaffold/add.rs`, `tests/add_doctor.rs` |
-| `add topic` | `manifest.rs` (`trembita:topics`) | same |
-| `add actor` | `actors/`, `manifest.rs` (`trembita:workers`) | same |
-| `add workflow` | `workflows/`, `manifest.rs` (`trembita:workflows`) | same |
-| `add ops-routes` / `jobs-routes` | `src/http/`, `app.rs` gateway merges | `src/scaffold/add.rs` |
-| `add http-surface` / `static-site` | `src/http/`, `app.rs` surfaces | `tests/add_doctor.rs` |
-| `doctor` | `manifest.rs` ↔ handlers; `app.rs` `.manifest()` only | `src/scaffold/doctor.rs`, `tests/{add_doctor,manifest_doctor}.rs` |
-| `doctor --fix` | `mod.rs`, `main.rs` module declarations | `src/scaffold/doctor.rs` |
+| `doctor` | `manifest.rs` ↔ handlers; `app.rs` `.manifest()` only (read-only) | `src/scaffold/doctor.rs`, `tests/{add_doctor,manifest_doctor}.rs` |
 | `doctor --preflight` | `deploy/` env + gateway ops | unit cases in `doctor.rs` |
-| `dev *` | Repo `examples/` showcases; `dev http` job/topic/workflow | `tests/dev.rs`, `src/dev/http.rs` |
+| `dev *` (debug CLI only) | Repo `examples/` showcases; `dev http` job/topic/workflow | `tests/dev.rs`, `src/dev/http.rs` |
 
 Run locally: `./scripts/test-fast.sh -p trembita-cli` from the repo root.
 

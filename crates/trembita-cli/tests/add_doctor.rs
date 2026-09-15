@@ -1,15 +1,12 @@
-//! Integration tests for `trembita add` and `trembita doctor`.
+//! Integration tests for `trembita doctor` and project discovery.
 
 use tempfile::tempdir;
 use trembita_cli::{
-    AddActorOpts, AddConsumerOpts, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts,
-    AddWorkflowOpts, AppFeature, Level, NewProjectOpts, StaticSiteSource, TrembitaProject,
-    add_actor, add_consumer, add_http_surface, add_static_site, add_topic, add_workflow,
-    run_doctor, scaffold_project,
+    AppFeature, Level, NewProjectOpts, TrembitaProject, run_doctor, scaffold_project,
 };
 
 #[test]
-fn add_and_doctor_integration() {
+fn scaffolded_project_passes_doctor() {
     let dir = tempdir().unwrap();
     let opts = NewProjectOpts {
         name: "integration".into(),
@@ -22,95 +19,6 @@ fn add_and_doctor_integration() {
     let root = scaffold_project(&opts).unwrap();
     let project = TrembitaProject { root };
 
-    add_consumer(
-        &project,
-        &AddConsumerOpts {
-            stream: "emails".into(),
-            module: None,
-            lease_secs: 60,
-        },
-    )
-    .unwrap();
-    add_topic(
-        &project,
-        &AddTopicOpts {
-            topic: "app.events".into(),
-        },
-    )
-    .unwrap();
-    add_actor(
-        &project,
-        &AddActorOpts {
-            group: "catalog".into(),
-            type_name: None,
-        },
-    )
-    .unwrap();
-    add_http_surface(
-        &project,
-        &AddHttpSurfaceOpts {
-            name: "api".into(),
-            hosts: vec!["api.example.com".into()],
-            module: None,
-            session: false,
-            cors: false,
-        },
-    )
-    .unwrap();
-    add_static_site(
-        &project,
-        &AddStaticSiteOpts {
-            name: "app".into(),
-            hosts: vec!["app.example.com".into()],
-            source: StaticSiteSource::Filesystem {
-                path: "fe/app/dist".into(),
-            },
-            module: None,
-        },
-    )
-    .unwrap();
-    add_workflow(
-        &project,
-        &AddWorkflowOpts {
-            prefix: "onboard".into(),
-            module: None,
-        },
-    )
-    .unwrap();
-
-    let report = run_doctor(&project, false);
-    assert!(
-        !report.has_errors(),
-        "doctor errors: {:?}",
-        report
-            .findings
-            .iter()
-            .filter(|f| f.level == Level::Error)
-            .collect::<Vec<_>>()
-    );
-}
-
-#[test]
-fn add_workflow_and_doctor_passes() {
-    let dir = tempdir().unwrap();
-    let opts = NewProjectOpts {
-        name: "workflow-app".into(),
-        output: dir.path().to_path_buf(),
-        features: vec![AppFeature::Jobs, AppFeature::Gateway, AppFeature::Workflows],
-        trembita_version: "0.3.2".into(),
-        trembita_path: None,
-        template: None,
-    };
-    let root = scaffold_project(&opts).unwrap();
-    let project = TrembitaProject { root };
-    add_workflow(
-        &project,
-        &AddWorkflowOpts {
-            prefix: "onboard".into(),
-            module: None,
-        },
-    )
-    .unwrap();
     let report = run_doctor(&project, false);
     assert!(
         !report.has_errors(),

@@ -43,7 +43,7 @@ my-app/
 Scaffolded apps declare **what the cluster runs** in one place via [`AppManifest`](../../crates/trembita/src/app/manifest.rs):
 
 ```rust
-// manifest.rs — `trembita add` patches `// trembita:jobs` / `:topics` / `:workers` markers
+// manifest.rs — edit inside `// trembita:jobs` / `:topics` / `:workers` marker regions
 pub fn build() -> AppManifest {
     AppManifest::new()
         .jobs([/* JobOpts … */])
@@ -75,7 +75,7 @@ Examples in this repo and hand-written binaries may call [`.jobs()`](../../crate
 | Rule | Rationale |
 |------|-----------|
 | `main.rs` is thin boot only | CLI and `trembita doctor` know where to look |
-| Jobs, topics, workers, workflows live in `manifest.rs` | One registry; `trembita add` patches marker regions there |
+| Jobs, topics, workers, workflows live in `manifest.rs` | One registry; marker comments show where to register |
 | Gateway / custom HTTP surfaces live in `app.rs` + `src/http/` | Route tables stay visible code ([unified-listener](unified-listener.md)) |
 | `domain/` must not import `trembita::*` | Hexagon boundary ([architecture-style](architecture-style.md)) |
 | Consumers live in `consumers/`, actors in `actors/` | Predictable discovery; generators know target dirs |
@@ -105,13 +105,13 @@ Generated `Cargo.toml` keeps **one** runtime dependency:
 trembita = { version = "0.3", features = ["dev-certs", "http-jobs", "external-backlog"] }
 ```
 
-CLI subcommands operate on this layout — **shipped** in [`trembita-cli`](../../crates/trembita-cli/):
+CLI subcommands — **shipped** in [`trembita-cli`](../../crates/trembita-cli/):
 
-| Command | Patches |
-|---------|---------|
-| `add consumer` / `add topic` / `add actor` | `manifest.rs` (+ handler stub under `consumers/` or `actors/`) |
-| `add http-surface` / `ops-routes` / `jobs-routes` / `add static-site` | `app.rs` gateway surfaces + `src/http/` |
-| `doctor` / `doctor --fix` | layout, manifest markers, consumer↔registry wiring, gateway merges |
+| Command | Role |
+|---------|------|
+| `new` | Generate this layout (one-time write) |
+| `doctor` | layout, manifest markers, consumer↔registry wiring, gateway hints (read-only) |
+| `dev` | Local showcase clusters from the trembita repo |
 
 ### CLI
 
@@ -124,13 +124,7 @@ trembita new my-service --template jobs
 trembita new my-service --template realtime
 trembita new my-service --features jobs,gateway,telemetry   # advanced override
 trembita new my-service --output ../my-service --trembita-path ../trembita
-trembita add consumer emails --lease 300
-trembita add topic platform.events
-trembita add actor catalog
-trembita add http-surface api --hosts api.example.com
-trembita add static-site app --hosts app.example.com
 trembita doctor
-trembita doctor --fix
 trembita doctor --preflight   # deploy: listen, certs, compose join, ops gateway
 ```
 
@@ -141,5 +135,5 @@ trembita doctor --preflight   # deploy: listen, certs, compose join, ops gateway
 ## Consequences
 
 - New projects start with consistent structure; less copy-paste from `examples/`.
-- [`trembita add`](../../docs/backlog.md) can patch known files instead of guessing layout.
+- Developers edit `manifest.rs` / `app.rs` explicitly; `trembita doctor` validates the convention.
 - [facade.md](facade.md) — facade features vs app features

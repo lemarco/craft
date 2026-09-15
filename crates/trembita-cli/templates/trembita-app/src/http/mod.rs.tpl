@@ -1,7 +1,7 @@
 //! Custom HTTP surfaces — wired via `.gateway_routes()` / `GatewayOpts::surfaces()` in `app.rs`.
 //!
-//! Built-in tables: `trembita add ops-routes`, `trembita add jobs-routes`.
-//! Custom hosts: `trembita add http-surface api --hosts api.example.com`.
+//! Built-in tables: copy/adapt `ops.rs` / `jobs.rs` from the scaffold template.
+//! Custom hosts: add modules here and `.surface()` in `app.rs`.
 //!
 //! Each module exports `route_table() -> RouteTable`.
 

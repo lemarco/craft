@@ -11,6 +11,8 @@ homepage.workspace = true
 readme = "README.md"
 categories = ["development-tools", "command-line-utilities"]
 keywords = ["trembita", "scaffold", "cli", "framework", "distributed"]
+
+# `dev` subcommand is compiled only under `cfg(debug_assertions)` (not in `--release`).
 include = [
     "src/**/*",
     "templates/**/*",

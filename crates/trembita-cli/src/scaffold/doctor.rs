@@ -4,7 +4,7 @@ use std::fs;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
-use super::markers::{ensure_main_module, ensure_mod_declaration, names};
+use super::markers::names;
 use super::project::TrembitaProject;
 
 /// Single finding.
@@ -32,13 +32,6 @@ pub enum Level {
 pub struct DoctorReport {
     /// All findings.
     pub findings: Vec<Finding>,
-}
-
-/// Result of `doctor --fix`.
-#[derive(Debug, Default)]
-pub struct DoctorFixReport {
-    /// Number of auto-fixes applied.
-    pub fixes_applied: usize,
 }
 
 impl DoctorReport {
@@ -119,55 +112,6 @@ pub fn run_doctor(project: &TrembitaProject, preflight: bool) -> DoctorReport {
     report
 }
 
-/// Apply safe auto-fixes (missing `mod` declarations, `main.rs` modules).
-#[must_use]
-pub fn doctor_fix(project: &TrembitaProject) -> DoctorFixReport {
-    let mut fixes = 0usize;
-    fixes += fix_mod_declarations(&project.consumers_dir());
-    fixes += fix_mod_declarations(&project.actors_dir());
-    fixes += fix_mod_declarations(&project.http_dir());
-    fixes += fix_mod_declarations(&project.workflows_dir());
-    if ensure_main_module(project, "consumers").unwrap_or(false) {
-        fixes += 1;
-    }
-    if ensure_main_module(project, "actors").unwrap_or(false) {
-        fixes += 1;
-    }
-    if project.http_dir().is_dir() && ensure_main_module(project, "http").unwrap_or(false) {
-        fixes += 1;
-    }
-    if project.workflows_dir().is_dir() && ensure_main_module(project, "workflows").unwrap_or(false)
-    {
-        fixes += 1;
-    }
-    if ensure_main_module(project, "manifest").unwrap_or(false) {
-        fixes += 1;
-    }
-    DoctorFixReport {
-        fixes_applied: fixes,
-    }
-}
-
-fn fix_mod_declarations(dir: &Path) -> usize {
-    if !dir.is_dir() {
-        return 0;
-    }
-    let mod_rs = dir.join("mod.rs");
-    let mut count = 0usize;
-    for entry in walk_rs_files(dir) {
-        if entry.file_name().is_some_and(|n| n == "mod.rs") {
-            continue;
-        }
-        let Some(module) = entry.file_stem().and_then(|s| s.to_str()) else {
-            continue;
-        };
-        if ensure_mod_declaration(&mod_rs, module).unwrap_or(false) {
-            count += 1;
-        }
-    }
-    count
-}
-
 fn check_layout(project: &TrembitaProject, report: &mut DoctorReport) {
     let required = [
         project.main_rs(),
@@ -192,7 +136,7 @@ fn check_markers(manifest: &str, report: &mut DoctorReport) {
             report.ok(format!("marker `{marker}` present (manifest.rs)"));
         } else {
             report.warn(format!(
-                "marker `{marker}` missing — `trembita add` may not patch manifest.rs; re-run `trembita new` or add markers manually"
+                "marker `{marker}` missing in manifest.rs — add `// {marker}` / `// {marker}-end` or re-run `trembita new`"
             ));
         }
     }
@@ -204,7 +148,7 @@ fn check_markers(manifest: &str, report: &mut DoctorReport) {
             ));
         } else {
             report.warn(format!(
-                "marker `{}` missing — `trembita add workflow` may not patch manifest.rs",
+                "marker `{}` missing in manifest.rs — register workflows inside the marker region",
                 names::WORKFLOWS
             ));
         }
@@ -236,7 +180,7 @@ fn check_app_wiring(project: &TrembitaProject, app: &str, report: &mut DoctorRep
             ));
         } else {
             report.warn(format!(
-                "marker `{}` missing — `trembita add http-surface` / `ops-routes` may not patch app.rs",
+                "marker `{}` missing in app.rs — wire gateway surfaces in `// trembita:surfaces` region",
                 names::SURFACES
             ));
         }
@@ -247,7 +191,7 @@ fn check_app_wiring(project: &TrembitaProject, app: &str, report: &mut DoctorRep
         && !app.contains("websocket_routes")
     {
         report.warn(
-            "src/http/ws.rs exists but app.rs does not merge WebSocket routes — run `trembita add ws-surface` or wire `.merge_routes(http::ws::route_table(&state))`",
+            "src/http/ws.rs exists but app.rs does not merge WebSocket routes — wire `.merge_routes(http::ws::route_table(&state))` in gateway surfaces",
         );
     }
 }
@@ -383,8 +327,9 @@ fn check_http(project: &TrembitaProject, app: &str, report: &mut DoctorReport) {
     let mod_content = fs::read_to_string(&mod_rs).unwrap_or_default();
     let main = fs::read_to_string(project.main_rs()).unwrap_or_default();
     if !main.contains("mod http;") {
-        report
-            .warn("src/http/ exists but main.rs has no `mod http;` — run `trembita doctor --fix`");
+        report.warn(
+            "src/http/ exists but main.rs has no `mod http;` — add `mod http;` after `mod app;`",
+        );
     }
     for entry in walk_rs_files(&http_dir) {
         if entry.file_name().is_some_and(|n| n == "mod.rs") {
@@ -421,7 +366,7 @@ fn check_workflows(project: &TrembitaProject, manifest: &str, report: &mut Docto
     let main = fs::read_to_string(project.main_rs()).unwrap_or_default();
     if !main.contains("mod workflows;") {
         report.warn(
-            "src/workflows/ exists but main.rs has no `mod workflows;` — run `trembita doctor --fix`",
+            "src/workflows/ exists but main.rs has no `mod workflows;` — add `mod workflows;` after `mod app;`",
         );
     }
     for entry in walk_rs_files(&workflows_dir) {
@@ -612,7 +557,7 @@ fn check_builtin_gateway_routes(app: &str, manifest: &str, report: &mut DoctorRe
             }
         } else if app.contains(".gateway(") {
             report.warn(
-                "jobs registered but /jobs/* not on gateway — use .http_enqueue(true) + from_env or `trembita add jobs-routes`",
+                "jobs registered but /jobs/* not on gateway — use `.http_enqueue(true)` + `GatewayOpts::from_env()` or merge `http/jobs.rs` in app.rs",
             );
         }
     }
@@ -1237,10 +1182,10 @@ async fn handle_orphan(_: &[u8]) -> Result<(), ()> { Ok(()) }
     }
 
     #[test]
-    fn doctor_fix_adds_missing_consumer_mod() {
+    fn doctor_errors_on_missing_consumer_mod_declaration() {
         let dir = tempdir().unwrap();
         let opts = NewProjectOpts {
-            name: "fix-test".into(),
+            name: "mod-test".into(),
             output: dir.path().to_path_buf(),
             features: AppFeature::defaults(),
             trembita_version: "0.3.2".into(),
@@ -1258,16 +1203,13 @@ async fn handle_extra(_: &[u8]) -> Result<(), ()> { Ok(()) }
 "#,
         )
         .unwrap();
-        let fix = doctor_fix(&project);
-        assert!(fix.fixes_applied >= 1);
-        let mod_rs = fs::read_to_string(project.consumers_dir().join("mod.rs")).unwrap();
-        assert!(mod_rs.contains("pub mod extra;"));
         let report = run_doctor(&project, false);
         assert!(
-            !report
-                .findings
-                .iter()
-                .any(|f| f.message.contains("not declared in consumers/mod.rs"))
+            report.findings.iter().any(|f| {
+                f.level == Level::Error && f.message.contains("not declared in consumers/mod.rs")
+            }),
+            "doctor errors: {:?}",
+            report.findings
         );
     }
 

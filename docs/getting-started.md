@@ -119,12 +119,12 @@ Optional: `TREMBITA_JOB_QUEUE`, `TREMBITA_ALLOW_JOIN` (seed, default on).
 From the **trembita repo root** (set `TREMBITA_ROOT` if needed):
 
 ```bash
-cargo build -p trembita-cli --release   # once
-./target/release/trembita dev list
-./target/release/trembita dev setup --showcase stateful-workers
-./target/release/trembita dev up --showcase stateful-workers --nodes 3
-./target/release/trembita dev trigger stateful-workers -- 1001
-./target/release/trembita dev stop --showcase stateful-workers
+cargo build -p trembita-cli   # debug CLI (`dev` is omitted from `--release` / crates.io install)
+./target/debug/trembita dev list
+./target/debug/trembita dev setup --showcase stateful-workers
+./target/debug/trembita dev up --showcase stateful-workers --nodes 3
+./target/debug/trembita dev trigger stateful-workers -- 1001
+./target/debug/trembita dev stop --showcase stateful-workers
 ```
 
 | Showcase | Pattern |
@@ -259,7 +259,7 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
 TrembitaApp::builder()
     .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?).identity(MyAuth).surfaces(gateway_surfaces));
 // Or: GatewayOpts::realtime_ws("/ws", "chat", Duration::from_secs(3600), |sticky| …)
-// Scaffold: trembita add ws-surface /ws --group chat
+// Scaffold: add src/http/ws.rs and merge routes in app.rs (see docs/scenarios/websocket-wiring.md)
 ```
 
 Showcases:
@@ -291,21 +291,18 @@ Generates the [framework layout](decisions/framework-conventions.md):
 | Path | Role |
 |------|------|
 | `main.rs` | Boot only — `App::new(AppConfig::from_env()).run().await` |
-| `manifest.rs` | [`AppManifest::build()`](../../crates/trembita/src/app/manifest.rs) — jobs, topics, workers (`// trembita:*` markers for CLI) |
+| `manifest.rs` | [`AppManifest::build()`](../../crates/trembita/src/app/manifest.rs) — jobs, topics, workers (`// trembita:*` marker comments) |
 | `app.rs` | [`.manifest(manifest::build())`](../crates/trembita/src/app/builder.rs), gateway [`.gateway_routes()`](../crates/trembita/src/app/builder.rs), `.run()` |
 | `consumers/`, `actors/`, `http/`, `domain/` | Handlers, surfaces, hexagon |
 | `deploy/` | Local cluster env + compose |
 
-Register more capabilities without editing builder chains by hand:
+Add capabilities by editing **`src/manifest.rs`** (inside `// trembita:jobs` / `:topics` / … regions),
+adding handlers under `consumers/` / `actors/`, and wiring gateway routes in **`app.rs`** / `src/http/`
+(see scaffold `src/http/ops.rs` and [`examples/`](../examples/)). Then:
 
 ```bash
-trembita add consumer emails --lease 300   # patches manifest.rs + creates consumers/emails.rs
-trembita add topic platform.events
-trembita add actor catalog
-trembita doctor                            # manifest ↔ files consistency
+trembita doctor   # manifest ↔ files consistency (read-only)
 ```
-
-HTTP surfaces and ops/jobs route merges still patch **`app.rs`** / `src/http/` ([`trembita add http-surface`](../crates/trembita-cli/README.md)). See [`trembita new --help`](../crates/trembita-cli/src/main.rs).
 
 ## 10. Observability & ops
 

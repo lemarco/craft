@@ -129,7 +129,7 @@ When workflows are registered in [`AppManifest`](../../crates/trembita/src/app/m
 | `POST /workflows/run` | `{ "saga_id": "<plan id>" }` | `200` when the saga completes or is already finished |
 | `POST /workflows/resume` | `{ "saga_id": "<plan id>" }` | `200` after resuming a stuck saga |
 
-Opt out with [`.without_workflows_api()`](../../crates/trembita/src/app/builder.rs). Local dev: [`examples/workflows/trigger.sh`](../../examples/workflows/trigger.sh), `trembita dev trigger workflows -- …`, or `trembita dev http --showcase workflows -- workflow run onboard-42`.
+Opt out with [`.without_workflows_api()`](../../crates/trembita/src/app/builder.rs). Local dev: [`examples/workflows/trigger.sh`](../../examples/workflows/trigger.sh), or `./target/debug/trembita dev trigger workflows -- …` (debug CLI from repo root).
 
 Introspection: `GET /introspect/sagas` (ops/admin and embedded dashboard **Workflows** panel).
 

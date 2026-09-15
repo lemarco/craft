@@ -7,12 +7,12 @@ use std::process;
 
 use clap::{Parser, Subcommand, ValueHint};
 use trembita_cli::{
-    AddActorOpts, AddConsumerOpts, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts,
-    AddWorkflowOpts, AddWsSurfaceOpts, AppTemplate, NewProjectOpts, StaticSiteSource,
-    TrembitaProject, add_actor, add_consumer, add_http_surface, add_jobs_routes, add_ops_routes,
-    add_static_site, add_topic, add_workflow, add_ws_surface, default_output, dev_http, dev_setup,
-    dev_status, dev_stop, dev_trigger, dev_up, doctor_fix, list_showcases, parse_feature_list,
-    resolve_scaffold_features, run_doctor, scaffold_project,
+    AppTemplate, NewProjectOpts, TrembitaProject, default_output, resolve_scaffold_features,
+    run_doctor, scaffold_project,
+};
+#[cfg(debug_assertions)]
+use trembita_cli::{
+    dev_http, dev_setup, dev_status, dev_stop, dev_trigger, dev_up, list_showcases,
 };
 
 #[derive(Parser)]
@@ -48,33 +48,24 @@ enum Command {
         #[arg(long, default_value = env!("CARGO_PKG_VERSION"))]
         trembita_version: String,
     },
-    /// Add a component to an existing product app.
-    Add {
-        #[command(subcommand)]
-        target: AddTarget,
-        /// Project root (default: discover from cwd).
-        #[arg(long, value_hint = ValueHint::DirPath)]
-        path: Option<PathBuf>,
-    },
-    /// Local showcase clusters (preferred over `./cluster.sh` for dev).
+    /// Local showcase clusters (trembita repo, debug CLI only — not in `--release`).
+    #[cfg(debug_assertions)]
     Dev {
         #[command(subcommand)]
         command: DevCommand,
     },
-    /// Check layout and wiring consistency.
+    /// Check layout and wiring consistency (read-only; does not modify sources).
     Doctor {
         /// Project root (default: discover from cwd).
         #[arg(long, value_hint = ValueHint::DirPath)]
         path: Option<PathBuf>,
-        /// Apply safe auto-fixes (missing mod declarations).
-        #[arg(long)]
-        fix: bool,
         /// Stricter deploy checks (`deploy/.env`, compose, certs/listen env).
         #[arg(long)]
         preflight: bool,
     },
 }
 
+#[cfg(debug_assertions)]
 #[derive(Subcommand)]
 enum DevCommand {
     /// List built-in product showcases and default ports.
@@ -130,94 +121,6 @@ enum DevCommand {
     },
 }
 
-#[derive(Subcommand)]
-enum AddTarget {
-    /// Register a job consumer (`consumers/` + `manifest.rs`).
-    Consumer {
-        /// Job stream name.
-        stream: String,
-        /// Rust module name (default: derived from stream).
-        #[arg(long)]
-        module: Option<String>,
-        /// Lease duration in seconds.
-        #[arg(long, default_value_t = 300)]
-        lease: u64,
-    },
-    /// Register an event topic (`manifest.rs`).
-    Topic {
-        /// Topic name.
-        name: String,
-    },
-    /// Register a stateful worker group (`actors/` + `manifest.rs`).
-    Actor {
-        /// Actor group / routing name.
-        group: String,
-        /// Rust worker type name (default: `{Group}Worker`).
-        #[arg(long)]
-        type_name: Option<String>,
-    },
-    /// Register a saga workflow (`workflows/` + `manifest.rs`).
-    Workflow {
-        /// Saga id prefix (e.g. `onboard` matches `onboard-42`).
-        prefix: String,
-        /// Rust module file name (default: derived from `prefix`).
-        #[arg(long)]
-        module: Option<String>,
-    },
-    /// Add operational routes (`src/http/ops.rs` + gateway merge).
-    OpsRoutes,
-    /// Add job operator routes (`src/http/jobs.rs` + gateway merge).
-    JobsRoutes,
-    /// Register WebSocket routes (`src/http/ws.rs` + gateway merge).
-    WsSurface {
-        /// WebSocket path (e.g. `/ws`).
-        path: String,
-        /// Actor group for sticky sessions.
-        #[arg(long, default_value = "chat")]
-        group: String,
-        /// Rust module name under `src/http/` (default: `ws`).
-        #[arg(long)]
-        module: Option<String>,
-        /// Sticky session to actor group (default: true).
-        #[arg(long, default_value_t = true)]
-        sticky: bool,
-    },
-    /// Register a custom HTTP surface (`src/http/` + gateway `.surface()`).
-    HttpSurface {
-        /// Surface name (default module name).
-        name: String,
-        /// Comma-separated hostnames (e.g. `api.example.com,api.internal`).
-        #[arg(long)]
-        hosts: String,
-        /// Rust module file name (default: derived from `name`).
-        #[arg(long)]
-        module: Option<String>,
-        /// Wire `SessionGate` on the surface.
-        #[arg(long)]
-        session: bool,
-        /// Attach `CorsPolicy::credentials` for browser clients.
-        #[arg(long)]
-        cors: bool,
-    },
-    /// Register a static SPA site (`StaticSite` + gateway `.surface()`).
-    StaticSite {
-        /// Site name (default module `{name}_static`).
-        name: String,
-        /// Comma-separated hostnames.
-        #[arg(long)]
-        hosts: String,
-        /// Compile-time asset path relative to project root (`include_dir!`).
-        #[arg(long, conflicts_with = "filesystem")]
-        embedded: Option<String>,
-        /// Filesystem asset path (default: `fe/{name}/dist`).
-        #[arg(long, conflicts_with = "embedded")]
-        filesystem: Option<String>,
-        /// Rust module file name (default: `{name}_static`).
-        #[arg(long)]
-        module: Option<String>,
-    },
-}
-
 fn main() {
     if let Err(err) = run() {
         eprintln!("error: {err}");
@@ -266,117 +169,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 "  cd {} && cargo run",
                 root.file_name().unwrap().to_string_lossy()
             );
-            eprintln!("  trembita add consumer <stream>  — register more job handlers");
-            eprintln!("  trembita add ops-routes | jobs-routes — built-in /health, /jobs/* tables");
-            eprintln!("  trembita add http-surface <name> --hosts … — custom HTTP routes");
-            eprintln!("  trembita add ws-surface <path> — WebSocket (sticky or raw)");
-            eprintln!("  trembita doctor                 — verify layout and wiring");
+            eprintln!("  Edit src/manifest.rs and src/app.rs to register capabilities");
+            eprintln!("  trembita doctor — verify layout and wiring");
         }
-        Command::Add { target, path } => {
-            let project = resolve_project(path.as_deref())?;
-            match target {
-                AddTarget::Consumer {
-                    stream,
-                    module,
-                    lease,
-                } => {
-                    add_consumer(
-                        &project,
-                        &AddConsumerOpts {
-                            stream,
-                            module,
-                            lease_secs: lease,
-                        },
-                    )?;
-                    eprintln!("Added consumer in {}", project.consumers_dir().display());
-                }
-                AddTarget::Topic { name } => {
-                    add_topic(&project, &AddTopicOpts { topic: name })?;
-                    eprintln!("Registered topic in {}", project.manifest_rs().display());
-                }
-                AddTarget::Actor { group, type_name } => {
-                    add_actor(&project, &AddActorOpts { group, type_name })?;
-                    eprintln!("Added actor in {}", project.actors_dir().display());
-                }
-                AddTarget::Workflow { prefix, module } => {
-                    add_workflow(&project, &AddWorkflowOpts { prefix, module })?;
-                    eprintln!("Added workflow in {}", project.workflows_dir().display());
-                }
-                AddTarget::OpsRoutes => {
-                    add_ops_routes(&project)?;
-                    eprintln!("Added ops routes in {}", project.http_dir().display());
-                }
-                AddTarget::JobsRoutes => {
-                    add_jobs_routes(&project)?;
-                    eprintln!("Added jobs routes in {}", project.http_dir().display());
-                }
-                AddTarget::WsSurface {
-                    path,
-                    group,
-                    module,
-                    sticky,
-                } => {
-                    add_ws_surface(
-                        &project,
-                        &AddWsSurfaceOpts {
-                            path,
-                            group,
-                            module,
-                            sticky,
-                        },
-                    )?;
-                    eprintln!(
-                        "Added WebSocket surface in {}",
-                        project.http_dir().display()
-                    );
-                }
-                AddTarget::HttpSurface {
-                    name,
-                    hosts,
-                    module,
-                    session,
-                    cors,
-                } => {
-                    add_http_surface(
-                        &project,
-                        &AddHttpSurfaceOpts {
-                            name,
-                            hosts: parse_hosts(&hosts)?,
-                            module,
-                            session,
-                            cors,
-                        },
-                    )?;
-                    eprintln!("Added HTTP surface in {}", project.http_dir().display());
-                }
-                AddTarget::StaticSite {
-                    name,
-                    hosts,
-                    embedded,
-                    filesystem,
-                    module,
-                } => {
-                    let source = match (embedded, filesystem) {
-                        (Some(path), None) => StaticSiteSource::Embedded { path },
-                        (None, Some(path)) => StaticSiteSource::Filesystem { path },
-                        (None, None) => StaticSiteSource::Filesystem {
-                            path: format!("fe/{name}/dist"),
-                        },
-                        _ => unreachable!("clap conflicts_with"),
-                    };
-                    add_static_site(
-                        &project,
-                        &AddStaticSiteOpts {
-                            name: name.clone(),
-                            hosts: parse_hosts(&hosts)?,
-                            source,
-                            module,
-                        },
-                    )?;
-                    eprintln!("Added static site in {}", project.http_dir().display());
-                }
-            }
-        }
+        #[cfg(debug_assertions)]
         Command::Dev { command } => match command {
             DevCommand::List => list_showcases(),
             DevCommand::Setup { showcase } => dev_setup(&showcase)?,
@@ -394,23 +190,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 args,
             } => dev_http(Some(&showcase), gateway.as_deref(), &args)?,
         },
-        Command::Doctor {
-            path,
-            fix,
-            preflight,
-        } => {
+        Command::Doctor { path, preflight } => {
             let project = resolve_project(path.as_deref())?;
             eprintln!("Checking {} …", project.root.display());
             if preflight {
                 eprintln!("Preflight mode (deploy env / compose / gateway ops)");
-            }
-            if fix {
-                let fix_report = doctor_fix(&project);
-                if fix_report.fixes_applied > 0 {
-                    eprintln!("Applied {} fix(es)", fix_report.fixes_applied);
-                } else {
-                    eprintln!("No auto-fixes needed");
-                }
             }
             let report = run_doctor(&project, preflight);
             let code = report.print_and_exit_code();
@@ -427,17 +211,4 @@ fn resolve_project(
 ) -> Result<TrembitaProject, Box<dyn std::error::Error>> {
     let start = path.map_or_else(|| std::env::current_dir().expect("cwd"), PathBuf::from);
     Ok(TrembitaProject::discover(&start)?)
-}
-
-fn parse_hosts(raw: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let hosts: Vec<String> = raw
-        .split(',')
-        .map(str::trim)
-        .filter(|h| !h.is_empty())
-        .map(String::from)
-        .collect();
-    if hosts.is_empty() {
-        return Err("at least one host required (--hosts)".into());
-    }
-    Ok(hosts)
 }
