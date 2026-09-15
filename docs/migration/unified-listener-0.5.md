@@ -1,7 +1,7 @@
 # Migrating to trembita 0.5.0 — unified HTTP listener
 
 **From:** separate admin / gateway env vars, hidden `.with_*_api()` merges, `TrembitaClusterBuilder::admin_addr`  
-**To:** explicit [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) merges on one TCP bind (`TREMBITA_HTTP`)
+**To:** one published port (`TREMBITA_LISTEN`) with default gateway surfaces or explicit [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) merges on that TCP bind
 
 See [unified-listener](../decisions/unified-listener.md) for rationale.
 
@@ -128,26 +128,27 @@ Added:
 
 ## `trembita-node`
 
-- Ops HTTP: **`TREMBITA_HTTP`** (default `127.0.0.1:8080`), optional **`TREMBITA_HTTP_TLS_*`**
+- Ops HTTP: TCP on the **same `host:port` as `TREMBITA_LISTEN`** ([`product_http_from_wire`](../../crates/trembita/src/env_config.rs)); optional **`TREMBITA_HTTP_TLS_*`**
+- Set **`TREMBITA_HTTP=-`** only for QUIC-only nodes (no TCP listener)
 - No separate admin listener
 
 ## Docker / k8s
 
-Each process still has **two** network binds — not three HTTP ports:
+Each process has **two** socket binds on one port number — not split admin/gateway TCP ports:
 
 | Bind | Env | Protocol | Purpose |
 |------|-----|----------|---------|
 | Wire | `TREMBITA_LISTEN` | QUIC (UDP) | Raft / actor traffic between nodes |
-| HTTP | `TREMBITA_HTTP` | TCP | Product routes **and** ops on **one** listener |
+| HTTP | `TREMBITA_LISTEN` (same port number) | TCP | Product routes **and** ops on **one** listener |
 
-Do **not** set `TREMBITA_HTTP` and `TREMBITA_GATEWAY` to different ports (alias only). Remove legacy admin-only port mappings (`9180`, `9280`, …).
+Do **not** set `TREMBITA_HTTP` / `TREMBITA_GATEWAY` to a different host:port than `TREMBITA_LISTEN`. Remove legacy admin-only port mappings (`9180`, `9280`, …).
 
 - One Service port for HTTP (product + ops), or split by **hostname** on the same TCP bind via `Gateway::surface(hosts: …)`.
 - Publish only the HTTP port to clients; QUIC stays on the mesh network.
 
 ## Checklist
 
-- [ ] Replace `TREMBITA_ADMIN` / split ports with `TREMBITA_HTTP`
+- [ ] Replace `TREMBITA_ADMIN` / split ports with **`TREMBITA_LISTEN`** (wire + TCP)
 - [ ] Merge `http::ops::route_table` (and product APIs) in `.surfaces()`
 - [ ] Run `trembita doctor`; fix errors for removed gateway flags
 - [ ] Point monitoring at `/health` and `/metrics` on the unified bind

@@ -17,6 +17,18 @@ cargo build -p trembita-cli
 | [`workflows/`](workflows/) | Saga journal + actor/queue steps | `cargo run --release` | `./target/debug/trembita dev up --showcase workflows` |
 | [`self-update/`](self-update/) | Leader-coordinated rolling self-update | `cargo run --release` | `./target/debug/trembita dev up --showcase self-update` |
 
+### WebSocket lab (solo `cargo run` only)
+
+Smaller crates that exercise gateway WebSocket helpers without multi-node `dev` wiring:
+
+| Folder | Pattern |
+|--------|---------|
+| [`ws-minimal/`](ws-minimal/) | Raw WebSocket echo |
+| [`market-ws/`](market-ws/) | Open broadcast hub |
+| [`ws-notify/`](ws-notify/) | Identity push per user |
+
+See [getting-started §8](../docs/getting-started.md#8-real-time-gateway) and [`trembita dev list`](../crates/trembita-cli/README.md) for registered showcase ids.
+
 ## Quick solo run
 
 ```bash

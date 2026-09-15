@@ -27,7 +27,7 @@ Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** sch
 | E2E | Real processes, QUIC, mTLS, chaos | `e2e/run.sh`, `e2e/leave.sh`, `e2e/queue.sh`, `e2e/chaos.sh`, `e2e/cert_renew.sh`, `e2e/linearizability.sh` | 6 scenarios | 🔒 nightly |
 | Fuzz | Wire decode never panics | `trembita-fuzz` | 1 target | 🔒 nightly |
 | Bench / soak | Throughput, long-run sim | `benchmarks/` | — | 🔒 nightly |
-| Examples | Product showcases (standalone crates) | [`examples/`](../examples/README.md) | 4 apps | `./scripts/check-examples.sh` |
+| Examples | Product showcases + WS lab crates | [`examples/`](../examples/README.md) | 8 crates | `./scripts/check-examples.sh` |
 
 ---
 

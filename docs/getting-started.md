@@ -8,14 +8,14 @@ Quick path for **product teams** using [`TrembitaApp`](../crates/trembita/src/ap
 
 ```toml
 [dependencies]
-trembita = "0.3"
+trembita = "0.4"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 ```
 
 The default feature set includes `http-jobs` (product HTTP gateway helpers). For local QUIC without PEM files, add `dev-certs`:
 
 ```toml
-trembita = { version = "0.3", features = ["dev-certs"] }
+trembita = { version = "0.4", features = ["dev-certs"] }
 ```
 
 ### Optional integrations (facade features)
@@ -31,7 +31,7 @@ Enable on the same `trembita` dependency — no separate adapter crates in your 
 | `domain-outbox` | Postgres transactional outbox → event topic drainer ([event-outbox](decisions/event-outbox.md)) |
 
 ```toml
-trembita = { version = "0.3", features = ["http-jobs", "dev-certs", "external-backlog"] }
+trembita = { version = "0.4", features = ["http-jobs", "dev-certs", "external-backlog"] }
 ```
 
 ```rust
@@ -184,7 +184,7 @@ Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store
 Prefer [`.jobs()`](../crates/trembita/src/job_opts.rs) to register queue + consumer + HTTP enqueue in one call. Enable the `http-jobs` feature (default on the facade):
 
 ```toml
-trembita = { version = "0.3", features = ["http-jobs"] }
+trembita = { version = "0.4", features = ["http-jobs"] }
 ```
 
 ```rust
@@ -308,7 +308,7 @@ trembita doctor   # manifest ↔ files consistency (read-only)
 
 | Need | How |
 |------|-----|
-| Live dashboard | Merge [`OpsApi::route_table()`](../crates/trembita-http/src/ops_routes.rs) in [`GatewayOpts::surfaces`](../crates/trembita/src/gateway/opts.rs) (see scaffold `src/http/ops.rs`) |
+| Live dashboard | Automatic with [`TrembitaApp::from_env()`](../crates/trembita/src/app/runtime.rs) on `TREMBITA_LISTEN`; brownfield apps merge [`OpsApi::route_table()`](../crates/trembita-http/src/ops_routes.rs) in [`GatewayOpts::surfaces`](../crates/trembita/src/gateway/opts.rs) (see scaffold `src/http/ops.rs`) |
 | Queue / workflow panels | Dashboard polls `/introspect/queues` and `/introspect/sagas` |
 | Prometheus | Scrape `GET /metrics` (includes `trembita_queue_*`, `trembita_saga_*`) |
 | Push export | `.metrics_sink(Arc::new(my_sink))` on [`TrembitaAppBuilder`](../crates/trembita/src/app/mod.rs) — see [`MetricsSink`](../crates/trembita-dashboard/src/metrics_sink.rs) |

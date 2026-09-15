@@ -62,7 +62,6 @@ the shared `ca.pem`, its own `node-<id>` pair, and the full member list:
 # on VPS 1
 export TREMBITA_NODE_ID=1
 export TREMBITA_LISTEN=0.0.0.0:7443
-export TREMBITA_HTTP=0.0.0.0:8080
 export TREMBITA_PEERS="1@10.0.0.1:7443,2@10.0.0.2:7443,3@10.0.0.3:7443"
 export TREMBITA_CA_CERT=/etc/trembita/ca.pem
 export TREMBITA_NODE_CERT=/etc/trembita/node-1.pem

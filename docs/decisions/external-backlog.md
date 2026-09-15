@@ -43,7 +43,7 @@ Runtime behaviour ([`run_backlog_feeder`](../../crates/trembita-jobs/src/externa
 Optional adapter: enable `external-backlog` on the `trembita` dependency ([facade](facade.md)) — [`PgBacklog`](../../crates/trembita-backlog-postgres/) (`FOR UPDATE SKIP LOCKED`). Direct `trembita-backlog-postgres` dep remains for advanced use.
 
 ```toml
-trembita = { version = "0.3", features = ["external-backlog"] }
+trembita = { version = "0.4", features = ["external-backlog"] }
 ```
 
 ```rust

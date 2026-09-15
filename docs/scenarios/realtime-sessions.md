@@ -247,7 +247,7 @@ See [read-consistency](../decisions/client-and-routing.md#read-consistency).
 
 ## Future polish
 
-Gateway auth: [`GatewayBearerIdentity`](../../crates/trembita/src/gateway/identity.rs) + [`.protect_product_apis(true)`](../../crates/trembita/src/gateway/mod.rs) on [`GatewayOpts`](../../crates/trembita/src/gateway/mod.rs). Custom routes use the same identity via [`TrembitaGatewayState::open_actor_session_parts`](../../crates/trembita/src/gateway/mod.rs). See [`examples/realtime/`](../../examples/realtime/).
+Gateway auth: [`GatewayBearerIdentity`](../../crates/trembita/src/gateway/identity.rs) on [`GatewayOpts::identity`](../../crates/trembita/src/gateway/opts.rs) plus [`AuthMode::Identity`](../../crates/trembita-http/src/routing/auth.rs) on sticky WebSocket and login routes (see [`examples/realtime/`](../../examples/realtime/)). Custom routes use the same identity via [`TrembitaGatewayState::open_actor_session_parts`](../../crates/trembita/src/gateway/mod.rs).
 
 ## Related
 

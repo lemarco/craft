@@ -57,7 +57,7 @@ When write load exceeds a single Raft group:
 
 - Enable `.raft_groups(n)` / multi-group catalog — see [multi-raft.md](../decisions/multi-raft.md).
 - **Backup must include `group-meta.redb`** (Meta-Raft coordinator: saga journal, catalog).
-- Rebalance and expansion are leader-driven; monitor `/introspect/raft-groups` on the admin port.
+- Rebalance and expansion are leader-driven; monitor `GET /introspect/raft-groups` on the ops HTTP bind (`TREMBITA_LISTEN` for product apps).
 
 Start with **one group** until metrics or latency justify adding groups — premature sharding adds operational surface.
 

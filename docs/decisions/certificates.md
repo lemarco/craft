@@ -87,5 +87,5 @@ Builder: `Security::from_pem_files` → `PemSecurity`; `.cert_watch(period)` ena
 ## Related
 
 - [security.md](security.md) — mTLS policy
-- [wire-protocol.md](wire-protocol.md) — admin port stays read-only
+- [wire-protocol.md](wire-protocol.md) — ops HTTP stays read-only
 - [../certs.md](../certs.md) — operator guide

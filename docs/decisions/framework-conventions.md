@@ -102,7 +102,7 @@ Scaffolded apps expose trembita capabilities as **app features** that forward to
 Generated `Cargo.toml` keeps **one** runtime dependency:
 
 ```toml
-trembita = { version = "0.3", features = ["dev-certs", "http-jobs", "external-backlog"] }
+trembita = { version = "0.4", features = ["dev-certs", "http-jobs", "external-backlog"] }
 ```
 
 CLI subcommands — **shipped** in [`trembita-cli`](../../crates/trembita-cli/):

@@ -24,9 +24,9 @@
 
 | | |
 |---|---|
-| **Version** | `0.3.2` |
+| **Version** | `0.4.0` (0.5.0 unified-listener in progress) |
 | **Distribution** | Published on [crates.io](https://crates.io/crates/trembita) — E2E/chaos, product showcases |
-| **Release** | v0.3.2 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/trembita/0.3.2](https://docs.rs/trembita/0.3.2) |
+| **Release** | v0.4.0 — [CHANGELOG.md](CHANGELOG.md) · [docs.rs/trembita/0.4.0](https://docs.rs/trembita/0.4.0) |
 | **Full status** | [docs/status.md](docs/status.md) |
 
 ### Highlights
@@ -131,7 +131,7 @@ See [multi-raft](docs/decisions/multi-raft.md), [job-queue](docs/decisions/job-q
 
 ```toml
 [dependencies]
-trembita = "0.3"
+trembita = "0.4"
 ```
 
 Product apps: default `http-jobs` enables HTTP job routes; add `dev-certs` for local QUIC without PEM files. Optional Postgres/Redis adapters: `external-backlog`, `domain-outbox`, `redis-store` — see [facade ADR](docs/decisions/facade.md) and [getting-started](docs/getting-started.md).

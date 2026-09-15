@@ -19,13 +19,13 @@ Cluster introspection JSON already exists ([observability §4](observability.md)
 | `GET /introspect/topics` | [`TopicsView`](../../crates/trembita-dashboard/src/views.rs) | `Observer::topics` |
 | `GET /introspect/raft-groups` | [`RaftGroupsView`](../../crates/trembita-dashboard/src/views.rs) | `Observer::raft_groups` |
 
-[`TrembitaObserver`](../../crates/trembita/src/observer.rs) implements the port; [`AdminServer`](../../crates/trembita-dashboard/src/server.rs) serves it on the **admin port** (default `:8080`, hyper HTTP/1.1) together with `/health`, `/ready`, `/metrics`, and the embedded dashboard.
+[`TrembitaObserver`](../../crates/trembita/src/observer.rs) implements the port. [`TrembitaApp::ops_api()`](../../crates/trembita/src/app/runtime.rs) and [`AdminServer`](../../crates/trembita-dashboard/src/server.rs) serve the same JSON on the **ops HTTP bind** ([wire-protocol § ops HTTP](wire-protocol.md#ops-http-tcp-on-trembita_listen)) together with `/health`, `/ready`, `/metrics`, and the embedded dashboard.
 
-Product HTTP already merges optional [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) entries with [`AuthFn`](../../crates/trembita-http/src/lib.rs) ([`JobsApi`](../../crates/trembita-http/src/lib.rs), [`ActorsApi`](../../crates/trembita-http/src/lib.rs), [`WorkflowsApi`](../../crates/trembita-http/src/lib.rs)) via [`GatewayOpts::surfaces`](../../crates/trembita/src/gateway/opts.rs) and [`build_gateway_service`](../../crates/trembita/src/gateway/mod.rs).
+Product HTTP merges optional [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) entries with [`AuthFn`](../../crates/trembita-http/src/lib.rs) ([`JobsApi`](../../crates/trembita-http/src/lib.rs), [`ActorsApi`](../../crates/trembita-http/src/lib.rs), [`WorkflowsApi`](../../crates/trembita-http/src/lib.rs), [`IntrospectApi`](../../crates/trembita-http/src/lib.rs)) via [`GatewayOpts::surfaces`](../../crates/trembita/src/gateway/opts.rs) and [`build_gateway_service`](../../crates/trembita/src/gateway/mod.rs). [`TrembitaApp::from_env()`](../../crates/trembita/src/app/runtime.rs) mounts ops + registration-driven product APIs on **`TREMBITA_LISTEN`** by default.
 
-Teams whose **operator UI is the product** (multi-page admin apps, session auth in Postgres, RBAC) need the same snapshots **inside their gateway**, next to custom routes — not on a separate admin listener they must proxy or reimplement by hand.
+Teams whose **operator UI is the product** (multi-page admin apps, session auth in Postgres, RBAC) mount the same snapshots **beside custom routes** on the product hostname, typically behind [`AuthMode::Identity`](../../crates/trembita-http/src/routing/auth.rs).
 
-Job **operations** for admin screens (`list_jobs`, `requeue_dead_letter_batch`) are **already** on the gateway as `GET /jobs/{stream}` and `POST /jobs/{stream}/requeue-batch` when `.with_jobs_api(true)`. The gap is the **read-only introspection** routes, which today exist only on the admin server.
+Job **operations** for operator screens (`list_jobs`, `requeue_dead_letter_batch`) mount with [`.jobs([…]).http_enqueue(true)`](../../crates/trembita/src/job_opts.rs) as `GET /jobs/{stream}` and `POST /jobs/{stream}/requeue-batch`. **Read-only introspection** uses the same paths on the unified bind (`GET /introspect/*`) or an explicit [`IntrospectApi`](../../crates/trembita-http/src/lib.rs) merge.
 
 This mirrors the split already accepted for schedules and backlogs: trembita holds data and semantics; the **HTTP surface** for operator UIs stays in the app ([schedule-source](schedule-source.md), [external-backlog](external-backlog.md) — “HTTP schedule admin on trembita” rejected).
 
@@ -77,19 +77,22 @@ Each handler calls the shared `authorize()` helper when `state.auth` is set (sam
 ### 2. Facade wiring
 
 ```rust
-// TrembitaApp — builds Arc<dyn Observer> from TrembitaObserver (same as admin)
+// TrembitaApp — builds Arc<dyn Observer> from TrembitaObserver (same as ops_api)
 pub fn introspect_api(&self) -> trembita_http::IntrospectApi { /* ... */ }
 
-// GatewayOpts
+// Explicit merge (brownfield) — identity on sensitive tables
 GatewayOpts::new(addr)
-    .with_jobs_api(true)          // list_jobs, requeue-batch for admin pages
-    .with_introspect_api(true)    // cluster / actors / queues / sagas snapshots
     .identity(MySessionIdentity)
-    .protect_product_apis(true)
-    .surfaces(|state| my_admin_ui_routes(state))
+    .surfaces(|state| {
+        let introspect = state.app.introspect_api().route_table_with_auth(Some(my_auth));
+        let jobs = TrembitaApp::jobs_api(Arc::clone(&state.app))
+            .route_table()
+            .with_auth_mode(AuthMode::Identity);
+        my_admin_ui_routes(state).merge(jobs).merge(introspect)
+    })
 ```
 
-[`build_gateway_service`](../../crates/trembita/src/gateway/mod.rs) merges `IntrospectApi` when `introspect_api: true`, applying the same `auth` clone as jobs/actors/workflows.
+[`TrembitaApp::default_surfaces`](../../crates/trembita/src/app/gateway.rs) includes ops `/introspect/*` when using [`from_env()`](../../crates/trembita/src/app/runtime.rs). Removed in 0.5: `GatewayOpts::with_*_api` / `protect_product_apis` ([unified-listener](unified-listener.md)).
 
 Manual mount (custom route table without full gateway):
 
@@ -99,20 +102,20 @@ let api = IntrospectApi::new(observer);
 let routes = api.route_table_with_auth(Some(my_auth));
 ```
 
-### 3. Admin port unchanged
+### 3. Ops bind (unified listener)
 
-The admin listener **keeps** serving `/introspect/*` for:
+On product apps, `/introspect/*` lives on the **same TCP bind as product HTTP** (`TREMBITA_LISTEN`) via default gateway surfaces:
 
 - Prometheus scrape co-location (`/metrics`)
 - Embedded dashboard (`GET /dashboard`)
-- Ops probes without product auth (`/health`, `/ready`)
-- E2E and runbook curls against `:8080`
+- Ops probes (`/health`, `/ready`) — typically on an internal hostname in production
+- E2E and runbook curls against the unified HTTP port
 
-Gateway introspection is **opt-in** for product teams; it does not replace the admin port ([wire-protocol § admin](wire-protocol.md#admin-http-port--8080tcp)).
+Host-split deployments can mount ops-only tables on `ops.internal` and product + introspect on `api.example.com` ([unified-listener](unified-listener.md)).
 
 ### 4. Auth model
 
-- Same [`AuthFn`](../../crates/trembita-http/src/lib.rs) / [`GatewayIdentity`](../../crates/trembita/src/gateway/identity.rs) as other product APIs when `protect_product_apis(true)`.
+- Same [`AuthFn`](../../crates/trembita-http/src/lib.rs) / [`GatewayIdentity`](../../crates/trembita/src/gateway/identity.rs) as other product APIs via [`RouteTable::with_auth_mode(AuthMode::Identity)`](../../crates/trembita-http/src/routing/auth.rs).
 - Session cookies, JWT, RBAC — app-defined via `GatewayIdentity` or a custom `AuthFn` on manual mount ([gateway-identity](gateway-identity.md)).
 - Custom routes from `GatewayOpts::routes()` remain **unprotected** by default (unchanged).
 
@@ -122,7 +125,7 @@ Gateway introspection is **opt-in** for product teams; it does not replace the a
 |-------|------|
 | Unit | `introspect_routes.rs` — 404 on missing actor/node, auth rejects without token |
 | Integration | `trembita/tests/gateway_introspect_http.rs` — merge router, assert JSON shape matches admin |
-| Facade | `protect_product_apis(true)` → `401` on `/introspect/cluster` without identity |
+| Facade | `AuthMode::Identity` → `401` on `/introspect/cluster` without identity |
 
 Update [testing-coverage.md](../testing-coverage.md) when tests land.
 
@@ -138,15 +141,15 @@ Update [testing-coverage.md](../testing-coverage.md) when tests land.
 **Negative**
 
 - `trembita-http` depends on `trembita-dashboard` (view types). Acceptable: facade already pulls both; alternative would be extracting views to a fifth crate — deferred unless dependency graph becomes painful.
-- Two listeners can expose identical paths (`:8080` admin vs `:8090` gateway) — document that apps should pick one **authoritative** introspection URL for their UI (gateway behind session auth).
+- Host-based routing can expose identical paths on different virtual hosts — pick one **authoritative** introspection URL for your operator UI (usually the identity-protected product hostname).
 - Cross-node actor aggregation semantics unchanged — still whatever `TrembitaObserver` returns on the queried node; not a new cluster-wide fan-out API.
 
 ## Out of scope
 
 | Item | Reason |
 |------|--------|
-| `/metrics`, `/dashboard`, SSE `/dashboard/events` on gateway | Ops/embedded UI stay admin-only |
-| `GET /ready`, `GET /health` on gateway | K8s probes use admin port; workflows API has its own `/health` |
+| Moving `/metrics`, `/dashboard` off the ops bind | Ops/embedded UI stay on the ops hostname by convention |
+| `GET /ready`, `GET /health` on a public product hostname | K8s probes should target the ops hostname; workflows API has its own `/health` |
 | Mutating introspection | Read-only by design ([observability §4](observability.md)) |
 | Moving `Observer` out of `trembita-dashboard` | Follow-up only if crate split is needed |
 
@@ -165,6 +168,6 @@ Update [testing-coverage.md](../testing-coverage.md) when tests land.
 - [observability.md §4](observability.md#4-introspection-api-observer-like)
 - [gateway-identity.md](gateway-identity.md)
 - [product-scenarios.md](product-scenarios.md)
-- [wire-protocol.md § admin vs gateway](wire-protocol.md#admin-http-port--8080tcp)
+- [wire-protocol.md § ops HTTP](wire-protocol.md#ops-http-tcp-on-trembita_listen)
 - [schedule-source.md](schedule-source.md) — operator UI stays in the app
 - [external-backlog.md](external-backlog.md) — same product boundary

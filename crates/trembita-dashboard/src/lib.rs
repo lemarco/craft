@@ -1,7 +1,7 @@
 //! `trembita-dashboard` — admin HTTP endpoints and the live observability
 //! dashboard (health-admin-port + observability, backlog Track H).
 //!
-//! Everything here rides the **admin port** (default `0.0.0.0:8080/tcp`),
+//! Everything here rides the **ops HTTP bind** (product apps: TCP on `TREMBITA_LISTEN`),
 //! separate from the mTLS QUIC trembita wire, so ordinary probes and Prometheus
 //! scrapers work without client certs. The surface is entirely read-only.
 //!

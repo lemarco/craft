@@ -21,7 +21,7 @@ Ship a **full observability stack**:
 6. **Live web dashboard** (read-only)
 7. Opt-in **message tracing**
 
-All read surfaces live on the **admin port** ([wire-protocol](wire-protocol.md#admin-http-port--8080tcp), default `:8080`), never on the mTLS trembita wire.
+All read surfaces live on the **ops HTTP bind** ([wire-protocol](wire-protocol.md#ops-http-tcp-on-trembita_listen) — for product apps, TCP on **`TREMBITA_LISTEN`**), never on the mTLS trembita wire.
 
 ---
 
@@ -85,7 +85,7 @@ Backed by a broadcast channel; drops for slow consumers are counted (never block
 
 ### 4. Introspection API (Observer-like)
 
-Read-only cluster/actor state over admin HTTP (JSON):
+Read-only cluster/actor state over ops HTTP (JSON):
 
 | Route | Returns |
 |-------|---------|
@@ -94,9 +94,9 @@ Read-only cluster/actor state over admin HTTP (JSON):
 | `GET /introspect/actors/{id}` | single actor detail |
 | `GET /introspect/node/{id}` | per-VPS: workers, resources, store health |
 
-Cross-node aggregation: admin queries fan out via existing actor directory ([cross-node-actors](cross-node-actors.md)) / peer RPC; leader can serve cluster-wide view.
+Cross-node aggregation: ops handlers fan out via existing actor directory ([cross-node-actors](cross-node-actors.md)) / peer RPC; leader can serve cluster-wide view.
 
-**Product gateway (proposed):** teams with a custom admin UI can mount the same JSON on the product gateway via [`IntrospectApi`](introspect-api.md) (`GatewayOpts::with_introspect_api(true)`) behind [`AuthFn`](../../crates/trembita-http/src/lib.rs). The admin port remains the ops default (`/metrics`, embedded dashboard).
+**Product gateway:** teams with a custom operator UI can mount the same JSON beside product routes via [`IntrospectApi`](introspect-api.md) (`RouteTable` merge or default gateway surfaces). [`TrembitaApp::from_env()`](../../crates/trembita/src/app/runtime.rs) already serves `/introspect/*` on the unified bind; use [`AuthMode::Identity`](../../crates/trembita-http/src/routing/auth.rs) when exposing snapshots on a public hostname.
 
 ### 5. Supervision / restart policies
 
@@ -117,7 +117,7 @@ Restart events surface in telemetry + metrics. Exhausted restart budget → esca
 
 ### 6. Live web dashboard (`GET /dashboard`)
 
-Read-only UI on admin port (v1, minimal but real):
+Read-only UI on the ops HTTP bind (v1, minimal but real):
 
 - Cluster map: nodes, leader, health
 - Per-node workers + mailbox depth + message rate
@@ -170,7 +170,7 @@ Emits trace events to telemetry stream / logs; auto-expires. Never on for whole 
 
 ## Related
 
-- [wire-protocol.md#admin-http-port--8080tcp](wire-protocol.md#admin-http-port--8080tcp)
+- [wire-protocol.md#ops-http-tcp-on-trembita_listen](wire-protocol.md#ops-http-tcp-on-trembita_listen)
 - [cross-node-actors.md](cross-node-actors.md)
 - [cluster-elasticity.md#supervisor--leader-only-reconciliation](cluster-elasticity.md#supervisor--leader-only-reconciliation)
 - [actor-state-redis.md](actor-state-redis.md)

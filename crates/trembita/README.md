@@ -12,7 +12,7 @@ depend only on `trembita`.
 
 ```toml
 [dependencies]
-trembita = { version = "0.3", features = ["http-jobs", "dev-certs"] }
+trembita = { version = "0.4", features = ["http-jobs", "dev-certs"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 ```
 
@@ -22,14 +22,12 @@ Every process is a QUIC cluster member. Topology comes from `TREMBITA_*` env; do
 
 ```rust,no_run
 use std::time::Duration;
-use trembita::{TrembitaApp, GatewayOpts, QueueOpts, RunOpts};
+use trembita::{JobOpts, RunOpts, TrembitaApp};
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-TrembitaApp::builder()
-    .data_dir("/tmp/my-app")
-    .queue([QueueOpts::new("jobs", Duration::from_secs(300))])
-    .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?).with_jobs_api(true))
-    .run(RunOpts::default().with_wait_queue("jobs"))
+TrembitaApp::from_env()?
+    .jobs([JobOpts::new("jobs", Duration::from_secs(300)).http_enqueue(true)])
+    .run(RunOpts::from_env()?)
     .await?;
 # Ok(())
 # }
@@ -52,7 +50,7 @@ Custom [`StateMachine`](https://docs.rs/trembita-core/latest/trembita_core/trait
 Optional integrations are enabled on the single `trembita` dependency — no separate adapter crates in your `Cargo.toml`:
 
 ```toml
-trembita = { version = "0.3", features = ["http-jobs", "external-backlog", "redis-store"] }
+trembita = { version = "0.4", features = ["http-jobs", "external-backlog", "redis-store"] }
 ```
 
 Direct `trembita-*` crate dependencies remain available for advanced use.

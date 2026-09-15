@@ -72,14 +72,18 @@ let api = IntrospectApi::new(observer);
 let routes = api.route_table_with_auth(Some(auth_fn));
 ```
 
-Or via the facade gateway:
+Or merge built-in tables in gateway surfaces (0.5+ — `with_*_api` removed):
 
 ```rust
 GatewayOpts::new(addr)
-    .with_introspect_api(true)
-    .with_jobs_api(true) // list / requeue for operator queue pages
     .identity(MySessionIdentity)
-    .protect_product_apis(true)
+    .surfaces(|state| {
+        let jobs = TrembitaApp::jobs_api(Arc::clone(&state.app))
+            .route_table()
+            .with_auth_mode(AuthMode::Identity);
+        let introspect = state.app.introspect_api().route_table_with_auth(Some(auth_fn));
+        custom_routes(state).merge(jobs).merge(introspect)
+    })
 ```
 
 Routes: `GET /introspect/cluster`, `/actors`, `/queues`, `/sagas`, `/raft-groups`, `/actors/{id}`, `/node/{id}`.

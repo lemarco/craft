@@ -180,7 +180,7 @@ See [state placement cheat sheet](state-placement.md) for where queue backlog vs
 When the **authoritative backlog** lives outside trembita (Postgres `pending` rows, legacy job table), enable `external-backlog` and use [`ExternalBacklog`](../../crates/trembita-jobs/src/external_backlog.rs):
 
 ```toml
-trembita = { version = "0.3", features = ["external-backlog"] }
+trembita = { version = "0.4", features = ["external-backlog"] }
 ```
 
 ```rust
@@ -198,7 +198,7 @@ trembita runs **`claim` on the leader only**, tops the in-flight queue window to
 
 ### 4. HTTP mapping (recommended)
 
-Wire the gateway (`http-jobs` feature, on by default) with [`GatewayOpts`](../../crates/trembita/src/gateway/mod.rs) — built-in `/jobs/*` routes are **opt-in** (`.with_jobs_api(true)` or `TREMBITA_GATEWAY_JOBS=1`). Request bodies: raw bytes or JSON `{ "payload": "…" }` / `{ "payload_b64": "…" }` ([facade `http-jobs`](../decisions/facade.md)).
+Register the queue with [`.jobs([…]).http_enqueue(true)`](../../crates/trembita/src/job_opts.rs) (or [`TrembitaApp::from_env()`](../../crates/trembita/src/app/runtime.rs) + registration) — `/jobs/*` mounts on **`TREMBITA_LISTEN`** automatically. Opt out with [`.without_jobs_api()`](../../crates/trembita/src/app/builder.rs). Legacy `GatewayOpts::with_jobs_api` and `TREMBITA_GATEWAY_JOBS` were removed in 0.5 ([unified-listener](../decisions/unified-listener.md)). Request bodies: raw bytes or JSON `{ "payload": "…" }` / `{ "payload_b64": "…" }` ([facade `http-jobs`](../decisions/facade.md)).
 
 | Intent | Response | Route / API |
 |--------|----------|-------------|

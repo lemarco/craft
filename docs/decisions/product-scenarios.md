@@ -141,7 +141,7 @@ Typical flows:
 | `trembita init` template | **shipped** | B-06 ✅ — polish: richer worker stubs |
 | Dashboard: queue depth + saga status | **shipped** | B-07 ✅ |
 | Scenario docs (redb-first, no mandatory Redis) | **shipped** | B-08 ✅ |
-| Gateway bearer auth + `protect_product_apis` | **shipped** | B-14a ✅ |
+| Gateway bearer auth + identity-protected product routes (`AuthMode::Identity`) | **shipped** | B-14a ✅ |
 | E2E HTTP batch via product gateway | **shipped** | B-14c ✅ — `trembita/tests/gateway_jobs_http.rs` |
 | Gateway auth (custom beyond bearer stub) | **polish** | apps add `AuthFn` / custom identity |
 

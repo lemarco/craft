@@ -113,7 +113,7 @@ builders — apps choose what to merge and where.
 
 Step-by-step guide: [unified-listener-0.5.md](../migration/unified-listener-0.5.md).
 
-1. Replace `TREMBITA_ADMIN` + split gateway/admin ports with `TREMBITA_HTTP=0.0.0.0:443` (or your bind)
+1. Replace `TREMBITA_ADMIN` + split gateway/admin ports with **`TREMBITA_LISTEN=0.0.0.0:443`** (or your bind) — wire (UDP) and HTTP (TCP) share the port number
 2. Replace `.with_jobs_api(true)` with `http::jobs::route_table(&state)` in surfaces
 3. Copy or enable `src/http/ops.rs` / `jobs.rs` from the scaffold template and merge in `app.rs`
 4. Point probes at the unified bind: `GET /health`, `GET /ready`, `GET /metrics`
