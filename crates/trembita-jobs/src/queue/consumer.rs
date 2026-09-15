@@ -5,6 +5,9 @@ use super::port::JobQueue;
 use super::types::LeasedJob;
 use trembita_proto::WorkerId;
 
+/// After this many jobs in one lease batch, yield so gateway/actors on the same runtime get a turn.
+const YIELD_EVERY_JOBS_IN_BATCH: usize = 4;
+
 /// Optional workload governor integration for [`run_queue_consumer`].
 pub struct QueueConsumerWorkload {
     /// Shared compute token pool (acquired per handler invocation).
@@ -23,6 +26,9 @@ pub struct QueueConsumerWorkload {
 /// When `workload` is set, `batch` / `idle_sleep` come from the governor's
 /// [`crate::ConsumerTune`] watch channel and each handler acquires `compute_cost`
 /// token units from the pool (default 1).
+///
+/// While processing a leased batch, yields every [`YIELD_EVERY_JOBS_IN_BATCH`] jobs so
+/// co-located HTTP/WebSocket work is not starved on a shared Tokio runtime.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_queue_consumer<Q, F, Fut, E>(
     queue: std::sync::Arc<Q>,
@@ -76,7 +82,7 @@ pub async fn run_queue_consumer<Q, F, Fut, E>(
         }
         let mut acks = Vec::with_capacity(jobs.len());
         let mut nacks = Vec::new();
-        for job in jobs {
+        for (index, job) in jobs.into_iter().enumerate() {
             let _token = if let Some(wl) = &workload {
                 Some(wl.tokens.acquire_weighted(compute_cost).await)
             } else {
@@ -85,6 +91,9 @@ pub async fn run_queue_consumer<Q, F, Fut, E>(
             match handle(&job).await {
                 Ok(()) => acks.push(job.lease_id),
                 Err(_) => nacks.push(job.lease_id),
+            }
+            if (index + 1) % YIELD_EVERY_JOBS_IN_BATCH == 0 {
+                tokio::task::yield_now().await;
             }
         }
         if !acks.is_empty() {

@@ -627,10 +627,15 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
                     if let Some(mr) = multi_raft_keepalive.as_ref()
                         && let Some(ref mut rx) = catalog_events
                     {
+                        let mut catalog_cmds = 0usize;
                         while let Ok(cmd) = rx.try_recv() {
                             mr.apply_catalog_command(&cmd);
                             if let Ok(report) = mr.rebalance(Arc::clone(&facts)).await {
                                 MultiRaftState::<M>::emit_rebalance(&events, &report);
+                            }
+                            catalog_cmds += 1;
+                            if catalog_cmds.is_multiple_of(4) {
+                                tokio::task::yield_now().await;
                             }
                         }
                     }

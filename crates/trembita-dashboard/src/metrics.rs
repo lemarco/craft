@@ -56,6 +56,60 @@ struct Registry {
     families: BTreeMap<String, Family>,
 }
 
+/// Point-in-time copy for [`Metrics::render`] so formatting does not hold the registry lock.
+#[derive(Clone)]
+struct RegistrySnapshot {
+    families: BTreeMap<String, FamilySnapshot>,
+}
+
+#[derive(Clone)]
+struct FamilySnapshot {
+    kind: MetricKind,
+    help: String,
+    series: BTreeMap<String, Sample>,
+}
+
+impl RegistrySnapshot {
+    fn capture(reg: &Registry) -> Self {
+        let families = reg
+            .families
+            .iter()
+            .map(|(name, family)| {
+                (
+                    name.clone(),
+                    FamilySnapshot {
+                        kind: family.kind,
+                        help: family.help.clone(),
+                        series: family.series.clone(),
+                    },
+                )
+            })
+            .collect();
+        Self { families }
+    }
+
+    fn into_prometheus_text(self) -> String {
+        let mut out = String::new();
+        for (name, family) in self.families {
+            let _ = writeln!(out, "# HELP {name} {}", family.help);
+            let _ = writeln!(out, "# TYPE {name} {}", family.kind.as_str());
+            for (labels, sample) in family.series {
+                match sample {
+                    Sample::Scalar(v) => {
+                        let _ = writeln!(out, "{name}{labels} {v}");
+                    }
+                    Sample::Summary { count, sum } => {
+                        let inner = strip_braces(&labels);
+                        let _ = writeln!(out, "{name}_count{{{inner}}} {count}");
+                        let _ = writeln!(out, "{name}_sum{{{inner}}} {sum}");
+                    }
+                }
+            }
+        }
+        out
+    }
+}
+
 /// A shared, cloneable Prometheus metrics registry.
 #[derive(Clone)]
 pub struct Metrics {
@@ -197,25 +251,11 @@ impl Metrics {
     /// Panics if the registry lock is poisoned.
     #[must_use]
     pub fn render(&self) -> String {
-        let reg = self.inner.lock().expect("poisoned");
-        let mut out = String::new();
-        for (name, family) in &reg.families {
-            let _ = writeln!(out, "# HELP {name} {}", family.help);
-            let _ = writeln!(out, "# TYPE {name} {}", family.kind.as_str());
-            for (labels, sample) in &family.series {
-                match sample {
-                    Sample::Scalar(v) => {
-                        let _ = writeln!(out, "{name}{labels} {v}");
-                    }
-                    Sample::Summary { count, sum } => {
-                        let inner = strip_braces(labels);
-                        let _ = writeln!(out, "{name}_count{{{inner}}} {count}");
-                        let _ = writeln!(out, "{name}_sum{{{inner}}} {sum}");
-                    }
-                }
-            }
-        }
-        out
+        let snapshot = {
+            let reg = self.inner.lock().expect("poisoned");
+            RegistrySnapshot::capture(&reg)
+        };
+        snapshot.into_prometheus_text()
     }
 }
 
