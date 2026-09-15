@@ -7,7 +7,7 @@ Sidekiq-style async work on trembita: clients get **HTTP 202**, jobs survive res
 | Piece | Role |
 |-------|------|
 | This binary | `TrembitaApp` + gateway + `#[consumer]` email worker + `LedgerWorker` (queue → actor) |
-| [`trigger.sh`](trigger.sh) | Enqueue via HTTP (product gateway, not admin) |
+| [`trigger.sh`](trigger.sh) | Enqueue via HTTP on `TREMBITA_LISTEN` (product routes) |
 | [`trigger-idempotent.sh`](trigger-idempotent.sh) | Same job twice with one `?dedup=` key — duplicate enqueue + redelivery |
 | Ops / dashboard | Same HTTP bind as gateway — `/dashboard`, `/health` on `:8090` (local or cluster node 1) |
 
@@ -128,7 +128,7 @@ Guide: [background-jobs § Queue → actor bridge](../../docs/scenarios/backgrou
 
 1. **Same machine** — run `curl` / `./trigger.sh` in a terminal on the host where `cargo run` is running, not only in a browser on another machine.
 2. **SSH / remote dev** — forward HTTP: `ssh -L 8090:127.0.0.1:8090 user@host`
-3. **Port busy** — startup prints the HTTP bind in the banner; try `TREMBITA_HTTP=127.0.0.1:8091 cargo run`
+3. **Port busy** — startup prints the bind in the banner; pick another **single** port for both QUIC and HTTP, e.g. `TREMBITA_LISTEN=127.0.0.1:8091 cargo run` (do not set split `TREMBITA_HTTP` on a different port)
 4. **Wrong URL** — `/jobs/emails` is **POST only** (enqueue). For monitoring use [dashboard](http://127.0.0.1:8090/dashboard); a GET on `/jobs/emails` in the browser returns `405`, not HTML.
 
 Verify:

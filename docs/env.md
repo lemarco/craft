@@ -36,7 +36,7 @@ Single published port per node. Wire and HTTP share the port **number** (differe
 | [`.workflows([…])`](../crates/trembita/src/app/builder.rs) | `POST /workflows/run`, `POST /workflows/resume` | [`.without_workflows_api()`](../crates/trembita/src/app/builder.rs) |
 | Workers with HTTP cast/ask | `/actors/*` | [`.without_actors_api()`](../crates/trembita/src/app/builder.rs) |
 
-Declare capabilities in [`AppManifest`](../crates/trembita/src/app/manifest.rs) (`src/manifest.rs` in scaffolded apps). Custom routes still merge via [`.gateway_routes()`](../crates/trembita/src/app/builder.rs); explicit [`.gateway().surfaces()`](../../crates/trembita/src/gateway/opts.rs) is merged with these defaults automatically.
+Declare capabilities in [`AppManifest`](../crates/trembita/src/app/manifest.rs) (`src/manifest.rs` in scaffolded apps). Custom routes still merge via [`.gateway_routes()`](../crates/trembita/src/app/builder.rs); explicit [`.gateway().surfaces()`](../crates/trembita/src/gateway/opts.rs) is merged with these defaults automatically.
 
 ### `TREMBITA_DATA_DIR`
 
@@ -79,6 +79,7 @@ Also accepted as `TREMBITA_GATEWAY_TOKEN` (legacy name). Unset = open product HT
 | `TREMBITA_ALLOW_VOTER_JOIN` | Seed accepts voter joins (default `0`) |
 | `TREMBITA_HTTP_TLS_CERT` / `TREMBITA_HTTP_TLS_KEY` | HTTPS on the unified TCP listener (`TREMBITA_GATEWAY_TLS_*` aliases) |
 | `TREMBITA_CERT_WATCH_SECS` | PEM hot-reload poll (default `60`) |
+| `TREMBITA_HTTP_DRAIN_TIMEOUT` | Gateway connection drain on shutdown (default 30s; alias `TREMBITA_GATEWAY_DRAIN_TIMEOUT`) |
 | `TREMBITA_GRACEFUL_LEAVE`, `TREMBITA_DRAIN_TIMEOUT`, … | Shutdown / cluster policy — see [`env_config.rs`](../crates/trembita/src/env_config.rs) |
 
 ---

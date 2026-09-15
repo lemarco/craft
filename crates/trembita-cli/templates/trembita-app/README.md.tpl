@@ -21,7 +21,7 @@ src/
 cargo run
 ```
 
-HTTP gateway (when enabled): `http://127.0.0.1:8090` — product routes plus ops (`/health`, `/dashboard`, `/metrics`, `/introspect/*`) from `src/http/ops.rs`.
+HTTP (when gateway enabled): same port as `TREMBITA_LISTEN` (default `0.0.0.0:443`) — product routes plus ops (`/health`, `/dashboard`, `/metrics`, `/introspect/*`) from `src/http/ops.rs` or [`TrembitaApp::from_env()`]({{TREMBITA_DOC_BASE}}/docs/getting-started.md) defaults.
 
 Set `GATEWAY_TOKEN` (or `TREMBITA_GATEWAY_TOKEN`) before calling identity-protected APIs.
 

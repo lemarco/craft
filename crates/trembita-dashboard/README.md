@@ -1,11 +1,11 @@
 # trembita-dashboard
 
-Live observability dashboard and admin HTTP endpoints for
+Live observability dashboard and ops HTTP endpoints for
 [trembita](https://crates.io/crates/trembita).
 
 Serves health/readiness probes, Prometheus metrics, JSON introspection, and a
-read-only web UI on the **admin port** (default `0.0.0.0:8080`), separate from
-the mTLS QUIC cluster wire.
+read-only web UI on the **ops HTTP bind** — for product apps, TCP on the same
+`host:port` as **`TREMBITA_LISTEN`** (separate socket from QUIC/mTLS wire).
 
 | Route | Purpose |
 |-------|---------|
@@ -15,8 +15,10 @@ the mTLS QUIC cluster wire.
 | `/dashboard` | Live HTML dashboard |
 | `/dashboard/events` | SSE event feed |
 
-Mount [`OpsApi::route_table()`](../trembita-http/src/ops_routes.rs) on your gateway, or run
-[`trembita-node`](../trembita-tools) with `TREMBITA_HTTP` set.
+Mount [`OpsApi::route_table()`](../trembita-http/src/ops_routes.rs) on your gateway,
+use [`TrembitaApp::from_env()`](../trembita/src/app/runtime.rs) (default surfaces),
+or run [`trembita-node`](../trembita-tools) with ops TCP enabled (default = co-host on
+`TREMBITA_LISTEN`; `TREMBITA_HTTP=-` disables TCP only).
 
 ## Documentation
 

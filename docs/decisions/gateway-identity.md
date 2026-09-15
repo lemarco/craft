@@ -51,7 +51,8 @@ Auth is **never** prescribed (no JWT crate, no cookie store in trembita).
 
 - [`spawn_gateway`] returns [`GatewayHandle`].
 - [`ShutdownOpts::drain_gateway`] (default `true`) waits for active connections
-  up to `TREMBITA_GATEWAY_DRAIN_TIMEOUT` / [`GatewayOpts::drain_timeout`] (default 30s).
+  up to `TREMBITA_HTTP_DRAIN_TIMEOUT` (alias `TREMBITA_GATEWAY_DRAIN_TIMEOUT`) /
+  [`GatewayOpts::drain_timeout`] (default 30s).
 
 ## Rejected
 

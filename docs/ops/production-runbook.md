@@ -17,7 +17,7 @@ Operational checklist for running trembita on **N identical VPS or bare-metal no
 6. **Optional `GATEWAY_TOKEN`** — protect product HTTP in non-dev environments.
 7. **Firewall** — allow **UDP + TCP** on the listen port between members; restrict HTTP to ingress/LB as needed.
 
-Ops routes (`/health`, `/ready`, `/metrics`, `/dashboard`) are on the **same** TCP port as product APIs when using [`TrembitaApp::from_env`](../crates/trembita/src/app/runtime.rs).
+Ops routes (`/health`, `/ready`, `/metrics`, `/dashboard`) are on the **same** TCP port as product APIs when using [`TrembitaApp::from_env`](../../crates/trembita/src/app/runtime.rs).
 
 ### First node (bootstrap)
 

@@ -22,7 +22,7 @@ Product deploys use **four variables** (+ optional auth): see **[env.md](../env.
 | Removed / deprecated | Replacement |
 |---------------------|-------------|
 | `TREMBITA_ADMIN`, separate gateway/admin TCP ports | **`TREMBITA_LISTEN` only** (same port number for UDP + TCP) |
-| `TREMBITA_GATEWAY_JOBS`, `TREMBITA_GATEWAY_WORKFLOWS`, … | App registration / [`TrembitaApp::from_env`](../crates/trembita/src/app/runtime.rs) default gateway surfaces |
+| `TREMBITA_GATEWAY_JOBS`, `TREMBITA_GATEWAY_WORKFLOWS`, … | App registration / [`TrembitaApp::from_env`](../../crates/trembita/src/app/runtime.rs) default gateway surfaces |
 | `TREMBITA_HTTP=0.0.0.0:8090` while wire is `:7543` | **Rejected** — one `host:port` for wire and HTTP |
 | `TREMBITA_NODE_ID`, static `TREMBITA_PEERS` on app compose | Dynamic join + `TREMBITA_DATA_DIR/node-id` |
 | Per-file `TREMBITA_NODE_CERT` / `KEY` / `CA_CERT` | `TREMBITA_CERT_DIR` + `node-{id}.pem` |

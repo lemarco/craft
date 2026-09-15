@@ -40,17 +40,17 @@ Wait ~5–10 s after starting nodes for leader election.
 | Raft query | QUIC → node **3** | Linearizable read from a different node |
 | Enqueue ×3 | QUIC → node **1** | Stream `jobs` |
 | Lease + ack | QUIC → node **2** | Follower worker consumes jobs |
-| Admin snapshot | HTTP → node **1** | Prints `/introspect/cluster` and `/introspect/queues` |
+| Ops snapshot | HTTP → node **1** | Prints `/introspect/cluster` and `/introspect/queues` |
 
-All writes go over **QUIC/mTLS** (ports 7443/7453/7463). Ops HTTP (9080–9082) is read-only introspect for this demo.
+Each node uses one port number for both QUIC (UDP) and ops HTTP (TCP): **7443**, **7453**, **7463**.
 
 ## Dashboard
 
-| Node | Admin port | URL |
-|------|------------|-----|
-| 1 | 9080 | http://127.0.0.1:9080/dashboard |
-| 2 | 9081 | http://127.0.0.1:9081/dashboard |
-| 3 | 9082 | http://127.0.0.1:9082/dashboard |
+| Node | `TREMBITA_LISTEN` (QUIC + ops HTTP) | URL |
+|------|-------------------------------------|-----|
+| 1 | `127.0.0.1:7443` | http://127.0.0.1:7443/dashboard |
+| 2 | `127.0.0.1:7453` | http://127.0.0.1:7453/dashboard |
+| 3 | `127.0.0.1:7463` | http://127.0.0.1:7463/dashboard |
 
 Any node shows the same cluster state. Path must be `/dashboard` (not `/`).
 
@@ -59,30 +59,30 @@ Any node shows the same cluster state. Path must be `/dashboard` (not `/`).
 Browser `127.0.0.1` is your **laptop**, not the server. Either:
 
 ```bash
-# Port-forward all three admin ports
-ssh -L 9080:127.0.0.1:9080 -L 9081:127.0.0.1:9081 -L 9082:127.0.0.1:9082 lecomp
+# Port-forward all three ops HTTP binds (same port numbers as QUIC)
+ssh -L 7443:127.0.0.1:7443 -L 7453:127.0.0.1:7453 -L 7463:127.0.0.1:7463 lecomp
 ```
 
-Or restart nodes after `./scripts/dev-3node.sh setup` — admin binds `0.0.0.0` by default
-and open `http://<server-tailscale-ip>:9080/dashboard`.
+Or bind `0.0.0.0` on the server (`TREMBITA_DEV_LISTEN_BIND=0.0.0.0` is the default in
+`dev-3node.sh`) and open `http://<server-ip>:7443/dashboard`.
 
-## Admin HTTP (read-only)
+## Ops HTTP (read-only)
 
 ```bash
-curl http://127.0.0.1:9080/health
-curl http://127.0.0.1:9080/introspect/cluster
-curl http://127.0.0.1:9080/introspect/queues
-curl http://127.0.0.1:9080/metrics
+curl http://127.0.0.1:7443/health
+curl http://127.0.0.1:7443/introspect/cluster
+curl http://127.0.0.1:7443/introspect/queues
+curl http://127.0.0.1:7443/metrics
 ```
 
-Works on **any** node (9080/9081/9082).
+Works on **any** node (7443 / 7453 / 7463).
 
 ## Manual QUIC client
 
-The demo binary [`trembita-dev-client`](../../crates/trembita-dev-client/) can be run directly:
+The demo binary [`trembita-dev-client`](../../crates/trembita-tools/) can be run directly:
 
 ```bash
-cargo build -p trembita-dev-client --release
+cargo build -p trembita-tools --release --bin trembita-dev-client
 # same env as ./scripts/dev-3node.sh demo — see scripts/dev-3node.sh client_env()
 ```
 
@@ -109,3 +109,4 @@ TREMBITA_E2E_QUEUE_PHASE=after_failover ./scripts/dev-3node.sh queue-smoke
 - [`trembita-node` README](../../crates/trembita-tools/README.md)
 - [`docs/scenarios/background-jobs.md`](../../docs/scenarios/background-jobs.md) — product HTTP (`TrembitaApp`)
 - [`examples/README.md`](../../examples/README.md) — product showcases (in-process)
+- [unified listener](../../docs/decisions/unified-listener.md) — one port number, UDP + TCP

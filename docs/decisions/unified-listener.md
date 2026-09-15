@@ -39,8 +39,8 @@ Env:
 
 | Variable | Role |
 |----------|------|
-| `TREMBITA_LISTEN` | QUIC wire bind (default `0.0.0.0:443`) |
-| `TREMBITA_HTTP` | Product + ops HTTP bind (default = same as `TREMBITA_LISTEN`) |
+| `TREMBITA_LISTEN` | One port number: QUIC (UDP) + product/ops HTTP (TCP) (default `0.0.0.0:443`) |
+| `TREMBITA_HTTP` / `TREMBITA_GATEWAY` | **Internal:** `-` disables TCP only; otherwise omit (HTTP co-hosts on `TREMBITA_LISTEN`) |
 | `TREMBITA_HTTP_TLS_*` | Server TLS for the TCP listener |
 
 **Removed:** `TREMBITA_ADMIN`, `TREMBITA_ADMIN_TLS_*`, `TREMBITA_GATEWAY_*` API flags
@@ -58,7 +58,7 @@ src/http/
 └── product.rs       # custom business routes (manual module + `.surface()`)
 ```
 
-`app.rs` wires HTTP in [`.gateway_routes()` / `.surfaces()`](../crates/trembita/src/app/builder.rs) — no hidden merge (capabilities are in `manifest.rs` on scaffold projects):
+`app.rs` wires HTTP in [`.gateway_routes()` / `.surfaces()`](../../crates/trembita/src/app/builder.rs) — no hidden merge (capabilities are in `manifest.rs` on scaffold projects):
 
 ```rust
 .surfaces(|state| {

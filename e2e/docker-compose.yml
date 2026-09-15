@@ -45,7 +45,6 @@ services:
       <<: *node-queue-env
       TREMBITA_NODE_ID: "1"
       TREMBITA_LISTEN: "0.0.0.0:7443"
-      TREMBITA_HTTP: "0.0.0.0:8080"
       TREMBITA_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
       TREMBITA_CA_CERT: /certs/ca.pem
       TREMBITA_NODE_CERT: /certs/node-1.pem
@@ -55,7 +54,7 @@ services:
       - certs:/certs
       - node1-data:/data
     ports:
-      - "18081:8080"
+      - "18081:7443"
 
   node2:
     <<: *node-build
@@ -66,7 +65,6 @@ services:
       <<: *node-queue-env
       TREMBITA_NODE_ID: "2"
       TREMBITA_LISTEN: "0.0.0.0:7443"
-      TREMBITA_HTTP: "0.0.0.0:8080"
       TREMBITA_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
       TREMBITA_CA_CERT: /certs/ca.pem
       TREMBITA_NODE_CERT: /certs/node-2.pem
@@ -76,7 +74,7 @@ services:
       - certs:/certs
       - node2-data:/data
     ports:
-      - "18082:8080"
+      - "18082:7443"
 
   node3:
     <<: *node-build
@@ -87,7 +85,6 @@ services:
       <<: *node-queue-env
       TREMBITA_NODE_ID: "3"
       TREMBITA_LISTEN: "0.0.0.0:7443"
-      TREMBITA_HTTP: "0.0.0.0:8080"
       TREMBITA_PEERS: "1@node1:7443,2@node2:7443,3@node3:7443"
       TREMBITA_CA_CERT: /certs/ca.pem
       TREMBITA_NODE_CERT: /certs/node-3.pem
@@ -99,7 +96,7 @@ services:
       - certs:/certs
       - node3-data:/data
     ports:
-      - "18083:8080"
+      - "18083:7443"
 
   # One-shot QUIC load generator + external linearizability checker (phase 2).
   linclient:

@@ -5,7 +5,7 @@
 
 COMPOSE="docker compose -f docker-compose.yml"
 
-# NodeId -> host admin port (see docker-compose.yml).
+# NodeId -> host-mapped ops HTTP (TCP on TREMBITA_LISTEN inside compose; see docker-compose.yml).
 declare -A PORT=([1]=18081 [2]=18082 [3]=18083)
 # node1 serves ops HTTPS when TREMBITA_HTTP_TLS_* is set; e2e compose uses plain HTTP.
 declare -A ADMIN_TLS=([1]=0 [2]=0 [3]=0)

@@ -408,11 +408,11 @@ better be safe to re-run. A steadily climbing
 handler that fails after its side effect — exactly the case the
 [recipe](#effectively-once-recipe) is for.
 
-The same number appears per stream in `/introspect/queues` and in the admin
+The same number appears per stream in `/introspect/queues` and in the ops
 dashboard's **Job queues** table, highlighted when non-zero.
 
 ```console
-$ curl -s localhost:9080/introspect/queues | jq '.streams[]'
+$ curl -s http://127.0.0.1:7443/introspect/queues | jq '.streams[]'
 { "stream": "emails", "pending": 0, "leased": 1, "dead_letter": 0,
   "oldest_pending_age_ms": 0, "redelivered": 2 }
 ```

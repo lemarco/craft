@@ -61,7 +61,7 @@ Returns **`202 Accepted`**.
 
 ## Introspect API
 
-Read-only cluster snapshots (same JSON as the admin port):
+Read-only cluster snapshots (same JSON as ops `/introspect/*` on `TREMBITA_LISTEN`):
 
 ```rust
 use std::sync::Arc;

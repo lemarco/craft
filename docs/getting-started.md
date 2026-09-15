@@ -291,7 +291,7 @@ Generates the [framework layout](decisions/framework-conventions.md):
 | Path | Role |
 |------|------|
 | `main.rs` | Boot only — `App::new(AppConfig::from_env()).run().await` |
-| `manifest.rs` | [`AppManifest::build()`](../../crates/trembita/src/app/manifest.rs) — jobs, topics, workers (`// trembita:*` marker comments) |
+| `manifest.rs` | [`AppManifest::build()`](../crates/trembita/src/app/manifest.rs) — jobs, topics, workers (`// trembita:*` marker comments) |
 | `app.rs` | [`.manifest(manifest::build())`](../crates/trembita/src/app/builder.rs), gateway [`.gateway_routes()`](../crates/trembita/src/app/builder.rs), `.run()` |
 | `consumers/`, `actors/`, `http/`, `domain/` | Handlers, surfaces, hexagon |
 | `deploy/` | Local cluster env + compose |

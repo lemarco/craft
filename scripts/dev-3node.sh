@@ -16,16 +16,16 @@
 # Failover smoke (e2e harness):
 #   ./scripts/dev-3node.sh queue-smoke
 #
-# Ops HTTP dashboards (908x avoids common 8080/8081 conflicts — k3d, qbittorrent, nginx):
-#   node1 http://<host>:9080/dashboard
-#   node2 http://<host>:9081/dashboard
-#   node3 http://<host>:9082/dashboard
+# Ops HTTP co-hosts on the same port number as QUIC (7443/7453/7463):
+#   node1 http://<host>:7443/dashboard
+#   node2 http://<host>:7453/dashboard
+#   node3 http://<host>:7463/dashboard
 #
-# Ops HTTP binds 0.0.0.0 by default so a browser on another machine (SSH session)
-# can reach the dashboard via the server's IP. For localhost-only:
-#   TREMBITA_DEV_HTTP_BIND=127.0.0.1 ./scripts/dev-3node.sh 1
+# LISTEN binds 0.0.0.0 by default so a browser on another machine (SSH session)
+# can reach the dashboard via the server's IP. For localhost-only QUIC/HTTP:
+#   TREMBITA_DEV_LISTEN_BIND=127.0.0.1 ./scripts/dev-3node.sh 1
 # Or SSH port-forward from your laptop:
-#   ssh -L 9080:127.0.0.1:9080 -L 9081:127.0.0.1:9081 -L 9082:127.0.0.1:9082 lecomp
+#   ssh -L 7443:127.0.0.1:7443 -L 7453:127.0.0.1:7453 -L 7463:127.0.0.1:7463 lecomp
 #
 # See docs/scenarios/background-jobs.md for product-layer HTTP (TrembitaApp gateway).
 
@@ -34,15 +34,15 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEV="${TREMBITA_DEV_3NODE_DIR:-$ROOT/target/trembita-3node-dev}"
 CERTS="$DEV/certs"
 PEERS="1@127.0.0.1:7443,2@127.0.0.1:7453,3@127.0.0.1:7463"
-HTTP_BIND="${TREMBITA_DEV_HTTP_BIND:-0.0.0.0}"
+LISTEN_BIND="${TREMBITA_DEV_LISTEN_BIND:-0.0.0.0}"
 
 die() { echo "error: $*" >&2; exit 1; }
 
 node_env() {
-    local id=$1 listen=$2 http=$3
+    local id=$1 listen=$2
     export TREMBITA_NODE_ID="$id"
     export TREMBITA_LISTEN="$listen"
-    export TREMBITA_HTTP="$http"
+    unset TREMBITA_HTTP TREMBITA_GATEWAY
     export TREMBITA_DATA_DIR="$DEV/data/node-$id"
     export TREMBITA_JOB_QUEUE=jobs
     export TREMBITA_JOB_QUEUE_LEASE_SECS=60
@@ -84,11 +84,11 @@ setup() {
 }
 
 run_node() {
-    local id=$1 listen=$2 http=$3
+    local id=$1 listen=$2
     [ -f "$CERTS/node-$id.pem" ] || die "run ./scripts/dev-3node.sh setup first"
-    node_env "$id" "$listen" "$http"
+    node_env "$id" "$listen"
     mkdir -p "$TREMBITA_DATA_DIR"
-    echo ">> node $id  QUIC=$listen  http=$http  data=$TREMBITA_DATA_DIR"
+    echo ">> node $id  listen=$listen (QUIC+HTTP)  data=$TREMBITA_DATA_DIR"
     exec "$ROOT/target/release/trembita-node"
 }
 
@@ -120,7 +120,7 @@ watch() {
     [ -f "$CERTS/ca.pem" ] || die "run ./scripts/dev-3node.sh setup first"
     cargo build -p trembita-dev-client --release
     client_env
-    echo ">> watch demo (~2+ min) — open http://127.0.0.1:9080/dashboard first"
+    echo ">> watch demo (~2+ min) — open http://127.0.0.1:7443/dashboard first"
     echo ">> pause between steps: \${TREMBITA_DEV_WATCH_PAUSE_SECS:-10}s"
     "$ROOT/target/release/trembita-dev-client" watch
     _demo_admin_tail
@@ -128,17 +128,17 @@ watch() {
 
 _demo_admin_tail() {
     echo ""
-    echo ">> ops http (any node — read-only HTTP):"
-    echo "  curl -s http://127.0.0.1:9080/introspect/cluster | jq ."
-    echo "  curl -s http://127.0.0.1:9080/introspect/queues | jq ."
-    echo "  open http://127.0.0.1:9080/dashboard"
-    if curl -sf --max-time 2 "http://127.0.0.1:9080/health" >/dev/null; then
+    echo ">> ops http (any node — read-only HTTP on TREMBITA_LISTEN/tcp):"
+    echo "  curl -s http://127.0.0.1:7443/introspect/cluster | jq ."
+    echo "  curl -s http://127.0.0.1:7443/introspect/queues | jq ."
+    echo "  open http://127.0.0.1:7443/dashboard"
+    if curl -sf --max-time 2 "http://127.0.0.1:7443/health" >/dev/null; then
         echo ""
         echo "cluster:"
-        curl -s "http://127.0.0.1:9080/introspect/cluster"
+        curl -s "http://127.0.0.1:7443/introspect/cluster"
         echo ""
         echo "queues:"
-        curl -s "http://127.0.0.1:9080/introspect/queues"
+        curl -s "http://127.0.0.1:7443/introspect/queues"
         echo ""
     fi
 }
@@ -149,9 +149,9 @@ usage() {
 
 case "${1:-}" in
     setup) setup ;;
-    1) run_node 1 "127.0.0.1:7443" "${HTTP_BIND}:9080" ;;
-    2) run_node 2 "127.0.0.1:7453" "${HTTP_BIND}:9081" ;;
-    3) run_node 3 "127.0.0.1:7463" "${HTTP_BIND}:9082" ;;
+    1) run_node 1 "${LISTEN_BIND}:7443" ;;
+    2) run_node 2 "${LISTEN_BIND}:7453" ;;
+    3) run_node 3 "${LISTEN_BIND}:7463" ;;
     queue-smoke) queue_smoke ;;
     demo) demo ;;
     watch) watch ;;

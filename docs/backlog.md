@@ -357,7 +357,7 @@ flowchart TB
 
 | Subtask | Description                                                                                                           | Status |
 | ------- | --------------------------------------------------------------------------------------------------------------------- | ------ |
-| B-09a   | `docs/ops/production-runbook.md` — scale VPS, seeds, firewall UDP 7443                                                | ✅      |
+| B-09a   | `docs/ops/production-runbook.md` — scale VPS, seeds, firewall UDP+TCP on `TREMBITA_LISTEN`                            | ✅      |
 | B-09b   | Merge pointers: [backup-restore](ops/backup-restore.md), [rolling-upgrade](ops/rolling-upgrade.md), [certs](certs.md) | ✅      |
 | B-09c   | Multi-Raft rebalance pointer (when to add groups)                                                                     | ✅      |
 | B-09d   | Link from [scenarios/README](scenarios/README.md)                                                                     | ✅      |
@@ -418,7 +418,7 @@ Gateway production readiness, queue lifecycle polish, and glue between product s
 
 | Subtask | Wave | Description | Status |
 | ------- | ---- | ----------- | ------ |
-| B-14a   | 1 | **Gateway auth hook** — middleware slot on [`GatewayOpts`](../crates/trembita/src/gateway/mod.rs) (JWT / API key / custom Axum layer); document pattern; extend [`examples/realtime/`](../examples/realtime/) beyond `GATEWAY_TOKEN` query stub ([product-scenarios](decisions/product-scenarios.md)) | ✅ |
+| B-14a   | 1 | **Gateway auth hook** — [`GatewayIdentity`](../crates/trembita/src/gateway/identity.rs) / [`AuthMode::Identity`](../crates/trembita-http/src/routing/auth.rs) on product routes; document pattern; extend [`examples/realtime/`](../examples/realtime/) beyond `GATEWAY_TOKEN` query stub ([product-scenarios](decisions/product-scenarios.md)) | ✅ |
 | B-14b   | 1 | **`trembita init` v2** — [`templates/trembita-app/`](../crates/trembita-cli/templates/trembita-app/): `JobOpts` + `#[consumer]` + `IdempotencyOpts::by_dedup_key` + `default_max_attempts(5)`; remove bare `TODO` stub ([B-06](backlog.md#b-06--trembita-init-project-template)) | ✅ |
 | B-14c   | 1 | **E2E HTTP jobs via gateway (docker)** — `POST /jobs/{stream}/batch` through product gateway in `e2e/` (QUIC queue E2E exists; HTTP gateway path does not) | ✅ |
 | B-14d   | 2 | **`IdempotencyOpts` TTL** — optional `retain_for` / `with_ttl` on done markers in `ActorStateStore`; default forever for payment-style keys; doc high-volume cleanup | ✅ |

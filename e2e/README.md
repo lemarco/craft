@@ -15,7 +15,8 @@ real network between separate processes.
   each other by service DNS name, and elect a leader. mTLS still validates each
   peer against its `trembita-node-<id>` SAN, independent of the container hostname.
 - `run.sh` — brings the cluster up, asserts a single agreed leader is elected,
-  probes `/health` and `/introspect/cluster` on every admin port, kills that
+  probes `/health` and `/introspect/cluster` on every node's ops HTTP (host-mapped
+  `TREMBITA_LISTEN`/TCP), kills that
   leader, asserts the survivors re-elect a new one, then tears everything down.
 - `leave.sh` — `TREMBITA_GRACEFUL_LEAVE=1` on node3: SIGINT and assert surviving
   peers drop the departed node from membership before exit.
@@ -52,8 +53,9 @@ real network between separate processes.
 TREMBITA_E2E_PUMBA=1 ./e2e/chaos.sh  # also inject 250ms±50ms latency via pumba
 ```
 
-Requires Docker + `docker compose`. Admin APIs are published on host ports
-`18081` (node 1), `18082` (node 2), `18083` (node 3); e.g.
+Requires Docker + `docker compose`. Ops HTTP (TCP on the same port number as QUIC
+inside the cluster, `7443`) is published on host ports `18081` (node 1),
+`18082` (node 2), `18083` (node 3); e.g.
 `curl localhost:18081/introspect/cluster`.
 
 Under GitLab dind the published ports live on the `docker` service host, so the
