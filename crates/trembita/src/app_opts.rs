@@ -80,7 +80,7 @@ impl RunOpts {
 
     /// Apply registration-derived readiness (from builder or manifest).
     #[must_use]
-    pub fn with_run_hint(self, hint: &ManifestRunHint) -> Self {
+    pub(crate) fn with_run_hint(self, hint: &ManifestRunHint) -> Self {
         if self.wait_ready.is_some() {
             return self;
         }
@@ -185,8 +185,10 @@ mod tests {
     fn with_run_hint_waits_for_leader_when_workers_only() {
         use crate::app::ManifestRunHint;
 
-        let mut hint = ManifestRunHint::default();
-        hint.has_workers = true;
+        let hint = ManifestRunHint {
+            has_workers: true,
+            ..ManifestRunHint::default()
+        };
         let opts = RunOpts::default().with_run_hint(&hint);
         assert!(opts.wait_ready.is_some());
     }

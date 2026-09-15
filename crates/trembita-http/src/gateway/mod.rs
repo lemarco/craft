@@ -286,7 +286,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn surface_hosts_registers_host_scoped_routes() {
         let table = RouteTable::new().get("/ping", |_: RequestCtx| async {
             Ok(Response::status(StatusCode::OK))
@@ -296,6 +295,7 @@ mod tests {
         assert_eq!(g.surfaces()[0].host_list(), &["api.example.com"]);
     }
 
+    #[test]
     fn dev_fallback_hidden_in_production() {
         let g =
             Gateway::new(true).dev_fallback(RouteTable::new().get("/x", |_: RequestCtx| async {

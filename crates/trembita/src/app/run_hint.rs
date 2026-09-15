@@ -14,12 +14,6 @@ impl ManifestRunHint {
         }
     }
 
-    pub(crate) fn merge_manifest_jobs(&mut self, streams: Vec<&str>) {
-        for stream in streams {
-            self.record_job_stream(stream);
-        }
-    }
-
     pub(crate) fn apply_manifest(&mut self, job_streams: Vec<&str>, has_workers: bool) {
         self.job_streams = job_streams.into_iter().map(str::to_string).collect();
         self.has_workers = has_workers;

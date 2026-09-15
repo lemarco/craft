@@ -447,8 +447,7 @@ impl<M: StateMachine> Observer for TrembitaObserver<M> {
             let mut out = Vec::new();
             for (name, topic) in topics {
                 if let Ok(m) = topic.metrics().await {
-                    let oldest_event_age_secs =
-                        u64::try_from(m.oldest_event_age.as_secs()).unwrap_or(u64::MAX);
+                    let oldest_event_age_secs = m.oldest_event_age.as_secs();
                     out.push(TopicStreamView {
                         name,
                         event_count: m.event_count,
