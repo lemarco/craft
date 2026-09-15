@@ -70,8 +70,10 @@ redis-store = ["dep:trembita-store-redis"]
 external-backlog = ["dep:trembita-backlog-postgres"]
 # PostgreSQL [`EventOutboxSource`](trembita_events::EventOutboxSource) adapter.
 domain-outbox = ["dep:trembita-events-postgres"]
+# OpenTelemetry metrics export (`init_metrics_with_otlp`); tracing OTLP uses `trembita-runtime/otlp`.
+otlp-metrics = ["trembita-runtime/otlp"]
 # All optional integrations — used by docs.rs (`all-features = true`).
-full = ["http-jobs", "redis-store", "external-backlog", "domain-outbox"]
+full = ["http-jobs", "redis-store", "external-backlog", "domain-outbox", "otlp-metrics"]
 
 [dev-dependencies]
 trembita-http.workspace = true

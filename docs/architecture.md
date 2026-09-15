@@ -49,6 +49,7 @@ crates/
 ├── trembita-store-redis/  # optional ActorStateStore (Redis) — `trembita/redis-store`
 ├── trembita-backlog-postgres/  # optional ExternalBacklog — `trembita/external-backlog`
 ├── trembita-events-postgres/   # optional EventOutboxSource — `trembita/domain-outbox`
+├── trembita-metrics-otlp/ # optional OTLP metrics — `trembita/otlp-metrics`
 ├── trembita-dashboard/    # ops HTTP views + embedded dashboard
 ├── trembita-http/         # product HTTP gateway — `trembita/http-jobs`
 └── trembita-test-support/ # shared test harness helpers
@@ -62,6 +63,18 @@ Embedders depend on **`trembita`** only; optional integrations compile in via [f
 Reference KV state machine: [`trembita_core::kv`](../crates/trembita-core/src/kv.rs) (re-exported as `trembita::kv`).
 
 See [naming](decisions/naming.md), [facade](decisions/facade.md), and [examples/README.md](../examples/README.md).
+
+## Runtime layout (`trembita-runtime`)
+
+Public API unchanged; modules group **control plane** vs **data plane**:
+
+| Module | Responsibility |
+|--------|----------------|
+| [`control_plane`](../crates/trembita-runtime/src/control_plane/mod.rs) | Meta-Raft, catalog, group rebalance, supervisor, sharded spawn |
+| [`data_plane`](../crates/trembita-runtime/src/data_plane/mod.rs) | `RaftDriver`, `NodeService`, actor registry, messaging |
+
+Leader product services (queue, topic, store) share replication helpers in
+[`leader_replicate`](../crates/trembita-runtime/src/leader_replicate.rs) ([idempotency contract](decisions/idempotency-contract.md)).
 
 ## Node internals (single-Raft; multi-Raft stacks N drivers)
 

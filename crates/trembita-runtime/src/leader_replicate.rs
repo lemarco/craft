@@ -145,12 +145,13 @@ pub async fn follower_apply_product_replicate<T, F, Fut, E>(
     map_apply_err: impl Fn(E) -> ProductWireError,
 ) -> Result<(), ProductWireError>
 where
-    F: Fn(&T) -> Fut,
+    T: Clone,
+    F: Fn(T) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     authorize_replicate_leader(state, declared_leader, not_leader_msg)?;
-    for op in ops {
-        apply_one(op).await.map_err(map_apply_err)?;
+    for op in ops.iter().cloned() {
+        apply_one(op).await.map_err(&map_apply_err)?;
     }
     Ok(())
 }
@@ -168,11 +169,12 @@ pub fn follower_apply_product_replicate_sync<T, F, E>(
     map_apply_err: impl Fn(E) -> ProductWireError,
 ) -> Result<(), ProductWireError>
 where
-    F: Fn(&T) -> Result<(), E>,
+    T: Clone,
+    F: Fn(T) -> Result<(), E>,
 {
     authorize_replicate_leader(state, declared_leader, not_leader_msg)?;
-    for op in ops {
-        apply_one(op).map_err(map_apply_err)?;
+    for op in ops.iter().cloned() {
+        apply_one(op).map_err(&map_apply_err)?;
     }
     Ok(())
 }

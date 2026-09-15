@@ -128,7 +128,10 @@ impl QueueService {
                     NodeId(request.leader_id),
                     REPLICATE_NOT_LEADER,
                     &request.ops,
-                    |op| queue.apply_replicate(op),
+                    |op| {
+                        let queue = Arc::clone(&queue);
+                        async move { queue.apply_replicate(&op).await }
+                    },
                     |e| ProductWireError::ReplicateApply(e.to_string()),
                 )
                 .await;

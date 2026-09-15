@@ -51,8 +51,10 @@ cluster.metrics_sink(Arc::new(my_sink));
 ```
 
 The in-process Prometheus registry is **always** updated in parallel; the sink
-receives the same `incr` / `set` / `observe` samples. OpenTelemetry / OTLP belongs
-in an optional adapter crate (backlog O-03), not in the default dependency tree.
+receives the same `incr` / `set` / `observe` samples. OpenTelemetry / OTLP push
+export lives in optional [`trembita-metrics-otlp`](../../crates/trembita-metrics-otlp/)
+(facade feature `otlp-metrics` → [`init_metrics_with_otlp`](../../crates/trembita-metrics-otlp/src/lib.rs));
+not in the default dependency tree.
 
 ### 3. Telemetry event stream
 

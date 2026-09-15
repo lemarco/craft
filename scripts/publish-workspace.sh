@@ -47,6 +47,7 @@ PUBLISH_ORDER=(
     trembita-storage
     trembita-net
     trembita-runtime
+    trembita-metrics-otlp
     trembita-actor-store
     trembita-jobs
     trembita-events

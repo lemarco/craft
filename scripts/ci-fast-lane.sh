@@ -10,7 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-STEPS=(fmt clippy tests doctests doc shellcheck doc-links publish-dry-run)
+STEPS=(fmt clippy core-purity tests doctests doc shellcheck doc-links publish-dry-run)
 for step in "${STEPS[@]}"; do
   bash scripts/gate-step.sh "$step"
 done

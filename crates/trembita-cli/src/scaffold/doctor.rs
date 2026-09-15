@@ -96,6 +96,7 @@ pub fn run_doctor(project: &TrembitaProject, preflight: bool) -> DoctorReport {
     check_app_wiring(project, &app, &mut report);
     check_main_rs(project, &mut report);
     check_domain_boundary(project, &mut report);
+    check_domain_module_declared(project, &mut report);
     check_consumers(project, &manifest, &mut report);
     check_actors(project, &manifest, &mut report);
     check_http(project, &app, &mut report);
@@ -261,6 +262,20 @@ fn check_main_rs(project: &TrembitaProject, report: &mut DoctorReport) {
     let lines = content.lines().count();
     if lines > 45 {
         report.warn(format!("main.rs is {lines} lines — keep boot-only (<45)"));
+    }
+}
+
+fn check_domain_module_declared(project: &TrembitaProject, report: &mut DoctorReport) {
+    if !project.domain_dir().is_dir() {
+        return;
+    }
+    let Ok(main) = fs::read_to_string(project.main_rs()) else {
+        return;
+    };
+    if main.contains("mod domain;") {
+        report.ok("main.rs declares mod domain");
+    } else {
+        report.error("main.rs must declare `mod domain;` when src/domain/ exists");
     }
 }
 

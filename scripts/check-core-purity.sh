@@ -28,9 +28,8 @@ check_crate trembita-core
 check_crate trembita-proto
 
 # Source-level guard: no async runtime imports in core.
-if rg -q 'use (tokio|std::net|std::fs::|quinn::)' crates/trembita-core/src crates/trembita-proto/src 2>/dev/null; then
+if grep -rE 'use (tokio|std::net|std::fs::|quinn::)' crates/trembita-core/src crates/trembita-proto/src 2>/dev/null; then
   echo "error: trembita-core/trembita-proto source must not import I/O or tokio" >&2
-  rg 'use (tokio|std::net|std::fs::|quinn::)' crates/trembita-core/src crates/trembita-proto/src >&2 || true
   exit 1
 fi
 

@@ -82,7 +82,10 @@ impl TopicService {
                     NodeId(request.leader_id),
                     REPLICATE_NOT_LEADER,
                     &request.ops,
-                    |op| topic.apply_replicate(op),
+                    |op| {
+                        let topic = Arc::clone(&topic);
+                        async move { topic.apply_replicate(&op).await }
+                    },
                     |e| ProductWireError::ReplicateApply(e.to_string()),
                 )
                 .await;

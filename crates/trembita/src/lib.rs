@@ -192,6 +192,11 @@ pub use trembita_dashboard::{
     RecordedMetric, RecordingMetricsSink, StopReason, TraceOpts, TrembitaEvent, init_tracing,
 };
 
+#[cfg(feature = "otlp-metrics")]
+pub use trembita_runtime::{
+    MetricsOpts, TracingOpts, init_metrics_with_otlp, init_tracing_with_otlp,
+};
+
 /// Library version string (from `Cargo.toml`).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

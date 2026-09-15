@@ -3,7 +3,7 @@
 #
 # Usage: ./scripts/gate-step.sh <step>
 #
-# Steps: autofix, fmt, clippy, tests, doctests, doc, shellcheck, doc-links,
+# Steps: autofix, fmt, clippy, core-purity, tests, doctests, doc, shellcheck, doc-links,
 #        publish-dry-run, website, examples, showcase, msrv
 
 set -euo pipefail
@@ -62,6 +62,10 @@ case "$STEP" in
     log "clippy (pedantic)"
     run_cmd bash scripts/gate-clippy.sh
     maybe_disk_prune
+    ;;
+  core-purity)
+    log "core purity (architecture-style)"
+    run_cmd bash scripts/check-core-purity.sh
     ;;
   tests)
     maybe_disk_prune

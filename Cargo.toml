@@ -39,6 +39,7 @@ members = [
     "crates/trembita-cli",
     "crates/trembita-backlog-postgres",
     "crates/trembita-events-postgres",
+    "crates/trembita-metrics-otlp",
 ]
 # `benchmarks/` and `examples/` are standalone crates (own workspace tables) so
 # criterion and demo binaries never compile in the fast lane. See backlog T10.
@@ -135,6 +136,7 @@ trembita-test-support = { path = "crates/trembita-test-support", version = "0.4.
 trembita-backlog-postgres = { path = "crates/trembita-backlog-postgres", version = "0.4.0" }
 trembita-events-postgres = { path = "crates/trembita-events-postgres", version = "0.4.0" }
 trembita-cli = { path = "crates/trembita-cli", version = "0.4.0" }
+trembita-metrics-otlp = { path = "crates/trembita-metrics-otlp", version = "0.4.0" }
 
 # Lints applied across the workspace (library-and-publishing).
 [workspace.lints.rust]

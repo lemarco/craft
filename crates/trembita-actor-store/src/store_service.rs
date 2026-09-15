@@ -19,8 +19,8 @@ use trembita_proto::{
 
 use crate::store::{ActorStateStore, StoreError};
 use trembita_runtime::{
-    ClusterState, authorize_replicate_leader, fanout_product_replicate,
-    follower_apply_product_replicate_sync, forward_to_leader, replicate_reply_err,
+    ClusterState, fanout_product_replicate, follower_apply_product_replicate_sync,
+    forward_to_leader, replicate_reply_err,
 };
 
 use crate::{RedbActorStateStore, StoreReplicationOps};
@@ -89,10 +89,6 @@ impl StoreService {
             })
         })
         .await
-    }
-
-    fn authorize_replicate(&self, declared_leader: NodeId) -> Result<(), ProductWireError> {
-        authorize_replicate_leader(self.state.as_ref(), declared_leader, REPLICATE_NOT_LEADER)
     }
 
     async fn handle_set(&self, request: StoreSetRequest) -> StoreSetReply {
@@ -218,7 +214,7 @@ impl StoreService {
             NodeId(request.leader_id),
             REPLICATE_NOT_LEADER,
             &request.ops,
-            |op| self.local.apply_replicate(op),
+            |op| self.local.apply_replicate(&op),
             ProductWireError::backend,
         );
         StoreReplicateReply {

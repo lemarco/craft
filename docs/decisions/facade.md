@@ -35,6 +35,7 @@ Everything below is enabled on that single line via `features = […]`.
 | `redis-store` | no | `trembita-store-redis` | [`trembita::store_redis`](../../crates/trembita/src/lib.rs), `RedisStore`, `RedisTlsConfig` |
 | `external-backlog` | no | `trembita-backlog-postgres` | [`trembita::backlog_postgres`](../../crates/trembita/src/lib.rs), `PgBacklog`, … |
 | `domain-outbox` | no | `trembita-events-postgres` | [`trembita::events_postgres`](../../crates/trembita/src/lib.rs), `PgEventOutboxSource`, … |
+| `otlp-metrics` | no | `trembita-runtime/otlp` + `trembita-metrics-otlp` | `init_metrics_with_otlp`, `init_tracing_with_otlp`, `MetricsOpts`, `TracingOpts` |
 | `full` | no | all optional integrations | docs.rs only (`all-features = true`) |
 
 Core crates (`core`, `jobs`, `events`, `runtime`, `net`, `macros`, …) are **always** linked and re-exported — no feature flag required.
