@@ -1,7 +1,7 @@
 //! `trembita-runtime` — Raft node runtime, actor registry, and cluster supervision.
 //!
-//! Hosts [`spawn_node`](data_plane::spawn_node), [`ActorRegistry`](data_plane::ActorRegistry),
-//! cross-node messaging, and the leader-only [`ClusterSupervisor`](control_plane::ClusterSupervisor).
+//! Hosts [`spawn_node`], [`ActorRegistry`],
+//! cross-node messaging, and the leader-only [`ClusterSupervisor`].
 //!
 //! Internal layout: [`control_plane`] (catalog, rebalance, supervisor) vs
 //! [`data_plane`] (driver, node service, actors).

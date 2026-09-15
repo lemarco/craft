@@ -27,7 +27,7 @@ pub struct QueueConsumerWorkload {
 /// [`crate::ConsumerTune`] watch channel and each handler acquires `compute_cost`
 /// token units from the pool (default 1).
 ///
-/// While processing a leased batch, yields every [`YIELD_EVERY_JOBS_IN_BATCH`] jobs so
+/// While processing a leased batch, yields every 4 jobs so
 /// co-located HTTP/WebSocket work is not starved on a shared Tokio runtime.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_queue_consumer<Q, F, Fut, E>(
