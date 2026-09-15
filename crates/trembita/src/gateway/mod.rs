@@ -14,6 +14,8 @@ mod router;
 mod session;
 mod spawn;
 mod state;
+#[cfg(feature = "http-jobs")]
+pub mod ws;
 
 #[cfg(all(test, feature = "http-jobs"))]
 mod tests;

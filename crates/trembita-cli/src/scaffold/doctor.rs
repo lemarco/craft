@@ -100,7 +100,7 @@ pub fn run_doctor(project: &TrembitaProject, preflight: bool) -> DoctorReport {
         return report;
     };
     check_markers(&manifest, &mut report);
-    check_app_wiring(&app, &mut report);
+    check_app_wiring(project, &app, &mut report);
     check_main_rs(project, &mut report);
     check_domain_boundary(project, &mut report);
     check_consumers(project, &manifest, &mut report);
@@ -211,7 +211,7 @@ fn check_markers(manifest: &str, report: &mut DoctorReport) {
     }
 }
 
-fn check_app_wiring(app: &str, report: &mut DoctorReport) {
+fn check_app_wiring(project: &TrembitaProject, app: &str, report: &mut DoctorReport) {
     if app.contains(".manifest(") {
         report.ok("app.rs applies manifest::build()");
     } else {
@@ -240,6 +240,15 @@ fn check_app_wiring(app: &str, report: &mut DoctorReport) {
                 names::SURFACES
             ));
         }
+    }
+    if project.http_dir().join("ws.rs").is_file()
+        && !app.contains("http::ws::route_table")
+        && !app.contains("mount_sticky_websocket")
+        && !app.contains("websocket_routes")
+    {
+        report.warn(
+            "src/http/ws.rs exists but app.rs does not merge WebSocket routes — run `trembita add ws-surface` or wire `.merge_routes(http::ws::route_table(&state))`",
+        );
     }
 }
 

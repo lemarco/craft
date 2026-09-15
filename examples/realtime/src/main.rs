@@ -9,13 +9,11 @@ use std::env;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use futures_util::{SinkExt, StreamExt};
-use tokio_tungstenite::tungstenite::Message as WsMessage;
-use tokio_tungstenite::{WebSocketStream, tungstenite::protocol::Role};
 use trembita::runtime::{UserActor, actor};
 use trembita::{
-    ActorGroupOpts, CookieConfig, Gateway, GatewayOpts, ReadyOpts, RequestCtx, RouteTable, RunOpts,
-    TrembitaApp, TrembitaConfigure, TrembitaGatewayState, accept_websocket, routing_to_http_response,
+    ActorGroupOpts, AuthMode, CookieConfig, Gateway, GatewayOpts, ReadyOpts, RequestCtx, RouteTable,
+    RunOpts, TrembitaApp, TrembitaConfigure, TrembitaGatewayState, WsMessage, futures_util::SinkExt,
+    mount_sticky_websocket, run_sticky_cast_loop, server_stream,
 };
 use trembita_tools::showcase_common::{
     data_dir, display_addr, http_bind_display, http_bind_from_env, http_disabled,
@@ -63,39 +61,20 @@ impl UserActor for ChatWorker {
     }
 }
 
-async fn handle_socket(
-    stream: trembita::UpgradeStream,
-    state: TrembitaGatewayState,
-    session_key: String,
-    mut handle: trembita::SessionHandle,
-) {
-    let _conn = state.track_connection();
-    debug::session_open(&session_key, true);
-    let mut ws = WebSocketStream::from_raw_socket(stream, Role::Server, None).await;
+async fn handle_sticky_ws(sticky: trembita::StickyWs) {
+    let session_key = sticky.session_key.clone();
+    debug::ws_connect(&session_key, true);
+    let mut ws = server_stream(sticky.stream).await;
     let _ = ws
         .send(WsMessage::Text(format!("session open for {session_key}").into()))
         .await;
 
-    while let Some(Ok(msg)) = ws.next().await {
-        if let WsMessage::Text(text) = msg {
-            let text = text.to_string();
-            let payload = trembita::proto::encode(&text).expect("encode chat msg");
-            match handle.cast(payload).await {
-                Ok(()) => {
-                    debug::ws_message(&session_key, &text, true);
-                    let _ = ws
-                        .send(WsMessage::Text(format!("ok: {text}").into()))
-                        .await;
-                }
-                Err(e) => {
-                    debug::ws_message(&session_key, &text, false);
-                    let _ = ws
-                        .send(WsMessage::Text(format!("session error: {e}").into()))
-                        .await;
-                }
-            }
-        }
-    }
+    let mut handle = sticky.handle;
+    let log_key = session_key.clone();
+    run_sticky_cast_loop(ws, &mut handle, move |text, ok| {
+        debug::ws_message(&log_key, text, ok);
+    })
+    .await;
 }
 
 fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
@@ -108,36 +87,21 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
     let ops = state.app.ops_api().route_table();
     let ws_state = state;
 
+    let mut table = RouteTable::new();
+    table = mount_sticky_websocket(
+        table,
+        "/ws",
+        AuthMode::Identity,
+        ws_state,
+        "chat",
+        Some(SESSION_TTL),
+        |sticky| Box::pin(handle_sticky_ws(sticky)),
+    );
+
     Gateway::new(false)
         .dev_fallback_session(gate)
         .dev_fallback(
-            RouteTable::new()
-                .websocket("/ws", move |req| {
-                    let st = ws_state.clone();
-                    Box::pin(async move {
-                        let handle = match st
-                            .open_actor_session_parts(
-                                "chat",
-                                req.method(),
-                                req.uri(),
-                                req.headers(),
-                                Some(SESSION_TTL),
-                            )
-                            .await
-                        {
-                            Ok(h) => h,
-                            Err(err) => {
-                                return routing_to_http_response(&err.into_http_response());
-                            }
-                        };
-                        let session_key = handle.session_key().to_string();
-                        debug::ws_connect(&session_key, true);
-                        accept_websocket(req, move |stream| {
-                            let st = st.clone();
-                            async move { handle_socket(stream, st, session_key, handle).await }
-                        })
-                    })
-                })
+            table
                 .post_identity("/login", move |ctx: RequestCtx| {
                     let st = login_state.clone();
                     let g = login_gate.clone();

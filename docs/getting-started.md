@@ -230,48 +230,48 @@ Example: `./scripts/run-example.sh workflows`.
 
 ## 8. Real-time gateway
 
-WebSocket + sticky session routing. Auth stays in your code via [`GatewayIdentity`](scenarios/realtime-sessions.md); trembita maps identity → session key and opens a [`SessionHandle`](scenarios/realtime-sessions.md).
+WebSocket helpers live in `trembita::` (re-export `tokio_tungstenite` / `futures_util`). Use **raw** upgrade, **sticky** sessions, or **broadcast / notify** hubs — see [`examples/`](../examples/README.md).
 
 ```rust
 use std::time::Duration;
-use trembita::{Gateway, GatewayOpts, RouteTable, TrembitaGatewayState, GatewayIdentity, GatewayRequest, SessionKey};
-use trembita::{accept_websocket, routing_to_http_response};
-use trembita::gateway::http::RequestCtx;
+use trembita::{
+    AuthMode, Gateway, GatewayOpts, RouteTable, TrembitaGatewayState,
+    mount_sticky_websocket, server_stream, WsMessage,
+};
 
-// WebSocket upgrade on a RouteTable (hyper + tokio-tungstenite in the connected callback).
 fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
-    Gateway::new(false).dev_fallback(
-        RouteTable::new().websocket("/ws", move |req| {
-            let st = state.clone();
-            Box::pin(async move {
-                let handle = match st
-                    .open_actor_session_parts("chat", req.method(), req.uri(), req.headers(), Some(Duration::from_secs(3600)))
-                    .await
-                {
-                    Ok(h) => h,
-                    Err(e) => return routing_to_http_response(e.into_http_response()),
-                };
-                accept_websocket(req, move |stream| async move {
-                    // tokio_tungstenite::WebSocketStream::from_raw_socket(stream, …)
-                    let _ = (stream, handle);
-                })
-            })
+    let table = mount_sticky_websocket(
+        RouteTable::new(),
+        "/ws",
+        AuthMode::Identity,
+        state,
+        "chat",
+        Some(Duration::from_secs(3600)),
+        |sticky| Box::pin(async move {
+            let mut ws = server_stream(sticky.stream).await;
+            let _ = ws.send(WsMessage::Text("connected".into())).await;
+            // cast via sticky.handle, or custom protocol
         }),
-    )
+    );
+    Gateway::new(false).dev_fallback(table)
 }
 
 TrembitaApp::builder()
     .gateway(GatewayOpts::new("127.0.0.1:8090".parse()?).identity(MyAuth).surfaces(gateway_surfaces));
+// Or: GatewayOpts::realtime_ws("/ws", "chat", Duration::from_secs(3600), |sticky| …)
+// Scaffold: trembita add ws-surface /ws --group chat
 ```
 
-Runnable showcase:
+Showcases:
 
 ```bash
-cd examples/realtime && cargo run --release
-./trigger.sh alice hello   # uses trembita-showcase-client or websocat
+cd examples/realtime && cargo run --release    # sticky + HTTP session
+cd examples/market-ws && cargo run --release   # open broadcast
+cd examples/ws-notify && cargo run --release   # identity push
+cd examples/ws-minimal && cargo run --release  # raw echo
 ```
 
-See [realtime-sessions](scenarios/realtime-sessions.md) and [gateway-identity](decisions/gateway-identity.md).
+See [WebSocket wiring](scenarios/websocket-wiring.md), [realtime-sessions](scenarios/realtime-sessions.md), and [gateway-identity](decisions/gateway-identity.md).
 
 ## 9. Scaffold a new project
 

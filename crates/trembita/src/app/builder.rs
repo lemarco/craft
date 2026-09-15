@@ -201,14 +201,16 @@ impl TrembitaAppBuilder {
             let Some(gateway) = self.gateway.as_mut() else {
                 return self;
             };
+            let ws = gateway.websocket_routes.clone();
             if let Some(user_surfaces) = gateway.surfaces.take() {
                 gateway.surfaces = Some(super::gateway_defaults::composite_product_surfaces(
                     apis,
                     extra,
+                    ws,
                     user_surfaces,
                 ));
             } else {
-                gateway.surfaces = Some(default_product_surfaces(apis, extra));
+                gateway.surfaces = Some(default_product_surfaces(apis, extra, ws));
             }
             if gateway.identity.is_none() {
                 gateway.identity = GatewayOpts::new(gateway.addr)
@@ -237,6 +239,7 @@ impl TrembitaAppBuilder {
             .surfaces(default_product_surfaces(
                 self.default_gateway_apis(),
                 self.gateway_extra_routes.clone(),
+                None,
             ));
         if let Some((cert, key)) = cfg.and_then(|c| c.http_tls.clone()) {
             opts = opts.tls(cert, key);

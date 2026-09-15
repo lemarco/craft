@@ -1,6 +1,6 @@
 # Product showcases
 
-Five standalone projects — four [product scenarios](../docs/scenarios/README.md) plus a self-update ops showcase. Each has its own `Cargo.toml`, README, and `trigger.sh`.
+Eight standalone projects — product scenarios, WebSocket variants, plus a self-update ops showcase. Each has its own `Cargo.toml` and local `cargo run`.
 
 **Dev UX (preferred):** from the repo root, [`trembita dev`](../crates/trembita-cli/README.md) — `dev setup`, `dev up --showcase … --nodes 3`, `dev trigger …`. Legacy `./cluster.sh` remains for scripts/CI.
 
@@ -12,6 +12,9 @@ Excluded from the root workspace `cargo check` (like `benchmarks/`). CI runs `./
 |--------|---------|-------|---------|
 | [`background-jobs/`](background-jobs/) | HTTP `202` → queue → `#[consumer]` | `cargo run --release` | `trembita dev up --showcase background-jobs` |
 | [`realtime/`](realtime/) | WebSocket + HTTP → sticky `ActorSession` | `cargo run --release` | `trembita dev up --showcase realtime` |
+| [`ws-minimal/`](ws-minimal/) | Raw WebSocket echo (no adapters) | `cargo run --release` | — |
+| [`market-ws/`](market-ws/) | Open WS + topic broadcast hub | `cargo run --release` | — |
+| [`ws-notify/`](ws-notify/) | Identity WS + per-user push | `cargo run --release` | — |
 | [`stateful-workers/`](stateful-workers/) | `ActorStateStore` + idempotent cast + auth HTTP | `cargo run --release` | `trembita dev up --showcase stateful-workers` |
 | [`workflows/`](workflows/) | Saga journal + actor/queue steps | `cargo run --release` | `trembita dev up --showcase workflows` |
 | [`self-update/`](self-update/) | Leader-coordinated rolling self-update | `cargo run --release` | `trembita dev up --showcase self-update` |

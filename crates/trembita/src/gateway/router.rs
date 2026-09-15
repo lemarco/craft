@@ -46,6 +46,7 @@ pub(super) fn build_gateway_service_with_tracker(
         addr: _,
         identity,
         surfaces,
+        websocket_routes: _,
         drain_timeout: _,
         tls: _,
         rate_limit_per_sec,

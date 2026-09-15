@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita_http::Gateway;
+use trembita_http::{Gateway, RouteTable};
 
 use super::GatewayTlsPaths;
 use super::identity;
@@ -52,6 +52,8 @@ pub struct GatewayConfig {
     pub addr: SocketAddr,
     /// Optional custom surfaces (WebSocket, sync HTTP, etc.).
     pub surfaces: Option<GatewaySurfacesFn>,
+    /// Extra WebSocket route tables merged into the default product surface.
+    pub websocket_routes: Option<Arc<dyn Fn(TrembitaGatewayState) -> RouteTable + Send + Sync>>,
     /// Optional identity extractor ([`super::GatewayOpts::identity`]).
     pub(crate) identity: Option<Arc<dyn identity::DynGatewayIdentity>>,
     /// Graceful drain timeout for active connections.

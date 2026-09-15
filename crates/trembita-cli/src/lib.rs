@@ -11,8 +11,9 @@ pub use dev::{
 };
 pub use scaffold::{
     AddActorOpts, AddConsumerOpts, AddError, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts,
-    AddWorkflowOpts, AppFeature, AppRsPatch, DoctorFixReport, DoctorReport, Level, NewProjectOpts,
-    PatchError, ProjectError, ScaffoldError, StaticSiteSource, TrembitaProject, add_actor,
-    add_consumer, add_http_surface, add_jobs_routes, add_ops_routes, add_static_site, add_topic,
-    add_workflow, default_output, doctor_fix, parse_feature_list, run_doctor, scaffold_project,
+    AddWorkflowOpts, AddWsSurfaceOpts, AppFeature, AppRsPatch, DoctorFixReport, DoctorReport,
+    Level, NewProjectOpts, PatchError, ProjectError, ScaffoldError, StaticSiteSource,
+    TrembitaProject, add_actor, add_consumer, add_http_surface, add_jobs_routes, add_ops_routes,
+    add_static_site, add_topic, add_workflow, add_ws_surface, default_output, doctor_fix,
+    parse_feature_list, run_doctor, scaffold_project,
 };

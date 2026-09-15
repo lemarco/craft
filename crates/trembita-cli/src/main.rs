@@ -8,10 +8,11 @@ use std::process;
 use clap::{Parser, Subcommand, ValueHint};
 use trembita_cli::{
     AddActorOpts, AddConsumerOpts, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts,
-    AddWorkflowOpts, NewProjectOpts, StaticSiteSource, TrembitaProject, add_actor, add_consumer,
-    add_http_surface, add_jobs_routes, add_ops_routes, add_static_site, add_topic, add_workflow,
-    default_output, dev_http, dev_setup, dev_status, dev_stop, dev_trigger, dev_up, doctor_fix,
-    list_showcases, parse_feature_list, run_doctor, scaffold_project,
+    AddWorkflowOpts, AddWsSurfaceOpts, NewProjectOpts, StaticSiteSource, TrembitaProject,
+    add_actor, add_consumer, add_http_surface, add_jobs_routes, add_ops_routes, add_static_site,
+    add_topic, add_workflow, add_ws_surface, default_output, dev_http, dev_setup, dev_status,
+    dev_stop, dev_trigger, dev_up, doctor_fix, list_showcases, parse_feature_list, run_doctor,
+    scaffold_project,
 };
 
 #[derive(Parser)]
@@ -165,6 +166,20 @@ enum AddTarget {
     OpsRoutes,
     /// Add job operator routes (`src/http/jobs.rs` + gateway merge).
     JobsRoutes,
+    /// Register WebSocket routes (`src/http/ws.rs` + gateway merge).
+    WsSurface {
+        /// WebSocket path (e.g. `/ws`).
+        path: String,
+        /// Actor group for sticky sessions.
+        #[arg(long, default_value = "chat")]
+        group: String,
+        /// Rust module name under `src/http/` (default: `ws`).
+        #[arg(long)]
+        module: Option<String>,
+        /// Sticky session to actor group (default: true).
+        #[arg(long, default_value_t = true)]
+        sticky: bool,
+    },
     /// Register a custom HTTP surface (`src/http/` + gateway `.surface()`).
     HttpSurface {
         /// Surface name (default module name).
@@ -237,6 +252,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("  trembita add consumer <stream>  — register more job handlers");
             eprintln!("  trembita add ops-routes | jobs-routes — built-in /health, /jobs/* tables");
             eprintln!("  trembita add http-surface <name> --hosts … — custom HTTP routes");
+            eprintln!("  trembita add ws-surface <path> — WebSocket (sticky or raw)");
             eprintln!("  trembita doctor                 — verify layout and wiring");
         }
         Command::Add { target, path } => {
@@ -276,6 +292,26 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 AddTarget::JobsRoutes => {
                     add_jobs_routes(&project)?;
                     eprintln!("Added jobs routes in {}", project.http_dir().display());
+                }
+                AddTarget::WsSurface {
+                    path,
+                    group,
+                    module,
+                    sticky,
+                } => {
+                    add_ws_surface(
+                        &project,
+                        &AddWsSurfaceOpts {
+                            path,
+                            group,
+                            module,
+                            sticky,
+                        },
+                    )?;
+                    eprintln!(
+                        "Added WebSocket surface in {}",
+                        project.http_dir().display()
+                    );
                 }
                 AddTarget::HttpSurface {
                     name,

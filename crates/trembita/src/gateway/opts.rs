@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita_http::Gateway;
+use trembita_http::{AuthMode, Gateway, RouteTable};
 
 use crate::app::DefaultGatewayApis;
 use crate::env_config::app_config_from_env;
@@ -22,6 +22,8 @@ pub struct GatewayOpts {
     drain_timeout: Duration,
     tls: Option<GatewayTlsPaths>,
     rate_limit_per_sec: Option<u32>,
+    websocket_routes: Option<Arc<dyn Fn(TrembitaGatewayState) -> RouteTable + Send + Sync>>,
+    ws_mounts: Vec<super::ws::WsMount>,
 }
 
 impl fmt::Debug for GatewayOpts {
@@ -69,6 +71,8 @@ impl GatewayOpts {
             drain_timeout: DEFAULT_GATEWAY_DRAIN_TIMEOUT,
             tls: None,
             rate_limit_per_sec: None,
+            websocket_routes: None,
+            ws_mounts: Vec::new(),
         }
     }
 
@@ -144,6 +148,86 @@ impl GatewayOpts {
         self
     }
 
+    /// Merge WebSocket [`RouteTable`] entries on the default product listener (multi-path WS).
+    #[must_use]
+    pub fn websocket_routes<F>(mut self, routes: F) -> Self
+    where
+        F: Fn(TrembitaGatewayState) -> RouteTable + Send + Sync + 'static,
+    {
+        self.websocket_routes = Some(Arc::new(routes));
+        self
+    }
+
+    /// Declarative mount (broadcast / notify / raw echo) — see [`super::ws::WsMount`].
+    #[must_use]
+    pub fn ws(mut self, mount: super::ws::WsMount) -> Self {
+        self.ws_mounts.push(mount);
+        self
+    }
+
+    /// Sticky-session WebSocket to actor group `group` at `path` (identity auth).
+    #[must_use]
+    pub fn realtime_ws<F>(self, path: &str, group: &str, ttl: Duration, on_connected: F) -> Self
+    where
+        F: Fn(
+                super::ws::StickyWs,
+            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.realtime_ws_auth(path, group, ttl, AuthMode::Identity, on_connected)
+    }
+
+    /// Sticky WebSocket with explicit auth mode.
+    #[must_use]
+    pub fn realtime_ws_auth<F>(
+        mut self,
+        path: &str,
+        group: &str,
+        ttl: Duration,
+        auth: AuthMode,
+        on_connected: F,
+    ) -> Self
+    where
+        F: Fn(
+                super::ws::StickyWs,
+            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+            + Send
+            + Sync
+            + 'static,
+    {
+        let path = path.to_string();
+        let group = group.to_string();
+        let on_connected = Arc::new(on_connected);
+        let prev = self.websocket_routes.take();
+        let mounts = std::mem::take(&mut self.ws_mounts);
+        self.websocket_routes = Some(Arc::new(move |state| {
+            let mut table = RouteTable::new();
+            table = super::ws::apply_ws_mounts(table, state.clone(), mounts.clone());
+            table = super::ws::mount_sticky_websocket(
+                table,
+                &path,
+                auth,
+                state.clone(),
+                &group,
+                Some(ttl),
+                {
+                    let on_connected = Arc::clone(&on_connected);
+                    move |sticky| {
+                        let on_connected = Arc::clone(&on_connected);
+                        Box::pin(async move { on_connected(sticky).await })
+                    }
+                },
+            );
+            if let Some(prev) = &prev {
+                table = table.merge(prev(state));
+            }
+            table
+        }));
+        self
+    }
+
     /// Collect gateway wiring for [`super::build_gateway_service`] / [`super::spawn_gateway`].
     #[must_use]
     pub fn build_config(self) -> GatewayConfig {
@@ -152,10 +236,24 @@ impl GatewayOpts {
 
     #[must_use]
     pub(crate) fn into_config(self) -> GatewayConfig {
+        let mut websocket_routes = self.websocket_routes;
+        if !self.ws_mounts.is_empty() {
+            let mounts = self.ws_mounts;
+            let prev = websocket_routes;
+            websocket_routes = Some(Arc::new(move |state| {
+                let mut table = RouteTable::new();
+                table = super::ws::apply_ws_mounts(table, state.clone(), mounts.clone());
+                if let Some(prev) = &prev {
+                    table = table.merge(prev(state));
+                }
+                table
+            }));
+        }
         GatewayConfig {
             addr: self.addr,
             identity: self.identity,
             surfaces: self.surfaces,
+            websocket_routes,
             drain_timeout: self.drain_timeout,
             tls: self.tls,
             rate_limit_per_sec: self.rate_limit_per_sec,

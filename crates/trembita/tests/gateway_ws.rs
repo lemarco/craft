@@ -171,3 +171,75 @@ async fn websocket_gateway_casts_to_worker() {
     app.shutdown();
     let _ = std::fs::remove_dir_all(base);
 }
+
+#[tokio::test(start_paused = true)]
+async fn websocket_multi_path_on_one_gateway() {
+    use trembita::{AuthMode, RouteTable, mount_raw_websocket, run_text_loop, server_stream};
+
+    let base = std::env::temp_dir().join(format!(
+        "trembita-gateway-ws-multi-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+
+    let app = boot_local_app(
+        || {
+            TrembitaApp::builder()
+                .data_dir(&base)
+                .configure(TrembitaConfigure {
+                    tick_period: Duration::from_millis(5),
+                    ..TrembitaConfigure::default()
+                })
+        },
+        None,
+    )
+    .await;
+
+    wait_for_trembita_app_leader(&app).await;
+
+    fn surfaces(state: TrembitaGatewayState) -> Gateway {
+        let mut table = RouteTable::new();
+        table = mount_raw_websocket(table, "/ws/a", AuthMode::Open, state.clone(), |raw| {
+            Box::pin(async move {
+                let ws = server_stream(raw.stream).await;
+                run_text_loop(ws, |t| async move { Some(format!("a:{t}")) }).await;
+            })
+        });
+        table = mount_raw_websocket(table, "/ws/b", AuthMode::Open, state, |raw| {
+            Box::pin(async move {
+                let ws = server_stream(raw.stream).await;
+                run_text_loop(ws, |t| async move { Some(format!("b:{t}")) }).await;
+            })
+        });
+        Gateway::new(false).dev_fallback(table)
+    }
+
+    let addr = spawn_test_gateway(
+        &app,
+        GatewayOpts::new("127.0.0.1:0".parse().unwrap())
+            .surfaces(surfaces)
+            .build_config(),
+    )
+    .await;
+
+    let url_a = format!("ws://127.0.0.1:{}/ws/a", addr.port());
+    let (mut wa, _) = tokio_tungstenite::connect_async(&url_a)
+        .await
+        .expect("ws a");
+    wa.send(WsMessage::Text("1".into())).await.unwrap();
+    let ra = wa.next().await.expect("frame").expect("ok");
+    assert_eq!(ra.into_text().unwrap(), "a:1");
+
+    let url_b = format!("ws://127.0.0.1:{}/ws/b", addr.port());
+    let (mut wb, _) = tokio_tungstenite::connect_async(url_b).await.expect("ws b");
+    wb.send(WsMessage::Text("2".into())).await.unwrap();
+    let rb = wb.next().await.expect("frame").expect("ok");
+    assert_eq!(rb.into_text().unwrap(), "b:2");
+
+    app.shutdown();
+    let _ = std::fs::remove_dir_all(base);
+}

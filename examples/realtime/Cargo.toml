@@ -15,8 +15,6 @@ trembita = { path = "../../crates/trembita", features = ["http-jobs"] }
 trembita-runtime = { path = "../../crates/trembita-runtime" }
 trembita-tools = { path = "../../crates/trembita-tools" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
-futures-util = "0.3"
-tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 http = "1"

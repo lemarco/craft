@@ -15,6 +15,8 @@ pub struct Showcase {
     pub cluster_dir: &'static str,
     /// Node cert ids for `dev/certs/generate.sh` (includes `0` join bootstrap).
     pub cert_ids: &'static [u32],
+    /// Single-process HTTP-only demo (no multi-node QUIC cluster).
+    pub solo_http: bool,
 }
 
 const SHOWCASES: &[Showcase] = &[
@@ -25,6 +27,7 @@ const SHOWCASES: &[Showcase] = &[
         base_port: 8090,
         cluster_dir: "trembita-bg-jobs-cluster",
         cert_ids: &[0, 1, 2, 3, 4],
+        solo_http: false,
     },
     Showcase {
         id: "stateful-workers",
@@ -33,6 +36,7 @@ const SHOWCASES: &[Showcase] = &[
         base_port: 8190,
         cluster_dir: "trembita-stateful-workers-cluster",
         cert_ids: &[0, 1, 2, 3, 4],
+        solo_http: false,
     },
     Showcase {
         id: "realtime",
@@ -41,6 +45,7 @@ const SHOWCASES: &[Showcase] = &[
         base_port: 8290,
         cluster_dir: "trembita-realtime-cluster",
         cert_ids: &[0, 1, 2, 3, 4],
+        solo_http: false,
     },
     Showcase {
         id: "workflows",
@@ -49,6 +54,7 @@ const SHOWCASES: &[Showcase] = &[
         base_port: 8490,
         cluster_dir: "trembita-workflows-cluster",
         cert_ids: &[0, 1, 2, 3, 4],
+        solo_http: false,
     },
     Showcase {
         id: "self-update",
@@ -57,6 +63,34 @@ const SHOWCASES: &[Showcase] = &[
         base_port: 8190,
         cluster_dir: "trembita-self-update-cluster",
         cert_ids: &[0, 1, 2, 3],
+        solo_http: false,
+    },
+    Showcase {
+        id: "ws-minimal",
+        dir: "ws-minimal",
+        binary: "trembita-showcase-ws-minimal",
+        base_port: 8390,
+        cluster_dir: "trembita-ws-minimal",
+        cert_ids: &[],
+        solo_http: true,
+    },
+    Showcase {
+        id: "market-ws",
+        dir: "market-ws",
+        binary: "trembita-showcase-market-ws",
+        base_port: 8391,
+        cluster_dir: "trembita-market-ws",
+        cert_ids: &[],
+        solo_http: true,
+    },
+    Showcase {
+        id: "ws-notify",
+        dir: "ws-notify",
+        binary: "trembita-showcase-ws-notify",
+        base_port: 8392,
+        cluster_dir: "trembita-ws-notify",
+        cert_ids: &[],
+        solo_http: true,
     },
 ];
 

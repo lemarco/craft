@@ -93,6 +93,19 @@ pub struct AddHttpSurfaceOpts {
     pub cors: bool,
 }
 
+/// Options for `add ws-surface`.
+#[derive(Debug, Clone)]
+pub struct AddWsSurfaceOpts {
+    /// WebSocket path (e.g. `/ws` or `/ws/tickers`).
+    pub path: String,
+    /// Actor group for sticky sessions (ignored when `sticky` is false).
+    pub group: String,
+    /// Rust module under `src/http/` (default: `ws`).
+    pub module: Option<String>,
+    /// Use sticky [`SessionHandle`](trembita::SessionHandle) wiring.
+    pub sticky: bool,
+}
+
 /// Options for `add static-site`.
 #[derive(Debug, Clone)]
 pub struct AddStaticSiteOpts {
@@ -334,6 +347,111 @@ impl UserActor for {type_name} {{
     registry.register_worker_line(&worker_line)?;
     registry.save()?;
     ensure_main_module(project, "actors").map_err(AddError::Patch)?;
+    Ok(())
+}
+
+/// Add WebSocket routes (`src/http/ws.rs` + merge in gateway surfaces).
+pub fn add_ws_surface(project: &TrembitaProject, opts: &AddWsSurfaceOpts) -> Result<(), AddError> {
+    let module = opts.module.clone().unwrap_or_else(|| "ws".to_string());
+    validate_identifier(&module)?;
+    ensure_cargo_feature(project, "gateway")?;
+
+    fs::create_dir_all(project.http_dir())?;
+    let http_path = project.http_dir().join(format!("{module}.rs"));
+    if http_path.exists() {
+        return Err(AddError::Exists(http_path.display().to_string()));
+    }
+
+    let body = if opts.sticky {
+        format!(
+            r#"//! WebSocket surface — sticky session to actor group `{group}`.
+
+use std::time::Duration;
+
+use trembita::{{AuthMode, RouteTable, TrembitaGatewayState, WsMessage, futures_util::SinkExt, mount_sticky_websocket, run_sticky_cast_loop, server_stream}};
+
+/// WebSocket route table (merge in `GatewayOpts::surfaces` or `.websocket_routes`).
+#[must_use]
+pub fn route_table(state: &TrembitaGatewayState) -> RouteTable {{
+    mount_sticky_websocket(
+        RouteTable::new(),
+        "{path}",
+        AuthMode::Identity,
+        state.clone(),
+        "{group}",
+        Some(Duration::from_secs(3600)),
+        |sticky| {{
+            Box::pin(async move {{
+                let mut ws = server_stream(sticky.stream).await;
+                let mut handle = sticky.handle;
+                let _ = ws
+                    .send(WsMessage::Text(format!("session open for {{}}", sticky.session_key).into()))
+                    .await;
+                run_sticky_cast_loop(ws, &mut handle, |_text, _ok| {{}}).await;
+            }})
+        }},
+    )
+}}
+"#,
+            group = opts.group,
+            path = opts.path,
+        )
+    } else {
+        format!(
+            r#"//! WebSocket surface — raw upgrade at `{path}`.
+
+use trembita::{{AuthMode, RouteTable, TrembitaGatewayState, mount_raw_websocket, run_text_loop, server_stream}};
+
+/// WebSocket route table (merge in `GatewayOpts::surfaces` or `.websocket_routes`).
+#[must_use]
+pub fn route_table(state: &TrembitaGatewayState) -> RouteTable {{
+    mount_raw_websocket(
+        RouteTable::new(),
+        "{path}",
+        AuthMode::Open,
+        state.clone(),
+        |raw| {{
+            Box::pin(async move {{
+                let ws = server_stream(raw.stream).await;
+                run_text_loop(ws, |text| async move {{ Some(format!("echo: {{text}}")) }}).await;
+            }})
+        }},
+    )
+}}
+"#,
+            path = opts.path,
+        )
+    };
+
+    fs::write(&http_path, body)?;
+    ensure_http_mod_rs(project, &module)?;
+
+    let route_call = format!("http::{module}::route_table(&state)");
+    let mut app = AppRsPatch::load(&project.app_rs())?;
+    if app.contains(&route_call) {
+        return Err(AddError::Patch(PatchError::Duplicate(format!(
+            "{route_call} already wired in app.rs"
+        ))));
+    }
+    app.insert_import("use trembita::Gateway;")?;
+    app.insert_import("use trembita::TrembitaGatewayState;")?;
+    ensure_gateway_surfaces_block(&mut app).map_err(AddError::Patch)?;
+
+    let merge_line = format!(".merge_routes({route_call})");
+    if app.contains("TrembitaApp::default_surfaces") {
+        if !app.contains(&merge_line) {
+            app.insert_before_end(names::SURFACES, &merge_line)?;
+        }
+    } else if app.contains(".dev_fallback(") {
+        app.replace_once(".dev_fallback(", &format!(".dev_fallback({route_call}"))?;
+    } else {
+        app.insert_before_end(
+            names::SURFACES,
+            &format!("Gateway::new(false).dev_fallback({route_call})"),
+        )?;
+    }
+    app.save(&project.app_rs())?;
+    ensure_main_module(project, "http").map_err(AddError::Patch)?;
     Ok(())
 }
 

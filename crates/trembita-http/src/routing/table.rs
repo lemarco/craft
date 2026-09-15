@@ -129,7 +129,7 @@ pub struct RouteTable {
     routes: Vec<RouteEntry>,
     fallback: Option<ArcHandler>,
     fallback_auth: AuthMode,
-    websocket: Option<WebSocketRoute>,
+    websockets: Vec<WebSocketRoute>,
     sse: Vec<SseRoute>,
 }
 
@@ -159,7 +159,7 @@ impl RouteTable {
             routes: Vec::new(),
             fallback: None,
             fallback_auth: AuthMode::Open,
-            websocket: None,
+            websockets: Vec::new(),
             sse: Vec::new(),
         }
     }
@@ -178,7 +178,7 @@ impl RouteTable {
         if self.fallback.is_some() {
             self.fallback_auth = auth;
         }
-        if let Some(ws) = &mut self.websocket {
+        for ws in &mut self.websockets {
             ws.auth = auth;
         }
         self
@@ -312,12 +312,11 @@ impl RouteTable {
             self.fallback = other.fallback;
             self.fallback_auth = auth;
         }
-        if self.websocket.is_none() {
-            self.websocket = other.websocket.map(|mut ws| {
+        self.websockets
+            .extend(other.websockets.into_iter().map(|mut ws| {
                 ws.auth = auth;
                 ws
-            });
-        }
+            }));
         self.sse.extend(other.sse);
         self
     }
@@ -363,11 +362,7 @@ impl RouteTable {
         + Sync
         + 'static,
     ) -> Self {
-        self.websocket = Some(WebSocketRoute {
-            pattern: PathPattern::new(path),
-            auth: AuthMode::Open,
-            handler: Arc::new(handler),
-        });
+        self.push_websocket(path, AuthMode::Open, handler);
         self
     }
 
@@ -393,11 +388,7 @@ impl RouteTable {
         + Sync
         + 'static,
     ) -> Self {
-        self.websocket = Some(WebSocketRoute {
-            pattern: PathPattern::new(path),
-            auth: AuthMode::Session,
-            handler: Arc::new(handler),
-        });
+        self.push_websocket(path, AuthMode::Session, handler);
         self
     }
 
@@ -423,19 +414,55 @@ impl RouteTable {
         + Sync
         + 'static,
     ) -> Self {
-        self.websocket = Some(WebSocketRoute {
-            pattern: PathPattern::new(path),
-            auth: AuthMode::Identity,
-            handler: Arc::new(handler),
-        });
+        self.push_websocket(path, AuthMode::Identity, handler);
         self
     }
 
     /// Returns the WebSocket upgrade handler and auth mode when `path` matches.
     pub(crate) fn match_websocket(&self, path: &str) -> Option<(&UpgradeFn, AuthMode)> {
-        let ws = self.websocket.as_ref()?;
-        ws.pattern.match_path(path)?;
-        Some((&ws.handler, ws.auth))
+        self.websockets.iter().rev().find_map(|ws| {
+            ws.pattern.match_path(path)?;
+            Some((&ws.handler, ws.auth))
+        })
+    }
+
+    fn push_websocket(
+        &mut self,
+        path: &str,
+        auth: AuthMode,
+        handler: impl Fn(
+            http::Request<hyper::body::Incoming>,
+        ) -> Pin<
+            Box<
+                dyn Future<
+                        Output = http::Response<
+                            http_body_util::combinators::BoxBody<
+                                bytes::Bytes,
+                                std::convert::Infallible,
+                            >,
+                        >,
+                    > + Send,
+            >,
+        > + Send
+        + Sync
+        + 'static,
+    ) {
+        let pattern = PathPattern::new(path);
+        if let Some(existing) = self
+            .websockets
+            .iter_mut()
+            .rev()
+            .find(|ws| ws.pattern.template() == pattern.template())
+        {
+            existing.auth = auth;
+            existing.handler = Arc::new(handler);
+            return;
+        }
+        self.websockets.push(WebSocketRoute {
+            pattern,
+            auth,
+            handler: Arc::new(handler),
+        });
     }
 
     /// Register a server-sent events stream at `path`.
@@ -492,9 +519,7 @@ impl RouteTable {
             self.fallback = other.fallback;
             self.fallback_auth = other.fallback_auth;
         }
-        if self.websocket.is_none() {
-            self.websocket.clone_from(&other.websocket);
-        }
+        self.websockets.extend(other.websockets);
         self.sse.extend(other.sse);
         self
     }

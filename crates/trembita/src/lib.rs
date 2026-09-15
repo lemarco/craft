@@ -143,6 +143,13 @@ pub use workflow_opts::WorkflowOpts;
 pub use workload::WorkloadRuntime;
 
 #[cfg(feature = "http-jobs")]
+pub use gateway::ws::{
+    RawWs, StickyWs, WsBroadcastHub, WsMessage, WsMount, WsNotifyHub, WsSubscribeCmd,
+    apply_ws_mounts, futures_util, mount_raw_websocket, mount_sticky_websocket,
+    run_sticky_cast_loop, run_sticky_text_loop, run_text_loop, server_stream, tokio_tungstenite,
+};
+
+#[cfg(feature = "http-jobs")]
 pub use trembita_http::{
     AuthMode, CookieConfig, CorsPolicy, EmbeddedAssets, EmbeddedFile, Gateway, GatewayBuildError,
     GatewayService, HttpError, IntrospectApi, IntrospectApiError, Observer, OpsApi, Precompressed,

@@ -16,7 +16,9 @@ pub fn setup(showcase: &Showcase, workspace: &Path) -> Result<(), DevError> {
     fs::create_dir_all(cluster.join("data"))?;
     fs::create_dir_all(cluster.join("logs"))?;
 
-    if !certs.join("ca.pem").is_file() {
+    if showcase.solo_http {
+        fs::create_dir_all(cluster.join("logs"))?;
+    } else if !certs.join("ca.pem").is_file() {
         eprintln!(">> minting cluster CA + node certs in {}", certs.display());
         let generate = workspace.join("dev/certs/generate.sh");
         run_bash(
@@ -119,15 +121,25 @@ pub fn up(showcase: &Showcase, workspace: &Path, nodes: u32) -> Result<(), DevEr
     }
     let cluster = showcase.cluster_root(workspace);
     let certs = cluster.join("certs");
-    if !certs.join("ca.pem").is_file() {
-        return Err(DevError::SetupRequired);
-    }
-
-    stop(showcase)?;
-    fs::create_dir_all(cluster.join("logs"))?;
-
-    for node in 1..=nodes {
-        spawn_node(showcase, workspace, node, &bin)?;
+    if showcase.solo_http {
+        if nodes != 1 {
+            eprintln!(
+                "warn: solo showcase {id} ignores --nodes {nodes}",
+                id = showcase.id
+            );
+        }
+        stop(showcase)?;
+        fs::create_dir_all(cluster.join("logs"))?;
+        spawn_solo_http(showcase, workspace, &bin)?;
+    } else {
+        if !certs.join("ca.pem").is_file() {
+            return Err(DevError::SetupRequired);
+        }
+        stop(showcase)?;
+        fs::create_dir_all(cluster.join("logs"))?;
+        for node in 1..=nodes {
+            spawn_node(showcase, workspace, node, &bin)?;
+        }
     }
 
     eprintln!(">> waiting for /health on :{}", showcase.base_port);
@@ -141,6 +153,36 @@ pub fn up(showcase: &Showcase, workspace: &Path, nodes: u32) -> Result<(), DevEr
             cluster.display()
         );
     }
+    Ok(())
+}
+
+fn spawn_solo_http(showcase: &Showcase, workspace: &Path, bin: &Path) -> Result<(), DevError> {
+    let cluster = showcase.cluster_root(workspace);
+    let data_dir = cluster.join("data").join("solo");
+    let log = cluster.join("logs").join("solo.log");
+    fs::create_dir_all(&data_dir)?;
+    let http = format!("127.0.0.1:{}", showcase.base_port);
+    let mut cmd = Command::new(bin);
+    cmd.env("TREMBITA_HTTP", &http)
+        .env("TREMBITA_LISTEN", &http)
+        .env("TREMBITA_DATA_DIR", &data_dir);
+    if std::env::var("RUST_LOG").is_err() {
+        cmd.env("RUST_LOG", "info,trembita=info");
+    }
+    let log_file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log)
+        .map_err(DevError::Io)?;
+    cmd.stdout(Stdio::from(log_file.try_clone().map_err(DevError::Io)?))
+        .stderr(Stdio::from(log_file));
+    let child = cmd.spawn().map_err(DevError::Io)?;
+    eprintln!(
+        ">> solo http pid={} http={http} log={}",
+        child.id(),
+        log.display()
+    );
+    let _ = workspace;
     Ok(())
 }
 

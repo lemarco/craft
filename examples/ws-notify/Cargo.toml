@@ -1,0 +1,12 @@
+[package]
+name = "trembita-showcase-ws-notify"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+trembita = { path = "../../crates/trembita", features = ["http-jobs"] }
+trembita-tools = { path = "../../crates/trembita-tools" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
