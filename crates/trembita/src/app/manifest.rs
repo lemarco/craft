@@ -93,6 +93,7 @@ impl AppManifest {
     /// Apply all registrations to `builder` (same effect as calling `.jobs` / `.topics` / … separately).
     #[must_use]
     pub fn apply(self, builder: TrembitaAppBuilder) -> TrembitaAppBuilder {
+        let hint = self.run_hint();
         let mut builder = builder;
         if !self.jobs.is_empty() {
             builder = builder.jobs(self.jobs);
@@ -106,7 +107,7 @@ impl AppManifest {
         if !self.workflows.is_empty() {
             builder = builder.workflows(self.workflows);
         }
-        builder.with_run_hint(self.run_hint())
+        builder.with_run_hint(hint)
     }
 }
 

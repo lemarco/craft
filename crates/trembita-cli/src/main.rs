@@ -7,8 +7,8 @@ use std::process;
 
 use clap::{Parser, Subcommand, ValueHint};
 use trembita_cli::{
-    AppTemplate, NewProjectOpts, TrembitaProject, default_output, resolve_scaffold_features,
-    run_doctor, scaffold_project,
+    AddKind, AppTemplate, NewProjectOpts, TrembitaProject, default_output,
+    resolve_scaffold_features, run_add, run_doctor, run_doctor_fix, scaffold_project,
 };
 #[cfg(debug_assertions)]
 use trembita_cli::{
@@ -62,6 +62,31 @@ enum Command {
         /// Stricter deploy checks (`deploy/.env`, compose, certs/listen env).
         #[arg(long)]
         preflight: bool,
+        /// Apply safe mechanical fixes (e.g. simplify `.run()` in app.rs).
+        #[arg(long)]
+        fix: bool,
+    },
+    /// Register a job stream or topic in `manifest.rs` (scaffold marker regions).
+    Add {
+        #[command(subcommand)]
+        command: AddCommand,
+        /// Project root (default: discover from cwd).
+        #[arg(long, value_hint = ValueHint::DirPath)]
+        path: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum AddCommand {
+    /// Durable job stream + consumer stub under `src/consumers/`.
+    Job {
+        /// Stream name (e.g. `emails`).
+        name: String,
+    },
+    /// Durable event topic.
+    Topic {
+        /// Topic name (e.g. `app.events`).
+        name: String,
     },
 }
 
@@ -190,8 +215,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 args,
             } => dev_http(Some(&showcase), gateway.as_deref(), &args)?,
         },
-        Command::Doctor { path, preflight } => {
+        Command::Doctor {
+            path,
+            preflight,
+            fix,
+        } => {
             let project = resolve_project(path.as_deref())?;
+            if fix {
+                let actions = run_doctor_fix(&project)?;
+                if actions.is_empty() {
+                    eprintln!("No automatic fixes applied.");
+                } else {
+                    for action in &actions {
+                        eprintln!("fix: {action}");
+                    }
+                }
+            }
             eprintln!("Checking {} …", project.root.display());
             if preflight {
                 eprintln!("Preflight mode (deploy env / compose / gateway ops)");
@@ -200,6 +239,21 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let code = report.print_and_exit_code();
             if code != 0 {
                 process::exit(code);
+            }
+        }
+        Command::Add { command, path } => {
+            let project = resolve_project(path.as_deref())?;
+            match command {
+                AddCommand::Job { name } => {
+                    run_add(&project, AddKind::Job, &name)?;
+                    eprintln!(
+                        "Added job stream `{name}` — edit src/consumers/ and src/manifest.rs"
+                    );
+                }
+                AddCommand::Topic { name } => {
+                    run_add(&project, AddKind::Topic, &name)?;
+                    eprintln!("Added topic `{name}` in src/manifest.rs");
+                }
             }
         }
     }

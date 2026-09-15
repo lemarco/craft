@@ -47,42 +47,16 @@ fn add_job(project: &TrembitaProject, stream: &str) -> Result<(), String> {
     let consumer_path = project.consumers_dir().join(format!("{consumer_mod}.rs"));
     if !consumer_path.exists() {
         fs::create_dir_all(project.consumers_dir()).map_err(|e| e.to_string())?;
-        let type_name = consumer_type_name(&consumer_mod);
         let body = format!(
-            r"//! `{stream}` job consumer.
-
-use trembita::consumer;
-
-pub const STREAM: &str = "{stream}";
-
-#[consumer("{stream}")]
-async fn handle_{consumer_mod}(payload: &[u8]) -> Result<(), String> {{
-    let preview = String::from_utf8_lossy(payload);
-    tracing::info!(target: "app", stream = STREAM, %preview, "job");
-    Ok(())
-}}
-
-trembita::macros::consumer!({{
-    pub struct {type_name};
-    {type_name} => handle_{consumer_mod};
-}});
-"
-        );
-        // consumer macro generates type - simplify without double macro
-        let body = format!(
-            r"//! `{stream}` job consumer.
-
-use trembita::consumer;
-
-pub const STREAM: &str = "{stream}";
-
-#[consumer("{stream}")]
-async fn handle_{consumer_mod}(payload: &[u8]) -> Result<(), String> {{
-    let preview = String::from_utf8_lossy(payload);
-    tracing::info!(target: "app", stream = STREAM, %preview, "job");
-    Ok(())
-}}
-"
+            "//! `{stream}` job consumer.\n\n\
+use trembita::consumer;\n\n\
+pub const STREAM: &str = \"{stream}\";\n\n\
+#[consumer(\"{stream}\")]\n\
+async fn handle_{consumer_mod}(payload: &[u8]) -> Result<(), String> {{\n\
+    let preview = String::from_utf8_lossy(payload);\n\
+    tracing::info!(target: \"app\", stream = STREAM, %preview, \"job\");\n\
+    Ok(())\n\
+}}\n"
         );
         fs::write(&consumer_path, body).map_err(|e| e.to_string())?;
         patch_consumers_mod(project, &consumer_mod)?;
@@ -90,13 +64,14 @@ async fn handle_{consumer_mod}(payload: &[u8]) -> Result<(), String> {{
 
     let type_name = consumer_type_name(&consumer_mod);
     let entry = format!(
-        "JobOpts::product(\"{stream}\", &{type_name}),\n            "
+        "JobOpts::product(\"{stream}\", &crate::consumers::{consumer_mod}::{type_name}),\n            "
     );
     insert_before_marker(
         &project.manifest_rs(),
         names::JOBS,
-        &format!("// {0}-end", names::JOBS),
+        &format!("// {}-end", names::JOBS),
         &entry,
+        &format!("JobOpts::product(\"{stream}\""),
     )?;
     Ok(())
 }
@@ -106,8 +81,9 @@ fn add_topic(project: &TrembitaProject, topic: &str) -> Result<(), String> {
     insert_before_marker(
         &project.manifest_rs(),
         names::TOPICS,
-        &format!("// {0}-end", names::TOPICS),
+        &format!("// {}-end", names::TOPICS),
         &entry,
+        &format!("TopicOpts::topic(\"{topic}\")"),
     )?;
     Ok(())
 }
@@ -128,17 +104,24 @@ fn insert_before_marker(
     region: &str,
     end_marker: &str,
     insert: &str,
+    dup_needle: &str,
 ) -> Result<(), String> {
     let mut content = fs::read_to_string(path).map_err(|e| e.to_string())?;
     let start = format!("// {region}");
     if !content.contains(&start) {
-        return Err(format!("missing marker `{start}` in {}", path.display()));
+        return Err(format!(
+            "missing marker `{start}` in {} — enable the feature in Cargo.toml or add the region",
+            path.display()
+        ));
     }
     if !content.contains(end_marker) {
-        return Err(format!("missing marker `{end_marker}` in {}", path.display()));
+        return Err(format!(
+            "missing marker `{end_marker}` in {}",
+            path.display()
+        ));
     }
-    if content.contains(&format!("JobOpts::new(\"{insert}") ) {
-        // weak dup check skipped
+    if content.contains(dup_needle) {
+        return Err(format!("`{dup_needle}` already registered in manifest"));
     }
     content = content.replacen(end_marker, &format!("{insert}{end_marker}"), 1);
     fs::write(path, content).map_err(|e| e.to_string())

@@ -9,9 +9,9 @@ pub mod scaffold;
 pub mod dev;
 
 pub use scaffold::{
-    AppFeature, AppTemplate, DoctorReport, Level, NewProjectOpts, ProjectError, ScaffoldError,
-    TrembitaProject, default_output, parse_feature_list, resolve_scaffold_features, run_doctor,
-    scaffold_project,
+    AddKind, AppFeature, AppTemplate, DoctorReport, Level, NewProjectOpts, ProjectError,
+    ScaffoldError, TrembitaProject, default_output, parse_feature_list, resolve_scaffold_features,
+    run_add, run_doctor, run_doctor_fix, scaffold_project,
 };
 
 #[cfg(debug_assertions)]

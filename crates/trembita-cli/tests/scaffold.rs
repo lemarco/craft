@@ -22,7 +22,8 @@ fn scaffolds_default_layout() {
     assert!(root.join("src/manifest.rs").is_file());
     let app = std::fs::read_to_string(root.join("src/app.rs")).unwrap();
     assert!(app.contains("TrembitaApp::from_config"));
-    assert!(app.contains("RunOpts::for_manifest"));
+    assert!(app.contains(".run()"));
+    assert!(!app.contains("RunOpts::for_manifest"));
     assert!(app.contains("let manifest = manifest::build()"));
     assert!(app.contains(".manifest(manifest)"));
     assert!(root.join("src/config.rs").is_file());
@@ -98,7 +99,8 @@ fn postgres_adapters_forward_through_trembita_features() {
     let root = scaffold_project(&opts).unwrap();
     let app = std::fs::read_to_string(root.join("src/app.rs")).unwrap();
     assert!(app.contains("TrembitaApp::from_config"));
-    assert!(app.contains("RunOpts::for_manifest"));
+    assert!(app.contains(".run()"));
+    assert!(!app.contains("RunOpts::for_manifest"));
     let cargo = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
     assert!(cargo.contains(
         "features = [\"dev-certs\", \"http-jobs\", \"external-backlog\", \"domain-outbox\"]"

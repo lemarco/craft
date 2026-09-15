@@ -112,6 +112,56 @@ pub fn run_doctor(project: &TrembitaProject, preflight: bool) -> DoctorReport {
     report
 }
 
+/// Apply safe, mechanical fixes (run loop simplification). Returns human-readable actions taken.
+///
+/// # Errors
+/// I/O or unsupported project layout.
+pub fn run_doctor_fix(project: &TrembitaProject) -> Result<Vec<String>, String> {
+    let mut actions = Vec::new();
+    let app_path = project.app_rs();
+    let mut app = fs::read_to_string(&app_path).map_err(|e| e.to_string())?;
+    let mut changed = false;
+
+    if app.contains("RunOpts::for_manifest") {
+        app = app.replace(
+            "        let cfg = self.config;\n        let manifest = manifest::build();\n        let run = RunOpts::for_manifest(&cfg, &manifest);\n",
+            "        let cfg = self.config;\n        let manifest = manifest::build();\n",
+        );
+        app = app.replace(
+            "        let run = run.with_wait_ready(ReadyOpts::default());\n",
+            "",
+        );
+        app = app.replace(".run(run)\n", ".run()\n");
+        if app.contains("use trembita::{RunOpts, TrembitaApp") {
+            app = app.replace(
+                "use trembita::{RunOpts, TrembitaApp, TrembitaConfigure};",
+                "use trembita::TrembitaApp;",
+            );
+        } else if app.contains("RunOpts, TrembitaApp") {
+            app = app.replace("RunOpts, ", "");
+        }
+        if app.contains("use trembita::ReadyOpts;") {
+            app = app.replace("use trembita::ReadyOpts;\n", "");
+        }
+        changed = true;
+        actions.push("simplified app.rs: .run() without RunOpts::for_manifest".into());
+    }
+
+    if app.contains("TrembitaConfigure {") {
+        app = app.replace(
+            "            .configure(TrembitaConfigure {\n                ..TrembitaConfigure::default()\n            })\n",
+            "",
+        );
+        changed = true;
+        actions.push("removed no-op TrembitaConfigure from app.rs".into());
+    }
+
+    if changed {
+        fs::write(&app_path, app).map_err(|e| e.to_string())?;
+    }
+    Ok(actions)
+}
+
 fn check_layout(project: &TrembitaProject, report: &mut DoctorReport) {
     let required = [
         project.main_rs(),
@@ -268,8 +318,7 @@ fn check_consumers(project: &TrembitaProject, app: &str, report: &mut DoctorRepo
 
         for stream in extract_consumer_streams(&content) {
             let consumer_type = super::markers::consumer_type_name(module);
-            let registered = app.contains(&format!("JobOpts::new(\"{stream}\")"))
-                || app.contains(&format!("consumer(&{consumer_type})"));
+            let registered = job_stream_registered_in_manifest(app, &stream, &consumer_type);
             if registered {
                 report.ok(format!(
                     "consumer stream `{stream}` wired in manifest/app registry"
@@ -550,10 +599,14 @@ fn check_builtin_gateway_routes(app: &str, manifest: &str, report: &mut DoctorRe
             );
         }
     }
-    if manifest.contains("http_enqueue(true)") || app.contains("http_enqueue(true)") {
-        if product_jobs_zero_config(app) || app.contains("http::jobs::route_table") {
-            if product_jobs_zero_config(app) {
-                report.ok("jobs HTTP API via default gateway (registration + .http_enqueue)");
+    let jobs_registered = manifest.contains(".jobs([")
+        || manifest.contains("JobOpts::")
+        || manifest.contains("http_enqueue(true)")
+        || app.contains("http_enqueue(true)");
+    if jobs_registered {
+        if product_jobs_zero_config(app, manifest) || app.contains("http::jobs::route_table") {
+            if product_jobs_zero_config(app, manifest) {
+                report.ok("jobs HTTP API via default gateway (registration + default or explicit .http_enqueue)");
             }
         } else if app.contains(".gateway(") {
             report.warn(
@@ -591,8 +644,12 @@ fn ops_routes_zero_config(app: &str) -> bool {
         || app.contains("gateway_routes(")
 }
 
-fn product_jobs_zero_config(app: &str) -> bool {
-    ops_routes_zero_config(app) && app.contains("http_enqueue(true)")
+fn product_jobs_zero_config(app: &str, manifest: &str) -> bool {
+    ops_routes_zero_config(app)
+        && (app.contains("http_enqueue(true)")
+            || manifest.contains("http_enqueue(true)")
+            || manifest.contains("JobOpts::product(")
+            || manifest.contains(".jobs(["))
 }
 
 fn check_deploy_preflight(project: &TrembitaProject, strict: bool, report: &mut DoctorReport) {
@@ -1004,28 +1061,44 @@ fn extract_workflow_prefix(source: &str) -> Option<String> {
     None
 }
 
+fn job_stream_registered_in_manifest(manifest: &str, stream: &str, consumer_type: &str) -> bool {
+    manifest.contains(&format!("JobOpts::new(\"{stream}\")"))
+        || manifest.contains(&format!("JobOpts::product(\"{stream}\")"))
+        || manifest.contains(&format!("consumer(&{consumer_type})"))
+        || (manifest.contains(consumer_type)
+            && (manifest.contains(&format!("\"{stream}\""))
+                || (stream == "jobs" && manifest.contains("SAMPLE_STREAM"))))
+}
+
+fn push_job_stream_from_rest(rest: &str, streams: &mut Vec<String>) {
+    let rest = rest.trim_start();
+    if let Some(lit) = rest.strip_prefix('"') {
+        if let Some(end) = lit.find('"') {
+            streams.push(lit[..end].to_string());
+            return;
+        }
+    }
+    let ident: String = rest
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
+    if !ident.is_empty() {
+        streams.push(ident);
+    }
+}
+
 fn extract_job_stream_literals(manifest: &str) -> Vec<String> {
     let mut streams = Vec::new();
-    for line in manifest.lines() {
-        if !line.contains("JobOpts::new(") {
-            continue;
-        }
-        let Some(idx) = line.find("JobOpts::new(") else {
-            continue;
-        };
-        let rest = line[idx + "JobOpts::new(".len()..].trim_start();
-        if let Some(lit) = rest.strip_prefix('"') {
-            if let Some(end) = lit.find('"') {
-                streams.push(lit[..end].to_string());
-            }
-        } else {
-            let ident: String = rest
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                .collect();
-            if !ident.is_empty() {
-                streams.push(ident);
-            }
+    for prefix in [
+        "JobOpts::new(",
+        "JobOpts::product(",
+        "JobsPreset::idempotent_stream(",
+        "JobsPreset::stream(",
+    ] {
+        let mut search = manifest;
+        while let Some(idx) = search.find(prefix) {
+            push_job_stream_from_rest(&search[idx + prefix.len()..], &mut streams);
+            search = &search[idx + prefix.len()..];
         }
     }
     streams

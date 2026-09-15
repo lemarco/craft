@@ -8,7 +8,8 @@ mod gateway;
 mod gateway_defaults;
 mod manifest;
 mod manifest_presets;
-mod run_hint;
+pub(crate) mod run_hint;
+pub(crate) use run_hint::ManifestRunHint;
 
 #[cfg(feature = "http-jobs")]
 pub use gateway::DefaultGatewayApis;

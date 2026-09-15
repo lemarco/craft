@@ -7,7 +7,7 @@ use trembita_net::LocalNetwork;
 
 use crate::AppManifest;
 use crate::ReadyOpts;
-use crate::app::run_hint::ManifestRunHint;
+use crate::app::ManifestRunHint;
 use crate::app::{ShutdownOpts, TrembitaApp};
 use crate::env_config::AppConfig;
 
@@ -174,9 +174,20 @@ mod tests {
     }
 
     #[test]
-    fn with_manifest_skips_wait_when_multiple_job_streams() {
+    fn with_manifest_leader_wait_when_multiple_job_streams() {
         let manifest = AppManifest::new().jobs([JobOpts::new("a"), JobOpts::new("b")]);
         let opts = RunOpts::default().with_manifest(&manifest);
-        assert!(opts.wait_ready.is_none());
+        let ready = opts.wait_ready.expect("leader wait");
+        assert!(ready.job_streams.is_empty());
+    }
+
+    #[test]
+    fn with_run_hint_waits_for_leader_when_workers_only() {
+        use crate::app::ManifestRunHint;
+
+        let mut hint = ManifestRunHint::default();
+        hint.has_workers = true;
+        let opts = RunOpts::default().with_run_hint(&hint);
+        assert!(opts.wait_ready.is_some());
     }
 }

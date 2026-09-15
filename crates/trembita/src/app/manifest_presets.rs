@@ -1,7 +1,6 @@
 //! Scenario-oriented helpers for [`AppManifest`] and [`JobOpts`](crate::JobOpts).
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use crate::consumer::{IdempotencyOpts, JobConsumer};
 use crate::job_opts::JobOpts;
@@ -46,14 +45,15 @@ pub struct RealtimePreset;
 impl RealtimePreset {
     /// One worker group scaled per cluster node.
     #[must_use]
-    pub fn worker_per_node<W: UserActor + 'static>(
-        name: impl Into<String>,
-        config: W::Config,
-    ) -> WorkerGroup {
+    pub fn worker_per_node<W>(name: impl Into<String>, config: W::Config) -> WorkerGroup
+    where
+        W: UserActor + 'static,
+        W::Config: Clone + Send + Sync + 'static,
+    {
         WorkerGroup::new().with_worker(
             WorkerOpts::<W>::new(name)
                 .config(config)
-                .scale(WorkerScale::PerNode(1)),
+                .scale(WorkerScale::PerNode),
         )
     }
 }

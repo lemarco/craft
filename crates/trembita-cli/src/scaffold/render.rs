@@ -317,19 +317,20 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
 
     if features.contains(&AppFeature::Jobs) {
         imports.push("use std::sync::Arc;".to_string());
-        imports.push("use std::time::Duration;".to_string());
         imports.push(
             "use crate::consumers::sample::{HandleSampleConsumer, STREAM as SAMPLE_STREAM};"
                 .to_string(),
         );
-        imports.push("use trembita::{IdempotencyOpts, InMemoryStore, JobOpts};".to_string());
+        imports.push(
+            "use trembita::{IdempotencyOpts, InMemoryStore, JobOpts, JobsPreset};".to_string(),
+        );
     }
     if features.contains(&AppFeature::Topics) {
         imports.push("use trembita::TopicOpts;".to_string());
     }
-    imports.push("use trembita::{WorkerOpts, WorkerScale, workers};".to_string());
     if opts.template == Some(AppTemplate::Realtime) {
         imports.push("use crate::actors::chat::ChatWorker;".to_string());
+        imports.push("use trembita::RealtimePreset;".to_string());
     }
 
     let imports_block = format!(
@@ -346,15 +347,12 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
             r#"
         .jobs([
             // trembita:jobs
-            JobOpts::new(SAMPLE_STREAM)
-                .lease(Duration::from_secs(300))
-                .default_max_attempts(5)
-                .idempotency(IdempotencyOpts::by_dedup_key(
+            JobsPreset::idempotent_stream(
+                    SAMPLE_STREAM,
+                    &HandleSampleConsumer,
                     Arc::clone(&idem_store) as Arc<dyn trembita::actor_store::ActorStateStore>,
                     "job:",
-                ))
-                .consumer(&HandleSampleConsumer)
-                .http_enqueue(true),
+                ),
             // trembita:jobs-end
         ])"#,
         );
@@ -374,21 +372,7 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
     if opts.template == Some(AppTemplate::Realtime) {
         chain.push_str(
             r#"
-        .workers(workers!(
-            // trembita:workers
-            WorkerOpts::<ChatWorker>::new("chat")
-                .config(())
-                .scale(WorkerScale::PerNode(1)),
-            // trembita:workers-end
-        ))"#,
-        );
-    } else {
-        chain.push_str(
-            r"
-        .workers(workers!(
-            // trembita:workers
-            // trembita:workers-end
-        ))",
+        .workers(RealtimePreset::worker_per_node("chat", ()))"#,
         );
     }
 
@@ -427,11 +411,10 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     let mut imports = vec![
         "use crate::config::AppConfig;".to_string(),
         "use crate::manifest;".to_string(),
-        "use trembita::{RunOpts, TrembitaApp, TrembitaConfigure};".to_string(),
+        "use trembita::TrembitaApp;".to_string(),
     ];
 
     if opts.template == Some(AppTemplate::Realtime) {
-        imports.push("use trembita::ReadyOpts;".to_string());
         imports.push(
             "use trembita::{AuthMode, RouteTable, TrembitaGatewayState, mount_raw_websocket, run_text_loop, server_stream};".to_string(),
         );
@@ -471,12 +454,8 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     }
 
     let mut builder = String::from(
-        "        let cfg = self.config;\n        let manifest = manifest::build();\n        let run = RunOpts::for_manifest(&cfg, &manifest);\n",
+        "        let cfg = self.config;\n        let manifest = manifest::build();\n        TrembitaApp::from_config(cfg)?\n",
     );
-    if opts.template == Some(AppTemplate::Realtime) {
-        builder.push_str("        let run = run.with_wait_ready(ReadyOpts::default());\n");
-    }
-    builder.push_str("        TrembitaApp::from_config(cfg)?\n");
     builder.push_str("            .manifest(manifest)\n");
 
     if features.contains(&AppFeature::Gateway) {
@@ -503,14 +482,7 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
         }
     }
 
-    builder.push_str(
-        r"            .configure(TrembitaConfigure {
-                ..TrembitaConfigure::default()
-            })
-",
-    );
-
-    builder.push_str("            .run(run)\n");
+    builder.push_str("            .run()\n");
     builder.push_str("            .await\n");
 
     format!(
