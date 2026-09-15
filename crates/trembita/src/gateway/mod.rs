@@ -9,6 +9,8 @@ mod config;
 mod drain;
 mod identity;
 mod opts;
+#[cfg(feature = "http-jobs")]
+mod product_routes;
 mod rate_limit;
 mod router;
 mod session;
@@ -43,3 +45,5 @@ pub use state::TrembitaGatewayState;
 
 #[cfg(feature = "http-jobs")]
 pub use cluster_ops::{cluster_ops_route_table, spawn_cluster_ops_http};
+#[cfg(feature = "http-jobs")]
+pub use product_routes::ProductRoutes;

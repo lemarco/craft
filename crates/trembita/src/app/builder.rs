@@ -22,6 +22,7 @@ use crate::workflow_opts::{WorkflowOpts, WorkflowRegistration};
 use trembita_runtime::{LeaderGate, LeaderLoopOpts, UserActor};
 
 use super::manifest::AppManifest;
+use super::run_hint::ManifestRunHint;
 use super::runtime::TrembitaApp;
 use super::types::{
     EmptyStateMachine, GatewayProductApiExclusions, TrembitaAppGatewayApiFlags,
@@ -58,6 +59,8 @@ pub struct TrembitaAppBuilder {
     gateway_exclude_apis: GatewayProductApiExclusions,
     /// Config from [`Self::from_config`] — avoids re-parsing env in [`Self::boot`].
     boot_config: Option<AppConfig>,
+    /// Derived from [`.manifest`](Self::manifest) / [`.jobs`](Self::jobs) / [`.workers`](Self::workers).
+    run_hint: ManifestRunHint,
 }
 
 impl TrembitaAppBuilder {
@@ -84,7 +87,23 @@ impl TrembitaAppBuilder {
             #[cfg(feature = "http-jobs")]
             gateway_exclude_apis: GatewayProductApiExclusions::default(),
             boot_config: None,
+            run_hint: ManifestRunHint::default(),
         }
+    }
+
+    #[must_use]
+    pub(crate) fn with_run_hint(mut self, hint: ManifestRunHint) -> Self {
+        self.run_hint = hint;
+        self
+    }
+
+    fn resolve_run_opts(&self) -> Result<RunOpts, StartError> {
+        let base = if let Some(cfg) = &self.boot_config {
+            RunOpts::from_config(cfg)
+        } else {
+            RunOpts::from_env().map_err(|e| StartError::Config(e.to_string()))?
+        };
+        Ok(base.with_run_hint(&self.run_hint))
     }
 
     /// Disable built-in ops HTTP (`/health`, `/ready`, `/metrics`, `/dashboard`, `/introspect/*`).
@@ -301,6 +320,7 @@ impl TrembitaAppBuilder {
     #[must_use]
     pub fn jobs(mut self, jobs: impl IntoIterator<Item = JobOpts>) -> Self {
         for job in jobs {
+            let stream = job.stream_name().to_string();
             let reg = job.into_registration();
             if let Some(err) = reg.config_error {
                 self.config_errors.push(err);
@@ -327,6 +347,7 @@ impl TrembitaAppBuilder {
             if reg.http_enqueue {
                 self.gateway_api.jobs = true;
             }
+            self.run_hint.record_job_stream(&stream);
         }
         self
     }
@@ -454,6 +475,7 @@ impl TrembitaAppBuilder {
         for entry in group.into_entries() {
             self = self.apply_worker_entry(entry);
         }
+        self.run_hint.has_workers = true;
         self
     }
 
@@ -698,13 +720,22 @@ impl TrembitaAppBuilder {
         .await
     }
 
+    /// Boot using [`RunOpts`] derived from [`Self::from_config`] / registration ([`.manifest`](Self::manifest), [`.jobs`](Self::jobs)).
+    ///
+    /// # Errors
+    /// Same as [`Self::run_with`].
+    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
+        let opts = self.resolve_run_opts()?;
+        self.run_with(opts).await
+    }
+
     /// Boot, spawn registered [`Self::consumer`] loops, block on shutdown signal, graceful shutdown.
     ///
     /// Always starts a QUIC cluster member (seed or joiner) from `TREMBITA_*` env.
     ///
     /// # Errors
     /// Returns an error when boot, signal handling, or teardown fails.
-    pub async fn run(mut self, mut opts: RunOpts) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run_with(mut self, mut opts: RunOpts) -> Result<(), Box<dyn std::error::Error>> {
         let mut pending = std::mem::take(&mut self.pending_consumers);
         let app = self.boot(&mut opts).await?;
         if !pending.is_empty() {

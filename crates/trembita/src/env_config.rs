@@ -103,6 +103,9 @@ pub struct AppConfig {
     pub env: EnvOverrides,
 }
 
+/// Alias for [`AppConfig`] in product apps and scaffold `config.rs`.
+pub type ProductEnv = AppConfig;
+
 fn env(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.is_empty())
 }

@@ -166,12 +166,11 @@ pub async fn run_sticky_text_loop<S, F>(
     F: FnMut(&mut SessionHandle, String) -> Option<String>,
 {
     while let Some(Ok(msg)) = ws.next().await {
-        if let WsMessage::Text(text) = msg {
-            if let Some(reply) = on_text(handle, text.to_string())
-                && ws.send(WsMessage::Text(reply.into())).await.is_err()
-            {
-                break;
-            }
+        if let WsMessage::Text(text) = msg
+            && let Some(reply) = on_text(handle, text.to_string())
+            && ws.send(WsMessage::Text(reply.into())).await.is_err()
+        {
+            break;
         }
     }
 }
@@ -231,12 +230,11 @@ where
     Fut: Future<Output = Option<String>> + Send,
 {
     while let Some(Ok(msg)) = ws.next().await {
-        if let WsMessage::Text(text) = msg {
-            if let Some(reply) = on_text(text.to_string()).await
-                && ws.send(WsMessage::Text(reply.into())).await.is_err()
-            {
-                break;
-            }
+        if let WsMessage::Text(text) = msg
+            && let Some(reply) = on_text(text.to_string()).await
+            && ws.send(WsMessage::Text(reply.into())).await.is_err()
+        {
+            break;
         }
     }
 }

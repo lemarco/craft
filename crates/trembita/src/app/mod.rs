@@ -7,6 +7,8 @@ mod gateway;
 #[cfg(feature = "http-jobs")]
 mod gateway_defaults;
 mod manifest;
+mod manifest_presets;
+mod run_hint;
 
 #[cfg(feature = "http-jobs")]
 pub use gateway::DefaultGatewayApis;
@@ -16,7 +18,7 @@ mod types;
 mod workflow;
 
 pub use builder::TrembitaAppBuilder;
-pub use manifest::AppManifest;
+pub use manifest::{AppManifest, JobsPreset, RealtimePreset, TopicsPreset};
 pub use runtime::TrembitaApp;
 pub use shutdown::ShutdownOpts;
 pub use types::{EmptyStateMachine, WorkerInfo};

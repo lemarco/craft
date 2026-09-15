@@ -7,6 +7,7 @@ use trembita_net::LocalNetwork;
 
 use crate::AppManifest;
 use crate::ReadyOpts;
+use crate::app::run_hint::ManifestRunHint;
 use crate::app::{ShutdownOpts, TrembitaApp};
 use crate::env_config::AppConfig;
 
@@ -69,16 +70,29 @@ impl RunOpts {
         Self::from_config(cfg).with_manifest(manifest)
     }
 
-    /// When [`Self::wait_ready`] is unset: single manifest job stream → [`Self::with_wait_queue`]; multiple streams → unchanged (set `TREMBITA_JOB_QUEUE` or call `with_wait_queue` explicitly).
+    /// When [`Self::wait_ready`] is unset: derive readiness from manifest jobs / workers.
     #[must_use]
     pub fn with_manifest(self, manifest: &AppManifest) -> Self {
+        let mut hint = ManifestRunHint::default();
+        hint.apply_manifest(manifest.job_stream_names(), manifest.has_workers());
+        self.with_run_hint(&hint)
+    }
+
+    /// Apply registration-derived readiness (from builder or manifest).
+    #[must_use]
+    pub fn with_run_hint(self, hint: &ManifestRunHint) -> Self {
         if self.wait_ready.is_some() {
             return self;
         }
-        match manifest.job_stream_names().as_slice() {
-            [stream] => self.with_wait_queue(stream),
-            _ => self,
+        let needs_ready = hint.has_workers || !hint.job_streams.is_empty();
+        if !needs_ready {
+            return self;
         }
+        let mut ready = ReadyOpts::default();
+        if let [stream] = hint.job_streams.as_slice() {
+            ready = ready.with_queue(stream);
+        }
+        self.with_wait_ready(ready)
     }
 
     /// Poll until the cluster (and optional queue) is ready after boot.

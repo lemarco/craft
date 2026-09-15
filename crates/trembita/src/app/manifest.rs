@@ -6,6 +6,9 @@ use crate::worker_opts::WorkerGroup;
 use crate::workflow_opts::WorkflowOpts;
 
 use super::TrembitaAppBuilder;
+use super::run_hint::ManifestRunHint;
+
+pub use super::manifest_presets::{JobsPreset, RealtimePreset, TopicsPreset};
 
 /// Registered jobs, topics, workers, and workflows — one place to wire product capabilities.
 ///
@@ -75,6 +78,18 @@ impl AppManifest {
         self.jobs.iter().map(|j| j.stream_name()).collect()
     }
 
+    /// Whether [`.workers`](Self::workers) was called.
+    #[must_use]
+    pub fn has_workers(&self) -> bool {
+        self.workers.is_some()
+    }
+
+    fn run_hint(&self) -> ManifestRunHint {
+        let mut hint = ManifestRunHint::default();
+        hint.apply_manifest(self.job_stream_names(), self.has_workers());
+        hint
+    }
+
     /// Apply all registrations to `builder` (same effect as calling `.jobs` / `.topics` / … separately).
     #[must_use]
     pub fn apply(self, builder: TrembitaAppBuilder) -> TrembitaAppBuilder {
@@ -91,7 +106,7 @@ impl AppManifest {
         if !self.workflows.is_empty() {
             builder = builder.workflows(self.workflows);
         }
-        builder
+        builder.with_run_hint(self.run_hint())
     }
 }
 

@@ -77,6 +77,18 @@ impl JobOpts {
         &self.name
     }
 
+    /// Product defaults: 300s lease, five attempts, handler, HTTP enqueue when `http-jobs` is on.
+    #[must_use]
+    pub fn product<C>(name: impl Into<String>, consumer: &C) -> Self
+    where
+        C: JobConsumer + Clone + 'static,
+    {
+        Self::new(name)
+            .lease(Duration::from_secs(300))
+            .default_max_attempts(5)
+            .consumer(consumer)
+    }
+
     /// Register a job stream named `name` (creates `queue-{name}.redb` under `data_dir`).
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
@@ -87,7 +99,7 @@ impl JobOpts {
             instances: 1,
             batch: 1,
             idle_sleep: Duration::from_millis(100),
-            http_enqueue: false,
+            http_enqueue: cfg!(feature = "http-jobs"),
             default_max_attempts: 0,
             idempotency: None,
             compute_cost: 1,

@@ -10,7 +10,6 @@ use trembita_http::{AuthMode, RouteTable};
 
 use super::{RawWs, WsMessage, mount_raw_websocket};
 use crate::gateway::TrembitaGatewayState;
-use trembita_http::UpgradeStream;
 
 /// Client → server subscribe/unsubscribe (JSON text frame).
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -120,10 +119,10 @@ async fn recv_subscribed(
                 return msg;
             }
         }
-        if let Some((_topic, rx)) = subs.iter_mut().next() {
-            if let Ok(msg) = rx.recv().await {
-                return msg;
-            }
+        if let Some((_topic, rx)) = subs.iter_mut().next()
+            && let Ok(msg) = rx.recv().await
+        {
+            return msg;
         }
         tokio::task::yield_now().await;
     }

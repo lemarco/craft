@@ -17,6 +17,7 @@ use crate::workflow::WorkflowBuilder;
 use crate::workflow_opts::{WorkflowRegistration, resolve_workflow};
 
 use super::builder::TrembitaAppBuilder;
+use super::manifest::AppManifest;
 use super::shutdown::ShutdownOpts;
 use super::types::{EmptyStateMachine, WorkerInfo};
 
@@ -62,6 +63,17 @@ impl TrembitaApp {
     #[must_use]
     pub fn from_config(cfg: crate::env_config::AppConfig) -> TrembitaAppBuilder {
         TrembitaAppBuilder::from_config(cfg)
+    }
+
+    /// Boot from typed config + manifest, block until shutdown ([`TrembitaAppBuilder::run`]).
+    ///
+    /// # Errors
+    /// Boot, env, or shutdown failures.
+    pub async fn run_manifest(
+        cfg: crate::env_config::AppConfig,
+        manifest: AppManifest,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        Self::from_config(cfg).manifest(manifest).run().await
     }
 
     pub(crate) async fn install_gateway(&self, handle: GatewayHandle) {

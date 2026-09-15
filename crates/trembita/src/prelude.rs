@@ -2,16 +2,19 @@
 
 #[cfg(feature = "http-jobs")]
 pub use crate::AuthMode;
+#[cfg(feature = "http-jobs")]
+pub use crate::ProductRoutes;
 pub use crate::actor_group::ActorGroupOpts;
 pub use crate::app::{
-    AppManifest, DefaultGatewayApis, ShutdownOpts, TrembitaApp, TrembitaAppBuilder,
-    journal_workflow,
+    AppManifest, DefaultGatewayApis, JobsPreset, RealtimePreset, ShutdownOpts, TopicsPreset,
+    TrembitaApp, TrembitaAppBuilder, journal_workflow,
 };
 pub use crate::app_opts::RunOpts;
 pub use crate::builder::StartError;
 pub use crate::configure::TrembitaConfigure;
 pub use crate::consumer::{ConsumerGroup, ConsumerOpts, IdempotencyOpts, JobConsumer};
 pub use crate::cron_opts::CronOpts;
+pub use crate::env_config::ProductEnv;
 pub use crate::gateway::{
     ExtractedIdentity, GatewayBearerIdentity, GatewayIdentity, GatewayOpts, GatewayRequest,
     GatewayTokenIdentity, IdentityError, IdentityTypeError, OpenActorSessionError, SessionHandle,
