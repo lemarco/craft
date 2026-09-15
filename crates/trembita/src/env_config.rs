@@ -117,15 +117,15 @@ fn env_bool(key: &str) -> bool {
     )
 }
 
-/// Product + ops TCP bind: **the same** `host:port` as QUIC wire ([`wire`]).
+/// Product + ops TCP bind: **the same** `host:port` as QUIC wire (`wire` argument).
 ///
 /// Wire and HTTP are different sockets (UDP vs TCP) on one port number — configured only
-/// via [`wire`]. **`TREMBITA_HTTP` / `TREMBITA_GATEWAY` are internal:** set to `-` only to
+/// via [`AppConfig::listen`]. **`TREMBITA_HTTP` / `TREMBITA_GATEWAY` are internal:** set to `-` only to
 /// skip the TCP listener (QUIC-only node). Product deploys should omit them.
 ///
 /// # Errors
 /// Returns an error when `TREMBITA_HTTP` / `TREMBITA_GATEWAY` is set to an address that
-/// differs from [`wire`] (legacy split-port configs).
+/// differs from `wire` (legacy split-port configs).
 pub fn product_http_from_wire(wire: SocketAddr) -> Result<Option<SocketAddr>, Box<dyn Error>> {
     let raw = env("TREMBITA_HTTP").or_else(|| env("TREMBITA_GATEWAY"));
     match raw.as_deref() {
