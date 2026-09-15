@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use trembita::{
-    GatewayOpts, ReadyOpts, TrembitaApp, TrembitaConfigure, WsBroadcastHub, WsMount,
+    GatewayOpts, TrembitaApp, TrembitaConfigure, WsBroadcastHub, WsMount,
     WsSubscribeCmd,
 };
 use trembita_tools::showcase_common::{data_dir, http_bind_from_env};

@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use trembita::{
-    AuthMode, Gateway, GatewayOpts, ReadyOpts, RouteTable, TrembitaApp, TrembitaConfigure,
+    AuthMode, Gateway, GatewayOpts, RouteTable, TrembitaApp, TrembitaConfigure,
     TrembitaGatewayState, mount_raw_websocket, run_text_loop, server_stream,
 };
 use trembita_tools::showcase_common::{data_dir, http_bind_from_env};
