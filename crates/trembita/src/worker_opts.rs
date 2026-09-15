@@ -33,7 +33,7 @@ pub enum WorkerScale {
 /// (call as `workers!(…)`):
 ///
 /// ```
-/// # use trembita::{TrembitaApp, RunOpts, WorkerGroup, WorkerOpts, WorkerScale, workers};
+/// # use trembita::{TrembitaApp, WorkerGroup, WorkerOpts, WorkerScale, workers};
 /// #
 /// # struct OrderProcessor;
 /// # impl trembita::runtime::UserActor for OrderProcessor {
@@ -54,7 +54,7 @@ pub enum WorkerScale {
 ///             .config(())
 ///             .scale(WorkerScale::Fixed(1)),
 ///     ))
-///     .run(RunOpts::default())
+///     .run()
 ///     .await?;
 /// # Ok(())
 /// # }

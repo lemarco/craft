@@ -17,14 +17,14 @@ pub use super::manifest_presets::{JobsPreset, RealtimePreset, TopicsPreset};
 ///
 /// ```
 /// # use std::time::Duration;
-/// # use trembita::{AppManifest, JobOpts, TrembitaApp, RunOpts};
+/// # use trembita::{AppManifest, JobOpts, TrembitaApp};
 /// # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
 /// let manifest = AppManifest::new()
-///     .jobs([JobOpts::new("jobs", Duration::from_secs(300)).http_enqueue(true)]);
+///     .jobs([JobOpts::new("jobs").lease(Duration::from_secs(300))]);
 /// TrembitaApp::builder()
 ///     .data_dir("/tmp/app")
 ///     .manifest(manifest)
-///     .run(RunOpts::default())
+///     .run()
 ///     .await?;
 /// # Ok(())
 /// # }

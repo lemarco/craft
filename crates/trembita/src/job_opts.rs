@@ -15,7 +15,7 @@ use crate::queue_opts::QueueOpts;
 ///
 /// ```
 /// # use std::time::Duration;
-/// # use trembita::{TrembitaApp, JobOpts, RunOpts, consumer};
+/// # use trembita::{TrembitaApp, JobOpts, consumer};
 /// #
 /// # #[consumer("emails")]
 /// # async fn send_email(_payload: &[u8]) -> Result<(), ()> { Ok(()) }
@@ -29,7 +29,7 @@ use crate::queue_opts::QueueOpts;
 ///         .instances(2)
 ///         .batch(4)
 ///         .http_enqueue(true)])
-///     .run(RunOpts::default().with_wait_queue("emails"))
+///     .run()
 ///     .await?;
 /// # Ok(())
 /// # }

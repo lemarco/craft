@@ -5,14 +5,13 @@
 //! ## Product path
 //!
 //! ```no_run
-//! use std::time::Duration;
 //! use trembita::prelude::*;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     init_tracing();
 //!     TrembitaApp::from_env()?
-//!         .jobs([JobOpts::new("jobs", Duration::from_secs(300))])
+//!         .jobs([JobOpts::new("jobs").lease(std::time::Duration::from_secs(300))])
 //!         .run()
 //!         .await
 //! }
