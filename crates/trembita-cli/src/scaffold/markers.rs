@@ -35,7 +35,6 @@ pub fn consumer_type_name(module: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn consumer_type_name_from_module() {

@@ -31,21 +31,21 @@ pub fn run(
     let mut cmd = Command::new(&client);
     match args[0].as_str() {
         "job" => {
-            let stream = args.get(1).ok_or_else(|| usage_err())?;
-            let payload = args.get(2).ok_or_else(|| usage_err())?;
+            let stream = args.get(1).ok_or_else(usage_err)?;
+            let payload = args.get(2).ok_or_else(usage_err)?;
             cmd.args(["job", &gateway, stream, payload]);
         }
         "topic" => {
-            let name = args.get(1).ok_or_else(|| usage_err())?;
-            let payload = args.get(2).ok_or_else(|| usage_err())?;
+            let name = args.get(1).ok_or_else(usage_err)?;
+            let payload = args.get(2).ok_or_else(usage_err)?;
             cmd.args(["topic", &gateway, name, payload]);
         }
         "workflow" => {
-            let action = args.get(1).ok_or_else(|| usage_err())?;
+            let action = args.get(1).ok_or_else(usage_err)?;
             if action != "run" && action != "resume" {
                 return Err(usage_err());
             }
-            let saga = args.get(2).ok_or_else(|| usage_err())?;
+            let saga = args.get(2).ok_or_else(usage_err)?;
             cmd.args(["workflow", action, &gateway, saga]);
         }
         _ => return Err(DevError::CommandFailed(usage())),
@@ -102,7 +102,7 @@ mod tests {
     #[test]
     fn gateway_defaults_to_showcase_listen() {
         let s = super::super::showcases::find("background-jobs").unwrap();
-        assert_eq!(resolve_gateway(&s, None), "127.0.0.1:8090");
+        assert_eq!(resolve_gateway(s, None), "127.0.0.1:8090");
     }
 
     #[test]

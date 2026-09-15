@@ -561,19 +561,21 @@ fn check_builtin_gateway_routes(app: &str, manifest: &str, report: &mut DoctorRe
             );
         }
     }
-    if manifest.contains(".workflows(") && !app.contains("without_workflows_api()") {
-        if manual_product_api_merge(app, "workflows_api") {
-            report.warn(
+    if manifest.contains(".workflows(")
+        && !app.contains("without_workflows_api()")
+        && manual_product_api_merge(app, "workflows_api")
+    {
+        report.warn(
                 "manual TrembitaApp::workflows_api route merge — remove; .workflows in manifest mounts /workflows/* on the default gateway",
             );
-        }
     }
-    if manifest.contains(".topics(") && !app.contains("without_topics_api()") {
-        if manual_product_api_merge(app, "topics_api") {
-            report.warn(
+    if manifest.contains(".topics(")
+        && !app.contains("without_topics_api()")
+        && manual_product_api_merge(app, "topics_api")
+    {
+        report.warn(
                 "manual TrembitaApp::topics_api route merge — remove; .topics in manifest mounts /topics/* on the default gateway",
             );
-        }
     }
 }
 

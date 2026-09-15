@@ -64,7 +64,7 @@ pub fn list_showcases() {
 pub fn dev_setup(showcase_id: &str) -> Result<(), DevError> {
     let showcase = resolve(showcase_id)?;
     let root = workspace_root()?;
-    cluster::setup(&showcase, &root)
+    cluster::setup(showcase, &root)
 }
 
 /// `trembita dev up --showcase … --nodes N`
@@ -72,29 +72,29 @@ pub fn dev_up(showcase_id: &str, nodes: u32, run_setup: bool) -> Result<(), DevE
     let showcase = resolve(showcase_id)?;
     let root = workspace_root()?;
     if run_setup {
-        cluster::setup(&showcase, &root)?;
+        cluster::setup(showcase, &root)?;
     }
-    cluster::up(&showcase, &root, nodes)
+    cluster::up(showcase, &root, nodes)
 }
 
 /// `trembita dev stop --showcase …`
 pub fn dev_stop(showcase_id: &str) -> Result<(), DevError> {
     let showcase = resolve(showcase_id)?;
-    cluster::stop(&showcase)
+    cluster::stop(showcase)
 }
 
 /// `trembita dev status --showcase …`
 pub fn dev_status(showcase_id: &str) -> Result<(), DevError> {
     let showcase = resolve(showcase_id)?;
     let root = workspace_root()?;
-    cluster::status(&showcase, &root)
+    cluster::status(showcase, &root)
 }
 
 /// `trembita dev trigger <showcase> -- …`
 pub fn dev_trigger(showcase_id: &str, args: &[String]) -> Result<(), DevError> {
     let showcase = resolve(showcase_id)?;
     let root = workspace_root()?;
-    trigger::run(&showcase, &root, args)
+    trigger::run(showcase, &root, args)
 }
 
 /// `trembita dev http --showcase … -- job|topic|workflow …`
@@ -117,7 +117,7 @@ pub fn dev_http(
         }
     };
     let root = workspace_root()?;
-    http::run(&showcase, &root, gateway, args)
+    http::run(showcase, &root, gateway, args)
 }
 
 fn resolve(id: &str) -> Result<&'static Showcase, DevError> {

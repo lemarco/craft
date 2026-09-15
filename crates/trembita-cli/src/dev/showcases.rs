@@ -140,7 +140,7 @@ impl Showcase {
     /// `127.0.0.1:<port>` for node index `1..=nodes`.
     #[must_use]
     pub fn listen_addr(&self, node: u32) -> String {
-        let port = u32::from(self.base_port) + u32::from(node.saturating_sub(1));
+        let port = u32::from(self.base_port) + node.saturating_sub(1);
         format!("127.0.0.1:{port}")
     }
 
