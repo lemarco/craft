@@ -41,6 +41,8 @@ trembita dev list
 trembita dev setup --showcase stateful-workers
 trembita dev up --showcase stateful-workers --nodes 3
 trembita dev trigger stateful-workers -- 1001
+trembita dev trigger background-jobs -- job emails hello   # built-in HTTP (no trigger.sh)
+trembita dev http --showcase workflows -- workflow run onboard-42
 trembita dev stop --showcase stateful-workers
 ```
 
@@ -63,7 +65,7 @@ What each subcommand touches and where it is tested ([testing-coverage](../../do
 | `doctor` | `manifest.rs` ↔ handlers; `app.rs` `.manifest()` only | `src/scaffold/doctor.rs`, `tests/{add_doctor,manifest_doctor}.rs` |
 | `doctor --fix` | `mod.rs`, `main.rs` module declarations | `src/scaffold/doctor.rs` |
 | `doctor --preflight` | `deploy/` env + gateway ops | unit cases in `doctor.rs` |
-| `dev *` | Repo `examples/` showcases | `tests/dev.rs` |
+| `dev *` | Repo `examples/` showcases; `dev http` job/topic/workflow | `tests/dev.rs`, `src/dev/http.rs` |
 
 Run locally: `./scripts/test-fast.sh -p trembita-cli` from the repo root.
 

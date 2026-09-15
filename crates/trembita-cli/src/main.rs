@@ -10,7 +10,7 @@ use trembita_cli::{
     AddActorOpts, AddConsumerOpts, AddHttpSurfaceOpts, AddStaticSiteOpts, AddTopicOpts,
     AddWorkflowOpts, NewProjectOpts, StaticSiteSource, TrembitaProject, add_actor, add_consumer,
     add_http_surface, add_jobs_routes, add_ops_routes, add_static_site, add_topic, add_workflow,
-    default_output, dev_setup, dev_status, dev_stop, dev_trigger, dev_up, doctor_fix,
+    default_output, dev_http, dev_setup, dev_status, dev_stop, dev_trigger, dev_up, doctor_fix,
     list_showcases, parse_feature_list, run_doctor, scaffold_project,
 };
 
@@ -109,6 +109,19 @@ enum DevCommand {
         /// Showcase id.
         showcase: String,
         /// Arguments passed to `trigger.sh` (after `--`).
+        /// Prefix with `job`, `topic`, or `workflow` to call the built-in HTTP client instead.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Product HTTP helpers (job / topic / workflow) without `trigger.sh`.
+    Http {
+        /// Showcase id (default gateway port).
+        #[arg(long)]
+        showcase: String,
+        /// Override gateway host (`127.0.0.1:PORT`, no scheme).
+        #[arg(long)]
+        gateway: Option<String>,
+        /// e.g. `job emails hello`, `topic orders evt`, `workflow run onboard-42`.
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -322,6 +335,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             DevCommand::Stop { showcase } => dev_stop(&showcase)?,
             DevCommand::Status { showcase } => dev_status(&showcase)?,
             DevCommand::Trigger { showcase, args } => dev_trigger(&showcase, &args)?,
+            DevCommand::Http {
+                showcase,
+                gateway,
+                args,
+            } => dev_http(Some(&showcase), gateway.as_deref(), &args)?,
         },
         Command::Doctor {
             path,

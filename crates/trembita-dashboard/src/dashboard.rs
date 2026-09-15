@@ -64,6 +64,10 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
     <h2>Workflows</h2>
     <table><thead><tr><th>saga id</th><th>phase</th><th>steps</th><th>failed</th></tr></thead><tbody id="sagas"></tbody></table>
   </section>
+  <section>
+    <h2>Event topics</h2>
+    <table><thead><tr><th>topic</th><th>events</th><th>head</th><th>max lag</th><th>pending</th><th>subs</th></tr></thead><tbody id="topics"></tbody></table>
+  </section>
   <section class="events">
     <h2>Event feed</h2>
     <ul id="log"></ul>
@@ -73,12 +77,18 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
 const $ = (id) => document.getElementById(id);
 async function refresh() {
   try {
-    const [c, a, q, s] = await Promise.all([
+    const [c, a, q, s, t] = await Promise.all([
       fetch('/introspect/cluster').then(r => r.json()),
       fetch('/introspect/actors').then(r => r.json()),
       fetch('/introspect/queues').then(r => r.json()),
       fetch('/introspect/sagas').then(r => r.json()),
+      fetch('/introspect/topics').then(r => r.json()),
     ]);
+    const topicMax = (subs, field) => {
+      const list = subs || [];
+      if (!list.length) return 0;
+      return Math.max(...list.map(x => x[field] ?? 0));
+    };
     $('cluster').innerHTML =
       `<div class="kv"><span>leader</span><span class="badge leader">${c.leader ?? '—'}</span></div>` +
       `<div class="kv"><span>term</span><span>${c.term}</span></div>` +
@@ -91,6 +101,13 @@ async function refresh() {
       `<tr><td>${x.stream}</td><td>${x.pending}</td><td>${x.leased}</td><td>${x.dead_letter ?? 0}</td><td>${x.oldest_pending_age_ms}</td><td${(x.redelivered ?? 0) > 0 ? ' class="warn" title="idempotency smell: these jobs are being re-run"' : ''}>${x.redelivered ?? 0}</td></tr>`).join('');
     $('sagas').innerHTML = (s||[]).map(x =>
       `<tr><td>${x.saga_id.slice(0,16)}…</td><td>${x.phase}</td><td>${x.completed_steps}</td><td>${x.failed_step ?? '—'}</td></tr>`).join('');
+    $('topics').innerHTML = ((t && t.topics) || []).map(x => {
+      const lag = topicMax(x.subscriptions, 'lag');
+      const pending = topicMax(x.subscriptions, 'pending');
+      const subs = (x.subscriptions || []).length;
+      const lagCell = lag > 0 ? ` class="warn" title="subscription lag behind topic head"` : '';
+      return `<tr><td>${x.name}</td><td>${x.event_count}</td><td>${x.head}</td><td${lagCell}>${lag}</td><td>${pending}</td><td>${subs}</td></tr>`;
+    }).join('');
   } catch (e) { /* transient during elections */ }
 }
 function formatEvent(raw) {

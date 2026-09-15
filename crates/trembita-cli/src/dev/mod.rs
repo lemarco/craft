@@ -1,6 +1,7 @@
 //! Local development — showcase clusters without bash/compose as the primary path.
 
 mod cluster;
+mod http;
 mod showcases;
 mod trigger;
 mod workspace;
@@ -94,6 +95,29 @@ pub fn dev_trigger(showcase_id: &str, args: &[String]) -> Result<(), DevError> {
     let showcase = resolve(showcase_id)?;
     let root = workspace_root()?;
     trigger::run(&showcase, &root, args)
+}
+
+/// `trembita dev http --showcase … -- job|topic|workflow …`
+pub fn dev_http(
+    showcase_id: Option<&str>,
+    gateway: Option<&str>,
+    args: &[String],
+) -> Result<(), DevError> {
+    let showcase = match (showcase_id, gateway) {
+        (Some(id), _) => resolve(id)?,
+        (None, Some(_)) => {
+            return Err(DevError::CommandFailed(
+                "pass --showcase when using built-in http helpers".into(),
+            ));
+        }
+        (None, None) => {
+            return Err(DevError::CommandFailed(
+                "pass --showcase <id> (or use trembita dev trigger <showcase> -- job …)".into(),
+            ));
+        }
+    };
+    let root = workspace_root()?;
+    http::run(&showcase, &root, gateway, args)
 }
 
 fn resolve(id: &str) -> Result<&'static Showcase, DevError> {

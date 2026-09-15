@@ -46,6 +46,7 @@ Built automatically by `./cluster.sh setup`:
 ./target/debug/trembita-showcase-client chat 127.0.0.1:8290 alice hello
 ./target/debug/trembita-showcase-client ws 127.0.0.1:8290 alice hello
 ./target/debug/trembita-showcase-client workflow run 127.0.0.1:8490 onboard-42
+./target/debug/trembita-showcase-client topic 127.0.0.1:8090 orders hello
 ```
 
 `trigger.sh` scripts use this binary when present, otherwise fall back to `curl` / `websocat`.

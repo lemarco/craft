@@ -1,6 +1,6 @@
 # Dev tooling (not product showcases)
 
-**Primary dev UX:** from the repo root, [`trembita dev`](../crates/trembita-cli/README.md) (`dev setup`, `dev up --showcase stateful-workers --nodes 3`, `dev trigger …`). See [getting-started](../docs/getting-started.md#4-try-the-showcases).
+**Primary dev UX:** from the repo root, [`trembita dev`](../crates/trembita-cli/README.md) (`dev setup`, `dev up --showcase stateful-workers --nodes 3`, `dev trigger …`). Product HTTP without bash: `trembita dev http --showcase background-jobs -- job emails hello`, `… workflow run onboard-42`, `… topic orders evt` (uses `trembita-showcase-client` from `dev setup`). See [getting-started](../docs/getting-started.md#4-try-the-showcases).
 
 Infrastructure below supports legacy `./cluster.sh`, CI compose, and CA demos. Product scenarios live in [`examples/`](../examples/) only.
 

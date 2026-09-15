@@ -120,10 +120,23 @@ Prefer queue when step can take minutes or must survive worker crash without blo
 
 Global serializable isolation across shards is **not** a goal ([multi-raft](../decisions/multi-raft.md)).
 
+## HTTP (product gateway)
+
+When workflows are registered in [`AppManifest`](../../crates/trembita/src/app/manifest.rs) and the app uses [`TrembitaApp::from_env`](../../crates/trembita/src/app/builder.rs) with the default gateway, trembita merges **`POST /workflows/run`** and **`POST /workflows/resume`** on `TREMBITA_LISTEN` — no manual `RouteTable` merge in `app.rs`.
+
+| Route | Body | Response |
+|-------|------|----------|
+| `POST /workflows/run` | `{ "saga_id": "<plan id>" }` | `200` when the saga completes or is already finished |
+| `POST /workflows/resume` | `{ "saga_id": "<plan id>" }` | `200` after resuming a stuck saga |
+
+Opt out with [`.without_workflows_api()`](../../crates/trembita/src/app/builder.rs). Local dev: [`examples/workflows/trigger.sh`](../../examples/workflows/trigger.sh), `trembita dev trigger workflows -- …`, or `trembita dev http --showcase workflows -- workflow run onboard-42`.
+
+Introspection: `GET /introspect/sagas` (ops/admin and embedded dashboard **Workflows** panel).
+
 ## Observability
 
 - Metrics: `trembita_saga_*` (see dashboard / telemetry)
-- Backlog **B-07:** workflow status in admin UI
+- Embedded dashboard: **Workflows** + **Event topics** panels poll `/introspect/sagas` and `/introspect/topics`
 
 ## Operations
 

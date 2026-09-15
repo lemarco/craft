@@ -17,7 +17,8 @@ Target **0.5.0** — unified HTTP listener; migration draft: [unified-listener-0
 
 - **`TopicsApi`** — `POST /topics/{name}/publish`, `GET /topics/{name}`; mounted from [`.topics([…])`](crates/trembita/src/app/builder.rs) on the default gateway ([`.without_topics_api()`](crates/trembita/src/app/builder.rs) to disable).
 - **Product HTTP symmetry** — [`.workflows([…])`](crates/trembita/src/app/builder.rs) mounts `/workflows/*` without manual `RouteTable` merge; custom [`.gateway().surfaces()`](crates/trembita/src/gateway/opts.rs) composes with registration-driven routes; [`.without_jobs_api()`](crates/trembita/src/app/builder.rs) / [`.without_workflows_api()`](crates/trembita/src/app/builder.rs) / [`.without_actors_api()`](crates/trembita/src/app/builder.rs).
-- **`GET /introspect/topics`** — read-only topic lag snapshot on ops/default gateway ([`Observer::topics`](crates/trembita-dashboard/src/views.rs)).
+- **`GET /introspect/topics`** — read-only topic lag snapshot on ops/default gateway ([`Observer::topics`](crates/trembita-dashboard/src/views.rs)); embedded **Event topics** dashboard panel.
+- **`trembita dev http`** — `job` / `topic` / `workflow` product HTTP via `trembita-showcase-client`; `dev trigger … -- job|topic|workflow …` uses the same path.
 - **`trembita doctor`** — manifest workflows/topics vs `TREMBITA_LISTEN`; warns on manual `workflows_api` / `topics_api` merges.
 - **`AppManifest`** + **[`.manifest()`](crates/trembita/src/app/builder.rs)** — one registry for jobs, topics, workers, and workflows; scaffold emits `src/manifest.rs` and `trembita add` patches marker regions there.
 - **`TrembitaApp::from_env`** / **`RunOpts::from_env`** — one product entry: cluster join/listen/data_dir/job queue from `TREMBITA_*`, default gateway surfaces (ops + jobs/actors/workflows from registration) on `TREMBITA_LISTEN`.

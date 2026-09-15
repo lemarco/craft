@@ -162,6 +162,19 @@ pub async fn submit_order_auth(
     post_json(gateway, &path, &body).await
 }
 
+/// Publish to an event topic (`POST /topics/{name}/publish` → 202).
+///
+/// # Errors
+/// Returns [`ClientError`] when the gateway request fails.
+pub async fn publish_topic(
+    gateway: &str,
+    topic: &str,
+    payload: &str,
+) -> Result<HttpResponse, ClientError> {
+    let body = serde_json::json!({ "payload": payload }).to_string();
+    post_json(gateway, &format!("/topics/{topic}/publish"), &body).await
+}
+
 /// Enqueue a job queue (`POST /jobs/{stream}` → 202).
 ///
 /// # Errors

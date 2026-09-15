@@ -16,6 +16,7 @@ Cluster introspection JSON already exists ([observability §4](observability.md)
 | `GET /introspect/node/{id}` | `Option<NodeView>` | `Observer::node` |
 | `GET /introspect/queues` | [`QueuesView`](../../crates/trembita-dashboard/src/views.rs) | `Observer::queues` |
 | `GET /introspect/sagas` | `Vec<SagaRecordView>` | `Observer::sagas` |
+| `GET /introspect/topics` | [`TopicsView`](../../crates/trembita-dashboard/src/views.rs) | `Observer::topics` |
 | `GET /introspect/raft-groups` | [`RaftGroupsView`](../../crates/trembita-dashboard/src/views.rs) | `Observer::raft_groups` |
 
 [`TrembitaObserver`](../../crates/trembita/src/observer.rs) implements the port; [`AdminServer`](../../crates/trembita-dashboard/src/server.rs) serves it on the **admin port** (default `:8080`, hyper HTTP/1.1) together with `/health`, `/ready`, `/metrics`, and the embedded dashboard.
@@ -64,6 +65,7 @@ Routes (read-only GET, **same paths and JSON** as admin):
 | `GET /introspect/node/{id}` | `observer.node(id).await` → `404` when `None` |
 | `GET /introspect/queues` | `observer.queues().await` |
 | `GET /introspect/sagas` | `observer.sagas().await` |
+| `GET /introspect/topics` | `observer.topics().await` |
 | `GET /introspect/raft-groups` | `observer.raft_groups().await` |
 
 Each handler calls the shared `authorize()` helper when `state.auth` is set (same pattern as [`routes.rs`](../../crates/trembita-http/src/routes.rs)).
