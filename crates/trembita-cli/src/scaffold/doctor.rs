@@ -1072,11 +1072,11 @@ fn job_stream_registered_in_manifest(manifest: &str, stream: &str, consumer_type
 
 fn push_job_stream_from_rest(rest: &str, streams: &mut Vec<String>) {
     let rest = rest.trim_start();
-    if let Some(lit) = rest.strip_prefix('"') {
-        if let Some(end) = lit.find('"') {
-            streams.push(lit[..end].to_string());
-            return;
-        }
+    if let Some(lit) = rest.strip_prefix('"')
+        && let Some(end) = lit.find('"')
+    {
+        streams.push(lit[..end].to_string());
+        return;
     }
     let ident: String = rest
         .chars()

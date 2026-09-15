@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .identity(GatewayBearerIdentity::from_env())
                 .ws(WsMount::notify("/ws/notify", hub)),
         )
-        .run(RunOpts::default().with_wait_ready(ReadyOpts::default()))
+        .run()
         .await?;
     Ok(())
 }

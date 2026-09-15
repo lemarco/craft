@@ -101,7 +101,7 @@ impl TrembitaAppBuilder {
         let base = if let Some(cfg) = &self.boot_config {
             RunOpts::from_config(cfg)
         } else {
-            RunOpts::from_env().map_err(|e| StartError::Config(e.to_string()))?
+            RunOpts::default()
         };
         Ok(base.with_run_hint(&self.run_hint))
     }

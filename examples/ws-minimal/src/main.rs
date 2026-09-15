@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .data_dir(dir)
         .gateway(GatewayOpts::new(gateway).surfaces(gateway_surfaces))
-        .run(RunOpts::default().with_wait_ready(ReadyOpts::default()))
+        .run()
         .await?;
     Ok(())
 }

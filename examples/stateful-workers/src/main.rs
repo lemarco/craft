@@ -105,7 +105,7 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     debug::startup("quic", 0, &data_dir(DATA_DIR_NAME));
     print_banner();
     server_builder()
-        .run(RunOpts::default().with_wait_ready(ReadyOpts::default()))
+        .run()
         .await?;
     debug::shutdown();
     Ok(())
