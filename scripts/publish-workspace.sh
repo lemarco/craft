@@ -97,18 +97,44 @@ parse_retry_after_epoch() {
     date -d "${when} GMT" +%s 2>/dev/null || date -u -d "${when} GMT" +%s
 }
 
+restore_manifest() {
+    local backup=$1 path=$2
+    if [ -n "$backup" ] && [ -f "$backup" ]; then
+        cp "$backup" "$path"
+        rm -f "$backup"
+    fi
+}
+
 publish_one() {
-    local pkg=$1 attempt=1 output retry_epoch
+    local pkg=$1 attempt=1 output retry_epoch manifest_backup="" manifest_path=""
+    if [ "$pkg" = "trembita" ]; then
+        manifest_path="crates/trembita/Cargo.toml"
+        manifest_backup=$(mktemp)
+        cp "$manifest_path" "$manifest_backup"
+        # Workspace-only test harnesses are dev-deps for `cargo test -p trembita` only.
+        sed -i '/trembita-test-facade/d; /trembita-test-runtime/d' "$manifest_path"
+    elif [ "$pkg" = "trembita-cli" ]; then
+        manifest_path="crates/trembita-cli/Cargo.toml"
+        manifest_backup=$(mktemp)
+        cp "$manifest_path" "$manifest_backup"
+        sed -i '/^trembita-cli\.workspace = true$/d' "$manifest_path"
+    fi
     while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
         log "uploading ${pkg} v${VERSION} (attempt ${attempt}/${MAX_ATTEMPTS})…"
-        if output=$(cargo publish -p "$pkg" 2>&1); then
+        local publish_args=()
+        if [ -n "$manifest_backup" ]; then
+            publish_args+=(--allow-dirty)
+        fi
+        if output=$(cargo publish -p "$pkg" "${publish_args[@]}" 2>&1); then
             printf '%s\n' "$output"
+            restore_manifest "$manifest_backup" "$manifest_path"
             return 0
         fi
         printf '%s\n' "$output" >&2
 
         if grep -q 'already exists on crates.io index\|already uploaded' <<<"$output"; then
             log "${pkg} v${VERSION} already indexed; skipping"
+            restore_manifest "$manifest_backup" "$manifest_path"
             return 0
         fi
 
@@ -124,8 +150,10 @@ publish_one() {
             continue
         fi
 
+        restore_manifest "$manifest_backup" "$manifest_path"
         die "failed to publish ${pkg}: ${output}"
     done
+    restore_manifest "$manifest_backup" "$manifest_path"
     die "exhausted ${MAX_ATTEMPTS} attempts for ${pkg}"
 }
 
