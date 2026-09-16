@@ -34,34 +34,62 @@ crate_version_on_index() {
         "https://crates.io/api/v1/crates/${name}/${ver}" >/dev/null 2>&1
 }
 
+restore_manifest() {
+    local backup=$1 path=$2
+    if [ -n "$backup" ] && [ -f "$backup" ]; then
+        cp "$backup" "$path"
+        rm -f "$backup"
+    fi
+}
+
+# Match publish-workspace.sh: tarball must not list workspace-only dev-deps.
+prepare_leaf_manifest() {
+    local pkg=$1
+    local manifest_backup="" manifest_path=""
+    case "$pkg" in
+        trembita)
+            manifest_path="crates/trembita/Cargo.toml"
+            manifest_backup=$(mktemp)
+            cp "$manifest_path" "$manifest_backup"
+            sed -i '/trembita-test-facade/d; /trembita-test-runtime/d' "$manifest_path"
+            ;;
+        trembita-cli)
+            manifest_path="crates/trembita-cli/Cargo.toml"
+            manifest_backup=$(mktemp)
+            cp "$manifest_path" "$manifest_backup"
+            sed -i '/^trembita-cli\.workspace = true$/d' "$manifest_path"
+            ;;
+    esac
+    printf '%s\n' "$manifest_backup" "$manifest_path"
+}
+
 VERSION="$(current_version)"
 LEAF="trembita"
 
 if crate_version_on_index "$LEAF" "$VERSION"; then
     echo ">> publish dry-run (leaf ${LEAF} v${VERSION} — version already on crates.io)…"
     echo "   (local API changes require a version bump before publish; see CHANGELOG.md)"
-    if ! output="$(cargo publish -p "$LEAF" --dry-run --allow-dirty 2>&1)"; then
-        if grep -q 'trembita-assembly' <<<"$output"; then
-            echo ">> publish dry-run skipped: ${LEAF} v${VERSION} depends on workspace-only trembita-assembly"
-            echo "   git push is OK; bump version and run ./scripts/release.sh before the next crates.io upload"
-            exit 0
-        fi
+    readarray -t manifest_ctx < <(prepare_leaf_manifest "$LEAF")
+    manifest_backup="${manifest_ctx[0]:-}"
+    manifest_path="${manifest_ctx[1]:-}"
+    trap 'restore_manifest "$manifest_backup" "$manifest_path"' EXIT
+    publish_args=(--dry-run)
+    if [ -n "$manifest_backup" ]; then
+        publish_args+=(--allow-dirty)
+    fi
+    if ! output="$(cargo publish -p "$LEAF" "${publish_args[@]}" 2>&1)"; then
         printf '%s\n' "$output" >&2
         echo "error: publish dry-run failed for ${LEAF} v${VERSION}." >&2
         echo "hint: bump [workspace.package] version (e.g. ./scripts/release.sh 0.3.0) —" >&2
         echo "      v${VERSION} is already on crates.io and cannot be overwritten." >&2
         exit 1
     fi
+    restore_manifest "$manifest_backup" "$manifest_path"
+    trap - EXIT
 else
     echo ">> publish dry-run (workspace v${VERSION}, dependency order — not yet on crates.io)…"
     if ! output=$(cargo publish --workspace --dry-run --allow-dirty 2>&1); then
-        printf '%s\n' "$output"
-        if grep -q 'trembita-assembly' <<<"$output" && grep -q 'no matching package named' <<<"$output"; then
-            echo ">> publish dry-run note: leaf \`trembita\` depends on workspace-only \`trembita-assembly\`"
-            echo "   real upload uses publish-workspace.sh (assembly stays \`publish = false\`)"
-            echo "OK: publish dry-run (workspace siblings)"
-            exit 0
-        fi
+        printf '%s\n' "$output" >&2
         echo "error: publish dry-run failed for workspace v${VERSION}." >&2
         exit 1
     fi
