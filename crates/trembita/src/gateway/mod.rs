@@ -47,7 +47,8 @@ pub use state::TrembitaGatewayState;
 
 #[cfg(feature = "http-jobs")]
 pub use cap_handlers::{
-    CapEnqueueHandler, CapFireHandler, CapInvokeHandler, cap_enqueue, cap_fire, cap_invoke,
+    CapEnqueueHandler, CapFireHandler, CapInvokeHandler, CapScheduleHandler, cap_enqueue, cap_fire,
+    cap_invoke, cap_queued_wait, cap_schedule,
 };
 #[cfg(feature = "http-jobs")]
 pub use cluster_ops::{cluster_ops_route_table, spawn_cluster_ops_http};

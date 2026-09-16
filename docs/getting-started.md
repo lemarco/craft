@@ -152,7 +152,9 @@ Reference KV [`StateMachine`](../crates/trembita-core/src/kv.rs) (`trembita::kv`
 
 ### Capabilities (recommended)
 
-Register ops in `capabilities/` + [`CapManifest`](decisions/capability-dx.md), call with `.via(&app)` (`.fire()`, `.enqueue()`, `.publish_event()` for other routes), expose HTTP in `http/` via [`cap_fire` / `cap_invoke` / `cap_enqueue`](decisions/capability-dx.md#http-wave-2). Policy: [capability-greenfield-wire](decisions/capability-greenfield-wire.md) — no `/actors/cast` for new apps. Guide: [scenarios/capabilities.md](scenarios/capabilities.md).
+Register ops in `capabilities/` + [`CapManifest`](decisions/capability-dx.md), call with `.via(&app)` — **prefer [`Route::Queued`](../../crates/trembita/src/capability/route.rs) + `.default_queue_for::<YourReq>()`** on the group for durable work (same handler as inline; bridge idempotency when `data_dir` is set). HTTP: [`cap_fire` / `cap_invoke` / `cap_enqueue` / `cap_queued_wait` / `cap_schedule`](decisions/capability-dx.md#http-wave-2). Handlers use [`OpCtx::require_store()`](../../crates/trembita/src/capability/ctx.rs) and [`.cap_deps(AppDeps)`](../../crates/trembita/src/app/builder.rs) → [`OpCtx::deps`](../../crates/trembita/src/capability/ctx.rs) for idempotency and injected ports. Policy: [capability-greenfield-wire](decisions/capability-greenfield-wire.md). Guide: [scenarios/capabilities.md](scenarios/capabilities.md).
+
+**Advanced — `consumers/` only:** raw [`#[consumer]`](../../crates/trembita-macros/src/lib.rs) streams without a matching capability op, or [B-14k](backlog.md) queue→actor bridges. New backlog work should be a capability op + optional `Route::Queued`, not a standalone consumer module.
 
 Scaffolded apps ship sample `POST /ping` → inline `app.ping` in `src/http/product.rs`.
 
@@ -187,7 +189,7 @@ TrembitaApp::builder()
 
 Alternate API: [`.actors()`](../crates/trembita/src/app/mod.rs) + [`ActorGroupOpts`](../crates/trembita/src/actor_group.rs).
 
-Stateful workflow keys: use `app.actor_state_store()` with [`store_get` / `store_set`](../crates/trembita-actor-store/src/store_codec.rs) — backed by redb when `data_dir` is set.
+Stateful workflow keys: use [`OpCtx::cap_store()`](../crates/trembita/src/capability/ctx.rs) / [`trembita::capstore`](../crates/trembita/src/capstore.rs) with `store_get` / `store_set` — backed by redb when `data_dir` is set.
 
 ## 6. HTTP job enqueue (optional)
 

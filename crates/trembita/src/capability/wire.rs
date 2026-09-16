@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::ingress::CapIngress;
+
 /// Frame delivered to a capability group host (inline cast/ask).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CapWire {
@@ -9,6 +11,9 @@ pub struct CapWire {
     pub op: String,
     /// Postcard-encoded request body for that op.
     pub payload: Vec<u8>,
+    /// Optional caller metadata (HTTP gateway, in-process [`super::CallBuilder::ingress`]).
+    #[serde(default)]
+    pub ingress: Option<CapIngress>,
 }
 
 /// Job payload for [`super::Route::Queued`] — consumer forwards to inline ask.

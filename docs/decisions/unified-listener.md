@@ -63,7 +63,7 @@ Framework builders: **`OpsApi`**, **`JobsApi`**, **`IntrospectApi`**, etc. Apps 
 
 ### Cluster-only ops HTTP
 
-[`spawn_cluster_ops_http`](../../crates/trembita/src/gateway/cluster_ops.rs) / [`cluster_ops_route_table`](../../crates/trembita/src/gateway/cluster_ops.rs) for [`TrembitaCluster`](../../crates/trembita/src/cluster_handle/cluster.rs) and [`trembita-node`](../../crates/trembita-tools/src/bin/node.rs) without a product gateway.
+[`spawn_cluster_ops_http`](../../crates/trembita/src/gateway/cluster_ops.rs) / [`cluster_ops_route_table`](../../crates/trembita/src/gateway/cluster_ops.rs) for [`TrembitaCluster`](../../crates/trembita/src/cluster.rs) and [`trembita-node`](../../crates/trembita-tools/src/bin/node.rs) without a product gateway.
 
 `AdminServer` in `trembita-dashboard` is for crate unit tests only; production ops use `OpsApi` → `RouteTable`.
 

@@ -19,7 +19,8 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 | Identity | `NodeId`, `Security`, `PeerDirectory`, cert reload helpers | Multi-node wiring |
 | Jobs | `JobQueue`, `EnqueueOptions`, `run_queue_consumer`, `ClusterJobQueue` | Via `TrembitaApp::enqueue` |
 | Workflows | `WorkflowBuilder`, `run_workflow` / `resume_workflow` on app | Saga journal durable |
-| Actor store | `RedbActorStateStore`, `ClusterActorStateStore`, `store_get` / `store_set` | Auto via `data_dir` |
+| Cap store | `trembita::capstore` (`CapStore`, `RedbCapStore`), `OpCtx::store` / `require_store`, `store_get` / `store_set` | Auto via `data_dir`; legacy `actor_store` re-export |
+| Cap DX | `CapManifest`, `OpCtx`, `CapDeps`, `CapIngress`, `cap_*` gateway helpers | [`capability-dx`](capability-dx.md) |
 | Sessions | `ActorSession`, `TrembitaApp::session_keyed` | Sticky routing |
 | Observability | `init_tracing`, `Metrics`, `TrembitaEvent` | Ops routes on unified `TREMBITA_LISTEN` (or explicit gateway merge) |
 
@@ -29,7 +30,7 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 |------|-------|-------|
 | Cluster | `trembita::cluster::{TrembitaCluster, StartError, …}` | Runtime handle, queues, journals — not the product builder |
 | Client | `RemoteClient`, `run_saga`, `run_keyed_saga`, `KeyedClient` | Re-exported `trembita::client` |
-| Multi-Raft | `propose_keyed`, `add_raft_groups`, `RaftGroupsView` | Runtime on [`TrembitaCluster`](../../crates/trembita/src/cluster_handle/cluster.rs); product boot via env + [`TrembitaConfigure`](../../crates/trembita/src/configure.rs) |
+| Multi-Raft | `propose_keyed`, `add_raft_groups`, `RaftGroupsView` | Runtime on [`TrembitaCluster`](../../crates/trembita-assembly/src/cluster_handle/cluster.rs); product boot via env + [`TrembitaConfigure`](../../crates/trembita/src/configure.rs) |
 | Saga / 2PC journals | `MetaRaftSagaJournal`, `CompositeSagaJournal`, `StoreTwoPhaseJournal` | Ops / recovery |
 | HTTP product | `Gateway`, `RouteTable`, `GatewayOpts` (`http-jobs` feature) | Gateway layer — see [facade](facade.md) |
 | Optional adapters | `PgBacklog` (`external-backlog`), `PgEventOutboxSource` (`domain-outbox`), `RedisStore` (`redis-store`) | Feature-gated re-exports from facade |

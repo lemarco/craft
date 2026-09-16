@@ -6,7 +6,7 @@ use http::StatusCode;
 use serde::Serialize;
 use trembita_http::{Handler, HttpError, RequestCtx, Response};
 
-use crate::capability::{CapEnqueueOutcome, CapError, CapRequest, CapVia, Route};
+use crate::capability::{CapEnqueueOutcome, CapError, CapIngress, CapRequest, CapVia, Route};
 use crate::gateway::{IdentityError, OpenActorSessionError, TrembitaGatewayState};
 
 /// `POST` body → capability fire ([`Route::InlineFire`]), **`202 Accepted`** (no body).
@@ -28,6 +28,27 @@ where
     CapInvokeHandler {
         state,
         route,
+        _marker: PhantomData,
+    }
+}
+
+/// `POST` body → [`Route::QueuedWait`]; JSON reply when the job completes.
+#[must_use]
+pub fn cap_queued_wait<Req>(state: TrembitaGatewayState) -> CapInvokeHandler<Req>
+where
+    Req: CapRequest + Sync,
+    Req::Reply: Serialize,
+{
+    cap_invoke(state, Route::QueuedWait)
+}
+
+/// `POST` body → [`Route::Scheduled`]; requires query `run_at_ms` (unix millis). **`202 Accepted`**.
+#[must_use]
+pub fn cap_schedule<Req: CapRequest + Sync>(
+    state: TrembitaGatewayState,
+) -> CapScheduleHandler<Req> {
+    CapScheduleHandler {
+        state,
         _marker: PhantomData,
     }
 }
@@ -83,6 +104,24 @@ where
     }
 }
 
+/// Handler adapter for [`cap_schedule`].
+#[derive(Clone)]
+pub struct CapScheduleHandler<Req: CapRequest + Sync> {
+    state: TrembitaGatewayState,
+    _marker: PhantomData<fn(Req)>,
+}
+
+impl<Req: CapRequest + Sync> Handler for CapScheduleHandler<Req> {
+    fn handle(
+        &self,
+        ctx: RequestCtx,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Response, HttpError>> + Send>>
+    {
+        let state = self.state.clone();
+        Box::pin(async move { handle_schedule::<Req>(&state, ctx).await })
+    }
+}
+
 /// Handler adapter for [`cap_enqueue`].
 #[derive(Clone)]
 pub struct CapEnqueueHandler<Req: CapRequest + Sync> {
@@ -108,6 +147,7 @@ async fn handle_fire<Req: CapRequest + Sync>(
     open_group_session_if_identity::<Req>(state, &ctx).await?;
     let req: Req = ctx.json()?;
     req.via(state.app.as_ref())
+        .ingress(ingress_from_http(&ctx))
         .fire()
         .await
         .map_err(map_cap_error)?;
@@ -125,10 +165,12 @@ where
 {
     open_group_session_if_identity::<Req>(state, &ctx).await?;
     let req: Req = ctx.json()?;
+    let ingress = ingress_from_http(&ctx);
     match route {
         Route::Inline => {
             let reply = req
                 .via(state.app.as_ref())
+                .ingress(ingress)
                 .route(Route::Inline)
                 .await
                 .map_err(map_cap_error)?;
@@ -138,13 +180,14 @@ where
         }
         Route::InlineFire => {
             req.via(state.app.as_ref())
+                .ingress(ingress)
                 .fire()
                 .await
                 .map_err(map_cap_error)?;
             Ok(Response::status(StatusCode::ACCEPTED))
         }
         Route::Queued => {
-            let mut call = req.via(state.app.as_ref());
+            let mut call = req.via(state.app.as_ref()).ingress(ingress);
             if let Some(dedup) = ctx
                 .query()
                 .iter()
@@ -158,6 +201,7 @@ where
         Route::QueuedWait => {
             let reply = req
                 .via(state.app.as_ref())
+                .ingress(ingress)
                 .wait_timeout(std::time::Duration::from_secs(30))
                 .queued_wait()
                 .await
@@ -178,7 +222,7 @@ async fn handle_enqueue<Req: CapRequest + Sync>(
 ) -> Result<Response, HttpError> {
     open_group_session_if_identity::<Req>(state, &ctx).await?;
     let req: Req = ctx.json()?;
-    let mut call = req.via(state.app.as_ref());
+    let mut call = req.via(state.app.as_ref()).ingress(ingress_from_http(&ctx));
     if let Some(dedup) = ctx
         .query()
         .iter()
@@ -187,6 +231,27 @@ async fn handle_enqueue<Req: CapRequest + Sync>(
         call = call.dedup_key(dedup.as_bytes());
     }
     let outcome = call.enqueue().await.map_err(map_cap_error)?;
+    Ok(enqueue_response(outcome))
+}
+
+async fn handle_schedule<Req: CapRequest + Sync>(
+    state: &TrembitaGatewayState,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    open_group_session_if_identity::<Req>(state, &ctx).await?;
+    let run_at_ms = ctx
+        .query_param("run_at_ms")
+        .ok_or_else(|| HttpError::BadRequest("cap_schedule requires query run_at_ms".into()))?
+        .parse::<u64>()
+        .map_err(|_| HttpError::BadRequest("run_at_ms must be u64 unix millis".into()))?;
+    let req: Req = ctx.json()?;
+    let outcome = req
+        .via(state.app.as_ref())
+        .ingress(ingress_from_http(&ctx))
+        .run_at_ms(run_at_ms)
+        .schedule()
+        .await
+        .map_err(map_cap_error)?;
     Ok(enqueue_response(outcome))
 }
 
@@ -236,6 +301,26 @@ fn request_uri(ctx: &RequestCtx) -> http::Uri {
     }
 }
 
+fn ingress_from_http(ctx: &RequestCtx) -> CapIngress {
+    let correlation_id = ctx
+        .headers()
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    let principal = ctx
+        .headers()
+        .get("x-trembita-user")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    CapIngress {
+        correlation_id,
+        principal,
+    }
+}
+
 fn map_cap_error(err: CapError) -> HttpError {
-    HttpError::Internal(err.to_string())
+    match err {
+        CapError::Domain { message } => HttpError::BadRequest(message),
+        other => HttpError::Internal(other.to_string()),
+    }
 }

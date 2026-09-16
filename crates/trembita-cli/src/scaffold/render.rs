@@ -115,6 +115,10 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
         &vars.apply(app_tpl!("src/config.rs.tpl")),
     )?;
     write_file(
+        &root.join("src/deps.rs"),
+        &vars.apply(app_tpl!("src/deps.rs.tpl")),
+    )?;
+    write_file(
         &root.join("src/consumers/mod.rs"),
         &vars.apply(app_tpl!("src/consumers/mod.rs.tpl")),
     )?;
@@ -299,6 +303,7 @@ fn generate_main_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> St
         "mod app;".to_string(),
         "mod config;".to_string(),
         "mod consumers;".to_string(),
+        "mod deps;".to_string(),
         "mod domain;".to_string(),
         "mod manifest;".to_string(),
     ];
@@ -492,7 +497,8 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     let mut imports = vec![
         "use crate::config::AppConfig;".to_string(),
         "use crate::manifest;".to_string(),
-        "use trembita::{TrembitaApp, TrembitaConfigure};".to_string(),
+        "use trembita::{CapDeps, TrembitaApp, TrembitaConfigure};".to_string(),
+        "use crate::deps::AppDeps;".to_string(),
     ];
 
     if opts.template == Some(AppTemplate::Realtime) {
@@ -555,7 +561,7 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     );
     builder.push_str("            .manifest(manifest)\n");
     builder.push_str(
-        "            .configure({\n                let mut c = TrembitaConfigure::default().with_local_gateway_apis();\n                c.data_dir = data_dir;\n                c\n            })\n",
+        "            .configure({\n                let mut c = TrembitaConfigure::default().with_local_gateway_apis();\n                c.data_dir = data_dir;\n                c\n            })\n            .cap_deps(CapDeps::new(AppDeps::new()))\n",
     );
 
     if features.contains(&AppFeature::Gateway) {

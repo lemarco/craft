@@ -4,7 +4,7 @@ use std::env;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde::{Deserialize, Serialize};
-use trembita::actor_store::{store_get, store_set};
+use trembita::capstore::{store_get, store_set};
 use trembita::{cap_handler, cap_register_chain, CapError, CapGroup, CapVia, OpCtx};
 
 use crate::capabilities::ledger::Record;
@@ -47,15 +47,12 @@ async fn deliver_email(
     let key = job_key(&msg.text);
     debug::worker_job(0, msg.text.len(), &key);
 
-    let store = ctx
-        .app()
-        .and_then(trembita::TrembitaApp::actor_state_store)
-        .ok_or_else(|| CapError::Handler("data_dir / actor state store required".into()))?;
+    let store = ctx.require_store()?;
 
     let store_key = format!("email:{key}");
     if store_get::<EmailDone>(&*store, &store_key)
         .await
-        .map_err(|e| CapError::Handler(e.to_string()))?
+        .map_err(CapError::handler)?
         .is_some()
     {
         println!(
@@ -67,9 +64,11 @@ async fn deliver_email(
     let sent = SENT.fetch_add(1, Ordering::SeqCst) + 1;
     println!("[worker] delivery #{delivery} — {key}: sending email (side effects so far: {sent})");
 
-    let app = ctx
-        .app()
-        .ok_or_else(|| CapError::Handler("cap handler missing TrembitaApp".into()))?;
+    let app = ctx.app().ok_or_else(|| {
+        CapError::MissingOption {
+            detail: "cap handler missing TrembitaApp".into(),
+        }
+    })?;
     Record {
         key: key.clone(),
     }
@@ -80,7 +79,7 @@ async fn deliver_email(
 
     store_set(&*store, &store_key, &EmailDone, None)
         .await
-        .map_err(|e| CapError::Handler(e.to_string()))?;
+        .map_err(CapError::handler)?;
 
     if simulate_redelivery() && delivery == 1 {
         println!("[worker] delivery #{delivery} — {key}: failing before ack (expect redelivery)");

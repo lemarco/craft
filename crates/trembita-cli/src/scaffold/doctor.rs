@@ -98,6 +98,7 @@ pub fn run_doctor(project: &TrembitaProject, preflight: bool) -> DoctorReport {
     check_domain_boundary(project, &mut report);
     check_domain_module_declared(project, &mut report);
     check_consumers(project, &manifest, &mut report);
+    check_capabilities(project, &manifest, &mut report);
     check_actors(project, &manifest, &mut report);
     check_http(project, &app, &mut report);
     check_gateway_wiring(&app, &mut report);
@@ -344,6 +345,47 @@ fn check_consumers(project: &TrembitaProject, app: &str, report: &mut DoctorRepo
                     entry.display()
                 ));
             }
+        }
+    }
+}
+
+fn check_capabilities(project: &TrembitaProject, manifest: &str, report: &mut DoctorReport) {
+    if !manifest.contains(".capabilities(") && !manifest.contains("CapManifest") {
+        return;
+    }
+    let cap_dir = project.capabilities_dir();
+    if !cap_dir.is_dir() {
+        report.warn(
+            "manifest registers capabilities but src/capabilities/ is missing (see docs/decisions/capability-dx.md layout)",
+        );
+        return;
+    }
+    report.ok(format!("found {}", cap_dir.display()));
+    let uses_queued = manifest.contains("Route::Queued")
+        || manifest.contains("Route::QueuedWait")
+        || manifest.contains("Route::Scheduled")
+        || manifest.contains(".enqueue(");
+    let has_queue = manifest.contains("queue_stream(") || manifest.contains("default_queue_for");
+    if uses_queued && !has_queue {
+        report.warn(
+            "capabilities use queued routes or .enqueue() but manifest has no .queue_stream(...) / .default_queue_for::<...>()",
+        );
+    }
+    if manifest.contains(".capabilities(") && !manifest.contains("// trembita:capabilities") {
+        report.warn(
+            "manifest.rs registers capabilities but lacks // trembita:capabilities marker region (see framework-conventions)",
+        );
+    }
+    let actors_dir = project.actors_dir();
+    if actors_dir.is_dir() {
+        let n = walk_rs_files(&actors_dir)
+            .into_iter()
+            .filter(|p| p.file_name().is_some_and(|n| n != "mod.rs"))
+            .count();
+        if n > 0 {
+            report.warn(
+                "actors/ and capabilities/ both present — register new product ops in capabilities/ (actors/ is Advanced)",
+            );
         }
     }
 }

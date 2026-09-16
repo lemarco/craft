@@ -79,6 +79,12 @@ impl TrembitaProject {
         self.root.join("src/consumers")
     }
 
+    /// `src/capabilities/`
+    #[must_use]
+    pub fn capabilities_dir(&self) -> PathBuf {
+        self.root.join("src/capabilities")
+    }
+
     /// `src/actors/`
     #[must_use]
     pub fn actors_dir(&self) -> PathBuf {

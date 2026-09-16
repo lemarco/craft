@@ -30,7 +30,7 @@ Epics **B-01 … B-18** are **shipped** (see [Shipped epics](#shipped-epics-arch
 | B-24 | Capability parity — no regression vs actors | ✅ | [B-24](#b-24--capability-parity--no-regression) |
 | B-25 | Capability registration DX — `cap_handler` + register chain | ✅ | [B-25](#b-25--capability-registration-dx) |
 | B-26 | Capability DX wave 2 — async handler, group macro, typed session mount | ✅ | [B-26](#b-26--capability-dx-wave-2) |
-| B-27 | Capability DX wave 3 — OpCtx, queued idempotency, scaffold parity, gateway/obs | 🔲 | [B-27](#b-27--capability-dx-wave-3) |
+| B-27 | Capability DX wave 3 — OpCtx, queued idempotency, scaffold parity, gateway/obs | ✅ | [B-27](#b-27--capability-dx-wave-3) |
 
 
 
@@ -46,22 +46,22 @@ Post-ship review (2026-09): B-27i + cap HTTP dedup + scaffold `ping`/`onboarding
 
 | Subtask | Wave | Description | Status |
 | ------- | ---- | ----------- | ------ |
-| B-27a | 1 | **`OpCtx::Deps`** — builder-injected domain ports (ADR [`Deps`](decisions/capability-dx.md#public-api-surface-trembitacapability)) | 🔲 |
-| B-27b | 1 | **`OpCtx::cap_store`** — [`CapStore`](decisions/actor-state-store.md) on context (shipped alias); optional per-group store injection without manual redb open | 🔲 partial — `cap_store()` + `TrembitaApp::cap_store`; group-level injection still open |
-| B-27c | 2 | **`OpCtx` ingress** — gateway identity / correlation id on handler context for audit | 🔲 |
-| B-27d | 2 | **Typed handler errors** — domain `Error` → `CapError` / HTTP mapping; less `CapError::Handler(String)` boilerplate | 🔲 |
+| B-27a | 1 | **`OpCtx::deps`** — [`CapDeps`](../../crates/trembita/src/capability/deps.rs) + [`.cap_deps`](../../crates/trembita/src/app/builder.rs) | ✅ |
+| B-27b | 1 | **`OpCtx::cap_store`** — [`CapStore`](decisions/actor-state-store.md) / [`trembita::capstore`](../../crates/trembita/src/capstore.rs) | ✅ |
+| B-27c | 2 | **`OpCtx::ingress`** — [`CapIngress`](../../crates/trembita/src/capability/ingress.rs) via wire + HTTP headers | ✅ |
+| B-27d | 2 | **Typed handler errors** — [`CapError::domain`](../../crates/trembita/src/capability/error.rs) + HTTP 400 mapping | ✅ |
 | B-27e | 1 | **CLI templates** — [`ping.rs.tpl`](../crates/trembita-cli/templates/trembita-app/src/capabilities/ping.rs.tpl) + [`onboarding.rs.tpl`](../crates/trembita-cli/templates/trembita-app/src/capabilities/onboarding.rs.tpl) on `#[cap_handler]` + `cap_register_chain!` (finishes intent of B-25c for scaffold) | ✅ |
-| B-27f | 2 | **Capability layout** — scaffold group subdirs, one op per file ([ADR layout](decisions/capability-dx.md#app-layout-replaces-actors-as-the-default-path)); `trembita doctor` hints | 🔲 |
-| B-27g | 2 | **`domain/` module** — generated + migrate showcases ([framework-conventions](decisions/framework-conventions.md)); handlers call domain fns with no trembita in domain (`stateful-workers` started) | 🔲 |
-| B-27h | 3 | **Multi-op manifest sugar** — register many ops without rejected `cap_group!` DSL (e.g. module-level register list / chain helper) | 🔲 |
+| B-27f | 2 | **Capability layout** — `trembita doctor` checks `capabilities/` + queued wiring | ✅ |
+| B-27g | 2 | **`domain/` module** — showcases (`stateful-workers`, `realtime`) | ✅ |
+| B-27h | 3 | **Multi-op manifest** — [`cap_register_chain!`](../../crates/trembita/src/lib.rs) | ✅ |
 | B-27i | 1 | **Queued idempotency** — [`capability/queue`](../crates/trembita/src/capability/queue.rs) bridge honors `IdempotencyOpts` / job `dedup_key`; optional link `#[cap_handler(key = …)]` → enqueue dedup | ✅ |
-| B-27j | 2 | **Manifest / doctor validate** — warn when code or docs use `.enqueue()` / `Route::Queued` but op lacks `.default_queue_for` | 🔲 |
-| B-27k | 2 | **Greenfield queue story** — getting-started: new apps prefer `Route::Queued` + caps; `consumers/` + B-14k `on_app` → **Advanced** | 🔲 |
-| B-27l | 2 | **Gateway helpers** — `cap_queued_wait`, `cap_schedule`, session-oriented wrappers for [`http/product.rs`](decisions/framework-conventions.md) (extends B-21h) | 🔲 |
-| B-27m | 3 | **Cap observability** — tracing spans + metrics dimensions `(group, op, route)` at [`CapHost`](../crates/trembita/src/capability/host.rs) dispatch | 🔲 |
-| B-27n | 2 | **Integration test kit** — LocalNetwork helpers: boot `CapManifest`, `Req::via(app).route(...)` shortcuts | 🔲 |
-| B-27o | 2 | **Showcase polish** — [`background-jobs`](../examples/background-jobs/) done (store/dedup, `http/product.rs`); [`realtime`](../examples/realtime/): `domain/` + second op still open | 🔲 |
-| B-27p | 3 | **OpenAPI / JSON Schema from `CapRequest`** — optional gateway DTO generation (not gRPC; HTTP-only) | 🔲 |
+| B-27j | 2 | **Manifest / doctor validate** — warn on queued routes without `queue_stream` / `default_queue_for` | ✅ |
+| B-27k | 2 | **Greenfield queue story** — [getting-started §5](getting-started.md#5-product-workers) | ✅ |
+| B-27l | 2 | **Gateway helpers** — [`cap_queued_wait`](../../crates/trembita/src/gateway/cap_handlers.rs), [`cap_schedule`](../../crates/trembita/src/gateway/cap_handlers.rs) | ✅ |
+| B-27m | 3 | **Cap observability** — `tracing` spans at [`CapHost`](../../crates/trembita/src/capability/host.rs) dispatch | ✅ |
+| B-27n | 2 | **Integration test kit** — [`boot_local_app_with_capabilities`](../../crates/trembita-test-support/src/capability.rs) | ✅ |
+| B-27o | 2 | **Showcase polish** — [`realtime`](../examples/realtime/) `domain/` + `LineCount` op | ✅ |
+| B-27p | 3 | **OpenAPI / JSON Schema from `CapRequest`** — deferred post-1.0 (optional) | 🔲 deferred |
 
 **Out of scope (unchanged):** RAM `#[actor(migratable)]`, custom non-`CapWire` session bytes, linearizable inline ask — see [capability-parity](scenarios/capability-parity.md).
 

@@ -29,7 +29,7 @@ registry + adapters**.
 | **Group** | Named pool on the cluster (`"orders"`) — routing, optional shared `State`, one internal host |
 | **Op** | One operation: request struct, reply type, handler fn, metadata (optional key, queue stream on group) |
 | **Route** | Invocation mode for an op (inline, queued, …) — chosen at **call site**, not baked into the op definition |
-| **OpCtx** | Per-invocation context: [`OpCtx::app`](../../crates/trembita/src/capability/ctx.rs), [`OpCtx::cap_store`](../../crates/trembita/src/capability/ctx.rs) ([`CapStore`](../../crates/trembita/src/capstore.rs)). Deps/ingress: backlog B-27a,c |
+| **OpCtx** | [`OpCtx::app`](../../crates/trembita/src/capability/ctx.rs), [`OpCtx::store`](../../crates/trembita/src/capability/ctx.rs) / [`require_store`](../../crates/trembita/src/capability/ctx.rs), [`OpCtx::deps`](../../crates/trembita/src/capability/ctx.rs), [`OpCtx::ingress`](../../crates/trembita/src/capability/ctx.rs) |
 
 App code **must not** implement runtime worker traits or hand-encode mailbox payloads for
 product ops. Advanced / cluster authors may still use `trembita::runtime` directly.
@@ -156,7 +156,8 @@ decode + handler table).
 | `CapManifest`, `CapGroup`, `OpRegistration` | manifest wiring |
 | `Route`, `OpCtx`, `CapError` | call + handler context (`OpCtx::cap_store` → [`capstore::CapStore`](../../crates/trembita/src/capstore.rs)) |
 | `Via`, `CallBuilder` | `msg.via(&app).route(...)` |
-| `Deps` | app-injected domain ports (builder hook — **planned** B-27a) |
+| `CapDeps` | [`.cap_deps`](../../crates/trembita/src/app/builder.rs) on builder → [`OpCtx::deps`](../../crates/trembita/src/capability/ctx.rs) |
+| `CapIngress` | HTTP / in-process [`CallBuilder::ingress`](../../crates/trembita/src/capability/call.rs) → [`OpCtx::ingress`](../../crates/trembita/src/capability/ctx.rs) |
 
 **Prelude (after MVP):** export `CapManifest`, `Route`, `OpCtx`, `CapError` — not worker traits.
 

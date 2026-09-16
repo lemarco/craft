@@ -106,6 +106,7 @@ async fn run_queued_job(
     let wire = CapWire {
         op: job.op.clone(),
         payload: job.body.clone(),
+        ingress: None,
     };
     let bytes = encode(&wire).map_err(super::CapError::codec)?;
     let Some(binding) = app.cap_runtime().binding(&job.group, &wire.op) else {

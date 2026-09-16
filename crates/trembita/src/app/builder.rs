@@ -8,6 +8,7 @@ use super::gateway_defaults::default_product_surfaces;
 use crate::NodeId;
 use crate::actor_group::ActorGroupOpts;
 use crate::app_opts::RunOpts;
+use crate::capability::CapDeps;
 use crate::capability::CapManifest;
 use crate::capability::CapRuntime;
 use crate::configure::TrembitaConfigure;
@@ -68,6 +69,7 @@ pub struct TrembitaAppBuilder {
     /// Derived from [`.manifest`](Self::manifest) / [`.jobs`](Self::jobs) / [`.workers`](Self::workers).
     run_hint: ManifestRunHint,
     pub(crate) cap_runtime: CapRuntime,
+    cap_deps: Option<CapDeps>,
 }
 
 impl TrembitaAppBuilder {
@@ -102,7 +104,15 @@ impl TrembitaAppBuilder {
             boot_config: None,
             run_hint: ManifestRunHint::default(),
             cap_runtime: CapRuntime::empty(),
+            cap_deps: None,
         }
+    }
+
+    /// Domain service ports available from [`OpCtx::deps`] in capability handlers.
+    #[must_use]
+    pub fn cap_deps(mut self, deps: CapDeps) -> Self {
+        self.cap_deps = Some(deps);
+        self
     }
 
     /// Register capability groups — use [`AppManifest::capabilities`] + [`.manifest`](Self::manifest).
@@ -636,9 +646,10 @@ impl TrembitaAppBuilder {
             let workflows = builder.workflows;
             let gateway = builder.gateway;
             let cap_runtime = builder.cap_runtime;
+            let cap_deps = builder.cap_deps.unwrap_or_default();
             let cluster = builder.inner.start_local(net).await;
             return Self::finish_start(
-                TrembitaApp::assemble(cluster, workflows, cap_runtime),
+                TrembitaApp::assemble(cluster, workflows, cap_runtime, cap_deps),
                 gateway,
                 opts.wait_ready.clone(),
             )
@@ -658,6 +669,7 @@ impl TrembitaAppBuilder {
         let workflows = builder.workflows;
         let gateway = builder.gateway;
         let cap_runtime = builder.cap_runtime;
+        let cap_deps = builder.cap_deps.unwrap_or_default();
         let cluster = builder
             .inner
             .start_quic_cluster(
@@ -669,7 +681,7 @@ impl TrembitaAppBuilder {
             )
             .await?;
         Self::finish_start(
-            TrembitaApp::assemble(cluster, workflows, cap_runtime),
+            TrembitaApp::assemble(cluster, workflows, cap_runtime, cap_deps),
             gateway,
             opts.wait_ready.clone(),
         )

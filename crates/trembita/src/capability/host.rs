@@ -104,18 +104,28 @@ impl<S: Send + Default + 'static> UserActor for CapHost<S> {
 
     async fn handle(&mut self, msg: Self::Message) -> Result<(), Self::Error> {
         let app = self.app_slot.get().and_then(|w| w.upgrade());
-        let ctx = app
-            .as_deref()
-            .map(OpCtx::with_app)
-            .unwrap_or_else(OpCtx::without_app);
         match msg {
             CapHostMsg::Invoke(wire) => {
+                let ctx = OpCtx::for_invocation(app.as_deref(), wire.ingress.as_ref());
+                let span = tracing::info_span!(
+                    "capability.dispatch",
+                    op = %wire.op,
+                    route = "inline_fire",
+                );
+                let _guard = span.enter();
                 let _ = self
                     .registry
                     .invoke(&wire.op, wire.payload, &mut self.state, ctx)
                     .await?;
             }
             CapHostMsg::Ask { wire, reply } => {
+                let ctx = OpCtx::for_invocation(app.as_deref(), wire.ingress.as_ref());
+                let span = tracing::info_span!(
+                    "capability.dispatch",
+                    op = %wire.op,
+                    route = "inline",
+                );
+                let _guard = span.enter();
                 let out = self
                     .registry
                     .invoke(&wire.op, wire.payload, &mut self.state, ctx)

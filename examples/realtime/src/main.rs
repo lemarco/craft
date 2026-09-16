@@ -5,6 +5,7 @@
 
 mod capabilities;
 mod debug;
+mod domain;
 mod gateway_session;
 
 use std::env;

@@ -10,8 +10,8 @@ Raft leadership is the cluster-wide **mutex** for side-effecting control-plane w
 
 The public API exposes a **snapshot**:
 
-- [`TrembitaCluster::is_leader`](../../crates/trembita/src/cluster_handle/mod.rs)
-- [`ClusterState::is_leader`](../../crates/trembita-runtime/src/supervisor.rs) on [`ClusterFacts`](../../crates/trembita/src/cluster_handle/mod.rs)
+- [`TrembitaCluster::is_leader`](../../crates/trembita-assembly/src/cluster_handle/cluster.rs)
+- [`ClusterState::is_leader`](../../crates/trembita-runtime/src/supervisor.rs) on [`ClusterFacts`](../../crates/trembita-assembly/src/cluster_handle/facts.rs)
 
 There is **no primitive for “run this loop while I am leader”**. Every product feature that needs periodic leader work reimplements the same state machine:
 

@@ -237,7 +237,7 @@ fn cap_wire_for_session<Req: CapRequest>(
             Req::GROUP
         ))));
     }
-    cap_wire_bytes(req).map_err(cap_encode_error)
+    cap_wire_bytes(req, None).map_err(cap_encode_error)
 }
 
 fn cast_err_to_ask(err: CastError) -> ClusterAskError {

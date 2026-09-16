@@ -45,7 +45,7 @@ Target **0.5.0** — unified HTTP listener; see [unified-listener](../decisions/
 - **`trembita dev`** — `dev up|setup|stop|status|trigger|list` for product showcases in the **trembita repo** (see **Changed**: debug-build only in Unreleased).
 - **`GatewayOpts::from_env`**, **`GatewayOpts::default_surfaces`**, **`TrembitaApp::default_surfaces`**, **`DefaultGatewayApis`**, **`.gateway_routes()`** — convention over manual `Gateway::new().surface()`; **`Gateway::surface_hosts`** for api/ops host split.
 - **[docs/env.md](../env.md)** — product env surface (listen, data_dir, cert_dir, join_seeds, optional `GATEWAY_TOKEN`); boot warns on legacy `TREMBITA_NODE_ID` / `TREMBITA_PEERS` / split HTTP / removed `TREMBITA_GATEWAY_*` toggles.
-- **`spawn_cluster_ops_http`** / **`cluster_ops_route_table`** — mount ops routes (`/health`, `/metrics`, `/dashboard`, `/introspect/*`) on a TCP listener for [`TrembitaCluster`](../../crates/trembita/src/cluster_handle/cluster.rs) without [`TrembitaApp`](../../crates/trembita/src/app/mod.rs).
+- **`spawn_cluster_ops_http`** / **`cluster_ops_route_table`** — mount ops routes (`/health`, `/metrics`, `/dashboard`, `/introspect/*`) on a TCP listener for [`TrembitaCluster`](../../crates/trembita/src/cluster.rs) without [`TrembitaApp`](../../crates/trembita/src/app/mod.rs).
 - **`trembita doctor`** — scans sources and `deploy/.env.example` for removed `with_*_api`, `protect_product_apis`, `TREMBITA_ADMIN`, and missing ops/jobs route merges.
 
 ### Changed
@@ -180,7 +180,7 @@ Target **0.5.0** — unified HTTP listener; see [unified-listener](../decisions/
 - **Queue handlers split** — [`handlers.rs`](../../crates/trembita-jobs/src/queue_service/handlers/mod.rs) split into `queue_service/handlers/{enqueue,lease,ack,query,dead_letter}.rs`.
 - **Runtime event loop split** — [`event_loop.rs`](../../crates/trembita-runtime/src/runtime/event_loop/mod.rs) split into `runtime/event_loop/{core,settle,envelope,two_phase,membership,catalog}.rs`.
 - **App module split** — [`app.rs`](../../crates/trembita/src/app/mod.rs) split into `app/{types,shutdown,builder,runtime,workflow}.rs`.
-- **Cluster handle module split** — [`cluster_handle.rs`](../../crates/trembita/src/cluster_handle/mod.rs) split into `cluster_handle/{facts,telemetry,cluster,errors}.rs`.
+- **Cluster handle module split** — assembly `cluster_handle/{facts,telemetry,cluster,errors}.rs` (re-exported from [`trembita::cluster`](../../crates/trembita/src/cluster.rs)).
 - **Gateway module split** — [`gateway/mod.rs`](../../crates/trembita/src/gateway/mod.rs) split into `gateway/{config,opts,state,router,spawn}.rs`.
 - **Builder module split** — join/autoscale/error helpers extracted from [`builder/mod.rs`](../../crates/trembita/src/builder/mod.rs); [`TrembitaClusterBuilder`](../../crates/trembita/src/builder/cluster/mod.rs) split into `builder/cluster/{config,assemble,products,start,types,topic_leader}.rs`.
 - **Runtime module split** — [`runtime.rs`](../../crates/trembita-runtime/src/runtime/mod.rs) split into `runtime/{types,handle,event_loop,spawn,service,wire}.rs`.

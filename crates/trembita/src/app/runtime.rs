@@ -11,7 +11,7 @@ use trembita_runtime::{
 };
 
 use crate::NodeId;
-use crate::capability::CapRuntime;
+use crate::capability::{CapDeps, CapRuntime};
 use crate::gateway::{GatewayConfig, GatewayHandle};
 use crate::workflow::WorkflowBuilder;
 use crate::workflow_opts::{WorkflowRegistration, resolve_workflow};
@@ -29,6 +29,7 @@ pub struct TrembitaApp {
     workflow_lock: Arc<Mutex<()>>,
     gateway: tokio::sync::Mutex<Option<GatewayHandle>>,
     cap_runtime: CapRuntime,
+    cap_deps: CapDeps,
 }
 
 impl TrembitaApp {
@@ -36,6 +37,7 @@ impl TrembitaApp {
         cluster: TrembitaCluster<EmptyStateMachine>,
         workflows: Vec<WorkflowRegistration>,
         cap_runtime: CapRuntime,
+        cap_deps: CapDeps,
     ) -> Self {
         Self {
             cluster,
@@ -43,7 +45,14 @@ impl TrembitaApp {
             workflow_lock: Arc::new(Mutex::new(())),
             gateway: tokio::sync::Mutex::new(None),
             cap_runtime,
+            cap_deps,
         }
+    }
+
+    /// Builder-injected ports for [`OpCtx::deps`].
+    #[must_use]
+    pub fn cap_deps(&self) -> &CapDeps {
+        &self.cap_deps
     }
 
     /// Capability op metadata (routes, queue streams) from [`CapManifest`](crate::capability::CapManifest).

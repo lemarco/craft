@@ -307,6 +307,7 @@ async fn capability_event_subscription_runs_inline() {
     let frame = encode(&CapWire {
         op: Add::OP.to_string(),
         payload: encode(&Add { n: 1 }).expect("encode"),
+        ingress: None,
     })
     .expect("wire");
     app.publish("math.events", &frame)

@@ -25,6 +25,11 @@ pub enum CapError {
     Deliver(String),
     /// Handler returned an error message.
     Handler(String),
+    /// Domain validation / business rule (maps to client error over HTTP).
+    Domain {
+        /// Human-readable message.
+        message: String,
+    },
     /// Queued route requires a queue stream on the group.
     MissingQueueStream {
         /// Group name.
@@ -54,6 +59,7 @@ impl fmt::Display for CapError {
             Self::Codec(e) => write!(f, "capability codec: {e}"),
             Self::Deliver(e) => write!(f, "capability deliver: {e}"),
             Self::Handler(e) => write!(f, "capability handler: {e}"),
+            Self::Domain { message } => write!(f, "capability domain: {message}"),
             Self::MissingQueueStream { group } => {
                 write!(
                     f,
@@ -73,5 +79,19 @@ impl std::error::Error for CapError {}
 impl CapError {
     pub(crate) fn codec(e: impl fmt::Display) -> Self {
         Self::Codec(e.to_string())
+    }
+
+    /// Map a domain error into [`CapError::Domain`] (preferred over [`Self::Handler`] for validation).
+    #[must_use]
+    pub fn domain(message: impl Into<String>) -> Self {
+        Self::Domain {
+            message: message.into(),
+        }
+    }
+
+    /// Wrap any displayable error as a handler failure.
+    #[must_use]
+    pub fn handler(err: impl fmt::Display) -> Self {
+        Self::Handler(err.to_string())
     }
 }

@@ -5,6 +5,8 @@
 #![allow(missing_docs)] // publish = false — not shipped on crates.io
 
 pub mod actor;
+#[cfg(feature = "facade")]
+pub mod capability;
 pub mod clock;
 #[cfg(feature = "facade")]
 pub mod facade;
@@ -15,6 +17,8 @@ pub mod kv;
 pub mod shard;
 
 pub use actor::{await_node_leader, wait_for_all_node_leaders, wait_for_node_leader};
+#[cfg(feature = "facade")]
+pub use capability::{boot_local_app_with_capabilities, manifest_with_capabilities};
 pub use clock::{
     POLL_STEP, advance, eventually, eventually_async, eventually_async_default, eventually_default,
 };

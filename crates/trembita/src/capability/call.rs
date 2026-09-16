@@ -11,6 +11,7 @@ use trembita_proto::{self as proto, encode};
 use crate::TrembitaApp;
 
 use super::error::CapError;
+use super::ingress::CapIngress;
 use super::route::Route;
 use super::wire::{CapQueued, CapWire};
 
@@ -54,6 +55,8 @@ pub struct CapCallOpts {
     pub wait_timeout: Option<Duration>,
     /// Enqueue dedup key (overrides [`CapRequest::cap_key`] when set).
     pub dedup_key: Option<Vec<u8>>,
+    /// Propagated into [`OpCtx::ingress`] on the handler.
+    pub ingress: Option<CapIngress>,
 }
 
 /// Call-site builder: `MyReq { .. }.via(&app).route(Route::Inline).await`.
@@ -105,6 +108,13 @@ impl<Req: CapRequest> CallBuilder<'_, Req> {
     #[must_use]
     pub fn dedup_key(mut self, key: impl Into<Vec<u8>>) -> Self {
         self.opts.dedup_key = Some(key.into());
+        self
+    }
+
+    /// Attach gateway / caller metadata for the handler ([`OpCtx::ingress`]).
+    #[must_use]
+    pub fn ingress(mut self, ingress: CapIngress) -> Self {
+        self.opts.ingress = Some(ingress);
         self
     }
 
@@ -162,7 +172,7 @@ async fn dispatch<Req: CapRequest>(
 ) -> Result<Req::Reply, CapError> {
     match route {
         Route::Inline => {
-            let reply_bytes = deliver_inline(app, &req).await?;
+            let reply_bytes = deliver_inline(app, &req, &opts).await?;
             proto::decode(&reply_bytes).map_err(CapError::codec)
         }
         Route::InlineFire | Route::Queued | Route::Scheduled => Err(CapError::UnsupportedRoute {
@@ -183,14 +193,16 @@ async fn dispatch<Req: CapRequest>(
             proto::decode(&bytes).map_err(CapError::codec)
         }
         Route::Session => {
-            let key = opts.session_key.or_else(|| req.cap_key()).ok_or_else(|| {
-                CapError::MissingOption {
+            let key = opts
+                .session_key
+                .clone()
+                .or_else(|| req.cap_key())
+                .ok_or_else(|| CapError::MissingOption {
                     detail:
                         "Route::Session requires CallBuilder::session_key or CapRequest::cap_key"
                             .into(),
-                }
-            })?;
-            let reply_bytes = deliver_session(app, &req, &key).await?;
+                })?;
+            let reply_bytes = deliver_session(app, &req, &key, &opts).await?;
             proto::decode(&reply_bytes).map_err(CapError::codec)
         }
         Route::Event => Err(CapError::UnsupportedRoute {
@@ -218,6 +230,7 @@ pub async fn publish_event<Req: CapRequest>(
     let wire = CapWire {
         op: Req::OP.to_string(),
         payload: body,
+        ingress: None,
     };
     let frame = encode(&wire).map_err(CapError::codec)?;
     app.publish(topic, &frame)
@@ -348,11 +361,15 @@ fn ensure_route(
 }
 
 /// Postcard frame for session cast/ask to a [`CapHost`](super::host::CapHost) (internal wire).
-pub(crate) fn cap_wire_bytes<Req: CapRequest>(req: &Req) -> Result<Vec<u8>, CapError> {
+pub(crate) fn cap_wire_bytes<Req: CapRequest>(
+    req: &Req,
+    ingress: Option<&CapIngress>,
+) -> Result<Vec<u8>, CapError> {
     let body = encode(req).map_err(CapError::codec)?;
     encode(&CapWire {
         op: Req::OP.to_string(),
         payload: body,
+        ingress: ingress.cloned(),
     })
     .map_err(CapError::codec)
 }
@@ -360,6 +377,7 @@ pub(crate) fn cap_wire_bytes<Req: CapRequest>(req: &Req) -> Result<Vec<u8>, CapE
 async fn deliver_inline<Req: CapRequest>(
     app: &TrembitaApp,
     req: &Req,
+    opts: &CapCallOpts,
 ) -> Result<Vec<u8>, CapError> {
     let binding = binding(app, Req::GROUP, Req::OP)?;
     ensure_route(&binding, Route::Inline, Req::OP)?;
@@ -369,7 +387,7 @@ async fn deliver_inline<Req: CapRequest>(
         .as_ref()
         .and_then(|k| k(&body))
         .or_else(|| req.cap_key());
-    let bytes = cap_wire_bytes(req)?;
+    let bytes = cap_wire_bytes(req, opts.ingress.as_ref())?;
     if let Some(key) = routing_key {
         app.cluster()
             .messaging()
@@ -389,6 +407,7 @@ async fn deliver_session<Req: CapRequest>(
     app: &TrembitaApp,
     req: &Req,
     session_key: &str,
+    opts: &CapCallOpts,
 ) -> Result<Vec<u8>, CapError> {
     let binding = binding(app, Req::GROUP, Req::OP)?;
     ensure_route(&binding, Route::Session, Req::OP)?;
@@ -400,7 +419,7 @@ async fn deliver_session<Req: CapRequest>(
                 Req::GROUP
             ))
         })?;
-    let bytes = cap_wire_bytes(req)?;
+    let bytes = cap_wire_bytes(req, opts.ingress.as_ref())?;
     app.ask_session(&session, bytes)
         .await
         .map_err(|e| CapError::Deliver(e.to_string()))
@@ -417,6 +436,7 @@ async fn deliver_fire(
     let wire = CapWire {
         op: binding.op.to_string(),
         payload: body.to_vec(),
+        ingress: None,
     };
     let bytes = encode(&wire).map_err(CapError::codec)?;
     if let Some(key) = routing_key {

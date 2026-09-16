@@ -106,17 +106,18 @@ pub use app::{
 };
 pub use app_opts::RunOpts;
 pub use capability::{
-    CallBuilder, CapCallOpts, CapEnqueueOutcome, CapError, CapGroup, CapGroupScale, CapManifest,
-    CapOp, CapQueued, CapRequest, CapRuntime, CapVia, CapWire, OpCtx, Route, deliver_event,
-    deliver_queued, enqueue, fire, invoke, publish_event,
+    CallBuilder, CapCallOpts, CapDeps, CapEnqueueOutcome, CapError, CapGroup, CapGroupScale,
+    CapIngress, CapManifest, CapOp, CapQueued, CapRequest, CapRuntime, CapVia, CapWire, OpCtx,
+    Route, deliver_event, deliver_queued, enqueue, fire, invoke, publish_event,
 };
 pub use configure::TrembitaConfigure;
 pub use consumer::{ConsumerGroup, ConsumerOpts, IdempotencyKeyFn, IdempotencyOpts, JobConsumer};
 pub use cron_opts::CronOpts;
 #[cfg(feature = "http-jobs")]
 pub use gateway::{
-    CapEnqueueHandler, CapFireHandler, CapInvokeHandler, ProductRoutes, cap_enqueue, cap_fire,
-    cap_invoke, cluster_ops_route_table, spawn_cluster_ops_http,
+    CapEnqueueHandler, CapFireHandler, CapInvokeHandler, CapScheduleHandler, ProductRoutes,
+    cap_enqueue, cap_fire, cap_invoke, cap_queued_wait, cap_schedule, cluster_ops_route_table,
+    spawn_cluster_ops_http,
 };
 pub use gateway::{
     ConnectionGuard, ConnectionTracker, DEFAULT_GATEWAY_DRAIN_TIMEOUT, ExtractedIdentity,
