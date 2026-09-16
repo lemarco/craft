@@ -5,7 +5,7 @@ mod process_order;
 use process_order::process_order_handler_register;
 use trembita::{cap_register_chain, CapGroup, CapManifest};
 
-pub use process_order::{ProcessAck, ProcessOrder};
+pub use process_order::ProcessOrder;
 
 #[derive(Default)]
 pub struct OrdersState;
