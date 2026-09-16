@@ -198,7 +198,7 @@ trembita-cli = { path = "crates/trembita-cli", version = "0.5.1" }
 trembita-metrics-otlp = { path = "crates/trembita-metrics-otlp", version = "0.5.1" }
 
 # --- Workspace crates (unpublished, `publish = false`) ------------------------
-trembita-assembly = { path = "crates/trembita-assembly" }
+trembita-assembly = { path = "crates/trembita-assembly", version = "0.5.1" }
 trembita-showcase = { path = "crates/trembita-showcase" }
 trembita-test-support = { path = "crates/trembita-test-support", version = "0.5.1" }
 trembita-tools = { path = "crates/trembita-tools" }

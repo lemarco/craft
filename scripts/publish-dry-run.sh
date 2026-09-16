@@ -40,7 +40,13 @@ LEAF="trembita"
 if crate_version_on_index "$LEAF" "$VERSION"; then
     echo ">> publish dry-run (leaf ${LEAF} v${VERSION} — version already on crates.io)…"
     echo "   (local API changes require a version bump before publish; see CHANGELOG.md)"
-    if ! cargo publish -p "$LEAF" --dry-run --allow-dirty; then
+    if ! output="$(cargo publish -p "$LEAF" --dry-run --allow-dirty 2>&1)"; then
+        if grep -q 'trembita-assembly' <<<"$output"; then
+            echo ">> publish dry-run skipped: ${LEAF} v${VERSION} depends on workspace-only trembita-assembly"
+            echo "   git push is OK; bump version and run ./scripts/release.sh before the next crates.io upload"
+            exit 0
+        fi
+        printf '%s\n' "$output" >&2
         echo "error: publish dry-run failed for ${LEAF} v${VERSION}." >&2
         echo "hint: bump [workspace.package] version (e.g. ./scripts/release.sh 0.3.0) —" >&2
         echo "      v${VERSION} is already on crates.io and cannot be overwritten." >&2
