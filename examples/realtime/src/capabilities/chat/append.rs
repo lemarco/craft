@@ -1,7 +1,7 @@
 //! Append a chat line ([`Route::Session`] / WebSocket fire path).
 
 use serde::{Deserialize, Serialize};
-use trembita::{cap_handler, CapError, CapGroup, OpCtx};
+use trembita::{cap_handler, CapError, OpCtx};
 
 use super::State;
 use crate::debug;
