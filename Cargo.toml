@@ -16,6 +16,7 @@ default-members = [
     "crates/trembita-client",
     "crates/trembita-sim",
     "crates/trembita",
+    "crates/trembita-assembly",
     "crates/trembita-test-support",
 ]
 members = [
@@ -34,6 +35,7 @@ members = [
     "crates/trembita-http",
     "crates/trembita-sim",
     "crates/trembita",
+    "crates/trembita-assembly",
     "crates/trembita-test-support",
     "crates/trembita-tools",
     "crates/trembita-cli",
@@ -132,6 +134,7 @@ trembita-dashboard = { path = "crates/trembita-dashboard", version = "0.5.1" }
 trembita-http = { path = "crates/trembita-http", version = "0.5.1" }
 trembita-sim = { path = "crates/trembita-sim", version = "0.5.1" }
 trembita = { path = "crates/trembita", version = "0.5.1" }
+trembita-assembly = { path = "crates/trembita-assembly" }
 trembita-test-support = { path = "crates/trembita-test-support", version = "0.5.1" }
 trembita-backlog-postgres = { path = "crates/trembita-backlog-postgres", version = "0.5.1" }
 trembita-events-postgres = { path = "crates/trembita-events-postgres", version = "0.5.1" }

@@ -47,13 +47,14 @@ async fn spawn_multi_node_cluster(
     let shard_count = 64;
     let mut clusters = Vec::new();
     for &id in &ids[..node_count as usize] {
-        let mut builder = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
-            .members(ids)
-            .raft_config(fast_raft_config_with_seed(3))
-            .tick_period(TICK_PERIOD)
-            .shard_count(shard_count)
-            .group_replication_factor(64)
-            .raft_machines([KvMachine::default(), KvMachine::default()]);
+        let mut builder =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
+                .members(ids)
+                .raft_config(fast_raft_config_with_seed(3))
+                .tick_period(TICK_PERIOD)
+                .shard_count(shard_count)
+                .group_replication_factor(64)
+                .raft_machines([KvMachine::default(), KvMachine::default()]);
         if allow_join {
             builder = builder.allow_join(true).allow_leave(true);
         }
@@ -90,14 +91,15 @@ async fn builder_hosts_independent_raft_groups() {
     let groups = [RaftGroupId(0), RaftGroupId(1)];
     let (route_a, route_b) = find_keys_for_two_groups(shard_count, &groups);
 
-    let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
-        .members([node_id])
-        .raft_config(fast_raft_config_with_seed(3))
-        .tick_period(TICK_PERIOD)
-        .shard_count(shard_count)
-        .raft_machines([KvMachine::default(), KvMachine::default()])
-        .start_local(&net)
-        .await;
+    let cluster =
+        trembita_assembly::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
+            .members([node_id])
+            .raft_config(fast_raft_config_with_seed(3))
+            .tick_period(TICK_PERIOD)
+            .shard_count(shard_count)
+            .raft_machines([KvMachine::default(), KvMachine::default()])
+            .start_local(&net)
+            .await;
 
     assert_eq!(cluster.raft_groups(), 2);
     assert_eq!(cluster.group_handles().len(), 2);
@@ -242,13 +244,14 @@ async fn builder_persists_each_raft_group_to_separate_redb_files() {
     let node_id = NodeId(1);
 
     {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
-            .members([node_id])
-            .tick_period(TICK_PERIOD)
-            .raft_machines([KvMachine::default(), KvMachine::default()])
-            .data_dir(&data_dir)
-            .start_local(&net)
-            .await;
+        let cluster =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
+                .members([node_id])
+                .tick_period(TICK_PERIOD)
+                .raft_machines([KvMachine::default(), KvMachine::default()])
+                .data_dir(&data_dir)
+                .start_local(&net)
+                .await;
 
         wait_for_group_leaders(&cluster).await;
 
@@ -274,23 +277,25 @@ async fn wire_group_migrate_rpc_is_routed() {
     let net = LocalNetwork::new();
     let ids = [NodeId(1), NodeId(2)];
 
-    let source = crate::builder::TrembitaClusterBuilder::new(NodeId(1), KvMachine::default())
-        .members(ids)
-        .raft_config(fast_raft_config_with_seed(3))
-        .tick_period(TICK_PERIOD)
-        .shard_count(64)
-        .raft_machines([KvMachine::default(), KvMachine::default()])
-        .start_local(&net)
-        .await;
+    let source =
+        trembita_assembly::builder::TrembitaClusterBuilder::new(NodeId(1), KvMachine::default())
+            .members(ids)
+            .raft_config(fast_raft_config_with_seed(3))
+            .tick_period(TICK_PERIOD)
+            .shard_count(64)
+            .raft_machines([KvMachine::default(), KvMachine::default()])
+            .start_local(&net)
+            .await;
 
-    let target = crate::builder::TrembitaClusterBuilder::new(NodeId(2), KvMachine::default())
-        .members(ids)
-        .raft_config(fast_raft_config_with_seed(3))
-        .tick_period(TICK_PERIOD)
-        .shard_count(64)
-        .raft_machines([KvMachine::default(), KvMachine::default()])
-        .start_local(&net)
-        .await;
+    let target =
+        trembita_assembly::builder::TrembitaClusterBuilder::new(NodeId(2), KvMachine::default())
+            .members(ids)
+            .raft_config(fast_raft_config_with_seed(3))
+            .tick_period(TICK_PERIOD)
+            .shard_count(64)
+            .raft_machines([KvMachine::default(), KvMachine::default()])
+            .start_local(&net)
+            .await;
 
     wait_for_group_leaders(&source).await;
 
@@ -345,17 +350,18 @@ async fn join_fourth_node(
     let leader = cluster_leader(clusters).await;
     let joiner_id = NodeId(4);
 
-    let joiner = crate::builder::TrembitaClusterBuilder::new(joiner_id, KvMachine::default())
-        .members(ids)
-        .raft_config(fast_raft_config_with_seed(3))
-        .tick_period(TICK_PERIOD)
-        .shard_count(64)
-        .group_replication_factor(64)
-        .raft_machines([KvMachine::default(), KvMachine::default()])
-        .allow_join(true)
-        .allow_leave(true)
-        .start_local(net)
-        .await;
+    let joiner =
+        trembita_assembly::builder::TrembitaClusterBuilder::new(joiner_id, KvMachine::default())
+            .members(ids)
+            .raft_config(fast_raft_config_with_seed(3))
+            .tick_period(TICK_PERIOD)
+            .shard_count(64)
+            .group_replication_factor(64)
+            .raft_machines([KvMachine::default(), KvMachine::default()])
+            .allow_join(true)
+            .allow_leave(true)
+            .start_local(net)
+            .await;
 
     let request = JoinRequest {
         protocol_version: ProtocolVersion(PROTOCOL_VERSION),
@@ -504,15 +510,16 @@ async fn modulus_shard_expansion_and_keyed_batch() {
     let groups = [RaftGroupId(0), RaftGroupId(1)];
     let (route_a, route_b) = find_keys_for_two_groups(shard_count, &groups);
 
-    let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
-        .members([node_id])
-        .raft_config(fast_raft_config_with_seed(9))
-        .tick_period(TICK_PERIOD)
-        .shard_count(shard_count)
-        .modulus_shards()
-        .raft_machines([KvMachine::default(), KvMachine::default()])
-        .start_local(&net)
-        .await;
+    let cluster =
+        trembita_assembly::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
+            .members([node_id])
+            .raft_config(fast_raft_config_with_seed(9))
+            .tick_period(TICK_PERIOD)
+            .shard_count(shard_count)
+            .modulus_shards()
+            .raft_machines([KvMachine::default(), KvMachine::default()])
+            .start_local(&net)
+            .await;
 
     wait_for_group_leaders(&cluster).await;
 
@@ -583,14 +590,15 @@ async fn stable_shard_activation_preserves_key_routing() {
     let groups = [RaftGroupId(0), RaftGroupId(1)];
     let (route_a, route_b) = find_keys_for_two_groups(active, &groups);
 
-    let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
-        .members([node_id])
-        .raft_config(fast_raft_config_with_seed(11))
-        .tick_period(TICK_PERIOD)
-        .shard_count(active)
-        .raft_machines([KvMachine::default(), KvMachine::default()])
-        .start_local(&net)
-        .await;
+    let cluster =
+        trembita_assembly::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
+            .members([node_id])
+            .raft_config(fast_raft_config_with_seed(11))
+            .tick_period(TICK_PERIOD)
+            .shard_count(active)
+            .raft_machines([KvMachine::default(), KvMachine::default()])
+            .start_local(&net)
+            .await;
 
     assert_eq!(cluster.shard_routing(), ShardRoutingKind::StableVirtual);
     wait_for_group_leaders(&cluster).await;
@@ -708,15 +716,16 @@ async fn switch_to_stable_shards_from_modulus() {
 
     let net = LocalNetwork::new();
     let node_id = NodeId(1);
-    let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
-        .members([node_id])
-        .raft_config(fast_raft_config_with_seed(12))
-        .tick_period(TICK_PERIOD)
-        .shard_count(64)
-        .modulus_shards()
-        .raft_machines([KvMachine::default(), KvMachine::default()])
-        .start_local(&net)
-        .await;
+    let cluster =
+        trembita_assembly::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
+            .members([node_id])
+            .raft_config(fast_raft_config_with_seed(12))
+            .tick_period(TICK_PERIOD)
+            .shard_count(64)
+            .modulus_shards()
+            .raft_machines([KvMachine::default(), KvMachine::default()])
+            .start_local(&net)
+            .await;
 
     wait_for_group_leaders(&cluster).await;
     assert_eq!(cluster.shard_routing(), ShardRoutingKind::Modulus);
@@ -757,16 +766,17 @@ async fn per_group_learners_replicate_without_voting() {
     let net = LocalNetwork::new();
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
-            .members(ids)
-            .raft_config(fast_raft_config_with_seed(11))
-            .tick_period(TICK_PERIOD)
-            .shard_count(64)
-            .group_replication_factor(3)
-            .group_learner_factor(1)
-            .raft_machines([KvMachine::default(), KvMachine::default()])
-            .start_local(&net)
-            .await;
+        let cluster =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
+                .members(ids)
+                .raft_config(fast_raft_config_with_seed(11))
+                .tick_period(TICK_PERIOD)
+                .shard_count(64)
+                .group_replication_factor(3)
+                .group_learner_factor(1)
+                .raft_machines([KvMachine::default(), KvMachine::default()])
+                .start_local(&net)
+                .await;
         clusters.push(Arc::new(cluster));
     }
 

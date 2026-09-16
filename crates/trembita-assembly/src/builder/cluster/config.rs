@@ -241,7 +241,8 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     }
 
     /// Apply `TREMBITA_*` cluster settings when not already set in code.
-    pub(crate) fn merge_app_config(mut self, cfg: &crate::env_config::AppConfig) -> Self {
+    #[doc(hidden)]
+    pub fn merge_app_config(mut self, cfg: &crate::env_config::AppConfig) -> Self {
         if !self.overrides.node_id {
             self.node_id = cfg.node_id;
         }

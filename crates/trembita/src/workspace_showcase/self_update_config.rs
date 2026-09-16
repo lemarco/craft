@@ -9,7 +9,6 @@ use crate::NodeId;
 use crate::cluster::{CertPaths, PemSecurity, Security, cert_paths_from_env};
 use crate::discovery::Seed;
 use crate::net::PeerDirectory;
-use crate::net::tls::ClusterCa;
 
 const DATA_DIR_NAME: &str = "trembita-showcase-self-update";
 
@@ -127,8 +126,15 @@ fn load_security(
                     "multi-node cluster requires TREMBITA_* cert env (see docs/certs.md)".into(),
                 );
             }
-            let ca = ClusterCa::generate()?;
-            Ok((Security::dev(&ca, node_id)?, None))
+            #[cfg(feature = "dev-certs")]
+            {
+                let ca = trembita_net::tls::ClusterCa::generate()?;
+                return Ok((Security::dev(&ca, node_id)?, None));
+            }
+            #[cfg(not(feature = "dev-certs"))]
+            return Err(
+                "single-node dev boot requires `dev-certs` feature or TREMBITA_* cert env".into(),
+            );
         }
         _ => Err(
             "set all TREMBITA_NODE_CERT, TREMBITA_NODE_KEY, TREMBITA_CA_CERT or none for dev"

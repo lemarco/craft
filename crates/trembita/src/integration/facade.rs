@@ -72,7 +72,7 @@ async fn spawn_cluster() -> (LocalNetwork, Vec<Arc<TrembitaCluster<Kv>>>) {
     let net = LocalNetwork::new();
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
+        let cluster = trembita_assembly::builder::TrembitaClusterBuilder::new(id, Kv::default())
             .members(ids)
             .raft_config(fast_raft_config())
             .tick_period(TICK_PERIOD)
@@ -165,7 +165,7 @@ async fn spawn_reachability_node(
     raft: Config,
 ) -> Arc<TrembitaCluster<Kv>> {
     Arc::new(
-        crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
+        trembita_assembly::builder::TrembitaClusterBuilder::new(id, Kv::default())
             .members([NodeId(1), NodeId(2), NodeId(3)])
             .raft_config(raft)
             .tick_period(Duration::from_millis(5))
@@ -335,7 +335,7 @@ async fn follower_scale_cluster_forwards_to_leader() {
     let mut clusters = Vec::new();
     for &id in &ids {
         let cluster = Arc::new(
-            crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, Kv::default())
                 .members(ids)
                 .raft_config(fast_raft_config())
                 .tick_period(Duration::from_millis(10))
@@ -382,7 +382,7 @@ async fn admin_endpoints_report_live_state() {
 
     let mut clusters = Vec::new();
     for &id in &ids {
-        let builder = crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
+        let builder = trembita_assembly::builder::TrembitaClusterBuilder::new(id, Kv::default())
             .members(ids)
             .raft_config(fast_raft_config())
             .tick_period(TICK_PERIOD)
@@ -524,7 +524,7 @@ async fn metrics_sink_receives_runtime_samples() {
 
     let recorder = Arc::new(RecordingMetricsSink::new());
     let net = LocalNetwork::new();
-    let cluster = crate::builder::TrembitaClusterBuilder::new(NodeId(1), Kv::default())
+    let cluster = trembita_assembly::builder::TrembitaClusterBuilder::new(NodeId(1), Kv::default())
         .members([NodeId(1)])
         .raft_config(fast_raft_config())
         .tick_period(TICK_PERIOD)
@@ -598,7 +598,7 @@ async fn builder_wires_actor_state_store() {
 
     let net = LocalNetwork::new();
     let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
-    let cluster = crate::builder::TrembitaClusterBuilder::new(NodeId(1), Kv::default())
+    let cluster = trembita_assembly::builder::TrembitaClusterBuilder::new(NodeId(1), Kv::default())
         .actor_state_store(Arc::clone(&store))
         .start_local(&net)
         .await;
@@ -613,7 +613,7 @@ async fn builder_wires_resource_profile() {
     use crate::cluster::{ResourceProfile, VpsResources};
 
     let net = LocalNetwork::new();
-    let cluster = crate::builder::TrembitaClusterBuilder::new(NodeId(1), Kv::default())
+    let cluster = trembita_assembly::builder::TrembitaClusterBuilder::new(NodeId(1), Kv::default())
         .resource_profile(ResourceProfile::Limited { worker_threads: 2 })
         .start_local(&net)
         .await;

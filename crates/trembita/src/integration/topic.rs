@@ -119,7 +119,7 @@ async fn topic_replicate_rejects_non_leader_caller() {
     let mut clusters = Vec::new();
     for id in ids {
         clusters.push(Arc::new(
-            crate::builder::TrembitaClusterBuilder::new(id, Empty)
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, Empty)
                 .members(ids)
                 .data_dir(base.join(format!("node-{}", id.0)))
                 .event_topic("orders.events", Duration::from_secs(30))

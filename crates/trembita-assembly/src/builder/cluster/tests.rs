@@ -7,7 +7,7 @@ mod merge_app_config_tests {
 
     use trembita_proto::{JoinRole, NodeId};
 
-    use crate::app::EmptyStateMachine;
+    use crate::EmptyStateMachine;
     use crate::builder::TrembitaClusterBuilder;
     use crate::env_config::{AppConfig, EnvOverrides};
     use crate::security::Security;
@@ -37,7 +37,7 @@ mod merge_app_config_tests {
             data_dir: None,
             job_queue_stream: None,
             job_queue_lease: Duration::from_secs(60),
-            http_drain_timeout: crate::gateway::DEFAULT_GATEWAY_DRAIN_TIMEOUT,
+            http_drain_timeout: crate::DEFAULT_GATEWAY_DRAIN_TIMEOUT,
             env: EnvOverrides::default(),
         }
     }

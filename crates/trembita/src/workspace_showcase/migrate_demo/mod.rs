@@ -2,11 +2,11 @@
 
 use std::time::Duration;
 
-use crate::builder::TrembitaClusterBuilder;
 use crate::cluster::TrembitaCluster;
 use crate::core::{Config, StateMachine};
 use crate::net::LocalNetwork;
 use crate::proto::{ActorGroupName, ActorId, LogIndex, LogicalTick, NodeId};
+use trembita_assembly::builder::TrembitaClusterBuilder;
 
 mod migrate_counter;
 

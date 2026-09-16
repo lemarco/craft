@@ -30,7 +30,7 @@ async fn spawn_durable_node<M>(
 where
     M: crate::core::StateMachine + Send + Sync + Default + 'static,
 {
-    crate::builder::TrembitaClusterBuilder::new(id, machine)
+    trembita_assembly::builder::TrembitaClusterBuilder::new(id, machine)
         .members(members)
         .raft_config(fast_raft_config_with_seed(11))
         .tick_period(TICK_PERIOD)
@@ -47,13 +47,14 @@ async fn single_node_data_dir_survives_restart() {
     let node_id = NodeId(1);
 
     {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
-            .members([node_id])
-            .raft_config(fast_raft_config_with_seed(3))
-            .tick_period(TICK_PERIOD)
-            .data_dir(&data_dir)
-            .start_local(&net)
-            .await;
+        let cluster =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
+                .members([node_id])
+                .raft_config(fast_raft_config_with_seed(3))
+                .tick_period(TICK_PERIOD)
+                .data_dir(&data_dir)
+                .start_local(&net)
+                .await;
 
         wait_for_trembita_leader(&cluster).await;
         let resp = cluster
@@ -71,13 +72,14 @@ async fn single_node_data_dir_survives_restart() {
     let _ = net.detach(node_id);
 
     {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
-            .members([node_id])
-            .raft_config(fast_raft_config_with_seed(3))
-            .tick_period(TICK_PERIOD)
-            .data_dir(&data_dir)
-            .start_local(&net)
-            .await;
+        let cluster =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
+                .members([node_id])
+                .raft_config(fast_raft_config_with_seed(3))
+                .tick_period(TICK_PERIOD)
+                .data_dir(&data_dir)
+                .start_local(&net)
+                .await;
 
         wait_for_trembita_leader(&cluster).await;
         let got = cluster
@@ -109,14 +111,15 @@ async fn multi_raft_data_dir_survives_restart() {
     let node_id = NodeId(1);
 
     {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
-            .members([node_id])
-            .raft_config(fast_raft_config_with_seed(3))
-            .tick_period(TICK_PERIOD)
-            .raft_machines([KvMachine::default(), KvMachine::default()])
-            .data_dir(&data_dir)
-            .start_local(&net)
-            .await;
+        let cluster =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
+                .members([node_id])
+                .raft_config(fast_raft_config_with_seed(3))
+                .tick_period(TICK_PERIOD)
+                .raft_machines([KvMachine::default(), KvMachine::default()])
+                .data_dir(&data_dir)
+                .start_local(&net)
+                .await;
 
         wait_for_group_leaders(&cluster).await;
 
@@ -135,14 +138,15 @@ async fn multi_raft_data_dir_survives_restart() {
     let _ = net.detach(node_id);
 
     {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
-            .members([node_id])
-            .raft_config(fast_raft_config_with_seed(3))
-            .tick_period(TICK_PERIOD)
-            .raft_machines([KvMachine::default(), KvMachine::default()])
-            .data_dir(&data_dir)
-            .start_local(&net)
-            .await;
+        let cluster =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
+                .members([node_id])
+                .raft_config(fast_raft_config_with_seed(3))
+                .tick_period(TICK_PERIOD)
+                .raft_machines([KvMachine::default(), KvMachine::default()])
+                .data_dir(&data_dir)
+                .start_local(&net)
+                .await;
 
         wait_for_group_leaders(&cluster).await;
 
@@ -170,13 +174,14 @@ async fn compacted_snapshot_survives_facade_restart() {
     let node_id = NodeId(1);
 
     {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, TrackedKv::default())
-            .members([node_id])
-            .raft_config(fast_raft_config_with_seed(5))
-            .tick_period(TICK_PERIOD)
-            .data_dir(&data_dir)
-            .start_local(&net)
-            .await;
+        let cluster =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(node_id, TrackedKv::default())
+                .members([node_id])
+                .raft_config(fast_raft_config_with_seed(5))
+                .tick_period(TICK_PERIOD)
+                .data_dir(&data_dir)
+                .start_local(&net)
+                .await;
 
         wait_for_trembita_leader(&cluster).await;
 
@@ -225,13 +230,14 @@ async fn compacted_snapshot_survives_facade_restart() {
     let _ = net.detach(node_id);
 
     {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, TrackedKv::default())
-            .members([node_id])
-            .raft_config(fast_raft_config_with_seed(5))
-            .tick_period(TICK_PERIOD)
-            .data_dir(&data_dir)
-            .start_local(&net)
-            .await;
+        let cluster =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(node_id, TrackedKv::default())
+                .members([node_id])
+                .raft_config(fast_raft_config_with_seed(5))
+                .tick_period(TICK_PERIOD)
+                .data_dir(&data_dir)
+                .start_local(&net)
+                .await;
 
         wait_for_trembita_leader(&cluster).await;
 

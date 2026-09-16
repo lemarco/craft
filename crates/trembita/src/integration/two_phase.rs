@@ -27,13 +27,14 @@ async fn spawn_two_group_cluster_with_2pc(
     let net = LocalNetwork::new();
     let mut clusters = Vec::new();
     for &id in &ids {
-        let mut builder = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
-            .members(ids)
-            .raft_config(fast_raft_config_with_seed(17))
-            .tick_period(TICK_PERIOD)
-            .shard_count(64)
-            .cross_shard_2pc(true)
-            .raft_machines([KvMachine::default(), KvMachine::default()]);
+        let mut builder =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
+                .members(ids)
+                .raft_config(fast_raft_config_with_seed(17))
+                .tick_period(TICK_PERIOD)
+                .shard_count(64)
+                .cross_shard_2pc(true)
+                .raft_machines([KvMachine::default(), KvMachine::default()]);
         if durable {
             builder = builder.durable_cross_shard_2pc(true);
         }
@@ -138,14 +139,15 @@ async fn cross_shard_two_phase_rejected_when_disabled() {
     let net = LocalNetwork::new();
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
-            .members(ids)
-            .raft_config(fast_raft_config_with_seed(19))
-            .tick_period(TICK_PERIOD)
-            .shard_count(64)
-            .raft_machines([KvMachine::default(), KvMachine::default()])
-            .start_local(&net)
-            .await;
+        let cluster =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
+                .members(ids)
+                .raft_config(fast_raft_config_with_seed(19))
+                .tick_period(TICK_PERIOD)
+                .shard_count(64)
+                .raft_machines([KvMachine::default(), KvMachine::default()])
+                .start_local(&net)
+                .await;
         clusters.push(Arc::new(cluster));
     }
     wait_for_each_group_cluster_leader(&clusters, 2).await;
@@ -181,14 +183,15 @@ async fn spawn_durable_two_group_cluster_with_2pc(
     data_dir: PathBuf,
     prepare_timeout: Option<Duration>,
 ) -> TrembitaCluster<KvMachine> {
-    let mut builder = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
-        .members(members)
-        .raft_config(fast_raft_config_with_seed(23))
-        .tick_period(TICK_PERIOD)
-        .shard_count(64)
-        .durable_cross_shard_2pc(true)
-        .raft_machines([KvMachine::default(), KvMachine::default()])
-        .data_dir(data_dir);
+    let mut builder =
+        trembita_assembly::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
+            .members(members)
+            .raft_config(fast_raft_config_with_seed(23))
+            .tick_period(TICK_PERIOD)
+            .shard_count(64)
+            .durable_cross_shard_2pc(true)
+            .raft_machines([KvMachine::default(), KvMachine::default()])
+            .data_dir(data_dir);
     if let Some(timeout) = prepare_timeout {
         builder = builder.two_phase_prepare_timeout(timeout);
     }
@@ -310,16 +313,17 @@ async fn durable_two_phase_prepare_gc_aborts_stale() {
     let ids = [crate::NodeId(1), crate::NodeId(2), crate::NodeId(3)];
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
-            .members(ids)
-            .raft_config(fast_raft_config_with_seed(29))
-            .tick_period(TICK_PERIOD)
-            .shard_count(64)
-            .durable_cross_shard_2pc(true)
-            .two_phase_prepare_timeout(Duration::from_millis(50))
-            .raft_machines([KvMachine::default(), KvMachine::default()])
-            .start_local(&net)
-            .await;
+        let cluster =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
+                .members(ids)
+                .raft_config(fast_raft_config_with_seed(29))
+                .tick_period(TICK_PERIOD)
+                .shard_count(64)
+                .durable_cross_shard_2pc(true)
+                .two_phase_prepare_timeout(Duration::from_millis(50))
+                .raft_machines([KvMachine::default(), KvMachine::default()])
+                .start_local(&net)
+                .await;
         clusters.push(Arc::new(cluster));
     }
     wait_for_each_group_cluster_leader(&clusters, 2).await;

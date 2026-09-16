@@ -6,13 +6,11 @@
 mod client;
 mod coordinator;
 mod fetch;
-#[cfg(feature = "http-jobs")]
 mod http;
 mod install;
 
 pub use coordinator::{UpgradeOpts, UpgradeRunError, spawn_upgrade_coordinator};
 pub use fetch::{UpgradeFetchError, fetch_artifact};
-#[cfg(feature = "http-jobs")]
 pub use http::upgrade_api;
 pub use install::{
     UpgradeInstallError, atomic_symlink_install, running_app_version, verify_sha256_hex,

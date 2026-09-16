@@ -6,7 +6,7 @@ use std::time::Duration;
 use trembita_core::Config;
 
 use crate::app::EmptyStateMachine;
-use crate::builder::TrembitaClusterBuilder;
+use trembita_assembly::TrembitaClusterBuilder;
 
 /// Product boot tuning for [`.configure`](super::app::TrembitaAppBuilder::configure).
 ///

@@ -17,14 +17,15 @@ async fn auto_compaction_persists_snapshot_under_data_dir() {
     let net = LocalNetwork::new();
     let node_id = NodeId(1);
 
-    let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
-        .members([node_id])
-        .raft_config(fast_raft_config_with_seed(4))
-        .tick_period(TICK_PERIOD)
-        .data_dir(&data_dir)
-        .auto_compaction(CompactionPolicy::entries(3))
-        .start_local(&net)
-        .await;
+    let cluster =
+        trembita_assembly::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
+            .members([node_id])
+            .raft_config(fast_raft_config_with_seed(4))
+            .tick_period(TICK_PERIOD)
+            .data_dir(&data_dir)
+            .auto_compaction(CompactionPolicy::entries(3))
+            .start_local(&net)
+            .await;
 
     wait_for_trembita_leader(&cluster).await;
 

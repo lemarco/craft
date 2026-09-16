@@ -180,7 +180,7 @@ async fn spawn_store_cluster(
     let net = LocalNetwork::new();
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
+        let cluster = trembita_assembly::builder::TrembitaClusterBuilder::new(id, Kv::default())
             .members(ids)
             .raft_config(reachability_raft_config())
             .tick_period(Duration::from_millis(5))

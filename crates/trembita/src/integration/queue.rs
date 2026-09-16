@@ -78,15 +78,16 @@ async fn spawn_queue_cluster_n(
     for &id in node_ids {
         let data_dir = dir.path().join(format!("node-{}", id.0));
         let queue_path = data_dir.join("queue-jobs.redb");
-        let mut builder = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
-            .members(node_ids.to_vec())
-            .raft_config(fast_raft_config_with_seed(11))
-            .tick_period(TICK_PERIOD)
-            .reconcile_period(Duration::from_millis(10))
-            .directory_publish_period(Duration::from_millis(10))
-            .data_dir(&data_dir)
-            .job_queue_at("jobs", queue_path, Duration::from_secs(60))
-            .manage::<Worker>("w", 1, 0);
+        let mut builder =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
+                .members(node_ids.to_vec())
+                .raft_config(fast_raft_config_with_seed(11))
+                .tick_period(TICK_PERIOD)
+                .reconcile_period(Duration::from_millis(10))
+                .directory_publish_period(Duration::from_millis(10))
+                .data_dir(&data_dir)
+                .job_queue_at("jobs", queue_path, Duration::from_secs(60))
+                .manage::<Worker>("w", 1, 0);
         if autoscale {
             builder = builder.job_queue_autoscale::<Worker>("jobs", &policy, 0);
         }
@@ -111,15 +112,16 @@ async fn spawn_sharded_queue_cluster(
     let mut clusters = Vec::new();
     for &id in &ids {
         let data_dir = dir.path().join(format!("node-{}", id.0));
-        let builder = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
-            .members(ids)
-            .raft_config(fast_raft_config_with_seed(11))
-            .tick_period(TICK_PERIOD)
-            .reconcile_period(Duration::from_millis(10))
-            .directory_publish_period(Duration::from_millis(10))
-            .data_dir(&data_dir)
-            .job_queue_sharded("jobs", shards, Duration::from_secs(60))
-            .manage::<Worker>("w", 1, 0);
+        let builder =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
+                .members(ids)
+                .raft_config(fast_raft_config_with_seed(11))
+                .tick_period(TICK_PERIOD)
+                .reconcile_period(Duration::from_millis(10))
+                .directory_publish_period(Duration::from_millis(10))
+                .data_dir(&data_dir)
+                .job_queue_sharded("jobs", shards, Duration::from_secs(60))
+                .manage::<Worker>("w", 1, 0);
         clusters.push(Arc::new(builder.start_local(&net).await));
     }
     (net, clusters)
@@ -625,21 +627,24 @@ async fn membership_autoscale_invokes_join_hook() {
                 let data_dir = dir.join(format!("node-{}", joiner_id.0));
                 std::fs::create_dir_all(&data_dir).expect("datadir");
                 let cluster = Arc::new(
-                    crate::builder::TrembitaClusterBuilder::new(joiner_id, KvMachine::default())
-                        .members(ids)
-                        .raft_config(fast_raft_config_with_seed(11))
-                        .tick_period(TICK_PERIOD)
-                        .reconcile_period(Duration::from_millis(10))
-                        .directory_publish_period(Duration::from_millis(10))
-                        .allow_join(true)
-                        .data_dir(&data_dir)
-                        .job_queue_at(
-                            "jobs",
-                            data_dir.join("queue-jobs.redb"),
-                            Duration::from_secs(60),
-                        )
-                        .start_local(&net)
-                        .await,
+                    trembita_assembly::builder::TrembitaClusterBuilder::new(
+                        joiner_id,
+                        KvMachine::default(),
+                    )
+                    .members(ids)
+                    .raft_config(fast_raft_config_with_seed(11))
+                    .tick_period(TICK_PERIOD)
+                    .reconcile_period(Duration::from_millis(10))
+                    .directory_publish_period(Duration::from_millis(10))
+                    .allow_join(true)
+                    .data_dir(&data_dir)
+                    .job_queue_at(
+                        "jobs",
+                        data_dir.join("queue-jobs.redb"),
+                        Duration::from_secs(60),
+                    )
+                    .start_local(&net)
+                    .await,
                 );
                 *joiner_store.lock().expect("poisoned") = Some(Arc::clone(&cluster));
                 let response = send_join_request(
@@ -667,17 +672,18 @@ async fn membership_autoscale_invokes_join_hook() {
         };
         let data_dir = dir.join(format!("node-{}", id.0));
         let queue_path = data_dir.join("queue-jobs.redb");
-        let builder = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
-            .members(ids)
-            .raft_config(fast_raft_config_with_seed(11))
-            .tick_period(TICK_PERIOD)
-            .reconcile_period(Duration::from_millis(10))
-            .directory_publish_period(Duration::from_millis(10))
-            .allow_join(true)
-            .data_dir(&data_dir)
-            .job_queue_at("jobs", queue_path, Duration::from_secs(60))
-            .manage::<Worker>("w", 1, 0)
-            .job_queue_membership_autoscale("jobs", &policy, join_hook);
+        let builder =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
+                .members(ids)
+                .raft_config(fast_raft_config_with_seed(11))
+                .tick_period(TICK_PERIOD)
+                .reconcile_period(Duration::from_millis(10))
+                .directory_publish_period(Duration::from_millis(10))
+                .allow_join(true)
+                .data_dir(&data_dir)
+                .job_queue_at("jobs", queue_path, Duration::from_secs(60))
+                .manage::<Worker>("w", 1, 0)
+                .job_queue_membership_autoscale("jobs", &policy, join_hook);
         clusters.push(Arc::new(builder.start_local(&net).await));
     }
 

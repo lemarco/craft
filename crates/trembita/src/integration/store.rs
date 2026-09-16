@@ -71,7 +71,7 @@ async fn durable_actor_store_replicates_to_voters() {
 
     for id in ids {
         let cluster = Arc::new(
-            crate::builder::TrembitaClusterBuilder::new(id, Empty)
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, Empty)
                 .members(ids)
                 .data_dir(base.join(format!("node-{}", id.0)))
                 .tick_period(Duration::from_millis(5))
@@ -124,7 +124,7 @@ async fn store_replicate_rejects_non_leader_caller() {
     let mut clusters = Vec::new();
     for id in ids {
         clusters.push(Arc::new(
-            crate::builder::TrembitaClusterBuilder::new(id, Empty)
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, Empty)
                 .members(ids)
                 .data_dir(base.join(format!("node-{}", id.0)))
                 .start_local(&net)
@@ -178,7 +178,7 @@ async fn ttl_keys_expire_on_cluster_store() {
     let mut clusters = Vec::new();
     for id in ids {
         clusters.push(Arc::new(
-            crate::builder::TrembitaClusterBuilder::new(id, Empty)
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, Empty)
                 .members(ids)
                 .data_dir(base.join(format!("node-{}", id.0)))
                 .tick_period(Duration::from_millis(5))

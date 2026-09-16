@@ -35,7 +35,7 @@ use trembita_runtime::{
 };
 
 use crate::cluster_handle::{ClusterFacts, TrembitaCluster};
-use crate::gateway::ConnectionTracker;
+use crate::connections::ConnectionTracker;
 use crate::handler::{NodeRouter, PeerSource};
 use crate::multi_raft::{ArcGroupMigrate, GroupMigratePort, MultiRaftState};
 use crate::workload::WorkloadRuntime;

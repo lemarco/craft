@@ -295,10 +295,7 @@ fn http_drain_timeout_from_env() -> Duration {
     env("TREMBITA_HTTP_DRAIN_TIMEOUT")
         .or_else(|| env("TREMBITA_GATEWAY_DRAIN_TIMEOUT"))
         .and_then(|raw| raw.parse::<u64>().ok())
-        .map_or(
-            crate::gateway::DEFAULT_GATEWAY_DRAIN_TIMEOUT,
-            Duration::from_secs,
-        )
+        .map_or(crate::DEFAULT_GATEWAY_DRAIN_TIMEOUT, Duration::from_secs)
 }
 
 /// Load [`AppConfig`] from standard `TREMBITA_*` environment variables.

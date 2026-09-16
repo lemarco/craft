@@ -6,9 +6,9 @@ use std::time::Duration;
 
 use crate::Gateway;
 use crate::ReadyOpts;
-use crate::builder::TrembitaClusterBuilder;
 use crate::cluster::{PemSecurity, TrembitaCluster};
 use crate::upgrade::{UpgradeMachine, UpgradeOpts, spawn_upgrade_runtime, upgrade_api};
+use trembita_assembly::builder::TrembitaClusterBuilder;
 
 use super::self_update_config as debug;
 

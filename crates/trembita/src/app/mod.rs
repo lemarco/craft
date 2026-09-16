@@ -1,4 +1,4 @@
-//! [`TrembitaApp`] — product-facing entry point over [`TrembitaCluster`](crate::cluster_handle::TrembitaCluster)
+//! [`TrembitaApp`] — product-facing entry point over [`TrembitaCluster`](trembita_assembly::cluster_handle::TrembitaCluster)
 //! ([product-scenarios](../../../docs/decisions/product-scenarios.md)).
 
 mod builder;

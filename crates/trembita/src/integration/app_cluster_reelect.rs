@@ -39,15 +39,16 @@ async fn empty_state_machine_cluster_re_elects_after_leader_shutdown() {
 
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(id, EmptyStateMachine)
-            .members(ids)
-            .data_dir(base.join(format!("node-{}", id.0)))
-            .raft_config(fast_raft_config())
-            .tick_period(Duration::from_millis(5))
-            .reconcile_period(Duration::from_millis(20))
-            .directory_publish_period(Duration::from_millis(20))
-            .start_local(&net)
-            .await;
+        let cluster =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, EmptyStateMachine)
+                .members(ids)
+                .data_dir(base.join(format!("node-{}", id.0)))
+                .raft_config(fast_raft_config())
+                .tick_period(Duration::from_millis(5))
+                .reconcile_period(Duration::from_millis(20))
+                .directory_publish_period(Duration::from_millis(20))
+                .start_local(&net)
+                .await;
         clusters.push(cluster);
     }
 

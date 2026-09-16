@@ -44,34 +44,30 @@
 mod actor_group;
 mod app;
 mod app_opts;
-mod builder;
 mod capability;
-mod certs;
-mod cluster_handle;
 mod configure;
 mod consumer;
 mod cron_opts;
-pub mod discovery;
-mod env_config;
 mod gateway;
-mod handler;
 mod job_opts;
-mod multi_raft;
-mod node_id;
-mod observer;
 mod queue_opts;
-mod ready;
-mod saga;
 mod scheduled_workflow_opts;
-mod security;
 mod shutdown_signal;
 mod topic_opts;
-mod two_phase;
 mod work_trigger;
 mod worker_opts;
 mod workflow;
 mod workflow_opts;
-mod workload;
+
+/// Cluster seed resolution (re-exported from internal assembly crate).
+pub mod discovery {
+    pub use trembita_assembly::discovery::*;
+}
+
+/// Rolling self-update coordinator (re-exported from internal assembly crate).
+pub mod upgrade {
+    pub use trembita_assembly::upgrade::*;
+}
 
 #[cfg(test)]
 mod integration;
@@ -86,8 +82,6 @@ pub mod cluster;
 pub mod env;
 /// Typical product imports (`TrembitaApp`, opts structs, `consumer!`, …).
 pub mod prelude;
-/// Rolling self-update coordinator (reference [`UpgradeMachine`](core::UpgradeMachine)).
-pub mod upgrade;
 
 #[doc(inline)]
 pub use trembita_proto::{self as proto, NodeId, PROTOCOL_VERSION, Term};
@@ -112,7 +106,6 @@ pub use app::{
     TestBoot, TopicsPreset, TrembitaApp, TrembitaAppBuilder, journal_workflow,
 };
 pub use app_opts::RunOpts;
-pub use builder::StartError;
 pub use capability::{
     CallBuilder, CapCallOpts, CapEnqueueOutcome, CapError, CapGroup, CapGroupScale, CapManifest,
     CapOp, CapQueued, CapRequest, CapRuntime, CapVia, CapWire, OpCtx, Route, deliver_event,
@@ -135,11 +128,13 @@ pub use gateway::{
 };
 pub use job_opts::JobOpts;
 pub use queue_opts::QueueOpts;
-pub use ready::ReadyOpts;
 pub use scheduled_workflow_opts::ScheduledWorkflowOpts;
 pub use shutdown_signal::wait_for_int_or_term;
 pub use topic_opts::TopicOpts;
 pub use trembita_actor_store::InMemoryStore;
+pub use trembita_assembly::ReadyOpts;
+pub use trembita_assembly::StartError;
+pub use trembita_assembly::workload::WorkloadRuntime;
 pub use trembita_events::TopicContext;
 pub use trembita_events::{
     EventOutboxCursor, EventOutboxDrainOpts, EventOutboxError, EventOutboxPoll, EventOutboxSource,
@@ -159,7 +154,6 @@ pub use work_trigger::{DispatchError, DispatchOutcome, dispatch_work_trigger};
 pub use worker_opts::{WorkerGroup, WorkerOpts, WorkerScale};
 pub use workflow::{WorkflowBuildError, WorkflowBuilder};
 pub use workflow_opts::WorkflowOpts;
-pub use workload::WorkloadRuntime;
 
 #[cfg(feature = "http-jobs")]
 pub use gateway::ws::{

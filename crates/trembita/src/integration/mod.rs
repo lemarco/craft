@@ -1,10 +1,10 @@
 //! Custom [`StateMachine`](crate::core::StateMachine) integration tests — not public API.
 //!
-//! Product tests stay in `tests/`; framework tests that need [`TrembitaClusterBuilder`](crate::builder::TrembitaClusterBuilder) live here.
+//! Product tests stay in `tests/`; framework tests that need [`TrembitaClusterBuilder`](trembita_assembly::builder::TrembitaClusterBuilder) live here.
 
 #![allow(clippy::large_futures)]
 
-pub(crate) use crate::builder::TrembitaClusterBuilder;
+pub(crate) use trembita_assembly::TrembitaClusterBuilder;
 
 mod support;
 pub(crate) use support::{

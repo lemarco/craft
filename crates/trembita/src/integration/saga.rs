@@ -26,14 +26,15 @@ async fn spawn_two_group_cluster() -> (LocalNetwork, Vec<Arc<TrembitaCluster<KvM
     let net = LocalNetwork::new();
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
-            .members(ids)
-            .raft_config(fast_raft_config_with_seed(11))
-            .tick_period(TICK_PERIOD)
-            .shard_count(64)
-            .raft_machines([KvMachine::default(), KvMachine::default()])
-            .start_local(&net)
-            .await;
+        let cluster =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
+                .members(ids)
+                .raft_config(fast_raft_config_with_seed(11))
+                .tick_period(TICK_PERIOD)
+                .shard_count(64)
+                .raft_machines([KvMachine::default(), KvMachine::default()])
+                .start_local(&net)
+                .await;
         clusters.push(Arc::new(cluster));
     }
     (net, clusters)
@@ -328,7 +329,7 @@ async fn spawn_durable_two_group_cluster(
     members: [NodeId; 3],
     data_dir: PathBuf,
 ) -> TrembitaCluster<KvMachine> {
-    crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
+    trembita_assembly::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
         .members(members)
         .raft_config(fast_raft_config_with_seed(11))
         .tick_period(TICK_PERIOD)
@@ -473,15 +474,16 @@ async fn composite_saga_journal_mirrors_to_actor_state_store() {
     let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
-            .members(ids)
-            .raft_config(fast_raft_config_with_seed(11))
-            .tick_period(TICK_PERIOD)
-            .shard_count(64)
-            .raft_machines([KvMachine::default(), KvMachine::default()])
-            .actor_state_store(Arc::clone(&store))
-            .start_local(&net)
-            .await;
+        let cluster =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
+                .members(ids)
+                .raft_config(fast_raft_config_with_seed(11))
+                .tick_period(TICK_PERIOD)
+                .shard_count(64)
+                .raft_machines([KvMachine::default(), KvMachine::default()])
+                .actor_state_store(Arc::clone(&store))
+                .start_local(&net)
+                .await;
         clusters.push(Arc::new(cluster));
     }
     wait_for_each_group_cluster_leader(&clusters, 2).await;

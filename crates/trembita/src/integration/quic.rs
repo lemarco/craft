@@ -31,7 +31,7 @@ async fn quic_cluster_elects_leader_and_replicates() {
             ca.issue_node(id).expect("issue node cert"),
             ca.root_store().expect("trust root"),
         );
-        let cluster = crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
+        let cluster = trembita_assembly::builder::TrembitaClusterBuilder::new(id, Kv::default())
             .members(ids)
             .raft_config(fast_raft_config())
             .tick_period(TICK_PERIOD)
@@ -83,7 +83,7 @@ async fn a_new_node_dynamically_joins_over_quic() {
             ca.issue_node(id).expect("issue node cert"),
             ca.root_store().expect("trust root"),
         );
-        let cluster = crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
+        let cluster = trembita_assembly::builder::TrembitaClusterBuilder::new(id, Kv::default())
             .members(ids)
             .allow_join(true)
             .raft_config(fast_raft_config())
@@ -114,7 +114,7 @@ async fn a_new_node_dynamically_joins_over_quic() {
         ca.issue_node(joiner_id).expect("issue joiner cert"),
         ca.root_store().expect("trust root"),
     );
-    let joiner = crate::builder::TrembitaClusterBuilder::new(joiner_id, Kv::default())
+    let joiner = trembita_assembly::builder::TrembitaClusterBuilder::new(joiner_id, Kv::default())
         .members(ids)
         .allow_join(true)
         .raft_config(fast_raft_config())
@@ -183,7 +183,7 @@ async fn dynamic_voter_join_when_join_as_voter() {
             ca.issue_node(id).expect("issue node cert"),
             ca.root_store().expect("trust root"),
         );
-        let cluster = crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
+        let cluster = trembita_assembly::builder::TrembitaClusterBuilder::new(id, Kv::default())
             .members(ids)
             .allow_join(true)
             .allow_voter_join(true)
@@ -204,7 +204,7 @@ async fn dynamic_voter_join_when_join_as_voter() {
         ca.issue_node(joiner_id).expect("issue joiner cert"),
         ca.root_store().expect("trust root"),
     );
-    let joiner = crate::builder::TrembitaClusterBuilder::new(joiner_id, Kv::default())
+    let joiner = trembita_assembly::builder::TrembitaClusterBuilder::new(joiner_id, Kv::default())
         .members(ids)
         .allow_join(true)
         .raft_config(fast_raft_config())

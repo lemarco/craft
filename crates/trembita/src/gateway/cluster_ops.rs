@@ -7,7 +7,7 @@ use std::time::Duration;
 use trembita_core::StateMachine;
 use trembita_http::{Gateway, GatewayService, RouteTable};
 
-use crate::cluster_handle::TrembitaCluster;
+use trembita_assembly::cluster_handle::TrembitaCluster;
 
 use super::GatewayHandle;
 use super::GatewayTlsPaths;

@@ -30,7 +30,7 @@ async fn graceful_leave_removes_departing_node_before_shutdown() {
     let net = LocalNetwork::new();
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
+        let cluster = trembita_assembly::builder::TrembitaClusterBuilder::new(id, Kv::default())
             .members(ids)
             .raft_config(fast_raft_config())
             .tick_period(TICK_PERIOD)

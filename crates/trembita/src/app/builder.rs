@@ -8,13 +8,11 @@ use super::gateway_defaults::default_product_surfaces;
 use crate::NodeId;
 use crate::actor_group::ActorGroupOpts;
 use crate::app_opts::RunOpts;
-use crate::builder::{StartError, TrembitaClusterBuilder};
 use crate::capability::CapManifest;
 use crate::capability::CapRuntime;
 use crate::configure::TrembitaConfigure;
 use crate::consumer::ConsumerSpawnFn;
 use crate::cron_opts::CronOpts;
-use crate::env_config::{AppConfig, app_config_from_env};
 use crate::gateway::spawn_gateway as spawn_gateway_task;
 use crate::gateway::{GatewayBearerIdentity, GatewayConfig, GatewayOpts};
 use crate::job_opts::JobOpts;
@@ -22,6 +20,8 @@ use crate::queue_opts::QueueOpts;
 use crate::scheduled_workflow_opts::ScheduledWorkflowOpts;
 use crate::worker_opts::{WorkerGroup, WorkerOpts};
 use crate::workflow_opts::{WorkflowOpts, WorkflowRegistration};
+use trembita_assembly::{AppConfig, app_config_from_env};
+use trembita_assembly::{StartError, TrembitaClusterBuilder};
 use trembita_runtime::{LeaderGate, LeaderLoopOpts, UserActor};
 
 use super::manifest::AppManifest;
@@ -198,7 +198,7 @@ impl TrembitaAppBuilder {
         builder
     }
 
-    /// Env-first builder: cluster join/listen/data_dir/job queue from `TREMBITA_*` (see [`crate::env_config::app_config_from_env`]).
+    /// Env-first builder: cluster join/listen/data_dir/job queue from `TREMBITA_*` (see [`trembita_assembly::env_config::app_config_from_env`]).
     ///
     /// Prefer [`Self::from_config`] when `main` already parsed env once. Register domain wiring (`.jobs`, `.manifest`, …), then [`.run`](Self::run)([`RunOpts::for_manifest`](crate::app_opts::RunOpts::for_manifest)).
     ///

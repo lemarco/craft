@@ -64,22 +64,24 @@ async fn pem_hot_reload_reissues_leaf_without_restart() {
         ..Default::default()
     };
 
-    let cluster1 = crate::builder::TrembitaClusterBuilder::new(NodeId(1), Counter::default())
-        .members([NodeId(1), NodeId(2)])
-        .raft_config(raft.clone())
-        .tick_period(Duration::from_millis(10))
-        .cert_watch(Duration::from_millis(100))
-        .start_quic_pem(pem1, listen1, peers.clone())
-        .await
-        .expect("start node 1");
+    let cluster1 =
+        trembita_assembly::builder::TrembitaClusterBuilder::new(NodeId(1), Counter::default())
+            .members([NodeId(1), NodeId(2)])
+            .raft_config(raft.clone())
+            .tick_period(Duration::from_millis(10))
+            .cert_watch(Duration::from_millis(100))
+            .start_quic_pem(pem1, listen1, peers.clone())
+            .await
+            .expect("start node 1");
 
-    let cluster2 = crate::builder::TrembitaClusterBuilder::new(NodeId(2), Counter::default())
-        .members([NodeId(1), NodeId(2)])
-        .raft_config(raft)
-        .tick_period(Duration::from_millis(10))
-        .start_quic_pem(pem2, listen2, peers)
-        .await
-        .expect("start node 2");
+    let cluster2 =
+        trembita_assembly::builder::TrembitaClusterBuilder::new(NodeId(2), Counter::default())
+            .members([NodeId(1), NodeId(2)])
+            .raft_config(raft)
+            .tick_period(Duration::from_millis(10))
+            .start_quic_pem(pem2, listen2, peers)
+            .await
+            .expect("start node 2");
 
     let reload = cluster1.cert_reload().expect("cert reload handle");
     // Reissue node 1 cert from the same CA (simulates step-ca renewal).

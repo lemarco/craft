@@ -9,7 +9,7 @@ use crate::AppManifest;
 use crate::ReadyOpts;
 use crate::app::ManifestRunHint;
 use crate::app::{ShutdownOpts, TrembitaApp};
-use crate::env_config::AppConfig;
+use trembita_assembly::env_config::AppConfig;
 
 /// Custom shutdown future for [`RunOpts::with_shutdown_signal`].
 pub type ShutdownSignal = Pin<Box<dyn Future<Output = ()> + Send>>;
@@ -59,9 +59,11 @@ impl RunOpts {
     /// Boot/shutdown options from `TREMBITA_*` (`TREMBITA_GRACEFUL_LEAVE`, `TREMBITA_JOB_QUEUE` → wait-for-queue).
     ///
     /// # Errors
-    /// Invalid environment (same as [`crate::env_config::app_config_from_env`]).
+    /// Invalid environment (same as [`trembita_assembly::env_config::app_config_from_env`]).
     pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self::from_config(&crate::env_config::app_config_from_env()?))
+        Ok(Self::from_config(
+            &trembita_assembly::env_config::app_config_from_env()?,
+        ))
     }
 
     /// [`Self::from_config`] plus readiness from [`AppManifest`]: one job stream → wait-for-queue; several → use env or [`.with_wait_queue`](Self::with_wait_queue).

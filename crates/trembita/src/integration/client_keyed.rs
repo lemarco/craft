@@ -20,15 +20,16 @@ async fn spawn_multi_raft_cluster() -> (LocalNetwork, Vec<Arc<TrembitaCluster<Kv
     let shard_count = 64;
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
-            .members(ids)
-            .raft_config(fast_raft_config_with_seed(3))
-            .tick_period(TICK_PERIOD)
-            .shard_count(shard_count)
-            .group_replication_factor(64)
-            .raft_machines([KvMachine::default(), KvMachine::default()])
-            .start_local(&net)
-            .await;
+        let cluster =
+            trembita_assembly::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
+                .members(ids)
+                .raft_config(fast_raft_config_with_seed(3))
+                .tick_period(TICK_PERIOD)
+                .shard_count(shard_count)
+                .group_replication_factor(64)
+                .raft_machines([KvMachine::default(), KvMachine::default()])
+                .start_local(&net)
+                .await;
         clusters.push(Arc::new(cluster));
     }
     (net, clusters)

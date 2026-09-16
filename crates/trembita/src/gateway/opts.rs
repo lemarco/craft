@@ -7,7 +7,7 @@ use std::time::Duration;
 use trembita_http::{AuthMode, Gateway, RouteTable};
 
 use crate::app::DefaultGatewayApis;
-use crate::env_config::{AppConfig, app_config_from_env};
+use trembita_assembly::{AppConfig, app_config_from_env};
 
 use super::GatewayTlsPaths;
 use super::config::{DEFAULT_GATEWAY_DRAIN_TIMEOUT, GatewayConfig, GatewaySurfacesFn};

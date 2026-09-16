@@ -8,7 +8,7 @@ use trembita_http::{AuthFn, UpgradeApi, UpgradeApiError};
 
 use super::client::{propose_upgrade, query_upgrade_view};
 use crate::cluster_handle::TrembitaCluster;
-use crate::gateway::bearer_auth_from_env;
+use crate::http_auth::bearer_auth_from_env;
 
 /// Build cluster upgrade routes backed by Raft propose/query on `cluster`.
 ///

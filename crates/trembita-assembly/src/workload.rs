@@ -6,7 +6,7 @@ use tokio::sync::watch;
 use trembita_jobs::ConsumerTune;
 use trembita_runtime::ComputeTokenPool;
 
-use crate::gateway::ConnectionTracker;
+use crate::connections::ConnectionTracker;
 
 /// Shared workload governor state on a running cluster node.
 #[derive(Debug)]
@@ -50,7 +50,8 @@ impl WorkloadRuntime {
         Arc::clone(&self.connections)
     }
 
-    pub(crate) fn queue_consumer_workload(&self) -> trembita_jobs::QueueConsumerWorkload {
+    #[doc(hidden)]
+    pub fn queue_consumer_workload(&self) -> trembita_jobs::QueueConsumerWorkload {
         trembita_jobs::QueueConsumerWorkload {
             tokens: self.pool(),
             tune: self.tune(),

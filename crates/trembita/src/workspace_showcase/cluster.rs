@@ -1,8 +1,8 @@
 //! Internal cluster builder entry for maintainer harnesses (benchmarks, soaks).
 
 use crate::NodeId;
-use crate::builder::TrembitaClusterBuilder;
 use crate::core::StateMachine;
+use trembita_assembly::builder::TrembitaClusterBuilder;
 
 /// Same as the removed public `TrembitaCluster::builder` — workspace / integration only.
 #[doc(hidden)]

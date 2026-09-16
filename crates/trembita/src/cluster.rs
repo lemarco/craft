@@ -5,14 +5,6 @@
 //! embedding the runtime (not via the product builder).
 
 pub use crate::app::{EmptyStateMachine, WorkerInfo};
-pub use crate::builder::StartError;
-pub use crate::certs::{
-    CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_for_node,
-    cert_paths_from_env,
-};
-pub use crate::cluster_handle::{
-    AddRaftGroupsError, ClusterFacts, LeaveError, ScaleClusterError, TrembitaCluster,
-};
 pub use crate::gateway::{
     GATEWAY_MAX_BODY_BYTES, GatewayConfig, GatewayConfigError, GatewayHandle, GatewaySpawnError,
     WrappedGatewayService, build_gateway_service, gateway_token_from_env, spawn_gateway,
@@ -20,24 +12,32 @@ pub use crate::gateway::{
 };
 #[cfg(feature = "http-jobs")]
 pub use crate::gateway::{cluster_ops_route_table, spawn_cluster_ops_http};
-pub use crate::saga::{
+pub use crate::workflow::{WorkflowBuildError, WorkflowBuilder};
+pub use trembita_actor_store::{
+    ClusterActorStateStore, RedbActorStateStore, StoreService, run_actor_store_gc_ticker,
+};
+pub use trembita_assembly::Security;
+pub use trembita_assembly::StartError;
+pub use trembita_assembly::certs::{
+    CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_for_node,
+    cert_paths_from_env,
+};
+pub use trembita_assembly::cluster_handle::{
+    AddRaftGroupsError, ClusterFacts, LeaveError, ScaleClusterError, TrembitaCluster,
+};
+pub use trembita_assembly::saga::{
     CompositeSagaJournal, Group0SagaJournal, MetaRaftSagaJournal, SagaRegistry, StoreSagaJournal,
     record_saga_metrics, saga_metrics_callback,
 };
-pub use crate::security::Security;
-pub use crate::two_phase::{
+pub use trembita_assembly::two_phase::{
     CompositeTwoPhaseJournal, MetaRaftTwoPhaseJournal, StoreTwoPhaseJournal, TwoPhaseRegistry,
     record_two_phase_event, record_two_phase_gc_aborted, record_two_phase_metrics,
     two_phase_metrics_callback,
 };
-pub use crate::upgrade::{
+pub use trembita_assembly::upgrade::{
     UpgradeFetchError, UpgradeInstallError, UpgradeOpts, UpgradeRunError, atomic_symlink_install,
     fetch_artifact, report_upgrade_boot, running_app_version, spawn_upgrade_coordinator,
     spawn_upgrade_runtime, verify_sha256_hex,
-};
-pub use crate::workflow::{WorkflowBuildError, WorkflowBuilder};
-pub use trembita_actor_store::{
-    ClusterActorStateStore, RedbActorStateStore, StoreService, run_actor_store_gc_ticker,
 };
 pub use trembita_core::ReachabilityConfig;
 pub use trembita_core::kv;

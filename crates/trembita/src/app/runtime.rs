@@ -12,10 +12,10 @@ use trembita_runtime::{
 
 use crate::NodeId;
 use crate::capability::CapRuntime;
-use crate::cluster_handle::{ClusterFacts, TrembitaCluster};
 use crate::gateway::{GatewayConfig, GatewayHandle};
 use crate::workflow::WorkflowBuilder;
 use crate::workflow_opts::{WorkflowRegistration, resolve_workflow};
+use trembita_assembly::cluster_handle::{ClusterFacts, TrembitaCluster};
 
 use super::builder::TrembitaAppBuilder;
 use super::manifest::AppManifest;
@@ -64,14 +64,14 @@ impl TrembitaApp {
     /// Prefer [`Self::from_config`] when configuration is already parsed in `main`.
     ///
     /// # Errors
-    /// Invalid or missing required environment variables ([`crate::env_config::app_config_from_env`]).
+    /// Invalid or missing required environment variables ([`trembita_assembly::env_config::app_config_from_env`]).
     pub fn from_env() -> Result<TrembitaAppBuilder, Box<dyn std::error::Error>> {
         TrembitaAppBuilder::from_env()
     }
 
     /// Same as [`TrembitaAppBuilder::from_config`].
     #[must_use]
-    pub fn from_config(cfg: crate::env_config::AppConfig) -> TrembitaAppBuilder {
+    pub fn from_config(cfg: trembita_assembly::env_config::AppConfig) -> TrembitaAppBuilder {
         TrembitaAppBuilder::from_config(cfg)
     }
 
@@ -80,7 +80,7 @@ impl TrembitaApp {
     /// # Errors
     /// Boot, env, or shutdown failures.
     pub async fn run_manifest(
-        cfg: crate::env_config::AppConfig,
+        cfg: trembita_assembly::env_config::AppConfig,
         manifest: AppManifest,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Self::from_config(cfg).manifest(manifest).run().await
@@ -542,7 +542,7 @@ impl TrembitaApp {
     #[must_use]
     pub fn shutdown_opts_from_env() -> ShutdownOpts {
         ShutdownOpts {
-            graceful_leave: crate::env_config::app_config_from_env()
+            graceful_leave: trembita_assembly::env_config::app_config_from_env()
                 .map_or(true, |c| c.graceful_leave),
             drain_actors: true,
             consumers: None,
