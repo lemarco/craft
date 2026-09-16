@@ -18,7 +18,7 @@ type WorkflowRunnerFn = Arc<
         + Sync,
 >;
 
-/// One registered workflow for [`.workflows`](super::app::TrembitaAppBuilder::workflows).
+/// One registered workflow for [`.workflows`](crate::AppManifest::workflows).
 pub struct WorkflowOpts {
     prefix: Option<String>,
     plan: WorkflowPlanFn,

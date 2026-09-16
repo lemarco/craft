@@ -39,7 +39,7 @@
 //!
 //! ## Cluster APIs
 //!
-//! Runtime embedding (handles, queues, journals): [`cluster`] (`TrembitaCluster`, …).
+//! Runtime embedding (handles, queues, journals): [`cluster`] module and [`TrembitaCluster`](crate::cluster::TrembitaCluster).
 //!
 //! Environment variables: [`mod@env`]. Architecture: `docs/` in the repository.
 

@@ -1,7 +1,7 @@
 //! Cluster runtime handle, queues, journals, and related types.
 //!
 //! Product apps use [`crate::TrembitaApp`] and [`crate::prelude`]. Import from here for
-//! [`TrembitaCluster`] control, job enqueue options, saga journals, and TLS helpers when
+//! [`TrembitaCluster`](crate::cluster::TrembitaCluster) control, job enqueue options, saga journals, and TLS helpers when
 //! embedding the runtime (not via the product builder).
 
 pub use crate::app::{EmptyStateMachine, WorkerInfo};

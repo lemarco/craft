@@ -63,7 +63,7 @@ impl Parse for ConsumerArgs {
     }
 }
 
-/// Implement [`trembita::CapRequest`](trembita::CapRequest) on a serde request struct.
+/// Implement [`CapRequest`](https://docs.rs/trembita/latest/trembita/trait.CapRequest.html) on a serde request struct.
 ///
 /// Prefer [`macro@cap_handler`] when the handler is in the same crate — it infers `Reply`
 /// from `Result<Reply, CapError>`. Use this attribute for request-only DTOs (gateway JSON)
@@ -77,20 +77,20 @@ pub fn cap_request(attr: TokenStream, item: TokenStream) -> TokenStream {
     cap_request::expand_cap_request(args, &input).into()
 }
 
-/// Implement [`trembita::CapRequest`](trembita::CapRequest) from a capability handler.
+/// Implement [`CapRequest`](https://docs.rs/trembita/latest/trembita/trait.CapRequest.html) from a capability handler.
 ///
-/// Handlers must be **`async fn`** ([`CapOp::for_request_async`](trembita::CapOp::for_request_async)).
-/// Sync handlers: register with [`CapOp::for_request`](trembita::CapOp::for_request) in tests or advanced wiring only.
+/// Handlers must be **`async fn`** ([`CapOp::for_request_async`](https://docs.rs/trembita/latest/trembita/struct.CapOp.html#method.for_request_async)).
+/// Sync handlers: register with [`CapOp::for_request`](https://docs.rs/trembita/latest/trembita/struct.CapOp.html#method.for_request) in tests or advanced wiring only.
 ///
 /// ```ignore
 /// #[cap_handler(group = "chat")]
-/// async fn append(msg: Append, state: &mut State) -> Result<AppendAck, CapError> { … }
+/// async fn append(msg: Append, state: &mut State) -> Result<AppendAck, CapError> { todo!() }
 ///
 /// cap_register_chain!(CapGroup::<State>::for_cap::<Append>().per_node(), append_register)
 /// ```
 ///
-/// Delivery mode ([`Route`](trembita::Route)) is chosen at the call site; registration does not whitelist routes.
-/// Generates `{handler}_register` for [`trembita::cap_register_chain`].
+/// Delivery mode ([`Route`](https://docs.rs/trembita/latest/trembita/enum.Route.html)) is chosen at the call site; registration does not whitelist routes.
+/// Generates `{handler}_register` for [`cap_register_chain!`](https://docs.rs/trembita/latest/trembita/macro.cap_register_chain.html).
 #[proc_macro_attribute]
 pub fn cap_handler(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as cap_handler::CapHandlerArgs);

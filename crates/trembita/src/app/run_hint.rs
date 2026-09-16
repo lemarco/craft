@@ -1,6 +1,6 @@
 //! Run-time defaults derived from product registration (jobs, workers).
 
-/// Readiness hints captured from [`.manifest`](super::TrembitaAppBuilder::manifest) / [`.jobs`](super::TrembitaAppBuilder::jobs).
+/// Readiness hints captured from [`.manifest`](super::TrembitaAppBuilder::manifest) / [`AppManifest::jobs`](crate::AppManifest::jobs).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ManifestRunHint {
     pub(crate) job_streams: Vec<String>,

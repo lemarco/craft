@@ -10,7 +10,7 @@ use crate::queue_opts::QueueOpts;
 
 /// One durable job stream with optional handler, scaling, and HTTP enqueue.
 ///
-/// Combines [`.queue`](super::app::TrembitaAppBuilder::queue) + [`.consumer`](super::app::TrembitaAppBuilder::consumer)
+/// Combines [`.queue`](crate::AppManifest::queue) + [`.consumer`](crate::AppManifest::consumer)
 /// (+ optional gateway `/jobs/*`) in a single declaration.
 ///
 /// ```

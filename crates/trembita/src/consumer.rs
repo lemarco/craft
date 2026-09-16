@@ -39,7 +39,7 @@ impl ConsumerGroup {
         self
     }
 
-    /// Split into stream names and spawn closures for [`crate::TrembitaAppBuilder::consumers`].
+    /// Split into stream names and spawn closures for [`AppManifest::consumers`](crate::AppManifest::consumers).
     #[must_use]
     pub fn into_parts(self) -> (Vec<String>, Vec<ConsumerSpawnFn>) {
         (self.streams, self.spawners)
@@ -292,7 +292,7 @@ pub trait JobConsumer: Send + Sync + 'static {
 impl TrembitaApp {
     /// Lease from `stream` and run [`dispatch_work_trigger`](crate::work_trigger::dispatch_work_trigger).
     ///
-    /// Used by [`.scheduled_workflows`](crate::app::TrembitaAppBuilder::scheduled_workflows); apps rarely call this directly.
+    /// Used by [`.scheduled_workflows`](crate::AppManifest::scheduled_workflows); apps rarely call this directly.
     pub fn spawn_work_trigger_consumer(
         self: &Arc<Self>,
         stream: &str,
@@ -360,7 +360,7 @@ impl TrembitaApp {
 
     /// Spawn a background task that leases from `C::STREAM`, invokes the handler, and ack/nacks.
     ///
-    /// Requires the stream to be registered via [`crate::TrembitaAppBuilder::queue`].
+    /// Requires the stream to be registered via [`AppManifest::queue`](crate::AppManifest::queue).
     /// Pass a [`tokio::sync::watch`] stop receiver to shut the loop down cleanly.
     /// The `_consumer` value is only used for type inference (see [`macro@crate::consumer`]).
     ///

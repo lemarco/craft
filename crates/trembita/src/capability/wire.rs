@@ -1,4 +1,4 @@
-//! On-the-wire frames for [`super::host::CapHost`].
+//! On-the-wire frames for capability host actors.
 
 use serde::{Deserialize, Serialize};
 

@@ -11,7 +11,7 @@ use super::op::{CapHandlerFn, CapOp, CapOpSpec};
 use super::route::Route;
 use crate::TrembitaApp;
 
-/// How many [`CapHost`](super::host::CapHost) instances run for a group.
+/// How many capability host actor instances run for a group.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CapGroupScale {
     /// Fixed pool size cluster-wide.

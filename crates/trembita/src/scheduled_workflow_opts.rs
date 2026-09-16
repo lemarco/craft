@@ -79,7 +79,7 @@ impl ScheduledWorkflowOpts {
         self
     }
 
-    /// Cron expression → enqueue workflow bootstrap → [`TrembitaApp::run_workflow_id`].
+    /// Cron expression → enqueue workflow bootstrap → [`TrembitaApp::run_workflow_id`](crate::TrembitaApp::run_workflow_id).
     #[must_use]
     pub fn workflow(
         mut self,

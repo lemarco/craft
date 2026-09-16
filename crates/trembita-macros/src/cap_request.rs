@@ -1,4 +1,4 @@
-//! `#[cap_request(...)]` — [`trembita::CapRequest`](trembita::CapRequest) impl for capability DTOs.
+//! `#[cap_request(...)]` — [`CapRequest`](https://docs.rs/trembita/latest/trembita/trait.CapRequest.html) impl for capability DTOs.
 
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;

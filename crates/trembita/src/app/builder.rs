@@ -108,7 +108,7 @@ impl TrembitaAppBuilder {
         }
     }
 
-    /// Domain service ports available from [`OpCtx::deps`] in capability handlers.
+    /// Domain service ports available from [`OpCtx::deps`](crate::OpCtx::deps) in capability handlers.
     #[must_use]
     pub fn cap_deps(mut self, deps: CapDeps) -> Self {
         self.cap_deps = Some(deps);
@@ -687,7 +687,7 @@ impl TrembitaAppBuilder {
         .await
     }
 
-    /// Boot using [`RunOpts`] derived from [`Self::from_config`] / registration ([`.manifest`](Self::manifest), [`.jobs`](Self::jobs)).
+    /// Boot using [`RunOpts`] derived from [`Self::from_config`] / registration ([`.manifest`](Self::manifest), [`AppManifest::jobs`](crate::AppManifest::jobs)).
     ///
     /// # Errors
     /// Same as [`Self::run_with`].
@@ -696,7 +696,7 @@ impl TrembitaAppBuilder {
         self.run_with(opts).await
     }
 
-    /// Boot, spawn registered [`Self::consumer`] loops, block on shutdown signal, graceful shutdown.
+    /// Boot, spawn registered job consumer loops, block on shutdown signal, graceful shutdown.
     ///
     /// Always starts a QUIC cluster member (seed or joiner) from `TREMBITA_*` env.
     ///

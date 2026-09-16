@@ -49,7 +49,7 @@ impl TrembitaApp {
         }
     }
 
-    /// Builder-injected ports for [`OpCtx::deps`].
+    /// Builder-injected ports for [`OpCtx::deps`](crate::OpCtx::deps).
     #[must_use]
     pub fn cap_deps(&self) -> &CapDeps {
         &self.cap_deps
@@ -205,7 +205,7 @@ impl TrembitaApp {
         self.handle().propose(command).await
     }
 
-    /// Workflow store when [`TrembitaClusterBuilder::data_dir`](crate::cluster::TrembitaClusterBuilder::data_dir) / auto durable store is enabled.
+    /// Workflow store when cluster `data_dir` / auto durable store is enabled ([`TrembitaConfigure::with_data_dir`](crate::TrembitaConfigure::with_data_dir)).
     #[must_use]
     pub fn actor_state_store(&self) -> Option<Arc<dyn trembita_actor_store::ActorStateStore>> {
         self.cluster.actor_state_store()

@@ -50,7 +50,7 @@ impl<'a> OpCtx<'a> {
         self.ingress
     }
 
-    /// Builder-injected domain ports ([`TrembitaAppBuilder::cap_deps`]).
+    /// Builder-injected domain ports ([`TrembitaAppBuilder::cap_deps`](crate::TrembitaAppBuilder::cap_deps)).
     #[must_use]
     pub fn deps<T: Send + Sync + 'static>(&self) -> Option<&T> {
         self.app.and_then(|a| a.cap_deps().get())

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use trembita_jobs::DEFAULT_QUEUE_PREFETCH;
 
-/// One durable job stream for [`.queue`](super::app::TrembitaAppBuilder::queue).
+/// One durable job stream for [`.queue`](crate::AppManifest::queue).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueueOpts {
     /// Stream name (`queue-{name}.redb` under `data_dir`).

@@ -2,12 +2,12 @@
 
 use trembita_jobs::RecurringJob;
 
-/// One cron-driven enqueue schedule for [`.cron`](super::app::TrembitaAppBuilder::cron).
+/// One cron-driven enqueue schedule for [`.cron`](crate::AppManifest::cron).
 ///
-/// Requires a matching stream from [`.queue`](super::app::TrembitaAppBuilder::queue) on the same builder.
+/// Requires a matching stream from [`.queue`](crate::AppManifest::queue) on the same manifest.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CronOpts {
-    /// Job stream name (must match [`.queue`](super::app::TrembitaAppBuilder::queue)).
+    /// Job stream name (must match [`.queue`](crate::AppManifest::queue)).
     pub stream: String,
     /// Schedule definition (cron expression, payload, …).
     pub job: RecurringJob,

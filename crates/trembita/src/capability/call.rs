@@ -55,7 +55,7 @@ pub struct CapCallOpts {
     pub wait_timeout: Option<Duration>,
     /// Enqueue dedup key (overrides [`CapRequest::cap_key`] when set).
     pub dedup_key: Option<Vec<u8>>,
-    /// Propagated into [`OpCtx::ingress`] on the handler.
+    /// Propagated into [`OpCtx::ingress`](crate::OpCtx::ingress) on the handler.
     pub ingress: Option<CapIngress>,
 }
 
@@ -111,7 +111,7 @@ impl<Req: CapRequest> CallBuilder<'_, Req> {
         self
     }
 
-    /// Attach gateway / caller metadata for the handler ([`OpCtx::ingress`]).
+    /// Attach gateway / caller metadata for the handler ([`OpCtx::ingress`](crate::OpCtx::ingress)).
     #[must_use]
     pub fn ingress(mut self, ingress: CapIngress) -> Self {
         self.opts.ingress = Some(ingress);
@@ -360,7 +360,7 @@ fn ensure_route(
     }
 }
 
-/// Postcard frame for session cast/ask to a [`CapHost`](super::host::CapHost) (internal wire).
+/// Postcard frame for session cast/ask to a capability host actor (internal wire).
 pub(crate) fn cap_wire_bytes<Req: CapRequest>(
     req: &Req,
     ingress: Option<&CapIngress>,

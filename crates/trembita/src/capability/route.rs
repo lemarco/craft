@@ -19,7 +19,7 @@ pub enum Route {
     QueuedWait,
     /// Enqueue for a future run (`CallBuilder::run_at_ms`).
     Scheduled,
-    /// Deliver via sticky [`crate::ActorSession`] (`CallBuilder::session_key`).
+    /// Deliver via sticky [`ActorSession`](crate::cluster::ActorSession) (`CallBuilder::session_key`).
     Session,
     /// Topic ingress (subscribe) or egress (publish via [`super::publish_event`] / [`.publish_event()`](super::CallBuilder::publish_event)).
     Event,

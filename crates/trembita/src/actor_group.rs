@@ -1,6 +1,6 @@
 //! Actor group registration options for [`TrembitaAppBuilder`](super::app::TrembitaAppBuilder).
 
-/// Scale and config for [`.actors`](super::app::TrembitaAppBuilder::actors).
+/// Scale and config for worker registration via [`AppManifest::workers`](crate::AppManifest::workers).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActorGroupOpts<C> {
     /// Actor constructor config passed to [`UserActor`](trembita_runtime::UserActor).

@@ -6,7 +6,7 @@ use super::runtime::TrembitaApp;
 
 /// Run a workflow using the default keyed client and Meta-Raft journal.
 ///
-/// Pass as the runner to [`.workflows`](super::TrembitaAppBuilder::workflows) when no custom client is needed.
+/// Pass as the runner to [`.workflows`](crate::AppManifest::workflows) when no custom client is needed.
 ///
 /// # Errors
 /// Same as [`TrembitaApp::run_workflow`].

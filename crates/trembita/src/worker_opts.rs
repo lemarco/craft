@@ -234,7 +234,7 @@ pub(crate) struct WorkerEntry {
     pub apply: WorkerApplyFn,
 }
 
-/// Type-erased collection of [`WorkerOpts`] for [`.workers`](super::app::TrembitaAppBuilder::workers).
+/// Type-erased collection of [`WorkerOpts`] for [`.workers`](crate::AppManifest::workers).
 #[derive(Default)]
 pub struct WorkerGroup {
     entries: Vec<WorkerEntry>,
