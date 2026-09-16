@@ -161,19 +161,18 @@ let worker = app.spawn_consumer(
 
 **Idempotency:** use `EnqueueOptions::dedup_key` and/or store processed ids in your `StateMachine` or `ActorStateStore`.
 
-### Queue → capability bridge
+### Queued capability (greenfield)
 
-Use the queue for **durability and retry**; delegate **stateful side effects** to a capability op. The background-jobs showcase implements this in [`examples/background-jobs/src/bridge.rs`](../../examples/background-jobs/src/bridge.rs):
+Use **`Route::Queued`** on a capability op — the runtime registers the job stream and queue→ask bridge automatically ([`capability/queue`](../../crates/trembita/src/capability/queue.rs)). HTTP ingress: [`examples/background-jobs/src/http/product.rs`](../../examples/background-jobs/src/http/product.rs) (`cap_enqueue`).
 
 ```rust
-// Register Arc<TrembitaApp> when the consumer starts.
-ConsumerOpts::default().on_app(|app| bridge::register(app))
-
-// In the handler — fire-and-forget to the ledger capability.
-Record { key: job_key }.via(app).fire().await?;
+// Handler — after side effect, fire another op inline.
+Record { key: job_key }.via(ctx.app()?).fire().await?;
 ```
 
-Runnable showcase: [`examples/background-jobs/`](../../examples/background-jobs/) (`ledger.record` + `SendEmailConsumer`).
+Runnable showcase: [`examples/background-jobs/`](../../examples/background-jobs/) (`DeliverEmail` queued + `ledger.record` fire).
+
+**Legacy:** `#[consumer]` + `ConsumerOpts::on_app` + manual `.via(app).fire()` remains valid for queue-only streams without `CapManifest`.
 
 Patterns:
 
