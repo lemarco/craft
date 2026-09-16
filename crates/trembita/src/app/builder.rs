@@ -158,6 +158,13 @@ impl TrembitaAppBuilder {
         self
     }
 
+    /// Re-enable `/actors/*` on the default gateway ([`WorkerOpts::http_cast`](crate::WorkerOpts::http_cast)).
+    #[cfg(feature = "http-jobs")]
+    pub(crate) fn enable_actors_gateway_api(&mut self) {
+        self.gateway_api.actors = true;
+        self.gateway_exclude_apis.actors = false;
+    }
+
     /// Disable `POST /workflows/*` on the default gateway (in-process saga API unchanged).
     #[cfg(feature = "http-jobs")]
     #[must_use]

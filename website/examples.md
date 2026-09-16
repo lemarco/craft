@@ -6,7 +6,7 @@ Five standalone projects in the repository — each with its own `Cargo.toml`, R
 |----------|---------|--------|
 | **background-jobs** | HTTP `202` → queue → `#[consumer]` | [examples/background-jobs](https://gitlab.com/lemarco/trembita/-/tree/main/examples/background-jobs) |
 | **realtime** | WebSocket + HTTP → sticky `ActorSession` | [examples/realtime](https://gitlab.com/lemarco/trembita/-/tree/main/examples/realtime) |
-| **stateful-workers** | `ActorStateStore` + idempotent cast + auth HTTP | [examples/stateful-workers](https://gitlab.com/lemarco/trembita/-/tree/main/examples/stateful-workers) |
+| **stateful-workers** | Capabilities + `ActorStateStore` idempotency + `POST /orders/submit` | [examples/stateful-workers](https://gitlab.com/lemarco/trembita/-/tree/main/examples/stateful-workers) |
 | **workflows** | Saga journal + actor/queue steps | [examples/workflows](https://gitlab.com/lemarco/trembita/-/tree/main/examples/workflows) |
 | **self-update** | Leader-coordinated rolling self-update | [examples/self-update](https://gitlab.com/lemarco/trembita/-/tree/main/examples/self-update) |
 

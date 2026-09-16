@@ -192,7 +192,7 @@ impl<A: UserActor> WorkerOpts<A> {
             apply: Box::new(move |mut builder: TrembitaAppBuilder| {
                 builder.registration.actors = true;
                 if http_cast {
-                    builder.gateway_api.actors = true;
+                    builder.enable_actors_gateway_api();
                 }
                 match scale {
                     WorkerScale::Fixed(total) => {

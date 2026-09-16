@@ -149,8 +149,8 @@ decode + handler table).
 
 **Prelude (after MVP):** export `CapManifest`, `Route`, `OpCtx`, `CapError` — not worker traits.
 
-**Deprecation (wave 2+):** `WorkerOpts` / `workers!` / getting-started `UserActor` path marked
-deprecated; remain functional until 1.0. `trembita::runtime` stays for cluster/advanced use
+**Product vs advanced (shipped):** New apps use `CapManifest` + gateway `cap_*`; `WorkerOpts` /
+`UserActor` remain for realtime, migration labs, and custom mailboxes ([getting-started §5](../getting-started.md#5-product-workers) Advanced). `trembita::runtime` stays for cluster/advanced use
 ([facade](facade.md)).
 
 ### HTTP (wave 2)

@@ -1,6 +1,6 @@
 # Getting started — product apps (no Redis)
 
-Quick path for **product teams** using [`TrembitaApp`](../crates/trembita/src/app/mod.rs) — actors, jobs, and durable workflow keys on **embedded redb**, no Kubernetes, no mandatory Redis.
+Quick path for **product teams** using [`TrembitaApp`](../crates/trembita/src/app/mod.rs) — **capabilities**, jobs, and durable workflow keys on **embedded redb**, no Kubernetes, no mandatory Redis.
 
 **Scenarios:** [scenarios/README.md](scenarios/README.md) · **Showcases:** [examples/README.md](../examples/README.md) · **Backlog:** [backlog.md](backlog.md)
 
@@ -24,7 +24,7 @@ Enable on the same `trembita` dependency — no separate adapter crates in your 
 
 | Feature | When to enable |
 |---------|----------------|
-| `http-jobs` (default) | Product gateway, `/jobs/*`, `/actors/*`, `/workflows/*`, custom [`RouteTable`](decisions/gateway-routing-v2.md) |
+| `http-jobs` (default) | Product gateway, `/jobs/*`, optional `/actors/*` (advanced), `/workflows/*`, custom [`RouteTable`](decisions/gateway-routing-v2.md) + [`cap_*`](decisions/capability-dx.md) |
 | `dev-certs` | Solo local seed without operator-provided mTLS PEMs |
 | `redis-store` | Redis-backed [`ActorStateStore`](decisions/actor-state-redis.md) instead of embedded redb |
 | `external-backlog` | Postgres (or compatible) work table as [`ExternalBacklog`](decisions/external-backlog.md) source |
@@ -130,7 +130,7 @@ cargo build -p trembita-cli   # debug CLI (`dev` is omitted from `--release` / c
 | Showcase | Pattern |
 |----------|---------|
 | [background-jobs](../examples/background-jobs/) | Durable job queue |
-| [stateful-workers](../examples/stateful-workers/) | Stateful actors + migration |
+| [stateful-workers](../examples/stateful-workers/) | Capabilities + idempotent store (+ advanced migration demo) |
 | [realtime](../examples/realtime/) | Sticky sessions / WebSocket |
 | [workflows](../examples/workflows/) | Saga journal + steps |
 
@@ -152,7 +152,9 @@ Reference KV [`StateMachine`](../crates/trembita-core/src/kv.rs) (`trembita::kv`
 
 ### Capabilities (recommended)
 
-Register ops in `capabilities/` + [`CapManifest`](decisions/capability-dx.md), call with `.via(&app)`, expose HTTP in `http/` via [`cap_*`](decisions/capability-dx.md#http-wave-2). Policy: [capability-greenfield-wire](decisions/capability-greenfield-wire.md) — no `/actors/cast` for new apps. Guide: [scenarios/capabilities.md](scenarios/capabilities.md).
+Register ops in `capabilities/` + [`CapManifest`](decisions/capability-dx.md), call with `.via(&app)` (`.fire()`, `.enqueue()`, `.publish_event()` for other routes), expose HTTP in `http/` via [`cap_fire` / `cap_invoke` / `cap_enqueue`](decisions/capability-dx.md#http-wave-2). Policy: [capability-greenfield-wire](decisions/capability-greenfield-wire.md) — no `/actors/cast` for new apps. Guide: [scenarios/capabilities.md](scenarios/capabilities.md).
+
+Scaffolded apps ship sample `POST /ping` → inline `app.ping` in `src/http/product.rs`.
 
 ### Advanced — `UserActor`
 
@@ -305,14 +307,14 @@ Generates the [framework layout](decisions/framework-conventions.md):
 | Path | Role |
 |------|------|
 | `main.rs` | Boot only — `App::new(AppConfig::from_env()).run().await` |
-| `manifest.rs` | [`AppManifest::build()`](../crates/trembita/src/app/manifest.rs) — jobs, topics, workers (`// trembita:*` marker comments) |
-| `app.rs` | [`.manifest(manifest::build())`](../crates/trembita/src/app/builder.rs), gateway [`.gateway_routes()`](../crates/trembita/src/app/builder.rs), `.run()` |
-| `consumers/`, `actors/`, `http/`, `domain/` | Handlers, surfaces, hexagon |
+| `manifest.rs` | [`AppManifest::build()`](../crates/trembita/src/app/manifest.rs) — jobs, topics, capabilities (`// trembita:*` marker comments) |
+| `app.rs` | [`.manifest(manifest::build())`](../crates/trembita/src/app/builder.rs), [`.without_actors_api()`](../crates/trembita/src/app/builder.rs), gateway [`.gateway_routes()`](../crates/trembita/src/app/builder.rs), `.run()` |
+| `capabilities/`, `consumers/`, `http/`, `domain/` | Typed ops, job handlers, `cap_*` routes, hexagon |
+| `actors/` | Optional (`--features actors`) — advanced `UserActor` only |
 | `deploy/` | Local cluster env + compose |
 
-Add capabilities by editing **`src/manifest.rs`** (inside `// trembita:jobs` / `:topics` / … regions),
-adding handlers under `consumers/` / `actors/`, and wiring gateway routes in **`app.rs`** / `src/http/`
-(see scaffold `src/http/ops.rs` and [`examples/`](../examples/)). Then:
+Add capabilities by editing **`src/manifest.rs`** (`// trembita:capabilities` region) and **`src/capabilities/`**,
+wire HTTP in **`src/http/product.rs`** ([`cap_invoke`](../crates/trembita/src/gateway/cap_handlers.rs)), add job handlers under `consumers/`. Then:
 
 ```bash
 trembita doctor   # manifest ↔ files consistency (read-only)
@@ -337,6 +339,7 @@ Most apps stay on `TrembitaApp`. For custom state machines, multi-Raft, or direc
 |------|-----|
 | Background jobs | [scenarios/background-jobs.md](scenarios/background-jobs.md) |
 | Event topics | [scenarios/event-topics.md](scenarios/event-topics.md) |
+| Capabilities (typed ops) | [scenarios/capabilities.md](scenarios/capabilities.md) |
 | Stateful workers | [scenarios/stateful-workers.md](scenarios/stateful-workers.md) |
 | Sessions / WebSocket | [scenarios/realtime-sessions.md](scenarios/realtime-sessions.md) |
 | Workflows | [scenarios/workflows.md](scenarios/workflows.md) |

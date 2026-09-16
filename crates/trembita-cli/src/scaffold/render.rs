@@ -489,11 +489,14 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     builder.push_str("            .manifest(manifest)\n");
 
     if features.contains(&AppFeature::Gateway) {
+        builder.push_str(
+            "            .without_actors_api() // opt in via WorkerOpts::http_cast(true) in manifest\n",
+        );
         if opts.template == Some(AppTemplate::Realtime) {
             builder.push_str(
                 r"            .gateway_routes(|state| {
                 // trembita:gateway-routes
-                let mut table = http::product::route_table(&state);
+                let mut table = http::product::route_table(state.clone());
                 table.merge(ws_echo_routes(state));
                 table
                 // trembita:gateway-routes-end
@@ -504,7 +507,7 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
             builder.push_str(
                 r"            .gateway_routes(|state| {
                 // trembita:gateway-routes
-                http::product::route_table(&state)
+                http::product::route_table(state)
                 // trembita:gateway-routes-end
             })
 ",

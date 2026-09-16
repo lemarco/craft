@@ -34,7 +34,9 @@ Single published port per node. Wire and HTTP share the port **number** (differe
 | [`.jobs([…]).http_enqueue(true)`](../crates/trembita/src/job_opts.rs) | `POST/GET /jobs/*`, `GET/PUT/DELETE /jobs/{stream}/schedules/*` | [`.without_jobs_api()`](../crates/trembita/src/app/builder.rs), [`.without_schedules_api()`](../crates/trembita/src/app/builder.rs) |
 | [`.topics([…])`](../crates/trembita/src/app/builder.rs) | `POST /topics/{name}/publish`, `GET /topics/{name}` | [`.without_topics_api()`](../crates/trembita/src/app/builder.rs) |
 | [`.workflows([…])`](../crates/trembita/src/app/builder.rs) | `POST /workflows/run`, `POST /workflows/resume` | [`.without_workflows_api()`](../crates/trembita/src/app/builder.rs) |
-| Workers with HTTP cast/ask | `/actors/*` | [`.without_actors_api()`](../crates/trembita/src/app/builder.rs) |
+| [`.workers()`](../crates/trembita/src/worker_opts.rs) + [`.http_cast(true)`](../crates/trembita/src/worker_opts.rs) | `/actors/*` (advanced) | Default off; scaffolds call [`.without_actors_api()`](../crates/trembita/src/app/builder.rs) |
+
+**Greenfield product HTTP:** declare routes in `src/http/product.rs` with [`cap_fire` / `cap_invoke`](../crates/trembita/src/gateway/cap_handlers.rs) — see [capability-greenfield-wire](decisions/capability-greenfield-wire.md).
 
 Declare capabilities in [`AppManifest`](../crates/trembita/src/app/manifest.rs) (`src/manifest.rs` in scaffolded apps). Custom routes still merge via [`.gateway_routes()`](../crates/trembita/src/app/builder.rs); explicit [`.gateway().surfaces()`](../crates/trembita/src/gateway/opts.rs) is merged with these defaults automatically.
 

@@ -6,7 +6,7 @@
 # node1 = seed (id 1 from disk). node2/3 join via TREMBITA_JOIN_SEEDS; leader assigns ids.
 # Certs: node-0.pem = bootstrap mTLS before assignment; node-N.pem after join (pre-minted in certgen).
 #
-# HTTP: http://127.0.0.1:8190/actors/orders/cast  /dashboard  /health
+# HTTP: http://127.0.0.1:8190/orders/submit  /dashboard  /health
 
 x-showcase-build: &showcase-build
   build:

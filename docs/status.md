@@ -19,10 +19,11 @@
 |----------|-------|--------|
 | Background jobs | [scenarios/background-jobs.md](scenarios/background-jobs.md) | ✅ queue, DLQ, cron, external backlog |
 | Event topics | [scenarios/event-topics.md](scenarios/event-topics.md) | ✅ pub/sub, named subscriptions |
-| Stateful workers | [scenarios/stateful-workers.md](scenarios/stateful-workers.md) | ✅ `RedbActorStateStore`, migration |
+| Stateful workers | [scenarios/stateful-workers.md](scenarios/stateful-workers.md) | ✅ capabilities + `RedbActorStateStore`; advanced RAM migration demo |
+| Capabilities (typed ops) | [scenarios/capabilities.md](scenarios/capabilities.md) | ✅ `CapManifest`, gateway `cap_*`, Event ingress |
 | Real-time / session | [scenarios/realtime-sessions.md](scenarios/realtime-sessions.md) | ✅ `ActorSession`, gateway WS |
 | Workflows | [scenarios/workflows.md](scenarios/workflows.md) | ✅ Meta-Raft saga journal |
-| Product API | [getting-started.md](getting-started.md) | ✅ `TrembitaApp` + gateway; scaffold [`AppManifest`](../crates/trembita/src/app/manifest.rs) / `manifest.rs` |
+| Product API | [getting-started.md](getting-started.md) | ✅ `TrembitaApp` + gateway; scaffold capabilities + [`cap_*`](../crates/trembita/src/gateway/cap_handlers.rs); greenfield (no default `/actors/*`) |
 
 **Platform core:** pure Raft FSM, HTTP/3/mTLS, redb persistence, cross-node actors, multi-Raft sharding, cross-shard saga/2PC, self-update coordinator, E2E/chaos.
 
@@ -77,6 +78,8 @@ Details below ↓
 **Workload governor** ([workload-governor](decisions/workload-governor.md)): per-node compute tokens + consumer tuning from gateway connections and queue depth; subprocess load via [`compute_cost`](../crates/trembita/src/job_opts.rs) + optional [`ExternalLoad`](decisions/external-load.md) ([B-17](backlog.md#b-17--external-compute-load)).
 
 **Consumer DX** — `#[consumer_json]`, `ConsumerOpts::on_app`, `IdempotencyOpts::retain_for`, graceful drain, workflow step helpers.
+
+**Capability DX (B-21–B-23)** — [`CapManifest`](../crates/trembita/src/capability/manifest.rs), routes (`Inline` … `Event`), gateway adapters, scaffold `capabilities/ping`, [ADR](decisions/capability-dx.md).
 
 **E2E & showcases** — `./e2e/queue.sh`, gateway/idempotency scripts; `examples/background-jobs`, `stateful-workers`, `realtime`, `workflows`.
 

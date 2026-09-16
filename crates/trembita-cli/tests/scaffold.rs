@@ -26,6 +26,12 @@ fn scaffolds_default_layout() {
     assert!(!app.contains("RunOpts::for_manifest"));
     assert!(app.contains("let manifest = manifest::build()"));
     assert!(app.contains(".manifest(manifest)"));
+    assert!(
+        app.contains(".without_actors_api()"),
+        "greenfield scaffold disables /actors/* unless WorkerOpts::http_cast"
+    );
+    let product = std::fs::read_to_string(root.join("src/http/product.rs")).unwrap();
+    assert!(product.contains("cap_invoke::<Ping>"));
     assert!(root.join("src/config.rs").is_file());
     assert!(root.join("src/consumers/sample.rs").is_file());
     assert!(root.join("src/domain/mod.rs").is_file());

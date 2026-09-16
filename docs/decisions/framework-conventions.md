@@ -50,7 +50,6 @@ pub fn build() -> AppManifest {
         .jobs([/* JobOpts … */])
         .topics([/* TopicOpts … */])
         .capabilities(/* CapManifest … */)
-        .jobs([/* JobOpts … */])
         // WorkerOpts: migration / advanced only — see capability-dx ADR
 }
 ```
@@ -60,14 +59,15 @@ pub fn build() -> AppManifest {
 ```rust
 let cfg = self.config;
 let manifest = manifest::build();
-let run = RunOpts::for_manifest(&cfg, &manifest);
 TrembitaApp::from_config(cfg)?
     .manifest(manifest)
-    .gateway_routes(|state| http::product::route_table(&state))
-    .configure(TrembitaConfigure::default())
-    .run(run)
+    .without_actors_api() // greenfield — opt in via WorkerOpts::http_cast(true)
+    .gateway_routes(|state| http::product::route_table(state))
+    .run()
     .await?;
 ```
+
+Product HTTP lives in `src/http/product.rs` ([`cap_fire` / `cap_invoke`](capability-dx.md#http-wave-2)), not on the manifest.
 
 [`trembita doctor`](../../crates/trembita-cli/) errors if `.jobs()` / `.topics()` / `.workers()` appear in `app.rs` instead of `manifest.rs`.
 
@@ -78,7 +78,9 @@ Examples in this repo and hand-written binaries may call [`.jobs()`](../../crate
 | Rule | Rationale |
 |------|-----------|
 | `main.rs` is thin boot only | CLI and `trembita doctor` know where to look |
-| Jobs, topics, workers, workflows live in `manifest.rs` | One registry; marker comments show where to register |
+| Jobs, topics, capabilities, workflows live in `manifest.rs` | One registry; marker comments show where to register |
+| Capability ops live in `capabilities/` | Default product path ([capability-dx](capability-dx.md)) |
+| `actors/` is advanced / optional | Realtime, RAM migration labs; not required for new CRUD-style ops |
 | Gateway / custom HTTP surfaces live in `app.rs` + `src/http/` | Ops + registered product APIs auto-mount with [`from_env()`](../../crates/trembita/src/app/runtime.rs); custom routes and host splits stay explicit ([unified-listener](unified-listener.md)) |
 | `domain/` must not import `trembita::*` | Hexagon boundary ([architecture-style](architecture-style.md), [idempotency-contract](idempotency-contract.md)) |
 | Consumers live in `consumers/`, actors in `actors/` | Predictable layout; `trembita doctor` checks wiring |
