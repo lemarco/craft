@@ -32,7 +32,7 @@ pub enum WorkerScale {
 /// (call as `workers!(…)`):
 ///
 /// ```
-/// # use trembita::{TrembitaApp, WorkerGroup, WorkerOpts, WorkerScale, workers};
+/// # use trembita::{AppManifest, TrembitaApp, TrembitaConfigure, WorkerGroup, WorkerOpts, WorkerScale, workers};
 /// #
 /// # struct OrderProcessor;
 /// # impl trembita::runtime::UserActor for OrderProcessor {
@@ -47,12 +47,12 @@ pub enum WorkerScale {
 /// #
 /// # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
 /// TrembitaApp::builder()
-///     .data_dir("/tmp/app")
-///     .workers(workers!(
+///     .configure(TrembitaConfigure::default().with_data_dir("/tmp/app"))
+///     .manifest(AppManifest::new().workers(workers!(
 ///         WorkerOpts::<OrderProcessor>::new("orders")
 ///             .config(())
 ///             .scale(WorkerScale::Fixed(1)),
-///     ))
+///     )))
 ///     .run()
 ///     .await?;
 /// # Ok(())

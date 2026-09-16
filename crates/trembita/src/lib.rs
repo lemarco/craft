@@ -11,7 +11,9 @@
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     init_tracing();
 //!     TrembitaApp::from_env()?
-//!         .jobs([JobOpts::new("jobs").lease(std::time::Duration::from_secs(300))])
+//!         .manifest(AppManifest::new().jobs([
+//!             JobOpts::new("jobs").lease(std::time::Duration::from_secs(300)),
+//!         ]))
 //!         .run()
 //!         .await
 //! }

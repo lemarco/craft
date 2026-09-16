@@ -16,14 +16,18 @@ use crate::queue_opts::QueueOpts;
 ///
 /// ```
 /// # use std::time::Duration;
-/// # use trembita::{ScheduledWorkflowOpts, TrembitaApp, WorkflowOpts, journal_workflow};
+/// # use trembita::{AppManifest, ScheduledWorkflowOpts, TrembitaApp, TrembitaConfigure};
+/// # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
 /// TrembitaApp::builder()
-///     .data_dir("/tmp/app")
-///     .scheduled_workflows(
+///     .configure(TrembitaConfigure::default().with_data_dir("/tmp/app"))
+///     .manifest(AppManifest::new().scheduled_workflows(
 ///         ScheduledWorkflowOpts::new()
 ///             .workflow("weekly", "0 3 * * 1", "weekly-report"),
-///     )
-///     .workflows([WorkflowOpts::new(/* plan */, journal_workflow)]);
+///     ))
+///     .run()
+///     .await?;
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone)]
 pub struct ScheduledWorkflowOpts {

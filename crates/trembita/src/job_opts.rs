@@ -15,20 +15,20 @@ use crate::queue_opts::QueueOpts;
 ///
 /// ```
 /// # use std::time::Duration;
-/// # use trembita::{TrembitaApp, JobOpts, consumer};
+/// # use trembita::{AppManifest, JobOpts, TrembitaApp, TrembitaConfigure, consumer};
 /// #
 /// # #[consumer("emails")]
 /// # async fn send_email(_payload: &[u8]) -> Result<(), ()> { Ok(()) }
 /// #
 /// # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
 /// TrembitaApp::builder()
-///     .data_dir("/tmp/app")
-///     .jobs([JobOpts::new("emails")
+///     .configure(TrembitaConfigure::default().with_data_dir("/tmp/app"))
+///     .manifest(AppManifest::new().jobs([JobOpts::new("emails")
 ///         .lease(Duration::from_secs(300))
 ///         .consumer(&SendEmailConsumer)
 ///         .instances(2)
 ///         .batch(4)
-///         .http_enqueue(true)])
+///         .http_enqueue(true)]))
 ///     .run()
 ///     .await?;
 /// # Ok(())
