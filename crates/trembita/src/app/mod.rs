@@ -2,6 +2,7 @@
 //! ([product-scenarios](../../../docs/decisions/product-scenarios.md)).
 
 mod builder;
+pub(crate) mod capability_wiring;
 #[cfg(feature = "http-jobs")]
 mod gateway;
 #[cfg(feature = "http-jobs")]
@@ -15,6 +16,8 @@ pub(crate) use run_hint::ManifestRunHint;
 pub use gateway::DefaultGatewayApis;
 mod runtime;
 mod shutdown;
+#[doc(hidden)]
+mod test_boot;
 mod types;
 mod workflow;
 
@@ -22,5 +25,7 @@ pub use builder::TrembitaAppBuilder;
 pub use manifest::{AppManifest, JobsPreset, RealtimePreset, TopicsPreset};
 pub use runtime::TrembitaApp;
 pub use shutdown::ShutdownOpts;
+#[doc(hidden)]
+pub use test_boot::TestBoot;
 pub use types::{EmptyStateMachine, WorkerInfo};
 pub use workflow::journal_workflow;

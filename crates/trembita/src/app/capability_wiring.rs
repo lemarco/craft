@@ -1,0 +1,113 @@
+//! Apply [`CapManifest`](crate::capability::CapManifest) to [`TrembitaAppBuilder`](super::builder::TrembitaAppBuilder).
+
+use std::time::Duration;
+
+use crate::TopicOpts;
+use crate::capability::CapGroupApply;
+use crate::capability::Route;
+use crate::capability::group::{CapGroup, CapHostActor};
+use crate::capability::runtime::{CapRuntime, OpBinding};
+
+use super::builder::TrembitaAppBuilder;
+
+pub(crate) fn wire_manifest(
+    mut builder: TrembitaAppBuilder,
+    groups: Vec<Box<dyn CapGroupApply>>,
+) -> (TrembitaAppBuilder, CapRuntime) {
+    let mut runtime = CapRuntime::empty();
+    for group in groups {
+        builder = CapGroupApply::apply(group, builder, &mut runtime);
+    }
+    (builder, runtime)
+}
+
+impl<S: Send + Default + 'static> CapGroupApply for CapGroup<S> {
+    fn apply(
+        self: Box<Self>,
+        mut builder: TrembitaAppBuilder,
+        runtime: &mut CapRuntime,
+    ) -> TrembitaAppBuilder {
+        let group = *self;
+        let name = group.name();
+        let instances = group.instances_count();
+        let queue_stream = group.queued_stream();
+        let event_ingress = group.event_ingress_spec();
+        let config = group.host_config(builder.cap_runtime.app_slot());
+
+        for spec in group.ops() {
+            let needs_queue = spec
+                .routes
+                .iter()
+                .any(|r| matches!(r, Route::Queued | Route::QueuedWait | Route::Scheduled));
+            if needs_queue && queue_stream.is_none() {
+                builder.config_errors.push(format!(
+                    "CapGroup {name:?}: op {:?} uses a queued route but group has no .queue_stream(...)",
+                    spec.name
+                ));
+            }
+            if spec.routes.iter().any(|r| matches!(r, Route::Event)) && event_ingress.is_none() {
+                builder.config_errors.push(format!(
+                    "CapGroup {name:?}: op {:?} uses Route::Event but group has no .event_ingress(...)",
+                    spec.name
+                ));
+            }
+            runtime.insert(OpBinding {
+                group: name,
+                op: spec.name,
+                routes: spec.routes.clone(),
+                queue_stream,
+                event_topic: event_ingress.map(|(topic, _)| topic),
+                key: spec.key.clone(),
+            });
+        }
+
+        builder.registration.actors = true;
+        builder.inner = builder
+            .inner
+            .manage::<CapHostActor<S>>(name, instances, config);
+
+        if let Some(stream) = queue_stream {
+            let has_queued = group.ops().iter().any(|o| {
+                o.routes.iter().any(|r| {
+                    matches!(
+                        r,
+                        crate::capability::Route::Queued
+                            | crate::capability::Route::QueuedWait
+                            | crate::capability::Route::Scheduled
+                    )
+                })
+            });
+            if has_queued {
+                builder.queue_streams.insert(stream.to_string());
+                builder.inner = builder.inner.job_queue(stream, Duration::from_secs(300));
+                let group_name = name.to_string();
+                builder.pending_consumers.push(Box::new(move |app, stop| {
+                    crate::capability::queue::spawn_bridge(app, group_name, stream, stop)
+                }));
+                builder.consumer_streams.push(stream.to_string());
+            }
+        }
+
+        if let Some((topic, subscription)) = event_ingress {
+            let has_event = group
+                .ops()
+                .iter()
+                .any(|o| o.routes.iter().any(|r| matches!(r, Route::Event)));
+            if has_event {
+                builder = builder.topics([TopicOpts::topic(topic).subscriptions([subscription])]);
+                let group_name = name.to_string();
+                builder.pending_consumers.push(Box::new(move |app, stop| {
+                    crate::capability::event::spawn_bridge(
+                        app,
+                        group_name,
+                        topic,
+                        subscription,
+                        stop,
+                    )
+                }));
+            }
+        }
+
+        builder
+    }
+}

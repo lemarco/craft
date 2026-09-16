@@ -42,15 +42,16 @@ status() {
 health() {
     local gw=000 adm=000
     for _ in 1 2 3 4 5 6 7 8 9 10; do
-        gw=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8190/actors/orders/cast \
-            -H 'content-type: application/json' -d '{"payload":"health"}' 2>/dev/null || echo 000)
+        gw=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            'http://127.0.0.1:8190/orders/submit?user=health&token=showcase' \
+            -H 'content-type: application/json' -d '{"order_id":0}' 2>/dev/null || echo 000)
         adm=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8190/health 2>/dev/null || echo 000)
-        [ "$gw" = 200 ] && [ "$adm" = 200 ] && break
+        [ "$gw" = 202 ] && [ "$adm" = 200 ] && break
         sleep 1
     done
-    echo "HTTP POST /actors/orders/cast → $gw"
+    echo "HTTP POST /orders/submit → $gw"
     echo "HTTP GET  /health             → $adm"
-    [ "$gw" = 200 ] && [ "$adm" = 200 ] && echo "OK: cluster ready" || echo "not ready"
+    [ "$gw" = 202 ] && [ "$adm" = 200 ] && echo "OK: cluster ready" || echo "not ready"
 }
 
 migrate_env() {

@@ -148,9 +148,15 @@ Prefer `./target/debug/trembita dev http --showcase background-jobs -- job email
 
 Reference KV [`StateMachine`](../crates/trembita-core/src/kv.rs) (`trembita::kv` on the facade) for low-level Raft `propose` / `query` without a full product app.
 
-## 5. Workers (actors)
+## 5. Product workers
 
-Register worker types with [`.workers()`](../crates/trembita/src/worker_opts.rs) and explicit [`WorkerScale`](../crates/trembita/src/worker_opts.rs) (`Fixed`, `PerNode`, or queue-driven `Auto`):
+### Capabilities (recommended)
+
+Register ops in `capabilities/` + [`CapManifest`](decisions/capability-dx.md), call with `.via(&app)`, expose HTTP in `http/` via [`cap_*`](decisions/capability-dx.md#http-wave-2). Policy: [capability-greenfield-wire](decisions/capability-greenfield-wire.md) — no `/actors/cast` for new apps. Guide: [scenarios/capabilities.md](scenarios/capabilities.md).
+
+### Advanced — `UserActor`
+
+Realtime, migration demos, custom mailbox protocols. Register with [`.workers()`](../crates/trembita/src/worker_opts.rs) and explicit [`WorkerScale`](../crates/trembita/src/worker_opts.rs) (`Fixed`, `PerNode`, or queue-driven `Auto`):
 
 ```rust
 use trembita::runtime::{UserActor, actor};

@@ -24,10 +24,63 @@ Epics **B-01 … B-18** are **shipped** (see [Shipped epics](#shipped-epics-arch
 | O-03 | Optional OTLP metrics adapter (`trembita-metrics-otlp`) | ✅ | Facade `otlp-metrics`; [`init_metrics_with_otlp`](../crates/trembita-metrics-otlp/src/lib.rs) |
 | O-04 | Governor finer signals (in-flight HTTP, consumer in-flight, optional `ConsumerTune::max_in_flight`) | deferred | [workload-governor § Future work](decisions/workload-governor.md#future-work) |
 | O-06 | Automatic queue sharding under sustained enqueue pressure | deferred | [job-queue § Future work](decisions/job-queue.md#future-work); manual `job_queue_sharded` shipped |
+| B-21 | Capability DX — ops, routes, hide product actor path | ✅ | [ADR](decisions/capability-dx.md) Accepted |
+| B-22 | Greenfield wire — gateway-only product ingress | ✅ | [ADR](decisions/capability-greenfield-wire.md) Accepted |
+| B-23 | Capability migration story (showcase cleanup) | ✅ | [B-23](#b-23--capability-migration-story-) |
 
 
 
 For new feature epics, use the next **B-NN** id and link the scenario + ADR.
+
+### B-21 — Capability DX (product API)
+
+**Priority:** P1  
+**Scenario:** all product paths — stateful workers, jobs, gateway  
+**ADR:** [capability-dx](decisions/capability-dx.md) (**Accepted**)
+
+Typed **ops** registered in `CapManifest`; **routes** (`Inline`, `Queued`, …) chosen at call site.
+Apps do not implement runtime worker traits. Internal `CapHost` dispatches to `async fn run`.
+
+| Subtask | Wave | Description | Status |
+| ------- | ---- | ----------- | ------ |
+| B-21a | 1 | **ADR accepted** + scenario one-pager | ✅ |
+| B-21b | 1 | **`trembita::capability`** — `CapManifest`, `CapGroup`, `Route`, `OpCtx`, `CapError` | ✅ |
+| B-21c | 1 | **Runtime registry + `CapHost`** — envelope dispatch, keyed inline | ✅ |
+| B-21d | 1 | **Adapters** — `Inline`, `InlineFire`, `Queued` + `Via` / `CallBuilder` | ✅ |
+| B-21e | 1 | **`AppManifest::capabilities`** apply + integration test | ✅ |
+| B-21f | 1 | **Migrate `examples/stateful-workers`** to capability layout | ✅ |
+| B-21g | 2 | `QueuedWait`, `Scheduled`, `Session` routes | ✅ |
+| B-21h | 2 | Gateway `cap_fire` / `cap_invoke` / `cap_enqueue`; deprecate `WorkerOpts` in docs | ✅ |
+| B-21i | 2 | `trembita init` → `capabilities/` scaffold | ✅ |
+| B-21j | 3 | `Route::Event` stub; prelude exports; advanced-only `UserActor` docs | ✅ |
+
+**Acceptance (wave 1):** two ops, one group, inline + queued on same handler type, test on `LocalNetwork`.
+
+### B-22 — Greenfield wire (product ingress)
+
+**Priority:** P2  
+**ADR:** [capability-greenfield-wire](decisions/capability-greenfield-wire.md) (**Accepted**)
+
+| Subtask | Description | Status |
+| ------- | ----------- | ------ |
+| B-22a | Default gateway / scaffold without actors HTTP API unless opted in | ✅ |
+| B-22c | getting-started + scenarios: capabilities first; `UserActor` → Advanced | ✅ (scenarios + getting-started §5) |
+| B-22d | Examples/scripts: primary path not `/actors/.../cast` | ✅ |
+| B-22e | `Route::Event` topic ingress (`.event_ingress` + bridge) | ✅ |
+| B-22f | `publish_event()` call-site egress for `Route::Event` | ✅ |
+
+### B-23 — Capability migration story ✅
+
+**Priority:** P3  
+**ADR:** [capability-greenfield-wire](decisions/capability-greenfield-wire.md)
+
+Shipped: orders capability idempotency; legacy `processor.rs` removed; RAM `migrate-demo` documented as advanced-only.
+
+| Subtask | Description | Status |
+| ------- | ----------- | ------ |
+| B-23a | Per-op idempotency + store as default migration (not RAM snapshot) | ✅ (orders capability showcase) |
+| B-23b | Rewrite `migrate-demo` on capabilities or document `UserActor` as advanced-only | ✅ (documented; RAM demo kept) |
+| B-23c | Remove dead `processor.rs` from showcase | ✅ |
 
 ### B-18 ✅ Leader task primitive
 

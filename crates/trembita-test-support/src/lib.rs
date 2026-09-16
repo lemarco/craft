@@ -20,9 +20,9 @@ pub use clock::{
 };
 #[cfg(feature = "facade")]
 pub use facade::{
-    await_trembita_leader, boot_local_app, wait_for_each_group_cluster_leader,
-    wait_for_group_leader_on_any, wait_for_group_leaders, wait_for_trembita_app_leader,
-    wait_for_trembita_leader, wait_for_trembita_stopped,
+    await_trembita_leader, boot_local_app, boot_local_app_with_consumers,
+    wait_for_each_group_cluster_leader, wait_for_group_leader_on_any, wait_for_group_leaders,
+    wait_for_trembita_app_leader, wait_for_trembita_leader, wait_for_trembita_stopped,
 };
 #[cfg(feature = "facade")]
 pub use gateway::{

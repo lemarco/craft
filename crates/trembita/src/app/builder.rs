@@ -9,6 +9,8 @@ use crate::NodeId;
 use crate::actor_group::ActorGroupOpts;
 use crate::app_opts::RunOpts;
 use crate::builder::{StartError, TrembitaClusterBuilder};
+use crate::capability::CapManifest;
+use crate::capability::CapRuntime;
 use crate::configure::TrembitaConfigure;
 use crate::consumer::ConsumerSpawnFn;
 use crate::cron_opts::CronOpts;
@@ -35,13 +37,13 @@ pub struct TrembitaAppBuilder {
     pub(crate) inner: TrembitaClusterBuilder<EmptyStateMachine>,
     workflows: Vec<WorkflowRegistration>,
     pub(crate) registration: TrembitaAppRegistrationFlags,
-    queue_streams: HashSet<String>,
+    pub(crate) queue_streams: HashSet<String>,
     cron_streams: Vec<String>,
     schedule_streams: Vec<String>,
     event_outbox_streams: Vec<String>,
     topic_streams: HashSet<String>,
-    consumer_streams: Vec<String>,
-    pending_consumers: Vec<ConsumerSpawnFn>,
+    pub(crate) consumer_streams: Vec<String>,
+    pub(crate) pending_consumers: Vec<ConsumerSpawnFn>,
     pub(crate) gateway: Option<GatewayConfig>,
     pub(crate) config_errors: Vec<String>,
     pub(crate) gateway_api: TrembitaAppGatewayApiFlags,
@@ -62,6 +64,7 @@ pub struct TrembitaAppBuilder {
     boot_config: Option<AppConfig>,
     /// Derived from [`.manifest`](Self::manifest) / [`.jobs`](Self::jobs) / [`.workers`](Self::workers).
     run_hint: ManifestRunHint,
+    pub(crate) cap_runtime: CapRuntime,
 }
 
 impl TrembitaAppBuilder {
@@ -89,7 +92,21 @@ impl TrembitaAppBuilder {
             gateway_exclude_apis: GatewayProductApiExclusions::default(),
             boot_config: None,
             run_hint: ManifestRunHint::default(),
+            cap_runtime: CapRuntime::empty(),
         }
+    }
+
+    /// Register capability groups ([`CapManifest`](crate::capability::CapManifest)).
+    #[must_use]
+    pub fn capabilities(self, caps: CapManifest) -> Self {
+        let (mut builder, runtime) = caps.apply(self);
+        builder.cap_runtime = runtime;
+        builder
+    }
+
+    pub(crate) fn with_cap_runtime(mut self, runtime: CapRuntime) -> Self {
+        self.cap_runtime = runtime;
+        self
     }
 
     #[must_use]
@@ -708,6 +725,7 @@ impl TrembitaAppBuilder {
         wait_ready: Option<crate::ReadyOpts>,
     ) -> Result<Arc<TrembitaApp>, StartError> {
         let app = Arc::new(app);
+        app.cap_runtime().attach_app(Arc::downgrade(&app));
         if let Some(config) = gateway {
             let addr = config.addr;
             let handle = spawn_gateway_task(Arc::clone(&app), config)
@@ -728,9 +746,10 @@ impl TrembitaAppBuilder {
             builder.validate(product_http)?;
             let workflows = builder.workflows;
             let gateway = builder.gateway;
+            let cap_runtime = builder.cap_runtime;
             let cluster = builder.inner.start_local(net).await;
             return Self::finish_start(
-                TrembitaApp::assemble(cluster, workflows),
+                TrembitaApp::assemble(cluster, workflows, cap_runtime),
                 gateway,
                 opts.wait_ready.clone(),
             )
@@ -749,6 +768,7 @@ impl TrembitaAppBuilder {
         builder.validate(cfg.http)?;
         let workflows = builder.workflows;
         let gateway = builder.gateway;
+        let cap_runtime = builder.cap_runtime;
         let cluster = builder
             .inner
             .start_quic_cluster(
@@ -760,7 +780,7 @@ impl TrembitaAppBuilder {
             )
             .await?;
         Self::finish_start(
-            TrembitaApp::assemble(cluster, workflows),
+            TrembitaApp::assemble(cluster, workflows, cap_runtime),
             gateway,
             opts.wait_ready.clone(),
         )
@@ -801,6 +821,27 @@ impl TrembitaAppBuilder {
     #[doc(hidden)]
     pub async fn boot_for_test(self, mut opts: RunOpts) -> Result<Arc<TrembitaApp>, StartError> {
         self.boot(&mut opts).await
+    }
+
+    /// Like [`Self::boot_for_test`] but also spawns registered queue consumers (capability bridges, …).
+    #[doc(hidden)]
+    pub async fn boot_for_test_with_consumers(
+        mut self,
+        mut opts: RunOpts,
+    ) -> Result<crate::TestBoot, StartError> {
+        let pending = std::mem::take(&mut self.pending_consumers);
+        let app = self.boot(&mut opts).await?;
+        let consumers = if pending.is_empty() {
+            None
+        } else {
+            let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            let handles = pending
+                .into_iter()
+                .map(|spawn| spawn(Arc::clone(&app), stop_rx.clone()))
+                .collect();
+            Some((stop_tx, handles))
+        };
+        Ok(crate::TestBoot { app, consumers })
     }
 
     /// Persistent `data_dir` — enables redb job queue and actor workflow store.

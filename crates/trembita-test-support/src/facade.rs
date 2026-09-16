@@ -28,6 +28,20 @@ pub async fn boot_local_app(
     build().boot_for_test(opts).await.expect("boot_local_app")
 }
 
+/// Boot with queue consumers spawned (capability bridges, job consumers, …).
+#[allow(clippy::large_futures)]
+pub async fn boot_local_app_with_consumers(
+    build: impl FnOnce() -> TrembitaAppBuilder,
+    wait_ready: Option<ReadyOpts>,
+) -> trembita::TestBoot {
+    let mut opts = RunOpts::local();
+    opts.wait_ready = wait_ready;
+    build()
+        .boot_for_test_with_consumers(opts)
+        .await
+        .expect("boot_local_app_with_consumers")
+}
+
 /// Poll until one cluster in `clusters` reports leader, or panic after ~10s.
 ///
 /// # Panics

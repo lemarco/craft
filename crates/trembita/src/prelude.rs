@@ -29,6 +29,12 @@ pub use crate::worker_opts::{WorkerGroup, WorkerOpts, WorkerScale};
 pub use crate::workflow::{WorkflowBuildError, WorkflowBuilder};
 pub use crate::workflow_opts::WorkflowOpts;
 pub use crate::workload::WorkloadRuntime;
+pub use crate::{
+    CallBuilder, CapCallOpts, CapEnqueueOutcome, CapError, CapGroup, CapManifest, CapOp,
+    CapRequest, CapVia, OpCtx, Route, deliver_queued, enqueue, fire, invoke, publish_event,
+};
+#[cfg(feature = "http-jobs")]
+pub use crate::{cap_enqueue, cap_fire, cap_invoke};
 pub use trembita_dashboard::init_tracing;
 pub use trembita_jobs::{WorkTrigger, WorkloadOpts};
 pub use trembita_macros::consumer;

@@ -4,6 +4,8 @@
 //! [gateway-routing-v2](../../docs/decisions/gateway-routing-v2.md).
 
 #[cfg(feature = "http-jobs")]
+mod cap_handlers;
+#[cfg(feature = "http-jobs")]
 mod cluster_ops;
 mod config;
 mod drain;
@@ -43,6 +45,10 @@ pub use session::{NoWorkerError, OpenActorSessionError, SessionHandle};
 pub use spawn::{GatewaySpawnError, spawn_gateway};
 pub use state::TrembitaGatewayState;
 
+#[cfg(feature = "http-jobs")]
+pub use cap_handlers::{
+    CapEnqueueHandler, CapFireHandler, CapInvokeHandler, cap_enqueue, cap_fire, cap_invoke,
+};
 #[cfg(feature = "http-jobs")]
 pub use cluster_ops::{cluster_ops_route_table, spawn_cluster_ops_http};
 #[cfg(feature = "http-jobs")]

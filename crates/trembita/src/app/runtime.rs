@@ -11,6 +11,7 @@ use trembita_runtime::{
 };
 
 use crate::NodeId;
+use crate::capability::CapRuntime;
 use crate::cluster_handle::{ClusterFacts, TrembitaCluster};
 use crate::gateway::{GatewayConfig, GatewayHandle};
 use crate::workflow::WorkflowBuilder;
@@ -27,19 +28,28 @@ pub struct TrembitaApp {
     workflows: Vec<WorkflowRegistration>,
     workflow_lock: Arc<Mutex<()>>,
     gateway: tokio::sync::Mutex<Option<GatewayHandle>>,
+    cap_runtime: CapRuntime,
 }
 
 impl TrembitaApp {
     pub(crate) fn assemble(
         cluster: TrembitaCluster<EmptyStateMachine>,
         workflows: Vec<WorkflowRegistration>,
+        cap_runtime: CapRuntime,
     ) -> Self {
         Self {
             cluster,
             workflows,
             workflow_lock: Arc::new(Mutex::new(())),
             gateway: tokio::sync::Mutex::new(None),
+            cap_runtime,
         }
+    }
+
+    /// Capability op metadata (routes, queue streams) from [`CapManifest`](crate::capability::CapManifest).
+    #[must_use]
+    pub fn cap_runtime(&self) -> &CapRuntime {
+        &self.cap_runtime
     }
 
     /// Begin configuring an app. Always runs as a QUIC cluster member (seed or joiner) via `TREMBITA_*` env in [`.run`](TrembitaAppBuilder::run).

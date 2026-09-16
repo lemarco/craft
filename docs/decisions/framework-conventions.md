@@ -32,7 +32,8 @@ my-app/
     ├── manifest.rs         # capability registry — jobs, topics, workers, workflows
     ├── config.rs           # typed config from env
     ├── consumers/          # #[consumer] handlers (one file per stream)
-    ├── actors/             # UserActor groups (when actors feature enabled)
+    ├── capabilities/       # CapManifest ops (default product path)
+    ├── actors/             # UserActor groups (advanced / legacy scaffold)
     ├── http/               # custom RouteTable surfaces (when gateway feature enabled)
     ├── workflows/          # saga steps (when workflows feature enabled)
     └── domain/             # business logic — no trembita imports
@@ -48,7 +49,9 @@ pub fn build() -> AppManifest {
     AppManifest::new()
         .jobs([/* JobOpts … */])
         .topics([/* TopicOpts … */])
-        .workers(workers!(/* WorkerOpts … */))
+        .capabilities(/* CapManifest … */)
+        .jobs([/* JobOpts … */])
+        // WorkerOpts: migration / advanced only — see capability-dx ADR
 }
 ```
 

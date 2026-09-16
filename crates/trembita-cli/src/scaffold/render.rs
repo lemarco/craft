@@ -75,6 +75,7 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
 
     fs::create_dir_all(root.join("src/consumers"))?;
     fs::create_dir_all(root.join("src/domain"))?;
+    fs::create_dir_all(root.join("src/capabilities"))?;
     fs::create_dir_all(root.join("deploy"))?;
 
     if features.contains(&AppFeature::Actors) {
@@ -127,6 +128,16 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
         &root.join("src/domain/mod.rs"),
         &vars.apply(app_tpl!("src/domain/mod.rs.tpl")),
     )?;
+    if opts.template != Some(AppTemplate::Realtime) {
+        write_file(
+            &root.join("src/capabilities/mod.rs"),
+            &vars.apply(app_tpl!("src/capabilities/mod.rs.tpl")),
+        )?;
+        write_file(
+            &root.join("src/capabilities/ping.rs"),
+            &vars.apply(app_tpl!("src/capabilities/ping.rs.tpl")),
+        )?;
+    }
 
     if features.contains(&AppFeature::Actors) {
         write_file(
@@ -269,6 +280,9 @@ fn generate_main_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> St
         "mod domain;".to_string(),
         "mod manifest;".to_string(),
     ];
+    if opts.template != Some(AppTemplate::Realtime) {
+        mods.push("mod capabilities;".to_string());
+    }
     if features.contains(&AppFeature::Actors) {
         mods.push("mod actors;".to_string());
     }
@@ -331,6 +345,9 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
     if opts.template == Some(AppTemplate::Realtime) {
         imports.push("use crate::actors::chat::ChatWorker;".to_string());
         imports.push("use trembita::RealtimePreset;".to_string());
+    } else {
+        imports.push("use crate::capabilities::ping::{PingState, ping_op};".to_string());
+        imports.push("use trembita::{CapGroup, CapManifest};".to_string());
     }
 
     let imports_block = format!(
@@ -373,6 +390,19 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
         chain.push_str(
             r#"
         .workers(RealtimePreset::worker_per_node("chat", ()))"#,
+        );
+    } else {
+        chain.push_str(
+            r#"
+        .capabilities(
+            // trembita:capabilities
+            CapManifest::new().group(
+                CapGroup::<PingState>::with_state("app")
+                    .instances(1)
+                    .op(ping_op()),
+            ),
+            // trembita:capabilities-end
+        )"#,
         );
     }
 

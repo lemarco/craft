@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cast an order id to the orders actor (HTTP 202).
+# Submit an order via POST /orders/submit (capability fire, HTTP 202).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CRAFT_ROOT="$(cd "$ROOT/../.." && pwd)"
@@ -10,13 +10,13 @@ GATEWAY="${GATEWAY#https://}"
 CLIENT="$CRAFT_ROOT/target/debug/trembita-showcase-client"
 
 if [ -x "$CLIENT" ]; then
-    exec "$CLIENT" cast "$GATEWAY" orders "$ORDER"
+    exec "$CLIENT" submit "$GATEWAY" dev-trigger "$ORDER" showcase
 fi
 
-echo "POST http://$GATEWAY/actors/orders/cast (order $ORDER, JSON payload)"
-curl -sf -X POST "http://$GATEWAY/actors/orders/cast" \
+echo "POST http://$GATEWAY/orders/submit (order $ORDER)"
+curl -sf -X POST "http://$GATEWAY/orders/submit?user=dev-trigger&token=showcase" \
     -H 'content-type: application/json' \
-    -d "{\"payload\":\"$ORDER\"}" \
+    -d "{\"order_id\":$ORDER}" \
     -w '\n→ HTTP %{http_code}\n'
 
 echo "send twice to see idempotent skip in server logs"

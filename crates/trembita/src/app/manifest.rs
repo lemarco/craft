@@ -1,5 +1,6 @@
 //! Declarative product capability registry for [`TrembitaAppBuilder`](super::TrembitaAppBuilder).
 
+use crate::capability::CapManifest;
 use crate::job_opts::JobOpts;
 use crate::topic_opts::TopicOpts;
 use crate::worker_opts::WorkerGroup;
@@ -35,6 +36,7 @@ pub struct AppManifest {
     topics: Vec<TopicOpts>,
     workers: Option<WorkerGroup>,
     workflows: Vec<WorkflowOpts>,
+    capabilities: Option<CapManifest>,
 }
 
 impl AppManifest {
@@ -72,6 +74,13 @@ impl AppManifest {
         self
     }
 
+    /// Typed capability groups ([`CapManifest`](crate::capability::CapManifest)).
+    #[must_use]
+    pub fn capabilities(mut self, caps: CapManifest) -> Self {
+        self.capabilities = Some(caps);
+        self
+    }
+
     /// Durable job stream names from [`.jobs`](Self::jobs) (manifest order).
     #[must_use]
     pub fn job_stream_names(&self) -> Vec<&str> {
@@ -95,6 +104,10 @@ impl AppManifest {
     pub fn apply(self, builder: TrembitaAppBuilder) -> TrembitaAppBuilder {
         let hint = self.run_hint();
         let mut builder = builder;
+        if let Some(caps) = self.capabilities {
+            let (next, runtime) = caps.apply(builder);
+            builder = next.with_cap_runtime(runtime);
+        }
         if !self.jobs.is_empty() {
             builder = builder.jobs(self.jobs);
         }

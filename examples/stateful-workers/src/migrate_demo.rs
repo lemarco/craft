@@ -1,4 +1,7 @@
-//! # Actor migration demo (separate from main HTTP showcase)
+//! # Advanced: in-memory actor RAM migration (not capability migration)
+//!
+//! Demonstrates [`UserActor`] snapshot migrate ([`StatefulCounter`]). Product apps migrate
+//! **per-op** via [`ActorStateStore`] idempotency — see [`crate::capabilities::orders`].
 //!
 //! | Mode | Command |
 //! |------|---------|

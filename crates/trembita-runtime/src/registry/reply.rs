@@ -91,4 +91,12 @@ impl WireReplyPort {
             },
         }
     }
+
+    /// Send reply bytes that are **already** `postcard`-encoded for the caller.
+    ///
+    /// Use when the handler produces dynamic payloads (capability op tables) instead of
+    /// [`reply_port`](Self::reply_port), which would encode twice for [`Vec<u8>`].
+    pub fn reply_raw(self, bytes: Vec<u8>) {
+        let _ = self.tx.send(Ok(bytes));
+    }
 }

@@ -4,6 +4,12 @@
 
 **Status:** **Shipped** in 0.2.x — migration + supervisor + **`RedbActorStateStore`** (voter replication, TTL/GC).
 
+## Capabilities first (recommended)
+
+The [`examples/stateful-workers/`](../../examples/stateful-workers/) HTTP showcase registers **`orders`** via [`CapManifest`](../../crates/trembita/src/capability/manifest.rs): idempotent keys in [`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs), product ingress **`POST /orders/submit`** (`cap_fire`), no built-in `/actors/*` on the default gateway.
+
+See [capabilities](capabilities.md) and [capability-greenfield-wire](../decisions/capability-greenfield-wire.md).
+
 ## When to use
 
 - Handler keeps **workflow progress** (steps done, idempotency tokens) outside the Raft SM
@@ -33,11 +39,33 @@
 
 Cross-node paths: [cross-node-actors](../decisions/cross-node-actors.md) — `spawn_remote`, `scale_cluster`, migration RPC.
 
-## Quick start (current API)
+## Quick start (capabilities)
+
+```rust
+use trembita::{AppManifest, CapGroup, CapManifest, CapOp, Route, TrembitaApp, RunOpts};
+
+TrembitaApp::builder()
+    .data_dir("/var/lib/trembita")
+    .manifest(AppManifest::new().capabilities(
+        CapManifest::new().group(
+            CapGroup::with_state("orders")
+                .op(CapOp::new("process", process_order).routes([
+                    Route::InlineFire,
+                    Route::Queued,
+                ])),
+        ),
+    ))
+    .run(RunOpts::default())
+    .await?;
+```
+
+Gateway routes: `cap_fire` / `cap_invoke` in `http/product.rs` — see the showcase [`gateway_orders.rs`](../../examples/stateful-workers/src/gateway_orders.rs).
+
+## Advanced — `UserActor` workers
+
+`RedbActorStateStore` is wired automatically with `.data_dir()`.
 
 ### 1. Register workers on `TrembitaApp`
-
-`RedbActorStateStore` is wired automatically with `.data_dir()` — same trait, no extra setup.
 
 ```rust
 use trembita::{TrembitaApp, RunOpts, WorkerOpts, WorkerScale, workers};
@@ -47,14 +75,13 @@ TrembitaApp::builder()
     .workers(workers!(
         WorkerOpts::<OrderProcessor>::new("orders")
             .config(processor_cfg())
-            .scale(WorkerScale::Fixed(1))
-            .http_cast(true),
+            .scale(WorkerScale::Fixed(1)),
     ))
     .run(RunOpts::default())
     .await?;
 ```
 
-See [`examples/stateful-workers/`](../../examples/stateful-workers/).
+Opt in to built-in actors HTTP with `.http_cast(true)` on `WorkerOpts` when you need `/actors/.../cast`.
 
 ### 2. Stateful worker — write-through
 
@@ -84,7 +111,7 @@ impl UserActor for OrderProcessor {
 }
 ```
 
-Pass `store` in `WorkerConfig` when spawning — see [`examples/stateful-workers/`](../../examples/stateful-workers/).
+For a full **`UserActor`** RAM migration lab (not capabilities), see [`migrate_demo.rs`](../../examples/stateful-workers/src/migrate_demo.rs) and [`migrate_counter.rs`](../../examples/stateful-workers/src/migrate_counter.rs).
 
 ### 3. Domain data in StateMachine
 
@@ -137,34 +164,15 @@ Documented in [actor-routing](../decisions/actor-routing.md). For durability acr
 
 | Asset | Notes |
 |-------|-------|
-| [`examples/stateful-workers/`](../../examples/stateful-workers/) | `ActorStateStore` + idempotent cast + migration demo |
+| [`examples/stateful-workers/`](../../examples/stateful-workers/) | Capabilities + `ActorStateStore` idempotency + migration demo |
 | [`examples/stateful-workers/src/migrate_demo.rs`](../../examples/stateful-workers/src/migrate_demo.rs) | LocalNetwork migration walkthrough |
 | `trembita-sim/tests/actor_scenarios.rs` | `scale_cluster`, migration |
 
 ## Registration API
 
-Prefer [`.workers()`](../../crates/trembita/src/worker_opts.rs) with explicit [`WorkerScale`](../../crates/trembita/src/worker_opts.rs):
+Product path: [`.manifest(AppManifest::…capabilities…)`](../../crates/trembita/src/app/manifest.rs) — see [capabilities](capabilities.md).
 
-```rust
-use trembita::{TrembitaApp, GatewayOpts, RunOpts, WorkerOpts, WorkerScale, workers};
-
-// Export TREMBITA_LISTEN=127.0.0.1:8190 so QUIC wire and TCP gateway share one port.
-TrembitaApp::builder()
-    .data_dir("/var/lib/trembita")
-    .workers(workers!(
-        WorkerOpts::<OrderProcessor>::new("orders")
-            .config(processor_cfg())
-            .scale(WorkerScale::Fixed(1))
-            .http_cast(true),
-    ))
-    .gateway(GatewayOpts::from_env()?)
-    .run(RunOpts::default())
-    .await?;
-```
-
-Alternate API: [`.actors()`](../../crates/trembita/src/app/mod.rs) + [`ActorGroupOpts`](../../crates/trembita/src/actor_group.rs).
-
-See [examples/stateful-workers/](../../examples/stateful-workers/).
+Advanced workers: [`.workers()`](../../crates/trembita/src/worker_opts.rs) + optional `.http_cast(true)` for built-in `/actors/*` HTTP.
 
 ## Related
 

@@ -29,6 +29,9 @@ fn scaffolds_default_layout() {
     assert!(root.join("src/config.rs").is_file());
     assert!(root.join("src/consumers/sample.rs").is_file());
     assert!(root.join("src/domain/mod.rs").is_file());
+    assert!(root.join("src/capabilities/ping.rs").is_file());
+    let manifest = std::fs::read_to_string(root.join("src/manifest.rs")).unwrap();
+    assert!(manifest.contains("CapManifest"));
     assert!(root.join("deploy/.env.example").is_file());
     let readme = std::fs::read_to_string(root.join("README.md")).unwrap();
     assert!(

@@ -55,7 +55,7 @@ pub fn order_handle(order_id: u64, idempotent_skip: bool) {
         node_id = ?std::env::var("TREMBITA_NODE_ID").ok(),
         order_id,
         idempotent_skip,
-        "OrderProcessor handle"
+        "orders capability handle"
     );
 }
 

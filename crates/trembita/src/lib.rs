@@ -45,6 +45,7 @@ mod actor_group;
 mod app;
 mod app_opts;
 mod builder;
+mod capability;
 mod certs;
 mod cluster_handle;
 mod configure;
@@ -100,14 +101,24 @@ pub use trembita_storage as storage;
 
 pub use actor_group::ActorGroupOpts;
 pub use app::{
-    AppManifest, DefaultGatewayApis, JobsPreset, RealtimePreset, ShutdownOpts, TopicsPreset,
-    TrembitaApp, TrembitaAppBuilder, journal_workflow,
+    AppManifest, DefaultGatewayApis, JobsPreset, RealtimePreset, ShutdownOpts, TestBoot,
+    TopicsPreset, TrembitaApp, TrembitaAppBuilder, journal_workflow,
 };
 pub use app_opts::RunOpts;
 pub use builder::StartError;
+pub use capability::{
+    CallBuilder, CapCallOpts, CapEnqueueOutcome, CapError, CapGroup, CapManifest, CapOp, CapQueued,
+    CapRequest, CapRuntime, CapVia, CapWire, OpCtx, Route, deliver_event, deliver_queued, enqueue,
+    fire, invoke, publish_event,
+};
 pub use configure::TrembitaConfigure;
 pub use consumer::{ConsumerGroup, ConsumerOpts, IdempotencyKeyFn, IdempotencyOpts, JobConsumer};
 pub use cron_opts::CronOpts;
+#[cfg(feature = "http-jobs")]
+pub use gateway::{
+    CapEnqueueHandler, CapFireHandler, CapInvokeHandler, ProductRoutes, cap_enqueue, cap_fire,
+    cap_invoke, cluster_ops_route_table, spawn_cluster_ops_http,
+};
 pub use gateway::{
     ConnectionGuard, ConnectionTracker, DEFAULT_GATEWAY_DRAIN_TIMEOUT, ExtractedIdentity,
     GatewayBearerIdentity, GatewayConfig, GatewayHandle, GatewayIdentity, GatewayOpts,
@@ -115,8 +126,6 @@ pub use gateway::{
     NoWorkerError, OpenActorSessionError, SessionHandle, SessionKey, TrembitaGatewayState,
     WrappedGatewayService, build_gateway_service, spawn_gateway,
 };
-#[cfg(feature = "http-jobs")]
-pub use gateway::{ProductRoutes, cluster_ops_route_table, spawn_cluster_ops_http};
 pub use job_opts::JobOpts;
 pub use queue_opts::QueueOpts;
 pub use ready::ReadyOpts;

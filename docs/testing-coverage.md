@@ -264,6 +264,10 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-09 | Gateway virtual-host dispatch (`Gateway`/`Surface`, strict default, loopback dev fallback) | `trembita-http/src/gateway/`, `trembita-http/README.md`, `trembita/src/gateway/mod.rs` |
 | 2026-09 | Durable event topics (`EventTopic`, min-cursor compaction, retention discard, voter replication) | `trembita-events/src/{topic,redb_topic,topic_service}`, `trembita-events/tests/topic_failover.rs`, `trembita/src/topic_opts.rs`, `docs/decisions/event-topics.md` |
 | 2026-09 | Dynamic schedule source (`ScheduleSource`, diff reconcile, leader replication) | `trembita-jobs/src/schedule_source.rs`, `trembita-jobs/tests/schedule_source.rs`, `trembita/tests/schedule_source.rs`, `docs/decisions/schedule-source.md` |
+| 2026-09 | Capability DX wave 1 (B-21) — inline ask, queued deliver, `CapManifest` | `trembita/src/capability/`, `trembita/tests/capability.rs`, `examples/stateful-workers/src/capabilities/`, `docs/decisions/capability-dx.md` |
+| 2026-09 | Gateway capability adapters (`cap_fire`, `cap_invoke`) | `trembita/src/gateway/cap_handlers.rs`, `trembita/tests/gateway_cap_http.rs` |
+| 2026-09 | B-21 complete — QueuedWait/Scheduled/Session, scaffold `capabilities/` | `trembita/src/capability/`, `trembita/tests/capability.rs`, `trembita-cli/templates/…/capabilities/` |
+| 2026-09 | B-22 greenfield + `Route::Event` topic ingress / `publish_event` | `trembita/src/capability/event.rs`, `trembita/src/capability/call.rs`, `trembita/tests/capability.rs` (`capability_event_subscription_runs_inline`), `examples/stateful-workers/` |
 | 2026-09 | Schedule admin HTTP + facade (B-20) | `trembita-http/src/schedule_routes.rs`, `trembita/tests/http_schedules.rs`, `docs/scenarios/triggers-and-pipelines.md` |
 | 2026-09 | WorkTrigger + cron→workflow sugar | `trembita-jobs/src/work_trigger.rs`, `trembita/tests/work_trigger_dispatch.rs`, `docs/scenarios/cookbook-async-work.md` |
 | 2026-09 | `.scheduled_workflows()` product preset | `trembita/src/scheduled_workflow_opts.rs`, `trembita/tests/scheduled_workflows_builder.rs` |
