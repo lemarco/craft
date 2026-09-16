@@ -23,6 +23,6 @@ trembita-proto.workspace = true
 trembita-core.workspace = true
 
 [dev-dependencies]
-proptest = "1"
+proptest.workspace = true
 trembita-runtime.workspace = true
 tokio.workspace = true

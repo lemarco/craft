@@ -61,7 +61,7 @@ TrembitaApp::from_env()?
     .await?;
 ```
 
-Inject into actors via `WorkerCtx` / capabilities (see [stateful-workers](../scenarios/stateful-workers.md)). Explicit [`actor_state_store`](../../crates/trembita/src/builder/cluster/config.rs) remains on the in-crate cluster builder for framework tests.
+Inject into actors via `WorkerCtx` / capabilities (see [stateful-workers](../scenarios/stateful-workers.md)). Explicit [`actor_state_store`](../../crates/trembita-assembly/src/builder/cluster/config.rs) on [`TrembitaClusterBuilder`](../../crates/trembita-assembly/src/builder/mod.rs) for framework tests only.
 
 ### Crash and migration
 

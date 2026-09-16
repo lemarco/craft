@@ -66,11 +66,11 @@ lefthook install
 ./e2e/chaos.sh    # partition + heal
 ```
 
-**Read next:** [docs/status.md](docs/status.md) → [docs/architecture.md](docs/architecture.md) → [crates/trembita/src/builder/cluster/mod.rs](crates/trembita/src/builder/cluster/mod.rs)
+**Read next:** [docs/status.md](docs/status.md) → [docs/architecture.md](docs/architecture.md) → [docs/decisions/facade-layering.md](docs/decisions/facade-layering.md)
 
 **Product app env:** `TREMBITA_LISTEN`, `TREMBITA_DATA_DIR`, `TREMBITA_CERT_DIR`, `TREMBITA_JOIN_SEEDS` (joiners), optional `GATEWAY_TOKEN` — [docs/env.md](docs/env.md)
 
-**`trembita-node` (reference KV):** may still use static `TREMBITA_PEERS` + `TREMBITA_NODE_ID` — [docs/certs.md](docs/certs.md)
+**`trembita-node` (reference product node):** may use static `TREMBITA_PEERS` + `TREMBITA_NODE_ID` (via [`EnvOverrides`](crates/trembita-assembly/src/env_config.rs) in [`into_app_config`](crates/trembita-tools/src/node/config.rs)) — [docs/certs.md](docs/certs.md)
 
 **Job queue on `trembita-node`** (optional, requires `TREMBITA_DATA_DIR`):
 

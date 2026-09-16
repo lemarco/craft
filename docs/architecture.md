@@ -35,6 +35,7 @@ Multi-node **Raft** cluster in Rust: **pure `RaftNode` FSM** in `trembita-core`,
 crates/
 ├── trembita/              # facade — primary user dependency (TrembitaApp, features → optional crates)
 ├── trembita-assembly/     # internal (unpublished) — cluster boot, TrembitaClusterBuilder, journals
+├── trembita-showcase/     # internal (unpublished) — maintainer harnesses, soak cluster_builder, showcase bins
 ├── trembita-proto/        # IDs, log, wire types, value objects (`value.rs`), encode/decode
 ├── trembita-core/         # pure Raft FSM + shard planners + reference `kv` StateMachine
 ├── trembita-storage/      # LogStore, HardState, Snapshot (+ redb)
@@ -59,7 +60,7 @@ examples/                # product showcases (standalone Cargo.toml each; not wo
 dev/                     # certs, cluster-common.sh, compose/, 3-node trembita-node demo
 ```
 
-Embedders depend on **`trembita`** only; optional integrations compile in via [facade features](decisions/facade.md).
+Embedders depend on **`trembita`** only; optional integrations compile in via [facade features](decisions/facade.md). Maintainer crate boundaries: [facade-layering](decisions/facade-layering.md).
 
 Reference KV state machine: [`trembita_core::kv`](../crates/trembita-core/src/kv.rs) (re-exported as `trembita::kv`).
 

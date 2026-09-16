@@ -30,7 +30,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 rustls.workspace = true
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest.workspace = true
 sha2.workspace = true
 hex.workspace = true
 tracing.workspace = true
@@ -42,4 +42,4 @@ dev-certs = ["trembita-net/dev-certs"]
 
 [dev-dependencies]
 tempfile.workspace = true
-trembita-test-support = { path = "../trembita-test-support" }
+trembita-test-support.workspace = true

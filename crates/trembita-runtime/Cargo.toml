@@ -31,11 +31,14 @@ thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tokio.workspace = true
-opentelemetry = { version = "0.31", optional = true }
-opentelemetry_sdk = { version = "0.31", optional = true, features = ["trace", "rt-tokio"] }
-opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic"], optional = true }
-tracing-opentelemetry = { version = "0.32", optional = true }
-trembita-metrics-otlp = { path = "../trembita-metrics-otlp", version = "0.5.0", optional = true }
+opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true, features = [
+    "trace",
+    "rt-tokio",
+] }
+opentelemetry-otlp = { workspace = true, optional = true }
+tracing-opentelemetry = { workspace = true, optional = true }
+trembita-metrics-otlp = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -48,8 +51,8 @@ otlp = [
 ]
 
 [dev-dependencies]
-trembita-test-support = { path = "../trembita-test-support" }
+trembita-test-support.workspace = true
 serde = { workspace = true, features = ["derive"] }
 tempfile.workspace = true
 tokio.workspace = true
-trybuild = "1"
+trybuild.workspace = true

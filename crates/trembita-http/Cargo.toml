@@ -16,13 +16,13 @@ homepage.workspace = true
 workspace = true
 
 [dependencies]
-base64 = "0.22"
+base64.workspace = true
 bytes.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
-include_dir = "0.7"
-mime_guess = "2"
+include_dir.workspace = true
+mime_guess.workspace = true
 trembita-dashboard.workspace = true
 trembita-runtime.workspace = true
 trembita-jobs.workspace = true
@@ -35,9 +35,9 @@ serde_json.workspace = true
 serde_urlencoded.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tokio-stream = "0.1"
+tokio-stream.workspace = true
 tracing.workspace = true
-tungstenite = { version = "0.26", default-features = false, features = ["handshake"] }
+tungstenite.workspace = true
 tower.workspace = true
 opendal = { workspace = true, optional = true }
 

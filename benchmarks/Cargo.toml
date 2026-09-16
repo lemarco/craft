@@ -3,7 +3,7 @@
 # root manifest) so criterion never compiles in the fast CI lane. Run with
 # `cargo bench` / `cargo run --release --bin soak` from this directory.
 # Queue hotspot: `cargo test -p trembita --lib queue` (cluster builder is in-crate only).
-# Soak/bench cluster boot uses `trembita::workspace_showcase::cluster::cluster_builder` (not product API).
+# Soak/bench cluster boot uses `trembita_showcase::cluster::cluster_builder` (not product API).
 # Scenario soaks (B-10): `soak_actor_store`, `soak_saga`, `soak_session` — see docs/testing-coverage.md.
 [package]
 name = "trembita-benchmarks"
@@ -20,6 +20,7 @@ trembita-runtime = { path = "../crates/trembita-runtime" }
 trembita-proto = { path = "../crates/trembita-proto" }
 trembita-sim = { path = "../crates/trembita-sim" }
 trembita = { path = "../crates/trembita", features = ["dev-certs"] }
+trembita-showcase = { path = "../crates/trembita-showcase" }
 trembita-test-support = { path = "../crates/trembita-test-support", features = ["facade"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 serde = { version = "1", features = ["derive"] }

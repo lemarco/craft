@@ -22,7 +22,9 @@ Repository: `distributive_raft_actor_system`. Crates need a unique, memorable na
 
 ```
 crates/
-├── trembita/              # facade — what most users depend on
+├── trembita/              # facade — what most users depend on (TrembitaApp, product gateway)
+├── trembita-assembly/     # unpublished — cluster boot, TrembitaClusterBuilder, env merge
+├── trembita-showcase/     # unpublished — maintainer harnesses + showcase bins
 ├── trembita-proto/
 ├── trembita-core/
 ├── trembita-storage/
@@ -37,6 +39,8 @@ crates/
 ├── trembita-http/         # product gateway (facade `http-jobs`)
 └── trembita-tools/        # reference binaries (`trembita-node`, ops, e2e clients)
 ```
+
+See [facade-layering](facade-layering.md) for product vs assembly vs showcase boundaries.
 
 ### User `Cargo.toml`
 
@@ -62,7 +66,7 @@ Macros are re-exported from `trembita` (`consumer!`, `consumer_json!`); a direct
 
 Product apps boot via **`TrembitaApp::from_env()`** / **`from_config(AppConfig)`** + **[`AppManifest`](../../crates/trembita/src/app/manifest.rs)** ([env.md](../env.md)).
 
-Use **`trembita::cluster::TrembitaCluster`** for **runtime handles** (queues, leave, client) after boot — not for public cluster assembly. **`TrembitaCluster::builder`** and exported **`TrembitaClusterBuilder`** were removed; custom SM wiring is **`workspace_showcase`** / in-crate **`integration`** only ([public-api-1.0](public-api-1.0.md)).
+Use **`trembita::cluster::TrembitaCluster`** for **runtime handles** (queues, leave, client) after boot — not for public cluster assembly. **`TrembitaCluster::builder`** and exported **`TrembitaClusterBuilder`** were removed; custom SM wiring is **`trembita-showcase`** / in-crate **`integration`** only ([public-api-1.0](public-api-1.0.md)).
 
 ### Why `trembita`
 

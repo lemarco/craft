@@ -2,5 +2,5 @@
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    trembita::workspace_showcase::self_update::run().await
+    trembita_showcase::self_update::run().await
 }

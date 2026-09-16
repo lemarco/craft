@@ -32,7 +32,7 @@ tracing.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
-trembita-test-support = { path = "../trembita-test-support" }
+trembita-test-support.workspace = true
 trembita-net.workspace = true
 tempfile.workspace = true
 tokio.workspace = true

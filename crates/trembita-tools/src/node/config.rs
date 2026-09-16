@@ -51,6 +51,8 @@ pub struct NodeConfig {
     pub job_queue_stream: Option<String>,
     /// Lease visibility timeout for the job queue (`TREMBITA_JOB_QUEUE_LEASE_SECS`, default 60).
     pub job_queue_lease: Duration,
+    /// Env vars explicitly set during [`config_from_env`] (for [`AppConfig::env`] / builder merge).
+    pub env: EnvOverrides,
 }
 
 /// A parsed `TREMBITA_DISCOVERY=dns:<prefix>:<service>:<replicas>:<port>` spec.
@@ -225,6 +227,8 @@ pub fn parse_peers(raw: &str) -> Result<(PeerDirectory, Vec<NodeId>), Box<dyn Er
 /// # Errors
 /// Returns an error when required variables are missing or invalid.
 pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
+    let mut env_overrides = EnvOverrides::default();
+
     let node_id = node_id_from_env()?;
     let listen: SocketAddr = env("TREMBITA_LISTEN")
         .as_deref()
@@ -240,14 +244,35 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
         Some(raw) => Some(parse_discovery(&raw)?),
         None => None,
     };
-    let allow_join = env_bool("TREMBITA_ALLOW_JOIN");
-    let allow_leave = env_bool("TREMBITA_ALLOW_LEAVE");
-    let graceful_leave = env_bool("TREMBITA_GRACEFUL_LEAVE");
+    let allow_join = match env("TREMBITA_ALLOW_JOIN") {
+        Some(_) => {
+            env_overrides.allow_join = true;
+            env_bool("TREMBITA_ALLOW_JOIN")
+        }
+        None => false,
+    };
+    let allow_leave = match env("TREMBITA_ALLOW_LEAVE") {
+        Some(_) => {
+            env_overrides.allow_leave = true;
+            env_bool("TREMBITA_ALLOW_LEAVE")
+        }
+        None => false,
+    };
+    let graceful_leave = match env("TREMBITA_GRACEFUL_LEAVE") {
+        Some(_) => {
+            env_overrides.graceful_leave = true;
+            env_bool("TREMBITA_GRACEFUL_LEAVE")
+        }
+        None => false,
+    };
     let http_tls = match (
         env("TREMBITA_HTTP_TLS_CERT").or_else(|| env("TREMBITA_GATEWAY_TLS_CERT")),
         env("TREMBITA_HTTP_TLS_KEY").or_else(|| env("TREMBITA_GATEWAY_TLS_KEY")),
     ) {
-        (Some(cert), Some(key)) => Some((PathBuf::from(cert), PathBuf::from(key))),
+        (Some(cert), Some(key)) => {
+            env_overrides.http_tls = true;
+            Some((PathBuf::from(cert), PathBuf::from(key)))
+        }
         (None, None) => None,
         _ => {
             return Err(
@@ -258,7 +283,10 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
     };
 
     let (mut peers, mut members) = match env("TREMBITA_PEERS") {
-        Some(raw) => parse_peers(&raw)?,
+        Some(raw) => {
+            env_overrides.peers = true;
+            parse_peers(&raw)?
+        }
         None => (PeerDirectory::new(), Vec::new()),
     };
     let joining = !join_seeds.is_empty() || discovery.is_some();
@@ -283,6 +311,13 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
         .and_then(|v| v.parse::<u64>().ok())
         .map_or(Duration::from_secs(60), Duration::from_secs);
 
+    if env("TREMBITA_DRAIN_TIMEOUT").is_some() {
+        env_overrides.drain_timeout = true;
+    }
+    if env("TREMBITA_CERT_WATCH_SECS").is_some() {
+        env_overrides.cert_watch = true;
+    }
+
     Ok(NodeConfig {
         node_id,
         listen,
@@ -301,6 +336,7 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
         data_dir,
         job_queue_stream,
         job_queue_lease,
+        env: env_overrides,
     })
 }
 
@@ -339,7 +375,7 @@ impl NodeConfig {
             job_queue_stream: self.job_queue_stream.clone(),
             job_queue_lease: self.job_queue_lease,
             http_drain_timeout,
-            env: EnvOverrides::default(),
+            env: self.env,
         }
     }
 }
@@ -579,5 +615,22 @@ mod tests {
         with_trembita_env(&[("TREMBITA_JOB_QUEUE", Some("jobs"))], || {
             assert!(config_from_env().is_err());
         });
+    }
+
+    #[test]
+    fn into_app_config_sets_peers_env_override_for_static_members() {
+        with_trembita_env(
+            &[
+                ("TREMBITA_NODE_ID", Some("1")),
+                ("TREMBITA_PEERS", Some("1@127.0.0.1:7443")),
+            ],
+            || {
+                let cfg = config_from_env().expect("config");
+                assert!(cfg.env.peers);
+                let app = cfg.into_app_config(vec![]);
+                assert!(app.env.peers);
+                assert_eq!(app.members, vec![NodeId(1)]);
+            },
+        );
     }
 }

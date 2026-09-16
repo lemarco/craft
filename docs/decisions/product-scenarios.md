@@ -70,7 +70,7 @@ See [workload-governor](workload-governor.md). Subprocess / shell-out CPU: [exte
 
 ### Unified product surface
 
-[`TrembitaApp`](../../crates/trembita/src/app/mod.rs) is the product entry; it boots the same runtime as the in-crate `TrembitaClusterBuilder` (not exported):
+[`TrembitaApp`](../../crates/trembita/src/app/mod.rs) is the product entry; it boots the same runtime as [`trembita-assembly`](../../crates/trembita-assembly/src/builder/mod.rs) `TrembitaClusterBuilder` (not exported on the facade):
 
 ```rust
 use std::time::Duration;

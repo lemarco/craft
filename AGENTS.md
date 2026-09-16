@@ -13,11 +13,12 @@ Distributed Raft + actor framework in Rust. Read before making changes.
 5. [examples/README.md](examples/README.md) — product showcases (local + QUIC cluster)
 6. [docs/backlog.md](docs/backlog.md) — implementation backlog
 7. [docs/architecture.md](docs/architecture.md) — crate graph
-8. [docs/decisions/architecture-style.md](docs/decisions/architecture-style.md) — pure core, trait ports
-9. [docs/decisions/product-scenarios.md](docs/decisions/product-scenarios.md) — actor-first platform, no mandatory Redis
-10. [docs/decisions/testing-strategy.md](docs/decisions/testing-strategy.md) — test pyramid
-11. [docs/testing-coverage.md](docs/testing-coverage.md) — test inventory
-12. [docs/process.md](docs/process.md) — gates, CI, release flow
+8. [docs/decisions/facade-layering.md](docs/decisions/facade-layering.md) — `trembita` vs `trembita-assembly` vs `trembita-showcase`
+9. [docs/decisions/architecture-style.md](docs/decisions/architecture-style.md) — pure core, trait ports
+10. [docs/decisions/product-scenarios.md](docs/decisions/product-scenarios.md) — actor-first platform, no mandatory Redis
+11. [docs/decisions/testing-strategy.md](docs/decisions/testing-strategy.md) — test pyramid
+12. [docs/testing-coverage.md](docs/testing-coverage.md) — test inventory
+13. [docs/process.md](docs/process.md) — gates, CI, release flow
 
 ## Cursor config
 

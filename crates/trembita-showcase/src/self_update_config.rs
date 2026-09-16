@@ -5,10 +5,11 @@ use std::error::Error;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
 
-use crate::NodeId;
-use crate::cluster::{CertPaths, PemSecurity, Security, cert_paths_from_env};
-use crate::discovery::Seed;
-use crate::net::PeerDirectory;
+use trembita::NodeId;
+use trembita::cluster::{CertPaths, PemSecurity, Security, TrembitaCluster, cert_paths_from_env};
+use trembita::discovery::Seed;
+use trembita::net::PeerDirectory;
+use trembita::upgrade::UpgradeMachine;
 
 const DATA_DIR_NAME: &str = "trembita-showcase-self-update";
 
@@ -41,7 +42,7 @@ pub fn startup() {
     );
 }
 
-pub fn ready(cluster: &crate::cluster::TrembitaCluster<crate::UpgradeMachine>) {
+pub fn ready(cluster: &TrembitaCluster<UpgradeMachine>) {
     eprintln!(
         "node {:?} ready — members {:?}",
         cluster.node_id(),

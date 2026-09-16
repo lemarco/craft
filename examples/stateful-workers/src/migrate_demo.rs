@@ -3,9 +3,9 @@
 //! Runs the workspace binary `showcase-migrate-demo` (internal cluster builder).
 
 pub async fn run_local() -> Result<(), Box<dyn std::error::Error>> {
-    eprintln!("Run: cargo run -p trembita --bin showcase-migrate-demo");
+    eprintln!("Run: cargo run -p trembita-showcase --bin showcase-migrate-demo");
     let status = std::process::Command::new("cargo")
-        .args(["run", "-p", "trembita", "--bin", "showcase-migrate-demo"])
+        .args(["run", "-p", "trembita-showcase", "--bin", "showcase-migrate-demo"])
         .status()?;
     if status.success() {
         return Ok(());

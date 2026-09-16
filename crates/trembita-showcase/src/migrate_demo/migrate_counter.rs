@@ -1,7 +1,7 @@
 //! Migratable counter for the workspace migration demo.
 
-use crate::proto;
-use crate::runtime::{ConfigCodecError, MigrationError, UserActor, actor};
+use trembita::proto;
+use trembita::runtime::{ConfigCodecError, MigrationError, UserActor, actor};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum CounterMsg {

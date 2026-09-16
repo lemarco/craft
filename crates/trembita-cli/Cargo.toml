@@ -32,9 +32,9 @@ name = "trembita"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4", features = ["derive"] }
+clap.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-trembita-cli = { path = "." }
+trembita-cli.workspace = true

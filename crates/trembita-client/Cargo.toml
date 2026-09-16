@@ -28,6 +28,6 @@ tokio.workspace = true
 
 [dev-dependencies]
 trembita-runtime.workspace = true
-trembita-test-support = { path = "../trembita-test-support" }
+trembita-test-support.workspace = true
 serde = { workspace = true, features = ["derive"] }
 tokio.workspace = true

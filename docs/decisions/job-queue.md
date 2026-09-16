@@ -142,7 +142,7 @@ Optional **`.durable_mailbox()`** on the cluster builder persists cross-node mai
 
 ### Membership autoscale
 
-- [`MembershipAutoscalePolicy`](../../crates/trembita-jobs/src/queue_autoscale.rs) + [`job_queue_membership_autoscale`](../../crates/trembita/src/builder/cluster/mod.rs): when `(pending + leased) / live_nodes` exceeds threshold and `live_nodes < max_nodes`, invoke user `join` hook (deploy VPS + dynamic join).
+- [`MembershipAutoscalePolicy`](../../crates/trembita-jobs/src/queue_autoscale.rs) + [`job_queue_membership_autoscale`](../../crates/trembita-assembly/src/builder/cluster/mod.rs): when `(pending + leased) / live_nodes` exceeds threshold and `live_nodes < max_nodes`, invoke user `join` hook (deploy VPS + dynamic join).
 - Complements worker [`AutoscalePolicy`](../../crates/trembita-jobs/src/queue_autoscale.rs) capped at `reachable_nodes`.
 
 ### Worker consumption model
@@ -165,7 +165,7 @@ TrembitaApp::from_env()?
     .await?;
 ```
 
-Leader-side autoscale hooks live on the in-crate [`TrembitaClusterBuilder`](../../crates/trembita/src/builder/cluster/mod.rs) (`job_queue_at`, membership autoscale) — not product API.
+Leader-side autoscale hooks live on [`trembita-assembly`](../../crates/trembita-assembly/src/builder/cluster/mod.rs) [`TrembitaClusterBuilder`](../../crates/trembita-assembly/src/builder/mod.rs) (`job_queue_at`, membership autoscale) — not product API.
 
 ### Queue-driven autoscale (leader)
 
@@ -203,7 +203,7 @@ For a product-oriented checklist and gaps, see [status.md](../status.md) and [ba
 
 **Negative**
 
-- Leader-hosted queue is a **throughput hotspot** at very large enqueue rates (mitigation today: batch append, prefetch, **manual** [`job_queue_sharded`](../../crates/trembita/src/builder/cluster/mod.rs); automatic sharding under load is [future](#future-work)). Replication adds one RTT to each reachable voter before client ack. Measure with `benchmarks/benches/queue.rs` (criterion) and `soak_queue` (sustained enqueue + follower drain).
+- Leader-hosted queue is a **throughput hotspot** at very large enqueue rates (mitigation today: batch append, prefetch, **manual** [`job_queue_sharded`](../../crates/trembita-assembly/src/builder/cluster/mod.rs); automatic sharding under load is [future](#future-work)). Replication adds one RTT to each reachable voter before client ack. Measure with `benchmarks/benches/queue.rs` (criterion) and `soak_queue` (sustained enqueue + follower drain).
 - At-least-once requires **idempotent** handlers and visibility-timeout tuning. Optional **`dedup_key`** on enqueue makes client retries safe while the job exists; the key is **released on ack** (job removed) and **held on dead letter** until `requeue_dead_letter` — see [background-jobs § `dedup_key` lifecycle](../scenarios/background-jobs.md#dedup_key-lifecycle).
 - **`LeaseId` is monotonic per stream** (replicated `next_lease_id` with `max()` on failover). Redelivery issues a new id; stale tokens return `InvalidLease`. It is **not** documented as an external fencing token — side-effect guards belong in the handler ([effectively-once recipe](../scenarios/background-jobs.md#effectively-once-recipe)).
 - **An exactly-once delivery mode is not planned.** `dedup_key` deduplicates *enqueues*, not *deliveries*; effectively-once remains a handler-side property. The recipe (enqueue key → CAS marker in a store → side effect → durable `done` → ack) is in [background-jobs § Effectively-once recipe](../scenarios/background-jobs.md#effectively-once-recipe).

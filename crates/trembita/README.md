@@ -41,7 +41,7 @@ See [getting-started.md](../../docs/getting-started.md), [env.md](../../docs/env
 
 ## Runtime embedding (`trembita::cluster`)
 
-Handles, enqueue options, saga journals, and TLS helpers: [`trembita::cluster`](src/cluster.rs). **Cluster assembly** (`TrembitaCluster::builder`) is not public — product apps use [`TrembitaApp`](#product-quickstart-trembitaapp) only ([public-api ADR](../../docs/decisions/public-api-1.0.md)).
+Handles, enqueue options, saga journals, and TLS helpers: [`trembita::cluster`](src/cluster.rs). **Cluster assembly** lives in unpublished `trembita-assembly` / `trembita-showcase` — not on the product API ([facade-layering ADR](../../docs/decisions/facade-layering.md), [public-api ADR](../../docs/decisions/public-api-1.0.md)).
 
 ## Features
 

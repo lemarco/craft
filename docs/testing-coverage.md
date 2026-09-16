@@ -200,6 +200,7 @@ Facade registry type: [`AppManifest`](../crates/trembita/src/app/manifest.rs) un
 | Multi-Raft file layout (`data_dir`) | — | ✅ `persistence` + `multi_raft` | — | — | ✅ |
 | DNS discovery | ✅ | ✅ `discovery` | — | ✅ | ✅ |
 | **`trembita-node` env parsing** | ✅ `config` | — | — | ✅ implicit | ✅ |
+| **`trembita-node` `TREMBITA_PEERS` → `EnvOverrides` / `into_app_config`** | ✅ `config` | — | — | ✅ implicit | ✅ |
 | **`trembita-node` drain timeout (`TREMBITA_DRAIN_TIMEOUT`)** | ✅ `config` | — | — | ✅ implicit | ✅ |
 | **`trembita-node` graceful leave on shutdown** | ✅ `config` | ✅ `graceful_leave` | — | ✅ `leave.sh` | ✅ |
 

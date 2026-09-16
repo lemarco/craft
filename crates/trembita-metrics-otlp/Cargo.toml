@@ -19,7 +19,7 @@ all-features = true
 workspace = true
 
 [dependencies]
-opentelemetry = "0.31"
-opentelemetry_sdk = { version = "0.31", features = ["metrics", "rt-tokio"] }
-opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic"] }
+opentelemetry.workspace = true
+opentelemetry_sdk = { workspace = true, features = ["metrics", "rt-tokio"] }
+opentelemetry-otlp.workspace = true
 tracing.workspace = true

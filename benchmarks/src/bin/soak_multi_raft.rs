@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use trembita::workspace_showcase::cluster::cluster_builder;
+use trembita_showcase::cluster::cluster_builder;
 use trembita::core::{RaftGroupId, StableShardRouter, StateMachine, place_shard};
 use trembita::net::{LocalNetwork, Transport, send_client_request};
 use trembita::proto::{ClientRequest, ClientResponse, LogIndex, NodeId};

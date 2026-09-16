@@ -969,7 +969,7 @@ fn scan_deprecated_source(content: &str, path: &str, report: &mut DoctorReport) 
         ),
         (
             "TrembitaClusterBuilder::new",
-            "low-level cluster builder is not public — product: TrembitaApp; custom SM: workspace_showcase / integration tests only",
+            "low-level cluster builder is not public — product: TrembitaApp; custom SM: trembita-showcase / integration tests only",
             Level::Warn,
         ),
     ];

@@ -4,7 +4,7 @@ Workspace binaries and shared dev helpers (`publish = false`).
 
 | Binary | Purpose |
 |--------|---------|
-| `trembita-node` | Reference **product** node (`TrembitaApp` + empty SM) from env/CLI; ops vars `TREMBITA_PEERS` / `TREMBITA_NODE_ID` — see [env.md](../../docs/env.md) |
+| `trembita-node` | Reference **product** node (`TrembitaApp` + empty SM) from env/CLI; ops vars `TREMBITA_PEERS` / `TREMBITA_NODE_ID` → [`EnvOverrides`](../../crates/trembita-assembly/src/env_config.rs) via [`into_app_config`](src/node/config.rs) — see [env.md](../../docs/env.md) |
 | `trembita-ops` | Snapshot backup/restore |
 | `trembita-e2e-client` | Linearizability load generator |
 | `trembita-e2e-queue-client` | Queue E2E smoke client |

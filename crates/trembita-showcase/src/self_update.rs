@@ -4,11 +4,11 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::Gateway;
-use crate::ReadyOpts;
-use crate::cluster::{PemSecurity, TrembitaCluster};
-use crate::upgrade::{UpgradeMachine, UpgradeOpts, spawn_upgrade_runtime, upgrade_api};
-use trembita_assembly::builder::TrembitaClusterBuilder;
+use trembita::Gateway;
+use trembita::ReadyOpts;
+use trembita::cluster::{PemSecurity, TrembitaCluster};
+use trembita::upgrade::{UpgradeMachine, UpgradeOpts, spawn_upgrade_runtime, upgrade_api};
+use trembita_assembly::TrembitaClusterBuilder;
 
 use super::self_update_config as debug;
 
@@ -67,7 +67,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     cluster.wait_until_ready(ReadyOpts::default()).await;
     debug::ready(&cluster);
-
     tokio::signal::ctrl_c().await?;
     debug::shutdown();
     if cfg.graceful_leave && cluster.members().len() > 1 {

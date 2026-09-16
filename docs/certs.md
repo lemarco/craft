@@ -41,7 +41,7 @@ Artifacts written to `--out`:
 | `ca.pem` | Cluster CA certificate (public trust anchor) | **every** node and client |
 | `ca.key` | Cluster CA private key | **keep offline / secret** — signs new certs only |
 | `node-<id>.pem` / `.key` | One node's mTLS identity | that VPS only |
-| `node-0.pem` / `.key` | **Join bootstrap** only — mTLS before the leader assigns an id; reload to `node-<id>` after join ([`join_cluster_auto`](../crates/trembita/src/builder/join.rs)) | joiners at first boot (dev compose / `cluster.sh`) |
+| `node-0.pem` / `.key` | **Join bootstrap** only — mTLS before the leader assigns an id; reload to `node-<id>` after join ([`join_cluster_auto`](../crates/trembita-assembly/src/builder/join.rs)) | joiners at first boot (dev compose / `cluster.sh`) |
 | `client-<name>.pem` / `.key` | A `RemoteClient` identity | that client app only |
 
 Keys are P-256 (ECDSA), which the rustls `ring` provider trembita uses supports
@@ -87,7 +87,7 @@ Product apps use **`TREMBITA_CERT_DIR`** (or `dev-certs` locally) with [`Trembit
 
 For **ops / static clusters**, run [`trembita-node`](../crates/trembita-tools/README.md) with the same PEM layout (`TREMBITA_NODE_CERT` / `KEY` / `CA_CERT` or shared `TREMBITA_CERT_DIR`).
 
-Custom state machines + manual QUIC boot are **maintainer-only** (`workspace_showcase`, in-crate `integration` tests) — not the crates.io product path.
+Custom state machines + manual QUIC boot are **maintainer-only** (`trembita-showcase`, in-crate `integration` tests) — not the crates.io product path.
 
 ---
 
@@ -183,7 +183,7 @@ CN is free-form.
 ### Automatic (cert-automation)
 
 When `TREMBITA_NODE_CERT` / `TREMBITA_NODE_KEY` / `TREMBITA_CA_CERT` are set, `trembita-node`
-(via [`TrembitaApp::from_config`](../crates/trembita/src/app/runtime.rs) + [`AppConfig`](../crates/trembita/src/env_config.rs)) **polls** those files
+(via [`TrembitaApp::from_config`](../crates/trembita/src/app/runtime.rs) + [`AppConfig`](../crates/trembita/src/env.rs)) **polls** those files
 every `TREMBITA_CERT_WATCH_SECS` (default **60**). When a renewer (`step ca renew`
 or `generate.sh`) rewrites the PEMs, trembita reloads TLS **without exiting**:
 
@@ -192,7 +192,7 @@ or `generate.sh`) rewrites the PEMs, trembita reloads TLS **without exiting**:
 - **`SIGHUP`** triggers the same reload on Unix (`docker compose kill -s HUP …`).
 
 Reload on the **Raft leader** is rejected unless you call
-[`ReloadOpts { allow_leader: true }`](../crates/trembita/src/certs.rs) — roll
+[`ReloadOpts { allow_leader: true }`](../crates/trembita-assembly/src/certs.rs) — roll
 **followers first**, leader last.
 
 | Environment | Issuer | Example |
@@ -202,7 +202,7 @@ Reload on the **Raft leader** is rejected unless you call
 Public ACME (Let's Encrypt) is **not** supported for trembita wire identities — you
 need a private CA with `serverAuth` + `clientAuth` and SAN `trembita-node-<id>`.
 
-Product apps: set **`TREMBITA_CERT_DIR`** + **`TREMBITA_CERT_WATCH_SECS`** and use [`TrembitaApp::from_env()`](env.md). Runtime reload is via [`CertReloadHandle`](../crates/trembita/src/certs.rs) on the live cluster handle when PEM paths are configured.
+Product apps: set **`TREMBITA_CERT_DIR`** + **`TREMBITA_CERT_WATCH_SECS`** and use [`TrembitaApp::from_env()`](env.md). Runtime reload is via [`CertReloadHandle`](../crates/trembita-assembly/src/certs.rs) on the live cluster handle when PEM paths are configured.
 
 See [cert-automation](decisions/certificates.md).
 

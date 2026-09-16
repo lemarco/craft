@@ -61,6 +61,6 @@ Use [trembita-testing](../trembita-testing/SKILL.md):
 ## Facade checklist
 
 - [ ] Product-facing tuning via `TrembitaConfigure`, `TREMBITA_*`, or [`AppManifest`](../../crates/trembita/src/app/manifest.rs) — **not** `TrembitaCluster::builder` (removed from public API)
-- [ ] Framework-only cluster builder changes stay `pub(crate)` in `crates/trembita/src/builder/` (+ `integration` / `workspace_showcase` tests)
+- [ ] Cluster assembly changes go in `crates/trembita-assembly/` (+ `integration` / `trembita-showcase` tests)
 - [ ] Re-export types users need from `trembita` crate root
 - [ ] Example in [`examples/`](../../examples/README.md) or extend an existing showcase for non-trivial product flows

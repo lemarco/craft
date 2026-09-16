@@ -12,7 +12,7 @@ use trembita::core::StateMachine;
 use trembita::net::LocalNetwork;
 use trembita::proto::LogIndex;
 use trembita::cluster::{JobQueue, TrembitaCluster};
-use trembita::workspace_showcase::cluster::cluster_builder;
+use trembita_showcase::cluster::cluster_builder;
 use trembita::NodeId;
 use trembita::jobs::{InMemoryJobQueue, RedbJobQueue};
 use trembita::proto::WorkerId;

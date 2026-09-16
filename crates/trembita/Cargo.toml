@@ -49,14 +49,10 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 rustls.workspace = true
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest.workspace = true
 sha2.workspace = true
 hex.workspace = true
 tracing.workspace = true
-tracing-subscriber = { version = "0.3", default-features = false, features = [
-    "env-filter",
-    "fmt",
-] }
 
 [features]
 default = ["http-jobs"]
@@ -82,12 +78,12 @@ full = ["http-jobs", "redis-store", "external-backlog", "domain-outbox", "otlp-m
 
 [dev-dependencies]
 trembita-http.workspace = true
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest.workspace = true
 tower.workspace = true
 http-body-util.workspace = true
 bytes.workspace = true
 hyper.workspace = true
-trembita-test-support = { path = "../trembita-test-support", features = ["facade"] }
+trembita-test-support = { workspace = true, features = ["facade"] }
 rcgen.workspace = true
 rustls-pemfile.workspace = true
 tempfile.workspace = true
@@ -100,15 +96,6 @@ tokio-tungstenite.workspace = true
 serde = { workspace = true, features = ["derive"] }
 # The QUIC/mTLS integration test mints a shared dev cluster CA.
 trembita-net = { workspace = true, features = ["dev-certs"] }
-[[bin]]
-name = "showcase-migrate-demo"
-path = "src/bin/showcase_migrate_demo.rs"
-
-[[bin]]
-name = "showcase-self-update"
-path = "src/bin/showcase_self_update.rs"
-required-features = ["http-jobs"]
-
 [[test]]
 name = "gateway_ws"
 path = "tests/gateway_ws.rs"

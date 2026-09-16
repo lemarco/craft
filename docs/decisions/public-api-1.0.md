@@ -14,7 +14,7 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 | Area | Types | Notes |
 |------|-------|-------|
 | App | `TrembitaApp`, `TrembitaAppBuilder`, `AppManifest`, `TrembitaConfigure`, `JobOpts`, `WorkerOpts`, `WorkerScale`, `QueueOpts`, `CronOpts`, `ActorGroupOpts`, `GatewayOpts`, `RunOpts` | Primary entry; cluster join/membership via `TREMBITA_*` + [`from_env`](../../crates/trembita/src/app/runtime.rs) / [`from_config`](../../crates/trembita/src/app/runtime.rs) + [`.manifest`](../../crates/trembita/src/app/manifest.rs) — not cluster builder setters |
-| Env (embedders) | [`trembita::env::AppConfig`](../../crates/trembita/src/env.rs), `EnvOverrides`, `app_config_from_env` | Parse once in `main`, then `TrembitaApp::from_config(cfg)` ([`trembita-node`](../../crates/trembita-tools/src/bin/node.rs) maps its own `NodeConfig` → `AppConfig`) |
+| Env (embedders) | [`trembita::env::AppConfig`](../../crates/trembita/src/env.rs), `EnvOverrides`, `app_config_from_env` | Parse once in `main`, then `TrembitaApp::from_config(cfg)`. [`trembita-node`](../../crates/trembita-tools/src/bin/node.rs): [`NodeConfig::into_app_config`](../../crates/trembita-tools/src/node/config.rs) copies [`EnvOverrides`](../../crates/trembita-assembly/src/env_config.rs) (e.g. `peers` for `TREMBITA_PEERS`) so builder merge applies static membership. |
 | App runtime | `node_id`, `control`, `registry`, `supervisor`, `enqueue`, `cast`, `ask`, `shutdown_graceful` | Product control plane on `TrembitaApp` |
 | Identity | `NodeId`, `Security`, `PeerDirectory`, cert reload helpers | Multi-node wiring |
 | Jobs | `JobQueue`, `EnqueueOptions`, `run_queue_consumer`, `ClusterJobQueue` | Via `TrembitaApp::enqueue` |
@@ -38,7 +38,7 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 
 | Item | Use instead |
 |------|-------------|
-| Custom SM cluster assembly | **Removed from public API** — product uses [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) + empty default SM + `TREMBITA_*`. Custom state machines: maintainer [`workspace_showcase`](../../crates/trembita/src/workspace_showcase/mod.rs) + showcase bins, or in-crate [`integration`](../../crates/trembita/src/integration/mod.rs) tests via `pub(crate)` [`TrembitaClusterBuilder`](../../crates/trembita/src/builder/mod.rs). Benchmarks/soaks use [`workspace_showcase::cluster::cluster_builder`](../../crates/trembita/src/workspace_showcase/cluster.rs). |
+| Custom SM cluster assembly | **Removed from public API** — product uses [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) + empty default SM + `TREMBITA_*`. Custom state machines: unpublished [`trembita-showcase`](../../crates/trembita-showcase/src/lib.rs) (+ bins `showcase-migrate-demo`, `showcase-self-update`), or in-crate [`integration`](../../crates/trembita/src/integration/mod.rs) tests via [`trembita-assembly`](../../crates/trembita-assembly/src/lib.rs) [`TrembitaClusterBuilder`](../../crates/trembita-assembly/src/builder/mod.rs). Benchmarks/soaks use [`trembita_showcase::cluster::cluster_builder`](../../crates/trembita-showcase/src/cluster.rs). |
 | `TrembitaCluster::builder` / exported `TrembitaClusterBuilder` | **Removed** — not on the facade |
 | `TrembitaApp::cluster` / `into_cluster` | Not public — use `TrembitaApp` product APIs or `trembita::cluster` runtime handles |
 | `TrembitaAppBuilder::inner_mut` | `#[doc(hidden)]` — in-crate tests only |

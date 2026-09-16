@@ -10,7 +10,7 @@ Product and implementation backlog for trembita. Shipped capabilities stay in [s
 
 ## Open work
 
-Epics **B-01 … B-18** are **shipped** (see [Shipped epics](#shipped-epics-archive) below). **B-19** and **B-20** are shipped. Remaining items are optional integrations and maintenance — not blockers for product scenarios.
+Epics **B-01 … B-18** are **shipped** (see [Shipped epics](#shipped-epics-archive) below). **B-19** and **B-20** are shipped. **B-21 … B-26** (capability DX) are shipped; follow-up is **[B-27](#b-27--capability-dx-wave-3)**. Remaining items are optional integrations and maintenance — not blockers for product scenarios.
 
 | Id | Item | Status | Notes |
 |----|------|--------|-------|
@@ -30,10 +30,40 @@ Epics **B-01 … B-18** are **shipped** (see [Shipped epics](#shipped-epics-arch
 | B-24 | Capability parity — no regression vs actors | ✅ | [B-24](#b-24--capability-parity--no-regression) |
 | B-25 | Capability registration DX — `cap_handler` + register chain | ✅ | [B-25](#b-25--capability-registration-dx) |
 | B-26 | Capability DX wave 2 — async handler, group macro, typed session mount | ✅ | [B-26](#b-26--capability-dx-wave-2) |
+| B-27 | Capability DX wave 3 — OpCtx, queued idempotency, scaffold parity, gateway/obs | 🔲 | [B-27](#b-27--capability-dx-wave-3) |
 
 
 
 For new feature epics, use the next **B-NN** id and link the scenario + ADR.
+
+### B-27 — Capability DX wave 3
+
+**Priority:** P2 (P1 subtasks: B-27e, B-27i)  
+**Scenario:** [capabilities](scenarios/capabilities.md), [background-jobs](scenarios/background-jobs.md), [realtime-sessions](scenarios/realtime-sessions.md)  
+**ADR:** [capability-dx](decisions/capability-dx.md) — closes gaps noted after B-25/B-26 (ADR vs shipped surface, templates, queue bridge).
+
+Post-ship review: `OpCtx` thinner than ADR table; CLI templates still on manual `CapOp::new`; queued bridge without consumer-grade idempotency; examples skip `domain/` and ADR one-file-per-op layout.
+
+| Subtask | Wave | Description | Status |
+| ------- | ---- | ----------- | ------ |
+| B-27a | 1 | **`OpCtx::Deps`** — builder-injected domain ports (ADR [`Deps`](decisions/capability-dx.md#public-api-surface-trembitacapability)) | 🔲 |
+| B-27b | 1 | **`OpCtx` + store** — optional [`ActorStateStore`](decisions/actor-state-store.md) on context; reduce per-group manual redb open (cf. `stateful-workers` `OrdersState`) | 🔲 |
+| B-27c | 2 | **`OpCtx` ingress** — gateway identity / correlation id on handler context for audit | 🔲 |
+| B-27d | 2 | **Typed handler errors** — domain `Error` → `CapError` / HTTP mapping; less `CapError::Handler(String)` boilerplate | 🔲 |
+| B-27e | 1 | **CLI templates** — [`ping.rs.tpl`](../crates/trembita-cli/templates/trembita-app/src/capabilities/ping.rs.tpl) + [`onboarding.rs.tpl`](../crates/trembita-cli/templates/trembita-app/src/capabilities/onboarding.rs.tpl) on `#[cap_handler]` + `cap_register_chain!` (finishes intent of B-25c for scaffold) | 🔲 |
+| B-27f | 2 | **Capability layout** — scaffold group subdirs, one op per file ([ADR layout](decisions/capability-dx.md#app-layout-replaces-actors-as-the-default-path)); `trembita doctor` hints | 🔲 |
+| B-27g | 2 | **`domain/` module** — generated + migrate showcases ([framework-conventions](decisions/framework-conventions.md)); handlers call domain fns with no trembita in domain | 🔲 |
+| B-27h | 3 | **Multi-op manifest sugar** — register many ops without rejected `cap_group!` DSL (e.g. module-level register list / chain helper) | 🔲 |
+| B-27i | 1 | **Queued idempotency** — [`capability/queue`](../crates/trembita/src/capability/queue.rs) bridge honors `IdempotencyOpts` / job `dedup_key`; optional link `#[cap_handler(key = …)]` → enqueue dedup | 🔲 |
+| B-27j | 2 | **Manifest / doctor validate** — warn when code or docs use `.enqueue()` / `Route::Queued` but op lacks `.default_queue_for` | 🔲 |
+| B-27k | 2 | **Greenfield queue story** — getting-started: new apps prefer `Route::Queued` + caps; `consumers/` + B-14k `on_app` → **Advanced** | 🔲 |
+| B-27l | 2 | **Gateway helpers** — `cap_queued_wait`, `cap_schedule`, session-oriented wrappers for [`http/product.rs`](decisions/framework-conventions.md) (extends B-21h) | 🔲 |
+| B-27m | 3 | **Cap observability** — tracing spans + metrics dimensions `(group, op, route)` at [`CapHost`](../crates/trembita/src/capability/host.rs) dispatch | 🔲 |
+| B-27n | 2 | **Integration test kit** — LocalNetwork helpers: boot `CapManifest`, `Req::via(app).route(...)` shortcuts | 🔲 |
+| B-27o | 2 | **Showcase polish** — [`background-jobs`](../examples/background-jobs/): store/dedup idempotency + `http/product.rs`; [`realtime`](../examples/realtime/): `domain/` + optional second inline op | 🔲 |
+| B-27p | 3 | **OpenAPI / JSON Schema from `CapRequest`** — optional gateway DTO generation (not gRPC; HTTP-only) | 🔲 |
+
+**Out of scope (unchanged):** RAM `#[actor(migratable)]`, custom non-`CapWire` session bytes, linearizable inline ask — see [capability-parity](scenarios/capability-parity.md).
 
 ### B-25 — Capability registration DX
 

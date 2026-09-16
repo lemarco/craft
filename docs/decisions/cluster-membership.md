@@ -41,7 +41,7 @@ Membership changes always go through the Raft log — HTTP routes are **entry po
 
 ### Seed-set discovery
 
-- `TREMBITA_JOIN_SEEDS` / [`AppConfig::join_seeds`](../../crates/trembita/src/env_config.rs) / `trembita::discovery::Seed` — ordered candidate list; tries each in turn (in-crate builder mirrors the same for tests).
+- `TREMBITA_JOIN_SEEDS` / [`AppConfig::join_seeds`](../../crates/trembita-assembly/src/env_config.rs) / `trembita::discovery::Seed` — ordered candidate list; tries each in turn ([`trembita-assembly`](../../crates/trembita-assembly/src/builder/mod.rs) mirrors the same for integration tests).
 - `trembita::discovery::resolve_dns_seeds` — ordinal DNS names (`node-0.cluster`, …) → seed set.
 - Peer addresses converge via `/cluster/peers` anti-entropy gossip.
 

@@ -72,10 +72,6 @@ pub mod upgrade {
 #[cfg(test)]
 mod integration;
 
-/// Maintainer showcases (custom SM) — not product API.
-#[doc(hidden)]
-pub mod workspace_showcase;
-
 /// Cluster builder, runtime handle, queues, journals.
 pub mod cluster;
 /// `TREMBITA_*` boot configuration.

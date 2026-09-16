@@ -31,7 +31,7 @@ When `main` already parsed env (embedder, [`trembita-node`](../crates/trembita-t
 use trembita::{AppManifest, RunOpts, TrembitaApp};
 use trembita::env::AppConfig;
 
-let cfg: AppConfig = /* app_config_from_env()? or NodeConfig::into_app_config */ ;
+let cfg: AppConfig = /* trembita::env::app_config_from_env()? or trembita_tools::node::config::config_from_env()?.into_app_config(seeds) */ ;
 let manifest = app_manifest();
 TrembitaApp::from_config(cfg)
     .manifest(manifest)
@@ -41,7 +41,7 @@ TrembitaApp::from_config(cfg)
 
 Register domain wiring in [`AppManifest`](../crates/trembita/src/app/manifest.rs) — not duplicate `.jobs()` / `.queue()` on the builder for product code ([public-api-1.0](decisions/public-api-1.0.md)).
 
-**Custom Raft state machines** are not part of this path — see [public-api-1.0](decisions/public-api-1.0.md) (`workspace_showcase` / in-crate `integration` only).
+**Custom Raft state machines** are not part of this path — see [public-api-1.0](decisions/public-api-1.0.md) (`trembita-showcase` / in-crate `integration` only).
 
 ## Product apps (typical deploy)
 
@@ -123,7 +123,7 @@ Also accepted as `TREMBITA_GATEWAY_TOKEN` (legacy name). Unset = open product HT
 | `TREMBITA_HTTP_TLS_CERT` / `TREMBITA_HTTP_TLS_KEY` | HTTPS on the unified TCP listener (`TREMBITA_GATEWAY_TLS_*` aliases) |
 | `TREMBITA_CERT_WATCH_SECS` | PEM hot-reload poll (default `60`) |
 | `TREMBITA_HTTP_DRAIN_TIMEOUT` | Gateway connection drain on shutdown (default 30s; alias `TREMBITA_GATEWAY_DRAIN_TIMEOUT`) |
-| `TREMBITA_GRACEFUL_LEAVE`, `TREMBITA_DRAIN_TIMEOUT`, … | Shutdown / cluster policy — see [`env_config.rs`](../crates/trembita/src/env_config.rs) |
+| `TREMBITA_GRACEFUL_LEAVE`, `TREMBITA_DRAIN_TIMEOUT`, … | Shutdown / cluster policy — see [`trembita::env`](../crates/trembita/src/env.rs) / [`env_config.rs`](../crates/trembita-assembly/src/env_config.rs) |
 
 ---
 
@@ -132,7 +132,7 @@ Also accepted as `TREMBITA_GATEWAY_TOKEN` (legacy name). Unset = open product HT
 | Binary | Notes |
 |--------|--------|
 | Product app | Table above |
-| [`trembita-node`](../crates/trembita-tools/src/bin/node.rs) | Reference **product** node (`TrembitaApp` + empty SM): may use `TREMBITA_NODE_ID`, `TREMBITA_PEERS`, `TREMBITA_DISCOVERY`, `--join-seed` — **not** for normal app deploys |
+| [`trembita-node`](../crates/trembita-tools/src/bin/node.rs) | Reference **product** node (`TrembitaApp` + empty SM): may use `TREMBITA_NODE_ID`, `TREMBITA_PEERS`, `TREMBITA_DISCOVERY`, `--join-seed`. [`NodeConfig::into_app_config`](../crates/trembita-tools/src/node/config.rs) sets [`EnvOverrides`](../crates/trembita-assembly/src/env_config.rs) (e.g. `env.peers` when `TREMBITA_PEERS` is set) so static membership merges into the builder — **not** for normal app deploys |
 | [`dev-client`](../crates/trembita-tools/src/bin/dev-client.rs) | Client tooling; requires `TREMBITA_PEERS` |
 
 Run `trembita doctor` on scaffold projects — it checks `manifest.rs` ↔ `consumers/` wiring, gateway merges in `app.rs`, legacy keys in `deploy/.env.example`, and **removed APIs** (`TrembitaCluster::builder`, old gateway toggles). Before deploy, use **`trembita doctor --preflight`**: stricter checks for `TREMBITA_LISTEN` / `DATA_DIR` / `CERT_DIR`, compose join pattern (no `TREMBITA_NODE_ID`), default ops gateway wiring, and local `deploy/certs/ca.pem` when present.

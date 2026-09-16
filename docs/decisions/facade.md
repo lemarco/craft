@@ -7,6 +7,8 @@
 
 [trembita](naming.md) is a **library-first framework**: product teams embed one binary, run it on N VPS nodes, and wire domain logic through [`TrembitaApp`](../../crates/trembita/src/app/mod.rs). The workspace splits implementation across many `trembita-*` crates ([architecture-style](architecture-style.md)).
 
+Unpublished workspace crates **`trembita-assembly`** (cluster boot) and **`trembita-showcase`** (maintainer harnesses) sit behind the facade — see [facade-layering](facade-layering.md).
+
 Embedders should not need a mental map of fifteen crate names. They need:
 
 1. **One dependency** in `Cargo.toml` for the product path

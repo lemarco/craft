@@ -68,7 +68,7 @@ Optional dev-only JSON for debugging may be added later; not the default wire fo
 
 | Source | Key | Default |
 |--------|-----|---------|
-| Product env | `TREMBITA_LISTEN` | `0.0.0.0:443` ([`env_config.rs`](../../crates/trembita/src/env_config.rs)) |
+| Product env | `TREMBITA_LISTEN` | `0.0.0.0:443` ([`env_config.rs`](../../crates/trembita-assembly/src/env_config.rs)) |
 | Reference `trembita-node` | `TREMBITA_LISTEN` | `0.0.0.0:443` (same as product; local demos may set another port) |
 | Low-level builder | `.listen(addr)` | caller-supplied (no implicit default in all APIs) |
 
@@ -92,7 +92,7 @@ Responses: plain HTTP, JSON (ops HTTP is **not** the postcard hot path).
 |--------|-----|---------|
 | Product env | `TREMBITA_LISTEN` | `0.0.0.0:443` (wire + TCP) |
 | Internal | `TREMBITA_HTTP` / `TREMBITA_GATEWAY` | omit in deploys; `-` disables TCP only (QUIC-only node) |
-| Reference `trembita-node` | same rules via [`product_http_from_wire`](../../crates/trembita/src/env_config.rs) | TCP co-hosted on `TREMBITA_LISTEN` when not disabled |
+| Reference `trembita-node` | same rules via [`product_http_from_wire`](../../crates/trembita-assembly/src/env_config.rs) | TCP co-hosted on `TREMBITA_LISTEN` when not disabled |
 
 No consensus / client data on this listener. Optional server-only TLS via `TREMBITA_HTTP_TLS_*` (aliases `TREMBITA_GATEWAY_TLS_*`). No mTLS requirement. Brownfield merges: [unified-listener](unified-listener.md).
 

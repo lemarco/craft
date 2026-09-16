@@ -10,7 +10,7 @@ use trembita::cluster::TrembitaCluster;
 use trembita::core::StateMachine;
 use trembita::net::LocalNetwork;
 use trembita::proto::LogIndex;
-use trembita::workspace_showcase::cluster::cluster_builder;
+use trembita_showcase::cluster::cluster_builder;
 use trembita::NodeId;
 use trembita_benchmarks::env_u64;
 use trembita_test_support::fast_raft_config_with_seed;

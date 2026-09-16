@@ -27,7 +27,18 @@ Dry-run mode reports `Ready` without process exit. For production-style restarts
 | 2 | 8191 |
 | 3 | 8192 |
 
+## Workspace binary
+
+Nodes run the unpublished showcase crate (custom [`UpgradeMachine`](../../crates/trembita-core/src/upgrade.rs)):
+
+```bash
+cargo run -p trembita-showcase --bin showcase-self-update
+```
+
+The `examples/self-update` crate is a thin wrapper for `trembita dev` / cluster scripts.
+
 ## Related
 
 - [docs/ops/rolling-upgrade.md](../../docs/ops/rolling-upgrade.md)
 - [docs/decisions/upgrade-coordinator.md](../../docs/decisions/upgrade-coordinator.md)
+- [facade-layering](../../docs/decisions/facade-layering.md)
