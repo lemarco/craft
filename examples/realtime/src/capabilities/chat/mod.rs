@@ -24,4 +24,3 @@ pub fn manifest() -> CapManifest {
 }
 
 pub use append::Append;
-pub use line_count::{LineCount, LineCountAck};

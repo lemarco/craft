@@ -12,7 +12,7 @@ use std::env;
 use std::time::Duration;
 
 use trembita::{
-    AppManifest, AuthMode, CapRequest, CookieConfig, Gateway,
+    AppManifest, AuthMode, CookieConfig, Gateway,
     GatewayOpts, RequestCtx, RouteTable, TrembitaApp, TrembitaConfigure, TrembitaGatewayState,
     WsMessage,
     futures_util::{SinkExt, StreamExt}, mount_sticky_websocket, server_stream,
