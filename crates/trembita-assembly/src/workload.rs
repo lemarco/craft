@@ -1,4 +1,4 @@
-//! Per-node workload runtime wired by [`TrembitaAppBuilder::workload`](crate::TrembitaAppBuilder::workload).
+//! Per-node workload runtime wired by `TrembitaClusterBuilder::workload`.
 
 use std::sync::Arc;
 

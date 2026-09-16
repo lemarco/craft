@@ -1,6 +1,6 @@
 //! The [`Observer`] the admin server reads from (health-admin-port readiness, observability §4
 //! introspection), backed by a live node: consensus status comes from the
-//! [`NodeHandle`], the actor picture from the shared [`ActorDirectory`] and the
+//! `NodeHandle`, the actor picture from the shared [`ActorDirectory`] and the
 //! local [`ActorRegistry`] (mailbox depth + uptime for actors hosted here; remote
 //! stats arrive via directory anti-entropy).
 

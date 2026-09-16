@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-/// Options for [`TrembitaCluster::wait_until_ready`](crate::cluster::TrembitaCluster::wait_until_ready).
+/// Options for [`TrembitaCluster::wait_until_ready`](crate::TrembitaCluster::wait_until_ready).
 #[derive(Debug, Clone)]
 pub struct ReadyOpts {
     /// Maximum time to wait before returning `false`.

@@ -1,6 +1,6 @@
-//! Environment parsing shared by [`TrembitaApp`](super::app::TrembitaApp) and reference binaries.
+//! Environment parsing shared by the `trembita` product facade and reference binaries.
 //!
-//! **Product surface** (typical [`TrembitaApp::from_env`](super::app::TrembitaApp::from_env) deploy):
+//! **Product surface** (typical `TrembitaApp::from_env` deploy):
 //! `TREMBITA_LISTEN`, `TREMBITA_DATA_DIR`, `TREMBITA_CERT_DIR` (or `dev-certs`), `TREMBITA_JOIN_SEEDS`
 //! on joiners, optional `GATEWAY_TOKEN` / `TREMBITA_JOB_QUEUE`.
 //!

@@ -35,7 +35,7 @@ use types::{
     TopicStreamSpec, UserLeaderTaskSpec,
 };
 
-/// Internal fluent builder for a single trembita node — product apps use [`TrembitaApp`](crate::TrembitaApp).
+/// Internal fluent builder for a single trembita node — product apps use the `trembita` facade (`TrembitaApp`).
 pub struct TrembitaClusterBuilder<M: StateMachine> {
     node_id: NodeId,
     machine: M,

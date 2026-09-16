@@ -30,7 +30,7 @@ use super::facts::ClusterFacts;
 use super::telemetry::ActorTelemetry;
 
 /// A running trembita node: the facade's single entry point once
-/// [`start`](crate::cluster::TrembitaClusterBuilder::start_local) returns.
+/// [`start`](crate::TrembitaClusterBuilder::start_local) returns.
 ///
 /// Clone-free but cheap to pass by reference; drop it (or call
 /// [`shutdown`](Self::shutdown)) to stop the node.
@@ -114,14 +114,14 @@ impl<M: StateMachine> TrembitaCluster<M> {
         self.vps_resources
     }
 
-    /// Per-node workload governor runtime when [`TrembitaClusterBuilder::workload`] was set.
+    /// Per-node workload governor runtime when `TrembitaClusterBuilder::workload` was set.
     #[must_use]
     pub fn workload_runtime(&self) -> Option<Arc<crate::workload::WorkloadRuntime>> {
         self.workload.as_ref().map(Arc::clone)
     }
 
     /// The workflow-state store wired by
-    /// [`TrembitaClusterBuilder::actor_state_store`](crate::cluster::TrembitaClusterBuilder::actor_state_store),
+    /// [`TrembitaClusterBuilder::actor_state_store`](crate::TrembitaClusterBuilder::actor_state_store),
     /// if any (actor-state-redis). Clone the `Arc` into actor `Config` when spawning
     /// stateful workers.
     #[must_use]
@@ -130,14 +130,14 @@ impl<M: StateMachine> TrembitaCluster<M> {
     }
 
     /// Cluster-facing queue client for `stream`, routing through the leader wire
-    /// service ([`TrembitaClusterBuilder::job_queue`](crate::cluster::TrembitaClusterBuilder::job_queue)).
+    /// service ([`TrembitaClusterBuilder::job_queue`](crate::TrembitaClusterBuilder::job_queue)).
     #[must_use]
     pub fn job_queue(&self, stream: &str) -> Option<Arc<dyn trembita_jobs::JobQueue>> {
         self.job_queues.get(stream).cloned()
     }
 
     /// Cluster-facing topic client for `name`
-    /// ([`TrembitaClusterBuilder::event_topic`](crate::cluster::TrembitaClusterBuilder::event_topic)).
+    /// ([`TrembitaClusterBuilder::event_topic`](crate::TrembitaClusterBuilder::event_topic)).
     #[must_use]
     pub fn event_topic(&self, name: &str) -> Option<Arc<dyn trembita_events::EventTopic>> {
         self.event_topics.get(name).cloned()
@@ -388,7 +388,7 @@ impl<M: StateMachine> TrembitaCluster<M> {
         }
     }
 
-    /// One [`NodeHandle`] per catalog group at bootstrap (may include retired
+    /// One [`NodeHandle`](trembita_runtime::NodeHandle) per catalog group at bootstrap (may include retired
     /// groups after rebalance; use [`group_handle`](Self::group_handle) for the
     /// live set).
     #[must_use]
@@ -520,7 +520,7 @@ impl<M: StateMachine> TrembitaCluster<M> {
         &self.supervisor
     }
 
-    /// The telemetry event bus; subscribe with [`EventBus::subscribe`].
+    /// The telemetry event bus; subscribe with [`EventBus::subscribe`](trembita_dashboard::EventBus::subscribe).
     #[must_use]
     pub fn events(&self) -> &EventBus {
         &self.events
@@ -925,7 +925,7 @@ impl<M: StateMachine> TrembitaCluster<M> {
         }
     }
 
-    /// Hot-reload handle when the node was started with [`TrembitaClusterBuilder::start_quic_pem`]
+    /// Hot-reload handle when the node was started with [`TrembitaClusterBuilder::start_quic_pem`](crate::TrembitaClusterBuilder::start_quic_pem)
     /// (cert-automation). `None` for in-memory or static `Security` starts.
     #[must_use]
     pub fn cert_reload(&self) -> Option<&CertReloadHandle> {

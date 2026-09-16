@@ -34,7 +34,7 @@ pub async fn boot_local_app_with_capabilities(
     .await
 }
 
-/// Convenience: build manifest wrapper only (caller supplies full [`TrembitaAppBuilder`] chain).
+/// Convenience: build manifest wrapper only (caller supplies full `TrembitaAppBuilder` chain).
 #[must_use]
 pub fn manifest_with_capabilities(caps: CapManifest) -> AppManifest {
     AppManifest::new().capabilities(caps)

@@ -178,7 +178,7 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
     /// ([schedule-source](../../docs/decisions/schedule-source.md)).
     ///
     /// Requires [`job_queue`](Self::job_queue) on the same stream. Pairs with
-    /// [`.cron()`](crate::TrembitaAppBuilder::cron) — static and external sources
+    /// `.cron()` on the product manifest — static and external sources
     /// are merged.
     #[must_use]
     pub fn schedule_source(

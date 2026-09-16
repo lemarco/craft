@@ -13,7 +13,7 @@ use crate::clock::{POLL_STEP, advance};
 
 /// Boot a local [`TrembitaApp`] for integration tests (no Ctrl-C loop).
 ///
-/// Pass a closure so the large [`TrembitaAppBuilder`] is constructed inside this
+/// Pass a closure so the large `TrembitaAppBuilder` is constructed inside this
 /// future (keeps caller test futures under clippy's size threshold).
 ///
 /// # Panics
