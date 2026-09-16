@@ -51,8 +51,7 @@ otlp = [
 ]
 
 [dev-dependencies]
-trembita-test-support.workspace = true
 serde = { workspace = true, features = ["derive"] }
 tempfile.workspace = true
 tokio.workspace = true
-trybuild.workspace = true
+trybuild = "1"

@@ -4,7 +4,7 @@ use trembita_runtime::NodeHandle;
 use trembita_runtime::trembita_core::{Role, StateMachine};
 use trembita_runtime::trembita_proto::NodeId;
 
-use crate::clock::{POLL_STEP, advance};
+use trembita_test_support::clock::{POLL_STEP, advance};
 
 /// Poll node statuses until one reports `Leader`, or panic after ~5s.
 ///

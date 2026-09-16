@@ -10,9 +10,8 @@ use trembita::{
     AppManifest, CapError, CapGroup, CapManifest, CapOp, CapRequest, Gateway, GatewayOpts, OpCtx,
     ProductRoutes, Route, TrembitaApp, TrembitaConfigure, cap_enqueue, cap_invoke,
 };
-use trembita_test_support::{
-    advance, boot_local_app, eventually_default, spawn_test_gateway, wait_for_trembita_app_leader,
-};
+use trembita_test_facade::{boot_local_app, spawn_test_gateway, wait_for_trembita_app_leader};
+use trembita_test_support::{advance, eventually_default};
 
 #[derive(Default)]
 struct MathState {

@@ -13,9 +13,8 @@ use trembita::{
 use trembita_jobs::{
     BacklogItem, ConsumerCount, EnqueueOptions, InMemoryExternalBacklog, Settlement,
 };
-use trembita_test_support::{
-    advance, boot_local_app, eventually_async_default, wait_for_trembita_app_leader,
-};
+use trembita_test_facade::{boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_support::{advance, eventually_async_default};
 
 static PROCESSED: AtomicUsize = AtomicUsize::new(0);
 

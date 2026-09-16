@@ -7,9 +7,8 @@ use trembita::{
     AppManifest, GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError, ReadyOpts,
     TrembitaApp, TrembitaConfigure, WorkflowBuilder, WorkflowOpts, journal_workflow,
 };
-use trembita_test_support::{
-    TICK_PERIOD, boot_local_app, fast_raft_config_with_seed, gateway_workflows_surfaces,
-};
+use trembita_test_facade::{boot_local_app, gateway_workflows_surfaces};
+use trembita_test_support::{TICK_PERIOD, fast_raft_config_with_seed};
 
 fn noop_plan(saga_id: &str) -> trembita_client::SagaPlan {
     let key = b"workflow".to_vec();
@@ -94,10 +93,10 @@ mod gateway_merge {
         AppManifest, GatewayOpts, ReadyOpts, TrembitaApp, TrembitaConfigure, WorkflowOpts,
         journal_workflow,
     };
-    use trembita_test_support::{
-        TICK_PERIOD, boot_local_app, fast_raft_config_with_seed, gateway_workflows_config,
-        gateway_workflows_surfaces,
+    use trembita_test_facade::{
+        boot_local_app, gateway_workflows_config, gateway_workflows_surfaces,
     };
+    use trembita_test_support::{TICK_PERIOD, fast_raft_config_with_seed};
 
     use super::noop_plan;
 

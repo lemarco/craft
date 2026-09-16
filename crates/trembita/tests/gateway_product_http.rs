@@ -13,9 +13,8 @@ use trembita::{
     journal_workflow,
 };
 use trembita_http::{ResponseBody, RouteTable};
-use trembita_test_support::{
-    advance, boot_local_app, spawn_test_gateway, wait_for_trembita_app_leader,
-};
+use trembita_test_facade::{boot_local_app, spawn_test_gateway, wait_for_trembita_app_leader};
+use trembita_test_support::advance;
 
 struct BearerSecret;
 

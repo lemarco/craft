@@ -7,25 +7,19 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-publish = false
+categories.workspace = true
+keywords.workspace = true
+readme = "README.md"
+homepage.workspace = true
 
 [lints]
 workspace = true
 
-[features]
-default = []
-# Pulls the full `trembita` facade (dashboard/hyper stack). Enable only in `trembita` tests.
-facade = ["dep:trembita", "dep:hyper", "dep:hyper-util"]
-
 [dependencies]
 trembita-proto.workspace = true
 trembita-core.workspace = true
-trembita-runtime.workspace = true
-trembita-http.workspace = true
-trembita = { workspace = true, optional = true }
-hyper = { workspace = true, optional = true }
-hyper-util = { workspace = true, optional = true }
 serde.workspace = true
 thiserror.workspace = true
 pretty_assertions.workspace = true
 tokio.workspace = true
+tracing-subscriber.workspace = true

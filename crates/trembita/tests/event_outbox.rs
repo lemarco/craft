@@ -9,7 +9,7 @@ use trembita::{
     AppManifest, EventOutboxDrainOpts, EventOutboxSource, InMemoryEventOutboxSource, TopicOpts,
     TrembitaApp, TrembitaConfigure,
 };
-use trembita_test_support::boot_local_app;
+use trembita_test_facade::boot_local_app;
 
 #[tokio::test]
 async fn event_outbox_drainer_publishes_to_topic() {

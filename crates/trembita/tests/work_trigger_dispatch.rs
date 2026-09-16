@@ -11,10 +11,10 @@ use trembita::{
     dispatch_work_trigger, journal_workflow,
 };
 use trembita_jobs::{RecurringJob, WorkTrigger};
-use trembita_test_support::{
-    TICK_PERIOD, advance, boot_local_app, fast_raft_config_with_seed, gateway_workflows_surfaces,
-    wait_for_trembita_app_leader,
+use trembita_test_facade::{
+    boot_local_app, gateway_workflows_surfaces, wait_for_trembita_app_leader,
 };
+use trembita_test_support::{TICK_PERIOD, advance, fast_raft_config_with_seed};
 
 struct TestGatewayIdentity;
 

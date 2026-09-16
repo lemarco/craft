@@ -13,9 +13,8 @@ use trembita::{
 };
 use trembita_http::{Gateway, HttpError, RequestCtx, Response, RouteTable};
 use trembita_runtime::{UserActor, actor};
-use trembita_test_support::{
-    advance, boot_local_app, eventually_default, spawn_test_gateway, wait_for_trembita_app_leader,
-};
+use trembita_test_facade::{boot_local_app, spawn_test_gateway, wait_for_trembita_app_leader};
+use trembita_test_support::{advance, eventually_default};
 
 struct FixedToken;
 

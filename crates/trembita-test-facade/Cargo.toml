@@ -1,0 +1,23 @@
+[package]
+name = "trembita-test-facade"
+description = "TrembitaApp / gateway integration test harness (workspace-only)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+trembita-test-support.workspace = true
+trembita-test-runtime.workspace = true
+trembita-core.workspace = true
+trembita.workspace = true
+trembita-http.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+tokio.workspace = true

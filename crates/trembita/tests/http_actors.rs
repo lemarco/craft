@@ -9,7 +9,8 @@ use std::time::Duration;
 use bytes::Bytes;
 use http::{Method, StatusCode, header};
 use trembita::{TrembitaApp, TrembitaConfigure};
-use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_facade::{boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_support::advance;
 
 #[tokio::test(start_paused = true)]
 async fn http_ask_returns_503_when_group_has_no_workers() {

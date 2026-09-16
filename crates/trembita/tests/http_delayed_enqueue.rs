@@ -11,7 +11,8 @@ use http::{Method, StatusCode, Uri, header};
 use trembita::{AppManifest, QueueOpts, TrembitaApp, TrembitaConfigure};
 use trembita_http::{ResponseBody, RouteTable};
 use trembita_jobs::{JobLifecycle, WorkerId};
-use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_facade::{boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_support::advance;
 
 async fn dispatch_body(
     table: &RouteTable,

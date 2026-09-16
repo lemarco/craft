@@ -10,7 +10,7 @@ use trembita::{
     AppManifest, ConsumerOpts, JobOpts, TrembitaApp, TrembitaConfigure, WorkloadOpts, consumer,
 };
 use trembita_runtime::ManualExternalLoad;
-use trembita_test_support::boot_local_app;
+use trembita_test_facade::boot_local_app;
 
 static HANDLED: AtomicUsize = AtomicUsize::new(0);
 

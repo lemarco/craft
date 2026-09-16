@@ -11,9 +11,8 @@ use trembita::{
     IdentityError, IdentityTypeError, SessionHandle, SessionKey, TrembitaConfigure,
     TrembitaGatewayState,
 };
-use trembita_test_support::{
-    advance, boot_local_app, gateway_jobs_surfaces, wait_for_trembita_app_leader,
-};
+use trembita_test_facade::{boot_local_app, gateway_jobs_surfaces, wait_for_trembita_app_leader};
+use trembita_test_support::advance;
 
 struct FixedToken;
 

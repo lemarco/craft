@@ -14,7 +14,8 @@ use trembita_net::LocalNetwork;
 use trembita_runtime::trembita_core::RaftNode;
 use trembita_runtime::trembita_proto::NodeId;
 use trembita_runtime::{NodeHandle, NodeService, RaftDriver, RuntimeConfig, spawn_node};
-use trembita_test_support::{Cmd, Kv, Qry, Resp, TICK_PERIOD, await_node_leader, fast_raft_config};
+use trembita_test_runtime::await_node_leader;
+use trembita_test_support::{Cmd, Kv, Qry, Resp, TICK_PERIOD, fast_raft_config};
 
 fn spawn_cluster() -> (LocalNetwork, Vec<(NodeId, NodeHandle<Kv>)>) {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];

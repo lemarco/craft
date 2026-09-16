@@ -27,9 +27,9 @@ use trembita_runtime::trembita_storage::{
 use trembita_runtime::{
     ClientError, NodeHandle, NodeService, RaftDriver, RuntimeConfig, spawn_node,
 };
+use trembita_test_runtime::await_node_leader;
 use trembita_test_support::{
-    Kv, KvCommand, KvQuery, KvResponse, TICK_PERIOD, advance, await_node_leader,
-    fast_raft_config_with_seed,
+    Kv, KvCommand, KvQuery, KvResponse, TICK_PERIOD, advance, fast_raft_config_with_seed,
 };
 
 /// A running cluster of async node runtimes wired over one `LocalNetwork`.
@@ -911,7 +911,8 @@ async fn upsert_saga_journal_on_follower_returns_not_leader() {
 #[tokio::test(start_paused = true)]
 async fn auto_compaction_runs_when_entry_threshold_reached() {
     use trembita_runtime::trembita_core::CompactionPolicy;
-    use trembita_test_support::{await_node_leader, eventually_async_default};
+    use trembita_test_runtime::await_node_leader;
+    use trembita_test_support::eventually_async_default;
 
     let id = NodeId(1);
     let net = LocalNetwork::new();

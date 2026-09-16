@@ -22,9 +22,8 @@ use trembita_http::{
     Gateway, Response, RouteTable, UpgradeStream, accept_websocket, routing_to_http_response,
 };
 use trembita_runtime::{UserActor, actor};
-use trembita_test_support::{
-    advance, boot_local_app, eventually_default, wait_for_trembita_app_leader,
-};
+use trembita_test_facade::{boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_support::{advance, eventually_default};
 
 struct FixedToken;
 

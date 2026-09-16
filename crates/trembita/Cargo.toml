@@ -83,7 +83,9 @@ tower.workspace = true
 http-body-util.workspace = true
 bytes.workspace = true
 hyper.workspace = true
-trembita-test-support = { workspace = true, features = ["facade"] }
+trembita-test-support.workspace = true
+trembita-test-runtime.workspace = true
+trembita-test-facade.workspace = true
 rcgen.workspace = true
 rustls-pemfile.workspace = true
 tempfile.workspace = true

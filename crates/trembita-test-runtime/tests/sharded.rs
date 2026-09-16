@@ -14,9 +14,10 @@ use trembita_runtime::trembita_proto::{ClientRequest, ClientResponse, ClientWire
 use trembita_runtime::{
     RuntimeConfig, ShardedNodeService, spawn_multi_raft_node, spawn_raft_group,
 };
+use trembita_test_runtime::{wait_for_all_node_leaders, wait_for_node_leader};
 use trembita_test_support::{
     KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, fast_raft_config_with_seed,
-    find_keys_for_two_groups, wait_for_all_node_leaders, wait_for_node_leader,
+    find_keys_for_two_groups,
 };
 
 #[tokio::test(start_paused = true)]

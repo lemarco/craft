@@ -59,7 +59,7 @@ Post-ship review (2026-09): B-27 subtasks in the table below are **shipped**; op
 | B-27k | 2 | **Greenfield queue story** — [getting-started §5](getting-started.md#5-product-workers) | ✅ |
 | B-27l | 2 | **Gateway helpers** — [`cap_queued_wait`](../crates/trembita/src/gateway/cap_handlers.rs), [`cap_schedule`](../crates/trembita/src/gateway/cap_handlers.rs) | ✅ |
 | B-27m | 3 | **Cap observability** — `tracing` spans at [`CapHost`](../crates/trembita/src/capability/host.rs) dispatch | ✅ |
-| B-27n | 2 | **Integration test kit** — [`boot_local_app_with_capabilities`](../crates/trembita-test-support/src/capability.rs) | ✅ |
+| B-27n | 2 | **Integration test kit** — [`boot_local_app_with_capabilities`](../crates/trembita-test-facade/src/capability.rs) | ✅ |
 | B-27o | 2 | **Showcase polish** — [`realtime`](../examples/realtime/) `domain/` + `LineCount` op | ✅ |
 | B-27p | 3 | **OpenAPI / JSON Schema from `CapRequest`** — deferred post-1.0 (optional) | 🔲 deferred |
 

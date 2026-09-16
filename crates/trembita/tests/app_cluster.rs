@@ -9,7 +9,8 @@ use std::time::Duration;
 
 use trembita::{TrembitaApp, TrembitaConfigure};
 use trembita_runtime::LeaderLoopOpts;
-use trembita_test_support::{boot_local_app, eventually_default, wait_for_trembita_app_leader};
+use trembita_test_facade::{boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_support::eventually_default;
 
 fn temp_base(label: &str) -> PathBuf {
     let base = std::env::temp_dir().join(format!(

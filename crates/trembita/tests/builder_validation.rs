@@ -175,7 +175,7 @@ async fn jobs_registers_queue_handler_and_jobs_api() {
         .boot_for_test(RunOpts::local())
         .await
         .expect("boot");
-    trembita_test_support::wait_for_trembita_app_leader(&app).await;
+    trembita_test_facade::wait_for_trembita_app_leader(&app).await;
     assert!(app.job_queue("emails").is_some());
     app.shutdown();
 }
@@ -261,7 +261,7 @@ async fn workers_fixed_registers_actor_group() {
         .boot_for_test(RunOpts::local())
         .await
         .expect("boot");
-    trembita_test_support::wait_for_trembita_app_leader(&app).await;
+    trembita_test_facade::wait_for_trembita_app_leader(&app).await;
     advance(Duration::from_millis(500)).await;
     eventually_default("worker in directory", || !app.workers("w").is_empty()).await;
     assert_eq!(app.workers("w").len(), 1);

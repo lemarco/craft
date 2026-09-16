@@ -8,7 +8,7 @@ use trembita::{GatewayOpts, TrembitaApp, TrembitaConfigure};
 use trembita_http::{
     CorsPolicy, Gateway, HttpError, RequestCtx, Response, RouteTable, SessionGate,
 };
-use trembita_test_support::{boot_local_app, spawn_test_gateway};
+use trembita_test_facade::{boot_local_app, spawn_test_gateway};
 
 struct BearerSecret;
 

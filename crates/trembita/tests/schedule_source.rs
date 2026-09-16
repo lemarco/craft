@@ -9,7 +9,7 @@ use trembita::{
     AppManifest, QueueOpts, SchedulePoll, ScheduleSourceOpts, TrembitaApp, TrembitaConfigure,
 };
 use trembita_jobs::{RecurringJob, StaticScheduleSource};
-use trembita_test_support::boot_local_app;
+use trembita_test_facade::boot_local_app;
 
 #[tokio::test]
 async fn schedule_source_wires_on_app_boot() {

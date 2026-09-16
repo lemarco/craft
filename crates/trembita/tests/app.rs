@@ -5,7 +5,8 @@
 use std::time::Duration;
 
 use trembita::{AppManifest, QueueOpts, TrembitaApp, TrembitaConfigure};
-use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_facade::{boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_support::advance;
 
 #[tokio::test(start_paused = true)]
 async fn trembita_app_start_local_with_data_dir_and_queue() {

@@ -9,7 +9,7 @@ use trembita::TrembitaAppBuilder;
 use trembita::cluster::TrembitaCluster;
 use trembita::core::{Role, StateMachine};
 
-use crate::clock::{POLL_STEP, advance};
+use trembita_test_support::clock::{POLL_STEP, advance};
 
 /// Boot a local [`TrembitaApp`] for integration tests (no Ctrl-C loop).
 ///

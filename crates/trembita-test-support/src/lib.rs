@@ -2,39 +2,15 @@
 //!
 //! Import the reference KV state machine and cluster polling helpers instead
 //! of copying them into every `tests/` module.
-#![allow(missing_docs)] // publish = false — not shipped on crates.io
+#![allow(missing_docs)]
 
-pub mod actor;
-#[cfg(feature = "facade")]
-pub mod capability;
 pub mod clock;
-#[cfg(feature = "facade")]
-pub mod facade;
-#[cfg(feature = "facade")]
-pub mod gateway;
 pub mod harness;
 pub mod kv;
 pub mod shard;
 
-pub use actor::{await_node_leader, wait_for_all_node_leaders, wait_for_node_leader};
-#[cfg(feature = "facade")]
-pub use capability::{boot_local_app_with_capabilities, manifest_with_capabilities};
 pub use clock::{
     POLL_STEP, advance, eventually, eventually_async, eventually_async_default, eventually_default,
-};
-#[cfg(feature = "facade")]
-pub use facade::{
-    await_trembita_leader, boot_local_app, boot_local_app_with_consumers,
-    wait_for_each_group_cluster_leader, wait_for_group_leader_on_any, wait_for_group_leaders,
-    wait_for_trembita_app_leader, wait_for_trembita_leader, wait_for_trembita_stopped,
-};
-#[cfg(feature = "facade")]
-pub use gateway::{
-    gateway_actors_surfaces, gateway_introspect_config_identity, gateway_introspect_surfaces,
-    gateway_introspect_surfaces_identity, gateway_jobs_config, gateway_jobs_config_identity,
-    gateway_jobs_surfaces, gateway_jobs_surfaces_identity, gateway_ops_config,
-    gateway_ops_surfaces, gateway_workflows_config, gateway_workflows_surfaces,
-    spawn_cluster_ops_gateway, spawn_test_gateway,
 };
 pub use harness::{
     TICK_PERIOD, fast_raft_config, fast_raft_config_with_seed, free_udp, test_setup,
@@ -47,8 +23,3 @@ pub use shard::{
 
 /// Pretty assertion macros for integration tests (colored diffs on failure).
 pub use pretty_assertions::{assert_eq, assert_ne, assert_str_eq};
-
-/// Install the workspace `tracing` subscriber (respects `RUST_LOG` / `TREMBITA_LOG`).
-pub fn init_tracing() {
-    trembita_runtime::init_tracing();
-}

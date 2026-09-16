@@ -717,7 +717,7 @@ impl TrembitaAppBuilder {
             .await
     }
 
-    /// Test-only boot without blocking on Ctrl-C ([`trembita_test_support::boot_local_app`]).
+    /// Test-only boot without blocking on Ctrl-C ([`trembita_test_facade::boot_local_app`]).
     #[doc(hidden)]
     pub async fn boot_for_test(self, mut opts: RunOpts) -> Result<Arc<TrembitaApp>, StartError> {
         self.boot(&mut opts).await

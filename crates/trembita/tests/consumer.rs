@@ -6,7 +6,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use trembita::{AppManifest, ConsumerOpts, QueueOpts, TrembitaApp, TrembitaConfigure, consumer};
-use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_facade::{boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_support::advance;
 
 static HANDLED: AtomicUsize = AtomicUsize::new(0);
 

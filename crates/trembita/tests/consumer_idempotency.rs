@@ -25,7 +25,7 @@ use trembita::{
 };
 use trembita_actor_store::{ActorStateStore, InMemoryStore};
 use trembita_jobs::EnqueueOptions;
-use trembita_test_support::boot_local_app;
+use trembita_test_facade::boot_local_app;
 
 static GUARDED_SIDE_EFFECTS: AtomicUsize = AtomicUsize::new(0);
 static GUARDED_DELIVERIES: AtomicUsize = AtomicUsize::new(0);

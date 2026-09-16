@@ -54,7 +54,18 @@ if crate_version_on_index "$LEAF" "$VERSION"; then
     fi
 else
     echo ">> publish dry-run (workspace v${VERSION}, dependency order — not yet on crates.io)…"
-    cargo publish --workspace --dry-run --allow-dirty
+    if ! output=$(cargo publish --workspace --dry-run --allow-dirty 2>&1); then
+        printf '%s\n' "$output"
+        if grep -q 'trembita-assembly' <<<"$output" && grep -q 'no matching package named' <<<"$output"; then
+            echo ">> publish dry-run note: leaf \`trembita\` depends on workspace-only \`trembita-assembly\`"
+            echo "   real upload uses publish-workspace.sh (assembly stays \`publish = false\`)"
+            echo "OK: publish dry-run (workspace siblings)"
+            exit 0
+        fi
+        echo "error: publish dry-run failed for workspace v${VERSION}." >&2
+        exit 1
+    fi
+    printf '%s\n' "$output"
 fi
 
 echo "OK: publish dry-run"

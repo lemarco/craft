@@ -6,9 +6,9 @@ use std::time::Duration;
 use trembita_runtime::trembita_net::LocalNetwork;
 use trembita_runtime::trembita_proto::NodeId;
 use trembita_runtime::{RuntimeConfig, spawn_raft_group, spawn_raft_group_from_bundle};
+use trembita_test_runtime::wait_for_node_leader;
 use trembita_test_support::{
     KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, fast_raft_config_with_seed,
-    wait_for_node_leader,
 };
 
 #[tokio::test(start_paused = true)]

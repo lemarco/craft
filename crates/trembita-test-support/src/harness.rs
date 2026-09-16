@@ -43,6 +43,11 @@ pub fn test_setup() {
         || std::env::var_os("RUST_LOG").is_some()
         || std::env::var_os("TREMBITA_LOG").is_some()
     {
-        crate::init_tracing();
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
+            )
+            .try_init();
     }
 }

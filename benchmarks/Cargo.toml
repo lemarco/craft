@@ -21,7 +21,7 @@ trembita-proto = { path = "../crates/trembita-proto" }
 trembita-sim = { path = "../crates/trembita-sim" }
 trembita = { path = "../crates/trembita", features = ["dev-certs"] }
 trembita-showcase = { path = "../crates/trembita-showcase" }
-trembita-test-support = { path = "../crates/trembita-test-support", features = ["facade"] }
+trembita-test-facade = { path = "../crates/trembita-test-facade" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 serde = { version = "1", features = ["derive"] }
 tempfile = "3"

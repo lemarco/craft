@@ -10,9 +10,8 @@ use trembita::{
     TrembitaApp, TrembitaConfigure,
 };
 use trembita_proto::encode;
-use trembita_test_support::{
-    advance, boot_local_app_with_consumers, eventually_default, wait_for_trembita_app_leader,
-};
+use trembita_test_facade::{boot_local_app_with_consumers, wait_for_trembita_app_leader};
+use trembita_test_support::{advance, eventually_default};
 
 #[derive(Default)]
 struct MathState {

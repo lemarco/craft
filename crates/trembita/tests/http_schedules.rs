@@ -10,7 +10,8 @@ use http::{Method, StatusCode};
 use trembita::cluster::RecurringJob;
 use trembita::{AppManifest, CronOpts, QueueOpts, TrembitaApp, TrembitaConfigure};
 use trembita_http::RouteTable;
-use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_facade::{boot_local_app, wait_for_trembita_app_leader};
+use trembita_test_support::advance;
 
 async fn dispatch(
     table: &RouteTable,
