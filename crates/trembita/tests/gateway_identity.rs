@@ -8,7 +8,8 @@ use std::time::Duration;
 use http::{HeaderMap, Method, StatusCode, Uri};
 use trembita::{
     GatewayBearerIdentity, GatewayIdentity, GatewayOpts, GatewayRequest, GatewayTokenIdentity,
-    IdentityError, IdentityTypeError, SessionHandle, SessionKey, TrembitaGatewayState,
+    IdentityError, IdentityTypeError, SessionHandle, SessionKey, TrembitaConfigure,
+    TrembitaGatewayState,
 };
 use trembita_test_support::{
     advance, boot_local_app, gateway_jobs_surfaces, wait_for_trembita_app_leader,
@@ -70,7 +71,17 @@ async fn gateway_state_extracts_identity_session_key() {
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).unwrap();
 
-    let app = boot_local_app(|| trembita::TrembitaApp::builder().data_dir(&base), None).await;
+    let app = boot_local_app(
+        || {
+            trembita::TrembitaApp::builder().configure(
+                TrembitaConfigure::default()
+                    .with_local_gateway_apis()
+                    .with_data_dir(&base),
+            )
+        },
+        None,
+    )
+    .await;
 
     wait_for_trembita_app_leader(&app).await;
     advance(Duration::from_millis(50)).await;
@@ -100,7 +111,17 @@ async fn identity_mapped_uses_custom_session_key() {
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).unwrap();
 
-    let app = boot_local_app(|| trembita::TrembitaApp::builder().data_dir(&base), None).await;
+    let app = boot_local_app(
+        || {
+            trembita::TrembitaApp::builder().configure(
+                TrembitaConfigure::default()
+                    .with_local_gateway_apis()
+                    .with_data_dir(&base),
+            )
+        },
+        None,
+    )
+    .await;
     let state = TrembitaGatewayState::with_identity_mapped(
         Arc::clone(&app),
         RoomIdentity,
@@ -132,8 +153,19 @@ async fn session_handle_none_without_workers() {
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).unwrap();
 
-    let app =
-        Arc::new(boot_local_app(|| trembita::TrembitaApp::builder().data_dir(&base), None).await);
+    let app = Arc::new(
+        boot_local_app(
+            || {
+                trembita::TrembitaApp::builder().configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
+            },
+            None,
+        )
+        .await,
+    );
     wait_for_trembita_app_leader(&app).await;
 
     assert!(SessionHandle::open(&app, "missing", "user-1", None).is_none());

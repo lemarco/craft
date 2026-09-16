@@ -75,7 +75,11 @@ async fn gateway_topics_and_workflows_require_identity() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
                 .topics([TopicOpts::topic("orders.events")])
                 .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
                 .gateway(
@@ -157,7 +161,11 @@ async fn ops_introspect_topics_snapshot() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
                 .topics([TopicOpts::topic("orders.events")])
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),

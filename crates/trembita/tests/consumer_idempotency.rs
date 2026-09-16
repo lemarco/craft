@@ -73,7 +73,11 @@ async fn boot(stream: &'static str, tag: &str) -> Arc<TrembitaApp> {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
                 .queue([QueueOpts::new(stream, Duration::from_millis(200))])
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),

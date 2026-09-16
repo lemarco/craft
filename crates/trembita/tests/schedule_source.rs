@@ -24,7 +24,11 @@ async fn schedule_source_wires_on_app_boot() {
     let _app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
                 .queue([QueueOpts::new("jobs", Duration::from_secs(30))])
                 .schedule_source(
                     "jobs",

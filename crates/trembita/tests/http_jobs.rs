@@ -61,7 +61,11 @@ async fn http_post_job_returns_202_and_enqueues() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
                 .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),

@@ -25,7 +25,6 @@ fn server_builder() -> Result<trembita::TrembitaAppBuilder, Box<dyn std::error::
     let dir = data_dir(DATA_DIR_NAME);
     let _ = std::fs::create_dir_all(&dir);
     Ok(TrembitaApp::from_env()?
-        .data_dir(dir)
         .manifest(AppManifest::new().capabilities(capabilities_manifest()))
         .gateway_routes(|state| {
             RouteTable::new().post(
@@ -33,11 +32,13 @@ fn server_builder() -> Result<trembita::TrembitaAppBuilder, Box<dyn std::error::
                 cap_enqueue::<DeliverEmail>(state),
             )
         })
-        .configure(TrembitaConfigure {
-            tick_period: Duration::from_millis(10),
-            reconcile_period: Duration::from_millis(20),
-            ..TrembitaConfigure::default()
-        }))
+        .configure(
+            TrembitaConfigure::default()
+                .with_local_gateway_apis()
+                .with_data_dir(dir)
+                .with_tick_period(Duration::from_millis(10))
+                .with_reconcile_period(Duration::from_millis(20)),
+        ))
 }
 
 #[tokio::main]

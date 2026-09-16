@@ -8,6 +8,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use trembita::NodeId;
+use trembita::TrembitaApp;
+use trembita::TrembitaConfigure;
 use trembita::cluster::TrembitaCluster;
 use trembita::core::{Config, FailureDetectorKind, ReachabilityConfig};
 use trembita::net::LocalNetwork;
@@ -463,7 +465,17 @@ async fn admin_serves_https_when_builder_tls_configured() {
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).unwrap();
 
-    let app = boot_local_app(|| TrembitaApp::builder().data_dir(&base), None).await;
+    let app = boot_local_app(
+        || {
+            TrembitaApp::builder().configure(
+                TrembitaConfigure::default()
+                    .with_local_gateway_apis()
+                    .with_data_dir(&base),
+            )
+        },
+        None,
+    )
+    .await;
     let config = GatewayOpts::new(ops_addr)
         .tls(cert_path, key_path)
         .surfaces(gateway_ops_surfaces)

@@ -43,7 +43,11 @@ async fn gateway_introspect_requires_auth_and_returns_cluster_json() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
                 .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
                 .gateway(
                     GatewayOpts::new("127.0.0.1:0".parse().unwrap())

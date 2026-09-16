@@ -27,8 +27,12 @@ fn scaffolds_default_layout() {
     assert!(app.contains("let manifest = manifest::build()"));
     assert!(app.contains(".manifest(manifest)"));
     assert!(
-        app.contains(".without_actors_api()"),
-        "greenfield scaffold disables /actors/* unless WorkerOpts::http_cast"
+        app.contains("TrembitaConfigure"),
+        "scaffold configures data_dir and gateway via TrembitaConfigure"
+    );
+    assert!(
+        !app.contains(".without_actors_api()"),
+        "actors HTTP stays off via TrembitaConfigure defaults (without_actors_api=true)"
     );
     let product = std::fs::read_to_string(root.join("src/http/product.rs")).unwrap();
     assert!(product.contains("cap_invoke::<Ping>"));

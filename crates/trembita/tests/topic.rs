@@ -51,7 +51,11 @@ async fn trembita_app_publishes_and_tracks_topic_metrics() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
                 .topics([TopicOpts::topic("orders.events").subscription_defs([
                     TopicSubscriptionDef {
                         name: "analytics".into(),

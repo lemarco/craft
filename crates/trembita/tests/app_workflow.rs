@@ -37,7 +37,6 @@ async fn trembita_app_runs_workflow_locally() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(dir.path())
                 .configure(TrembitaConfigure {
                     raft_config: fast_raft_config_with_seed(7),
                     tick_period: TICK_PERIOD,
@@ -64,7 +63,6 @@ async fn trembita_app_workflows_api_on_gateway() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(dir.path())
                 .configure(TrembitaConfigure {
                     raft_config: fast_raft_config_with_seed(8),
                     tick_period: TICK_PERIOD,
@@ -104,7 +102,6 @@ mod gateway_merge {
         let app = boot_local_app(
             || {
                 TrembitaApp::builder()
-                    .data_dir(dir.path())
                     .configure(TrembitaConfigure {
                         raft_config: fast_raft_config_with_seed(9),
                         tick_period: TICK_PERIOD,

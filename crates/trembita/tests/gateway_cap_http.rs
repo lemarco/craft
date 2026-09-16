@@ -65,8 +65,13 @@ async fn gateway_cap_invoke_inline_json() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
                 .configure(TrembitaConfigure {
+                    data_dir: Some(base.clone()),
+                    without_ops: false,
+                    without_jobs_api: false,
+                    without_schedules_api: false,
+                    without_workflows_api: false,
+                    without_topics_api: false,
                     tick_period: Duration::from_millis(5),
                     reconcile_period: Duration::from_millis(20),
                     directory_publish_period: Duration::from_millis(20),

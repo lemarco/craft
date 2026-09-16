@@ -130,7 +130,11 @@ async fn websocket_gateway_casts_to_worker() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
                 .actors::<EchoWorker>("echo", ActorGroupOpts::new(0))
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
@@ -188,12 +192,16 @@ async fn websocket_multi_path_on_one_gateway() {
 
     let app = boot_local_app(
         || {
-            TrembitaApp::builder()
-                .data_dir(&base)
-                .configure(TrembitaConfigure {
-                    tick_period: Duration::from_millis(5),
-                    ..TrembitaConfigure::default()
-                })
+            TrembitaApp::builder().configure(TrembitaConfigure {
+                data_dir: Some(base.clone()),
+                without_ops: false,
+                without_jobs_api: false,
+                without_schedules_api: false,
+                without_workflows_api: false,
+                without_topics_api: false,
+                tick_period: Duration::from_millis(5),
+                ..TrembitaConfigure::default()
+            })
         },
         None,
     )

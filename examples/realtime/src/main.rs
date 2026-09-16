@@ -117,13 +117,14 @@ fn server_builder() -> trembita::TrembitaAppBuilder {
     let gateway = http_bind_from_env("127.0.0.1:8290");
     TrembitaApp::builder()
         .manifest(AppManifest::new().capabilities(capabilities::chat::manifest()))
-        .configure(TrembitaConfigure {
-            tick_period: Duration::from_millis(10),
-            reconcile_period: Duration::from_millis(20),
-            directory_publish_period: Duration::from_millis(20),
-            ..TrembitaConfigure::default()
-        })
-        .data_dir(dir)
+        .configure(
+            TrembitaConfigure::default()
+                .with_local_gateway_apis()
+                .with_data_dir(dir)
+                .with_tick_period(Duration::from_millis(10))
+                .with_reconcile_period(Duration::from_millis(20))
+                .with_directory_publish_period(Duration::from_millis(20)),
+        )
         .gateway(
             GatewayOpts::new(gateway)
                 .identity(trembita::GatewayBearerIdentity::from_env())

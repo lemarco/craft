@@ -78,13 +78,13 @@ fn server_builder() -> TrembitaAppBuilder {
     let _ = std::fs::create_dir_all(&dir);
     let gateway = http_bind_from_env("127.0.0.1:8190");
     apply_capabilities(
-        TrembitaApp::builder()
-            .data_dir(dir)
-            .configure(TrembitaConfigure {
-                tick_period: Duration::from_millis(10),
-                reconcile_period: Duration::from_millis(20),
-                ..TrembitaConfigure::default()
-            }),
+        TrembitaApp::builder().configure(
+            TrembitaConfigure::default()
+                .with_local_gateway_apis()
+                .with_data_dir(dir)
+                .with_tick_period(Duration::from_millis(10))
+                .with_reconcile_period(Duration::from_millis(20)),
+        ),
     )
     .gateway(gateway_opts(gateway))
 }

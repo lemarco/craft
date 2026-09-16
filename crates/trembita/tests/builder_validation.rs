@@ -34,13 +34,17 @@ fn noop_plan(saga_id: &str) -> trembita_client::SagaPlan {
 }
 
 fn local_builder(dir: &std::path::Path) -> trembita::TrembitaAppBuilder {
-    TrembitaApp::builder()
-        .data_dir(dir)
-        .configure(TrembitaConfigure {
-            raft_config: fast_raft_config_with_seed(42),
-            tick_period: TICK_PERIOD,
-            ..TrembitaConfigure::default()
-        })
+    TrembitaApp::builder().configure(TrembitaConfigure {
+        data_dir: Some(dir.into()),
+        without_ops: false,
+        without_jobs_api: false,
+        without_schedules_api: false,
+        without_workflows_api: false,
+        without_topics_api: false,
+        raft_config: fast_raft_config_with_seed(42),
+        tick_period: TICK_PERIOD,
+        ..TrembitaConfigure::default()
+    })
 }
 
 fn assert_config_err(err: StartError, needle: &str) {
@@ -86,7 +90,11 @@ async fn consumer_without_matching_queue_fails_at_boot() {
 async fn cron_and_consumer_succeed_when_queue_matches() {
     let dir = tempfile::tempdir().expect("tempdir");
     let app = TrembitaApp::builder()
-        .data_dir(dir.path())
+        .configure(
+            TrembitaConfigure::default()
+                .with_local_gateway_apis()
+                .with_data_dir(dir.path()),
+        )
         .queue([QueueOpts::new("emails", Duration::from_secs(60))])
         .cron([CronOpts::new(
             "emails",

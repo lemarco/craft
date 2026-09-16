@@ -41,7 +41,11 @@ async fn workload_governor_tunes_for_connections_and_depth() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
                 .workload(WorkloadOpts {
                     tick: Duration::from_millis(20),
                     ..opts
@@ -133,7 +137,11 @@ async fn external_load_triggers_protective_tune() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
                 .workload(WorkloadOpts {
                     tick: Duration::from_millis(20),
                     ..opts

@@ -47,7 +47,11 @@ async fn default_product_routes_include_workflows_and_topics() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
                 .topics([TopicOpts::topic("orders.events")])
                 .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
                 .gateway(GatewayOpts::new("127.0.0.1:0".parse().expect("addr")))
@@ -105,10 +109,14 @@ async fn without_topics_api_excludes_topic_routes() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
                 .topics([TopicOpts::topic("orders.events")])
-                .without_topics_api()
                 .configure(TrembitaConfigure {
+                    data_dir: Some(base.clone()),
+                    without_ops: false,
+                    without_jobs_api: false,
+                    without_schedules_api: false,
+                    without_workflows_api: false,
+                    without_topics_api: true,
                     tick_period: Duration::from_millis(5),
                     ..TrembitaConfigure::default()
                 })

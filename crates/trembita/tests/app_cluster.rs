@@ -8,9 +8,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use trembita::NodeId;
-use trembita::RunOpts;
 use trembita::TrembitaApp;
 use trembita::TrembitaConfigure;
+use trembita::cluster::{EmptyStateMachine, TrembitaCluster};
 use trembita_net::LocalNetwork;
 use trembita_runtime::LeaderLoopOpts;
 use trembita_test_support::{
@@ -31,33 +31,30 @@ fn temp_base(label: &str) -> PathBuf {
 }
 
 #[tokio::test(start_paused = true)]
-async fn trembita_app_three_node_cluster_re_elects_after_leader_shutdown() {
+async fn empty_state_machine_cluster_re_elects_after_leader_shutdown() {
     let base = temp_base("reelect");
     let net = LocalNetwork::new();
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
 
-    let mut apps = Vec::new();
+    let mut clusters = Vec::new();
     for &id in &ids {
-        let app = TrembitaApp::builder()
-            .data_dir(base.join(format!("node-{}", id.0)))
-            .configure(TrembitaConfigure {
-                node_id: Some(id),
-                raft_config: fast_raft_config(),
-                tick_period: Duration::from_millis(5),
-                reconcile_period: Duration::from_millis(20),
-                directory_publish_period: Duration::from_millis(20),
-            })
+        let cluster = TrembitaCluster::builder(id, EmptyStateMachine)
             .members(ids)
-            .boot_for_test(RunOpts::local().with_local_net(net.clone()))
-            .await
-            .expect("boot");
-        apps.push(app);
+            .data_dir(base.join(format!("node-{}", id.0)))
+            .raft_config(fast_raft_config())
+            .tick_period(Duration::from_millis(5))
+            .reconcile_period(Duration::from_millis(20))
+            .directory_publish_period(Duration::from_millis(20))
+            .start_local(&net)
+            .await;
+        clusters.push(cluster);
     }
 
-    for app in &apps {
+    for cluster in &clusters {
         assert_eq!(
-            apps.iter()
-                .filter(|other| other.node_id() == app.node_id())
+            clusters
+                .iter()
+                .filter(|other| other.node_id() == cluster.node_id())
                 .count(),
             1,
             "each node must have a distinct id"
@@ -66,9 +63,9 @@ async fn trembita_app_three_node_cluster_re_elects_after_leader_shutdown() {
 
     let mut leader_id = None;
     for _ in 0..500 {
-        for app in &apps {
-            if app.is_leader().await {
-                leader_id = Some(app.node_id());
+        for cluster in &clusters {
+            if cluster.is_leader().await {
+                leader_id = Some(cluster.node_id());
                 break;
             }
         }
@@ -79,16 +76,17 @@ async fn trembita_app_three_node_cluster_re_elects_after_leader_shutdown() {
     }
     let leader_id = leader_id.expect("cluster should elect a leader");
 
-    apps.iter()
-        .find(|app| app.node_id() == leader_id)
-        .expect("leader app")
+    clusters
+        .iter()
+        .find(|c| c.node_id() == leader_id)
+        .expect("leader cluster")
         .shutdown();
-    apps.retain(|app| app.node_id() != leader_id);
+    clusters.retain(|c| c.node_id() != leader_id);
 
     for _ in 0..500 {
-        for app in &apps {
-            if app.is_leader().await {
-                app.shutdown();
+        for cluster in &clusters {
+            if cluster.is_leader().await {
+                cluster.shutdown();
                 let _ = std::fs::remove_dir_all(&base);
                 return;
             }
@@ -108,11 +106,12 @@ async fn trembita_app_on_leader_runs_on_product_builder() {
     let app = boot_local_app(
         move || {
             TrembitaApp::builder()
-                .configure(TrembitaConfigure {
-                    tick_period: Duration::from_millis(5),
-                    ..TrembitaConfigure::default()
-                })
-                .data_dir(data_dir)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(data_dir)
+                        .with_tick_period(Duration::from_millis(5)),
+                )
                 .on_leader(
                     LeaderLoopOpts::new(Duration::from_millis(10)).run_on_acquire(),
                     move |_| {

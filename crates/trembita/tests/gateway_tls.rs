@@ -198,7 +198,11 @@ async fn boot_echo_app(base: &std::path::Path) -> Arc<TrembitaApp> {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(base),
+                )
                 .actors::<EchoWorker>("echo", ActorGroupOpts::new(0))
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),

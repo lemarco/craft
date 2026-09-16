@@ -2,12 +2,16 @@
 
 use std::time::Duration;
 
-use trembita::{RunOpts, ScheduledWorkflowOpts, TrembitaApp};
+use trembita::{RunOpts, ScheduledWorkflowOpts, TrembitaApp, TrembitaConfigure};
 
 #[tokio::test]
 async fn scheduled_workflows_empty_fails_at_boot() {
     let result = TrembitaApp::builder()
-        .data_dir(tempfile::tempdir().expect("tempdir").path())
+        .configure(
+            TrembitaConfigure::default()
+                .with_local_gateway_apis()
+                .with_data_dir(tempfile::tempdir().expect("tempdir").path()),
+        )
         .scheduled_workflows(ScheduledWorkflowOpts::new())
         .boot_for_test(RunOpts::local())
         .await;
@@ -18,7 +22,11 @@ async fn scheduled_workflows_empty_fails_at_boot() {
 #[tokio::test]
 async fn scheduled_workflows_registers_stream() {
     TrembitaApp::builder()
-        .data_dir(tempfile::tempdir().expect("tempdir").path())
+        .configure(
+            TrembitaConfigure::default()
+                .with_local_gateway_apis()
+                .with_data_dir(tempfile::tempdir().expect("tempdir").path()),
+        )
         .scheduled_workflows(
             ScheduledWorkflowOpts::new()
                 .lease(Duration::from_secs(60))

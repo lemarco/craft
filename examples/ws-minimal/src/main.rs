@@ -31,11 +31,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let gateway = http_bind_from_env("127.0.0.1:8390");
     println!("ws-minimal · ws://{gateway}/ws");
     TrembitaApp::builder()
-        .configure(TrembitaConfigure {
-            tick_period: Duration::from_millis(10),
-            ..TrembitaConfigure::default()
-        })
-        .data_dir(dir)
+        .configure(
+            TrembitaConfigure::default()
+                .with_local_gateway_apis()
+                .with_data_dir(dir)
+                .with_tick_period(Duration::from_millis(10)),
+        )
         .gateway(GatewayOpts::new(gateway).surfaces(gateway_surfaces))
         .run()
         .await?;

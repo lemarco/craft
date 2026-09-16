@@ -48,7 +48,11 @@ async fn http_schedules_upsert_list_remove() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
                 .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
                 .cron([CronOpts::new(
                     "jobs",

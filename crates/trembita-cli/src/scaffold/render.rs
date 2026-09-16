@@ -497,7 +497,7 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     let mut imports = vec![
         "use crate::config::AppConfig;".to_string(),
         "use crate::manifest;".to_string(),
-        "use trembita::TrembitaApp;".to_string(),
+        "use trembita::{TrembitaApp, TrembitaConfigure};".to_string(),
     ];
 
     if opts.template == Some(AppTemplate::Realtime) {
@@ -556,14 +556,14 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     }
 
     let mut builder = String::from(
-        "        let cfg = self.config;\n        let manifest = manifest::build();\n        TrembitaApp::from_config(cfg)?\n",
+        "        let cfg = self.config;\n        let data_dir = cfg.data_dir.clone();\n        let manifest = manifest::build();\n        TrembitaApp::from_config(cfg)?\n",
     );
     builder.push_str("            .manifest(manifest)\n");
+    builder.push_str(
+        "            .configure({\n                let mut c = TrembitaConfigure::default().with_local_gateway_apis();\n                c.data_dir = data_dir;\n                c\n            })\n",
+    );
 
     if features.contains(&AppFeature::Gateway) {
-        builder.push_str(
-            "            .without_actors_api() // opt in via WorkerOpts::http_cast(true) in manifest\n",
-        );
         if opts.template == Some(AppTemplate::Realtime) {
             builder.push_str(
                 r"            .gateway_routes(|state| {

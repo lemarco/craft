@@ -25,11 +25,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("ws-notify · ws://{gateway}/ws/notify?user=alice  (Bearer token)");
 
     TrembitaApp::builder()
-        .configure(TrembitaConfigure {
-            tick_period: Duration::from_millis(10),
-            ..TrembitaConfigure::default()
-        })
-        .data_dir(dir)
+        .configure(
+            TrembitaConfigure::default()
+                .with_local_gateway_apis()
+                .with_data_dir(dir)
+                .with_tick_period(Duration::from_millis(10)),
+        )
         .gateway(
             GatewayOpts::new(gateway)
                 .identity(GatewayBearerIdentity::from_env())

@@ -33,6 +33,10 @@ use super::types::{
 };
 
 /// Fluent builder for [`TrembitaApp`].
+///
+/// Cluster membership, join seeds, and seed/joiner policy come from [`Self::from_env`] /
+/// [`Self::from_config`] (`TREMBITA_*`). For static bootstrap or custom state machines use
+/// [`crate::cluster::TrembitaClusterBuilder`].
 pub struct TrembitaAppBuilder {
     pub(crate) inner: TrembitaClusterBuilder<EmptyStateMachine>,
     workflows: Vec<WorkflowRegistration>,
@@ -87,11 +91,14 @@ impl TrembitaAppBuilder {
             #[cfg(feature = "http-jobs")]
             gateway_extra_routes: None,
             #[cfg(feature = "http-jobs")]
-            gateway_include_ops: true,
+            gateway_include_ops: false,
             #[cfg(feature = "http-jobs")]
             gateway_exclude_apis: GatewayProductApiExclusions {
+                jobs: true,
+                schedules: true,
                 actors: true,
-                ..GatewayProductApiExclusions::default()
+                workflows: true,
+                topics: true,
             },
             boot_config: None,
             run_hint: ManifestRunHint::default(),
@@ -127,61 +134,11 @@ impl TrembitaAppBuilder {
         Ok(base.with_run_hint(&self.run_hint))
     }
 
-    /// Disable built-in ops HTTP (`/health`, `/ready`, `/metrics`, `/dashboard`, `/introspect/*`).
-    ///
-    /// Default product gateways include ops on `TREMBITA_LISTEN` without manual route merges.
-    #[cfg(feature = "http-jobs")]
-    #[must_use]
-    pub fn without_ops(mut self) -> Self {
-        self.gateway_include_ops = false;
-        self
-    }
-
-    /// Disable `POST /jobs/*` on the default gateway (queue registration unchanged).
-    #[cfg(feature = "http-jobs")]
-    #[must_use]
-    pub fn without_jobs_api(mut self) -> Self {
-        self.gateway_exclude_apis.jobs = true;
-        self
-    }
-
-    /// Disable `GET/PUT/DELETE /jobs/{stream}/schedules` on the default gateway.
-    #[cfg(feature = "http-jobs")]
-    #[must_use]
-    pub fn without_schedules_api(mut self) -> Self {
-        self.gateway_exclude_apis.schedules = true;
-        self
-    }
-
-    /// Disable actor cast/ask HTTP on the default gateway.
-    #[cfg(feature = "http-jobs")]
-    #[must_use]
-    pub fn without_actors_api(mut self) -> Self {
-        self.gateway_exclude_apis.actors = true;
-        self
-    }
-
     /// Re-enable `/actors/*` on the default gateway ([`WorkerOpts::http_cast`](crate::WorkerOpts::http_cast)).
     #[cfg(feature = "http-jobs")]
     pub(crate) fn enable_actors_gateway_api(&mut self) {
         self.gateway_api.actors = true;
         self.gateway_exclude_apis.actors = false;
-    }
-
-    /// Disable `POST /workflows/*` on the default gateway (in-process saga API unchanged).
-    #[cfg(feature = "http-jobs")]
-    #[must_use]
-    pub fn without_workflows_api(mut self) -> Self {
-        self.gateway_exclude_apis.workflows = true;
-        self
-    }
-
-    /// Disable `POST /topics/*` and topic metrics on the default gateway.
-    #[cfg(feature = "http-jobs")]
-    #[must_use]
-    pub fn without_topics_api(mut self) -> Self {
-        self.gateway_exclude_apis.topics = true;
-        self
     }
 
     #[cfg(feature = "http-jobs")]
@@ -586,87 +543,6 @@ impl TrembitaAppBuilder {
         self
     }
 
-    /// Initial cluster membership (voting nodes) for static multi-node bootstrap.
-    #[must_use]
-    pub fn members(mut self, members: impl IntoIterator<Item = NodeId>) -> Self {
-        self.inner = self.inner.members(members);
-        self
-    }
-
-    /// Static voter bootstrap for the first `count` nodes (`NodeId(1)` … `NodeId(count)`).
-    #[must_use]
-    pub fn voters(mut self, count: u32) -> Self {
-        self.inner = self.inner.voters(count);
-        self
-    }
-
-    /// Accept dynamic cluster joins on this node (seed-side).
-    #[must_use]
-    pub fn allow_join(mut self, allow: bool) -> Self {
-        self.inner = self.inner.allow_join(allow);
-        self
-    }
-
-    /// Accept cluster leave RPC on this node.
-    #[must_use]
-    pub fn allow_leave(mut self, allow: bool) -> Self {
-        self.inner = self.inner.allow_leave(allow);
-        self
-    }
-
-    /// Join an existing cluster via a single seed (`TREMBITA_JOIN_SEEDS` equivalent).
-    #[must_use]
-    pub fn join(mut self, seed: NodeId, addr: std::net::SocketAddr) -> Self {
-        self.inner = self.inner.join(seed, addr);
-        self
-    }
-
-    /// Join via multiple seeds (deduped at boot).
-    #[must_use]
-    pub fn join_seeds(mut self, seeds: impl IntoIterator<Item = crate::discovery::Seed>) -> Self {
-        self.inner = self.inner.join_seeds(seeds);
-        self
-    }
-
-    /// PEM hot-reload poll interval when TLS paths are configured (default 60s).
-    #[must_use]
-    pub fn cert_watch(mut self, period: std::time::Duration) -> Self {
-        self.inner = self.inner.cert_watch(period);
-        self
-    }
-
-    /// Accept [`trembita_proto::JoinRole::Voter`] on `/cluster/join` (seed-side).
-    /// Joiners must request voter role via [`.join_as`](Self::join_as) or
-    /// `TREMBITA_JOIN_ROLE=voter`; default dynamic join is learner-only
-    /// ([cluster-elasticity](../../docs/decisions/cluster-elasticity.md)).
-    #[must_use]
-    pub fn allow_voter_join(mut self, allow: bool) -> Self {
-        self.inner = self.inner.allow_voter_join(allow);
-        self
-    }
-
-    /// Role requested when this node joins via `TREMBITA_JOIN_SEEDS` (default learner).
-    #[must_use]
-    pub fn join_as(mut self, role: trembita_proto::JoinRole) -> Self {
-        self.inner = self.inner.join_as(role);
-        self
-    }
-
-    /// When `true` (default), the leader replaces a permanently unreachable voter by
-    /// promoting the lowest-id caught-up learner.
-    #[must_use]
-    pub fn voter_replacement(mut self, enabled: bool) -> Self {
-        self.inner = self.inner.voter_replacement(enabled);
-        self
-    }
-
-    /// Override the logical-tick grace period before an unreachable voter is replaced.
-    #[must_use]
-    pub fn voter_replacement_grace_ticks(mut self, ticks: u64) -> Self {
-        self.inner = self.inner.voter_replacement_grace_ticks(ticks);
-        self
-    }
-
     /// Register a leader-only periodic task ([leader-task](../../docs/decisions/leader-task.md)).
     ///
     /// The closure runs on each tick while this node holds Raft leadership.
@@ -854,16 +730,20 @@ impl TrembitaAppBuilder {
         Ok(crate::TestBoot { app, consumers })
     }
 
-    /// Persistent `data_dir` — enables redb job queue and actor workflow store.
-    #[must_use]
-    pub fn data_dir(mut self, path: impl Into<std::path::PathBuf>) -> Self {
-        self.inner = self.inner.data_dir(path);
-        self
-    }
-
-    /// Apply runtime / cluster tuning ([`TrembitaConfigure`]).
+    /// Apply boot tuning ([`TrembitaConfigure`]): `data_dir`, Raft ticks, gateway opt-in flags.
     #[must_use]
     pub fn configure(mut self, config: TrembitaConfigure) -> Self {
+        #[cfg(feature = "http-jobs")]
+        {
+            self.gateway_include_ops = !config.without_ops;
+            self.gateway_exclude_apis = GatewayProductApiExclusions {
+                jobs: config.without_jobs_api,
+                schedules: config.without_schedules_api,
+                actors: config.without_actors_api,
+                workflows: config.without_workflows_api,
+                topics: config.without_topics_api,
+            };
+        }
         self.inner = config.apply_to(self.inner);
         self
     }

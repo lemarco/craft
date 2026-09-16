@@ -78,8 +78,13 @@ async fn boot_math_app(base: &std::path::Path) -> trembita::TestBoot {
     boot_local_app_with_consumers(
         || {
             TrembitaApp::builder()
-                .data_dir(base)
                 .configure(TrembitaConfigure {
+                    data_dir: Some(base.into()),
+                    without_ops: false,
+                    without_jobs_api: false,
+                    without_schedules_api: false,
+                    without_workflows_api: false,
+                    without_topics_api: false,
                     tick_period: Duration::from_millis(5),
                     reconcile_period: Duration::from_millis(20),
                     directory_publish_period: Duration::from_millis(20),
@@ -227,8 +232,13 @@ async fn capability_event_subscription_runs_inline() {
     let boot = boot_local_app_with_consumers(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
                 .configure(TrembitaConfigure {
+                    data_dir: Some(base.to_path_buf()),
+                    without_ops: false,
+                    without_jobs_api: false,
+                    without_schedules_api: false,
+                    without_workflows_api: false,
+                    without_topics_api: false,
                     tick_period: Duration::from_millis(5),
                     reconcile_period: Duration::from_millis(20),
                     directory_publish_period: Duration::from_millis(20),

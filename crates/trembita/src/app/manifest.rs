@@ -129,7 +129,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::TrembitaApp;
+    use crate::{TrembitaApp, TrembitaConfigure};
 
     #[test]
     fn manifest_chains_into_builder() {
@@ -137,7 +137,11 @@ mod tests {
             .lease(Duration::from_secs(60))
             .http_enqueue(true)]);
         let _builder = TrembitaApp::builder()
-            .data_dir("/tmp/manifest-test")
+            .configure(
+                TrembitaConfigure::default()
+                    .with_local_gateway_apis()
+                    .with_data_dir("/tmp/manifest-test"),
+            )
             .manifest(manifest);
     }
 

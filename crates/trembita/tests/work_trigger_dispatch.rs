@@ -42,7 +42,6 @@ async fn dispatch_runs_registered_workflow() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(dir.path())
                 .configure(TrembitaConfigure {
                     raft_config: fast_raft_config_with_seed(11),
                     tick_period: TICK_PERIOD,
@@ -78,7 +77,11 @@ async fn dispatch_enqueues_follow_up() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(dir.path())
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(dir.path()),
+                )
                 .queue([
                     QueueOpts::new("orchestration", Duration::from_secs(60)),
                     QueueOpts::new("seo-parse", Duration::from_secs(60)),

@@ -20,14 +20,15 @@ fn server_builder() -> trembita::TrembitaAppBuilder {
     let _ = std::fs::create_dir_all(&dir);
     TrembitaApp::from_env()
         .expect("TREMBITA_LISTEN")
-        .data_dir(dir)
         .manifest(app_manifest())
         .workflows([WorkflowOpts::named("onboard", build_plan, run_onboarding_plan)])
-        .configure(TrembitaConfigure {
-            tick_period: Duration::from_millis(10),
-            reconcile_period: Duration::from_millis(20),
-            ..TrembitaConfigure::default()
-        })
+        .configure(
+            TrembitaConfigure::default()
+                .with_local_gateway_apis()
+                .with_data_dir(dir)
+                .with_tick_period(Duration::from_millis(10))
+                .with_reconcile_period(Duration::from_millis(20)),
+        )
 }
 
 #[tokio::main]

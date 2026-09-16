@@ -29,7 +29,11 @@ async fn event_outbox_drainer_publishes_to_topic() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
                 .topics([TopicOpts::topic("platform.events").outbox(
                     Arc::clone(&source) as Arc<dyn EventOutboxSource>,
                     EventOutboxDrainOpts::default().poll(Duration::from_millis(20)),

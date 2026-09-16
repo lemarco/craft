@@ -54,7 +54,11 @@ async fn gateway_jobs_batch_and_job_status_metadata() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
                 .queue([
                     QueueOpts::new("gateway-jobs", Duration::from_secs(60)).default_max_attempts(3)
                 ])
@@ -147,7 +151,11 @@ async fn gateway_rate_limit_returns_429() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
                 .queue([
                     QueueOpts::new("gateway-jobs", Duration::from_secs(60)).default_max_attempts(3)
                 ])

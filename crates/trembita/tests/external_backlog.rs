@@ -50,7 +50,11 @@ async fn external_backlog_feeds_consumer_and_settles() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .data_dir(&base)
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_local_gateway_apis()
+                        .with_data_dir(&base),
+                )
                 .jobs([JobOpts::new("imports")
                     .lease(Duration::from_millis(500))
                     .batch(1)

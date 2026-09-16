@@ -13,7 +13,7 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 
 | Area | Types | Notes |
 |------|-------|-------|
-| App | `TrembitaApp`, `TrembitaAppBuilder`, `TrembitaConfigure`, `JobOpts`, `WorkerOpts`, `WorkerScale`, `QueueOpts`, `CronOpts`, `ActorGroupOpts`, `GatewayOpts`, `RunOpts` | Primary entry; env via `TREMBITA_*` at boot |
+| App | `TrembitaApp`, `TrembitaAppBuilder`, `TrembitaConfigure`, `JobOpts`, `WorkerOpts`, `WorkerScale`, `QueueOpts`, `CronOpts`, `ActorGroupOpts`, `GatewayOpts`, `RunOpts` | Primary entry; cluster join/membership via `TREMBITA_*` + [`from_env`](../../crates/trembita/src/app/runtime.rs) — not builder setters |
 | App runtime | `node_id`, `control`, `registry`, `supervisor`, `enqueue`, `cast`, `ask`, `shutdown_graceful` | Product control plane on `TrembitaApp` |
 | Identity | `NodeId`, `Security`, `PeerDirectory`, cert reload helpers | Multi-node wiring |
 | Jobs | `JobQueue`, `EnqueueOptions`, `run_queue_consumer`, `ClusterJobQueue` | Via `TrembitaApp::enqueue` |
@@ -40,6 +40,7 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 | Low-level cluster handle | `trembita::cluster::{TrembitaCluster, TrembitaClusterBuilder, …}` |
 | `TrembitaApp::cluster` / `into_cluster` | Not public — use `TrembitaApp` product APIs or `trembita::cluster` |
 | `TrembitaAppBuilder::inner_mut` | `#[doc(hidden)]` — tests only |
+| Cluster join / static members / voter replacement | [`trembita::cluster::TrembitaClusterBuilder`](../../crates/trembita/src/builder/cluster/config.rs) or env — **not** on `TrembitaAppBuilder` |
 
 ## Out of semver scope
 
