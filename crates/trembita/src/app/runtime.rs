@@ -202,6 +202,12 @@ impl TrembitaApp {
         self.cluster.actor_state_store()
     }
 
+    /// Same as [`actor_state_store`](Self::actor_state_store) — product name [`CapStore`](crate::capstore::CapStore).
+    #[must_use]
+    pub fn cap_store(&self) -> Option<Arc<dyn crate::capstore::CapStore>> {
+        self.actor_state_store()
+    }
+
     /// Enqueue on a registered job stream.
     ///
     /// # Errors

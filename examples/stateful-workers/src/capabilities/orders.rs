@@ -1,9 +1,9 @@
-//! Orders capability — idempotent processing via [`ActorStateStore`].
+//! Orders capability — idempotent processing via [`CapStore`](trembita::capstore::CapStore).
 
 use std::env;
 
 use serde::{Deserialize, Serialize};
-use trembita::actor_store::{store_get, store_set};
+use trembita::capstore::{store_get, store_set};
 use trembita::{cap_handler, cap_register_chain, CapError, CapGroup, CapManifest, OpCtx};
 
 use crate::debug;
@@ -35,9 +35,8 @@ async fn process_order_handler(
     _state: &mut OrdersState,
 ) -> Result<ProcessAck, CapError> {
     let store = ctx
-        .app()
-        .and_then(trembita::TrembitaApp::actor_state_store)
-        .ok_or_else(|| CapError::Handler("data_dir / actor state store required".into()))?;
+        .cap_store()
+        .ok_or_else(|| CapError::Handler("data_dir / cap store required".into()))?;
 
     let key = format!("order:{}", msg.order_id);
     let already = store_get::<OrderDone>(&*store, &key)

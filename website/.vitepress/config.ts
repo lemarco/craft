@@ -33,7 +33,7 @@ export default defineConfig({
       {
         property: 'og:description',
         content:
-          'Embed consensus, actors, jobs, and durable workflows in your binary. No mandatory Redis or Kubernetes.',
+          'Embed consensus, actors, jobs, and durable workflows in your binary. Library-first on VPS; no mandatory Redis.',
       },
     ],
   ],

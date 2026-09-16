@@ -47,7 +47,7 @@ Post-ship review (2026-09): B-27i + cap HTTP dedup + scaffold `ping`/`onboarding
 | Subtask | Wave | Description | Status |
 | ------- | ---- | ----------- | ------ |
 | B-27a | 1 | **`OpCtx::Deps`** — builder-injected domain ports (ADR [`Deps`](decisions/capability-dx.md#public-api-surface-trembitacapability)) | 🔲 |
-| B-27b | 1 | **`OpCtx` + store** — optional [`ActorStateStore`](decisions/actor-state-store.md) on context; reduce per-group manual redb open (cf. `stateful-workers` `OrdersState`) | 🔲 |
+| B-27b | 1 | **`OpCtx::cap_store`** — [`CapStore`](decisions/actor-state-store.md) on context (shipped alias); optional per-group store injection without manual redb open | 🔲 partial — `cap_store()` + `TrembitaApp::cap_store`; group-level injection still open |
 | B-27c | 2 | **`OpCtx` ingress** — gateway identity / correlation id on handler context for audit | 🔲 |
 | B-27d | 2 | **Typed handler errors** — domain `Error` → `CapError` / HTTP mapping; less `CapError::Handler(String)` boilerplate | 🔲 |
 | B-27e | 1 | **CLI templates** — [`ping.rs.tpl`](../crates/trembita-cli/templates/trembita-app/src/capabilities/ping.rs.tpl) + [`onboarding.rs.tpl`](../crates/trembita-cli/templates/trembita-app/src/capabilities/onboarding.rs.tpl) on `#[cap_handler]` + `cap_register_chain!` (finishes intent of B-25c for scaffold) | ✅ |

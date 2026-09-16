@@ -1,7 +1,8 @@
-# Stateful actors — workflow store (`ActorStateStore`, redb-first)
+# Stateful actors — workflow store (`CapStore` / `trembita-capstore`, redb-first)
 
 **Status:** Accepted  
-**Date:** 2026-08-28
+**Date:** 2026-08-28  
+**Updated:** 2026-09-16 — product naming **`CapStore`**, facade [`trembita::capstore`](../../crates/trembita/src/capstore.rs); workspace crate rename **`trembita-actor-store` → `trembita-capstore`** planned before 1.0 (trait remains `ActorStateStore` in that crate until then).
 
 ## Context
 
@@ -14,7 +15,7 @@ Stateful actors need workflow data that survives VPS crash without putting every
 | Layer | Store | Purpose |
 |-------|--------|---------|
 | **Authoritative / consensus** | Raft → `StateMachine` | Orders, balances, config — linearizable and replicated |
-| **Actor workflow** | [`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs) | Session progress, idempotency keys, locks, handler caches — survives crash when backed by durable store |
+| **Actor workflow** | [`CapStore`](../../crates/trembita/src/capstore.rs) ([`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs) in the port crate) | Session progress, idempotency keys, locks, handler caches — survives crash when backed by durable store |
 
 **Do not** put routine actor workflow bytes in the Raft log — avoids R1 write ceiling and wrong abstraction ([future-work-and-risks](future-work-and-risks.md)).
 

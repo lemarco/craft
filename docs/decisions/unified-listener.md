@@ -85,7 +85,7 @@ Framework builders: **`OpsApi`**, **`JobsApi`**, **`IntrospectApi`**, etc. Apps 
 3. Otherwise merge `ops_api()` and product API tables in `.surfaces()` / `.gateway_routes()`; use `RouteTable::with_auth_mode(AuthMode::Identity)` for protected APIs
 4. Run `trembita doctor --preflight`; scrape `/health` and `/metrics` on the unified bind
 
-**Docker / k8s:** publish one port number for UDP + TCP; split product vs ops by **hostname** on the same TCP bind when needed ([production-runbook](../ops/production-runbook.md)).
+**Docker / VPS firewall:** publish one port number for UDP + TCP; split product vs ops by **hostname** on the same TCP bind when needed ([production-runbook](../ops/production-runbook.md)).
 
 ## Related
 

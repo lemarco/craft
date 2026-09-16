@@ -1,0 +1,35 @@
+---
+description: Deployment model — VPS/library-first; no container orchestration product work
+globs: docs/**/*.md,**/*.md,.cursor/**/*
+alwaysApply: true
+---
+
+# trembita deployment (no orchestration platform)
+
+Trembita is **library-first**: one user binary, **N identical processes** on VPS or bare metal, cluster via **`TREMBITA_JOIN_SEEDS`** and embedded Raft ([deployment-model](../../docs/decisions/deployment-model.md)).
+
+## Hard rule for agents and docs
+
+Do **not** propose, backlog, or document as in-scope:
+
+- Kubernetes / K8s, Helm, operators, charts, CRDs
+- “Run trembita on orchestrator X” as a **product** direction for this repo
+- Horizontal pod autoscaling, Deployments, service mesh as the **primary** scaling story
+
+Docker Compose in `examples/` / `dev/` is **local demo packaging only** — not production orchestration.
+
+## What to recommend instead
+
+| Need | trembita-native path |
+|------|----------------------|
+| Add capacity | New VPS + same binary + `TREMBITA_JOIN_SEEDS` ([cluster-elasticity](../../docs/decisions/cluster-elasticity.md)) |
+| Rolling upgrade | [upgrade-coordinator](../../docs/decisions/upgrade-coordinator.md), drain, `/cluster/upgrade*` |
+| Config / certs | [env.md](../../docs/env.md), [certs.md](../../docs/certs.md) |
+| Observability | Unified `TREMBITA_LISTEN` ops routes ([unified-listener](../../docs/decisions/unified-listener.md)) |
+| IaC outside repo | User’s Ansible/Terraform on **systemd + one process per VM** — **not** maintained in trembita |
+
+## Wording in docs
+
+Prefer **“VPS / bare metal”**, **“library-first”**, **“no mandatory Redis”** — avoid naming specific orchestrators even as negations (reduces noise and agent drift).
+
+Non-goals belong in [deployment-model](../../docs/decisions/deployment-model.md) and [product-scenarios](../../docs/decisions/product-scenarios.md) — do not duplicate long anti-orchestrator essays in every README.

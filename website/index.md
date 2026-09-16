@@ -4,7 +4,7 @@ layout: home
 hero:
   name: trembita
   text: Distributed Raft + actors for Rust
-  tagline: One codebase, N nodes — elastic, self-healing product apps with embedded redb. No mandatory Redis or Kubernetes.
+  tagline: One codebase, N nodes — elastic, self-healing product apps with embedded redb. Library-first on VPS; no mandatory Redis.
   image:
     src: /logo.svg
     alt: trembita

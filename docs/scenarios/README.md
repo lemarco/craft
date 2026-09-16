@@ -1,6 +1,6 @@
 # Product scenarios
 
-Guides for building on trembita **without mandatory Redis or Kubernetes**. Each scenario uses the same binary and `data_dir`; scale by adding VPSes ([deployment-model](../decisions/deployment-model.md)).
+Guides for building on trembita **without mandatory Redis** — same binary on each VPS, scale by adding nodes ([deployment-model](../decisions/deployment-model.md)).
 
 **Decision record:** [product-scenarios](../decisions/product-scenarios.md)  
 **Implementation backlog:** [backlog.md](../backlog.md)

@@ -13,7 +13,7 @@
 
 ## At a glance
 
-**Product scenarios** (no mandatory Redis or Kubernetes):
+**Product scenarios** (embedded redb, no mandatory Redis):
 
 | Scenario | Guide | Status |
 |----------|-------|--------|

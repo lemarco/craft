@@ -16,7 +16,7 @@
 
 **Idea:** Embed consensus + actors in *your* binary. Same artifact on every node; the cluster bootstraps, elects a leader, replicates a linearizable state machine, and hosts supervised actors that can message and migrate across nodes. No sidecar, no separate control plane.
 
-**Product teams:** jobs, event topics, stateful workers, real-time sessions, and workflows on **embedded redb** — no mandatory Redis or Kubernetes. Start with [docs/getting-started.md](docs/getting-started.md) and [docs/scenarios/README.md](docs/scenarios/README.md).
+**Product teams:** jobs, event topics, stateful workers, real-time sessions, and workflows on **embedded redb** — library-first on VPS, no mandatory Redis. Start with [docs/getting-started.md](docs/getting-started.md) and [docs/scenarios/README.md](docs/scenarios/README.md).
 
 ---
 

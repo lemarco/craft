@@ -79,9 +79,13 @@ Raft gives **consistent replicated state** (via user `StateMachine`). **Actors**
 
 ## What we do not require
 
-- Cloud-specific orchestration or container platforms
+- Cloud-specific orchestration or container platforms as the **product** deployment path
 - Dynamic `.so` plugins or separate `raft-node` config language
 - Multiple Raft peers inside one OS process (dev/sim only)
+
+## Out of scope for this repository
+
+No in-tree **orchestration-platform** artifacts (charts, operators, “run on cluster X” guides). Production scale = **more VPS processes** running the **same embeddable binary**, not more replicas of a stateless Deployment. See [.cursor/rules/trembita-deployment.mdc](../../.cursor/rules/trembita-deployment.mdc) for agent/doc conventions.
 
 ## Consequences
 

@@ -25,6 +25,7 @@ Distributed Raft + actor framework in Rust. Read before making changes.
 | Path | Purpose |
 |------|---------|
 | `.cursor/rules/trembita-architecture.mdc` | No I/O in core; ports & adapters |
+| `.cursor/rules/trembita-deployment.mdc` | VPS/library-first — no K8s/Helm/operators in scope |
 | `.cursor/rules/trembita-testing.mdc` | Test layer choice; update coverage doc |
 | `.cursor/rules/trembita-quality-gate.mdc` | Pre-commit/push gates |
 | `.cursor/rules/trembita-commits.mdc` | Small, focused, testable commits |

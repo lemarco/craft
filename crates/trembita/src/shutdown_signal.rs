@@ -3,7 +3,7 @@
 /// Block until the process receives a shutdown signal.
 ///
 /// On Unix this waits for **SIGINT** (Ctrl-C) or **SIGTERM** (`systemctl stop`, `docker stop`,
-/// `kill`, Kubernetes pod termination). On other platforms only SIGINT is available.
+/// `kill`, container runtime SIGTERM). On other platforms only SIGINT is available.
 pub async fn wait_for_int_or_term() {
     tokio::select! {
         result = tokio::signal::ctrl_c() => {

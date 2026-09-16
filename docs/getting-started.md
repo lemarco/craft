@@ -1,6 +1,6 @@
 # Getting started — product apps (no Redis)
 
-Quick path for **product teams** using [`TrembitaApp`](../crates/trembita/src/app/mod.rs) — **capabilities**, jobs, and durable workflow keys on **embedded redb**, no Kubernetes, no mandatory Redis.
+Quick path for **product teams** using [`TrembitaApp`](../crates/trembita/src/app/mod.rs) — **capabilities**, jobs, and durable workflow keys on **embedded redb** (library-first VPS deploy, no mandatory Redis).
 
 **Scenarios:** [scenarios/README.md](scenarios/README.md) · **Showcases:** [examples/README.md](../examples/README.md) · **Backlog:** [backlog.md](backlog.md)
 

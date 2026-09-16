@@ -132,7 +132,7 @@ Today the governor tunes `batch` and `idle_sleep` only. Consumers can still hold
 |--------|---------|
 | `TREMBITA_ROLE=gateway/worker` pools | Rejected — ops burden; contradicts night-time utilisation goal |
 | Separate tokio runtime for gateway vs jobs | Rejected — heavy; tokens + tuning sufficient |
-| Kubernetes pod roles | **Non-goal** ([product-scenarios](product-scenarios.md)) |
+| Static gateway/worker fleet roles | **Non-goal** — homogeneous VPS + `.workload()` ([product-scenarios](product-scenarios.md)) |
 | Queue depth autoscale only | Keep, but insufficient alone for API vs jobs on same node |
 
 ## References

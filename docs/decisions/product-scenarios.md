@@ -5,7 +5,7 @@
 
 ## Context
 
-trembita targets **product teams**, not infra teams running Kubernetes microservices. The deployment model is [library-first](deployment-model.md): **one Rust codebase**, **one binary**, **N identical VPS processes** that join a cluster incrementally. Scale unit = **actors and VPS count**, not new Deployments or service meshes.
+trembita targets **product teams**, not teams whose primary job is wiring a separate microservice mesh. The deployment model is [library-first](deployment-model.md): **one Rust codebase**, **one binary**, **N identical VPS processes** that join a cluster incrementally. Scale unit = **actors and VPS count**, not new Deployments or service meshes.
 
 Five application patterns cover most distributed product work:
 
@@ -23,7 +23,7 @@ All five compose on the same runtime. No separate job server, workflow server, o
 
 ### Positioning
 
-> **Trembita** — a **distributed coordination runtime**: cache hooks, job queue, actors, workflow machinery, cron. **Same [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) API** on one laptop or N VPSes. Domain data stays in **your** Postgres / services — trembita is not an application database. Cluster membership is **automatic** (seed + join); graceful shutdown drains actors and can leave the cluster. No Kubernetes. No mandatory Redis.
+> **Trembita** — a **distributed coordination runtime**: cache hooks, job queue, actors, workflow machinery, cron. **Same [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) API** on one laptop or N VPSes. Domain data stays in **your** Postgres / services — trembita is not an application database. Cluster membership is **automatic** (seed + join); graceful shutdown drains actors and can leave the cluster. No mandatory Redis.
 
 ### Coordination vs domain data
 
@@ -58,7 +58,7 @@ See [job-queue](job-queue.md) for why mailboxes and Raft logs are not misused as
 | mTLS certs ([certificates](certificates.md)) | `domain-outbox` — Postgres transactional outbox |
 | | Load balancer in front of gateway nodes |
 
-**Non-goals:** Kubernetes as core product, one-container-per-actor microservices, mandatory Redis/PostgreSQL/RabbitMQ, static node roles as the primary scaling model (use homogeneous nodes + `.workload()`).
+**Non-goals:** Orchestration-platform packaging as core product, one-container-per-actor microservices, mandatory Redis/PostgreSQL/RabbitMQ, static node roles as the primary scaling model (use homogeneous nodes + `.workload()`).
 
 ### Homogeneous nodes — compute tokens (B-16)
 

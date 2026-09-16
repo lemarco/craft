@@ -6,7 +6,7 @@
 ## Context
 
 Operators running trembita on **N identical VPS processes** ([deployment-model](deployment-model.md))
-need rolling upgrades without Ansible/Kubernetes. Manual steps are documented in
+need rolling upgrades without an external orchestrator. Manual steps are documented in
 [rolling-upgrade.md](../ops/rolling-upgrade.md): drain, leave, replace binary, restart,
 verify `/ready`.
 
@@ -252,7 +252,7 @@ Optional future **trembita** crate additions (not required for the pattern):
 
 **Positive**
 
-- Self-updating cluster without Ansible/K8s; aligns with library-first VPS model.
+- Self-updating cluster in-process; aligns with library-first VPS model.
 - Reuses leader-only supervisor mental model — one coordinator, deterministic grants.
 - Durable rolling state survives leader failover.
 - Patch upgrades achieve **service availability** on ≥3 nodes (one member maintenance at a time).
@@ -272,7 +272,7 @@ Optional future **trembita** crate additions (not required for the pattern):
 | Each node polls manifest independently | Race — full fleet restart |
 | In-memory coordinator on leader | Lost on failover |
 | Embed updater in `trembita` core | Violates ports/adapters; app paths and SM differ per product |
-| Kubernetes operator | Explicit non-goal ([product-scenarios](product-scenarios.md)) |
+| External orchestration control plane | Out of scope — use this coordinator + [deployment-model](deployment-model.md) |
 
 ## Implementation backlog
 

@@ -72,6 +72,9 @@ pub mod upgrade {
 #[cfg(test)]
 mod integration;
 
+/// Capability workflow store ([`CapStore`](capstore::CapStore)) — idempotency and handler keys.
+pub mod capstore;
+
 /// Cluster builder, runtime handle, queues, journals.
 pub mod cluster;
 /// `TREMBITA_*` boot configuration.
