@@ -15,11 +15,13 @@ use super::route::Route;
 
 pub(crate) type KeyFn = std::sync::Arc<dyn Fn(&[u8]) -> Option<String> + Send + Sync>;
 
+type CapOpRegister<S> = Box<dyn Fn(&mut CapRegistry<S>) + Send + Sync>;
+
 pub(crate) struct CapOpSpec<S: Send + Default + 'static> {
     pub(crate) name: &'static str,
     pub(crate) routes: Vec<Route>,
     pub(crate) key: Option<KeyFn>,
-    register: Box<dyn Fn(&mut CapRegistry<S>) + Send + Sync>,
+    register: CapOpRegister<S>,
 }
 
 impl<S: Send + Default + 'static> CapOpSpec<S> {
@@ -34,7 +36,7 @@ pub struct CapOp<S: Send + Default + 'static> {
     routes: Vec<Route>,
     key: Option<KeyFn>,
     _state: PhantomData<S>,
-    register: Box<dyn Fn(&mut CapRegistry<S>) + Send + Sync>,
+    register: CapOpRegister<S>,
 }
 
 impl<S: Send + Default + 'static> CapOp<S> {
@@ -45,10 +47,9 @@ impl<S: Send + Default + 'static> CapOp<S> {
         Req: DeserializeOwned + Send + 'static,
         Reply: Serialize + Send + 'static,
     {
-        let register: Box<dyn Fn(&mut CapRegistry<S>) + Send + Sync> =
-            Box::new(move |registry: &mut CapRegistry<S>| {
-                registry.register(name, op_runner_sync(handler));
-            });
+        let register: CapOpRegister<S> = Box::new(move |registry: &mut CapRegistry<S>| {
+            registry.register(name, op_runner_sync(handler));
+        });
         Self {
             name,
             routes: Vec::new(),
@@ -88,10 +89,9 @@ impl<S: Send + Default + 'static> CapOp<S> {
             + 'static,
     {
         let handler = Arc::new(handler);
-        let register: Box<dyn Fn(&mut CapRegistry<S>) + Send + Sync> =
-            Box::new(move |registry: &mut CapRegistry<S>| {
-                registry.register(name, op_runner_async(Arc::clone(&handler)));
-            });
+        let register: CapOpRegister<S> = Box::new(move |registry: &mut CapRegistry<S>| {
+            registry.register(name, op_runner_async(Arc::clone(&handler)));
+        });
         Self {
             name,
             routes: Vec::new(),

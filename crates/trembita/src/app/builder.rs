@@ -123,11 +123,6 @@ impl TrembitaAppBuilder {
         builder
     }
 
-    pub(crate) fn with_cap_runtime(mut self, runtime: CapRuntime) -> Self {
-        self.cap_runtime = runtime;
-        self
-    }
-
     #[must_use]
     pub(crate) fn with_run_hint(mut self, hint: ManifestRunHint) -> Self {
         self.run_hint = hint;
@@ -290,6 +285,7 @@ impl TrembitaAppBuilder {
     /// [`Self::run`] / [`Self::boot_for_test`] fail at boot when `C::STREAM` was not registered
     /// via [`.queue`](Self::queue).
     #[must_use]
+    #[expect(dead_code)] // direct builder chaining; [`AppManifest`] uses [`Self::consumers`]
     pub(crate) fn consumer<C: crate::JobConsumer>(
         mut self,
         consumer: C,
@@ -471,6 +467,7 @@ impl TrembitaAppBuilder {
     ///
     /// Requires a matching [`.topics`](Self::topics) registration.
     #[must_use]
+    #[expect(dead_code)] // prefer [`Self::topics`] outbox wiring; retained for explicit builder use
     pub(crate) fn event_outbox_source(
         mut self,
         topic: impl Into<String>,
@@ -488,6 +485,7 @@ impl TrembitaAppBuilder {
     ///
     /// Prefer [`.workers`](Self::workers) with [`WorkerOpts`] for explicit scale.
     #[must_use]
+    #[expect(dead_code)] // direct builder chaining; [`AppManifest::workers`] uses [`Self::workers`]
     pub(crate) fn actors<A: UserActor>(
         mut self,
         name: &str,
@@ -506,6 +504,7 @@ impl TrembitaAppBuilder {
 
     /// Register one managed worker actor group via [`WorkerOpts`].
     #[must_use]
+    #[expect(dead_code)] // direct builder chaining; [`AppManifest::workers`] uses [`Self::workers`]
     pub(crate) fn worker<A: UserActor>(self, opts: WorkerOpts<A>) -> Self
     where
         A::Config: Clone + Send + Sync + 'static,

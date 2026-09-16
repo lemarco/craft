@@ -172,8 +172,7 @@ impl AppManifest {
         let hint = self.run_hint();
         let mut builder = builder;
         if let Some(caps) = self.capabilities {
-            let (next, runtime) = caps.apply(builder);
-            builder = next.with_cap_runtime(runtime);
+            builder = builder.capabilities(caps);
         }
         if !self.extra_queues.is_empty() {
             builder = builder.queue(self.extra_queues);

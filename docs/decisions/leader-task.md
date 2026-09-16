@@ -25,7 +25,7 @@ There is **no primitive for “run this loop while I am leader”**. Every produ
 | Actor-store GC | [`run_actor_store_gc_ticker`](../../crates/trembita-actor-store/src/store_service.rs) | in `StoreService` | `watch` | same |
 | Supervisor reconcile | [`ClusterSupervisor::reconcile`](../../crates/trembita-runtime/src/supervisor.rs) | in method | none | + immediate call from facts-refresher |
 | Topic bootstrap / retention | inline in [`builder.rs`](../../crates/trembita-assembly/src/builder/cluster/mod.rs) | in loop | none | `bootstrapped` flag — one-shot per process |
-| Upgrade coordinator | [`spawn_upgrade_coordinator`](../../crates/trembita/src/upgrade/coordinator.rs) | in `tick` | abort | leader vs local executor split |
+| Upgrade coordinator | [`spawn_upgrade_coordinator`](../../crates/trembita-assembly/src/upgrade/coordinator.rs) | in `tick` | abort | leader vs local executor split |
 
 Leadership checks also appear on **RPC hot paths** (`QueueService`, `StoreService`, `runtime.rs`) — leader-local apply vs forward-to-leader. That is a related but separate helper (see [Out of scope](#out-of-scope)).
 

@@ -182,7 +182,7 @@ Target **0.5.0** — unified HTTP listener; see [unified-listener](../decisions/
 - **App module split** — [`app.rs`](../../crates/trembita/src/app/mod.rs) split into `app/{types,shutdown,builder,runtime,workflow}.rs`.
 - **Cluster handle module split** — assembly `cluster_handle/{facts,telemetry,cluster,errors}.rs` (re-exported from [`trembita::cluster`](../../crates/trembita/src/cluster.rs)).
 - **Gateway module split** — [`gateway/mod.rs`](../../crates/trembita/src/gateway/mod.rs) split into `gateway/{config,opts,state,router,spawn}.rs`.
-- **Builder module split** — join/autoscale/error helpers extracted from [`builder/mod.rs`](../../crates/trembita/src/builder/mod.rs); [`TrembitaClusterBuilder`](../../crates/trembita/src/builder/cluster/mod.rs) split into `builder/cluster/{config,assemble,products,start,types,topic_leader}.rs`.
+- **Builder module split** — join/autoscale/error helpers extracted from [`builder/mod.rs`](../../crates/trembita-assembly/src/builder/mod.rs); [`TrembitaClusterBuilder`](../../crates/trembita-assembly/src/builder/cluster/mod.rs) split into `builder/cluster/{config,assemble,products,start,types,topic_leader}.rs`.
 - **Runtime module split** — [`runtime.rs`](../../crates/trembita-runtime/src/runtime/mod.rs) split into `runtime/{types,handle,event_loop,spawn,service,wire}.rs`.
 - **Registry module split** — [`registry.rs`](../../crates/trembita-runtime/src/registry/mod.rs) split into `registry/{actor,errors,reply,pool,lifecycle,refs,inner,observer}.rs`.
 - **Queue stream registry** — `QueueService` holds one `Mutex<QueueStreamRegistry>` instead of five separate mutex maps.
@@ -190,10 +190,10 @@ Target **0.5.0** — unified HTTP listener; see [unified-listener](../decisions/
 
 ### Fixed
 
-- **Env merge precedence** — [`merge_app_config`](../../crates/trembita/src/builder/cluster/mod.rs) applies env only for unset
+- **Env merge precedence** — [`merge_app_config`](../../crates/trembita-assembly/src/builder/cluster/mod.rs) applies env only for unset
   builder fields; code-set [`.members`](../../crates/trembita/src/app/mod.rs), [`.join_as`](../../crates/trembita/src/app/mod.rs),
   [`.configure({ node_id })`](../../crates/trembita/src/configure.rs), etc. win over `TREMBITA_*` on [`.run`](../../crates/trembita/src/app/mod.rs).
-- **Dynamic join role** — joiners now send the role from [`.join_as`](../../crates/trembita/src/builder/cluster/mod.rs) /
+- **Dynamic join role** — joiners now send the role from [`.join_as`](../../crates/trembita-assembly/src/builder/cluster/mod.rs) /
   `TREMBITA_JOIN_ROLE` instead of always requesting `JoinRole::Learner`; seed-side
   [`allow_voter_join`](../../crates/trembita/src/app/mod.rs) / `TREMBITA_ALLOW_VOTER_JOIN` is wired from env.
 
@@ -215,7 +215,7 @@ Target **0.5.0** — unified HTTP listener; see [unified-listener](../decisions/
 
 ### Fixed
 
-- **`TrembitaApp` env node id** — [`merge_app_config`](../../crates/trembita/src/builder/cluster/mod.rs) now applies
+- **`TrembitaApp` env node id** — [`merge_app_config`](../../crates/trembita-assembly/src/builder/cluster/mod.rs) now applies
   `AppConfig::node_id`, so `TREMBITA_NODE_ID` and joiner assignment (`NodeId(0)`) work without
   `.configure(TrembitaConfigure { node_id: … })`.
 
@@ -233,7 +233,7 @@ Target **0.5.0** — unified HTTP listener; see [unified-listener](../decisions/
 
 - **Leader task primitive** — [`LeaderSession`](../../crates/trembita-runtime/src/leader_task.rs),
   [`run_leader_loop`](../../crates/trembita-runtime/src/leader_task.rs), and
-  [`TrembitaClusterBuilder::on_leader`](../../crates/trembita/src/builder/cluster/mod.rs) for periodic
+  [`TrembitaClusterBuilder::on_leader`](../../crates/trembita-assembly/src/builder/cluster/mod.rs) for periodic
   leader-only work with `first_in_term` ([`leader-task`](../decisions/leader-task.md));
   internal feeder, drainer, autoscaler, supervisor, schedule, GC, and topic loops migrated.
 

@@ -12,6 +12,7 @@ use super::state::TrembitaGatewayState;
 
 /// Bearer auth hook for product HTTP when a gateway token env var is set.
 #[must_use]
+#[expect(dead_code)] // public helper for custom gateway / upgrade route wiring
 pub fn bearer_auth_from_env() -> Option<trembita_http::AuthFn> {
     super::config::gateway_token_from_env().map(|_| {
         identity_auth_fn(identity::erase_identity(

@@ -1,6 +1,6 @@
 # Capability parity — same power, better DX
 
-**Principle:** Product scenarios must not regress when using [`CapManifest`](../decisions/capability-dx.md). App code avoids [`UserActor`](../../crates/trembita-runtime/src/user_actor.rs); the runtime still uses internal [`CapHost`](../../crates/trembita/src/capability/host.rs) (mailbox, sessions, placement).
+**Principle:** Product scenarios must not regress when using [`CapManifest`](../decisions/capability-dx.md). App code avoids [`UserActor`](../../crates/trembita-runtime/src/registry/actor.rs); the runtime still uses internal [`CapHost`](../../crates/trembita/src/capability/host.rs) (mailbox, sessions, placement).
 
 See [capabilities.md](capabilities.md) for API sketch and [capability-greenfield-wire](../decisions/capability-greenfield-wire.md) for HTTP policy.
 

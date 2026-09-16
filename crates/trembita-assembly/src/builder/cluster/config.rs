@@ -82,6 +82,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
 
     /// Mark [`node_id`](Self::new) as code-authoritative for env merge (used by [`TrembitaConfigure`](crate::configure::TrembitaConfigure)).
     #[must_use]
+    #[allow(dead_code)] // integration / showcase callers; not all default-members builds reference it
     pub(crate) fn with_explicit_node_id(mut self) -> Self {
         self.overrides.node_id = true;
         self

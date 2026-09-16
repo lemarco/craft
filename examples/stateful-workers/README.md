@@ -1,8 +1,8 @@
 # Stateful workers (capabilities + migration demo)
 
-Default mode registers the **`orders`** capability ([`src/capabilities/orders.rs`](src/capabilities/orders.rs)) with idempotent [`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs) keys — **product migration** is per-op store keys, not snapshotting actor RAM ([capability-greenfield-wire](../../docs/decisions/capability-greenfield-wire.md)).
+Default mode registers the **`orders`** capability ([`src/capabilities/orders/`](src/capabilities/orders/mod.rs)) with idempotent [`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs) keys — **product migration** is per-op store keys, not snapshotting actor RAM ([capability-greenfield-wire](../../docs/decisions/capability-greenfield-wire.md)).
 
-**Advanced only:** `migrate-demo` / `TREMBITA_MIGRATE_DEMO=1` runs a separate [`UserActor`](../../crates/trembita-runtime/src/user_actor.rs) counter with in-memory RAM migration — for runtime education, not the default app path.
+**Advanced only:** `migrate-demo` / `TREMBITA_MIGRATE_DEMO=1` runs a separate [`UserActor`](../../crates/trembita-runtime/src/registry/actor.rs) counter with in-memory RAM migration — for runtime education, not the default app path.
 
 ## What you run
 

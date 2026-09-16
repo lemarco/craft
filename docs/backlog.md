@@ -46,20 +46,20 @@ Post-ship review (2026-09): B-27i + cap HTTP dedup + scaffold `ping`/`onboarding
 
 | Subtask | Wave | Description | Status |
 | ------- | ---- | ----------- | ------ |
-| B-27a | 1 | **`OpCtx::deps`** — [`CapDeps`](../../crates/trembita/src/capability/deps.rs) + [`.cap_deps`](../../crates/trembita/src/app/builder.rs) | ✅ |
-| B-27b | 1 | **`OpCtx::cap_store`** — [`CapStore`](decisions/actor-state-store.md) / [`trembita::capstore`](../../crates/trembita/src/capstore.rs) | ✅ |
-| B-27c | 2 | **`OpCtx::ingress`** — [`CapIngress`](../../crates/trembita/src/capability/ingress.rs) via wire + HTTP headers | ✅ |
-| B-27d | 2 | **Typed handler errors** — [`CapError::domain`](../../crates/trembita/src/capability/error.rs) + HTTP 400 mapping | ✅ |
+| B-27a | 1 | **`OpCtx::deps`** — [`CapDeps`](../crates/trembita/src/capability/deps.rs) + [`.cap_deps`](../crates/trembita/src/app/builder.rs) | ✅ |
+| B-27b | 1 | **`OpCtx::cap_store`** — [`CapStore`](decisions/actor-state-store.md) / [`trembita::capstore`](../crates/trembita/src/capstore.rs) | ✅ |
+| B-27c | 2 | **`OpCtx::ingress`** — [`CapIngress`](../crates/trembita/src/capability/ingress.rs) via wire + HTTP headers | ✅ |
+| B-27d | 2 | **Typed handler errors** — [`CapError::domain`](../crates/trembita/src/capability/error.rs) + HTTP 400 mapping | ✅ |
 | B-27e | 1 | **CLI templates** — [`ping.rs.tpl`](../crates/trembita-cli/templates/trembita-app/src/capabilities/ping.rs.tpl) + [`onboarding.rs.tpl`](../crates/trembita-cli/templates/trembita-app/src/capabilities/onboarding.rs.tpl) on `#[cap_handler]` + `cap_register_chain!` (finishes intent of B-25c for scaffold) | ✅ |
 | B-27f | 2 | **Capability layout** — `trembita doctor` checks `capabilities/` + queued wiring | ✅ |
 | B-27g | 2 | **`domain/` module** — showcases (`stateful-workers`, `realtime`) | ✅ |
-| B-27h | 3 | **Multi-op manifest** — [`cap_register_chain!`](../../crates/trembita/src/lib.rs) | ✅ |
+| B-27h | 3 | **Multi-op manifest** — [`cap_register_chain!`](../crates/trembita/src/lib.rs) | ✅ |
 | B-27i | 1 | **Queued idempotency** — [`capability/queue`](../crates/trembita/src/capability/queue.rs) bridge honors `IdempotencyOpts` / job `dedup_key`; optional link `#[cap_handler(key = …)]` → enqueue dedup | ✅ |
 | B-27j | 2 | **Manifest / doctor validate** — warn on queued routes without `queue_stream` / `default_queue_for` | ✅ |
 | B-27k | 2 | **Greenfield queue story** — [getting-started §5](getting-started.md#5-product-workers) | ✅ |
-| B-27l | 2 | **Gateway helpers** — [`cap_queued_wait`](../../crates/trembita/src/gateway/cap_handlers.rs), [`cap_schedule`](../../crates/trembita/src/gateway/cap_handlers.rs) | ✅ |
-| B-27m | 3 | **Cap observability** — `tracing` spans at [`CapHost`](../../crates/trembita/src/capability/host.rs) dispatch | ✅ |
-| B-27n | 2 | **Integration test kit** — [`boot_local_app_with_capabilities`](../../crates/trembita-test-support/src/capability.rs) | ✅ |
+| B-27l | 2 | **Gateway helpers** — [`cap_queued_wait`](../crates/trembita/src/gateway/cap_handlers.rs), [`cap_schedule`](../crates/trembita/src/gateway/cap_handlers.rs) | ✅ |
+| B-27m | 3 | **Cap observability** — `tracing` spans at [`CapHost`](../crates/trembita/src/capability/host.rs) dispatch | ✅ |
+| B-27n | 2 | **Integration test kit** — [`boot_local_app_with_capabilities`](../crates/trembita-test-support/src/capability.rs) | ✅ |
 | B-27o | 2 | **Showcase polish** — [`realtime`](../examples/realtime/) `domain/` + `LineCount` op | ✅ |
 | B-27p | 3 | **OpenAPI / JSON Schema from `CapRequest`** — deferred post-1.0 (optional) | 🔲 deferred |
 
@@ -215,7 +215,7 @@ Introspection JSON (`/introspect/cluster`, `/actors`, `/queues`, `/sagas`, …) 
 **GitLab:** [work item #1](https://gitlab.com/lemarco/trembita/-/work_items/1)  
 **Related:** [schedule-source](decisions/schedule-source.md) (poll port shipped); [JobsApi](../crates/trembita-http/src/routes.rs) (queue ops shipped)
 
-**Problem:** [`ScheduleSource`](../../crates/trembita-jobs/src/schedule_source.rs) covers DB-backed reconcile, but product admin UIs that **mutate** schedules (enable, retime) still need either (a) a bespoke app HTTP layer that only writes Postgres and waits for the next poll, or (b) direct access to replicated schedule state. [`TrembitaApp`](../../crates/trembita/src/app/runtime.rs) exposes `jobs_api` for queue introspection/enqueue; there is **no symmetric surface for `RecurringJob`** — `upsert_schedule` lives on the queue service internally, not on the facade or HTTP. [schedule-source § Alternatives](decisions/schedule-source.md#alternatives-considered) rejected “HTTP schedule admin on trembita”; adoption feedback reopens that for apps mounting trembita routes behind session auth (same pattern as B-19 + B-03).
+**Problem:** [`ScheduleSource`](../crates/trembita-jobs/src/schedule_source.rs) covers DB-backed reconcile, but product admin UIs that **mutate** schedules (enable, retime) still need either (a) a bespoke app HTTP layer that only writes Postgres and waits for the next poll, or (b) direct access to replicated schedule state. [`TrembitaApp`](../crates/trembita/src/app/runtime.rs) exposes `jobs_api` for queue introspection/enqueue; there is **no symmetric surface for `RecurringJob`** — `upsert_schedule` lives on the queue service internally, not on the facade or HTTP. [schedule-source § Alternatives](decisions/schedule-source.md#alternatives-considered) rejected “HTTP schedule admin on trembita”; adoption feedback reopens that for apps mounting trembita routes behind session auth (same pattern as B-19 + B-03).
 
 **Goal:** Operator apps can list/upsert/remove recurring schedules per stream without maintaining a second control-plane table, and without redeploy for toggle/retime.
 
@@ -551,7 +551,7 @@ Document the contract, show effectively-once patterns, and improve consumer ergo
 | B-13h   | Cross-links: background-jobs ↔ [stateful-workers](scenarios/stateful-workers.md) ↔ [workflows](scenarios/workflows.md) (step `dedup_key`) | MR-1 | ✅ |
 | B-13i   | Prometheus: `trembita_queue_redeliveries_total{stream}` + attempts histogram (optional) | later | ✅ |
 | B-13j   | Dashboard / `/introspect/queues`: surface jobs with `attempts > 1` as idempotency smell | later | ✅ |
-| B-13k   | **Queue token semantics** — `lease_id` monotonicity + stale-token invalidation; `dedup_key` lifecycle (ack release, dead-letter hold); external-backlog note; rustdoc on `LeaseId`; regression tests in [`queue.rs`](../crates/trembita/tests/queue.rs) | MR-1 | ✅ |
+| B-13k   | **Queue token semantics** — `lease_id` monotonicity + stale-token invalidation; `dedup_key` lifecycle (ack release, dead-letter hold); external-backlog note; rustdoc on `LeaseId`; regression tests in [`capability.rs`](../crates/trembita/tests/capability.rs) | MR-1 | ✅ |
 
 
 **Suggested MR slices**

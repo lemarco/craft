@@ -491,7 +491,7 @@ fn parse_batch_job(job: EnqueueBatchJobBody) -> Result<(Vec<u8>, EnqueueOptions)
 ///
 /// # Errors
 /// Returns [`JobsApiError::BadRequest`] when JSON is invalid or both payload fields are set.
-pub fn parse_enqueue_body(
+pub(crate) fn parse_enqueue_body(
     headers: &http::HeaderMap,
     body: &bytes::Bytes,
 ) -> Result<(Vec<u8>, JsonScheduling), JobsApiError> {
