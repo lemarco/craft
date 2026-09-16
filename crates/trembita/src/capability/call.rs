@@ -20,6 +20,12 @@ pub trait CapRequest: Serialize + DeserializeOwned + Send + Sized + Sync + 'stat
     const GROUP: &'static str;
     /// Operation name (matches [`super::CapOp::new`]).
     const OP: &'static str;
+    /// Default job stream `{GROUP}.{OP}` ([`super::CapGroup::default_queue_for`]).
+    const QUEUE_STREAM: &'static str;
+    /// Default event topic `{GROUP}.{OP}` ([`super::CapGroup::default_event_ingress_for`]).
+    const EVENT_TOPIC: &'static str;
+    /// Subscription id paired with [`Self::EVENT_TOPIC`].
+    const EVENT_SUBSCRIPTION: &'static str;
     /// Response type for this op.
     type Reply: DeserializeOwned + Send;
     /// Optional stable key for keyed inline routing (override when not using `.key()` in manifest).

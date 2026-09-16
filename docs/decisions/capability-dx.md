@@ -68,8 +68,8 @@ pub struct Fulfill {
 }
 
 #[cap_handler(group = "orders")]
-pub fn run(msg: Fulfill, state: &mut OrdersState) -> Result<Receipt, CapError> {
-    // needs `ctx.app()`? use the 3-arg form `(Fulfill, OpCtx<'_>, &mut OrdersState)` instead
+pub async fn run(msg: Fulfill, state: &mut OrdersState) -> Result<Receipt, CapError> {
+    // needs `ctx.app()`? use `(Fulfill, OpCtx<'_>, &mut OrdersState)` instead
     todo!()
 }
 ```
@@ -80,25 +80,17 @@ Registration (`{handler}_register` from the attribute; wire `OP` is never duplic
 CapManifest::new().group(trembita::cap_register_chain!(
     CapGroup::<OrdersState>::for_cap::<Fulfill>()
         .instances(1)
-        .queue_stream("orders"), // required when callers use Route::Queued
+        .default_queue_for::<Fulfill>(), // `{group}.{op}` on macro-generated `CapRequest`
     run_register,
 ))
 ```
 
-Macro rules: `Reply` from `Result<…>`; `OP` = snake_case of the request struct (`ProcessOrder` → `process_order`);
-`key = "field"` → `CapOp::key_cap` in `{handler}_register`. DTO-only requests: [`#[cap_request]`](../../crates/trembita-macros/src/lib.rs).
+Product handlers are **`async fn`** (registers via [`CapOp::for_request_async`](../../crates/trembita/src/capability/op.rs)). `Reply` from `Result<…>`;
+`OP` = snake_case of the request struct (`ProcessOrder` → `process_order`); `key = "field"` → `CapOp::key_cap`.
+DTO-only requests: [`#[cap_request]`](../../crates/trembita-macros/src/lib.rs).
 
-**Async handlers** — same attribute; registers via [`CapOp::for_request_async`](../../crates/trembita/src/capability/op.rs):
-
-```rust
-#[cap_handler(group = "orders", key = "order_id")]
-async fn process_order(msg: ProcessOrder, state: &mut OrdersState) -> Result<ProcessAck, CapError> {
-    // await store, HTTP, …
-    todo!()
-}
-```
-
-Use `(Req, OpCtx<'_>, &mut State)` when the handler needs `ctx.app()`. Short two-parameter form `(Req, &mut State)` is allowed for sync and async (macro adds `OpCtx` at the registration boundary).
+Use `(Req, OpCtx<'_>, &mut State)` when the handler needs `ctx.app()`. Two-parameter `(Req, &mut State)` is fine — the macro adds `OpCtx` at the registration boundary.
+Sync `fn` is **not** supported on [`#[cap_handler]`](../../crates/trembita-macros/src/lib.rs) — legacy/tests only via manual [`CapOp::for_request`](../../crates/trembita/src/capability/op.rs).
 
 **Advanced:** manual [`CapOp::new`](../../crates/trembita/src/capability/op.rs) / `.op::<Req, Reply>(fn)` on [`CapGroup`](../../crates/trembita/src/capability/group.rs) remains for integration tests and custom wiring — not the product authoring path.
 
@@ -219,6 +211,7 @@ enabled for tooling until B-22 removes it from default gateway presets.
 | `#[capability]` attribute on struct | Rejected — replaced by [`#[cap_request]`](../../crates/trembita-macros/src/lib.rs) + manifest builder |
 | All ops require `UserActor` in app | Rejected — hide runtime worker trait |
 | Single route per op only | Rejected — user wants route at call site |
+| `cap_group!` / DSL macros for manifest wiring | Rejected — normal `CapGroup::…` method chain + [`cap_register_chain!`](../../crates/trembita/src/lib.rs) only |
 
 ## Related
 

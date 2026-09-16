@@ -14,7 +14,7 @@ struct DemoReq {
 }
 
 #[cap_handler(group = "demo")]
-fn demo_run(msg: DemoReq, _state: &mut ()) -> Result<DemoAck, CapError> {
+async fn demo_run(msg: DemoReq, _state: &mut ()) -> Result<DemoAck, CapError> {
     Ok(DemoAck { ok: msg.n > 0 })
 }
 
@@ -24,20 +24,10 @@ struct Keyed {
 }
 
 #[cap_handler(group = "demo", key = "label")]
-fn keyed_run(msg: Keyed, _state: &mut ()) -> Result<DemoAck, CapError> {
+async fn keyed_run(msg: Keyed, _state: &mut ()) -> Result<DemoAck, CapError> {
     Ok(DemoAck {
         ok: !msg.label.is_empty(),
     })
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct AsyncDemoReq {
-    n: u32,
-}
-
-#[cap_handler(group = "demo")]
-async fn demo_async(msg: AsyncDemoReq, _state: &mut ()) -> Result<DemoAck, CapError> {
-    Ok(DemoAck { ok: msg.n > 0 })
 }
 
 #[cap_request(group = "orphan", reply = DemoAck)]
@@ -50,6 +40,7 @@ struct OrphanDto {
 fn cap_handler_infers_op_from_request_type() {
     assert_eq!(DemoReq::GROUP, "demo");
     assert_eq!(DemoReq::OP, "demo_req");
+    assert_eq!(DemoReq::QUEUE_STREAM, "demo.demo_req");
 }
 
 #[test]
@@ -66,7 +57,7 @@ fn cap_request_for_dto_without_handler() {
 }
 
 #[test]
-fn cap_handler_async_compiles() {
-    assert_eq!(AsyncDemoReq::OP, "async_demo_req");
-    let _ = demo_async_register;
+fn cap_handler_async_register() {
+    let _ = demo_run_register;
+    let _ = keyed_run_register;
 }

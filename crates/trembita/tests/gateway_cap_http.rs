@@ -32,6 +32,9 @@ struct Sum {
 impl CapRequest for Add {
     const GROUP: &'static str = "math";
     const OP: &'static str = "add";
+    const QUEUE_STREAM: &'static str = "math.add";
+    const EVENT_TOPIC: &'static str = "math.add";
+    const EVENT_SUBSCRIPTION: &'static str = "math.add.cap";
     type Reply = Sum;
 }
 

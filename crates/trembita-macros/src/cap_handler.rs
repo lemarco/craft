@@ -257,6 +257,14 @@ fn arg_idents(input_fn: &ItemFn) -> syn::Result<Punctuated<Ident, Token![,]>> {
 }
 
 pub(crate) fn expand_cap_handler(args: CapHandlerArgs, input_fn: &ItemFn) -> TokenStream2 {
+    if input_fn.sig.asyncness.is_none() {
+        return syn::Error::new_spanned(
+            input_fn.sig.fn_token,
+            "`#[cap_handler]` requires `async fn` (use `CapOp::for_request` manually for sync handlers in tests)",
+        )
+        .to_compile_error();
+    }
+
     let (shape, req, state_ref_ty) = match classify_handler(input_fn) {
         Ok(v) => v,
         Err(e) => return e.to_compile_error(),
@@ -294,14 +302,15 @@ pub(crate) fn expand_cap_handler(args: CapHandlerArgs, input_fn: &ItemFn) -> Tok
         impl ::trembita::CapRequest for #req {
             const GROUP: &'static str = #group;
             const OP: &'static str = #op;
+            const QUEUE_STREAM: &'static str = concat!(#group, ".", #op);
+            const EVENT_TOPIC: &'static str = concat!(#group, ".", #op);
+            const EVENT_SUBSCRIPTION: &'static str = concat!(#group, ".", #op, ".cap");
             type Reply = #reply;
             #key_impl
         }
     };
 
-    let is_async = input_fn.sig.asyncness.is_some();
-    let register =
-        |state_ty: &Type| register_block(handler_name, &req, state_ty, has_key, is_async);
+    let register = |state_ty: &Type| register_block(handler_name, &req, state_ty, has_key);
 
     match shape {
         HandlerShape::Full => {
@@ -354,27 +363,14 @@ pub(crate) fn expand_cap_handler(args: CapHandlerArgs, input_fn: &ItemFn) -> Tok
             };
             let reg = register(&state_ty);
 
-            let wrapper = if is_async {
-                quote! {
-                    #[allow(missing_docs)]
-                    #vis async fn #handler_name(
-                        #first,
-                        _ctx: ::trembita::OpCtx<'_>,
-                        #second,
-                    ) #output {
-                        #body_name(#call_args).await
-                    }
-                }
-            } else {
-                quote! {
-                    #[allow(missing_docs)]
-                    #vis fn #handler_name(
-                        #first,
-                        _ctx: ::trembita::OpCtx<'_>,
-                        #second,
-                    ) #output {
-                        #body_name(#call_args)
-                    }
+            let wrapper = quote! {
+                #[allow(missing_docs)]
+                #vis async fn #handler_name(
+                    #first,
+                    _ctx: ::trembita::OpCtx<'_>,
+                    #second,
+                ) #output {
+                    #body_name(#call_args).await
                 }
             };
 
@@ -397,7 +393,6 @@ fn register_block(
     req: &Type,
     state_ty: &Type,
     has_key: bool,
-    is_async: bool,
 ) -> TokenStream2 {
     let reg_name = register_ident(handler_name);
     let key_chain = if has_key {
@@ -405,14 +400,10 @@ fn register_block(
     } else {
         TokenStream2::new()
     };
-    let op_reg = if is_async {
-        quote! {
-            ::trembita::CapOp::for_request_async(
-                |req, ctx, state| Box::pin(#handler_name(req, ctx, state)),
-            )
-        }
-    } else {
-        quote! { ::trembita::CapOp::for_request(#handler_name) }
+    let op_reg = quote! {
+        ::trembita::CapOp::for_request_async(
+            |req, ctx, state| Box::pin(#handler_name(req, ctx, state)),
+        )
     };
     quote! {
         #[doc(hidden)]

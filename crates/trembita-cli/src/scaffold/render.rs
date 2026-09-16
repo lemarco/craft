@@ -522,12 +522,11 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     if opts.template == Some(AppTemplate::Realtime) {
         preamble.push_str(
             r#"        fn ws_chat_routes(state: TrembitaGatewayState) -> RouteTable {
-            mount_sticky_websocket(
+            mount_sticky_websocket::<Append>(
                 RouteTable::new(),
                 "/ws",
                 AuthMode::Open,
                 state,
-                Append::GROUP,
                 None,
                 |sticky| {
                     Box::pin(async move {
@@ -672,7 +671,7 @@ pub struct Append {
 }
 
 #[cap_handler(group = "chat")]
-fn append(msg: Append, state: &mut State) -> Result<AppendAck, CapError> {
+async fn append(msg: Append, state: &mut State) -> Result<AppendAck, CapError> {
     state.history.push(msg.text.clone());
     println!("[chat] {}", msg.text);
     Ok(AppendAck {

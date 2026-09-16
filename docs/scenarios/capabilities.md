@@ -15,13 +15,14 @@
 ```rust
 // capabilities/orders.rs — wire op `process_order` from struct name `ProcessOrder`
 #[cap_handler(group = "orders", key = "order_id")]
-fn process_order(msg: ProcessOrder, state: &mut OrdersState) -> Result<Ack, CapError> { … }
+async fn process_order(msg: ProcessOrder, state: &mut OrdersState) -> Result<Ack, CapError> { … }
 
 // manifest.rs — registration
 CapManifest::new().group(cap_register_chain!(
     CapGroup::<OrdersState>::for_cap::<ProcessOrder>()
-        .queue_stream("orders")
-        .event_ingress("orders.events", "cap-handler"),
+        .instances(1)
+        .default_queue_for::<ProcessOrder>()
+        .default_event_ingress_for::<ProcessOrder>(),
     process_order_register,
 ));
 

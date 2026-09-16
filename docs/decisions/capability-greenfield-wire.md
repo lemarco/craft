@@ -58,7 +58,7 @@ Sticky [`ActorSession`](../../crates/trembita-runtime/src/session.rs) is an **op
 
 - Docs, scaffold, and examples lead with **`capabilities/` + gateway**, not `actors/` + cast.
 - [`getting-started.md`](../getting-started.md) treats § Workers as advanced; product path is [`capabilities/`](../scenarios/capabilities.md).
-- New scaffolds call [`.without_actors_api()`](../crates/trembita/src/app/builder.rs); re-enable `/actors/*` with [`WorkerOpts::http_cast(true)`](../crates/trembita/src/worker_opts.rs) in `manifest.rs`.
+- Default [`TrembitaAppBuilder`](../crates/trembita/src/app/builder.rs) excludes `/actors/*`; re-enable with [`WorkerOpts::http_cast(true)`](../crates/trembita/src/worker_opts.rs). Scaffolds also call [`.without_actors_api()`](../crates/trembita/src/app/builder.rs) (idempotent).
 
 ## Non-goals
 

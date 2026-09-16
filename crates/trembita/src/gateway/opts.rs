@@ -212,7 +212,7 @@ impl GatewayOpts {
         self.websocket_routes = Some(Arc::new(move |state| {
             let mut table = RouteTable::new();
             table = super::ws::apply_ws_mounts(table, state.clone(), mounts.clone());
-            table = super::ws::mount_sticky_websocket(
+            table = super::ws::mount_sticky_websocket_group(
                 table,
                 &path,
                 auth,

@@ -19,11 +19,11 @@
 |----------|-------|--------|
 | Background jobs | [scenarios/background-jobs.md](scenarios/background-jobs.md) | ✅ queue, DLQ, cron, external backlog |
 | Event topics | [scenarios/event-topics.md](scenarios/event-topics.md) | ✅ pub/sub, named subscriptions |
-| Stateful workers | [scenarios/stateful-workers.md](scenarios/stateful-workers.md) | ✅ capabilities + `RedbActorStateStore`; advanced RAM migration demo |
+| Stateful workers | [scenarios/stateful-workers.md](scenarios/stateful-workers.md) | ✅ capabilities + `RedbActorStateStore`; **`TREMBITA_MIGRATE_DEMO`** = advanced `UserActor` lab only |
 | Capabilities (typed ops) | [scenarios/capabilities.md](scenarios/capabilities.md) | ✅ `CapManifest`, gateway `cap_*`, Event ingress |
 | Real-time / session | [scenarios/realtime-sessions.md](scenarios/realtime-sessions.md) | ✅ `ActorSession`, gateway WS |
 | Workflows | [scenarios/workflows.md](scenarios/workflows.md) | ✅ Meta-Raft saga journal |
-| Product API | [getting-started.md](getting-started.md) | ✅ `TrembitaApp` + gateway; scaffold capabilities + [`cap_*`](../crates/trembita/src/gateway/cap_handlers.rs); greenfield (no default `/actors/*`) |
+| Product API | [getting-started.md](getting-started.md) | ✅ `capabilities/` + **`async` [`#[cap_handler]`](../crates/trembita-macros/src/lib.rs)** + gateway [`cap_*`](../crates/trembita/src/gateway/cap_handlers.rs); `/actors/*` off by default ([`WorkerOpts::http_cast`](../crates/trembita/src/worker_opts.rs) advanced) |
 
 **Platform core:** pure Raft FSM, HTTP/3/mTLS, redb persistence, cross-node actors, multi-Raft sharding, cross-shard saga/2PC, self-update coordinator, E2E/chaos.
 

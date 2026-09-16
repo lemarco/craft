@@ -79,6 +79,12 @@ impl<S: Send + Default + 'static> CapGroup<S> {
         self
     }
 
+    /// [`CapRequest::QUEUE_STREAM`] (`{group}.{op}`) for macro-generated request types.
+    #[must_use]
+    pub fn default_queue_for<Req: CapRequest>(self) -> Self {
+        self.queue_stream(Req::QUEUE_STREAM)
+    }
+
     /// Durable topic + subscription for [`super::Route::Event`] on ops in this group.
     ///
     /// Published payloads are postcard-encoded [`super::CapWire`] frames.
@@ -87,6 +93,12 @@ impl<S: Send + Default + 'static> CapGroup<S> {
         self.event_topic = Some(topic);
         self.event_subscription = Some(subscription);
         self
+    }
+
+    /// [`CapRequest::EVENT_TOPIC`] + [`CapRequest::EVENT_SUBSCRIPTION`] for macro-generated ops.
+    #[must_use]
+    pub fn default_event_ingress_for<Req: CapRequest>(self) -> Self {
+        self.event_ingress(Req::EVENT_TOPIC, Req::EVENT_SUBSCRIPTION)
     }
 
     /// Register an operation.

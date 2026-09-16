@@ -11,6 +11,16 @@ use crate::capability::runtime::{CapRuntime, OpBinding};
 
 use super::builder::TrembitaAppBuilder;
 
+fn op_declares_queued(routes: &[Route]) -> bool {
+    routes
+        .iter()
+        .any(|r| matches!(r, Route::Queued | Route::QueuedWait | Route::Scheduled))
+}
+
+fn op_declares_event(routes: &[Route]) -> bool {
+    routes.iter().any(|r| matches!(r, Route::Event))
+}
+
 pub(crate) fn wire_manifest(
     mut builder: TrembitaAppBuilder,
     groups: Vec<Box<dyn CapGroupApply>>,
@@ -36,17 +46,13 @@ impl<S: Send + Default + 'static> CapGroupApply for CapGroup<S> {
         let config = group.host_config(builder.cap_runtime.app_slot());
 
         for spec in group.ops() {
-            let needs_queue = spec
-                .routes
-                .iter()
-                .any(|r| matches!(r, Route::Queued | Route::QueuedWait | Route::Scheduled));
-            if needs_queue && queue_stream.is_none() {
+            if op_declares_queued(&spec.routes) && queue_stream.is_none() {
                 builder.config_errors.push(format!(
                     "CapGroup {name:?}: op {:?} uses a queued route but group has no .queue_stream(...)",
                     spec.name
                 ));
             }
-            if spec.routes.iter().any(|r| matches!(r, Route::Event)) && event_ingress.is_none() {
+            if op_declares_event(&spec.routes) && event_ingress.is_none() {
                 builder.config_errors.push(format!(
                     "CapGroup {name:?}: op {:?} uses Route::Event but group has no .event_ingress(...)",
                     spec.name
@@ -71,45 +77,21 @@ impl<S: Send + Default + 'static> CapGroupApply for CapGroup<S> {
         };
 
         if let Some(stream) = queue_stream {
-            let has_queued = group.ops().iter().any(|o| {
-                o.routes.iter().any(|r| {
-                    matches!(
-                        r,
-                        crate::capability::Route::Queued
-                            | crate::capability::Route::QueuedWait
-                            | crate::capability::Route::Scheduled
-                    )
-                })
-            });
-            if has_queued {
-                builder.queue_streams.insert(stream.to_string());
-                builder.inner = builder.inner.job_queue(stream, Duration::from_secs(300));
-                let group_name = name.to_string();
-                builder.pending_consumers.push(Box::new(move |app, stop| {
-                    crate::capability::queue::spawn_bridge(app, group_name, stream, stop)
-                }));
-                builder.consumer_streams.push(stream.to_string());
-            }
+            builder.queue_streams.insert(stream.to_string());
+            builder.inner = builder.inner.job_queue(stream, Duration::from_secs(300));
+            let group_name = name.to_string();
+            builder.pending_consumers.push(Box::new(move |app, stop| {
+                crate::capability::queue::spawn_bridge(app, group_name, stream, stop)
+            }));
+            builder.consumer_streams.push(stream.to_string());
         }
 
         if let Some((topic, subscription)) = event_ingress {
-            let has_event = group
-                .ops()
-                .iter()
-                .any(|o| o.routes.iter().any(|r| matches!(r, Route::Event)));
-            if has_event {
-                builder = builder.topics([TopicOpts::topic(topic).subscriptions([subscription])]);
-                let group_name = name.to_string();
-                builder.pending_consumers.push(Box::new(move |app, stop| {
-                    crate::capability::event::spawn_bridge(
-                        app,
-                        group_name,
-                        topic,
-                        subscription,
-                        stop,
-                    )
-                }));
-            }
+            builder = builder.topics([TopicOpts::topic(topic).subscriptions([subscription])]);
+            let group_name = name.to_string();
+            builder.pending_consumers.push(Box::new(move |app, stop| {
+                crate::capability::event::spawn_bridge(app, group_name, topic, subscription, stop)
+            }));
         }
 
         builder

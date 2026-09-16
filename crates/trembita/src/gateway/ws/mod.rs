@@ -110,9 +110,22 @@ pub fn mount_raw_websocket(
     register_websocket(table, path, auth, handler)
 }
 
-/// Open a sticky [`SessionHandle`] for `group`, then run `on_connected`.
+/// Open a sticky [`SessionHandle`] for [`CapRequest::GROUP`](crate::CapRequest), then run `on_connected`.
 #[must_use]
-pub fn mount_sticky_websocket(
+pub fn mount_sticky_websocket<Req: crate::CapRequest>(
+    table: RouteTable,
+    path: &str,
+    auth: AuthMode,
+    state: TrembitaGatewayState,
+    ttl: Option<Duration>,
+    on_connected: impl Fn(StickyWs) -> WsTask + Send + Sync + 'static,
+) -> RouteTable {
+    mount_sticky_websocket_group(table, path, auth, state, Req::GROUP, ttl, on_connected)
+}
+
+/// Sticky WebSocket for a named actor/capability group (dynamic `group` string).
+#[must_use]
+pub fn mount_sticky_websocket_group(
     table: RouteTable,
     path: &str,
     auth: AuthMode,

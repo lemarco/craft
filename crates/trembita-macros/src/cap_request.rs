@@ -87,6 +87,9 @@ pub(crate) fn expand_cap_request(args: CapRequestArgs, input: &ItemStruct) -> To
         impl ::trembita::CapRequest for #struct_name {
             const GROUP: &'static str = #group;
             const OP: &'static str = #op;
+            const QUEUE_STREAM: &'static str = concat!(#group, ".", #op);
+            const EVENT_TOPIC: &'static str = concat!(#group, ".", #op);
+            const EVENT_SUBSCRIPTION: &'static str = concat!(#group, ".", #op, ".cap");
             type Reply = #reply;
             #key_impl
         }

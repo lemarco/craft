@@ -1,14 +1,15 @@
 //! CLI for product showcase HTTP gateways (`publish = false`).
 
 use trembita_tools::showcase_client::{
-    ClientError, cast_actor, enqueue_job, post_chat, post_chat_bearer, publish_topic,
-    resume_workflow, run_workflow, submit_order_auth, ws_chat,
+    ClientError, cap_enqueue_text, cast_actor, enqueue_job, post_chat, post_chat_bearer,
+    publish_topic, resume_workflow, run_workflow, submit_order_auth, ws_chat,
 };
 
 fn usage() -> ! {
     eprintln!(
         "usage:
   trembita-showcase-client job <gateway> <stream> <payload>
+  trembita-showcase-client cap-enqueue <gateway> <path> <text>
   trembita-showcase-client topic <gateway> <name> <payload>
   trembita-showcase-client cast <gateway> <group> <payload>
   trembita-showcase-client workflow run <trigger> <saga-id>
@@ -39,6 +40,15 @@ async fn main() -> Result<(), ClientError> {
             let stream = args.next().unwrap_or_else(|| usage());
             let payload = args.next().unwrap_or_else(|| usage());
             print_resp("enqueue", &enqueue_job(&gateway, &stream, &payload).await?);
+        }
+        "cap-enqueue" => {
+            let gateway = args.next().unwrap_or_else(|| usage());
+            let path = args.next().unwrap_or_else(|| usage());
+            let text = args.next().unwrap_or_else(|| usage());
+            print_resp(
+                "cap-enqueue",
+                &cap_enqueue_text(&gateway, &path, &text).await?,
+            );
         }
         "topic" => {
             let gateway = args.next().unwrap_or_else(|| usage());

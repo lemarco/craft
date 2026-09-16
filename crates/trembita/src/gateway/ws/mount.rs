@@ -7,7 +7,7 @@ use super::mount_raw_websocket;
 use super::notify::WsNotifyHub;
 use crate::gateway::TrembitaGatewayState;
 
-/// Built-in WebSocket wiring (no custom handler — use [`super::mount_sticky_websocket`] for that).
+/// Built-in WebSocket wiring (no custom handler — use [`super::mount_sticky_websocket`] / [`super::mount_sticky_websocket_group`] for that).
 #[derive(Clone)]
 pub enum WsMount {
     /// Open or identity-protected echo on text frames.

@@ -7,16 +7,16 @@ GATEWAY="${TREMBITA_HTTP:-${TREMBITA_GATEWAY:-127.0.0.1:8090}}"
 GATEWAY="${GATEWAY#http://}"
 GATEWAY="${GATEWAY#https://}"
 PAYLOAD="${1:-hello-from-trigger.sh}"
-STREAM="${TREMBITA_JOB_QUEUE:-emails}"
+CAP_PATH="${TREMBITA_CAP_ENQUEUE_PATH:-/jobs/emails}"
 CLIENT="$CRAFT_ROOT/target/debug/trembita-showcase-client"
 
 if [ -x "$CLIENT" ]; then
-    exec "$CLIENT" job "$GATEWAY" "$STREAM" "$PAYLOAD"
+    exec "$CLIENT" cap-enqueue "$GATEWAY" "$CAP_PATH" "$PAYLOAD"
 fi
 
-echo "POST http://$GATEWAY/jobs/$STREAM"
-curl -sf -X POST "http://$GATEWAY/jobs/$STREAM" \
+echo "POST http://$GATEWAY$CAP_PATH"
+curl -sf -X POST "http://$GATEWAY$CAP_PATH" \
   -H 'content-type: application/json' \
-  -d "{\"payload\":\"$PAYLOAD\"}" \
+  -d "{\"text\":\"$PAYLOAD\"}" \
   -w '\n→ HTTP %{http_code}\n'
 echo "watch the server terminal for [worker] lines"

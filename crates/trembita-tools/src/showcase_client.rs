@@ -188,6 +188,24 @@ pub async fn enqueue_job(
     post_json(gateway, &format!("/jobs/{stream}"), &body).await
 }
 
+/// Capability queued op (`POST` JSON body → `cap_enqueue` route, typically 202).
+///
+/// # Errors
+/// Returns [`ClientError`] when the gateway request fails.
+pub async fn cap_enqueue_text(
+    gateway: &str,
+    path: &str,
+    text: &str,
+) -> Result<HttpResponse, ClientError> {
+    let body = serde_json::json!({ "text": text }).to_string();
+    let path = if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{path}")
+    };
+    post_json(gateway, &path, &body).await
+}
+
 /// Cast to an actor group (`POST /actors/{group}/cast` → 202).
 ///
 /// # Errors

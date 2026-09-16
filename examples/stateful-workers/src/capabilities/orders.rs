@@ -90,7 +90,9 @@ async fn process_order(
 #[must_use]
 pub fn manifest() -> CapManifest {
     CapManifest::new().group(cap_register_chain!(
-        CapGroup::<OrdersState>::for_cap::<ProcessOrder>().instances(1),
+        CapGroup::<OrdersState>::for_cap::<ProcessOrder>()
+            .instances(1)
+            .default_queue_for::<ProcessOrder>(),
         process_order_register,
     ))
 }

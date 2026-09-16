@@ -158,7 +158,8 @@ pub use workload::WorkloadRuntime;
 pub use gateway::ws::{
     RawWs, StickyWs, WsBroadcastHub, WsMessage, WsMount, WsNotifyHub, WsSubscribeCmd,
     apply_ws_mounts, futures_util, mount_raw_websocket, mount_sticky_websocket,
-    run_sticky_cast_loop, run_sticky_text_loop, run_text_loop, server_stream, tokio_tungstenite,
+    mount_sticky_websocket_group, run_sticky_cast_loop, run_sticky_text_loop, run_text_loop,
+    server_stream, tokio_tungstenite,
 };
 
 #[cfg(feature = "http-jobs")]

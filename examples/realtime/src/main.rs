@@ -81,12 +81,11 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
     let ws_state = state;
 
     let mut table = RouteTable::new();
-    table = mount_sticky_websocket(
+    table = mount_sticky_websocket::<Append>(
         table,
         "/ws",
         AuthMode::Identity,
         ws_state,
-        Append::GROUP,
         Some(SESSION_TTL),
         |sticky| Box::pin(handle_sticky_ws(sticky)),
     );

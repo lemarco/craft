@@ -19,7 +19,7 @@ pub struct Record {
 }
 
 #[cap_handler(group = "ledger")]
-fn record(msg: Record, _state: &mut LedgerState) -> Result<RecordAck, CapError> {
+async fn record(msg: Record, _state: &mut LedgerState) -> Result<RecordAck, CapError> {
     LEDGER_RECORDS.fetch_add(1, Ordering::SeqCst);
     println!("[ledger] recorded {}", msg.key);
     Ok(RecordAck)

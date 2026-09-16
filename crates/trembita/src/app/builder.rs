@@ -89,7 +89,10 @@ impl TrembitaAppBuilder {
             #[cfg(feature = "http-jobs")]
             gateway_include_ops: true,
             #[cfg(feature = "http-jobs")]
-            gateway_exclude_apis: GatewayProductApiExclusions::default(),
+            gateway_exclude_apis: GatewayProductApiExclusions {
+                actors: true,
+                ..GatewayProductApiExclusions::default()
+            },
             boot_config: None,
             run_hint: ManifestRunHint::default(),
             cap_runtime: CapRuntime::empty(),

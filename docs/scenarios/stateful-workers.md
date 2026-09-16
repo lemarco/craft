@@ -48,7 +48,7 @@ TrembitaApp::builder()
     .data_dir("/var/lib/trembita")
     .manifest(AppManifest::new().capabilities(
         CapManifest::new().group(cap_register_chain!(
-            CapGroup::<OrdersState>::for_cap::<ProcessOrder>(),
+            CapGroup::<OrdersState>::for_cap::<ProcessOrder>().instances(1),
             process_order_register,
         )),
     ))

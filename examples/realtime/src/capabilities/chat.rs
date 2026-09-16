@@ -21,7 +21,7 @@ pub struct Append {
 }
 
 #[cap_handler(group = "chat")]
-fn append(msg: Append, state: &mut State) -> Result<AppendAck, CapError> {
+async fn append(msg: Append, state: &mut State) -> Result<AppendAck, CapError> {
     let node = std::env::var("TREMBITA_NODE_ID").unwrap_or_else(|_| "?".into());
     state.history.push(msg.text.clone());
     debug::chat_message(&msg.text);

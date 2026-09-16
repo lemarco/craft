@@ -35,12 +35,18 @@ struct Total {}
 impl CapRequest for Add {
     const GROUP: &'static str = "math";
     const OP: &'static str = "add";
+    const QUEUE_STREAM: &'static str = "math.add";
+    const EVENT_TOPIC: &'static str = "math.add";
+    const EVENT_SUBSCRIPTION: &'static str = "math.add.cap";
     type Reply = Sum;
 }
 
 impl CapRequest for Total {
     const GROUP: &'static str = "math";
     const OP: &'static str = "total";
+    const QUEUE_STREAM: &'static str = "math.total";
+    const EVENT_TOPIC: &'static str = "math.total";
+    const EVENT_SUBSCRIPTION: &'static str = "math.total.cap";
     type Reply = Sum;
 }
 

@@ -251,12 +251,11 @@ use trembita::{
 };
 
 fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
-    let table = mount_sticky_websocket(
+    let table = mount_sticky_websocket::<Append>(
         RouteTable::new(),
         "/ws",
         AuthMode::Identity,
         state,
-        "chat",
         Some(Duration::from_secs(3600)),
         |sticky| Box::pin(async move {
             let mut ws = server_stream(sticky.stream).await;

@@ -35,7 +35,7 @@ pub struct CompensateWelcome {
 }
 
 #[cap_handler(group = "onboarding", key = "user_id")]
-fn run_create_account(
+async fn run_create_account(
     msg: CreateAccount,
     state: &mut OnboardingState,
 ) -> Result<StepAck, CapError> {
@@ -48,7 +48,7 @@ fn run_create_account(
 }
 
 #[cap_handler(group = "onboarding", key = "user_id")]
-fn run_compensate_create(
+async fn run_compensate_create(
     msg: CompensateCreate,
     state: &mut OnboardingState,
 ) -> Result<StepAck, CapError> {
@@ -60,7 +60,7 @@ fn run_compensate_create(
 }
 
 #[cap_handler(group = "onboarding", key = "user_id")]
-fn run_send_welcome(
+async fn run_send_welcome(
     msg: SendWelcome,
     state: &mut OnboardingState,
 ) -> Result<StepAck, CapError> {
@@ -73,7 +73,7 @@ fn run_send_welcome(
 }
 
 #[cap_handler(group = "onboarding", key = "user_id")]
-fn run_compensate_welcome(
+async fn run_compensate_welcome(
     msg: CompensateWelcome,
     state: &mut OnboardingState,
 ) -> Result<StepAck, CapError> {
