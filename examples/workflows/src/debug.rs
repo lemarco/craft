@@ -60,6 +60,7 @@ pub fn saga_outcome(saga_id: &str, outcome: &str) {
     );
 }
 
+#[allow(dead_code)]
 pub fn onboarding_step(line: &str) {
     tracing::debug!(target: "showcase", showcase = NAME, step = line, "onboarding");
 }
