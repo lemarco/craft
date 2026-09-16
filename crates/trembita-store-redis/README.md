@@ -10,7 +10,7 @@ Rustls feature set.
 ## Product apps — use the facade
 
 ```toml
-trembita = { version = "0.5", features = ["redis-store"] }
+trembita = { version = "0.6", features = ["redis-store"] }
 ```
 
 ```rust

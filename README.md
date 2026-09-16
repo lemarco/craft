@@ -25,8 +25,8 @@
 | | |
 |---|---|
 | **Stability** | Pre-**1.0** experimental — [docs/status.md](docs/status.md) |
-| **Distribution** | [crates.io](https://crates.io/crates/trembita) (**0.5.1**) · E2E/chaos · product showcases |
-| **Docs** | [docs.rs/trembita](https://docs.rs/trembita) · no detailed version history until 1.0 ([CHANGELOG.md](CHANGELOG.md)) |
+| **Distribution** | [crates.io](https://crates.io/crates/trembita) (**0.6.0**) · [upgrade from 0.5.x](docs/releases/0.6.0.md) · E2E/chaos · product showcases |
+| **Docs** | [docs.rs/trembita](https://docs.rs/trembita) · [0.x release notes](docs/releases/README.md) · summary [CHANGELOG.md](CHANGELOG.md) |
 | **Full status** | [docs/status.md](docs/status.md) |
 
 ### Highlights
@@ -36,6 +36,7 @@
 - Cross-shard saga coordinator + optional 2PC; follower/lease reads
 - mTLS hot reload, reachability-driven supervisor, `trembita-ops` backup
 - **Product showcases** — five standalone apps in [`examples/`](examples/README.md) (jobs, stateful workers, realtime, workflows, self-update)
+- **Capabilities** — typed ops, `#[cap_handler]`, queued/idempotent routes — [capabilities scenario](docs/scenarios/capabilities.md)
 - **`TrembitaApp`** + HTTP gateway (sticky sessions, TLS, drain), batch jobs, event topics, external backlog, workload governor — [getting-started](docs/getting-started.md)
 - **Self-update coordinator** — leader reconcile + local executor ([upgrade-coordinator](docs/decisions/upgrade-coordinator.md))
 - Design decision records — [docs/decisions/](docs/decisions/)
@@ -132,7 +133,7 @@ See [multi-raft](docs/decisions/multi-raft.md), [job-queue](docs/decisions/job-q
 
 ```toml
 [dependencies]
-trembita = "0.5"
+trembita = "0.6"
 ```
 
 Product apps: default `http-jobs` enables HTTP job routes; add `dev-certs` for local QUIC without PEM files. Optional Postgres/Redis adapters: `external-backlog`, `domain-outbox`, `redis-store` — see [facade ADR](docs/decisions/facade.md) and [getting-started](docs/getting-started.md).

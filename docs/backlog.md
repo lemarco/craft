@@ -42,7 +42,7 @@ For new feature epics, use the next **B-NN** id and link the scenario + ADR.
 **Scenario:** [capabilities](scenarios/capabilities.md), [background-jobs](scenarios/background-jobs.md), [realtime-sessions](scenarios/realtime-sessions.md)  
 **ADR:** [capability-dx](decisions/capability-dx.md) — closes gaps noted after B-25/B-26 (ADR vs shipped surface, templates, queue bridge).
 
-Post-ship review (2026-09): B-27i + cap HTTP dedup + scaffold `ping`/`onboarding` on `#[cap_handler]` shipped; `OpCtx` store/deps (B-27a–b), one-op-per-file layout, full showcase `domain/` polish remain.
+Post-ship review (2026-09): B-27 subtasks in the table below are **shipped**; optional follow-ups (OpenAPI, `trembita-capstore` rename) stay in [Open work](#open-work).
 
 | Subtask | Wave | Description | Status |
 | ------- | ---- | ----------- | ------ |

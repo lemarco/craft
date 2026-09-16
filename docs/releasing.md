@@ -8,9 +8,9 @@ See [process.md](process.md) for the full commit → push → CI → release dia
 ## TL;DR
 
 ```sh
-# 1. Optional: note the release in docs/archive/ if needed. Detailed CHANGELOG entries start at 1.0.
+# 1. Add/update docs/archive/CHANGELOG-pre-1.0.md and docs/releases/X.Y.Z.md (see docs/releases/README.md).
 # 2. One-shot (recommended): release gate + bump + tag + publish + push + release build
-./scripts/release.sh 0.2.0 --publish
+./scripts/release.sh 0.6.0 --publish
 
 # Or step by step:
 ./scripts/release.sh --dry-run              # release gate (autofix + full checks)

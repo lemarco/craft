@@ -34,7 +34,7 @@ Never `cargo publish --workspace` for real uploads. Use `publish-workspace.sh` (
 
 ## Checklist
 
-- [ ] Pre-1.0: skip detailed CHANGELOG (see [CHANGELOG.md](../../CHANGELOG.md)); optional note in [docs/archive/](../../docs/archive/) if needed
+- [ ] Pre-1.0: update [docs/archive/CHANGELOG-pre-1.0.md](../../docs/archive/CHANGELOG-pre-1.0.md) + [docs/releases/X.Y.Z.md](../../docs/releases/README.md); root [CHANGELOG.md](../../CHANGELOG.md) stays minimal
 - [ ] `./scripts/release.sh --dry-run` green (optional — release runs gate anyway)
 - [ ] `./scripts/release.sh X.Y.Z --publish`
 - [ ] All crates on crates.io; origin has commits + tag

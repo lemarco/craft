@@ -12,7 +12,7 @@ depend only on `trembita`.
 
 ```toml
 [dependencies]
-trembita = { version = "0.5", features = ["http-jobs", "dev-certs"] }
+trembita = { version = "0.6", features = ["http-jobs", "dev-certs"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 ```
 
@@ -54,7 +54,7 @@ Handles, enqueue options, saga journals, and TLS helpers: [`trembita::cluster`](
 Optional integrations are enabled on the single `trembita` dependency — no separate adapter crates in your `Cargo.toml`:
 
 ```toml
-trembita = { version = "0.5", features = ["http-jobs", "external-backlog", "redis-store"] }
+trembita = { version = "0.6", features = ["http-jobs", "external-backlog", "redis-store"] }
 ```
 
 Direct `trembita-*` crate dependencies remain available for advanced use.

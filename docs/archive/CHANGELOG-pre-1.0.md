@@ -1,6 +1,6 @@
 # Changelog (archived pre-1.0)
 
-**Frozen snapshot** — not maintained. For current behavior see [status.md](../status.md) and [decisions/](../decisions/). The root [CHANGELOG.md](../../CHANGELOG.md) stays minimal until **1.0.0**.
+**0.x release notes** — updated at each crates.io release until **1.0.0**. Current behavior: [status.md](../status.md), [decisions/](../decisions/). Upgrade guides: [releases/](../releases/). Root [CHANGELOG.md](../../CHANGELOG.md) stays minimal until **1.0.0**.
 
 All notable changes to this project were documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the workspace
@@ -9,11 +9,41 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with all
 
 Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases may include breaking changes on minor bumps; each is noted here.
 
-**Crates.io:** [`0.4.0`](https://crates.io/crates/trembita) (2026-09-07).
+**Crates.io:** [`0.6.0`](https://crates.io/crates/trembita) (2026-09-16). Prior: [0.5.1](#051--2026-09-15).
 
 ## [Unreleased]
 
-_(empty — see **0.5.1** below and [status.md](../status.md).)_
+_(empty — see **0.6.0** below.)_
+
+## [0.6.0] — 2026-09-16
+
+Target **0.6.0** — capability platform (B-21–B-27), facade layering, scheduled workflows. Upgrade: [releases/0.6.0.md](../releases/0.6.0.md).
+
+### Added
+
+- **Capability groups & ops** — [`CapManifest`](../../crates/trembita/src/capability/manifest.rs), [`CapGroup`](../../crates/trembita/src/capability/group.rs), [`CapOp`](../../crates/trembita/src/capability/op.rs); product layout [`capabilities/`](../decisions/capability-dx.md) + [`AppManifest`](../../crates/trembita/src/app/manifest.rs).
+- **Macros** — **`async`** [`#[cap_handler]`](../../crates/trembita-macros/src/lib.rs), [`cap_register_chain!`](../../crates/trembita-macros/src/lib.rs); [`#[cap_request]`](../../crates/trembita-macros/src/lib.rs) without separate `op` string.
+- **`OpCtx`** — [`deps`](../../crates/trembita/src/capability/deps.rs) ([`CapDeps`](../../crates/trembita/src/capability/deps.rs)), [`store`](../../crates/trembita/src/capability/ctx.rs) / [`require_store`](../../crates/trembita/src/capability/ctx.rs) ([`trembita::capstore`](../../crates/trembita/src/capstore.rs)), [`ingress`](../../crates/trembita/src/capability/ingress.rs) ([`CapIngress`](../../crates/trembita/src/capability/ingress.rs)).
+- **Gateway capability helpers** — [`cap_queued_wait`](../../crates/trembita/src/gateway/cap_handlers.rs), [`cap_schedule`](../../crates/trembita/src/gateway/cap_handlers.rs); [`CapError::domain`](../../crates/trembita/src/capability/error.rs) → HTTP 400.
+- **Queued idempotency** — dedup bridge for capability enqueue paths ([background-jobs](../scenarios/background-jobs.md)).
+- **[`TrembitaConfigure`](../../crates/trembita/src/configure.rs)** — data directory, HTTP/API options alongside [`TrembitaApp::from_env`](../../crates/trembita/src/app/runtime.rs).
+- **Scheduled workflows** — work-trigger dispatch on Meta-Raft schedule ([workflows](../scenarios/workflows.md)).
+- **mTLS cert hot-reload** — [`PemSecurity`](../../crates/trembita-net/src/pem.rs), reload handle; cluster discovery improvements.
+- **`trembita-showcase`** — unpublished maintainer harness (custom state machines, [`cluster_builder`](../../crates/trembita-showcase/src/cluster.rs) for benches/soaks).
+- **Scaffold & doctor** — `capabilities/ping` + `onboarding` templates; **`trembita doctor`** capability layout checks; showcases refreshed ([examples/README.md](../../examples/README.md)).
+- **Docs** — [capability scenarios](../scenarios/capabilities.md), [facade-layering](../decisions/facade-layering.md), deployment guidance (VPS / library-first).
+
+### Changed
+
+- **Breaking (0.x):** [`#[cap_request]`](../../crates/trembita-macros/src/lib.rs) — removed **`op = "…"`**; op name from struct ident.
+- **Breaking (0.x):** document and scaffold **product registration** via **[`AppManifest`](../../crates/trembita/src/app/manifest.rs)** + **[`TrembitaConfigure`](../../crates/trembita/src/configure.rs)** instead of direct [`TrembitaAppBuilder`](../../crates/trembita/src/app/builder.rs) `.jobs()` / `.data_dir()` chaining in app code.
+- **Facade split** — cluster boot lives in **`trembita-assembly`** (`publish = false`); product surface remains **`trembita`** ([facade-layering](../decisions/facade-layering.md)).
+- **Benchmarks / integration tests** — cluster init via **`trembita-showcase`** where applicable.
+- **`trembita-http`** — `parse_enqueue_body` is crate-internal (not re-exported at the root).
+
+### Deprecated
+
+- **Default product path:** raw **`UserActor`** / `/actors/*` for new features — prefer capabilities ([capability-dx](../decisions/capability-dx.md)); `/actors/*` remains advanced ([`WorkerOpts::http_cast`](../../crates/trembita/src/worker_opts.rs)).
 
 ## [0.5.1] — 2026-09-15
 

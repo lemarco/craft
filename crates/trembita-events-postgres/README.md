@@ -6,7 +6,7 @@ for the [transactional outbox](https://docs.rs/trembita/latest/trembita/struct.T
 ## Product apps — use the facade
 
 ```toml
-trembita = { version = "0.5", features = ["domain-outbox"] }
+trembita = { version = "0.6", features = ["domain-outbox"] }
 ```
 
 ```rust
