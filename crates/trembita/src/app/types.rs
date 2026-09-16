@@ -57,6 +57,7 @@ pub(crate) struct TrembitaAppGatewayApiFlags {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct GatewayProductApiExclusions {
     pub(crate) jobs: bool,
+    pub(crate) schedules: bool,
     pub(crate) actors: bool,
     pub(crate) workflows: bool,
     pub(crate) topics: bool,

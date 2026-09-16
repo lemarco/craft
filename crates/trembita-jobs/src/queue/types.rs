@@ -162,14 +162,19 @@ impl EnqueueOptions {
     /// Job that becomes visible after `delay` from enqueue time.
     #[must_use]
     pub fn delayed(delay: Duration) -> Self {
-        let not_before_ms = u64::try_from(
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis(),
-        )
-        .unwrap_or(u64::MAX)
-            + u64::try_from(delay.as_millis()).unwrap_or(u64::MAX);
+        Self {
+            not_before_ms: Some(not_before_ms_after_delay(delay)),
+            ..Self::default()
+        }
+    }
+
+    /// One-shot run at absolute wall time (unix milliseconds).
+    ///
+    /// Prefer this over [`Self::delayed`] when the fire time is a calendar instant
+    /// (not “N seconds from now”). Times in the past are stored as-is and become
+    /// leasable immediately.
+    #[must_use]
+    pub fn at_unix_ms(not_before_ms: u64) -> Self {
         Self {
             not_before_ms: Some(not_before_ms),
             ..Self::default()
@@ -199,6 +204,42 @@ impl EnqueueOptions {
             ..Self::default()
         }
     }
+}
+
+/// Merge absolute or relative scheduling into `opts`.
+///
+/// # Errors
+/// Returns [`QueueError::Codec`] when both `run_at_ms` and `delay_ms` are set.
+pub fn apply_enqueue_scheduling(
+    opts: &mut EnqueueOptions,
+    run_at_ms: Option<u64>,
+    delay_ms: Option<u64>,
+) -> Result<(), QueueError> {
+    match (run_at_ms, delay_ms) {
+        (Some(_), Some(_)) => Err(QueueError::Codec(
+            "provide only one of run_at_ms or delay_ms".into(),
+        )),
+        (Some(at), None) => {
+            opts.not_before_ms = Some(at);
+            Ok(())
+        }
+        (None, Some(delay)) => {
+            opts.not_before_ms = Some(not_before_ms_after_delay(Duration::from_millis(delay)));
+            Ok(())
+        }
+        (None, None) => Ok(()),
+    }
+}
+
+fn not_before_ms_after_delay(delay: Duration) -> u64 {
+    u64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis(),
+    )
+    .unwrap_or(u64::MAX)
+    .saturating_add(u64::try_from(delay.as_millis()).unwrap_or(u64::MAX))
 }
 
 /// Lifecycle phase of a job in the queue (observability / HTTP lookup).

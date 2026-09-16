@@ -143,10 +143,28 @@ pub fn wire_to_recurring_job(wire: &RecurringScheduleWire) -> RecurringJob {
     RecurringJob {
         name: wire.name.clone(),
         cron: wire.cron.clone(),
+        every_days: wire.every_days,
+        anchor_ms: wire.anchor_ms,
         payload: wire.payload.clone(),
         priority: wire.priority.0,
         max_attempts: wire.max_attempts.0,
         enabled: wire.enabled,
+    }
+}
+
+/// Build a wire schedule for leader upsert (`next_run_ms` is recomputed when zero).
+#[must_use]
+pub fn recurring_job_to_schedule_wire(job: &RecurringJob) -> RecurringScheduleWire {
+    RecurringScheduleWire {
+        name: job.name.clone(),
+        cron: job.cron.clone(),
+        every_days: job.every_days,
+        anchor_ms: job.anchor_ms,
+        payload: job.payload.clone(),
+        priority: trembita_proto::JobPriority(job.priority),
+        max_attempts: trembita_proto::MaxAttempts(job.max_attempts),
+        enabled: job.enabled,
+        next_run_ms: 0,
     }
 }
 
@@ -159,6 +177,21 @@ impl RedbJobQueue {
     /// # Panics
     /// If the redb mutex is poisoned.
     pub fn list_schedules(&self) -> Result<Vec<RecurringJob>, QueueError> {
+        Ok(self
+            .list_schedule_wires()?
+            .into_iter()
+            .map(|wire| wire_to_recurring_job(&wire))
+            .collect())
+    }
+
+    /// List recurring schedules including leader-maintained `next_run_ms`.
+    ///
+    /// # Errors
+    /// Returns [`QueueError::Backend`] or [`QueueError::Codec`] on failure.
+    ///
+    /// # Panics
+    /// If the redb mutex is poisoned.
+    pub fn list_schedule_wires(&self) -> Result<Vec<RecurringScheduleWire>, QueueError> {
         use super::queue_schedule::SCHEDULES_TABLE;
         use redb::{ReadableDatabase, ReadableTable};
         use trembita_proto::decode;
@@ -178,8 +211,7 @@ impl RedbJobQueue {
             .map_err(backend)?
             .map(|row| {
                 let (_, bytes) = row.map_err(backend)?;
-                let wire: RecurringScheduleWire = decode(bytes.value()).map_err(codec)?;
-                Ok(wire_to_recurring_job(&wire))
+                decode(bytes.value()).map_err(codec)
             })
             .collect()
     }

@@ -4,13 +4,21 @@
 //!
 //! [`JobsApi`] exposes:
 //!
-//! - `POST /jobs/{stream}` → `202 Accepted` + `{ "job_id": … }`
+//! - `POST /jobs/{stream}` → `202 Accepted` + `{ "job_id": … }` (optional `run_at_ms` / `delay_ms` query or JSON for one-shot scheduling)
 //! - `POST /jobs/{stream}/batch` → `202 Accepted` + `{ "job_ids": […] }`
 //! - `POST /jobs/{stream}/ack-batch` → `200 OK` + `{ "acked": N }`
 //! - `GET /jobs/{stream}` → list jobs with optional filters
 //! - `POST /jobs/{stream}/requeue-batch` → `200 OK` + `{ "requeued": […], "failures": […] }`
 //! - `POST /jobs/{stream}/{id}/requeue` → `200 OK` + `{ "job_id": … }`
 //! - `GET /jobs/{stream}/{id}` → job metadata when the queue supports lookup
+//!
+//! # Schedules API
+//!
+//! [`SchedulesApi`] exposes (with [`JobsApi`] on the same gateway when `http_enqueue` is enabled):
+//!
+//! - `GET /jobs/{stream}/schedules` → list recurring cron schedules
+//! - `PUT /jobs/{stream}/schedules/{name}` → upsert schedule (JSON body)
+//! - `DELETE /jobs/{stream}/schedules/{name}` → remove schedule
 //!
 //! # Topics API
 //!
@@ -39,6 +47,7 @@ mod introspect_types;
 mod ops_routes;
 mod routes;
 mod routing;
+mod schedule_routes;
 mod static_site;
 mod topic_routes;
 mod topic_types;
@@ -55,7 +64,7 @@ use std::sync::Arc;
 use http::{HeaderMap, Method, Uri};
 use trembita_jobs::{
     BatchRequeueResult, EnqueueOptions, JobId, JobListFilter, JobListPage, JobStatus, LeaseId,
-    QueueError, WorkerId,
+    QueueError, RecurringJob, WorkerId,
 };
 use trembita_runtime::{CastError, ClusterAskError};
 
@@ -91,7 +100,7 @@ pub use types::{
     AckBatchAccepted, AckBatchBody, EnqueueAccepted, EnqueueBatchAccepted, EnqueueBatchBody,
     EnqueueBatchJobBody, EnqueueJsonBody, JobListResponse, JobStatusResponse, JobsApiError,
     LeasedByResponse, RequeueAccepted, RequeueBatchAccepted, RequeueBatchBody,
-    RequeueFailureResponse,
+    RequeueFailureResponse, ScheduleJson, ScheduleListResponse, SchedulesApiError,
 };
 pub use upgrade_routes::{UpgradeApi, UpgradeApiState, route_table as upgrade_route_table};
 pub use upgrade_types::{SetDesiredBody, UpgradeApiError, UpgradeStatusResponse};
@@ -161,6 +170,33 @@ pub type RequeueDeadLetterBatchFn = Arc<
 /// Async dead-letter requeue hook used by [`JobsApi`].
 pub type RequeueDeadLetterFn = Arc<
     dyn Fn(String, u64) -> Pin<Box<dyn Future<Output = Result<(), QueueError>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// Async list-schedules hook used by [`SchedulesApi`].
+pub type ListSchedulesFn = Arc<
+    dyn Fn(
+            String,
+        ) -> Pin<
+            Box<
+                dyn Future<Output = Result<Vec<trembita_proto::RecurringScheduleWire>, QueueError>>
+                    + Send,
+            >,
+        > + Send
+        + Sync,
+>;
+
+/// Async upsert-schedule hook used by [`SchedulesApi`].
+pub type UpsertScheduleFn = Arc<
+    dyn Fn(String, RecurringJob) -> Pin<Box<dyn Future<Output = Result<(), QueueError>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// Async remove-schedule hook used by [`SchedulesApi`].
+pub type RemoveScheduleFn = Arc<
+    dyn Fn(String, String) -> Pin<Box<dyn Future<Output = Result<(), QueueError>> + Send>>
         + Send
         + Sync,
 >;
@@ -270,6 +306,48 @@ impl JobsApi {
     #[must_use]
     pub fn into_state_with_auth(self, _auth: Option<AuthFn>) -> JobsApiState {
         self.into_state()
+    }
+}
+
+/// HTTP recurring schedule admin (`GET/PUT/DELETE /jobs/{stream}/schedules/...`).
+#[derive(Clone)]
+pub struct SchedulesApi {
+    list: ListSchedulesFn,
+    upsert: UpsertScheduleFn,
+    remove: RemoveScheduleFn,
+}
+
+impl SchedulesApi {
+    /// Build from custom schedule admin closures.
+    #[must_use]
+    pub fn new(list: ListSchedulesFn, upsert: UpsertScheduleFn, remove: RemoveScheduleFn) -> Self {
+        Self {
+            list,
+            upsert,
+            remove,
+        }
+    }
+
+    /// Route table for schedule admin routes.
+    #[must_use]
+    pub fn route_table(&self) -> RouteTable {
+        self.route_table_with_auth(None)
+    }
+
+    /// Route table with optional gateway auth hook.
+    #[must_use]
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn route_table_with_auth(&self, auth: Option<AuthFn>) -> RouteTable {
+        let table = schedule_routes::route_table(Arc::new(schedule_routes::SchedulesApiState {
+            list: Arc::clone(&self.list),
+            upsert: Arc::clone(&self.upsert),
+            remove: Arc::clone(&self.remove),
+        }));
+        if auth.is_some() {
+            table.with_auth_mode(routing::AuthMode::Identity)
+        } else {
+            table
+        }
     }
 }
 

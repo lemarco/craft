@@ -24,9 +24,11 @@ use trembita_proto::{
     QueueEnqueueBatchReply, QueueEnqueueBatchRequest, QueueEnqueueReply, QueueEnqueueRequest,
     QueueExtendLeaseReply, QueueExtendLeaseRequest, QueueJobStatusReply, QueueJobStatusRequest,
     QueueLeaseReply, QueueLeaseRequest, QueueListJobsReply, QueueListJobsRequest,
-    QueueMetricsReply, QueueMetricsRequest, QueueNackReply, QueueNackRequest, QueueReplicateReply,
-    QueueReplicateRequest, QueueRequeueDeadLetterBatchReply, QueueRequeueDeadLetterBatchRequest,
-    QueueRequeueDeadLetterReply, QueueRequeueDeadLetterRequest, RaftRpc, RaftRpcReply, RegisterAck,
+    QueueListSchedulesReply, QueueListSchedulesRequest, QueueMetricsReply, QueueMetricsRequest,
+    QueueNackReply, QueueNackRequest, QueueRemoveScheduleReply, QueueRemoveScheduleRequest,
+    QueueReplicateReply, QueueReplicateRequest, QueueRequeueDeadLetterBatchReply,
+    QueueRequeueDeadLetterBatchRequest, QueueRequeueDeadLetterReply, QueueRequeueDeadLetterRequest,
+    QueueUpsertScheduleReply, QueueUpsertScheduleRequest, RaftRpc, RaftRpcReply, RegisterAck,
     ScaleReply, ScaleRequest, SpawnReply, SpawnRequest, StopReply, StopRequest,
     StoreCompareAndSetReply, StoreCompareAndSetRequest, StoreDeleteReply, StoreDeleteRequest,
     StoreReplicateReply, StoreReplicateRequest, StoreSetReply, StoreSetRequest, TopicAckReply,
@@ -513,6 +515,54 @@ pub async fn send_queue_list_jobs<T: Transport + ?Sized>(
 ) -> Result<QueueListJobsReply, TransportError> {
     let body = encode_body(request)?;
     let response = transport.send(peer, Route::QueueListJobs, body).await?;
+    Ok(decode_body(&response)?)
+}
+
+/// List recurring cron schedules on a stream (`/queue/list-schedules`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_queue_list_schedules<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &QueueListSchedulesRequest,
+) -> Result<QueueListSchedulesReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport
+        .send(peer, Route::QueueListSchedules, body)
+        .await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Upsert a recurring schedule on the leader (`/queue/upsert-schedule`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_queue_upsert_schedule<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &QueueUpsertScheduleRequest,
+) -> Result<QueueUpsertScheduleReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport
+        .send(peer, Route::QueueUpsertSchedule, body)
+        .await?;
+    Ok(decode_body(&response)?)
+}
+
+/// Remove a recurring schedule by name (`/queue/remove-schedule`).
+///
+/// # Errors
+/// Returns [`TransportError`] on a framing failure or if the peer is unreachable.
+pub async fn send_queue_remove_schedule<T: Transport + ?Sized>(
+    transport: &T,
+    peer: NodeId,
+    request: &QueueRemoveScheduleRequest,
+) -> Result<QueueRemoveScheduleReply, TransportError> {
+    let body = encode_body(request)?;
+    let response = transport
+        .send(peer, Route::QueueRemoveSchedule, body)
+        .await?;
     Ok(decode_body(&response)?)
 }
 

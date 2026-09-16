@@ -57,6 +57,12 @@ pub const QUEUE_JOB_STATUS_PATH: &str = "/raft/v1/queue/job-status";
 pub const QUEUE_REQUEUE_DEAD_LETTER_PATH: &str = "/raft/v1/queue/requeue-dead-letter";
 /// List jobs in a stream with filters (admin / ops).
 pub const QUEUE_LIST_JOBS_PATH: &str = "/raft/v1/queue/list-jobs";
+/// List recurring cron schedules on a stream.
+pub const QUEUE_LIST_SCHEDULES_PATH: &str = "/raft/v1/queue/list-schedules";
+/// Upsert a recurring schedule on the leader queue file.
+pub const QUEUE_UPSERT_SCHEDULE_PATH: &str = "/raft/v1/queue/upsert-schedule";
+/// Remove a recurring schedule by name.
+pub const QUEUE_REMOVE_SCHEDULE_PATH: &str = "/raft/v1/queue/remove-schedule";
 /// Requeue many dead-letter jobs in one leader transaction.
 pub const QUEUE_REQUEUE_DEAD_LETTER_BATCH_PATH: &str = "/raft/v1/queue/requeue-dead-letter-batch";
 /// Leader → follower replication of queue mutations (failover durability).
@@ -146,6 +152,12 @@ pub enum Route {
     QueueJobStatus,
     /// [`QUEUE_LIST_JOBS_PATH`].
     QueueListJobs,
+    /// [`QUEUE_LIST_SCHEDULES_PATH`].
+    QueueListSchedules,
+    /// [`QUEUE_UPSERT_SCHEDULE_PATH`].
+    QueueUpsertSchedule,
+    /// [`QUEUE_REMOVE_SCHEDULE_PATH`].
+    QueueRemoveSchedule,
     /// [`QUEUE_REQUEUE_DEAD_LETTER_PATH`].
     QueueRequeueDeadLetter,
     /// [`QUEUE_REQUEUE_DEAD_LETTER_BATCH_PATH`].
@@ -176,7 +188,7 @@ pub enum Route {
 
 impl Route {
     /// Every route, in a stable order (handy for building a router or tests).
-    pub const ALL: [Route; 36] = [
+    pub const ALL: [Route; 39] = [
         Route::PeerWire,
         Route::ClientWire,
         Route::ClusterJoin,
@@ -200,6 +212,9 @@ impl Route {
         Route::QueueMetrics,
         Route::QueueJobStatus,
         Route::QueueListJobs,
+        Route::QueueListSchedules,
+        Route::QueueUpsertSchedule,
+        Route::QueueRemoveSchedule,
         Route::QueueRequeueDeadLetter,
         Route::QueueRequeueDeadLetterBatch,
         Route::QueueReplicate,
@@ -242,6 +257,9 @@ impl Route {
             Route::QueueMetrics => QUEUE_METRICS_PATH,
             Route::QueueJobStatus => QUEUE_JOB_STATUS_PATH,
             Route::QueueListJobs => QUEUE_LIST_JOBS_PATH,
+            Route::QueueListSchedules => QUEUE_LIST_SCHEDULES_PATH,
+            Route::QueueUpsertSchedule => QUEUE_UPSERT_SCHEDULE_PATH,
+            Route::QueueRemoveSchedule => QUEUE_REMOVE_SCHEDULE_PATH,
             Route::QueueRequeueDeadLetter => QUEUE_REQUEUE_DEAD_LETTER_PATH,
             Route::QueueRequeueDeadLetterBatch => QUEUE_REQUEUE_DEAD_LETTER_BATCH_PATH,
             Route::QueueReplicate => QUEUE_REPLICATE_PATH,
@@ -291,6 +309,9 @@ impl Route {
             | Route::QueueMetrics
             | Route::QueueJobStatus
             | Route::QueueListJobs
+            | Route::QueueListSchedules
+            | Route::QueueUpsertSchedule
+            | Route::QueueRemoveSchedule
             | Route::QueueRequeueDeadLetter
             | Route::QueueRequeueDeadLetterBatch
             | Route::QueueReplicate

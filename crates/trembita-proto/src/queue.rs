@@ -281,7 +281,15 @@ pub struct RecurringScheduleWire {
     /// Unique schedule name within the stream.
     pub name: String,
     /// Cron expression (5-field `min hour dom month dow` or 6-field with seconds).
+    ///
+    /// Empty when [`every_days`](Self::every_days) is set (calendar interval mode).
     pub cron: String,
+    /// Fire every N **calendar** days from [`anchor_ms`](Self::anchor_ms) (`0` = use `cron`).
+    #[serde(default)]
+    pub every_days: u32,
+    /// First fire instant (unix ms) for calendar interval mode.
+    #[serde(default)]
+    pub anchor_ms: u64,
     /// Payload enqueued on each tick.
     pub payload: Vec<u8>,
     /// Passed to [`QueueEnqueueRequest::priority`].
@@ -530,6 +538,54 @@ pub struct QueueRequeueFailureWire {
     pub job_id: JobId,
     /// Why requeue failed for this id.
     pub error: String,
+}
+
+/// List recurring cron schedules on a stream (`POST /raft/v1/queue/list-schedules`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueListSchedulesRequest {
+    /// Queue stream.
+    pub stream: StreamName,
+}
+
+/// Response to [`QueueListSchedulesRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueListSchedulesReply {
+    /// Schedules stored in the stream queue file (includes leader `next_run_ms`).
+    pub schedules: Vec<RecurringScheduleWire>,
+    /// Set when listing failed.
+    pub error: Option<ProductWireError>,
+}
+
+/// Upsert a recurring schedule (`POST /raft/v1/queue/upsert-schedule`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueUpsertScheduleRequest {
+    /// Queue stream.
+    pub stream: StreamName,
+    /// Schedule body (`next_run_ms` is recomputed on the leader when unset or zero).
+    pub schedule: RecurringScheduleWire,
+}
+
+/// Response to [`QueueUpsertScheduleRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueUpsertScheduleReply {
+    /// Set when upsert failed.
+    pub error: Option<ProductWireError>,
+}
+
+/// Remove a recurring schedule by name (`POST /raft/v1/queue/remove-schedule`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueRemoveScheduleRequest {
+    /// Queue stream.
+    pub stream: StreamName,
+    /// Schedule name within the stream.
+    pub name: String,
+}
+
+/// Response to [`QueueRemoveScheduleRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueueRemoveScheduleReply {
+    /// Set when removal failed.
+    pub error: Option<ProductWireError>,
 }
 
 /// Response to [`QueueRequeueDeadLetterBatchRequest`].

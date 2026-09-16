@@ -290,6 +290,74 @@ pub trait JobConsumer: Send + Sync + 'static {
 }
 
 impl TrembitaApp {
+    /// Lease from `stream` and run [`dispatch_work_trigger`](crate::work_trigger::dispatch_work_trigger).
+    ///
+    /// Used by [`.scheduled_workflows`](crate::app::TrembitaAppBuilder::scheduled_workflows); apps rarely call this directly.
+    pub fn spawn_work_trigger_consumer(
+        self: &Arc<Self>,
+        stream: &str,
+        opts: ConsumerOpts,
+        stop: tokio::sync::watch::Receiver<bool>,
+    ) -> tokio::task::JoinHandle<()> {
+        use crate::work_trigger::{DispatchOutcome, dispatch_work_trigger};
+
+        let stream_owned = stream.to_string();
+        let app = Arc::clone(self);
+        let ConsumerOpts {
+            instance,
+            batch,
+            idle_sleep,
+            compute_cost,
+            ..
+        } = opts;
+        tokio::spawn(async move {
+            let queue = app.job_queue(&stream_owned).unwrap_or_else(|| {
+                panic!(
+                    "stream {stream_owned:?} must be registered via .queue or .scheduled_workflows"
+                )
+            });
+            let worker = WorkerId {
+                node: app.node_id(),
+                instance,
+            };
+            let workload = app
+                .cluster()
+                .workload_runtime()
+                .map(|w| w.queue_consumer_workload());
+            run_queue_consumer(
+                queue.clone(),
+                worker,
+                batch,
+                idle_sleep,
+                stop,
+                move |job| {
+                    let app = Arc::clone(&app);
+                    let payload = job.payload.clone();
+                    let stream_log = stream_owned.clone();
+                    async move {
+                        match dispatch_work_trigger(&app, &payload).await {
+                            Ok(DispatchOutcome::NotTrigger) => {
+                                tracing::warn!(
+                                    stream = %stream_log,
+                                    "orchestration job is not a WorkTrigger; acking"
+                                );
+                                Ok(())
+                            }
+                            Ok(_) => Ok(()),
+                            Err(e) => {
+                                tracing::warn!(stream = %stream_log, error = %e, "work trigger failed");
+                                Err(())
+                            }
+                        }
+                    }
+                },
+                workload,
+                compute_cost,
+            )
+            .await;
+        })
+    }
+
     /// Spawn a background task that leases from `C::STREAM`, invokes the handler, and ack/nacks.
     ///
     /// Requires the stream to be registered via [`crate::TrembitaAppBuilder::queue`].

@@ -264,6 +264,10 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-09 | Gateway virtual-host dispatch (`Gateway`/`Surface`, strict default, loopback dev fallback) | `trembita-http/src/gateway/`, `trembita-http/README.md`, `trembita/src/gateway/mod.rs` |
 | 2026-09 | Durable event topics (`EventTopic`, min-cursor compaction, retention discard, voter replication) | `trembita-events/src/{topic,redb_topic,topic_service}`, `trembita-events/tests/topic_failover.rs`, `trembita/src/topic_opts.rs`, `docs/decisions/event-topics.md` |
 | 2026-09 | Dynamic schedule source (`ScheduleSource`, diff reconcile, leader replication) | `trembita-jobs/src/schedule_source.rs`, `trembita-jobs/tests/schedule_source.rs`, `trembita/tests/schedule_source.rs`, `docs/decisions/schedule-source.md` |
+| 2026-09 | Schedule admin HTTP + facade (B-20) | `trembita-http/src/schedule_routes.rs`, `trembita/tests/http_schedules.rs`, `docs/scenarios/triggers-and-pipelines.md` |
+| 2026-09 | WorkTrigger + cron→workflow sugar | `trembita-jobs/src/work_trigger.rs`, `trembita/tests/work_trigger_dispatch.rs`, `docs/scenarios/cookbook-async-work.md` |
+| 2026-09 | `.scheduled_workflows()` product preset | `trembita/src/scheduled_workflow_opts.rs`, `trembita/tests/scheduled_workflows_builder.rs` |
+| 2026-09 | One-shot enqueue at T (`run_at_ms` / `delay_ms`, `enqueue_at`) | `trembita-jobs/src/queue/types.rs`, `trembita-http/src/routes.rs`, `trembita/tests/http_delayed_enqueue.rs` |
 | 2026-08 | Transport + facade gaps: QUIC backoff, DNS discovery, queue compaction, auto-spawn sim, admin/leave E2E | `trembita-net/tests/quic.rs`, `trembita/tests/{discovery,queue}.rs`, `trembita-sim/tests/{auto_spawn,actor_scenarios}.rs`, `e2e/{run,leave}.sh` |
 | 2026-08 | Runtime fatal-error observable path (`status()` → `None`, `Stopped`) | `trembita-runtime/tests/runtime.rs` |
 | 2026-08 | Multi-Raft sim: shard routing + independent group safety | `trembita-sim/tests/multi_raft.rs` |

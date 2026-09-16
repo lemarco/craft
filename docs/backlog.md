@@ -10,10 +10,11 @@ Product and implementation backlog for trembita. Shipped capabilities stay in [s
 
 ## Open work
 
-Epics **B-01 … B-18** are **shipped** (see [Shipped epics](#shipped-epics-archive) below). **B-19** is the next product epic. Remaining items are optional integrations and maintenance — not blockers for product scenarios.
+Epics **B-01 … B-18** are **shipped** (see [Shipped epics](#shipped-epics-archive) below). **B-19** and **B-20** are shipped. Remaining items are optional integrations and maintenance — not blockers for product scenarios.
 
 | Id | Item | Status | Notes |
 |----|------|--------|-------|
+| B-20 | Recurring schedules — facade + HTTP | ✅ | [B-20](#b-20--recurring-schedules-facade--http-schedulesapi) |
 | B-19 | Event outbox port | ✅ | [ADR](decisions/event-outbox.md) — `EventOutboxSource` + leader drainer |
 | B-19 | Introspect API (`RouteTable`) | ✅ | [ADR](decisions/introspect-api.md) — `IntrospectApi` on default / merged gateway surfaces |
 | CF-010 | `dedup_key` lifecycle docs | shipped | Rustdoc on [`EnqueueOptions::dedup_key`](../crates/trembita-jobs/src/queue/mod.rs); scenario table already in [background-jobs](scenarios/background-jobs.md) |
@@ -81,6 +82,44 @@ Introspection JSON (`/introspect/cluster`, `/actors`, `/queues`, `/sagas`, …) 
 
 
 **Acceptance:** App merges `ops_api().route_table()` and product API tables in `GatewayOpts::surfaces()`; operator UI fetches `/introspect/*` and `/jobs/*` on the same HTTP bind (host-separated surfaces optional); `AuthMode::Identity` / session gates as needed. See [unified-listener](decisions/unified-listener.md).
+
+
+---
+
+### B-20 — Recurring schedules: facade + HTTP (`SchedulesApi`)
+
+**Priority:** P1  
+**Scenario:** [background-jobs](scenarios/background-jobs.md) — operator-controlled cron without a parallel schedule store  
+**Consumer:** [quazala-trembita](https://gitlab.com/lemarco/quazala-trembita) — remove Postgres `job_definitions` / bespoke `/jobs/toggle` once trembita owns schedules  
+**GitLab:** [work item #1](https://gitlab.com/lemarco/trembita/-/work_items/1)  
+**Related:** [schedule-source](decisions/schedule-source.md) (poll port shipped); [JobsApi](../crates/trembita-http/src/routes.rs) (queue ops shipped)
+
+**Problem:** [`ScheduleSource`](../../crates/trembita-jobs/src/schedule_source.rs) covers DB-backed reconcile, but product admin UIs that **mutate** schedules (enable, retime) still need either (a) a bespoke app HTTP layer that only writes Postgres and waits for the next poll, or (b) direct access to replicated schedule state. [`TrembitaApp`](../../crates/trembita/src/app/runtime.rs) exposes `jobs_api` for queue introspection/enqueue; there is **no symmetric surface for `RecurringJob`** — `upsert_schedule` lives on the queue service internally, not on the facade or HTTP. [schedule-source § Alternatives](decisions/schedule-source.md#alternatives-considered) rejected “HTTP schedule admin on trembita”; adoption feedback reopens that for apps mounting trembita routes behind session auth (same pattern as B-19 + B-03).
+
+**Goal:** Operator apps can list/upsert/remove recurring schedules per stream without maintaining a second control-plane table, and without redeploy for toggle/retime.
+
+
+| Subtask | Wave | Description | Status |
+| ------- | ---- | ----------- | ------ |
+| B-20a   | 1 | **ADR** — extend or supersede schedule-source rejection: `SchedulesApi` routes + auth; leader-forwarded mutations; relationship to `ScheduleSource` (poll remains for bulk/external sync) | ✅ |
+| B-20b   | 1 | **Facade** — `TrembitaApp::list_schedules(stream)`, `upsert_schedule`, `remove_schedule(name)` — same replication path as queue schedule ops | ✅ |
+| B-20c   | 1 | **`SchedulesApi` in `trembita-http`** — e.g. `GET/PUT/DELETE /jobs/{stream}/schedules[/{name}]` with JSON `RecurringJob`; `AuthFn` like `JobsApi` | ✅ |
+| B-20d   | 1 | **Builder** — `TrembitaApp::schedules_api`, optional default gateway merge; `without_schedules_api()` opt-out mirroring jobs | ✅ |
+| B-20e   | 2 | **Tests** — HTTP round-trip; leader failover: upsert on new leader visible after election; disabled schedule stops enqueue | ✅ (HTTP round-trip; failover in `schedule_source` tests) |
+| B-20f   | 2 | **Docs** — scenario guide “runtime cron”; cross-link B-03/B-19 operator UI pattern (`/jobs/*` + `/jobs/{stream}/schedules`) | ✅ [triggers-and-pipelines](scenarios/triggers-and-pipelines.md) |
+
+
+**Out of scope (app-owned):** Postgres `ScheduleSource` adapter, admin UI pages, external-backlog pause (feeder `depth` / `instances` remains app config).
+
+**Acceptance:** From an app with session-gated gateway: list schedules for a registered stream; upsert changes cron expression or `enabled`; remove by name; change survives leader restart and is replicated to voters; pairs with existing `GET /jobs/{stream}` for in-flight/DLQ (B-03).
+
+**Suggested MR slices**
+
+| MR | Subtasks | Wave | Effort |
+| -- | -------- | ---- | ------ |
+| **MR-1** (facade + ADR) | B-20a, B-20b | 1 | ~2 days |
+| **MR-2** (HTTP + gateway) | B-20c, B-20d | 1 | ~2 days |
+| **MR-3** (tests + docs) | B-20e, B-20f | 2 | ~1 day |
 
 
 ---

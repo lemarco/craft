@@ -177,6 +177,9 @@ impl RequestHandler for NodeRouter {
             | Route::QueueMetrics
             | Route::QueueJobStatus
             | Route::QueueListJobs
+            | Route::QueueListSchedules
+            | Route::QueueUpsertSchedule
+            | Route::QueueRemoveSchedule
             | Route::QueueRequeueDeadLetter
             | Route::QueueRequeueDeadLetterBatch
             | Route::QueueReplicate => {
@@ -236,6 +239,9 @@ impl RequestHandler for NodeRouter {
             | Route::QueueMetrics
             | Route::QueueJobStatus
             | Route::QueueListJobs
+            | Route::QueueListSchedules
+            | Route::QueueUpsertSchedule
+            | Route::QueueRemoveSchedule
             | Route::QueueRequeueDeadLetter
             | Route::QueueRequeueDeadLetterBatch
             | Route::QueueReplicate => {

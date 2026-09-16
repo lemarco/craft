@@ -1,9 +1,10 @@
-use trembita_proto::{BoxFuture, QueueReplicateOp, WorkerId};
+use trembita_proto::{BoxFuture, QueueReplicateOp, RecurringScheduleWire, WorkerId};
 
 use super::types::{
     BatchRequeueResult, EnqueueOptions, JobId, JobListFilter, JobListPage, JobStatus, LeaseId,
     LeasedJob, QueueError, QueueMetrics, QueueReplicationOps,
 };
+use crate::RecurringJob;
 
 /// Shared async work buffer — at-least-once with lease + visibility timeout.
 ///
@@ -62,6 +63,41 @@ pub trait JobQueue: Send + Sync {
 
     /// List jobs in the stream with optional filters (admin inspection).
     fn list_jobs(&self, filter: JobListFilter) -> BoxFuture<'_, Result<JobListPage, QueueError>>;
+
+    /// List recurring cron schedules (non-sharded [`RedbJobQueue`](crate::RedbJobQueue) only).
+    fn list_schedules(&self) -> BoxFuture<'_, Result<Vec<RecurringScheduleWire>, QueueError>> {
+        Box::pin(async {
+            Err(QueueError::Backend(
+                "schedules not supported on this queue".into(),
+            ))
+        })
+    }
+
+    /// Upsert a recurring schedule and return replication ops for voters.
+    fn upsert_schedule_replicated<'a>(
+        &'a self,
+        job: &'a RecurringJob,
+    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+        let _ = job;
+        Box::pin(async {
+            Err(QueueError::Backend(
+                "schedules not supported on this queue".into(),
+            ))
+        })
+    }
+
+    /// Remove a recurring schedule by name and return replication ops for voters.
+    fn remove_schedule_replicated<'a>(
+        &'a self,
+        name: &'a str,
+    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+        let _ = name;
+        Box::pin(async {
+            Err(QueueError::Backend(
+                "schedules not supported on this queue".into(),
+            ))
+        })
+    }
 
     /// Apply an idempotent replicated mutation from the queue leader.
     fn apply_replicate<'a>(

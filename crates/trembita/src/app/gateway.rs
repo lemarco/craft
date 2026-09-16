@@ -15,6 +15,8 @@ pub struct DefaultGatewayApis {
     pub ops: bool,
     /// `POST /jobs/{stream}` and operator job routes.
     pub jobs: bool,
+    /// `GET/PUT/DELETE /jobs/{stream}/schedules` (requires `jobs`).
+    pub schedules: bool,
     /// Actor cast/ask HTTP API.
     pub actors: bool,
     /// Workflow trigger HTTP API.
@@ -28,6 +30,7 @@ impl Default for DefaultGatewayApis {
         Self {
             ops: true,
             jobs: false,
+            schedules: false,
             actors: false,
             workflows: false,
             topics: false,
@@ -42,6 +45,7 @@ impl DefaultGatewayApis {
         Self {
             ops: true,
             jobs: false,
+            schedules: false,
             actors: false,
             workflows: false,
             topics: false,
@@ -65,6 +69,13 @@ impl TrembitaApp {
         if apis.jobs {
             table = table.merge(
                 Self::jobs_api(Arc::clone(&state.app))
+                    .route_table()
+                    .with_auth_mode(AuthMode::Identity),
+            );
+        }
+        if apis.schedules {
+            table = table.merge(
+                Self::schedules_api(Arc::clone(&state.app))
                     .route_table()
                     .with_auth_mode(AuthMode::Identity),
             );

@@ -18,5 +18,5 @@ pub use port::JobQueue;
 pub use types::{
     BatchRequeueResult, EnqueueOptions, JobContext, JobLifecycle, JobListFilter, JobListPage,
     JobStatus, LIST_JOBS_DEFAULT_LIMIT, LeasedJob, QueueError, QueueMetrics, QueueReplicationOps,
-    job_status_matches_filter,
+    apply_enqueue_scheduling, job_status_matches_filter,
 };

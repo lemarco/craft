@@ -40,7 +40,7 @@ async fn post_publish_inner(
         .get("name")
         .ok_or_else(|| TopicsApiError::BadRequest("missing topic name".into()))?
         .to_string();
-    let payload = crate::routes::parse_enqueue_body(ctx.headers(), ctx.body())
+    let (payload, _) = crate::routes::parse_enqueue_body(ctx.headers(), ctx.body())
         .map_err(|e| TopicsApiError::BadRequest(e.to_string()))?;
     let event_id = (state.publish)(name, payload)
         .await

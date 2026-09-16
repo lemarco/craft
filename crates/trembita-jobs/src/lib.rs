@@ -13,6 +13,7 @@ mod queue_service;
 mod redb_queue;
 mod schedule_source;
 mod sharded_queue;
+mod work_trigger;
 mod workload;
 
 pub use backlog_settle_outbox::{
@@ -30,7 +31,8 @@ pub use external_backlog::{
 pub use queue::{
     BatchRequeueResult, EnqueueOptions, InMemoryJobQueue, JobContext, JobLifecycle, JobListFilter,
     JobListPage, JobQueue, JobStatus, LIST_JOBS_DEFAULT_LIMIT, LeasedJob, QueueConsumerWorkload,
-    QueueError, QueueMetrics, QueueReplicationOps, job_status_matches_filter, run_queue_consumer,
+    QueueError, QueueMetrics, QueueReplicationOps, apply_enqueue_scheduling,
+    job_status_matches_filter, run_queue_consumer,
 };
 pub use queue_autoscale::{
     AutoscalePolicy, MembershipAutoscalePolicy, QueueAutoscaleRegistry, run_queue_autoscaler,
@@ -39,18 +41,21 @@ pub use queue_autoscale::{
 pub use queue_lifecycle::QueueLifecycleEvent;
 pub use queue_prefetch::{DEFAULT_QUEUE_BATCH_MAX, DEFAULT_QUEUE_PREFETCH};
 pub use queue_schedule::{
-    RecurringJob, parse_cron, run_queue_schedule_ticker, run_recurring_job_ticker,
+    RecurringJob, anchor_utc_wall_clock, next_calendar_interval_run_after, parse_cron,
+    run_queue_schedule_ticker, run_recurring_job_ticker,
 };
 pub use queue_service::QueueService;
 pub use redb_queue::RedbJobQueue;
 pub use schedule_source::{
     CompositeScheduleSource, ScheduleError, SchedulePoll, ScheduleReconcilePlan, ScheduleSource,
-    StaticScheduleSource, plan_schedule_reconcile, wire_to_recurring_job,
+    StaticScheduleSource, plan_schedule_reconcile, recurring_job_to_schedule_wire,
+    wire_to_recurring_job,
 };
 pub use sharded_queue::{ShardedJobQueue, ShardedReplication};
 pub use trembita_proto::WorkerId;
 pub use trembita_proto::{JobId, LeaseId};
 pub use trembita_runtime::{AttemptOutcome, after_failed_attempt};
+pub use work_trigger::{WorkTrigger, WorkTriggerError};
 pub use workload::{
     ConsumerTune, WorkloadMetricsHook, WorkloadMetricsSnapshot, WorkloadOpts, run_workload_governor,
 };

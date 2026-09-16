@@ -35,6 +35,12 @@ pub struct EnqueueBatchJobBody {
     /// Maximum delivery attempts before dead letter (`0` = unlimited).
     #[serde(default)]
     pub max_attempts: Option<u32>,
+    /// One-shot visibility at unix milliseconds.
+    #[serde(default)]
+    pub run_at_ms: Option<u64>,
+    /// Visibility delay from enqueue time in milliseconds.
+    #[serde(default)]
+    pub delay_ms: Option<u64>,
 }
 
 /// JSON body for `POST /jobs/{stream}/batch`.
@@ -146,6 +152,12 @@ pub struct EnqueueJsonBody {
     pub payload: Option<String>,
     /// Base64-encoded opaque job bytes.
     pub payload_b64: Option<String>,
+    /// One-shot visibility at unix milliseconds.
+    #[serde(default)]
+    pub run_at_ms: Option<u64>,
+    /// Visibility delay from enqueue time in milliseconds.
+    #[serde(default)]
+    pub delay_ms: Option<u64>,
 }
 
 /// HTTP-layer enqueue failure mapped to status codes.
@@ -163,6 +175,81 @@ pub enum JobsApiError {
     /// Gateway identity check failed.
     #[error("{0}")]
     Unauthorized(String),
+}
+
+const fn default_true() -> bool {
+    true
+}
+
+/// One recurring cron schedule (HTTP admin).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScheduleJson {
+    /// Unique name within the stream.
+    pub name: String,
+    /// Cron expression (5- or 6-field). Empty when `every_days` is set.
+    pub cron: String,
+    /// Fire every N calendar days from `anchor_ms` (`0` = cron mode).
+    #[serde(default)]
+    pub every_days: u32,
+    /// First fire instant (unix ms) for calendar interval mode.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub anchor_ms: u64,
+    /// UTF-8 payload string (optional if `payload_b64` is set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload: Option<String>,
+    /// Base64 payload (optional if `payload` is set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload_b64: Option<String>,
+    /// Enqueue priority for each tick.
+    #[serde(default)]
+    pub priority: u8,
+    /// Retry ceiling for jobs produced by this schedule (`0` = stream default).
+    #[serde(default)]
+    pub max_attempts: u32,
+    /// When false the schedule is stored but does not fire.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Next fire time (unix ms); present on list responses.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub next_run_ms: u64,
+}
+
+const fn is_zero(v: &u64) -> bool {
+    *v == 0
+}
+
+/// `GET /jobs/{stream}/schedules` response body.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ScheduleListResponse {
+    /// Recurring schedules on the stream.
+    pub schedules: Vec<ScheduleJson>,
+}
+
+/// HTTP-layer schedule admin failure mapped to status codes.
+#[derive(Debug, thiserror::Error)]
+pub enum SchedulesApiError {
+    /// Request body could not be interpreted.
+    #[error("{0}")]
+    BadRequest(String),
+    /// Queue / leader operation failed.
+    #[error("{0}")]
+    Queue(String),
+    /// Gateway identity check failed.
+    #[error("{0}")]
+    Unauthorized(String),
+}
+
+impl SchedulesApiError {
+    /// Map to a gateway [`Response`].
+    #[must_use]
+    pub fn into_http_response(self) -> Response {
+        let (status, msg) = match &self {
+            Self::BadRequest(m) => (StatusCode::BAD_REQUEST, m.clone()),
+            Self::Queue(m) => (StatusCode::SERVICE_UNAVAILABLE, m.clone()),
+            Self::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m.clone()),
+        };
+        Response::text(status, msg)
+    }
 }
 
 impl JobsApiError {

@@ -123,6 +123,7 @@ async fn without_topics_api_excludes_topic_routes() {
         DefaultGatewayApis {
             ops: false,
             jobs: false,
+            schedules: false,
             actors: false,
             workflows: false,
             topics: false,

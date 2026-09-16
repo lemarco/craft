@@ -67,6 +67,8 @@ TrembitaApp::builder()
 
 Lower-level [`.queue()`](../../crates/trembita/src/app/mod.rs) + [`.consumer()`](../../crates/trembita/src/app/mod.rs) remain available. Cluster-level autoscale, sharded streams, priority, dedup: see [background-jobs showcase](../../examples/background-jobs/) and [job-queue](../decisions/job-queue.md).
 
+For how cron, domain events, and multi-step runs fit together, see [triggers-and-pipelines](triggers-and-pipelines.md).
+
 #### Dynamic schedules (`ScheduleSource`)
 
 When schedules live in **your** database (admin UI toggles), poll them instead of
@@ -103,11 +105,20 @@ use trembita::cluster::EnqueueOptions;
 
 let job_id = app.enqueue("emails", br#"{"to":"user@example.com"}"#).await?;
 
-// Priority, dedup, delayed, max attempts:
+// Priority, dedup, one-shot at T, max attempts:
+app.enqueue_at("emails", payload, run_at_unix_ms).await?;
 app.enqueue_opts(
     "emails",
     payload,
     EnqueueOptions::dedup_key("invoice-7").max_attempts(5),
+)
+.await?;
+
+// Relative delay (or `EnqueueOptions::at_unix_ms` for absolute T — see [triggers-and-pipelines](triggers-and-pipelines.md)):
+app.enqueue_opts(
+    "emails",
+    payload,
+    EnqueueOptions::delayed(Duration::from_secs(3600)),
 )
 .await?;
 

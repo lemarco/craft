@@ -1274,6 +1274,26 @@ impl JobQueue for RedbJobQueue {
         Box::pin(async move { self.list_jobs_inner(&filter) })
     }
 
+    fn list_schedules(
+        &self,
+    ) -> BoxFuture<'_, Result<Vec<trembita_proto::RecurringScheduleWire>, QueueError>> {
+        Box::pin(async move { self.list_schedule_wires() })
+    }
+
+    fn upsert_schedule_replicated<'a>(
+        &'a self,
+        job: &'a crate::RecurringJob,
+    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+        Box::pin(async move { self.upsert_schedule(job) })
+    }
+
+    fn remove_schedule_replicated<'a>(
+        &'a self,
+        name: &'a str,
+    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+        Box::pin(async move { self.remove_schedule(name) })
+    }
+
     fn peek_lease_meta(&self, lease_id: LeaseId) -> BoxFuture<'_, Option<(Option<Vec<u8>>, u32)>> {
         Box::pin(async move { self.peek_lease_for_settle(lease_id) })
     }

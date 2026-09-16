@@ -17,6 +17,7 @@ use crate::gateway::spawn_gateway as spawn_gateway_task;
 use crate::gateway::{GatewayBearerIdentity, GatewayConfig, GatewayOpts};
 use crate::job_opts::JobOpts;
 use crate::queue_opts::QueueOpts;
+use crate::scheduled_workflow_opts::ScheduledWorkflowOpts;
 use crate::worker_opts::{WorkerGroup, WorkerOpts};
 use crate::workflow_opts::{WorkflowOpts, WorkflowRegistration};
 use trembita_runtime::{LeaderGate, LeaderLoopOpts, UserActor};
@@ -124,6 +125,14 @@ impl TrembitaAppBuilder {
         self
     }
 
+    /// Disable `GET/PUT/DELETE /jobs/{stream}/schedules` on the default gateway.
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn without_schedules_api(mut self) -> Self {
+        self.gateway_exclude_apis.schedules = true;
+        self
+    }
+
     /// Disable actor cast/ask HTTP on the default gateway.
     #[cfg(feature = "http-jobs")]
     #[must_use]
@@ -150,9 +159,11 @@ impl TrembitaAppBuilder {
 
     #[cfg(feature = "http-jobs")]
     fn default_gateway_apis(&self) -> super::gateway::DefaultGatewayApis {
+        let jobs = self.gateway_api.jobs && !self.gateway_exclude_apis.jobs;
         super::gateway::DefaultGatewayApis {
             ops: self.gateway_include_ops,
-            jobs: self.gateway_api.jobs && !self.gateway_exclude_apis.jobs,
+            jobs,
+            schedules: jobs && !self.gateway_exclude_apis.schedules,
             actors: self.gateway_api.actors && !self.gateway_exclude_apis.actors,
             workflows: !self.workflows.is_empty() && !self.gateway_exclude_apis.workflows,
             topics: !self.topic_streams.is_empty() && !self.gateway_exclude_apis.topics,
@@ -405,6 +416,42 @@ impl TrembitaAppBuilder {
         for opts in schedules {
             self.cron_streams.push(opts.stream.clone());
             self.inner = self.inner.recurring_job(&opts.stream, opts.job);
+        }
+        self
+    }
+
+    /// **Cron → workflow/pipeline** in one call: queue stream, schedules, and a built-in consumer.
+    ///
+    /// Equivalent to `.queue(…)` + `.cron([CronOpts::starts_workflow…])` + automatic
+    /// [`dispatch_work_trigger`](crate::work_trigger::dispatch_work_trigger). Still requires
+    /// [`.workflows`](Self::workflows) when schedules call saga ids.
+    ///
+    /// ```
+    /// # use trembita::{ScheduledWorkflowOpts, TrembitaApp};
+    /// TrembitaApp::builder()
+    ///     .data_dir("/tmp/x")
+    ///     .scheduled_workflows(
+    ///         ScheduledWorkflowOpts::new().workflow("weekly", "0 3 * * 1", "weekly-report"),
+    ///     );
+    /// ```
+    #[must_use]
+    pub fn scheduled_workflows(mut self, spec: ScheduledWorkflowOpts) -> Self {
+        let reg = spec.into_registration();
+        if let Some(err) = reg.config_error {
+            self.config_errors.push(err);
+            return self;
+        }
+        if reg.crons.is_empty() {
+            self.config_errors.push(
+                "`.scheduled_workflows()`: add at least one `.workflow()` or `.pipeline()`".into(),
+            );
+            return self;
+        }
+        self = self.queue([reg.queue]);
+        self = self.cron(reg.crons);
+        if !reg.spawners.is_empty() {
+            self.consumer_streams.push(reg.stream);
+            self.pending_consumers.extend(reg.spawners);
         }
         self
     }

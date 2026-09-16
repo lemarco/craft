@@ -4,7 +4,7 @@ use trembita_proto::{JobId, NodeId, WorkerId};
 
 use super::{
     EnqueueOptions, InMemoryJobQueue, JobLifecycle, JobListFilter, JobQueue, QueueError,
-    run_queue_consumer,
+    apply_enqueue_scheduling, run_queue_consumer,
 };
 
 fn worker(instance: u32) -> WorkerId {
@@ -125,6 +125,13 @@ async fn priority_jobs_leased_first() {
 
     let leased = q.lease(worker(0), 1).await.unwrap();
     assert_eq!(leased[0].payload, b"high");
+}
+
+#[tokio::test]
+async fn apply_scheduling_rejects_both_run_at_and_delay() {
+    let mut opts = EnqueueOptions::default();
+    let err = apply_enqueue_scheduling(&mut opts, Some(1), Some(2)).unwrap_err();
+    assert!(matches!(err, QueueError::Codec(_)));
 }
 
 #[tokio::test]

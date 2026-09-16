@@ -4,6 +4,7 @@
 //! (`TREMBITA_ALLOW_JOIN=1`); `./cluster.sh` adds nodes via dynamic join.
 
 mod bridge;
+mod cron_bootstrap;
 mod debug;
 mod ledger;
 

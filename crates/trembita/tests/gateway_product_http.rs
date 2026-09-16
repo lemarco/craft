@@ -50,6 +50,7 @@ fn composite_product_gateway_config() -> trembita::GatewayConfig {
                     DefaultGatewayApis {
                         ops: false,
                         jobs: false,
+                        schedules: false,
                         actors: false,
                         workflows: true,
                         topics: true,

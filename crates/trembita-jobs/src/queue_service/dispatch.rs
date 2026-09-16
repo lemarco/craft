@@ -7,8 +7,8 @@ use trembita_net::{Route, decode_body, encode_body};
 use trembita_proto::{
     NodeId, QueueAckBatchRequest, QueueAckRequest, QueueEnqueueBatchRequest, QueueEnqueueRequest,
     QueueExtendLeaseRequest, QueueJobStatusRequest, QueueLeaseRequest, QueueListJobsRequest,
-    QueueMetricsRequest, QueueNackRequest, QueueReplicateRequest,
-    QueueRequeueDeadLetterBatchRequest,
+    QueueListSchedulesRequest, QueueMetricsRequest, QueueNackRequest, QueueRemoveScheduleRequest,
+    QueueReplicateRequest, QueueRequeueDeadLetterBatchRequest, QueueUpsertScheduleRequest,
 };
 
 use super::QueueService;
@@ -71,6 +71,18 @@ impl QueueService {
             Route::QueueListJobs => Box::pin(async move {
                 let request: QueueListJobsRequest = decode_body(&body)?;
                 Ok(encode_body(&service.handle_list_jobs(request).await)?)
+            }),
+            Route::QueueListSchedules => Box::pin(async move {
+                let request: QueueListSchedulesRequest = decode_body(&body)?;
+                Ok(encode_body(&service.handle_list_schedules(request).await)?)
+            }),
+            Route::QueueUpsertSchedule => Box::pin(async move {
+                let request: QueueUpsertScheduleRequest = decode_body(&body)?;
+                Ok(encode_body(&service.handle_upsert_schedule(request).await)?)
+            }),
+            Route::QueueRemoveSchedule => Box::pin(async move {
+                let request: QueueRemoveScheduleRequest = decode_body(&body)?;
+                Ok(encode_body(&service.handle_remove_schedule(request).await)?)
             }),
             Route::QueueRequeueDeadLetter => Box::pin(async move {
                 let request: trembita_proto::QueueRequeueDeadLetterRequest = decode_body(&body)?;

@@ -5,21 +5,25 @@ use std::sync::Arc;
 use trembita_net::transport::{BoxFuture, Transport};
 use trembita_net::{
     send_queue_ack_batch, send_queue_enqueue, send_queue_enqueue_batch, send_queue_extend_lease,
-    send_queue_job_status, send_queue_lease, send_queue_list_jobs, send_queue_metrics,
-    send_queue_nack, send_queue_requeue_dead_letter_batch,
+    send_queue_job_status, send_queue_lease, send_queue_list_jobs, send_queue_list_schedules,
+    send_queue_metrics, send_queue_nack, send_queue_remove_schedule,
+    send_queue_requeue_dead_letter_batch, send_queue_upsert_schedule,
 };
 use trembita_proto::ProductWireError;
 use trembita_proto::{
     DedupKey, MaxAttempts, NodeId, QueueAckBatchRequest, QueueBatchEnqueueJob,
     QueueEnqueueBatchRequest, QueueEnqueueRequest, QueueExtendLeaseRequest, QueueJobLifecycleWire,
-    QueueJobStatusRequest, QueueLeaseRequest, QueueListJobsRequest, QueueMetricsRequest,
-    QueueNackRequest, QueueReplicateOp, QueueRequeueDeadLetterBatchRequest, StreamName, UnixMillis,
+    QueueJobStatusRequest, QueueLeaseRequest, QueueListJobsRequest, QueueListSchedulesRequest,
+    QueueMetricsRequest, QueueNackRequest, QueueRemoveScheduleRequest, QueueReplicateOp,
+    QueueRequeueDeadLetterBatchRequest, QueueUpsertScheduleRequest, RecurringScheduleWire,
+    StreamName, UnixMillis,
 };
 use trembita_runtime::ClusterState;
 
 use crate::{
     EnqueueOptions, JobId, JobLifecycle, JobListFilter, JobQueue, JobStatus, LeaseId, LeasedJob,
-    QueueError, QueueMetrics, QueueReplicationOps, WorkerId,
+    QueueError, QueueMetrics, QueueReplicationOps, RecurringJob, WorkerId,
+    recurring_job_to_schedule_wire,
 };
 
 fn replication_unsupported() -> QueueError {
@@ -471,6 +475,73 @@ impl JobQueue for ClusterJobQueue {
                     .collect(),
                 has_more: reply.has_more,
             })
+        })
+    }
+
+    fn list_schedules(&self) -> BoxFuture<'_, Result<Vec<RecurringScheduleWire>, QueueError>> {
+        Box::pin(async move {
+            let leader = self.leader()?;
+            let reply = send_queue_list_schedules(
+                self.transport.as_ref(),
+                leader,
+                &QueueListSchedulesRequest {
+                    stream: wire_stream(&self.stream),
+                },
+            )
+            .await
+            .map_err(|e| QueueError::Backend(e.to_string()))?;
+            if let Some(err) = reply.error {
+                return Err(QueueError::Backend(err.to_string()));
+            }
+            Ok(reply.schedules)
+        })
+    }
+
+    fn upsert_schedule_replicated<'a>(
+        &'a self,
+        job: &'a RecurringJob,
+    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+        let wire = recurring_job_to_schedule_wire(job);
+        Box::pin(async move {
+            let leader = self.leader()?;
+            let reply = send_queue_upsert_schedule(
+                self.transport.as_ref(),
+                leader,
+                &QueueUpsertScheduleRequest {
+                    stream: wire_stream(&self.stream),
+                    schedule: wire,
+                },
+            )
+            .await
+            .map_err(|e| QueueError::Backend(e.to_string()))?;
+            if let Some(err) = reply.error {
+                return Err(QueueError::Backend(err.to_string()));
+            }
+            Ok(Vec::new())
+        })
+    }
+
+    fn remove_schedule_replicated<'a>(
+        &'a self,
+        name: &'a str,
+    ) -> BoxFuture<'a, Result<QueueReplicationOps, QueueError>> {
+        let name = name.to_string();
+        Box::pin(async move {
+            let leader = self.leader()?;
+            let reply = send_queue_remove_schedule(
+                self.transport.as_ref(),
+                leader,
+                &QueueRemoveScheduleRequest {
+                    stream: wire_stream(&self.stream),
+                    name: name.clone(),
+                },
+            )
+            .await
+            .map_err(|e| QueueError::Backend(e.to_string()))?;
+            if let Some(err) = reply.error {
+                return Err(QueueError::Backend(err.to_string()));
+            }
+            Ok(Vec::new())
         })
     }
 

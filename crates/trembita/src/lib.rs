@@ -61,10 +61,12 @@ mod observer;
 mod queue_opts;
 mod ready;
 mod saga;
+mod scheduled_workflow_opts;
 mod security;
 mod shutdown_signal;
 mod topic_opts;
 mod two_phase;
+mod work_trigger;
 mod worker_opts;
 mod workflow;
 mod workflow_opts;
@@ -118,6 +120,7 @@ pub use gateway::{ProductRoutes, cluster_ops_route_table, spawn_cluster_ops_http
 pub use job_opts::JobOpts;
 pub use queue_opts::QueueOpts;
 pub use ready::ReadyOpts;
+pub use scheduled_workflow_opts::ScheduledWorkflowOpts;
 pub use shutdown_signal::wait_for_int_or_term;
 pub use topic_opts::TopicOpts;
 pub use trembita_actor_store::InMemoryStore;
@@ -133,9 +136,10 @@ pub use trembita_jobs::{
     BacklogFeedOpts, BacklogItem, BacklogRegistry, BacklogSettleOutbox, BacklogSettleOutboxOpts,
     CachedDepth, CompositeScheduleSource, ConsumerCount, DepthCache, ExternalBacklog,
     InMemoryBacklogSettleOutbox, InMemoryExternalBacklog, ScheduleError, SchedulePoll,
-    ScheduleSource, Settlement, StaticScheduleSource,
+    ScheduleSource, Settlement, StaticScheduleSource, WorkTrigger, WorkTriggerError,
 };
 pub use trembita_runtime::{ExternalLoad, ManualExternalLoad};
+pub use work_trigger::{DispatchError, DispatchOutcome, dispatch_work_trigger};
 pub use worker_opts::{WorkerGroup, WorkerOpts, WorkerScale};
 pub use workflow::{WorkflowBuildError, WorkflowBuilder};
 pub use workflow_opts::WorkflowOpts;

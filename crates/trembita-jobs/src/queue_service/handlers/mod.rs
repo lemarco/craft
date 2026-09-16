@@ -5,3 +5,4 @@ mod dead_letter;
 mod enqueue;
 mod lease;
 mod query;
+mod schedule_admin;

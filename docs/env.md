@@ -31,7 +31,7 @@ Single published port per node. Wire and HTTP share the port **number** (differe
 
 | Registration | Routes (identity-protected by default) | Opt-out |
 |--------------|----------------------------------------|---------|
-| [`.jobs([…]).http_enqueue(true)`](../crates/trembita/src/job_opts.rs) | `POST/GET /jobs/*` | [`.without_jobs_api()`](../crates/trembita/src/app/builder.rs) |
+| [`.jobs([…]).http_enqueue(true)`](../crates/trembita/src/job_opts.rs) | `POST/GET /jobs/*`, `GET/PUT/DELETE /jobs/{stream}/schedules/*` | [`.without_jobs_api()`](../crates/trembita/src/app/builder.rs), [`.without_schedules_api()`](../crates/trembita/src/app/builder.rs) |
 | [`.topics([…])`](../crates/trembita/src/app/builder.rs) | `POST /topics/{name}/publish`, `GET /topics/{name}` | [`.without_topics_api()`](../crates/trembita/src/app/builder.rs) |
 | [`.workflows([…])`](../crates/trembita/src/app/builder.rs) | `POST /workflows/run`, `POST /workflows/resume` | [`.without_workflows_api()`](../crates/trembita/src/app/builder.rs) |
 | Workers with HTTP cast/ask | `/actors/*` | [`.without_actors_api()`](../crates/trembita/src/app/builder.rs) |

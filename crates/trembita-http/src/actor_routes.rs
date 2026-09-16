@@ -44,7 +44,7 @@ async fn post_ask_inner(
         .get("group")
         .ok_or_else(|| ActorsApiError::BadRequest("missing group".into()))?
         .to_string();
-    let payload = parse_enqueue_body(ctx.headers(), ctx.body()).map_err(map_body_error)?;
+    let (payload, _) = parse_enqueue_body(ctx.headers(), ctx.body()).map_err(map_body_error)?;
     let reply = (state.ask)(group, payload).await.map_err(map_ask_error)?;
     let ct = ctx
         .headers()
@@ -80,7 +80,7 @@ async fn post_cast_inner(
         .get("group")
         .ok_or_else(|| ActorsApiError::BadRequest("missing group".into()))?
         .to_string();
-    let payload = parse_enqueue_body(ctx.headers(), ctx.body()).map_err(map_body_error)?;
+    let (payload, _) = parse_enqueue_body(ctx.headers(), ctx.body()).map_err(map_body_error)?;
     (state.cast)(group, payload).await.map_err(map_cast_error)?;
     Ok(Response::status(StatusCode::ACCEPTED))
 }

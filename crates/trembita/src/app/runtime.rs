@@ -207,7 +207,21 @@ impl TrembitaApp {
         queue.enqueue(payload).await
     }
 
-    /// Enqueue with options (priority, dedup, delay).
+    /// Enqueue for a one-shot run at absolute wall time (unix milliseconds).
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or enqueue fails.
+    pub async fn enqueue_at(
+        &self,
+        stream: &str,
+        payload: &[u8],
+        run_at_ms: u64,
+    ) -> Result<JobId, trembita_jobs::QueueError> {
+        self.enqueue_opts(stream, payload, EnqueueOptions::at_unix_ms(run_at_ms))
+            .await
+    }
+
+    /// Enqueue with options (priority, dedup, delay, `not_before`).
     ///
     /// # Errors
     /// Returns an error when the stream is unknown or enqueue fails.
@@ -318,6 +332,41 @@ impl TrembitaApp {
         filter: trembita_jobs::JobListFilter,
     ) -> Result<trembita_jobs::JobListPage, trembita_jobs::QueueError> {
         self.cluster.list_jobs(stream, filter).await
+    }
+
+    /// List recurring cron schedules for a registered queue stream.
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or listing fails.
+    pub async fn list_schedules(
+        &self,
+        stream: &str,
+    ) -> Result<Vec<trembita_proto::RecurringScheduleWire>, trembita_jobs::QueueError> {
+        self.cluster.list_schedules(stream).await
+    }
+
+    /// Upsert a recurring schedule (replicated on the queue leader).
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or upsert fails.
+    pub async fn upsert_schedule(
+        &self,
+        stream: &str,
+        job: &trembita_jobs::RecurringJob,
+    ) -> Result<(), trembita_jobs::QueueError> {
+        self.cluster.upsert_schedule(stream, job).await
+    }
+
+    /// Remove a recurring schedule by name (replicated on the queue leader).
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or removal fails.
+    pub async fn remove_schedule(
+        &self,
+        stream: &str,
+        name: &str,
+    ) -> Result<(), trembita_jobs::QueueError> {
+        self.cluster.remove_schedule(stream, name).await
     }
 
     /// Requeue many dead-letter jobs; partial success is allowed.
@@ -660,6 +709,28 @@ impl TrembitaApp {
                     )
                     .await
                 })
+            }),
+        )
+    }
+
+    /// HTTP recurring schedule admin (`GET/PUT/DELETE /jobs/{stream}/schedules/...`).
+    #[cfg(feature = "http-jobs")]
+    pub fn schedules_api(app: Arc<Self>) -> trembita_http::SchedulesApi {
+        let list_app = Arc::clone(&app);
+        let upsert_app = Arc::clone(&app);
+        let remove_app = app;
+        trembita_http::SchedulesApi::new(
+            Arc::new(move |stream| {
+                let app = Arc::clone(&list_app);
+                Box::pin(async move { app.list_schedules(&stream).await })
+            }),
+            Arc::new(move |stream, job| {
+                let app = Arc::clone(&upsert_app);
+                Box::pin(async move { app.upsert_schedule(&stream, &job).await })
+            }),
+            Arc::new(move |stream, name| {
+                let app = Arc::clone(&remove_app);
+                Box::pin(async move { app.remove_schedule(&stream, &name).await })
             }),
         )
     }

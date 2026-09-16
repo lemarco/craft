@@ -7,6 +7,7 @@ use http::StatusCode;
 use http::header;
 use trembita_jobs::{
     DEFAULT_QUEUE_BATCH_MAX, EnqueueOptions, JobLifecycle, JobListFilter, LeaseId, WorkerId,
+    apply_enqueue_scheduling,
 };
 
 use crate::JobsApiState;
@@ -106,8 +107,14 @@ async fn post_job_inner(state: &JobsApiState, ctx: RequestCtx) -> Result<Respons
         .ok_or_else(|| JobsApiError::BadRequest("missing stream".into()))?
         .to_string();
     let query: EnqueueQuery = parse_query(&ctx)?;
-    let payload = parse_enqueue_body(ctx.headers(), ctx.body())?;
-    let opts = enqueue_options_from_query(&query);
+    let (payload, json_sched) = parse_enqueue_body(ctx.headers(), ctx.body())?;
+    let mut opts = enqueue_options_from_query(&query);
+    merge_enqueue_scheduling(
+        &mut opts,
+        parse_query_u64(&ctx, "run_at_ms")?,
+        parse_query_u64(&ctx, "delay_ms")?,
+        json_sched,
+    )?;
     let job_id = (state.enqueue)(stream, payload, opts)
         .await
         .map_err(|e| JobsApiError::Queue(e.to_string()))?;
@@ -369,6 +376,44 @@ fn enqueue_options_from_query(query: &EnqueueQuery) -> EnqueueOptions {
     opts
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct JsonScheduling {
+    run_at_ms: Option<u64>,
+    delay_ms: Option<u64>,
+}
+
+fn parse_query_u64(ctx: &RequestCtx, key: &str) -> Result<Option<u64>, JobsApiError> {
+    match ctx.query_param(key) {
+        None => Ok(None),
+        Some(raw) => raw
+            .parse()
+            .map(Some)
+            .map_err(|_| JobsApiError::BadRequest(format!("invalid {key}"))),
+    }
+}
+
+fn merge_enqueue_scheduling(
+    opts: &mut EnqueueOptions,
+    query_run_at_ms: Option<u64>,
+    query_delay_ms: Option<u64>,
+    json: JsonScheduling,
+) -> Result<(), JobsApiError> {
+    if query_run_at_ms.is_some() && json.run_at_ms.is_some() {
+        return Err(JobsApiError::BadRequest(
+            "run_at_ms in both query and json body".into(),
+        ));
+    }
+    if query_delay_ms.is_some() && json.delay_ms.is_some() {
+        return Err(JobsApiError::BadRequest(
+            "delay_ms in both query and json body".into(),
+        ));
+    }
+    let run_at_ms = query_run_at_ms.or(json.run_at_ms);
+    let delay_ms = query_delay_ms.or(json.delay_ms);
+    apply_enqueue_scheduling(opts, run_at_ms, delay_ms)
+        .map_err(|e| JobsApiError::BadRequest(e.to_string()))
+}
+
 fn status_to_response(status: &trembita_jobs::JobStatus) -> JobStatusResponse {
     JobStatusResponse {
         job_id: status.job_id.0,
@@ -431,12 +476,14 @@ fn parse_batch_job(job: EnqueueBatchJobBody) -> Result<(Vec<u8>, EnqueueOptions)
             "each job requires payload or payload_b64".into(),
         ));
     };
-    let opts = EnqueueOptions {
+    let mut opts = EnqueueOptions {
         priority: trembita_proto::JobPriority(job.priority),
         dedup_key: job.dedup.map(String::into_bytes),
         max_attempts: job.max_attempts.map(trembita_proto::MaxAttempts),
         ..Default::default()
     };
+    apply_enqueue_scheduling(&mut opts, job.run_at_ms, job.delay_ms)
+        .map_err(|e| JobsApiError::BadRequest(e.to_string()))?;
     Ok((payload, opts))
 }
 
@@ -447,7 +494,7 @@ fn parse_batch_job(job: EnqueueBatchJobBody) -> Result<(Vec<u8>, EnqueueOptions)
 pub fn parse_enqueue_body(
     headers: &http::HeaderMap,
     body: &bytes::Bytes,
-) -> Result<Vec<u8>, JobsApiError> {
+) -> Result<(Vec<u8>, JsonScheduling), JobsApiError> {
     let ct = headers
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
@@ -460,18 +507,24 @@ pub fn parse_enqueue_body(
                 "provide only one of payload or payload_b64".into(),
             ));
         }
+        let scheduling = JsonScheduling {
+            run_at_ms: env.run_at_ms,
+            delay_ms: env.delay_ms,
+        };
         if let Some(text) = env.payload {
-            return Ok(text.into_bytes());
+            return Ok((text.into_bytes(), scheduling));
         }
         if let Some(b64) = env.payload_b64 {
-            return base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
-                .map_err(|e| JobsApiError::BadRequest(format!("invalid payload_b64: {e}")));
+            let payload =
+                base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
+                    .map_err(|e| JobsApiError::BadRequest(format!("invalid payload_b64: {e}")))?;
+            return Ok((payload, scheduling));
         }
         return Err(JobsApiError::BadRequest(
             "json body requires payload or payload_b64".into(),
         ));
     }
-    Ok(body.to_vec())
+    Ok((body.to_vec(), JsonScheduling::default()))
 }
 
 #[cfg(test)]
@@ -606,6 +659,7 @@ mod tests {
         let mut headers = http::HeaderMap::new();
         headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
         let body = Bytes::from(r#"{"payload":"hi"}"#);
-        assert_eq!(parse_enqueue_body(&headers, &body).unwrap(), b"hi".to_vec());
+        let (payload, _) = parse_enqueue_body(&headers, &body).unwrap();
+        assert_eq!(payload, b"hi".to_vec());
     }
 }

@@ -56,10 +56,12 @@ pub use queue::{
     QueueEnqueueBatchReply, QueueEnqueueBatchRequest, QueueEnqueueReply, QueueEnqueueRequest,
     QueueExtendLeaseReply, QueueExtendLeaseRequest, QueueJobLifecycleWire, QueueJobListEntryWire,
     QueueJobStatusReply, QueueJobStatusRequest, QueueLeaseReply, QueueLeaseRequest,
-    QueueLeasedJobWire, QueueListJobsReply, QueueListJobsRequest, QueueMetricsReply,
-    QueueMetricsRequest, QueueNackReply, QueueNackRequest, QueueReplicateOp, QueueReplicateReply,
-    QueueReplicateRequest, QueueRequeueDeadLetterBatchReply, QueueRequeueDeadLetterBatchRequest,
-    QueueRequeueDeadLetterReply, QueueRequeueDeadLetterRequest, QueueRequeueFailureWire,
+    QueueLeasedJobWire, QueueListJobsReply, QueueListJobsRequest, QueueListSchedulesReply,
+    QueueListSchedulesRequest, QueueMetricsReply, QueueMetricsRequest, QueueNackReply,
+    QueueNackRequest, QueueRemoveScheduleReply, QueueRemoveScheduleRequest, QueueReplicateOp,
+    QueueReplicateReply, QueueReplicateRequest, QueueRequeueDeadLetterBatchReply,
+    QueueRequeueDeadLetterBatchRequest, QueueRequeueDeadLetterReply, QueueRequeueDeadLetterRequest,
+    QueueRequeueFailureWire, QueueUpsertScheduleReply, QueueUpsertScheduleRequest,
     RecurringScheduleWire,
 };
 pub use queue_autoscale::{

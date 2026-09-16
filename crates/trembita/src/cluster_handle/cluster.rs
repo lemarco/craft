@@ -238,6 +238,52 @@ impl<M: StateMachine> TrembitaCluster<M> {
         queue.list_jobs(filter).await
     }
 
+    /// List recurring cron schedules on a queue stream.
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or listing fails.
+    pub async fn list_schedules(
+        &self,
+        stream: &str,
+    ) -> Result<Vec<trembita_proto::RecurringScheduleWire>, trembita_jobs::QueueError> {
+        let queue = self.job_queue(stream).ok_or_else(|| {
+            trembita_jobs::QueueError::Backend(format!("unknown stream {stream:?}"))
+        })?;
+        queue.list_schedules().await
+    }
+
+    /// Upsert a recurring schedule (leader-replicated).
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or upsert fails.
+    pub async fn upsert_schedule(
+        &self,
+        stream: &str,
+        job: &trembita_jobs::RecurringJob,
+    ) -> Result<(), trembita_jobs::QueueError> {
+        let queue = self.job_queue(stream).ok_or_else(|| {
+            trembita_jobs::QueueError::Backend(format!("unknown stream {stream:?}"))
+        })?;
+        queue.upsert_schedule_replicated(job).await?;
+        Ok(())
+    }
+
+    /// Remove a recurring schedule by name (leader-replicated).
+    ///
+    /// # Errors
+    /// Returns an error when the stream is unknown or removal fails.
+    pub async fn remove_schedule(
+        &self,
+        stream: &str,
+        name: &str,
+    ) -> Result<(), trembita_jobs::QueueError> {
+        let queue = self.job_queue(stream).ok_or_else(|| {
+            trembita_jobs::QueueError::Backend(format!("unknown stream {stream:?}"))
+        })?;
+        queue.remove_schedule_replicated(name).await?;
+        Ok(())
+    }
+
     /// Requeue many dead-letter jobs; partial success is allowed.
     ///
     /// # Errors
