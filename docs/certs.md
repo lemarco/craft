@@ -83,24 +83,11 @@ members); each node fills in `TREMBITA_NODE_ID` / `TREMBITA_NODE_*` for itself.
 
 ### Embedding trembita in your own binary
 
-If you build your own binary instead of using `trembita-node`, load the PEM files
-into a [`Security`](https://docs.rs/trembita) and pass it to `start_quic`:
+Product apps use **`TREMBITA_CERT_DIR`** (or `dev-certs` locally) with [`TrembitaApp::from_env()`](decisions/public-api-1.0.md) — see [env.md](env.md). You do not assemble `Security` or call a public cluster builder in application code.
 
-```rust,ignore
-use trembita::cluster::{PeerDirectory, Security};
-use trembita::cluster::TrembitaCluster;
-use trembita::NodeId;
-use trembita::net::NodeIdentity;
+For **ops / static clusters**, run [`trembita-node`](../crates/trembita-tools/README.md) with the same PEM layout (`TREMBITA_NODE_CERT` / `KEY` / `CA_CERT` or shared `TREMBITA_CERT_DIR`).
 
-// Load node-<id>.pem / .key and ca.pem (e.g. with rustls-pemfile), then:
-let identity = NodeIdentity::from_der(NodeId(1), cert_chain, key);
-let security = Security::from_ca_certs(identity, &ca_certs)?;
-
-let cluster = TrembitaCluster::builder(NodeId(1), my_state_machine)
-    .members([NodeId(1), NodeId(2), NodeId(3)])
-    .start_quic(security, "0.0.0.0:443".parse()?, peers)
-    .await?;
-```
+Custom state machines + manual QUIC boot are **maintainer-only** (`workspace_showcase`, in-crate `integration` tests) — not the crates.io product path.
 
 ---
 
@@ -173,22 +160,14 @@ CN is free-form.
    live cluster — no restart of the running nodes, and no cluster-wide address
    list required (discovery, join-rpc):
 
-   ```rust
-   let cluster = TrembitaCluster::builder(NodeId(N), machine)
-       .members(current_voters)          // the cluster's current voter set (not this node)
-       .join(seed_id, seed_addr)         // contact any member; it forwards to the leader
-       .start_quic(security, listen, [(seed_id, seed_addr)].into_iter().collect())
-       .await?;
-   ```
+   Set **`TREMBITA_JOIN_SEEDS=id@host:port`** (or use [`trembita-node`](../crates/trembita-tools/README.md) `--join-seed`) on the new VPS. Product apps use [`TrembitaApp::from_env()`](env.md); do not call a public cluster builder.
 
    The joiner fetches the peer-address book from the seed over `/cluster/peers`,
    the leader commits a membership change adding it, and addresses propagate both
    ways so every node can reach the newcomer.    See [`dev/3node/README.md`](../dev/3node/README.md) and dynamic `join` on
 [`trembita-node`](../crates/trembita-tools/README.md).
 
-> **Static membership still works** for fixed clusters: bootstrap the full member
-> set up front via matching `TREMBITA_PEERS` + `.members(...)`. Dynamic `join` is the
-> elastic path; the reference `trembita-node` binary reads a static `TREMBITA_PEERS`.
+> **Static membership** (`TREMBITA_PEERS` + `TREMBITA_NODE_ID`) is for **[`trembita-node`](../crates/trembita-tools/README.md)** and e2e — not typical product deploys ([env.md](env.md)).
 
 ---
 
@@ -204,7 +183,7 @@ CN is free-form.
 ### Automatic (cert-automation)
 
 When `TREMBITA_NODE_CERT` / `TREMBITA_NODE_KEY` / `TREMBITA_CA_CERT` are set, `trembita-node`
-uses [`start_quic_pem`](../crates/trembita/src/builder/cluster/mod.rs) and **polls** those files
+(via [`TrembitaApp::from_config`](../crates/trembita/src/app/runtime.rs) + [`AppConfig`](../crates/trembita/src/env_config.rs)) **polls** those files
 every `TREMBITA_CERT_WATCH_SECS` (default **60**). When a renewer (`step ca renew`
 or `generate.sh`) rewrites the PEMs, trembita reloads TLS **without exiting**:
 
@@ -223,17 +202,7 @@ Reload on the **Raft leader** is rejected unless you call
 Public ACME (Let's Encrypt) is **not** supported for trembita wire identities — you
 need a private CA with `serverAuth` + `clientAuth` and SAN `trembita-node-<id>`.
 
-Embedding apps use the same API:
-
-```rust
-let pem = PemSecurity::load(node_id, paths)?;
-let cluster = TrembitaCluster::builder(node_id, machine)
-    .members(members)
-    .cert_watch(Duration::from_secs(60))
-    .start_quic_pem(pem, listen, peers)
-    .await?;
-// cluster.cert_reload() → manual reload_now(...)
-```
+Product apps: set **`TREMBITA_CERT_DIR`** + **`TREMBITA_CERT_WATCH_SECS`** and use [`TrembitaApp::from_env()`](env.md). Runtime reload is via [`CertReloadHandle`](../crates/trembita/src/certs.rs) on the live cluster handle when PEM paths are configured.
 
 See [cert-automation](decisions/certificates.md).
 

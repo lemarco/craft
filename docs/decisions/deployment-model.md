@@ -15,35 +15,34 @@ Operational model: **VPS / bare metal** — one process per node; docker-compose
 
 | Artifact | Role |
 |----------|------|
-| **`trembita-*` crates + `TrembitaCluster` API** | Primary product — user embeds in their app |
+| **`trembita` facade + `TrembitaApp`** | Primary product — user embeds in their app |
 | **`examples/`** | Product showcases (jobs, stateful workers, realtime, workflows, self-update) — each standalone `Cargo.toml`, local + QUIC `cluster.sh` |
 | **`dev/`** | Shared cluster helpers (`cluster-common.sh`), certs, optional Docker Compose per showcase |
-| **`trembita-node` (optional)** | Thin wrapper around the same API for demos only — not a plugin host |
+| **`trembita-node` (optional)** | Reference product node from env (empty SM, ops HTTP) — e2e/Docker/3-node demos; not a plugin host |
 
-The user ships **one binary** built from their app. Production runs **N processes** (N VPSes), each process = **one Raft peer** + **local actor runtime**. Same codebase everywhere; config differs per VPS (`node_id`, listen addr, join target).
+The user ships **one binary** built from their app. Production runs **N processes** (N VPSes), each process = **one Raft peer** + **local actor runtime**. Same codebase everywhere; config differs per VPS (`TREMBITA_*` — assigned `node-id` under `data_dir`, listen addr, join seeds).
 
 ## User application shape (draft)
 
 ```rust
-#[tokio::main]
-async fn main() -> Result<()> {
-    let cluster = TrembitaCluster::builder()
-        .node_id(env("TREMBITA_NODE_ID"))     // product apps: assigned id in {data_dir}/node-id
-        .listen(env("TREMBITA_LISTEN"))       // e.g. 0.0.0.0:443 — QUIC + product TCP
-        .join_seeds(parse_seeds(env("TREMBITA_JOIN_SEEDS"))) // joiners only; seed omits
-        .allow_join(env_bool("TREMBITA_ALLOW_JOIN"))
-        .state_machine(MyAppState::default())
-        .resource_profile(ResourceProfile::UseAllAvailable)
-        .auto_workers([AutoWorkerSpec::new("workers", WorkerConfig::default)])
-        .spawn()
-        .await?;
+use trembita::{AppManifest, TrembitaApp, TrembitaConfigure};
 
-    // Workers spawn automatically after join (auto-spawn-on-join) — no manual spawn in main
-    cluster.client().propose(MyCommand::Init).await?;
-    // cluster.leave().await?;  // graceful: migrates actors then removes node
-    cluster.run_until_shutdown().await?;
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    trembita::init_tracing();
+    TrembitaApp::from_env()?
+        .manifest(
+            AppManifest::new()
+                .workers(/* WorkerOpts / groups from manifest.rs */)
+                .jobs(/* JobOpts */),
+        )
+        .configure(TrembitaConfigure::default())
+        .run()
+        .await?;
 }
 ```
+
+Cluster join, certs, and listen addresses come from **`TREMBITA_*`** ([env.md](../env.md)) — not programmatic cluster builder setters. Custom Raft state machines are maintainer-only ([public-api-1.0](public-api-1.0.md)).
 
 ## VPS deployment flow
 

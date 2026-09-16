@@ -29,7 +29,7 @@ alwaysApply: false
 - `trembita-core` — pure Raft FSM
 - `trembita-storage` / `trembita-net` — trait + adapters
 - `trembita-runtime` — runtime glue (`RaftDriver`, actors)
-- `trembita` — public facade (`TrembitaCluster::builder`)
+- `trembita` — public facade (`TrembitaApp`, `trembita::cluster` runtime handles); cluster **assembly** is `pub(crate)` (`TrembitaClusterBuilder` in `builder/`, `workspace_showcase` for maintainer harnesses)
 - `trembita-tools` — reference binaries (`trembita-node`, ops, e2e clients)
 
 ## Anti-patterns

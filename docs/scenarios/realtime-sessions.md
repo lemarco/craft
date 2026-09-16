@@ -49,15 +49,21 @@
 capabilities::chat::manifest() // CapGroup + `.op_req(append, [Session, InlineFire])`
 ```
 
-### 1b. Low-level cluster (advanced)
+### 1b. Product boot (same as other scenarios)
 
 ```rust
-TrembitaCluster::builder(node_id, machine)
-    .auto_workers([AutoWorkerSpec::new("chat", WorkerConfig::default())])
-    .directory_policy(DirectoryPolicy::ReadYourWrites)  // optional: fresher directory
-    .start_quic(...)
+TrembitaApp::from_env()?
+    .manifest(
+        AppManifest::new()
+            .capabilities(/* chat CapGroup */)
+            .workers(/* session workers */),
+    )
+    .configure(TrembitaConfigure::default().with_local_gateway_apis())
+    .run()
     .await?;
 ```
+
+Custom cluster assembly with a non-empty Raft SM is **not** public API — see [public-api-1.0](../decisions/public-api-1.0.md).
 
 ### 2. Open sticky session
 

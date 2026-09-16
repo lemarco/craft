@@ -153,21 +153,19 @@ Queue-backed workers are still **`UserActor`** instances, but **jobs are not pus
 - The **mailbox** handles **control** messages only: drain, health, migration snapshot ([cross-node-actors](cross-node-actors.md)).
 
 ```rust
-TrembitaCluster::builder(node_id, machine)
-    .data_dir("/var/trembita")
-    .job_queue("workers", Duration::from_secs(60))
-    .manage::<Worker>("workers", 1, WorkerConfig { .. })
-    .job_queue_autoscale::<Worker>("workers", AutoscalePolicy {
-        worker_group: "workers".into(),
-        target_pending_per_worker: 10,
-        min_workers: 1,
-        max_workers: 3,
-        cooldown: Duration::from_secs(30),
-        poll_interval: Duration::from_secs(5),
-    }, WorkerConfig { .. })
+TrembitaApp::from_env()?
+    .manifest(
+        AppManifest::new().jobs([
+            JobOpts::new("workers", Duration::from_secs(60))
+                .consumer(/* ConsumerOpts or #[consumer] */),
+        ]),
+    )
+    .configure(TrembitaConfigure::default().with_data_dir("/var/trembita"))
+    .run()
+    .await?;
 ```
 
-Use [`job_queue_at`](../../crates/trembita/src/builder/cluster/mod.rs) when the redb path is not under `data_dir`.
+Leader-side autoscale hooks live on the in-crate [`TrembitaClusterBuilder`](../../crates/trembita/src/builder/cluster/mod.rs) (`job_queue_at`, membership autoscale) — not product API.
 
 ### Queue-driven autoscale (leader)
 

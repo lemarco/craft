@@ -8,14 +8,16 @@ use std::hint::black_box;
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita::core::{Config, StateMachine};
+use trembita::core::StateMachine;
 use trembita::net::LocalNetwork;
 use trembita::proto::LogIndex;
 use trembita::cluster::{JobQueue, TrembitaCluster};
 use trembita::workspace_showcase::cluster::cluster_builder;
 use trembita::NodeId;
-use trembita_runtime::{InMemoryJobQueue, RedbJobQueue, WorkerId};
+use trembita::jobs::{InMemoryJobQueue, RedbJobQueue};
+use trembita::proto::WorkerId;
 use trembita_benchmarks::{env_u64, queue_payload};
+use trembita_test_support::fast_raft_config_with_seed;
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 
 const STREAM: &str = "bench-jobs";
@@ -41,16 +43,6 @@ impl StateMachine for Empty {
     }
     fn restore(&mut self, _snapshot: &[u8]) -> Result<(), Self::Error> {
         Ok(())
-    }
-}
-
-fn raft_config(seed: u64) -> Config {
-    Config {
-        election_timeout_min: 5,
-        election_timeout_max: 10,
-        heartbeat_interval: 2,
-        seed,
-        ..Default::default()
     }
 }
 
@@ -86,7 +78,7 @@ async fn setup_cluster() -> ClusterBench {
         std::fs::create_dir_all(&data_dir).expect("mkdir data_dir");
         let cluster = cluster_builder(id, Empty)
             .members(ids)
-            .raft_config(raft_config(0x51_0AD ^ id.0))
+            .raft_config(fast_raft_config_with_seed(0x51_0AD ^ id.0))
             .tick_period(Duration::from_millis(10))
             .reconcile_period(Duration::from_millis(20))
             .data_dir(&data_dir)

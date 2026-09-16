@@ -33,7 +33,7 @@ A single Raft group funnels all writes through one leader (risk **R1** in [futur
 | Shard planners | `trembita-core::shard` |
 | Sharded runtime | `trembita-runtime::sharded`, `group_rebalance` |
 | Keyed client | `trembita-client` |
-| Facade builder | `TrembitaClusterBuilder::raft_groups`, `stable_shards`, `data_dir` |
+| In-crate builder / env | `TrembitaClusterBuilder::raft_groups`, `stable_shards`; product `TREMBITA_DATA_DIR` |
 
 Per-group membership: [cluster-membership](cluster-membership.md#per-group-membership-multi-raft).
 
@@ -104,7 +104,7 @@ Six production-oriented capabilities (landed):
 
 | Feature | Implementation |
 |---------|----------------|
-| Reachability tuning + hysteresis | `ReachabilityConfig`, `TrembitaClusterBuilder::reachability()` |
+| Reachability tuning + hysteresis | `ReachabilityConfig`, in-crate `TrembitaClusterBuilder::reachability()` |
 | Phi-accrual detector | `FailureDetectorKind::PhiAccrual` |
 | Snapshot backup / restore | `trembita-ops` CLI — local gzip-tar + `s3://` / `gs://` / `file://` via opendal |
 | Rolling wire upgrade (N/N−1) | `MIN_COMPATIBLE_PROTOCOL_VERSION` + `protocol_version_compatible()` |

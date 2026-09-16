@@ -111,7 +111,7 @@ Behaviour:
 
 **Not** built into `run_leader_loop`: automatic cooldown reset on release, `OncePerTerm` registry — callers implement those inside `tick` when needed (see rustdoc patterns).
 
-### 3. Facade wiring
+### 3. In-crate builder wiring (`pub(crate)`)
 
 ```rust
 TrembitaClusterBuilder::on_leader(

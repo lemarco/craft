@@ -6,13 +6,14 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use trembita::core::{Config, StateMachine};
+use trembita::cluster::TrembitaCluster;
+use trembita::core::StateMachine;
 use trembita::net::LocalNetwork;
 use trembita::proto::LogIndex;
-use trembita::cluster::TrembitaCluster;
 use trembita::workspace_showcase::cluster::cluster_builder;
 use trembita::NodeId;
 use trembita_benchmarks::env_u64;
+use trembita_test_support::fast_raft_config_with_seed;
 
 #[derive(Default)]
 struct Empty;
@@ -37,16 +38,6 @@ impl StateMachine for Empty {
     }
 }
 
-fn raft_config(seed: u64) -> Config {
-    Config {
-        election_timeout_min: 5,
-        election_timeout_max: 10,
-        heartbeat_interval: 2,
-        seed,
-        ..Default::default()
-    }
-}
-
 fn node_dir(base: &Path, id: NodeId) -> std::path::PathBuf {
     base.join(format!("node-{}", id.0))
 }
@@ -63,7 +54,7 @@ async fn spawn_all(
         std::fs::create_dir_all(&data_dir).expect("mkdir");
         let cluster = cluster_builder(id, Empty)
             .members(ids)
-            .raft_config(raft_config(seed ^ id.0))
+            .raft_config(fast_raft_config_with_seed(seed ^ id.0))
             .tick_period(Duration::from_millis(10))
             .reconcile_period(Duration::from_millis(20))
             .data_dir(&data_dir)

@@ -22,22 +22,26 @@ Every process is a QUIC cluster member. Topology comes from `TREMBITA_*` env; do
 
 ```rust,no_run
 use std::time::Duration;
-use trembita::{JobOpts, RunOpts, TrembitaApp};
+use trembita::{AppManifest, JobOpts, TrembitaApp};
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 TrembitaApp::from_env()?
-    .jobs([JobOpts::new("jobs", Duration::from_secs(300)).http_enqueue(true)])
-    .run(RunOpts::from_env()?)
+    .manifest(
+        AppManifest::new().jobs([
+            JobOpts::new("jobs", Duration::from_secs(300)).http_enqueue(true),
+        ]),
+    )
+    .run()
     .await?;
 # Ok(())
 # }
 ```
 
-See [getting-started.md](../../docs/getting-started.md) and runnable [examples/](../../examples/README.md).
+See [getting-started.md](../../docs/getting-started.md), [env.md](../../docs/env.md), and runnable [examples/](../../examples/README.md).
 
 ## Runtime embedding (`trembita::cluster`)
 
-Handles, enqueue options, saga journals, and TLS helpers: [`trembita::cluster`](src/cluster.rs). Product apps use [`TrembitaApp`](#product-quickstart-trembitaapp) only.
+Handles, enqueue options, saga journals, and TLS helpers: [`trembita::cluster`](src/cluster.rs). **Cluster assembly** (`TrembitaCluster::builder`) is not public — product apps use [`TrembitaApp`](#product-quickstart-trembitaapp) only ([public-api ADR](../../docs/decisions/public-api-1.0.md)).
 
 ## Features
 

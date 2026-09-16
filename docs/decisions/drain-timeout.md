@@ -19,17 +19,11 @@ User chose **Option C — configurable** with a sensible default.
 
 | Source | Key | Example |
 |--------|-----|---------|
-| Builder | `.drain_timeout(Duration)` | `Duration::from_secs(120)` |
 | Environment | `TREMBITA_DRAIN_TIMEOUT` | `90s`, `2m`, `120` (seconds) |
+| Reference `trembita-node` | via [`NodeConfig`](../crates/trembita-tools/src/node/config.rs) → [`AppConfig`](../crates/trembita/src/env_config.rs) | Same env var |
+| In-crate cluster builder | `TrembitaClusterBuilder::drain_timeout` | Framework / integration tests only (`pub(crate)`) |
 
-Builder overrides env when both set.
-
-```rust
-TrembitaCluster::builder()
-    .drain_timeout(Duration::from_secs(60)) // default if omitted
-    .spawn()
-    .await?;
-```
+Product apps read **`TREMBITA_DRAIN_TIMEOUT`** through [`TrembitaApp::from_env`](../../crates/trembita/src/app/runtime.rs) / [`from_config`](../../crates/trembita/src/app/runtime.rs) (default **60s** when unset).
 
 ### Behavior
 

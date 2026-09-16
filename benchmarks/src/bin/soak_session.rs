@@ -10,13 +10,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use trembita::runtime::{UserActor, actor};
-use trembita::core::{Config, StateMachine};
+use trembita::core::StateMachine;
 use trembita::net::LocalNetwork;
 use trembita::proto::LogIndex;
 use trembita::cluster::TrembitaCluster;
 use trembita::workspace_showcase::cluster::cluster_builder;
 use trembita::NodeId;
 use trembita_benchmarks::env_u64;
+use trembita_test_support::fast_raft_config_with_seed;
 
 static HANDLED: AtomicU64 = AtomicU64::new(0);
 
@@ -70,16 +71,6 @@ impl StateMachine for Empty {
     }
     fn restore(&mut self, _snapshot: &[u8]) -> Result<(), Self::Error> {
         Ok(())
-    }
-}
-
-fn raft_config(seed: u64) -> Config {
-    Config {
-        election_timeout_min: 5,
-        election_timeout_max: 10,
-        heartbeat_interval: 2,
-        seed,
-        ..Default::default()
     }
 }
 
@@ -148,7 +139,7 @@ async fn main() {
     for &id in &ids {
         let cluster = cluster_builder(id, Empty)
             .members(ids)
-            .raft_config(raft_config(base_seed ^ id.0))
+            .raft_config(fast_raft_config_with_seed(base_seed ^ id.0))
             .tick_period(Duration::from_millis(10))
             .reconcile_period(Duration::from_millis(20))
             .directory_publish_period(Duration::from_millis(20))
@@ -182,7 +173,7 @@ async fn main() {
 
         let cluster = cluster_builder(victim, Empty)
             .members(ids)
-            .raft_config(raft_config(base_seed ^ victim.0 ^ rounds))
+            .raft_config(fast_raft_config_with_seed(base_seed ^ victim.0 ^ rounds))
             .tick_period(Duration::from_millis(10))
             .reconcile_period(Duration::from_millis(20))
             .directory_publish_period(Duration::from_millis(20))

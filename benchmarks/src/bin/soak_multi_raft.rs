@@ -8,12 +8,12 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use trembita::cluster::TrembitaCluster;
 use trembita::workspace_showcase::cluster::cluster_builder;
-use trembita::core::{Config, RaftGroupId, StableShardRouter, StateMachine, place_shard};
+use trembita::core::{RaftGroupId, StableShardRouter, StateMachine, place_shard};
 use trembita::net::{LocalNetwork, Transport, send_client_request};
 use trembita::proto::{ClientRequest, ClientResponse, LogIndex, NodeId};
 use trembita_benchmarks::TinyRng;
+use trembita_test_support::fast_raft_config_with_seed;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -84,16 +84,6 @@ fn env_u64(key: &str, default: u64) -> u64 {
         .unwrap_or(default)
 }
 
-fn raft_config(seed: u64) -> Config {
-    Config {
-        election_timeout_min: 5,
-        election_timeout_max: 10,
-        heartbeat_interval: 2,
-        seed,
-        ..Default::default()
-    }
-}
-
 fn route_key(seed: u64, round: u64) -> Vec<u8> {
     let groups = [RaftGroupId(0), RaftGroupId(1)];
     let router = StableShardRouter::new(64);
@@ -124,7 +114,7 @@ async fn main() {
     for &id in &ids {
         let cluster = cluster_builder(id, KvMachine::default())
             .members(ids)
-            .raft_config(raft_config(base_seed ^ id.0))
+            .raft_config(fast_raft_config_with_seed(base_seed ^ id.0))
             .tick_period(Duration::from_millis(10))
             .shard_count(64)
             .group_replication_factor(64)

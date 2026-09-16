@@ -41,7 +41,7 @@ Membership changes always go through the Raft log — HTTP routes are **entry po
 
 ### Seed-set discovery
 
-- `TrembitaClusterBuilder::join_seeds` / `trembita::discovery::Seed` — ordered candidate list; tries each in turn.
+- `TREMBITA_JOIN_SEEDS` / [`AppConfig::join_seeds`](../../crates/trembita/src/env_config.rs) / `trembita::discovery::Seed` — ordered candidate list; tries each in turn (in-crate builder mirrors the same for tests).
 - `trembita::discovery::resolve_dns_seeds` — ordinal DNS names (`node-0.cluster`, …) → seed set.
 - Peer addresses converge via `/cluster/peers` anti-entropy gossip.
 
@@ -94,7 +94,7 @@ pub enum LeaveResponse {
 | `NotMember` | `node_id` not in committed voters or learners |
 | `LastMember` | Would empty the voter set |
 
-**Facade:** `TrembitaClusterBuilder::allow_leave`, `TrembitaCluster::request_leave`, `TrembitaCluster::leave()`. Actor migration before leave is the caller's job ([cross-node-actors](cross-node-actors.md), [drain-timeout](drain-timeout.md)). `trembita-node` with `TREMBITA_GRACEFUL_LEAVE=1` calls `leave()` on `SIGINT`.
+**Product:** `TREMBITA_ALLOW_LEAVE`, `TREMBITA_GRACEFUL_LEAVE` on [`TrembitaApp::run`](../../crates/trembita/src/app/builder.rs) / [`RunOpts`](../../crates/trembita/src/app_opts.rs). **Runtime:** `TrembitaCluster::request_leave`, `TrembitaCluster::leave()`. Actor migration before leave is the caller's job ([cross-node-actors](cross-node-actors.md), [drain-timeout](drain-timeout.md)). [`trembita-node`](../../crates/trembita-tools/src/bin/node.rs) uses the product shutdown path when `TREMBITA_GRACEFUL_LEAVE=1`.
 
 Multi-Raft routes cluster leave to **Meta-Raft** (or group 0 in single-group mode); per-group sync removes the node from shard groups.
 

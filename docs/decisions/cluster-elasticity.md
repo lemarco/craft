@@ -48,29 +48,22 @@ Dev mode (`--dev-multi-workers`): `spawn_pool`, `scale_local` on one machine.
 
 Parallelism on a VPS lives **inside** the single worker via `ResourceProfile::UseAllAvailable` and `VpsResources` — not multiple worker actors.
 
-```rust
-TrembitaCluster::builder()
-    .resource_profile(ResourceProfile::UseAllAvailable)
-    .auto_workers([AutoWorkerSpec::new("workers", WorkerConfig::default)])
-```
+Product apps register workers in [`AppManifest`](../../crates/trembita/src/app/manifest.rs) (`.workers`, `.actor_groups`); the runtime spawns them on each node after join ([cross-node-actors](cross-node-actors.md)). Tune compute via [`ResourceProfile`](../../crates/trembita-runtime/src/resources.rs) / [`WorkloadOpts`](../../crates/trembita-jobs/src/workload.rs) on worker opts.
 
 Migration on node leave targets a node **without** an existing worker for that name.
 
 ## Auto-spawn on join
 
-**Framework auto-spawns configured workers when a node becomes a cluster member.**
+**Framework auto-spawns manifest-registered workers when a node becomes a cluster member.**
 
 ```rust
-TrembitaCluster::builder()
-    .auto_workers([
-        AutoWorkerSpec {
-            name: "workers",
-            factory: |resources| WorkerConfig::with_resources(resources),
-        },
-    ])
-    .spawn()
+TrembitaApp::from_env()?
+    .manifest(AppManifest::new().workers([WorkerOpts::new("workers")]))
+    .run()
     .await?;
 ```
+
+Low-level [`auto_workers`](../../crates/trembita/src/builder/cluster/config.rs) on `TrembitaClusterBuilder` is **`pub(crate)`** — integration / showcase tests only.
 
 | Event | Framework action |
 |-------|------------------|

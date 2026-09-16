@@ -13,7 +13,8 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 
 | Area | Types | Notes |
 |------|-------|-------|
-| App | `TrembitaApp`, `TrembitaAppBuilder`, `TrembitaConfigure`, `JobOpts`, `WorkerOpts`, `WorkerScale`, `QueueOpts`, `CronOpts`, `ActorGroupOpts`, `GatewayOpts`, `RunOpts` | Primary entry; cluster join/membership via `TREMBITA_*` + [`from_env`](../../crates/trembita/src/app/runtime.rs) — not builder setters |
+| App | `TrembitaApp`, `TrembitaAppBuilder`, `AppManifest`, `TrembitaConfigure`, `JobOpts`, `WorkerOpts`, `WorkerScale`, `QueueOpts`, `CronOpts`, `ActorGroupOpts`, `GatewayOpts`, `RunOpts` | Primary entry; cluster join/membership via `TREMBITA_*` + [`from_env`](../../crates/trembita/src/app/runtime.rs) / [`from_config`](../../crates/trembita/src/app/runtime.rs) + [`.manifest`](../../crates/trembita/src/app/manifest.rs) — not cluster builder setters |
+| Env (embedders) | [`trembita::env::AppConfig`](../../crates/trembita/src/env.rs), `EnvOverrides`, `app_config_from_env` | Parse once in `main`, then `TrembitaApp::from_config(cfg)` ([`trembita-node`](../../crates/trembita-tools/src/bin/node.rs) maps its own `NodeConfig` → `AppConfig`) |
 | App runtime | `node_id`, `control`, `registry`, `supervisor`, `enqueue`, `cast`, `ask`, `shutdown_graceful` | Product control plane on `TrembitaApp` |
 | Identity | `NodeId`, `Security`, `PeerDirectory`, cert reload helpers | Multi-node wiring |
 | Jobs | `JobQueue`, `EnqueueOptions`, `run_queue_consumer`, `ClusterJobQueue` | Via `TrembitaApp::enqueue` |
@@ -28,7 +29,7 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 |------|-------|-------|
 | Cluster | `trembita::cluster::{TrembitaCluster, StartError, …}` | Runtime handle, queues, journals — not the product builder |
 | Client | `RemoteClient`, `run_saga`, `run_keyed_saga`, `KeyedClient` | Re-exported `trembita::client` |
-| Multi-Raft | `propose_keyed`, `add_raft_groups`, `RaftGroupsView` | Builder flags |
+| Multi-Raft | `propose_keyed`, `add_raft_groups`, `RaftGroupsView` | Runtime on [`TrembitaCluster`](../../crates/trembita/src/cluster_handle/cluster.rs); product boot via env + [`TrembitaConfigure`](../../crates/trembita/src/configure.rs) |
 | Saga / 2PC journals | `MetaRaftSagaJournal`, `CompositeSagaJournal`, `StoreTwoPhaseJournal` | Ops / recovery |
 | HTTP product | `Gateway`, `RouteTable`, `GatewayOpts` (`http-jobs` feature) | Gateway layer — see [facade](facade.md) |
 | Optional adapters | `PgBacklog` (`external-backlog`), `PgEventOutboxSource` (`domain-outbox`), `RedisStore` (`redis-store`) | Feature-gated re-exports from facade |
@@ -37,9 +38,10 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 
 | Item | Use instead |
 |------|-------------|
-| Custom SM cluster assembly | Not exported — product uses `TrembitaApp` + `TREMBITA_*`; `TrembitaCluster::builder` is `#[doc(hidden)]` for workspace tests only |
-| `TrembitaApp::cluster` / `into_cluster` | Not public — use `TrembitaApp` product APIs or `trembita::cluster` handles |
-| `TrembitaAppBuilder::inner_mut` | `#[doc(hidden)]` — tests only |
+| Custom SM cluster assembly | **Removed from public API** — product uses [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) + empty default SM + `TREMBITA_*`. Custom state machines: maintainer [`workspace_showcase`](../../crates/trembita/src/workspace_showcase/mod.rs) + showcase bins, or in-crate [`integration`](../../crates/trembita/src/integration/mod.rs) tests via `pub(crate)` [`TrembitaClusterBuilder`](../../crates/trembita/src/builder/mod.rs). Benchmarks/soaks use [`workspace_showcase::cluster::cluster_builder`](../../crates/trembita/src/workspace_showcase/cluster.rs). |
+| `TrembitaCluster::builder` / exported `TrembitaClusterBuilder` | **Removed** — not on the facade |
+| `TrembitaApp::cluster` / `into_cluster` | Not public — use `TrembitaApp` product APIs or `trembita::cluster` runtime handles |
+| `TrembitaAppBuilder::inner_mut` | `#[doc(hidden)]` — in-crate tests only |
 | Cluster join / static members / voter replacement | `TREMBITA_*` env on [`TrembitaApp::from_env`](../../crates/trembita/src/app/runtime.rs) — not builder setters |
 
 ## Out of semver scope

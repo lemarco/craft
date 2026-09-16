@@ -2,6 +2,47 @@
 
 [`TrembitaApp::from_env()`](../crates/trembita/src/app/runtime.rs) and [`RunOpts::from_env()`](../crates/trembita/src/app_opts.rs) read a **small product surface**. Everything else is optional (jobs, auth) or **advanced / ops-only** (static clusters, `trembita-node`, e2e).
 
+## Product boot chain
+
+Typical product binary (see [getting-started.md](getting-started.md), [examples/](../examples/README.md)):
+
+```rust
+use trembita::{AppManifest, TrembitaApp, TrembitaConfigure};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    trembita::init_tracing();
+    TrembitaApp::from_env()?
+        .manifest(app_manifest()) // `.jobs`, `.workers`, `.capabilities`, …
+        .gateway_routes(/* optional cap routes */)
+        .configure(
+            TrembitaConfigure::default()
+                .with_data_dir(/* or rely on TREMBITA_DATA_DIR */)
+                .with_local_gateway_apis(), // dev/tests; prod often uses default ops from env
+        )
+        .run()
+        .await
+}
+```
+
+When `main` already parsed env (embedder, [`trembita-node`](../crates/trembita-tools/src/bin/node.rs), tests):
+
+```rust
+use trembita::{AppManifest, RunOpts, TrembitaApp};
+use trembita::env::AppConfig;
+
+let cfg: AppConfig = /* app_config_from_env()? or NodeConfig::into_app_config */ ;
+let manifest = app_manifest();
+TrembitaApp::from_config(cfg)
+    .manifest(manifest)
+    .run_with(RunOpts::for_manifest(&cfg, &manifest))
+    .await?;
+```
+
+Register domain wiring in [`AppManifest`](../crates/trembita/src/app/manifest.rs) — not duplicate `.jobs()` / `.queue()` on the builder for product code ([public-api-1.0](decisions/public-api-1.0.md)).
+
+**Custom Raft state machines** are not part of this path — see [public-api-1.0](decisions/public-api-1.0.md) (`workspace_showcase` / in-crate `integration` only).
+
 ## Product apps (typical deploy)
 
 | Variable | Required | Purpose |
@@ -91,9 +132,9 @@ Also accepted as `TREMBITA_GATEWAY_TOKEN` (legacy name). Unset = open product HT
 | Binary | Notes |
 |--------|--------|
 | Product app | Table above |
-| [`trembita-node`](../crates/trembita-tools/src/bin/node.rs) | May still use `TREMBITA_PEERS` + explicit node id for KV demos |
+| [`trembita-node`](../crates/trembita-tools/src/bin/node.rs) | Reference **product** node (`TrembitaApp` + empty SM): may use `TREMBITA_NODE_ID`, `TREMBITA_PEERS`, `TREMBITA_DISCOVERY`, `--join-seed` — **not** for normal app deploys |
 | [`dev-client`](../crates/trembita-tools/src/bin/dev-client.rs) | Client tooling; requires `TREMBITA_PEERS` |
 
-Run `trembita doctor` on scaffold projects — it checks `manifest.rs` ↔ `consumers/` wiring, gateway merges in `app.rs`, and legacy keys in `deploy/.env.example`. Before deploy, use **`trembita doctor --preflight`**: stricter checks for `TREMBITA_LISTEN` / `DATA_DIR` / `CERT_DIR`, compose join pattern (no `TREMBITA_NODE_ID`), default ops gateway wiring, and local `deploy/certs/ca.pem` when present.
+Run `trembita doctor` on scaffold projects — it checks `manifest.rs` ↔ `consumers/` wiring, gateway merges in `app.rs`, legacy keys in `deploy/.env.example`, and **removed APIs** (`TrembitaCluster::builder`, old gateway toggles). Before deploy, use **`trembita doctor --preflight`**: stricter checks for `TREMBITA_LISTEN` / `DATA_DIR` / `CERT_DIR`, compose join pattern (no `TREMBITA_NODE_ID`), default ops gateway wiring, and local `deploy/certs/ca.pem` when present.
 
 See also: [getting-started.md](getting-started.md), [certs.md](certs.md), [unified-listener](decisions/unified-listener.md).

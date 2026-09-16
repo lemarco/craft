@@ -39,7 +39,7 @@ Details below ↓
 
 - Pure Raft FSM (`trembita-core`) — election, replication, joint-consensus membership, snapshots, compaction
 - ReadIndex linearizable reads, leader lease-read fast path, follower linearizable reads
-- Durable log via redb (`trembita-storage`); per-group `group-<id>.redb` with `TrembitaClusterBuilder::data_dir`
+- Durable log via redb (`trembita-storage`); per-group `group-<id>.redb` with `TREMBITA_DATA_DIR` / [`TrembitaConfigure::with_data_dir`](../crates/trembita/src/configure.rs)
 
 ### Network & security
 

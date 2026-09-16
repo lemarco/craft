@@ -31,7 +31,7 @@ Cluster default remains **60s** ([`DEFAULT_DRAIN_TIMEOUT`](../../crates/trembita
 [`ActorRegistry::set_group_drain_timeout`] overrides per group; [`stop_graceful`]
 uses override when set, else the caller's default (facade:
 [`TrembitaCluster::drain_timeout`](../../crates/trembita/src/cluster.rs),
-[`TrembitaClusterBuilder::drain_timeout`](../../crates/trembita/src/builder/cluster/mod.rs),
+[`TREMBITA_DRAIN_TIMEOUT`](../../crates/trembita/src/env_config.rs) / in-crate [`TrembitaClusterBuilder::drain_timeout`](../../crates/trembita/src/builder/cluster/mod.rs),
 `TREMBITA_DRAIN_TIMEOUT` in `trembita-node`).
 
 ### Linearizable ask (optional)

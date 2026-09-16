@@ -962,6 +962,16 @@ fn scan_deprecated_source(content: &str, path: &str, report: &mut DoctorReport) 
             "cluster admin listener removed — use spawn_cluster_ops_http / OpsApi route table",
             Level::Warn,
         ),
+        (
+            "TrembitaCluster::builder",
+            "TrembitaCluster::builder removed — use TrembitaApp::from_env / from_config + AppManifest (see docs/env.md)",
+            Level::Error,
+        ),
+        (
+            "TrembitaClusterBuilder::new",
+            "low-level cluster builder is not public — product: TrembitaApp; custom SM: workspace_showcase / integration tests only",
+            Level::Warn,
+        ),
     ];
     for (needle, message, level) in flags {
         if !content.contains(needle) {

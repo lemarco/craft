@@ -58,19 +58,11 @@ use trembita_macros::{consumer, consumer_json};
 
 Macros are re-exported from `trembita` (`consumer!`, `consumer_json!`); a direct `trembita-macros` dependency is optional.
 
-### Main cluster type
+### Main product entry
 
-Public builder type renamed to match the product:
+Product apps boot via **`TrembitaApp::from_env()`** / **`from_config(AppConfig)`** + **[`AppManifest`](../../crates/trembita/src/app/manifest.rs)** ([env.md](../env.md)).
 
-```rust
-TrembitaCluster::builder()
-    .node_id(1)
-    .listen("0.0.0.0:443")
-    .spawn()
-    .await?;
-```
-
-Use **`TrembitaCluster`** (via `trembita::cluster`) for custom state machines and low-level control.
+Use **`trembita::cluster::TrembitaCluster`** for **runtime handles** (queues, leave, client) after boot — not for public cluster assembly. **`TrembitaCluster::builder`** and exported **`TrembitaClusterBuilder`** were removed; custom SM wiring is **`workspace_showcase`** / in-crate **`integration`** only ([public-api-1.0](public-api-1.0.md)).
 
 ### Why `trembita`
 

@@ -48,13 +48,20 @@ pub trait ActorStateStore: Send + Sync {
     async fn delete(&self, key: &str) -> Result<(), StoreError>;
 }
 
-TrembitaCluster::builder()
-    .data_dir("/var/lib/trembita")
-    .actor_state_store(store)  // auto: RedbActorStateStore when `.data_dir()` is set
-    .auto_workers([...])
+TrembitaApp::from_env()?
+    .manifest(
+        AppManifest::new()
+            .workers(/* stateful workers */),
+    )
+    .configure(
+        TrembitaConfigure::default()
+            .with_data_dir("/var/lib/trembita"), // auto RedbActorStateStore when unset explicit store
+    )
+    .run()
+    .await?;
 ```
 
-Inject into actors via builder / `WorkerCtx` (see [stateful-workers](../scenarios/stateful-workers.md)).
+Inject into actors via `WorkerCtx` / capabilities (see [stateful-workers](../scenarios/stateful-workers.md)). Explicit [`actor_state_store`](../../crates/trembita/src/builder/cluster/config.rs) remains on the in-crate cluster builder for framework tests.
 
 ### Crash and migration
 

@@ -70,31 +70,32 @@ See [workload-governor](workload-governor.md). Subprocess / shell-out CPU: [exte
 
 ### Unified product surface
 
-[`TrembitaApp`](../../crates/trembita/src/app/mod.rs) wraps the same runtime as `TrembitaClusterBuilder`:
+[`TrembitaApp`](../../crates/trembita/src/app/mod.rs) is the product entry; it boots the same runtime as the in-crate `TrembitaClusterBuilder` (not exported):
 
 ```rust
 use std::time::Duration;
-use trembita::{TrembitaApp, GatewayOpts, JobOpts, RunOpts, consumer};
+use trembita::{AppManifest, JobOpts, TrembitaApp, TrembitaConfigure, consumer};
 
 #[consumer("emails")]
 async fn send_email(_payload: &[u8]) -> Result<(), ()> {
     Ok(())
 }
 
-TrembitaApp::builder()
-    .data_dir("/var/lib/trembita")
-    .jobs([JobOpts::new("emails")
-        .lease(Duration::from_secs(300))
-        .consumer(&SendEmailConsumer)
-        .http_enqueue(true)])
-    .gateway(GatewayOpts::from_env()?) // TREMBITA_LISTEN=0.0.0.0:8090
-    .run(RunOpts::default().with_wait_queue("emails"))
+TrembitaApp::from_env()?
+    .manifest(
+        AppManifest::new().jobs([
+            JobOpts::new("emails")
+                .lease(Duration::from_secs(300))
+                .consumer(&SendEmailConsumer)
+                .http_enqueue(true),
+        ]),
+    )
+    .configure(TrembitaConfigure::default().with_data_dir("/var/lib/trembita"))
+    .run()
     .await?;
 ```
 
-Declarative [`.jobs()`](../../crates/trembita/src/job_opts.rs) registers queue + consumer (+ optional HTTP enqueue). [`.workers()`](../../crates/trembita/src/worker_opts.rs) registers actor groups with explicit [`WorkerScale`](../../crates/trembita/src/worker_opts.rs) (`Fixed` / `PerNode` / queue `Auto`). Alternate API: [`.actors()`](../../crates/trembita/src/app/mod.rs) + [`ActorGroupOpts`](../../crates/trembita/src/actor_group.rs) ([examples/](../../examples/README.md)).
-
-**Scaffolded product apps** ([`trembita new`](framework-conventions.md)) collect the same opts in [`manifest.rs`](../../crates/trembita/src/app/manifest.rs) via [`AppManifest`](../../crates/trembita/src/app/manifest.rs) and [`.manifest()`](../../crates/trembita/src/app/builder.rs) — see [framework-conventions](framework-conventions.md).
+Register jobs, workers, topics, and workflows on [`AppManifest`](../../crates/trembita/src/app/manifest.rs) ([`.manifest()`](../../crates/trembita/src/app/builder.rs)) — see [framework-conventions](framework-conventions.md) and [env.md](../env.md).
 
 ### Scenario composition
 
