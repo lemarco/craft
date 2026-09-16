@@ -1,4 +1,4 @@
-//! [`TrembitaApp`] and gateway helpers for facade integration tests (not published).
+//! `TrembitaApp` and gateway helpers for facade integration tests (not published).
 
 #![allow(missing_docs)]
 
