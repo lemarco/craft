@@ -440,7 +440,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     /// ([`start_quic`](Self::start_quic)).
     ///
     /// ```no_run
-    /// use trembita::net::{TrafficClass, TrafficPolicy};
+    /// use trembita_net::{TrafficClass, TrafficPolicy};
     /// let policy = TrafficPolicy::unlimited()
     ///     .with_rate(TrafficClass::Client, 5_000.0, 500.0)
     ///     .with_rate(TrafficClass::Actor, 20_000.0, 2_000.0);
