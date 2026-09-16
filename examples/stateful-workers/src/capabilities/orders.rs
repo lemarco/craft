@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use trembita::actor_store::{store_get, store_set};
-use trembita::{cap_handler, cap_register_chain, CapError, CapGroup, CapManifest, Route};
+use trembita::{cap_handler, cap_register_chain, CapError, CapGroup, CapManifest};
 use trembita_tools::showcase_common::data_dir;
 
 use crate::debug;
@@ -49,16 +49,7 @@ pub struct ProcessAck {
 }
 
 #[cap_handler(group = "orders", key = "order_id")]
-fn process_order(
-    msg: ProcessOrder,
-    state: &mut OrdersState,
-) -> Result<ProcessAck, CapError> {
-    tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current().block_on(process_order_async(msg, state))
-    })
-}
-
-async fn process_order_async(
+async fn process_order(
     msg: ProcessOrder,
     state: &mut OrdersState,
 ) -> Result<ProcessAck, CapError> {

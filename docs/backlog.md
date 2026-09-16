@@ -28,7 +28,8 @@ Epics **B-01 … B-18** are **shipped** (see [Shipped epics](#shipped-epics-arch
 | B-22 | Greenfield wire — gateway-only product ingress | ✅ | [ADR](decisions/capability-greenfield-wire.md) Accepted |
 | B-23 | Capability migration story (showcase cleanup) | ✅ | [B-23](#b-23--capability-migration-story-) |
 | B-24 | Capability parity — no regression vs actors | ✅ | [B-24](#b-24--capability-parity--no-regression) |
-| B-25 | Capability registration DX — `cap_handler` routes + register chain | ✅ | [B-25](#b-25--capability-registration-dx) |
+| B-25 | Capability registration DX — `cap_handler` + register chain | ✅ | [B-25](#b-25--capability-registration-dx) |
+| B-26 | Capability DX wave 2 — async handler, group macro, typed session mount | open | [B-26](#b-26--capability-dx-wave-2) |
 
 
 
@@ -41,9 +42,21 @@ For new feature epics, use the next **B-NN** id and link the scenario + ADR.
 
 | Subtask | Description | Status |
 | ------- | ----------- | ------ |
-| B-25a | `#[cap_handler(routes(…))]` + `{handler}_register` | ✅ |
+| B-25a | `#[cap_handler]` + `{handler}_register` (routes at call site, not on macro) | ✅ |
 | B-25b | `cap_register_chain!` + `CapOp::key_cap` | ✅ |
 | B-25c | Showcases + scaffold on register chain (no manual `CapOp::new`) | ✅ |
+
+### B-26 — Capability DX wave 2
+
+**Priority:** P2  
+**ADR:** [capability-dx](decisions/capability-dx.md)
+
+| Subtask | Description | Status |
+| ------- | ----------- | ------ |
+| B-26a | `#[cap_handler]` on `async fn` → `CapOp::for_request_async` | ✅ |
+| B-26b | `cap_group!` — one macro for group state + register chain | open |
+| B-26c | Typed sticky websocket mount (`mount_sticky_websocket::<Req>`) | open |
+| B-26d | Optional queue/topic name convention `{group}.{op}` | open |
 
 ### B-21 — Capability DX (product API)
 

@@ -77,14 +77,18 @@ pub fn cap_request(attr: TokenStream, item: TokenStream) -> TokenStream {
     cap_request::expand_cap_request(args, &input).into()
 }
 
-/// Implement [`trembita::CapRequest`](trembita::CapRequest) from a sync capability handler.
+/// Implement [`trembita::CapRequest`](trembita::CapRequest) from a capability handler (sync or `async fn`).
 ///
 /// Infers the request type (first parameter) and `Reply` from `Result<Reply, CapError>`.
-/// Wire `OP` is always snake_case of the request struct name.
+/// Wire `OP` is always snake_case of the request struct name. Async handlers register via
+/// [`CapOp::for_request_async`](trembita::CapOp::for_request_async).
 ///
 /// ```ignore
 /// #[cap_handler(group = "chat")]
 /// fn append(msg: Append, state: &mut State) -> Result<AppendAck, CapError> { … }
+///
+/// #[cap_handler(group = "orders")]
+/// async fn process_order(msg: ProcessOrder, state: &mut State) -> Result<Ack, CapError> { … }
 ///
 /// cap_register_chain!(CapGroup::<State>::for_cap::<Append>().per_node(), append_register)
 /// ```

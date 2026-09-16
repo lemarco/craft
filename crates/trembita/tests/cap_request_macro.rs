@@ -30,6 +30,16 @@ fn keyed_run(msg: Keyed, _state: &mut ()) -> Result<DemoAck, CapError> {
     })
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct AsyncDemoReq {
+    n: u32,
+}
+
+#[cap_handler(group = "demo")]
+async fn demo_async(msg: AsyncDemoReq, _state: &mut ()) -> Result<DemoAck, CapError> {
+    Ok(DemoAck { ok: msg.n > 0 })
+}
+
 #[cap_request(group = "orphan", reply = DemoAck)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct OrphanDto {
@@ -53,4 +63,10 @@ fn cap_handler_key_field() {
 #[test]
 fn cap_request_for_dto_without_handler() {
     assert_eq!(OrphanDto::OP, "orphan_dto");
+}
+
+#[test]
+fn cap_handler_async_compiles() {
+    assert_eq!(AsyncDemoReq::OP, "async_demo_req");
+    let _ = demo_async_register;
 }

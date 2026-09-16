@@ -27,7 +27,7 @@ registry + adapters**.
 | Term | Meaning |
 |------|---------|
 | **Group** | Named pool on the cluster (`"orders"`) — routing, optional shared `State`, one internal host |
-| **Op** | One operation: request struct, reply type, handler fn, metadata (routes, key, queue stream) |
+| **Op** | One operation: request struct, reply type, handler fn, metadata (optional key, queue stream on group) |
 | **Route** | Invocation mode for an op (inline, queued, …) — chosen at **call site**, not baked into the op definition |
 | **OpCtx** | Per-invocation context: `&TrembitaApp`, actor store, deps, tracing (no `UserActor` in app code) |
 
@@ -74,38 +74,33 @@ pub fn run(msg: Fulfill, state: &mut OrdersState) -> Result<Receipt, CapError> {
 }
 ```
 
-Registration (routes live on the handler; no duplicate `CapOp::new`):
+Registration (`{handler}_register` from the attribute; wire `OP` is never duplicated):
 
 ```rust
 CapManifest::new().group(trembita::cap_register_chain!(
-    CapGroup::<OrdersState>::for_cap::<Fulfill>().instances(1),
+    CapGroup::<OrdersState>::for_cap::<Fulfill>()
+        .instances(1)
+        .queue_stream("orders"), // required when callers use Route::Queued
     run_register,
 ))
 ```
 
-(`Reply` from `Result<…>`; `OP` = snake_case of request struct (`ProcessOrder` → `process_order`); `key = "field"` → `CapOp::key_cap`. DTO-only: [`#[cap_request]`](../../crates/trembita-macros/src/lib.rs).)
+Macro rules: `Reply` from `Result<…>`; `OP` = snake_case of the request struct (`ProcessOrder` → `process_order`);
+`key = "field"` → `CapOp::key_cap` in `{handler}_register`. DTO-only requests: [`#[cap_request]`](../../crates/trembita-macros/src/lib.rs).
 
-Registration (manifest) — **data, no attribute DSL on the handler**:
+**Async handlers** — same attribute; registers via [`CapOp::for_request_async`](../../crates/trembita/src/capability/op.rs):
 
 ```rust
-// manifest.rs
-use trembita::capability::{CapGroup, CapManifest, Route};
-
-pub fn build() -> AppManifest {
-    let caps = CapManifest::new().group(
-        CapGroup::new("orders")
-            .state::<OrdersState>()
-            .op::<Fulfill, Receipt>(capabilities::orders::fulfill::run)
-            .routes([Route::Inline, Route::Queued])
-            .key(|m: &Fulfill| m.id.0.to_string())
-            .queue_stream("orders"), // stream name when Route::Queued
-    );
-
-    AppManifest::new()
-        .capabilities(caps)
-        .jobs([/* optional: streams not tied to a cap group */])
+#[cap_handler(group = "orders", key = "order_id")]
+async fn process_order(msg: ProcessOrder, state: &mut OrdersState) -> Result<ProcessAck, CapError> {
+    // await store, HTTP, …
+    todo!()
 }
 ```
+
+Use `(Req, OpCtx<'_>, &mut State)` when the handler needs `ctx.app()`. Short two-parameter form `(Req, &mut State)` is allowed for sync and async (macro adds `OpCtx` at the registration boundary).
+
+**Advanced:** manual [`CapOp::new`](../../crates/trembita/src/capability/op.rs) / `.op::<Req, Reply>(fn)` on [`CapGroup`](../../crates/trembita/src/capability/group.rs) remains for integration tests and custom wiring — not the product authoring path.
 
 ### Calling — route at the call site
 
@@ -198,7 +193,7 @@ enabled for tooling until B-22 removes it from default gateway presets.
 - Transparent “one function, same guarantees everywhere” — routes differ by design
 - Replacing Raft SM for authoritative domain data
 - gRPC / tarpc — keep HTTP/postcard + in-process
-- Mandatory proc-macro DSL (`cap! { ... }`) in MVP — builder registration first
+- Mandatory proc-macro DSL (`cap! { ... }`) — rejected; [`#[cap_handler]`](../../crates/trembita-macros/src/lib.rs) + manifest chain is the product path
 
 ## MVP acceptance (B-21 wave 1)
 

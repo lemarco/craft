@@ -268,7 +268,8 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-09 | Gateway capability adapters (`cap_fire`, `cap_invoke`) | `trembita/src/gateway/cap_handlers.rs`, `trembita/tests/gateway_cap_http.rs` |
 | 2026-09 | B-21 complete — QueuedWait/Scheduled/Session, scaffold `capabilities/` | `trembita/src/capability/`, `trembita/tests/capability.rs`, `trembita-cli/templates/…/capabilities/` |
 | 2026-09 | B-22 greenfield + `Route::Event` topic ingress / `publish_event` | `trembita/src/capability/event.rs`, `trembita/src/capability/call.rs`, `trembita/tests/capability.rs` (`capability_event_subscription_runs_inline`), `examples/stateful-workers/` |
-| 2026-09 | B-25 — `cap_handler` routes, `{handler}_register`, `cap_register_chain!` | `trembita-macros/src/cap_handler.rs`, `trembita/tests/cap_request_macro.rs`, `examples/*/capabilities/` |
+| 2026-09 | B-25 — `cap_handler`, `{handler}_register`, `cap_register_chain!` | `trembita-macros/src/cap_handler.rs`, `trembita/tests/cap_request_macro.rs`, `examples/*/capabilities/` |
+| 2026-09 | B-26a — `#[cap_handler]` on `async fn` | `trembita-macros/src/cap_handler.rs`, `examples/stateful-workers/src/capabilities/orders.rs` |
 | 2026-09 | B-22/B-23 scaffold greenfield (`without_actors_api`, `cap_invoke` `/ping`) | `trembita-cli/src/scaffold/render.rs`, `trembita-cli/tests/scaffold.rs`, `trembita-cli/templates/trembita-app/` |
 | 2026-09 | B-24 parity matrix + realtime cap session | `docs/scenarios/capability-parity.md`, `examples/realtime/src/capabilities/` |
 | 2026-09 | B-24d realtime scaffold (`chat` cap + sticky WS) | `crates/trembita-cli/src/scaffold/render.rs`, `trembita-cli/tests/scaffold.rs` |
