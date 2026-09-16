@@ -1,13 +1,16 @@
 [package]
 name = "trembita-assembly"
-description = "Internal cluster node assembly for the trembita workspace (not published)."
+description = "Cluster boot and TrembitaClusterBuilder for trembita (advanced; prefer the trembita facade)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-publish = false
+categories.workspace = true
+keywords.workspace = true
+readme = "README.md"
+homepage.workspace = true
 
 [lints]
 workspace = true

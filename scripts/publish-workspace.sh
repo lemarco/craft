@@ -59,6 +59,7 @@ PUBLISH_ORDER=(
     trembita-http
     trembita-store-redis
     trembita-backlog-postgres
+    trembita-assembly
     trembita
     trembita-cli
 )
