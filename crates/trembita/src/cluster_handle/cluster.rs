@@ -19,7 +19,6 @@ use trembita_runtime::{
     VpsResources,
 };
 
-use crate::builder::TrembitaClusterBuilder;
 use crate::certs::CertReloadHandle;
 use crate::multi_raft::MultiRaftState;
 
@@ -82,16 +81,6 @@ pub struct TrembitaCluster<M: StateMachine> {
 }
 
 impl<M: StateMachine> TrembitaCluster<M> {
-    /// Start describing a node running `machine`, identified by `node_id`. See
-    /// [`TrembitaClusterBuilder`](crate::cluster::TrembitaClusterBuilder) for the options.
-    #[must_use]
-    pub fn builder(node_id: NodeId, machine: M) -> TrembitaClusterBuilder<M>
-    where
-        M: Default,
-    {
-        TrembitaClusterBuilder::new(node_id, machine)
-    }
-
     /// This node's id.
     #[must_use]
     pub fn node_id(&self) -> NodeId {

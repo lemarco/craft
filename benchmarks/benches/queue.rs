@@ -11,7 +11,8 @@ use std::time::Duration;
 use trembita::core::{Config, StateMachine};
 use trembita::net::LocalNetwork;
 use trembita::proto::LogIndex;
-use trembita::cluster::{TrembitaCluster, JobQueue};
+use trembita::cluster::{JobQueue, TrembitaCluster};
+use trembita::workspace_showcase::cluster::cluster_builder;
 use trembita::NodeId;
 use trembita_runtime::{InMemoryJobQueue, RedbJobQueue, WorkerId};
 use trembita_benchmarks::{env_u64, queue_payload};
@@ -83,7 +84,7 @@ async fn setup_cluster() -> ClusterBench {
     for &id in &ids {
         let data_dir = base.path().join(format!("node-{}", id.0));
         std::fs::create_dir_all(&data_dir).expect("mkdir data_dir");
-        let cluster = TrembitaCluster::builder(id, Empty)
+        let cluster = cluster_builder(id, Empty)
             .members(ids)
             .raft_config(raft_config(0x51_0AD ^ id.0))
             .tick_period(Duration::from_millis(10))

@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use trembita::{
-    BacklogFeedOpts, ConsumerOpts, ExternalBacklog, JobOpts, TrembitaApp, TrembitaConfigure,
-    consumer,
+    AppManifest, BacklogFeedOpts, ConsumerOpts, ExternalBacklog, JobOpts, TrembitaApp,
+    TrembitaConfigure, consumer,
 };
 use trembita_jobs::{
     BacklogItem, ConsumerCount, EnqueueOptions, InMemoryExternalBacklog, Settlement,
@@ -55,17 +55,19 @@ async fn external_backlog_feeds_consumer_and_settles() {
                         .with_local_gateway_apis()
                         .with_data_dir(&base),
                 )
-                .jobs([JobOpts::new("imports")
-                    .lease(Duration::from_millis(500))
-                    .batch(1)
-                    .idle_sleep(Duration::from_millis(10))
-                    .backlog(
-                        Arc::clone(&backlog) as Arc<dyn ExternalBacklog>,
-                        BacklogFeedOpts::default()
-                            .pending_target_per_consumer(1)
-                            .poll(Duration::from_millis(20))
-                            .consumer_instances(ConsumerCount::Fixed(1)),
-                    )])
+                .manifest(
+                    AppManifest::new().jobs([JobOpts::new("imports")
+                        .lease(Duration::from_millis(500))
+                        .batch(1)
+                        .idle_sleep(Duration::from_millis(10))
+                        .backlog(
+                            Arc::clone(&backlog) as Arc<dyn ExternalBacklog>,
+                            BacklogFeedOpts::default()
+                                .pending_target_per_consumer(1)
+                                .poll(Duration::from_millis(20))
+                                .consumer_instances(ConsumerCount::Fixed(1)),
+                        )]),
+                )
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     ..TrembitaConfigure::default()

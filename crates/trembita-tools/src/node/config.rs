@@ -6,9 +6,12 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
 use std::time::Duration;
 
+use trembita::DEFAULT_GATEWAY_DRAIN_TIMEOUT;
 use trembita::NodeId;
 use trembita::cluster::{CertPaths, PeerDirectory, PemSecurity, Security, cert_paths_from_env};
 use trembita::discovery::Seed;
+use trembita::env::{AppConfig, EnvOverrides};
+use trembita_proto::JoinRole;
 use trembita_runtime::DEFAULT_DRAIN_TIMEOUT;
 
 /// Parsed runtime configuration from the environment.
@@ -299,6 +302,46 @@ pub fn config_from_env() -> Result<NodeConfig, Box<dyn Error>> {
         job_queue_stream,
         job_queue_lease,
     })
+}
+
+impl NodeConfig {
+    /// Map CLI/env [`NodeConfig`] into product [`AppConfig`] (no process env mutation).
+    #[must_use]
+    pub fn into_app_config(self, extra_join_seeds: Vec<Seed>) -> AppConfig {
+        let mut join_seeds = self.join_seeds;
+        join_seeds.extend(extra_join_seeds);
+        let join_role = JoinRole::Learner;
+        let http_drain_timeout = env("TREMBITA_HTTP_DRAIN_TIMEOUT")
+            .or_else(|| env("TREMBITA_GATEWAY_DRAIN_TIMEOUT"))
+            .and_then(|raw| raw.parse::<u64>().ok())
+            .map_or(DEFAULT_GATEWAY_DRAIN_TIMEOUT, Duration::from_secs);
+        AppConfig {
+            node_id: self.node_id,
+            listen: self.listen,
+            http: self.http,
+            http_tls: self.http_tls.clone(),
+            peers: self.peers,
+            members: self.members,
+            join_seeds,
+            allow_join: self.allow_join,
+            allow_voter_join: false,
+            join_role,
+            allow_leave: self.allow_leave,
+            graceful_leave: self.graceful_leave,
+            voter_replacement: true,
+            voter_replacement_grace_ticks: None,
+            security: self.security,
+            pem_paths: self.pem_paths,
+            cert_dir: None,
+            drain_timeout: self.drain_timeout,
+            cert_watch: cert_watch_period_from_env(),
+            data_dir: self.data_dir.clone(),
+            job_queue_stream: self.job_queue_stream.clone(),
+            job_queue_lease: self.job_queue_lease,
+            http_drain_timeout,
+            env: EnvOverrides::default(),
+        }
+    }
 }
 
 /// Parse `TREMBITA_DRAIN_TIMEOUT` (seconds, optional `s`/`m` suffix; default 60).

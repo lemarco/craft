@@ -1,10 +1,11 @@
-//! Cluster builder, runtime handle, queues, journals, and related types.
+//! Cluster runtime handle, queues, journals, and related types.
 //!
-//! Product apps typically use [`crate::TrembitaApp`] and [`crate::prelude`]; import from here
-//! for custom [`StateMachine`](crate::core::StateMachine) wiring or direct cluster control.
+//! Product apps use [`crate::TrembitaApp`] and [`crate::prelude`]. Import from here for
+//! [`TrembitaCluster`] control, job enqueue options, saga journals, and TLS helpers when
+//! embedding the runtime (not via the product builder).
 
 pub use crate::app::{EmptyStateMachine, WorkerInfo};
-pub use crate::builder::{StartError, TrembitaClusterBuilder};
+pub use crate::builder::StartError;
 pub use crate::certs::{
     CertReloadError, CertReloadHandle, PemSecurity, ReloadOpts, cert_paths_for_node,
     cert_paths_from_env,

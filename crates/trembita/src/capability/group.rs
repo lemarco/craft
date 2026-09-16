@@ -16,7 +16,7 @@ use crate::TrembitaApp;
 pub enum CapGroupScale {
     /// Fixed pool size cluster-wide.
     Fixed(usize),
-    /// One host per live cluster node ([`manage_auto`](crate::cluster::TrembitaClusterBuilder::manage_auto)).
+    /// One host per live cluster node.
     PerNode,
 }
 

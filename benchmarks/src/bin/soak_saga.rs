@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use trembita::cluster::TrembitaCluster;
+use trembita::workspace_showcase::cluster::cluster_builder;
 use trembita::actor_store::{ActorStateStore, InMemoryStore};
 use trembita::client::{KeyedClient, RemoteClient, SagaOutcome, SagaPlan, SagaStep};
 use trembita::core::{RaftGroupId, Role};
@@ -30,7 +31,7 @@ async fn spawn_cluster(
     let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = TrembitaCluster::builder(id, KvMachine::default())
+        let cluster = cluster_builder(id, KvMachine::default())
             .members(ids)
             .raft_config(fast_raft_config_with_seed(11))
             .tick_period(TICK_PERIOD)

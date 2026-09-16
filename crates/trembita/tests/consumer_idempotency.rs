@@ -20,7 +20,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use trembita::{
-    ConsumerOpts, IdempotencyOpts, JobContext, QueueOpts, TrembitaApp, TrembitaConfigure, consumer,
+    AppManifest, ConsumerOpts, IdempotencyOpts, JobContext, QueueOpts, TrembitaApp,
+    TrembitaConfigure, consumer,
 };
 use trembita_actor_store::{ActorStateStore, InMemoryStore};
 use trembita_jobs::EnqueueOptions;
@@ -78,7 +79,9 @@ async fn boot(stream: &'static str, tag: &str) -> Arc<TrembitaApp> {
                         .with_local_gateway_apis()
                         .with_data_dir(&base),
                 )
-                .queue([QueueOpts::new(stream, Duration::from_millis(200))])
+                .manifest(
+                    AppManifest::new().queue([QueueOpts::new(stream, Duration::from_millis(200))]),
+                )
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     ..TrembitaConfigure::default()

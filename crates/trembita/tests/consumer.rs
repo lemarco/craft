@@ -5,7 +5,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use trembita::{ConsumerOpts, QueueOpts, TrembitaApp, TrembitaConfigure, consumer};
+use trembita::{AppManifest, ConsumerOpts, QueueOpts, TrembitaApp, TrembitaConfigure, consumer};
 use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};
 
 static HANDLED: AtomicUsize = AtomicUsize::new(0);
@@ -40,7 +40,9 @@ async fn consumer_macro_spawns_and_processes_job() {
                         .with_local_gateway_apis()
                         .with_data_dir(&base),
                 )
-                .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
+                .manifest(
+                    AppManifest::new().queue([QueueOpts::new("jobs", Duration::from_secs(60))]),
+                )
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     ..TrembitaConfigure::default()

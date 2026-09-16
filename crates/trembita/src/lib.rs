@@ -37,7 +37,7 @@
 //!
 //! ## Cluster APIs
 //!
-//! Custom state machines and low-level control: [`cluster`] (`TrembitaCluster`, `TrembitaClusterBuilder`, queues, journals).
+//! Runtime embedding (handles, queues, journals): [`cluster`] (`TrembitaCluster`, …).
 //!
 //! Environment variables: [`mod@env`]. Architecture: `docs/` in the repository.
 
@@ -73,6 +73,13 @@ mod workflow;
 mod workflow_opts;
 mod workload;
 
+#[cfg(test)]
+mod integration;
+
+/// Maintainer showcases (custom SM) — not product API.
+#[doc(hidden)]
+pub mod workspace_showcase;
+
 /// Cluster builder, runtime handle, queues, journals.
 pub mod cluster;
 /// `TREMBITA_*` boot configuration.
@@ -101,8 +108,8 @@ pub use trembita_storage as storage;
 
 pub use actor_group::ActorGroupOpts;
 pub use app::{
-    AppManifest, DefaultGatewayApis, JobsPreset, RealtimePreset, ShutdownOpts, TestBoot,
-    TopicsPreset, TrembitaApp, TrembitaAppBuilder, journal_workflow,
+    AppManifest, DefaultGatewayApis, JobsPreset, RealtimePreset, ScheduleSourceOpts, ShutdownOpts,
+    TestBoot, TopicsPreset, TrembitaApp, TrembitaAppBuilder, journal_workflow,
 };
 pub use app_opts::RunOpts;
 pub use builder::StartError;

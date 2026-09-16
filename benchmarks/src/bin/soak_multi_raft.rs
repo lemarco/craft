@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use trembita::cluster::TrembitaCluster;
+use trembita::workspace_showcase::cluster::cluster_builder;
 use trembita::core::{Config, RaftGroupId, StableShardRouter, StateMachine, place_shard};
 use trembita::net::{LocalNetwork, Transport, send_client_request};
 use trembita::proto::{ClientRequest, ClientResponse, LogIndex, NodeId};
@@ -121,7 +122,7 @@ async fn main() {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = TrembitaCluster::builder(id, KvMachine::default())
+        let cluster = cluster_builder(id, KvMachine::default())
             .members(ids)
             .raft_config(raft_config(base_seed ^ id.0))
             .tick_period(Duration::from_millis(10))

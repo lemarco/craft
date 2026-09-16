@@ -8,7 +8,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use http::{Method, StatusCode};
 use trembita::cluster::RecurringJob;
-use trembita::{CronOpts, QueueOpts, TrembitaApp, TrembitaConfigure};
+use trembita::{AppManifest, CronOpts, QueueOpts, TrembitaApp, TrembitaConfigure};
 use trembita_http::RouteTable;
 use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};
 
@@ -53,11 +53,14 @@ async fn http_schedules_upsert_list_remove() {
                         .with_local_gateway_apis()
                         .with_data_dir(&base),
                 )
-                .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
-                .cron([CronOpts::new(
-                    "jobs",
-                    RecurringJob::new("seed", "0 9 * * *", b"seed"),
-                )])
+                .manifest(
+                    AppManifest::new()
+                        .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
+                        .cron([CronOpts::new(
+                            "jobs",
+                            RecurringJob::new("seed", "0 9 * * *", b"seed"),
+                        )]),
+                )
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     ..TrembitaConfigure::default()

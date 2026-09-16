@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use trembita::client::SagaOutcome;
 use trembita::{
-    DispatchOutcome, GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError, QueueOpts,
-    ReadyOpts, TrembitaApp, TrembitaConfigure, WorkflowBuilder, WorkflowOpts,
+    AppManifest, DispatchOutcome, GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError,
+    QueueOpts, ReadyOpts, TrembitaApp, TrembitaConfigure, WorkflowBuilder, WorkflowOpts,
     dispatch_work_trigger, journal_workflow,
 };
 use trembita_jobs::{RecurringJob, WorkTrigger};
@@ -47,7 +47,9 @@ async fn dispatch_runs_registered_workflow() {
                     tick_period: TICK_PERIOD,
                     ..TrembitaConfigure::default()
                 })
-                .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
+                .manifest(
+                    AppManifest::new().workflows([WorkflowOpts::new(noop_plan, journal_workflow)]),
+                )
                 .gateway(
                     GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
                         .identity(TestGatewayIdentity)
@@ -82,10 +84,10 @@ async fn dispatch_enqueues_follow_up() {
                         .with_local_gateway_apis()
                         .with_data_dir(dir.path()),
                 )
-                .queue([
+                .manifest(AppManifest::new().queue([
                     QueueOpts::new("orchestration", Duration::from_secs(60)),
                     QueueOpts::new("seo-parse", Duration::from_secs(60)),
-                ])
+                ]))
                 .configure(TrembitaConfigure {
                     raft_config: fast_raft_config_with_seed(12),
                     tick_period: TICK_PERIOD,

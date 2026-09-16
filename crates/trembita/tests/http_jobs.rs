@@ -9,7 +9,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use http::{Method, StatusCode, Uri, header};
 use trembita::cluster::EnqueueOptions;
-use trembita::{QueueOpts, TrembitaApp, TrembitaConfigure};
+use trembita::{AppManifest, QueueOpts, TrembitaApp, TrembitaConfigure};
 use trembita_http::RouteTable;
 use trembita_jobs::JobLifecycle;
 use trembita_jobs::WorkerId;
@@ -66,7 +66,9 @@ async fn http_post_job_returns_202_and_enqueues() {
                         .with_local_gateway_apis()
                         .with_data_dir(&base),
                 )
-                .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
+                .manifest(
+                    AppManifest::new().queue([QueueOpts::new("jobs", Duration::from_secs(60))]),
+                )
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     ..TrembitaConfigure::default()

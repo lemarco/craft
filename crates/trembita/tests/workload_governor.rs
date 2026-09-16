@@ -6,7 +6,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use trembita::{ConsumerOpts, JobOpts, TrembitaApp, TrembitaConfigure, WorkloadOpts, consumer};
+use trembita::{
+    AppManifest, ConsumerOpts, JobOpts, TrembitaApp, TrembitaConfigure, WorkloadOpts, consumer,
+};
 use trembita_runtime::ManualExternalLoad;
 use trembita_test_support::boot_local_app;
 
@@ -50,9 +52,11 @@ async fn workload_governor_tunes_for_connections_and_depth() {
                     tick: Duration::from_millis(20),
                     ..opts
                 })
-                .jobs([JobOpts::new("tasks")
-                    .lease(Duration::from_secs(30))
-                    .consumer(&HandleTaskConsumer)])
+                .manifest(
+                    AppManifest::new().jobs([JobOpts::new("tasks")
+                        .lease(Duration::from_secs(30))
+                        .consumer(&HandleTaskConsumer)]),
+                )
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     ..TrembitaConfigure::default()

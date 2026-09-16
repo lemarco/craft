@@ -4,9 +4,9 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
-use trembita::NodeId;
-use trembita::cluster::TrembitaCluster;
-use trembita::cluster::{CertPaths, PeerDirectory, PemSecurity, ReloadOpts};
+use crate::NodeId;
+use crate::cluster::TrembitaCluster;
+use crate::cluster::{CertPaths, PeerDirectory, PemSecurity, ReloadOpts};
 use trembita_test_support::{advance, free_udp};
 
 #[tokio::test(start_paused = true)]
@@ -56,15 +56,15 @@ async fn pem_hot_reload_reissues_leaf_without_restart() {
     peers.insert(NodeId(1), listen1);
     peers.insert(NodeId(2), listen2);
 
-    let raft = trembita::core::Config {
-        election_timeout_min: trembita::proto::LogicalTick(5),
-        election_timeout_max: trembita::proto::LogicalTick(10),
-        heartbeat_interval: trembita::proto::LogicalTick(2),
+    let raft = crate::core::Config {
+        election_timeout_min: crate::proto::LogicalTick(5),
+        election_timeout_max: crate::proto::LogicalTick(10),
+        heartbeat_interval: crate::proto::LogicalTick(2),
         seed: 11,
         ..Default::default()
     };
 
-    let cluster1 = TrembitaCluster::builder(NodeId(1), Counter::default())
+    let cluster1 = crate::builder::TrembitaClusterBuilder::new(NodeId(1), Counter::default())
         .members([NodeId(1), NodeId(2)])
         .raft_config(raft.clone())
         .tick_period(Duration::from_millis(10))
@@ -73,7 +73,7 @@ async fn pem_hot_reload_reissues_leaf_without_restart() {
         .await
         .expect("start node 1");
 
-    let cluster2 = TrembitaCluster::builder(NodeId(2), Counter::default())
+    let cluster2 = crate::builder::TrembitaClusterBuilder::new(NodeId(2), Counter::default())
         .members([NodeId(1), NodeId(2)])
         .raft_config(raft)
         .tick_period(Duration::from_millis(10))
@@ -120,13 +120,13 @@ async fn pem_hot_reload_reissues_leaf_without_restart() {
 #[derive(Default)]
 struct Counter(u64);
 
-impl trembita::core::StateMachine for Counter {
+impl crate::core::StateMachine for Counter {
     type Command = u64;
     type Query = ();
     type Response = u64;
     type Error = std::convert::Infallible;
 
-    fn apply(&mut self, _: trembita::proto::LogIndex, cmd: &u64) -> Result<u64, Self::Error> {
+    fn apply(&mut self, _: crate::proto::LogIndex, cmd: &u64) -> Result<u64, Self::Error> {
         self.0 += *cmd;
         Ok(self.0)
     }

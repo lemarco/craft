@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use http::StatusCode;
 use trembita::{
-    GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError, QueueOpts, TrembitaApp,
-    TrembitaConfigure,
+    AppManifest, GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError, QueueOpts,
+    TrembitaApp, TrembitaConfigure,
 };
 use trembita_test_support::{
     advance, boot_local_app, gateway_introspect_config_identity,
@@ -48,7 +48,9 @@ async fn gateway_introspect_requires_auth_and_returns_cluster_json() {
                         .with_local_gateway_apis()
                         .with_data_dir(&base),
                 )
-                .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
+                .manifest(
+                    AppManifest::new().queue([QueueOpts::new("jobs", Duration::from_secs(60))]),
+                )
                 .gateway(
                     GatewayOpts::new("127.0.0.1:0".parse().unwrap())
                         .identity(BearerSecret)

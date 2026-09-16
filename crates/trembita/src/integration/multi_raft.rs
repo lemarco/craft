@@ -2,18 +2,20 @@
 
 use std::sync::Arc;
 
-use trembita::cluster::TrembitaCluster;
-use trembita::core::RaftGroupId;
-use trembita::net::{LocalNetwork, send_client_request, send_group_migrate, send_join_request};
-use trembita::proto::{
+use crate::cluster::TrembitaCluster;
+use crate::core::RaftGroupId;
+use crate::integration::{
+    await_trembita_leader, wait_for_each_group_cluster_leader, wait_for_group_leaders,
+};
+use crate::net::{LocalNetwork, send_client_request, send_group_migrate, send_join_request};
+use crate::proto::{
     AdvertiseAddr, ClientRequest, ClientResponse, GroupMigrateRequest, JoinRequest, JoinResponse,
     JoinRole, NodeId, PROTOCOL_VERSION, ProtocolVersion,
 };
-use trembita::storage::LogStore;
+use crate::storage::LogStore;
 use trembita_test_support::{
-    KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, advance, await_trembita_leader,
-    eventually_async_default, fast_raft_config_with_seed, find_keys_for_two_groups,
-    wait_for_each_group_cluster_leader, wait_for_group_leaders,
+    KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, advance, eventually_async_default,
+    fast_raft_config_with_seed, find_keys_for_two_groups,
 };
 
 async fn spawn_three_node_multi_raft_cluster() -> (
@@ -45,7 +47,7 @@ async fn spawn_multi_node_cluster(
     let shard_count = 64;
     let mut clusters = Vec::new();
     for &id in &ids[..node_count as usize] {
-        let mut builder = TrembitaCluster::builder(id, KvMachine::default())
+        let mut builder = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
             .members(ids)
             .raft_config(fast_raft_config_with_seed(3))
             .tick_period(TICK_PERIOD)
@@ -88,7 +90,7 @@ async fn builder_hosts_independent_raft_groups() {
     let groups = [RaftGroupId(0), RaftGroupId(1)];
     let (route_a, route_b) = find_keys_for_two_groups(shard_count, &groups);
 
-    let cluster = TrembitaCluster::builder(node_id, KvMachine::default())
+    let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
         .members([node_id])
         .raft_config(fast_raft_config_with_seed(3))
         .tick_period(TICK_PERIOD)
@@ -102,13 +104,13 @@ async fn builder_hosts_independent_raft_groups() {
 
     wait_for_group_leaders(&cluster).await;
 
-    let transport: Arc<dyn trembita::net::Transport> = Arc::new(net.clone());
-    let cmd_a = trembita::proto::encode(&KvCommand::Set {
+    let transport: Arc<dyn crate::net::Transport> = Arc::new(net.clone());
+    let cmd_a = crate::proto::encode(&KvCommand::Set {
         key: "k".into(),
         value: "g0".into(),
     })
     .unwrap();
-    let cmd_b = trembita::proto::encode(&KvCommand::Set {
+    let cmd_b = crate::proto::encode(&KvCommand::Set {
         key: "k".into(),
         value: "g1".into(),
     })
@@ -138,7 +140,7 @@ async fn builder_hosts_independent_raft_groups() {
     .expect("propose group 1");
     assert!(matches!(resp, ClientResponse::Ok(_)));
 
-    let qry = trembita::proto::encode(&KvQuery::Get { key: "k".into() }).unwrap();
+    let qry = crate::proto::encode(&KvQuery::Get { key: "k".into() }).unwrap();
     let got_a = send_client_request(
         &*transport,
         node_id,
@@ -152,7 +154,7 @@ async fn builder_hosts_independent_raft_groups() {
     let ClientResponse::Ok(bytes) = got_a else {
         panic!("unexpected response: {got_a:?}");
     };
-    let val: KvResponse = trembita::proto::decode(&bytes).unwrap();
+    let val: KvResponse = crate::proto::decode(&bytes).unwrap();
     assert_eq!(val, KvResponse::Value(Some("g0".into())));
 
     let got_b = send_client_request(
@@ -168,7 +170,7 @@ async fn builder_hosts_independent_raft_groups() {
     let ClientResponse::Ok(bytes) = got_b else {
         panic!("unexpected response: {got_b:?}");
     };
-    let val: KvResponse = trembita::proto::decode(&bytes).unwrap();
+    let val: KvResponse = crate::proto::decode(&bytes).unwrap();
     assert_eq!(val, KvResponse::Value(Some("g1".into())));
 
     cluster.shutdown();
@@ -187,14 +189,14 @@ async fn follower_serves_keyed_reads_in_multi_raft_cluster() {
 
     let groups = [RaftGroupId(0), RaftGroupId(1)];
     let (route_a, _) = find_keys_for_two_groups(64, &groups);
-    let cmd = trembita::proto::encode(&KvCommand::Set {
+    let cmd = crate::proto::encode(&KvCommand::Set {
         key: "k".into(),
         value: "via-follower-read".into(),
     })
     .unwrap();
-    let qry = trembita::proto::encode(&KvQuery::Get { key: "k".into() }).unwrap();
+    let qry = crate::proto::encode(&KvQuery::Get { key: "k".into() }).unwrap();
 
-    let transport: Arc<dyn trembita::net::Transport> = Arc::new(net.clone());
+    let transport: Arc<dyn crate::net::Transport> = Arc::new(net.clone());
     let wrote = send_client_request(
         &*transport,
         leader.node_id(),
@@ -220,7 +222,7 @@ async fn follower_serves_keyed_reads_in_multi_raft_cluster() {
     let ClientResponse::Ok(bytes) = read else {
         panic!("unexpected follower read response: {read:?}");
     };
-    let val: KvResponse = trembita::proto::decode(&bytes).unwrap();
+    let val: KvResponse = crate::proto::decode(&bytes).unwrap();
     assert_eq!(
         val,
         KvResponse::Value(Some("via-follower-read".into())),
@@ -240,7 +242,7 @@ async fn builder_persists_each_raft_group_to_separate_redb_files() {
     let node_id = NodeId(1);
 
     {
-        let cluster = TrembitaCluster::builder(node_id, KvMachine::default())
+        let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
             .members([node_id])
             .tick_period(TICK_PERIOD)
             .raft_machines([KvMachine::default(), KvMachine::default()])
@@ -262,7 +264,7 @@ async fn builder_persists_each_raft_group_to_separate_redb_files() {
         cluster.shutdown_and_wait().await;
     }
 
-    let layout = trembita::storage::GroupRedbLayout::new(&data_dir);
+    let layout = crate::storage::GroupRedbLayout::new(&data_dir);
     let store = layout.open_group(0).unwrap();
     assert!(store.last_index().unwrap().0 >= 1);
 }
@@ -272,7 +274,7 @@ async fn wire_group_migrate_rpc_is_routed() {
     let net = LocalNetwork::new();
     let ids = [NodeId(1), NodeId(2)];
 
-    let source = TrembitaCluster::builder(NodeId(1), KvMachine::default())
+    let source = crate::builder::TrembitaClusterBuilder::new(NodeId(1), KvMachine::default())
         .members(ids)
         .raft_config(fast_raft_config_with_seed(3))
         .tick_period(TICK_PERIOD)
@@ -281,7 +283,7 @@ async fn wire_group_migrate_rpc_is_routed() {
         .start_local(&net)
         .await;
 
-    let target = TrembitaCluster::builder(NodeId(2), KvMachine::default())
+    let target = crate::builder::TrembitaClusterBuilder::new(NodeId(2), KvMachine::default())
         .members(ids)
         .raft_config(fast_raft_config_with_seed(3))
         .tick_period(TICK_PERIOD)
@@ -343,7 +345,7 @@ async fn join_fourth_node(
     let leader = cluster_leader(clusters).await;
     let joiner_id = NodeId(4);
 
-    let joiner = TrembitaCluster::builder(joiner_id, KvMachine::default())
+    let joiner = crate::builder::TrembitaClusterBuilder::new(joiner_id, KvMachine::default())
         .members(ids)
         .raft_config(fast_raft_config_with_seed(3))
         .tick_period(TICK_PERIOD)
@@ -440,19 +442,19 @@ async fn multi_raft_survives_follower_partition() {
 
     let groups = [RaftGroupId(0), RaftGroupId(1)];
     let (_, route_key) = find_keys_for_two_groups(64, &groups);
-    let cmd = trembita::proto::encode(&KvCommand::Set {
+    let cmd = crate::proto::encode(&KvCommand::Set {
         key: "partition".into(),
         value: "ok".into(),
     })
     .unwrap();
-    let qry = trembita::proto::encode(&KvQuery::Get {
+    let qry = crate::proto::encode(&KvQuery::Get {
         key: "partition".into(),
     })
     .unwrap();
 
     let _ = net.detach(follower_id);
 
-    let transport: Arc<dyn trembita::net::Transport> = Arc::new(net.clone());
+    let transport: Arc<dyn crate::net::Transport> = Arc::new(net.clone());
     let resp = send_client_request(
         &*transport,
         leader_id,
@@ -484,7 +486,7 @@ async fn multi_raft_survives_follower_partition() {
     let ClientResponse::Ok(bytes) = read else {
         panic!("unexpected read after heal: {read:?}");
     };
-    let val: KvResponse = trembita::proto::decode(&bytes).unwrap();
+    let val: KvResponse = crate::proto::decode(&bytes).unwrap();
     assert_eq!(val, KvResponse::Value(Some("ok".into())));
 
     for c in clusters {
@@ -502,7 +504,7 @@ async fn modulus_shard_expansion_and_keyed_batch() {
     let groups = [RaftGroupId(0), RaftGroupId(1)];
     let (route_a, route_b) = find_keys_for_two_groups(shard_count, &groups);
 
-    let cluster = TrembitaCluster::builder(node_id, KvMachine::default())
+    let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
         .members([node_id])
         .raft_config(fast_raft_config_with_seed(9))
         .tick_period(TICK_PERIOD)
@@ -519,14 +521,14 @@ async fn modulus_shard_expansion_and_keyed_batch() {
     assert_eq!(plan.to, 128);
     assert_eq!(cluster.shard_count(), 128);
 
-    let transport: Arc<dyn trembita::net::Transport> = Arc::new(net.clone());
+    let transport: Arc<dyn crate::net::Transport> = Arc::new(net.clone());
     let client = RemoteClient::new(transport, [node_id]);
-    let cmd_a = trembita::proto::encode(&KvCommand::Set {
+    let cmd_a = crate::proto::encode(&KvCommand::Set {
         key: "a".into(),
         value: "1".into(),
     })
     .unwrap();
-    let cmd_b = trembita::proto::encode(&KvCommand::Set {
+    let cmd_b = crate::proto::encode(&KvCommand::Set {
         key: "b".into(),
         value: "2".into(),
     })
@@ -553,7 +555,7 @@ async fn modulus_shard_expansion_and_keyed_batch() {
 }
 
 fn find_key_for_group(shard_count: u32, groups: &[RaftGroupId], target: u32) -> Vec<u8> {
-    use trembita::core::{StableShardRouter, place_shard};
+    use crate::core::{StableShardRouter, place_shard};
 
     let router = StableShardRouter::new(shard_count);
     for i in 0..50_000u32 {
@@ -570,7 +572,7 @@ fn find_key_for_group(shard_count: u32, groups: &[RaftGroupId], target: u32) -> 
 
 #[tokio::test(start_paused = true)]
 async fn stable_shard_activation_preserves_key_routing() {
-    use trembita::core::{
+    use crate::core::{
         ShardRoutingKind, StableShardRouter, place_shard, stable_router_preserves_routable_keys,
     };
     use trembita_client::{KeyedBatchStep, RemoteClient, propose_keyed_batch};
@@ -581,7 +583,7 @@ async fn stable_shard_activation_preserves_key_routing() {
     let groups = [RaftGroupId(0), RaftGroupId(1)];
     let (route_a, route_b) = find_keys_for_two_groups(active, &groups);
 
-    let cluster = TrembitaCluster::builder(node_id, KvMachine::default())
+    let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
         .members([node_id])
         .raft_config(fast_raft_config_with_seed(11))
         .tick_period(TICK_PERIOD)
@@ -613,14 +615,14 @@ async fn stable_shard_activation_preserves_key_routing() {
         &[route_a.as_slice(), route_b.as_slice()],
     ));
 
-    let transport: Arc<dyn trembita::net::Transport> = Arc::new(net.clone());
+    let transport: Arc<dyn crate::net::Transport> = Arc::new(net.clone());
     let client = RemoteClient::new(transport, [node_id]);
-    let cmd_a = trembita::proto::encode(&KvCommand::Set {
+    let cmd_a = crate::proto::encode(&KvCommand::Set {
         key: "a".into(),
         value: "1".into(),
     })
     .unwrap();
-    let cmd_b = trembita::proto::encode(&KvCommand::Set {
+    let cmd_b = crate::proto::encode(&KvCommand::Set {
         key: "b".into(),
         value: "2".into(),
     })
@@ -673,10 +675,10 @@ async fn add_raft_groups_expands_catalog_without_restart() {
     }
 
     let contact = clusters[0].node_id();
-    let transport: Arc<dyn trembita::net::Transport> = Arc::new(net.clone());
+    let transport: Arc<dyn crate::net::Transport> = Arc::new(net.clone());
     let groups = [RaftGroupId(0), RaftGroupId(1), RaftGroupId(2)];
     let route_g2 = find_key_for_group(64, &groups, 2);
-    let cmd = trembita::proto::encode(&KvCommand::Set {
+    let cmd = crate::proto::encode(&KvCommand::Set {
         key: "k".into(),
         value: "g2".into(),
     })
@@ -700,13 +702,13 @@ async fn add_raft_groups_expands_catalog_without_restart() {
 
 #[tokio::test(start_paused = true)]
 async fn switch_to_stable_shards_from_modulus() {
-    use trembita::client::RemoteClient;
-    use trembita::core::ShardRoutingKind;
+    use crate::client::RemoteClient;
+    use crate::core::ShardRoutingKind;
     use trembita_test_support::{KvCommand, KvMachine, TICK_PERIOD, fast_raft_config_with_seed};
 
     let net = LocalNetwork::new();
     let node_id = NodeId(1);
-    let cluster = TrembitaCluster::builder(node_id, KvMachine::default())
+    let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
         .members([node_id])
         .raft_config(fast_raft_config_with_seed(12))
         .tick_period(TICK_PERIOD)
@@ -731,7 +733,7 @@ async fn switch_to_stable_shards_from_modulus() {
     let groups = [RaftGroupId(0), RaftGroupId(1)];
     let (key, _) = find_keys_for_two_groups(64, &groups);
 
-    let cmd = trembita::proto::encode(&KvCommand::Set {
+    let cmd = crate::proto::encode(&KvCommand::Set {
         key: "k".into(),
         value: "v".into(),
     })
@@ -755,7 +757,7 @@ async fn per_group_learners_replicate_without_voting() {
     let net = LocalNetwork::new();
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = TrembitaCluster::builder(id, KvMachine::default())
+        let cluster = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
             .members(ids)
             .raft_config(fast_raft_config_with_seed(11))
             .tick_period(TICK_PERIOD)
@@ -789,8 +791,8 @@ async fn per_group_learners_replicate_without_voting() {
     let learner_id = ids
         .into_iter()
         .find(|&id| {
-            let voters = trembita::core::group_voters(RaftGroupId(0), &live, 3);
-            let learners = trembita::core::group_learners(RaftGroupId(0), &live, 3, 1);
+            let voters = crate::core::group_voters(RaftGroupId(0), &live, 3);
+            let learners = crate::core::group_learners(RaftGroupId(0), &live, 3, 1);
             learners.contains(&id) && !voters.contains(&id)
         })
         .expect("planner assigns a learner-only node for group 0");
@@ -809,11 +811,11 @@ async fn per_group_learners_replicate_without_voting() {
     let status = handle.status().await.expect("status");
     assert!(status.learners.contains(&learner_id));
     assert!(!status.voters.contains(&learner_id));
-    assert_ne!(status.role, trembita::core::Role::Leader);
+    assert_ne!(status.role, crate::core::Role::Leader);
 
     let groups = [RaftGroupId(0), RaftGroupId(1)];
     let (key, _) = find_keys_for_two_groups(64, &groups);
-    let cmd = trembita::proto::encode(&KvCommand::Set {
+    let cmd = crate::proto::encode(&KvCommand::Set {
         key: "learner-catchup".into(),
         value: "ok".into(),
     })

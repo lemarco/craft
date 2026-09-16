@@ -6,12 +6,12 @@ mod onboarding;
 
 use std::time::Duration;
 
-use trembita::{TrembitaApp, TrembitaConfigure, WorkflowOpts};
+use trembita::{TrembitaApp, TrembitaConfigure};
 use trembita_tools::showcase_common::{
     data_dir, display_addr, http_bind_display, http_disabled,
 };
 
-use crate::onboarding::{app_manifest, build_plan, run_onboarding_plan};
+use crate::onboarding::app_manifest;
 
 const DATA_DIR_NAME: &str = "trembita-showcase-workflows";
 
@@ -21,7 +21,6 @@ fn server_builder() -> trembita::TrembitaAppBuilder {
     TrembitaApp::from_env()
         .expect("TREMBITA_LISTEN")
         .manifest(app_manifest())
-        .workflows([WorkflowOpts::named("onboard", build_plan, run_onboarding_plan)])
         .configure(
             TrembitaConfigure::default()
                 .with_local_gateway_apis()

@@ -14,6 +14,7 @@ use trembita::core::{Config, StateMachine};
 use trembita::net::LocalNetwork;
 use trembita::proto::LogIndex;
 use trembita::cluster::TrembitaCluster;
+use trembita::workspace_showcase::cluster::cluster_builder;
 use trembita::NodeId;
 use trembita_benchmarks::env_u64;
 
@@ -145,7 +146,7 @@ async fn main() {
     let mut clusters: Vec<Arc<TrembitaCluster<Empty>>> = Vec::new();
 
     for &id in &ids {
-        let cluster = TrembitaCluster::builder(id, Empty)
+        let cluster = cluster_builder(id, Empty)
             .members(ids)
             .raft_config(raft_config(base_seed ^ id.0))
             .tick_period(Duration::from_millis(10))
@@ -179,7 +180,7 @@ async fn main() {
         let _ = net.detach(victim);
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let cluster = TrembitaCluster::builder(victim, Empty)
+        let cluster = cluster_builder(victim, Empty)
             .members(ids)
             .raft_config(raft_config(base_seed ^ victim.0 ^ rounds))
             .tick_period(Duration::from_millis(10))

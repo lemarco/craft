@@ -9,7 +9,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use http::{Method, StatusCode};
 use trembita::{
-    DefaultGatewayApis, GatewayOpts, TopicOpts, TrembitaApp, TrembitaConfigure,
+    AppManifest, DefaultGatewayApis, GatewayOpts, TopicOpts, TrembitaApp, TrembitaConfigure,
     TrembitaGatewayState, WorkflowBuilder, WorkflowOpts, journal_workflow,
 };
 use trembita_http::RouteTable;
@@ -52,8 +52,10 @@ async fn default_product_routes_include_workflows_and_topics() {
                         .with_local_gateway_apis()
                         .with_data_dir(&base),
                 )
-                .topics([TopicOpts::topic("orders.events")])
-                .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
+                .manifest(AppManifest::new().topics([TopicOpts::topic("orders.events")]))
+                .manifest(
+                    AppManifest::new().workflows([WorkflowOpts::new(noop_plan, journal_workflow)]),
+                )
                 .gateway(GatewayOpts::new("127.0.0.1:0".parse().expect("addr")))
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
@@ -109,7 +111,7 @@ async fn without_topics_api_excludes_topic_routes() {
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
-                .topics([TopicOpts::topic("orders.events")])
+                .manifest(AppManifest::new().topics([TopicOpts::topic("orders.events")]))
                 .configure(TrembitaConfigure {
                     data_dir: Some(base.clone()),
                     without_ops: false,

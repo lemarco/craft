@@ -5,8 +5,8 @@
 pub struct ActorGroupOpts<C> {
     /// Actor constructor config passed to [`UserActor`](trembita_runtime::UserActor).
     pub config: C,
-    /// `None` — one instance per live cluster node ([`manage_auto`](crate::cluster::TrembitaClusterBuilder::manage_auto)).
-    /// `Some(n)` — fixed pool of `n` instances cluster-wide ([`manage`](crate::cluster::TrembitaClusterBuilder::manage)).
+    /// `None` — one instance per live cluster node.
+    /// `Some(n)` — fixed pool of `n` instances cluster-wide.
     pub total: Option<usize>,
 }
 

@@ -4,8 +4,8 @@
 
 use trembita::client::SagaOutcome;
 use trembita::{
-    GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError, ReadyOpts, TrembitaApp,
-    TrembitaConfigure, WorkflowBuilder, WorkflowOpts, journal_workflow,
+    AppManifest, GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError, ReadyOpts,
+    TrembitaApp, TrembitaConfigure, WorkflowBuilder, WorkflowOpts, journal_workflow,
 };
 use trembita_test_support::{
     TICK_PERIOD, boot_local_app, fast_raft_config_with_seed, gateway_workflows_surfaces,
@@ -42,7 +42,9 @@ async fn trembita_app_runs_workflow_locally() {
                     tick_period: TICK_PERIOD,
                     ..TrembitaConfigure::default()
                 })
-                .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
+                .manifest(
+                    AppManifest::new().workflows([WorkflowOpts::new(noop_plan, journal_workflow)]),
+                )
                 .gateway(
                     GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
                         .identity(TestGatewayIdentity)
@@ -68,7 +70,9 @@ async fn trembita_app_workflows_api_on_gateway() {
                     tick_period: TICK_PERIOD,
                     ..TrembitaConfigure::default()
                 })
-                .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
+                .manifest(
+                    AppManifest::new().workflows([WorkflowOpts::new(noop_plan, journal_workflow)]),
+                )
                 .gateway(
                     GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
                         .identity(TestGatewayIdentity)
@@ -87,7 +91,8 @@ async fn trembita_app_workflows_api_on_gateway() {
 mod gateway_merge {
     use trembita::cluster::build_gateway_service;
     use trembita::{
-        GatewayOpts, ReadyOpts, TrembitaApp, TrembitaConfigure, WorkflowOpts, journal_workflow,
+        AppManifest, GatewayOpts, ReadyOpts, TrembitaApp, TrembitaConfigure, WorkflowOpts,
+        journal_workflow,
     };
     use trembita_test_support::{
         TICK_PERIOD, boot_local_app, fast_raft_config_with_seed, gateway_workflows_config,
@@ -107,7 +112,10 @@ mod gateway_merge {
                         tick_period: TICK_PERIOD,
                         ..TrembitaConfigure::default()
                     })
-                    .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
+                    .manifest(
+                        AppManifest::new()
+                            .workflows([WorkflowOpts::new(noop_plan, journal_workflow)]),
+                    )
                     .gateway(
                         GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
                             .identity(super::TestGatewayIdentity)

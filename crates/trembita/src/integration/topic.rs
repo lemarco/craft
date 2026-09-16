@@ -5,13 +5,14 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita::cluster::TrembitaCluster;
-use trembita::core::StateMachine;
-use trembita::net::LocalNetwork;
-use trembita::proto::{LogIndex, NodeId};
-use trembita::{TopicOpts, TrembitaApp, TrembitaConfigure};
+use crate::cluster::TrembitaCluster;
+use crate::core::StateMachine;
+use crate::integration::{await_trembita_leader, boot_local_app};
+use crate::net::LocalNetwork;
+use crate::proto::{LogIndex, NodeId};
+use crate::{AppManifest, TopicOpts, TrembitaApp, TrembitaConfigure};
 use trembita_events::{SubscriptionStart, TopicSubscriptionDef};
-use trembita_test_support::{advance, await_trembita_leader, boot_local_app};
+use trembita_test_support::advance;
 
 #[derive(Default)]
 struct Empty;
@@ -56,13 +57,13 @@ async fn trembita_app_publishes_and_tracks_topic_metrics() {
                         .with_local_gateway_apis()
                         .with_data_dir(&base),
                 )
-                .topics([TopicOpts::topic("orders.events").subscription_defs([
-                    TopicSubscriptionDef {
+                .manifest(AppManifest::new().topics([
+                    TopicOpts::topic("orders.events").subscription_defs([TopicSubscriptionDef {
                         name: "analytics".into(),
                         start: SubscriptionStart::Earliest,
                         max_attempts: 0,
-                    },
-                ])])
+                    }]),
+                ]))
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     ..TrembitaConfigure::default()
@@ -98,7 +99,7 @@ async fn trembita_app_publishes_and_tracks_topic_metrics() {
 
 #[tokio::test(start_paused = true)]
 async fn topic_replicate_rejects_non_leader_caller() {
-    use trembita::net::{LocalTransport, send_topic_replicate};
+    use crate::net::{LocalTransport, send_topic_replicate};
     use trembita_proto::{
         ProductWireError, TopicEventId, TopicName, TopicReplicateOp, TopicReplicateRequest,
         UnixMillis,
@@ -118,7 +119,7 @@ async fn topic_replicate_rejects_non_leader_caller() {
     let mut clusters = Vec::new();
     for id in ids {
         clusters.push(Arc::new(
-            TrembitaCluster::builder(id, Empty)
+            crate::builder::TrembitaClusterBuilder::new(id, Empty)
                 .members(ids)
                 .data_dir(base.join(format!("node-{}", id.0)))
                 .event_topic("orders.events", Duration::from_secs(30))

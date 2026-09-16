@@ -7,17 +7,19 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita::NodeId;
-use trembita::TrembitaApp;
-use trembita::TrembitaConfigure;
-use trembita::cluster::TrembitaCluster;
-use trembita::core::{Config, FailureDetectorKind, ReachabilityConfig};
-use trembita::net::LocalNetwork;
-use trembita::proto;
+use crate::NodeId;
+use crate::TrembitaApp;
+use crate::TrembitaConfigure;
+use crate::cluster::TrembitaCluster;
+use crate::core::{Config, FailureDetectorKind, ReachabilityConfig};
+use crate::integration::await_trembita_leader;
+use crate::integration::spawn_cluster_ops_gateway;
+use crate::net::LocalNetwork;
+use crate::proto;
 use trembita_runtime::{ConfigCodecError, UserActor};
 use trembita_test_support::{
-    Cmd, Kv, POLL_STEP, Qry, Resp, TICK_PERIOD, advance, await_trembita_leader, eventually_async,
-    eventually_async_default, eventually_default, fast_raft_config, spawn_cluster_ops_gateway,
+    Cmd, Kv, POLL_STEP, Qry, Resp, TICK_PERIOD, advance, eventually_async,
+    eventually_async_default, eventually_default, fast_raft_config,
 };
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -70,7 +72,7 @@ async fn spawn_cluster() -> (LocalNetwork, Vec<Arc<TrembitaCluster<Kv>>>) {
     let net = LocalNetwork::new();
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = TrembitaCluster::builder(id, Kv::default())
+        let cluster = crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
             .members(ids)
             .raft_config(fast_raft_config())
             .tick_period(TICK_PERIOD)
@@ -163,7 +165,7 @@ async fn spawn_reachability_node(
     raft: Config,
 ) -> Arc<TrembitaCluster<Kv>> {
     Arc::new(
-        TrembitaCluster::builder(id, Kv::default())
+        crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
             .members([NodeId(1), NodeId(2), NodeId(3)])
             .raft_config(raft)
             .tick_period(Duration::from_millis(5))
@@ -333,7 +335,7 @@ async fn follower_scale_cluster_forwards_to_leader() {
     let mut clusters = Vec::new();
     for &id in &ids {
         let cluster = Arc::new(
-            TrembitaCluster::builder(id, Kv::default())
+            crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
                 .members(ids)
                 .raft_config(fast_raft_config())
                 .tick_period(Duration::from_millis(10))
@@ -380,7 +382,7 @@ async fn admin_endpoints_report_live_state() {
 
     let mut clusters = Vec::new();
     for &id in &ids {
-        let builder = TrembitaCluster::builder(id, Kv::default())
+        let builder = crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
             .members(ids)
             .raft_config(fast_raft_config())
             .tick_period(TICK_PERIOD)
@@ -450,8 +452,8 @@ async fn admin_endpoints_report_live_state() {
 async fn admin_serves_https_when_builder_tls_configured() {
     use std::sync::Arc;
 
-    use trembita::{GatewayOpts, TrembitaApp, spawn_gateway};
-    use trembita_test_support::{boot_local_app, gateway_ops_surfaces};
+    use crate::integration::{boot_local_app, gateway_ops_surfaces};
+    use crate::{GatewayOpts, TrembitaApp, spawn_gateway};
 
     let (_dir, cert_path, key_path, trust) = mint_admin_tls_files();
     let ops_addr = free_port();
@@ -517,12 +519,12 @@ async fn telemetry_publishes_consensus_and_actor_metrics() {
 async fn metrics_sink_receives_runtime_samples() {
     use std::sync::Arc;
 
-    use trembita::cluster::TrembitaCluster;
-    use trembita::{RecordedMetric, RecordingMetricsSink};
+    use crate::cluster::TrembitaCluster;
+    use crate::{RecordedMetric, RecordingMetricsSink};
 
     let recorder = Arc::new(RecordingMetricsSink::new());
     let net = LocalNetwork::new();
-    let cluster = TrembitaCluster::builder(NodeId(1), Kv::default())
+    let cluster = crate::builder::TrembitaClusterBuilder::new(NodeId(1), Kv::default())
         .members([NodeId(1)])
         .raft_config(fast_raft_config())
         .tick_period(TICK_PERIOD)
@@ -550,7 +552,7 @@ async fn metrics_sink_receives_runtime_samples() {
 
 #[tokio::test(start_paused = true)]
 async fn opt_in_tracing_emits_message_handled_events() {
-    use trembita::TraceOpts;
+    use crate::TraceOpts;
 
     let (_net, clusters) = spawn_cluster().await;
     let leader = await_trembita_leader(&clusters).await;
@@ -573,9 +575,7 @@ async fn opt_in_tracing_emits_message_handled_events() {
     let got = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             match sub.recv().await {
-                Some(trembita::TrembitaEvent::MessageHandled { id, .. })
-                    if id.starts_with("w#") =>
-                {
+                Some(crate::TrembitaEvent::MessageHandled { id, .. }) if id.starts_with("w#") => {
                     break true;
                 }
                 Some(_) => {}
@@ -594,11 +594,11 @@ async fn opt_in_tracing_emits_message_handled_events() {
 
 #[tokio::test(start_paused = true)]
 async fn builder_wires_actor_state_store() {
-    use trembita::actor_store::{ActorStateStore, InMemoryStore};
+    use crate::actor_store::{ActorStateStore, InMemoryStore};
 
     let net = LocalNetwork::new();
     let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
-    let cluster = TrembitaCluster::builder(NodeId(1), Kv::default())
+    let cluster = crate::builder::TrembitaClusterBuilder::new(NodeId(1), Kv::default())
         .actor_state_store(Arc::clone(&store))
         .start_local(&net)
         .await;
@@ -610,10 +610,10 @@ async fn builder_wires_actor_state_store() {
 
 #[tokio::test(start_paused = true)]
 async fn builder_wires_resource_profile() {
-    use trembita::cluster::{ResourceProfile, VpsResources};
+    use crate::cluster::{ResourceProfile, VpsResources};
 
     let net = LocalNetwork::new();
-    let cluster = TrembitaCluster::builder(NodeId(1), Kv::default())
+    let cluster = crate::builder::TrembitaClusterBuilder::new(NodeId(1), Kv::default())
         .resource_profile(ResourceProfile::Limited { worker_threads: 2 })
         .start_local(&net)
         .await;

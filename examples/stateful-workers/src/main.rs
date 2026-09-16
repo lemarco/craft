@@ -46,11 +46,11 @@ fn migrate_demo_mode() -> bool {
 
 fn apply_capabilities(builder: TrembitaAppBuilder) -> TrembitaAppBuilder {
     if migrate_demo_mode() {
-        builder.workers(workers!(
+        builder.manifest(AppManifest::new().workers(workers!(
             WorkerOpts::<StatefulCounter>::new("counter")
                 .config(0)
                 .scale(WorkerScale::Fixed(1)),
-        ))
+        )))
     } else {
         builder.manifest(AppManifest::new().capabilities(orders::manifest()))
     }

@@ -6,9 +6,9 @@ use std::time::Duration;
 
 use trembita::cluster::RecurringJob;
 use trembita::{
-    ConsumerOpts, CronOpts, GatewayOpts, JobOpts, QueueOpts, RunOpts, StartError, TrembitaApp,
-    TrembitaConfigure, WorkerOpts, WorkerScale, WorkflowBuilder, WorkflowOpts, consumer,
-    journal_workflow, workers,
+    AppManifest, ConsumerOpts, CronOpts, GatewayOpts, JobOpts, QueueOpts, RunOpts, StartError,
+    TrembitaApp, TrembitaConfigure, WorkerOpts, WorkerScale, WorkflowBuilder, WorkflowOpts,
+    consumer, journal_workflow, workers,
 };
 use trembita_test_support::{TICK_PERIOD, advance, eventually_default, fast_raft_config_with_seed};
 
@@ -61,10 +61,10 @@ fn assert_config_err(err: StartError, needle: &str) {
 async fn cron_without_matching_queue_fails_at_boot() {
     let dir = tempfile::tempdir().expect("tempdir");
     let result = local_builder(dir.path())
-        .cron([CronOpts::new(
+        .manifest(AppManifest::new().cron([CronOpts::new(
             "emails",
             RecurringJob::new("daily", "0 9 * * *", b"tick"),
-        )])
+        )]))
         .boot_for_test(RunOpts::local())
         .await;
     match result {
@@ -77,7 +77,7 @@ async fn cron_without_matching_queue_fails_at_boot() {
 async fn consumer_without_matching_queue_fails_at_boot() {
     let dir = tempfile::tempdir().expect("tempdir");
     let result = local_builder(dir.path())
-        .consumer(OrphanConsumer, ConsumerOpts::default())
+        .manifest(AppManifest::new().consumer(OrphanConsumer, ConsumerOpts::default()))
         .boot_for_test(RunOpts::local())
         .await;
     match result {
@@ -95,12 +95,15 @@ async fn cron_and_consumer_succeed_when_queue_matches() {
                 .with_local_gateway_apis()
                 .with_data_dir(dir.path()),
         )
-        .queue([QueueOpts::new("emails", Duration::from_secs(60))])
-        .cron([CronOpts::new(
-            "emails",
-            RecurringJob::new("daily", "0 9 * * *", b"tick"),
-        )])
-        .consumer(EmailWorkerConsumer, ConsumerOpts::default())
+        .manifest(
+            AppManifest::new()
+                .queue([QueueOpts::new("emails", Duration::from_secs(60))])
+                .cron([CronOpts::new(
+                    "emails",
+                    RecurringJob::new("daily", "0 9 * * *", b"tick"),
+                )])
+                .consumer(EmailWorkerConsumer, ConsumerOpts::default()),
+        )
         .configure(TrembitaConfigure {
             raft_config: fast_raft_config_with_seed(43),
             tick_period: TICK_PERIOD,
@@ -120,7 +123,9 @@ mod workflows {
     async fn workflows_without_gateway_fails_at_boot() {
         let dir = tempfile::tempdir().expect("tempdir");
         let result = local_builder(dir.path())
-            .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
+            .manifest(
+                AppManifest::new().workflows([WorkflowOpts::new(noop_plan, journal_workflow)]),
+            )
             .boot_for_test(RunOpts::local())
             .await;
         match result {
@@ -133,7 +138,9 @@ mod workflows {
     async fn workflows_boot_with_auto_gateway_routes() {
         let dir = tempfile::tempdir().expect("tempdir");
         let app = local_builder(dir.path())
-            .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
+            .manifest(
+                AppManifest::new().workflows([WorkflowOpts::new(noop_plan, journal_workflow)]),
+            )
             .gateway(GatewayOpts::new("127.0.0.1:0".parse().expect("addr")))
             .boot_for_test(RunOpts::local())
             .await
@@ -146,7 +153,7 @@ mod workflows {
 async fn jobs_consumer_stream_mismatch_fails_at_boot() {
     let dir = tempfile::tempdir().expect("tempdir");
     let result = local_builder(dir.path())
-        .jobs([JobOpts::new("other").consumer(&EmailWorkerConsumer)])
+        .manifest(AppManifest::new().jobs([JobOpts::new("other").consumer(&EmailWorkerConsumer)]))
         .boot_for_test(RunOpts::local())
         .await;
     match result {
@@ -159,9 +166,11 @@ async fn jobs_consumer_stream_mismatch_fails_at_boot() {
 async fn jobs_registers_queue_handler_and_jobs_api() {
     let dir = tempfile::tempdir().expect("tempdir");
     let app = local_builder(dir.path())
-        .jobs([JobOpts::new("emails")
-            .consumer(&EmailWorkerConsumer)
-            .http_enqueue(true)])
+        .manifest(
+            AppManifest::new().jobs([JobOpts::new("emails")
+                .consumer(&EmailWorkerConsumer)
+                .http_enqueue(true)]),
+        )
         .gateway(GatewayOpts::new("127.0.0.1:0".parse().unwrap()))
         .boot_for_test(RunOpts::local())
         .await
@@ -205,9 +214,9 @@ impl trembita_runtime::UserActor for FixedWorker {
 async fn workers_without_config_fails_at_boot() {
     let dir = tempfile::tempdir().expect("tempdir");
     let result = local_builder(dir.path())
-        .workers(workers!(
+        .manifest(AppManifest::new().workers(workers!(
             WorkerOpts::<FixedWorker>::new("w").scale(WorkerScale::Fixed(1))
-        ))
+        )))
         .boot_for_test(RunOpts::local())
         .await;
     match result {
@@ -220,11 +229,11 @@ async fn workers_without_config_fails_at_boot() {
 async fn workers_autoscale_without_queue_fails_at_boot() {
     let dir = tempfile::tempdir().expect("tempdir");
     let result = local_builder(dir.path())
-        .workers(workers!(
+        .manifest(AppManifest::new().workers(workers!(
             WorkerOpts::<FixedWorker>::new("w")
                 .config(0)
                 .scale(WorkerScale::Auto { min: 1, max: 2 })
-        ))
+        )))
         .boot_for_test(RunOpts::local())
         .await;
     match result {
@@ -237,11 +246,11 @@ async fn workers_autoscale_without_queue_fails_at_boot() {
 async fn workers_fixed_registers_actor_group() {
     let dir = tempfile::tempdir().expect("tempdir");
     let app = local_builder(dir.path())
-        .workers(workers!(
+        .manifest(AppManifest::new().workers(workers!(
             WorkerOpts::<FixedWorker>::new("w")
                 .config(7)
                 .scale(WorkerScale::Fixed(1))
-        ))
+        )))
         .configure(TrembitaConfigure {
             raft_config: fast_raft_config_with_seed(44),
             tick_period: TICK_PERIOD,

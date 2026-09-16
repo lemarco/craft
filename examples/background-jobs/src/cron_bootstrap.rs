@@ -1,13 +1,9 @@
-//! Cron → workflow in one builder line ([`ScheduledWorkflowOpts`]).
-//!
-//! See [cookbook-async-work](../../../docs/scenarios/cookbook-async-work.md).
+//! Cron → workflow registration for the showcase manifest.
 
-use trembita::{ScheduledWorkflowOpts, TrembitaAppBuilder};
+use trembita::ScheduledWorkflowOpts;
 
-/// Register weekly cron that starts the `weekly-report` saga.
+/// Weekly cron that starts the `weekly-report` saga (ledger capability group).
 #[must_use]
-pub fn register_weekly_cron(builder: TrembitaAppBuilder) -> TrembitaAppBuilder {
-    builder.scheduled_workflows(
-        ScheduledWorkflowOpts::new().workflow("weekly", "0 3 * * 1", "weekly-report"),
-    )
+pub fn weekly_scheduled_workflows() -> ScheduledWorkflowOpts {
+    ScheduledWorkflowOpts::new().workflow("weekly", "0 3 * * 1", "weekly-report")
 }

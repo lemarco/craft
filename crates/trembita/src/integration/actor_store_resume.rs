@@ -8,13 +8,13 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
+use crate::NodeId;
+use crate::actor_store::{ActorStateStore, InMemoryStore};
+use crate::cluster::TrembitaCluster;
+use crate::core::{Config, StateMachine};
+use crate::net::LocalNetwork;
+use crate::proto::{self, LogIndex};
 use serde::{Deserialize, Serialize};
-use trembita::NodeId;
-use trembita::actor_store::{ActorStateStore, InMemoryStore};
-use trembita::cluster::TrembitaCluster;
-use trembita::core::{Config, StateMachine};
-use trembita::net::LocalNetwork;
-use trembita::proto::{self, LogIndex};
 use trembita_runtime::{ConfigCodecError, UserActor};
 use trembita_test_support::{POLL_STEP, eventually_async, eventually_async_default};
 
@@ -164,9 +164,9 @@ impl UserActor for OrderWorker {
 
 fn reachability_raft_config() -> Config {
     Config {
-        election_timeout_min: trembita::proto::LogicalTick(3),
-        election_timeout_max: trembita::proto::LogicalTick(5),
-        heartbeat_interval: trembita::proto::LogicalTick(1),
+        election_timeout_min: crate::proto::LogicalTick(3),
+        election_timeout_max: crate::proto::LogicalTick(5),
+        heartbeat_interval: crate::proto::LogicalTick(1),
         seed: 21,
         ..Default::default()
     }
@@ -180,7 +180,7 @@ async fn spawn_store_cluster(
     let net = LocalNetwork::new();
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = TrembitaCluster::builder(id, Kv::default())
+        let cluster = crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
             .members(ids)
             .raft_config(reachability_raft_config())
             .tick_period(Duration::from_millis(5))

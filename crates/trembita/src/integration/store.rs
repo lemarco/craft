@@ -3,12 +3,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita::NodeId;
-use trembita::cluster::TrembitaCluster;
-use trembita::core::StateMachine;
-use trembita::net::LocalNetwork;
-use trembita::proto::LogIndex;
-use trembita_test_support::{advance, await_trembita_leader};
+use crate::NodeId;
+use crate::cluster::TrembitaCluster;
+use crate::core::StateMachine;
+use crate::integration::await_trembita_leader;
+use crate::net::LocalNetwork;
+use crate::proto::LogIndex;
+use trembita_test_support::advance;
 
 #[derive(Default)]
 struct Empty;
@@ -70,7 +71,7 @@ async fn durable_actor_store_replicates_to_voters() {
 
     for id in ids {
         let cluster = Arc::new(
-            TrembitaCluster::builder(id, Empty)
+            crate::builder::TrembitaClusterBuilder::new(id, Empty)
                 .members(ids)
                 .data_dir(base.join(format!("node-{}", id.0)))
                 .tick_period(Duration::from_millis(5))
@@ -106,7 +107,7 @@ async fn durable_actor_store_replicates_to_voters() {
 
 #[tokio::test(start_paused = true)]
 async fn store_replicate_rejects_non_leader_caller() {
-    use trembita::net::{LocalTransport, send_store_replicate};
+    use crate::net::{LocalTransport, send_store_replicate};
     use trembita_proto::{StoreReplicateOp, StoreReplicateRequest};
 
     let base = std::env::temp_dir().join(format!(
@@ -123,7 +124,7 @@ async fn store_replicate_rejects_non_leader_caller() {
     let mut clusters = Vec::new();
     for id in ids {
         clusters.push(Arc::new(
-            TrembitaCluster::builder(id, Empty)
+            crate::builder::TrembitaClusterBuilder::new(id, Empty)
                 .members(ids)
                 .data_dir(base.join(format!("node-{}", id.0)))
                 .start_local(&net)
@@ -177,7 +178,7 @@ async fn ttl_keys_expire_on_cluster_store() {
     let mut clusters = Vec::new();
     for id in ids {
         clusters.push(Arc::new(
-            TrembitaCluster::builder(id, Empty)
+            crate::builder::TrembitaClusterBuilder::new(id, Empty)
                 .members(ids)
                 .data_dir(base.join(format!("node-{}", id.0)))
                 .tick_period(Duration::from_millis(5))

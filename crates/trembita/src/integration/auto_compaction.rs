@@ -1,13 +1,13 @@
 //! Automatic Raft log compaction via [`TrembitaClusterBuilder::auto_compaction`].
 
-use trembita::cluster::TrembitaCluster;
-use trembita::core::CompactionPolicy;
-use trembita::net::LocalNetwork;
-use trembita::proto::NodeId;
-use trembita::storage::{GroupRedbLayout, LogStore, SnapshotStore};
+use crate::cluster::TrembitaCluster;
+use crate::core::CompactionPolicy;
+use crate::integration::{wait_for_trembita_leader, wait_for_trembita_stopped};
+use crate::net::LocalNetwork;
+use crate::proto::NodeId;
+use crate::storage::{GroupRedbLayout, LogStore, SnapshotStore};
 use trembita_test_support::{
     KvCommand, KvMachine, TICK_PERIOD, eventually_async_default, fast_raft_config_with_seed,
-    wait_for_trembita_leader, wait_for_trembita_stopped,
 };
 
 #[tokio::test(start_paused = true)]
@@ -17,7 +17,7 @@ async fn auto_compaction_persists_snapshot_under_data_dir() {
     let net = LocalNetwork::new();
     let node_id = NodeId(1);
 
-    let cluster = TrembitaCluster::builder(node_id, KvMachine::default())
+    let cluster = crate::builder::TrembitaClusterBuilder::new(node_id, KvMachine::default())
         .members([node_id])
         .raft_config(fast_raft_config_with_seed(4))
         .tick_period(TICK_PERIOD)

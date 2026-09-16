@@ -3,21 +3,19 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use sha2::{Digest, Sha256};
-use tempfile::TempDir;
-use trembita::cluster::TrembitaCluster;
-use trembita::net::LocalNetwork;
-use trembita::proto::NodeId;
-use trembita::upgrade::{
+use crate::cluster::TrembitaCluster;
+use crate::integration::{await_trembita_leader, wait_for_trembita_leader};
+use crate::net::LocalNetwork;
+use crate::proto::NodeId;
+use crate::upgrade::{
     ArtifactManifest, UpgradeCommand, UpgradeMachine, UpgradeOpts, UpgradeQuery, UpgradeResponse,
     spawn_upgrade_coordinator,
 };
-use trembita_test_support::{
-    TICK_PERIOD, advance, await_trembita_leader, eventually_async_default, fast_raft_config,
-    wait_for_trembita_leader,
-};
+use sha2::{Digest, Sha256};
+use tempfile::TempDir;
+use trembita_test_support::{TICK_PERIOD, advance, eventually_async_default, fast_raft_config};
 
-async fn upgrade_view(cluster: &TrembitaCluster<UpgradeMachine>) -> trembita::UpgradeView {
+async fn upgrade_view(cluster: &TrembitaCluster<UpgradeMachine>) -> crate::UpgradeView {
     let members = cluster.members().to_vec();
     let UpgradeResponse::View(view) = cluster
         .handle()
@@ -33,7 +31,7 @@ async fn upgrade_view(cluster: &TrembitaCluster<UpgradeMachine>) -> trembita::Up
 #[tokio::test(start_paused = true)]
 async fn single_node_set_desired() {
     let net = LocalNetwork::new();
-    let cluster = TrembitaCluster::builder(NodeId(1), UpgradeMachine::default())
+    let cluster = crate::builder::TrembitaClusterBuilder::new(NodeId(1), UpgradeMachine::default())
         .members([NodeId(1)])
         .raft_config(fast_raft_config())
         .tick_period(TICK_PERIOD)
@@ -74,7 +72,7 @@ async fn coordinator_rolls_all_nodes_dry_run() {
             dry_run: true,
         });
         let cluster = Arc::new(
-            TrembitaCluster::builder(id, UpgradeMachine::default())
+            crate::builder::TrembitaClusterBuilder::new(id, UpgradeMachine::default())
                 .members(ids)
                 .raft_config(fast_raft_config())
                 .tick_period(TICK_PERIOD)
@@ -129,7 +127,7 @@ async fn set_desired_replicates_on_three_node_cluster() {
     let mut clusters = Vec::new();
     for &id in &ids {
         clusters.push(Arc::new(
-            TrembitaCluster::builder(id, UpgradeMachine::default())
+            crate::builder::TrembitaClusterBuilder::new(id, UpgradeMachine::default())
                 .members(ids)
                 .raft_config(fast_raft_config())
                 .tick_period(TICK_PERIOD)

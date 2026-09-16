@@ -35,9 +35,9 @@ TrembitaApp::from_env()?
 
 See [getting-started.md](../../docs/getting-started.md) and runnable [examples/](../../examples/README.md).
 
-## Cluster APIs (`trembita::cluster`)
+## Runtime embedding (`trembita::cluster`)
 
-Custom [`StateMachine`](https://docs.rs/trembita-core/latest/trembita_core/trait.StateMachine.html) wiring, tests, and low-level control: [`trembita::cluster`](src/cluster.rs) (`TrembitaCluster`, `TrembitaClusterBuilder`, queues, journals). Product apps use [`TrembitaApp`](#product-quickstart-trembitaapp) above.
+Handles, enqueue options, saga journals, and TLS helpers: [`trembita::cluster`](src/cluster.rs). Product apps use [`TrembitaApp`](#product-quickstart-trembitaapp) only.
 
 ## Features
 

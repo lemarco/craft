@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bytes::Bytes;
 use http::{Method, StatusCode, Uri, header};
-use trembita::{QueueOpts, TrembitaApp, TrembitaConfigure};
+use trembita::{AppManifest, QueueOpts, TrembitaApp, TrembitaConfigure};
 use trembita_http::{ResponseBody, RouteTable};
 use trembita_jobs::{JobLifecycle, WorkerId};
 use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};
@@ -78,7 +78,9 @@ async fn http_run_at_ms_delays_until_visible() {
                         .with_local_gateway_apis()
                         .with_data_dir(&base),
                 )
-                .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
+                .manifest(
+                    AppManifest::new().queue([QueueOpts::new("jobs", Duration::from_secs(60))]),
+                )
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     ..TrembitaConfigure::default()
@@ -143,7 +145,9 @@ async fn enqueue_at_in_the_past_is_immediately_leasable() {
                         .with_local_gateway_apis()
                         .with_data_dir(&base),
                 )
-                .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
+                .manifest(
+                    AppManifest::new().queue([QueueOpts::new("jobs", Duration::from_secs(60))]),
+                )
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     ..TrembitaConfigure::default()

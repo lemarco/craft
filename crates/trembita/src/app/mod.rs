@@ -22,7 +22,7 @@ mod types;
 mod workflow;
 
 pub use builder::TrembitaAppBuilder;
-pub use manifest::{AppManifest, JobsPreset, RealtimePreset, TopicsPreset};
+pub use manifest::{AppManifest, JobsPreset, RealtimePreset, ScheduleSourceOpts, TopicsPreset};
 pub use runtime::TrembitaApp;
 pub use shutdown::ShutdownOpts;
 #[doc(hidden)]

@@ -8,7 +8,7 @@ mod merge_app_config_tests {
     use trembita_proto::{JoinRole, NodeId};
 
     use crate::app::EmptyStateMachine;
-    use crate::cluster::TrembitaClusterBuilder;
+    use crate::builder::TrembitaClusterBuilder;
     use crate::env_config::{AppConfig, EnvOverrides};
     use crate::security::Security;
 

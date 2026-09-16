@@ -25,7 +25,11 @@ fn server_builder() -> Result<trembita::TrembitaAppBuilder, Box<dyn std::error::
     let dir = data_dir(DATA_DIR_NAME);
     let _ = std::fs::create_dir_all(&dir);
     Ok(TrembitaApp::from_env()?
-        .manifest(AppManifest::new().capabilities(capabilities_manifest()))
+        .manifest(
+            AppManifest::new()
+                .capabilities(capabilities_manifest())
+                .scheduled_workflows(cron_bootstrap::weekly_scheduled_workflows()),
+        )
         .gateway_routes(|state| {
             RouteTable::new().post(
                 "/jobs/emails",
@@ -46,9 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     debug::init_tracing();
     debug::startup("quic", 0, &data_dir(DATA_DIR_NAME));
     print_banner();
-    cron_bootstrap::register_weekly_cron(server_builder()?)
-        .run()
-        .await?;
+    server_builder()?.run().await?;
     debug::shutdown(1);
     Ok(())
 }

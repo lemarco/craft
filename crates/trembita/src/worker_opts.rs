@@ -11,11 +11,11 @@ use crate::app::TrembitaAppBuilder;
 /// How many instances of a worker actor group to run in the cluster.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkerScale {
-    /// Fixed pool size cluster-wide ([`manage`](crate::cluster::TrembitaClusterBuilder::manage)).
+    /// Fixed pool size cluster-wide.
     Fixed(usize),
-    /// One instance per live node ([`manage_auto`](crate::cluster::TrembitaClusterBuilder::manage_auto)).
+    /// One instance per live node.
     PerNode,
-    /// Queue-depth autoscale between `min` and `max` ([`job_queue_autoscale`](crate::cluster::TrembitaClusterBuilder::job_queue_autoscale)).
+    /// Queue-depth autoscale between `min` and `max`.
     Auto {
         /// Minimum worker instances.
         min: usize,
@@ -26,8 +26,7 @@ pub enum WorkerScale {
 
 /// One managed actor group with explicit scale and optional queue autoscale.
 ///
-/// Combines [`.actors`](super::app::TrembitaAppBuilder::actors) with optional
-/// [`job_queue_autoscale`](crate::cluster::TrembitaClusterBuilder::job_queue_autoscale).
+/// Scale and optional queue autoscale for [`AppManifest::workers`](crate::AppManifest::workers).
 ///
 /// Register several heterogeneous worker types via [`WorkerGroup`] or the [`workers!`](crate::workers) macro
 /// (call as `workers!(…)`):

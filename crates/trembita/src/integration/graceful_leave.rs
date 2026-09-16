@@ -3,12 +3,11 @@
 
 use std::sync::Arc;
 
-use trembita::cluster::TrembitaCluster;
-use trembita::net::LocalNetwork;
-use trembita::proto::NodeId;
-use trembita_test_support::{
-    Kv, TICK_PERIOD, advance, await_trembita_leader, eventually_async_default, fast_raft_config,
-};
+use crate::cluster::TrembitaCluster;
+use crate::integration::await_trembita_leader;
+use crate::net::LocalNetwork;
+use crate::proto::NodeId;
+use trembita_test_support::{Kv, TICK_PERIOD, advance, eventually_async_default, fast_raft_config};
 
 async fn voters_on_peers(
     clusters: &[Arc<TrembitaCluster<Kv>>],
@@ -31,7 +30,7 @@ async fn graceful_leave_removes_departing_node_before_shutdown() {
     let net = LocalNetwork::new();
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = TrembitaCluster::builder(id, Kv::default())
+        let cluster = crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
             .members(ids)
             .raft_config(fast_raft_config())
             .tick_period(TICK_PERIOD)

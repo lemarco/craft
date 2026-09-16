@@ -3,27 +3,24 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita::NodeId;
-use trembita::cluster::TrembitaCluster;
-use trembita::core::{RaftGroupId, StableShardRouter, place_shard};
-use trembita::net::LocalNetwork;
+use crate::NodeId;
+use crate::cluster::TrembitaCluster;
+use crate::core::{RaftGroupId, StableShardRouter, place_shard};
+use crate::integration::{await_trembita_leader, wait_for_each_group_cluster_leader};
+use crate::net::LocalNetwork;
 use trembita_client::{RemoteClient, TypedClient};
 use trembita_test_support::{
-    KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, await_trembita_leader,
-    fast_raft_config_with_seed, find_keys_for_two_groups, wait_for_each_group_cluster_leader,
+    KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, fast_raft_config_with_seed,
+    find_keys_for_two_groups,
 };
 
 async fn spawn_multi_raft_cluster() -> (LocalNetwork, Vec<Arc<TrembitaCluster<KvMachine>>>) {
-    let ids = [
-        trembita::NodeId(1),
-        trembita::NodeId(2),
-        trembita::NodeId(3),
-    ];
+    let ids = [crate::NodeId(1), crate::NodeId(2), crate::NodeId(3)];
     let net = LocalNetwork::new();
     let shard_count = 64;
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = TrembitaCluster::builder(id, KvMachine::default())
+        let cluster = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
             .members(ids)
             .raft_config(fast_raft_config_with_seed(3))
             .tick_period(TICK_PERIOD)

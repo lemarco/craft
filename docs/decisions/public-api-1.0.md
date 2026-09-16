@@ -26,7 +26,7 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 
 | Area | Types | Notes |
 |------|-------|-------|
-| Cluster | `trembita::cluster::{TrembitaCluster, TrembitaClusterBuilder, StartError}` | Custom SM, integration tests; not re-exported at crate root |
+| Cluster | `trembita::cluster::{TrembitaCluster, StartError, …}` | Runtime handle, queues, journals — not the product builder |
 | Client | `RemoteClient`, `run_saga`, `run_keyed_saga`, `KeyedClient` | Re-exported `trembita::client` |
 | Multi-Raft | `propose_keyed`, `add_raft_groups`, `RaftGroupsView` | Builder flags |
 | Saga / 2PC journals | `MetaRaftSagaJournal`, `CompositeSagaJournal`, `StoreTwoPhaseJournal` | Ops / recovery |
@@ -37,10 +37,10 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 
 | Item | Use instead |
 |------|-------------|
-| Low-level cluster handle | `trembita::cluster::{TrembitaCluster, TrembitaClusterBuilder, …}` |
-| `TrembitaApp::cluster` / `into_cluster` | Not public — use `TrembitaApp` product APIs or `trembita::cluster` |
+| Custom SM cluster assembly | Not exported — product uses `TrembitaApp` + `TREMBITA_*`; `TrembitaCluster::builder` is `#[doc(hidden)]` for workspace tests only |
+| `TrembitaApp::cluster` / `into_cluster` | Not public — use `TrembitaApp` product APIs or `trembita::cluster` handles |
 | `TrembitaAppBuilder::inner_mut` | `#[doc(hidden)]` — tests only |
-| Cluster join / static members / voter replacement | [`trembita::cluster::TrembitaClusterBuilder`](../../crates/trembita/src/builder/cluster/config.rs) or env — **not** on `TrembitaAppBuilder` |
+| Cluster join / static members / voter replacement | `TREMBITA_*` env on [`TrembitaApp::from_env`](../../crates/trembita/src/app/runtime.rs) — not builder setters |
 
 ## Out of semver scope
 

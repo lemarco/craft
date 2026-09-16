@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use http::StatusCode;
 use trembita::{
-    ConsumerOpts, GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError, QueueOpts,
-    TrembitaApp, TrembitaConfigure, consumer,
+    AppManifest, ConsumerOpts, GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError,
+    QueueOpts, TrembitaApp, TrembitaConfigure, consumer,
 };
 use trembita_jobs::JobLifecycle;
 use trembita_test_support::{
@@ -59,10 +59,12 @@ async fn gateway_jobs_batch_and_job_status_metadata() {
                         .with_local_gateway_apis()
                         .with_data_dir(&base),
                 )
-                .queue([
-                    QueueOpts::new("gateway-jobs", Duration::from_secs(60)).default_max_attempts(3)
-                ])
-                .consumer(HandleJobConsumer, ConsumerOpts::default())
+                .manifest(
+                    AppManifest::new()
+                        .queue([QueueOpts::new("gateway-jobs", Duration::from_secs(60))
+                            .default_max_attempts(3)])
+                        .consumer(HandleJobConsumer, ConsumerOpts::default()),
+                )
                 .gateway(
                     GatewayOpts::new("127.0.0.1:0".parse().unwrap())
                         .surfaces(gateway_jobs_surfaces),
@@ -156,9 +158,9 @@ async fn gateway_rate_limit_returns_429() {
                         .with_local_gateway_apis()
                         .with_data_dir(&base),
                 )
-                .queue([
-                    QueueOpts::new("gateway-jobs", Duration::from_secs(60)).default_max_attempts(3)
-                ])
+                .manifest(AppManifest::new().queue([
+                    QueueOpts::new("gateway-jobs", Duration::from_secs(60)).default_max_attempts(3),
+                ]))
                 .gateway(
                     GatewayOpts::new("127.0.0.1:0".parse().unwrap())
                         .identity(BearerSecret)

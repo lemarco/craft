@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use trembita::{QueueOpts, TrembitaApp, TrembitaConfigure};
+use trembita::{AppManifest, QueueOpts, TrembitaApp, TrembitaConfigure};
 use trembita_test_support::{advance, boot_local_app, wait_for_trembita_app_leader};
 
 #[tokio::test(start_paused = true)]
@@ -27,7 +27,9 @@ async fn trembita_app_start_local_with_data_dir_and_queue() {
                         .with_local_gateway_apis()
                         .with_data_dir(&base),
                 )
-                .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
+                .manifest(
+                    AppManifest::new().queue([QueueOpts::new("jobs", Duration::from_secs(60))]),
+                )
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     ..TrembitaConfigure::default()
@@ -73,7 +75,9 @@ async fn trembita_app_requeue_dead_letter() {
                         .with_local_gateway_apis()
                         .with_data_dir(&base),
                 )
-                .queue([QueueOpts::new("jobs", Duration::from_secs(60))])
+                .manifest(
+                    AppManifest::new().queue([QueueOpts::new("jobs", Duration::from_secs(60))]),
+                )
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     ..TrembitaConfigure::default()

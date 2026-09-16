@@ -8,8 +8,9 @@ use std::time::Duration;
 use bytes::Bytes;
 use http::{Method, StatusCode};
 use trembita::{
-    DefaultGatewayApis, Gateway, GatewayIdentity, GatewayOpts, GatewayRequest, IdentityError,
-    TopicOpts, TrembitaApp, TrembitaConfigure, WorkflowBuilder, WorkflowOpts, journal_workflow,
+    AppManifest, DefaultGatewayApis, Gateway, GatewayIdentity, GatewayOpts, GatewayRequest,
+    IdentityError, TopicOpts, TrembitaApp, TrembitaConfigure, WorkflowBuilder, WorkflowOpts,
+    journal_workflow,
 };
 use trembita_http::{ResponseBody, RouteTable};
 use trembita_test_support::{
@@ -80,8 +81,10 @@ async fn gateway_topics_and_workflows_require_identity() {
                         .with_local_gateway_apis()
                         .with_data_dir(&base),
                 )
-                .topics([TopicOpts::topic("orders.events")])
-                .workflows([WorkflowOpts::new(noop_plan, journal_workflow)])
+                .manifest(AppManifest::new().topics([TopicOpts::topic("orders.events")]))
+                .manifest(
+                    AppManifest::new().workflows([WorkflowOpts::new(noop_plan, journal_workflow)]),
+                )
                 .gateway(
                     GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
                         .identity(BearerSecret)
@@ -166,7 +169,7 @@ async fn ops_introspect_topics_snapshot() {
                         .with_local_gateway_apis()
                         .with_data_dir(&base),
                 )
-                .topics([TopicOpts::topic("orders.events")])
+                .manifest(AppManifest::new().topics([TopicOpts::topic("orders.events")]))
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     ..TrembitaConfigure::default()

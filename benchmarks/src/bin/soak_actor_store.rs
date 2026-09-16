@@ -10,6 +10,7 @@ use trembita::core::{Config, StateMachine};
 use trembita::net::LocalNetwork;
 use trembita::proto::LogIndex;
 use trembita::cluster::TrembitaCluster;
+use trembita::workspace_showcase::cluster::cluster_builder;
 use trembita::NodeId;
 use trembita_benchmarks::env_u64;
 
@@ -60,7 +61,7 @@ async fn spawn_all(
     for &id in &ids {
         let data_dir = node_dir(base, id);
         std::fs::create_dir_all(&data_dir).expect("mkdir");
-        let cluster = TrembitaCluster::builder(id, Empty)
+        let cluster = cluster_builder(id, Empty)
             .members(ids)
             .raft_config(raft_config(seed ^ id.0))
             .tick_period(Duration::from_millis(10))

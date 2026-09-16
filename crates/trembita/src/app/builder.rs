@@ -35,8 +35,7 @@ use super::types::{
 /// Fluent builder for [`TrembitaApp`].
 ///
 /// Cluster membership, join seeds, and seed/joiner policy come from [`Self::from_env`] /
-/// [`Self::from_config`] (`TREMBITA_*`). For static bootstrap or custom state machines use
-/// [`crate::cluster::TrembitaClusterBuilder`].
+/// [`Self::from_config`] (`TREMBITA_*`).
 pub struct TrembitaAppBuilder {
     pub(crate) inner: TrembitaClusterBuilder<EmptyStateMachine>,
     workflows: Vec<WorkflowRegistration>,
@@ -106,9 +105,9 @@ impl TrembitaAppBuilder {
         }
     }
 
-    /// Register capability groups ([`CapManifest`](crate::capability::CapManifest)).
+    /// Register capability groups — use [`AppManifest::capabilities`] + [`.manifest`](Self::manifest).
     #[must_use]
-    pub fn capabilities(self, caps: CapManifest) -> Self {
+    pub(crate) fn capabilities(self, caps: CapManifest) -> Self {
         let (mut builder, runtime) = caps.apply(self);
         builder.cap_runtime = runtime;
         builder
@@ -281,7 +280,7 @@ impl TrembitaAppBuilder {
     /// [`Self::run`] / [`Self::boot_for_test`] fail at boot when `C::STREAM` was not registered
     /// via [`.queue`](Self::queue).
     #[must_use]
-    pub fn consumer<C: crate::JobConsumer>(
+    pub(crate) fn consumer<C: crate::JobConsumer>(
         mut self,
         consumer: C,
         opts: crate::ConsumerOpts,
@@ -298,7 +297,7 @@ impl TrembitaAppBuilder {
     /// # Errors
     /// Same stream / queue rules as [`.consumer`](Self::consumer).
     #[must_use]
-    pub fn consumers(mut self, group: crate::ConsumerGroup) -> Self {
+    pub(crate) fn consumers(mut self, group: crate::ConsumerGroup) -> Self {
         let (streams, spawners) = group.into_parts();
         self.consumer_streams.extend(streams);
         self.pending_consumers.extend(spawners);
@@ -313,7 +312,7 @@ impl TrembitaAppBuilder {
 
     /// Register durable job streams with handlers via [`JobOpts`] (queue + consumer + optional HTTP enqueue).
     #[must_use]
-    pub fn jobs(mut self, jobs: impl IntoIterator<Item = JobOpts>) -> Self {
+    pub(crate) fn jobs(mut self, jobs: impl IntoIterator<Item = JobOpts>) -> Self {
         for job in jobs {
             let stream = job.stream_name().to_string();
             let reg = job.into_registration();
@@ -349,7 +348,7 @@ impl TrembitaAppBuilder {
 
     /// Register durable job streams (requires [`Self::data_dir`]).
     #[must_use]
-    pub fn queue(mut self, queues: impl IntoIterator<Item = QueueOpts>) -> Self {
+    pub(crate) fn queue(mut self, queues: impl IntoIterator<Item = QueueOpts>) -> Self {
         for opts in queues {
             self.registration.jobs = true;
             self.queue_streams.insert(opts.name.clone());
@@ -364,7 +363,7 @@ impl TrembitaAppBuilder {
 
     /// Register durable event topics with named subscriptions (requires [`Self::data_dir`]).
     #[must_use]
-    pub fn topics(
+    pub(crate) fn topics(
         mut self,
         topics: impl IntoIterator<Item = crate::topic_opts::TopicOpts>,
     ) -> Self {
@@ -396,7 +395,7 @@ impl TrembitaAppBuilder {
     /// [`Self::run`] / [`Self::boot_for_test`] fail at boot when a cron stream has no matching
     /// [`.queue`](Self::queue) registration.
     #[must_use]
-    pub fn cron(mut self, schedules: impl IntoIterator<Item = CronOpts>) -> Self {
+    pub(crate) fn cron(mut self, schedules: impl IntoIterator<Item = CronOpts>) -> Self {
         for opts in schedules {
             self.cron_streams.push(opts.stream.clone());
             self.inner = self.inner.recurring_job(&opts.stream, opts.job);
@@ -411,15 +410,15 @@ impl TrembitaAppBuilder {
     /// [`.workflows`](Self::workflows) when schedules call saga ids.
     ///
     /// ```
-    /// # use trembita::{ScheduledWorkflowOpts, TrembitaApp};
+    /// # use trembita::{AppManifest, ScheduledWorkflowOpts, TrembitaApp, TrembitaConfigure};
     /// TrembitaApp::builder()
-    ///     .data_dir("/tmp/x")
-    ///     .scheduled_workflows(
+    ///     .manifest(AppManifest::new().scheduled_workflows(
     ///         ScheduledWorkflowOpts::new().workflow("weekly", "0 3 * * 1", "weekly-report"),
-    ///     );
+    ///     ))
+    ///     .configure(TrembitaConfigure::default().with_data_dir("/tmp/x"));
     /// ```
     #[must_use]
-    pub fn scheduled_workflows(mut self, spec: ScheduledWorkflowOpts) -> Self {
+    pub(crate) fn scheduled_workflows(mut self, spec: ScheduledWorkflowOpts) -> Self {
         let reg = spec.into_registration();
         if let Some(err) = reg.config_error {
             self.config_errors.push(err);
@@ -445,7 +444,7 @@ impl TrembitaAppBuilder {
     ///
     /// Requires a matching [`.queue`](Self::queue) stream. Pairs with [`.cron`](Self::cron).
     #[must_use]
-    pub fn schedule_source(
+    pub(crate) fn schedule_source(
         mut self,
         stream: impl Into<String>,
         source: Arc<dyn trembita_jobs::ScheduleSource>,
@@ -462,7 +461,7 @@ impl TrembitaAppBuilder {
     ///
     /// Requires a matching [`.topics`](Self::topics) registration.
     #[must_use]
-    pub fn event_outbox_source(
+    pub(crate) fn event_outbox_source(
         mut self,
         topic: impl Into<String>,
         source: Arc<dyn trembita_events::EventOutboxSource>,
@@ -479,7 +478,11 @@ impl TrembitaAppBuilder {
     ///
     /// Prefer [`.workers`](Self::workers) with [`WorkerOpts`] for explicit scale.
     #[must_use]
-    pub fn actors<A: UserActor>(mut self, name: &str, opts: ActorGroupOpts<A::Config>) -> Self
+    pub(crate) fn actors<A: UserActor>(
+        mut self,
+        name: &str,
+        opts: ActorGroupOpts<A::Config>,
+    ) -> Self
     where
         A::Config: Clone + Send + Sync + 'static,
     {
@@ -493,7 +496,7 @@ impl TrembitaAppBuilder {
 
     /// Register one managed worker actor group via [`WorkerOpts`].
     #[must_use]
-    pub fn worker<A: UserActor>(self, opts: WorkerOpts<A>) -> Self
+    pub(crate) fn worker<A: UserActor>(self, opts: WorkerOpts<A>) -> Self
     where
         A::Config: Clone + Send + Sync + 'static,
     {
@@ -502,7 +505,7 @@ impl TrembitaAppBuilder {
 
     /// Register several worker actor groups via [`WorkerGroup`] or [`workers!`](crate::workers).
     #[must_use]
-    pub fn workers(mut self, group: WorkerGroup) -> Self {
+    pub(crate) fn workers(mut self, group: WorkerGroup) -> Self {
         for entry in group.into_entries() {
             self = self.apply_worker_entry(entry);
         }
@@ -522,7 +525,7 @@ impl TrembitaAppBuilder {
     /// [`Self::run`] / [`Self::boot_for_test`] fail at boot unless a product HTTP listener
     /// is available (`TREMBITA_LISTEN` or [`.gateway`](Self::gateway)) with workflow routes.
     #[must_use]
-    pub fn workflows(mut self, specs: impl IntoIterator<Item = WorkflowOpts>) -> Self {
+    pub(crate) fn workflows(mut self, specs: impl IntoIterator<Item = WorkflowOpts>) -> Self {
         self.workflows
             .extend(specs.into_iter().map(WorkflowOpts::into_registration));
         self

@@ -6,14 +6,13 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use trembita::NodeId;
-use trembita::cluster::TrembitaCluster;
-use trembita::cluster::{PeerDirectory, Security};
-use trembita::net::tls::ClusterCa;
-use trembita::proto::LogIndex;
-use trembita_test_support::{
-    Cmd, Kv, Qry, Resp, TICK_PERIOD, advance, await_trembita_leader, fast_raft_config, free_udp,
-};
+use crate::NodeId;
+use crate::cluster::TrembitaCluster;
+use crate::cluster::{PeerDirectory, Security};
+use crate::integration::await_trembita_leader;
+use crate::net::tls::ClusterCa;
+use crate::proto::LogIndex;
+use trembita_test_support::{Cmd, Kv, Qry, Resp, TICK_PERIOD, advance, fast_raft_config, free_udp};
 
 #[tokio::test(start_paused = true)]
 async fn quic_cluster_elects_leader_and_replicates() {
@@ -32,7 +31,7 @@ async fn quic_cluster_elects_leader_and_replicates() {
             ca.issue_node(id).expect("issue node cert"),
             ca.root_store().expect("trust root"),
         );
-        let cluster = TrembitaCluster::builder(id, Kv::default())
+        let cluster = crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
             .members(ids)
             .raft_config(fast_raft_config())
             .tick_period(TICK_PERIOD)
@@ -84,7 +83,7 @@ async fn a_new_node_dynamically_joins_over_quic() {
             ca.issue_node(id).expect("issue node cert"),
             ca.root_store().expect("trust root"),
         );
-        let cluster = TrembitaCluster::builder(id, Kv::default())
+        let cluster = crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
             .members(ids)
             .allow_join(true)
             .raft_config(fast_raft_config())
@@ -115,7 +114,7 @@ async fn a_new_node_dynamically_joins_over_quic() {
         ca.issue_node(joiner_id).expect("issue joiner cert"),
         ca.root_store().expect("trust root"),
     );
-    let joiner = TrembitaCluster::builder(joiner_id, Kv::default())
+    let joiner = crate::builder::TrembitaClusterBuilder::new(joiner_id, Kv::default())
         .members(ids)
         .allow_join(true)
         .raft_config(fast_raft_config())
@@ -184,7 +183,7 @@ async fn dynamic_voter_join_when_join_as_voter() {
             ca.issue_node(id).expect("issue node cert"),
             ca.root_store().expect("trust root"),
         );
-        let cluster = TrembitaCluster::builder(id, Kv::default())
+        let cluster = crate::builder::TrembitaClusterBuilder::new(id, Kv::default())
             .members(ids)
             .allow_join(true)
             .allow_voter_join(true)
@@ -205,13 +204,13 @@ async fn dynamic_voter_join_when_join_as_voter() {
         ca.issue_node(joiner_id).expect("issue joiner cert"),
         ca.root_store().expect("trust root"),
     );
-    let joiner = TrembitaCluster::builder(joiner_id, Kv::default())
+    let joiner = crate::builder::TrembitaClusterBuilder::new(joiner_id, Kv::default())
         .members(ids)
         .allow_join(true)
         .raft_config(fast_raft_config())
         .tick_period(TICK_PERIOD)
         .join(NodeId(1), addrs[0])
-        .join_as(trembita::proto::JoinRole::Voter)
+        .join_as(crate::proto::JoinRole::Voter)
         .start_quic(security, joiner_addr, seed_only)
         .await
         .expect("voter join over quic");

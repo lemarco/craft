@@ -3,20 +3,22 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use std::path::{Path, PathBuf};
-use std::time::Duration;
-use trembita::actor_store::{ActorStateStore, InMemoryStore};
-use trembita::client::{
+use crate::actor_store::{ActorStateStore, InMemoryStore};
+use crate::client::{
     KeyedClient, RemoteClient, RetryPolicy, RunSagaOpts, SagaJournal, SagaJournalPhase,
     SagaOutcome, SagaPlan, SagaStep, run_saga,
 };
-use trembita::cluster::{StoreSagaJournal, TrembitaCluster};
-use trembita::net::{LocalNetwork, Transport, TransportError, decode_body};
-use trembita::proto::{ClientRequest, ClientResponse, NodeId};
+use crate::cluster::{StoreSagaJournal, TrembitaCluster};
+use crate::integration::{
+    await_trembita_leader, wait_for_each_group_cluster_leader, wait_for_trembita_stopped,
+};
+use crate::net::{LocalNetwork, Transport, TransportError, decode_body};
+use crate::proto::{ClientRequest, ClientResponse, NodeId};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 use trembita_test_support::{
     KvCommand, KvMachine, KvQuery, KvResponse, TICK_PERIOD, advance, assert_eq,
-    await_trembita_leader, fast_raft_config_with_seed, find_keys_for_two_groups,
-    wait_for_each_group_cluster_leader, wait_for_trembita_stopped,
+    fast_raft_config_with_seed, find_keys_for_two_groups,
 };
 
 async fn spawn_two_group_cluster() -> (LocalNetwork, Vec<Arc<TrembitaCluster<KvMachine>>>) {
@@ -24,7 +26,7 @@ async fn spawn_two_group_cluster() -> (LocalNetwork, Vec<Arc<TrembitaCluster<KvM
     let net = LocalNetwork::new();
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = TrembitaCluster::builder(id, KvMachine::default())
+        let cluster = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
             .members(ids)
             .raft_config(fast_raft_config_with_seed(11))
             .tick_period(TICK_PERIOD)
@@ -43,23 +45,22 @@ fn two_shard_plan(key_a: Vec<u8>, key_b: Vec<u8>) -> SagaPlan {
         steps: vec![
             SagaStep {
                 key: key_a,
-                command: trembita::proto::encode(&KvCommand::Set {
+                command: crate::proto::encode(&KvCommand::Set {
                     key: "from".into(),
                     value: "100".into(),
                 })
                 .unwrap(),
-                compensate: trembita::proto::encode(&KvCommand::Delete { key: "from".into() })
+                compensate: crate::proto::encode(&KvCommand::Delete { key: "from".into() })
                     .unwrap(),
             },
             SagaStep {
                 key: key_b,
-                command: trembita::proto::encode(&KvCommand::Set {
+                command: crate::proto::encode(&KvCommand::Set {
                     key: "to".into(),
                     value: "200".into(),
                 })
                 .unwrap(),
-                compensate: trembita::proto::encode(&KvCommand::Delete { key: "to".into() })
-                    .unwrap(),
+                compensate: crate::proto::encode(&KvCommand::Delete { key: "to".into() }).unwrap(),
             },
         ],
     }
@@ -76,18 +77,18 @@ impl Transport for FailAfterForward {
     fn send(
         &self,
         peer: NodeId,
-        route: trembita::net::Route,
-        body: trembita::net::transport::Body,
-    ) -> trembita::net::transport::BoxFuture<
+        route: crate::net::Route,
+        body: crate::net::transport::Body,
+    ) -> crate::net::transport::BoxFuture<
         'static,
-        Result<trembita::net::transport::Body, TransportError>,
+        Result<crate::net::transport::Body, TransportError>,
     > {
         let inner = Arc::clone(&self.inner);
         let forward_ok = self.forward_ok;
         let forward_calls = Arc::clone(&self.forward_calls);
         Box::pin(async move {
             if let Ok(ClientRequest::ProposeKeyed { command, .. }) = decode_body(&body) {
-                let is_compensate = trembita::proto::decode::<KvCommand>(&command)
+                let is_compensate = crate::proto::decode::<KvCommand>(&command)
                     .is_ok_and(|cmd| matches!(cmd, KvCommand::Delete { .. }));
                 if !is_compensate {
                     let n = forward_calls.fetch_add(1, Ordering::Relaxed);
@@ -107,10 +108,7 @@ async fn cross_shard_saga_completes_two_groups() {
     wait_for_each_group_cluster_leader(&clusters, 2).await;
     let leader = await_trembita_leader(&clusters).await;
 
-    let groups = [
-        trembita::core::RaftGroupId(0),
-        trembita::core::RaftGroupId(1),
-    ];
+    let groups = [crate::core::RaftGroupId(0), crate::core::RaftGroupId(1)];
     let (key_a, key_b) = find_keys_for_two_groups(64, &groups);
 
     let client = RemoteClient::new(Arc::new(net.clone()), [leader.node_id()]);
@@ -135,11 +133,11 @@ async fn cross_shard_saga_completes_two_groups() {
         .await
         .expect("journal read")
         .expect("journal record");
-    let record = trembita::client::decode_journal_record(&records).expect("decode");
+    let record = crate::client::decode_journal_record(&records).expect("decode");
     assert_eq!(record.phase, SagaJournalPhase::Completed);
 
-    let qry_from = trembita::proto::encode(&KvQuery::Get { key: "from".into() }).unwrap();
-    let got_from = trembita::net::send_client_request(
+    let qry_from = crate::proto::encode(&KvQuery::Get { key: "from".into() }).unwrap();
+    let got_from = crate::net::send_client_request(
         &*Arc::new(net.clone()),
         leader.node_id(),
         &ClientRequest::QueryKeyed {
@@ -152,11 +150,11 @@ async fn cross_shard_saga_completes_two_groups() {
     let ClientResponse::Ok(bytes_from) = got_from else {
         panic!("unexpected {got_from:?}");
     };
-    let val_from: KvResponse = trembita::proto::decode(&bytes_from).unwrap();
+    let val_from: KvResponse = crate::proto::decode(&bytes_from).unwrap();
     assert_eq!(val_from, KvResponse::Value(Some("100".into())));
 
-    let qry_to = trembita::proto::encode(&KvQuery::Get { key: "to".into() }).unwrap();
-    let got_to = trembita::net::send_client_request(
+    let qry_to = crate::proto::encode(&KvQuery::Get { key: "to".into() }).unwrap();
+    let got_to = crate::net::send_client_request(
         &*Arc::new(net.clone()),
         leader.node_id(),
         &ClientRequest::QueryKeyed {
@@ -169,7 +167,7 @@ async fn cross_shard_saga_completes_two_groups() {
     let ClientResponse::Ok(bytes_to) = got_to else {
         panic!("unexpected {got_to:?}");
     };
-    let val_to: KvResponse = trembita::proto::decode(&bytes_to).unwrap();
+    let val_to: KvResponse = crate::proto::decode(&bytes_to).unwrap();
     assert_eq!(val_to, KvResponse::Value(Some("200".into())));
 
     for _ in 0..5 {
@@ -186,10 +184,7 @@ async fn cross_shard_saga_compensates_when_second_forward_fails() {
     wait_for_each_group_cluster_leader(&clusters, 2).await;
     let leader = await_trembita_leader(&clusters).await;
 
-    let groups = [
-        trembita::core::RaftGroupId(0),
-        trembita::core::RaftGroupId(1),
-    ];
+    let groups = [crate::core::RaftGroupId(0), crate::core::RaftGroupId(1)];
     let (key_a, key_b) = find_keys_for_two_groups(64, &groups);
 
     let transport = Arc::new(FailAfterForward {
@@ -221,8 +216,8 @@ async fn cross_shard_saga_compensates_when_second_forward_fails() {
     assert_eq!(failed_step, 1);
     assert_eq!(compensated_steps, 1);
 
-    let qry = trembita::proto::encode(&KvQuery::Get { key: "from".into() }).unwrap();
-    let got = trembita::net::send_client_request(
+    let qry = crate::proto::encode(&KvQuery::Get { key: "from".into() }).unwrap();
+    let got = crate::net::send_client_request(
         &*Arc::new(net.clone()),
         leader.node_id(),
         &ClientRequest::QueryKeyed {
@@ -235,7 +230,7 @@ async fn cross_shard_saga_compensates_when_second_forward_fails() {
     let ClientResponse::Ok(bytes) = got else {
         panic!("unexpected {got:?}");
     };
-    let val: KvResponse = trembita::proto::decode(&bytes).unwrap();
+    let val: KvResponse = crate::proto::decode(&bytes).unwrap();
     assert_eq!(val, KvResponse::Value(None));
 
     for cluster in &clusters {
@@ -249,10 +244,7 @@ async fn cross_shard_saga_resume_completes_second_step() {
     wait_for_each_group_cluster_leader(&clusters, 2).await;
     let leader = await_trembita_leader(&clusters).await;
 
-    let groups = [
-        trembita::core::RaftGroupId(0),
-        trembita::core::RaftGroupId(1),
-    ];
+    let groups = [crate::core::RaftGroupId(0), crate::core::RaftGroupId(1)];
     let (key_a, key_b) = find_keys_for_two_groups(64, &groups);
     let plan = two_shard_plan(key_a.clone(), key_b.clone());
 
@@ -295,10 +287,7 @@ async fn run_keyed_saga_is_idempotent_when_journal_completed() {
     wait_for_each_group_cluster_leader(&clusters, 2).await;
     let leader = await_trembita_leader(&clusters).await;
 
-    let groups = [
-        trembita::core::RaftGroupId(0),
-        trembita::core::RaftGroupId(1),
-    ];
+    let groups = [crate::core::RaftGroupId(0), crate::core::RaftGroupId(1)];
     let (key_a, key_b) = find_keys_for_two_groups(64, &groups);
     let plan = two_shard_plan(key_a, key_b);
 
@@ -339,7 +328,7 @@ async fn spawn_durable_two_group_cluster(
     members: [NodeId; 3],
     data_dir: PathBuf,
 ) -> TrembitaCluster<KvMachine> {
-    TrembitaCluster::builder(id, KvMachine::default())
+    crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
         .members(members)
         .raft_config(fast_raft_config_with_seed(11))
         .tick_period(TICK_PERIOD)
@@ -357,10 +346,7 @@ async fn cross_shard_saga_survives_coordinator_restart_via_group0_journal() {
     let net = LocalNetwork::new();
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
 
-    let groups = [
-        trembita::core::RaftGroupId(0),
-        trembita::core::RaftGroupId(1),
-    ];
+    let groups = [crate::core::RaftGroupId(0), crate::core::RaftGroupId(1)];
     let (key_a, key_b) = find_keys_for_two_groups(64, &groups);
     let plan = two_shard_plan(key_a.clone(), key_b.clone());
 
@@ -429,8 +415,8 @@ async fn cross_shard_saga_survives_coordinator_restart_via_group0_journal() {
             .expect("resume after restart");
         assert!(matches!(outcome, SagaOutcome::Completed(_)));
 
-        let qry_to = trembita::proto::encode(&KvQuery::Get { key: "to".into() }).unwrap();
-        let got_to = trembita::net::send_client_request(
+        let qry_to = crate::proto::encode(&KvQuery::Get { key: "to".into() }).unwrap();
+        let got_to = crate::net::send_client_request(
             &*Arc::new(net.clone()),
             leader.node_id(),
             &ClientRequest::QueryKeyed {
@@ -443,7 +429,7 @@ async fn cross_shard_saga_survives_coordinator_restart_via_group0_journal() {
         let ClientResponse::Ok(bytes_to) = got_to else {
             panic!("unexpected {got_to:?}");
         };
-        let val_to: KvResponse = trembita::proto::decode(&bytes_to).unwrap();
+        let val_to: KvResponse = crate::proto::decode(&bytes_to).unwrap();
         assert_eq!(val_to, KvResponse::Value(Some("200".into())));
 
         for cluster in &clusters {
@@ -458,10 +444,7 @@ async fn run_keyed_saga_with_group0_journal_completes() {
     wait_for_each_group_cluster_leader(&clusters, 2).await;
     let leader = await_trembita_leader(&clusters).await;
 
-    let groups = [
-        trembita::core::RaftGroupId(0),
-        trembita::core::RaftGroupId(1),
-    ];
+    let groups = [crate::core::RaftGroupId(0), crate::core::RaftGroupId(1)];
     let (key_a, key_b) = find_keys_for_two_groups(64, &groups);
     let plan = two_shard_plan(key_a.clone(), key_b.clone());
 
@@ -490,7 +473,7 @@ async fn composite_saga_journal_mirrors_to_actor_state_store() {
     let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
     let mut clusters = Vec::new();
     for &id in &ids {
-        let cluster = TrembitaCluster::builder(id, KvMachine::default())
+        let cluster = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
             .members(ids)
             .raft_config(fast_raft_config_with_seed(11))
             .tick_period(TICK_PERIOD)
@@ -519,7 +502,7 @@ async fn composite_saga_journal_mirrors_to_actor_state_store() {
         .await
         .expect("store read")
         .expect("mirrored journal bytes");
-    let record = trembita::client::decode_journal_record(&mirrored).expect("decode");
+    let record = crate::client::decode_journal_record(&mirrored).expect("decode");
     assert_eq!(record.completed_steps, 1);
 
     for cluster in &clusters {

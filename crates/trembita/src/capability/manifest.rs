@@ -6,8 +6,7 @@ use super::apply::CapGroupApply;
 use super::group::CapGroup;
 use super::runtime::CapRuntime;
 
-/// Registry of capability groups (applied via [`crate::AppManifest::capabilities`] or
-/// [`TrembitaAppBuilder::capabilities`]).
+/// Registry of capability groups — wire via [`crate::AppManifest::capabilities`].
 pub struct CapManifest {
     pub(crate) groups: Vec<Box<dyn CapGroupApply>>,
 }

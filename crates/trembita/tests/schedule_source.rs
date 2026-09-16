@@ -5,7 +5,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita::{QueueOpts, SchedulePoll, TrembitaApp, TrembitaConfigure};
+use trembita::{
+    AppManifest, QueueOpts, SchedulePoll, ScheduleSourceOpts, TrembitaApp, TrembitaConfigure,
+};
 use trembita_jobs::{RecurringJob, StaticScheduleSource};
 use trembita_test_support::boot_local_app;
 
@@ -21,30 +23,32 @@ async fn schedule_source_wires_on_app_boot() {
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).unwrap();
 
-    let _app = boot_local_app(
-        || {
-            TrembitaApp::builder()
-                .configure(
-                    TrembitaConfigure::default()
-                        .with_local_gateway_apis()
-                        .with_data_dir(&base),
-                )
-                .queue([QueueOpts::new("jobs", Duration::from_secs(30))])
-                .schedule_source(
-                    "jobs",
-                    Arc::new(StaticScheduleSource::new(vec![RecurringJob::new(
-                        "daily",
-                        "0 9 * * *",
-                        b"tick",
-                    )])),
-                    SchedulePoll::secs(1),
-                )
-                .configure(TrembitaConfigure {
-                    tick_period: Duration::from_millis(5),
-                    ..TrembitaConfigure::default()
-                })
-        },
-        None,
-    )
-    .await;
+    let _app =
+        boot_local_app(
+            || {
+                TrembitaApp::builder()
+                    .configure(
+                        TrembitaConfigure::default()
+                            .with_local_gateway_apis()
+                            .with_data_dir(&base),
+                    )
+                    .manifest(
+                        AppManifest::new()
+                            .queue([QueueOpts::new("jobs", Duration::from_secs(30))])
+                            .schedule_source(ScheduleSourceOpts {
+                                stream: "jobs".into(),
+                                source: Arc::new(StaticScheduleSource::new(vec![
+                                    RecurringJob::new("daily", "0 9 * * *", b"tick"),
+                                ])),
+                                poll: SchedulePoll::secs(1),
+                            }),
+                    )
+                    .configure(TrembitaConfigure {
+                        tick_period: Duration::from_millis(5),
+                        ..TrembitaConfigure::default()
+                    })
+            },
+            None,
+        )
+        .await;
 }

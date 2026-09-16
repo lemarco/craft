@@ -2,7 +2,8 @@
 # crate *outside* the main workspace (its own [workspace] table + excluded by the
 # root manifest) so criterion never compiles in the fast CI lane. Run with
 # `cargo bench` / `cargo run --release --bin soak` from this directory.
-# Queue hotspot: `cargo bench --bench queue`, `SOAK_QUEUE_SECS=60 cargo run --release --bin soak_queue`.
+# Queue hotspot: `cargo test -p trembita --lib queue` (cluster builder is in-crate only).
+# Soak/bench cluster boot uses `trembita::workspace_showcase::cluster::cluster_builder` (not product API).
 # Scenario soaks (B-10): `soak_actor_store`, `soak_saga`, `soak_session` — see docs/testing-coverage.md.
 [package]
 name = "trembita-benchmarks"

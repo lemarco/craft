@@ -15,8 +15,8 @@ use tokio_tungstenite::connect_async_tls_with_config;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::{WebSocketStream, tungstenite::protocol::Role};
 use trembita::{
-    ActorGroupOpts, GatewayOpts, SessionHandle, TrembitaApp, TrembitaConfigure,
-    TrembitaGatewayState, spawn_gateway,
+    AppManifest, GatewayOpts, SessionHandle, TrembitaApp, TrembitaConfigure, TrembitaGatewayState,
+    WorkerOpts, WorkerScale, spawn_gateway, workers,
 };
 use trembita_http::{
     Gateway, Response, RouteTable, UpgradeStream, accept_websocket, routing_to_http_response,
@@ -203,7 +203,11 @@ async fn boot_echo_app(base: &std::path::Path) -> Arc<TrembitaApp> {
                         .with_local_gateway_apis()
                         .with_data_dir(base),
                 )
-                .actors::<EchoWorker>("echo", ActorGroupOpts::new(0))
+                .manifest(AppManifest::new().workers(workers!(
+                    WorkerOpts::<EchoWorker>::new("echo")
+                        .config(0)
+                        .scale(WorkerScale::Fixed(1)),
+                )))
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     reconcile_period: Duration::from_millis(20),

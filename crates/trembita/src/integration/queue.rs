@@ -4,23 +4,24 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use trembita::cluster::{
+use crate::cluster::{
     AutoscalePolicy, EnqueueOptions, JobQueue, MembershipAutoscalePolicy, RedbJobQueue,
     TrembitaCluster,
 };
-use trembita::net::LocalNetwork;
-use trembita::net::send_join_request;
-use trembita::proto::{self, NodeId};
-use trembita::proto::{
+use crate::integration::{await_trembita_leader, wait_for_trembita_stopped};
+use crate::net::LocalNetwork;
+use crate::net::send_join_request;
+use crate::proto::{self, NodeId};
+use crate::proto::{
     AdvertiseAddr, JobId, JobPriority, JoinRequest, JoinResponse, JoinRole, MaxAttempts,
     PROTOCOL_VERSION, ProtocolVersion, StreamName, UnixMillis,
 };
+use std::sync::atomic::{AtomicBool, Ordering};
 use trembita_jobs::WorkerId;
 use trembita_runtime::{ConfigCodecError, UserActor};
 use trembita_test_support::{
-    KvMachine, TICK_PERIOD, advance, assert_eq, await_trembita_leader, eventually_async_default,
-    eventually_default, fast_raft_config_with_seed, wait_for_trembita_stopped,
+    KvMachine, TICK_PERIOD, advance, assert_eq, eventually_async_default, eventually_default,
+    fast_raft_config_with_seed,
 };
 
 #[derive(Debug)]
@@ -77,7 +78,7 @@ async fn spawn_queue_cluster_n(
     for &id in node_ids {
         let data_dir = dir.path().join(format!("node-{}", id.0));
         let queue_path = data_dir.join("queue-jobs.redb");
-        let mut builder = TrembitaCluster::builder(id, KvMachine::default())
+        let mut builder = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
             .members(node_ids.to_vec())
             .raft_config(fast_raft_config_with_seed(11))
             .tick_period(TICK_PERIOD)
@@ -110,7 +111,7 @@ async fn spawn_sharded_queue_cluster(
     let mut clusters = Vec::new();
     for &id in &ids {
         let data_dir = dir.path().join(format!("node-{}", id.0));
-        let builder = TrembitaCluster::builder(id, KvMachine::default())
+        let builder = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
             .members(ids)
             .raft_config(fast_raft_config_with_seed(11))
             .tick_period(TICK_PERIOD)
@@ -624,7 +625,7 @@ async fn membership_autoscale_invokes_join_hook() {
                 let data_dir = dir.join(format!("node-{}", joiner_id.0));
                 std::fs::create_dir_all(&data_dir).expect("datadir");
                 let cluster = Arc::new(
-                    TrembitaCluster::builder(joiner_id, KvMachine::default())
+                    crate::builder::TrembitaClusterBuilder::new(joiner_id, KvMachine::default())
                         .members(ids)
                         .raft_config(fast_raft_config_with_seed(11))
                         .tick_period(TICK_PERIOD)
@@ -666,7 +667,7 @@ async fn membership_autoscale_invokes_join_hook() {
         };
         let data_dir = dir.join(format!("node-{}", id.0));
         let queue_path = data_dir.join("queue-jobs.redb");
-        let builder = TrembitaCluster::builder(id, KvMachine::default())
+        let builder = crate::builder::TrembitaClusterBuilder::new(id, KvMachine::default())
             .members(ids)
             .raft_config(fast_raft_config_with_seed(11))
             .tick_period(TICK_PERIOD)
@@ -740,8 +741,8 @@ async fn queue_enqueue_and_lease_with_one_unreachable_voter() {
 
 #[tokio::test(start_paused = true)]
 async fn queue_replicate_rejects_non_leader_caller() {
+    use crate::net::{LocalTransport, send_queue_replicate};
     use std::sync::Arc;
-    use trembita::net::{LocalTransport, send_queue_replicate};
     use trembita_proto::{QueueReplicateOp, QueueReplicateRequest};
 
     let dir = tempfile::tempdir().unwrap();

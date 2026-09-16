@@ -5,5 +5,5 @@ mod cluster;
 mod error;
 mod join;
 
-pub use cluster::TrembitaClusterBuilder;
+pub(crate) use cluster::TrembitaClusterBuilder;
 pub use error::StartError;

@@ -8,8 +8,8 @@ use std::time::Duration;
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use trembita::{
-    ActorGroupOpts, GatewayOpts, OpenActorSessionError, TrembitaApp, TrembitaConfigure,
-    TrembitaGatewayState,
+    AppManifest, GatewayOpts, OpenActorSessionError, TrembitaApp, TrembitaConfigure,
+    TrembitaGatewayState, WorkerOpts, WorkerScale, workers,
 };
 use trembita_http::{Gateway, HttpError, RequestCtx, Response, RouteTable};
 use trembita_runtime::{UserActor, actor};
@@ -184,7 +184,11 @@ async fn boot_with_workers(base: &std::path::Path) -> Arc<TrembitaApp> {
                         .with_local_gateway_apis()
                         .with_data_dir(base),
                 )
-                .actors::<EchoWorker>("echo", ActorGroupOpts::new(0))
+                .manifest(AppManifest::new().workers(workers!(
+                    WorkerOpts::<EchoWorker>::new("echo")
+                        .config(0)
+                        .scale(WorkerScale::Fixed(1)),
+                )))
                 .configure(TrembitaConfigure {
                     tick_period: Duration::from_millis(5),
                     reconcile_period: Duration::from_millis(20),

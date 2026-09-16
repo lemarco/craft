@@ -35,8 +35,7 @@ use types::{
     TopicStreamSpec, UserLeaderTaskSpec,
 };
 
-/// A fluent builder for a single trembita node (deployment-model). Create it with
-/// [`TrembitaCluster::builder`](crate::cluster::TrembitaCluster::builder).
+/// Internal fluent builder for a single trembita node — product apps use [`TrembitaApp`](crate::TrembitaApp).
 pub struct TrembitaClusterBuilder<M: StateMachine> {
     node_id: NodeId,
     machine: M,

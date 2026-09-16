@@ -1,0 +1,125 @@
+//! In-memory actor migration demo (workspace only — uses internal cluster builder).
+
+use std::time::Duration;
+
+use crate::builder::TrembitaClusterBuilder;
+use crate::cluster::TrembitaCluster;
+use crate::core::{Config, StateMachine};
+use crate::net::LocalNetwork;
+use crate::proto::{ActorGroupName, ActorId, LogIndex, LogicalTick, NodeId};
+
+mod migrate_counter;
+
+use migrate_counter::{CounterMsg, StatefulCounter};
+
+#[derive(Default)]
+struct Empty;
+
+impl StateMachine for Empty {
+    type Command = ();
+    type Query = ();
+    type Response = ();
+    type Error = std::convert::Infallible;
+
+    fn apply(&mut self, _index: LogIndex, _command: &()) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn query(&self, _query: &()) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn snapshot(&self) -> Result<Vec<u8>, Self::Error> {
+        Ok(Vec::new())
+    }
+    fn restore(&mut self, _snapshot: &[u8]) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+async fn wait_leader(clusters: &[TrembitaCluster<Empty>]) {
+    for _ in 0..300 {
+        for c in clusters {
+            if c.is_leader().await {
+                return;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("no leader");
+}
+
+/// Run the 2-node LocalNetwork migration walkthrough.
+pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let base = std::env::temp_dir().join("trembita-showcase-stateful-migrate");
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base)?;
+
+    let ids = [NodeId(1), NodeId(2)];
+    let net = LocalNetwork::new();
+    let mut clusters = Vec::new();
+
+    for &id in &ids {
+        let data_dir = base.join(format!("node-{}", id.0));
+        std::fs::create_dir_all(&data_dir)?;
+        clusters.push(
+            TrembitaClusterBuilder::new(id, Empty)
+                .members(ids)
+                .raft_config(Config {
+                    election_timeout_min: LogicalTick(5),
+                    election_timeout_max: LogicalTick(10),
+                    heartbeat_interval: LogicalTick(2),
+                    seed: 9,
+                    ..Default::default()
+                })
+                .data_dir(&data_dir)
+                .register_actor::<StatefulCounter>()
+                .tick_period(Duration::from_millis(10))
+                .start_local(&net)
+                .await,
+        );
+    }
+
+    wait_leader(&clusters).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let node1 = &clusters[0];
+    let node2 = &clusters[1];
+
+    println!("=== migration demo: 2-node LocalNetwork ===");
+
+    node1
+        .control()
+        .spawn_remote::<StatefulCounter>(NodeId(1), "counter", 0)
+        .await?;
+    let counter = node1.registry().get::<StatefulCounter>("counter").unwrap();
+    for _ in 0..3 {
+        counter.send(CounterMsg::Inc)?;
+    }
+
+    let source = ActorId {
+        node: NodeId(1),
+        name: ActorGroupName::try_from("counter").expect("counter"),
+        instance: 0,
+        generation: 0,
+    };
+
+    let migrated = node1
+        .control()
+        .migrate::<StatefulCounter>(source, NodeId(2), 0, Duration::from_secs(5))
+        .await?;
+    println!(
+        "migrated → node {} generation {}",
+        migrated.node.0, migrated.generation
+    );
+
+    node2
+        .registry()
+        .get::<StatefulCounter>("counter")
+        .unwrap()
+        .send(CounterMsg::Inc)?;
+    println!("post-migration inc on node 2 (expect [counter] → 4)");
+
+    for c in clusters {
+        c.shutdown();
+    }
+    Ok(())
+}
