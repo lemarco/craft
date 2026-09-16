@@ -27,7 +27,7 @@ use std::env;
 use std::time::Duration;
 
 use trembita::{
-    AppManifest, CapGroup, CapManifest, Gateway, GatewayOpts, TrembitaApp, TrembitaAppBuilder,
+    AppManifest, Gateway, GatewayOpts, TrembitaApp, TrembitaAppBuilder,
     TrembitaConfigure, TrembitaGatewayState, WorkerOpts, WorkerScale, workers,
 };
 use trembita_tools::gateway_auth::ShowcaseGatewayIdentity;
@@ -35,7 +35,7 @@ use trembita_tools::showcase_common::{
     data_dir, display_addr, env_flag, http_bind_display, http_bind_from_env, http_disabled,
 };
 
-use crate::capabilities::orders::{OrdersState, process_op};
+use crate::capabilities::orders;
 use crate::migrate_counter::StatefulCounter;
 
 const DATA_DIR_NAME: &str = "trembita-showcase-stateful-workers";
@@ -52,12 +52,7 @@ fn apply_capabilities(builder: TrembitaAppBuilder) -> TrembitaAppBuilder {
                 .scale(WorkerScale::Fixed(1)),
         ))
     } else {
-        let caps = CapManifest::new().group(
-            CapGroup::<OrdersState>::with_state("orders")
-                .instances(1)
-                .op(process_op()),
-        );
-        builder.manifest(AppManifest::new().capabilities(caps))
+        builder.manifest(AppManifest::new().capabilities(orders::manifest()))
     }
 }
 

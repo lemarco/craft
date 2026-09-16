@@ -7,7 +7,7 @@ use super::features::AppFeature;
 pub enum AppTemplate {
     /// Durable jobs + sample consumer + HTTP enqueue.
     Jobs,
-    /// WebSocket echo + sticky-ready worker group.
+    /// WebSocket + sticky session casts via capability `chat.append`.
     Realtime,
     /// Saga workflows + default gateway.
     Workflows,
@@ -38,11 +38,7 @@ impl AppTemplate {
     pub fn features(self) -> Vec<AppFeature> {
         match self {
             Self::Jobs => vec![AppFeature::Jobs, AppFeature::Gateway, AppFeature::Telemetry],
-            Self::Realtime => vec![
-                AppFeature::Gateway,
-                AppFeature::Actors,
-                AppFeature::Telemetry,
-            ],
+            Self::Realtime => vec![AppFeature::Gateway, AppFeature::Telemetry],
             Self::Workflows => vec![
                 AppFeature::Workflows,
                 AppFeature::Gateway,

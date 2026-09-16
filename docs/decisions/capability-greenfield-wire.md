@@ -27,7 +27,7 @@ binary. Product authors should not hand-author that layer.
 |---------|------|------|
 | **Gateway** | JSON (or explicit handler DTO → `CapRequest`) | All product triggers go through **`http/`** + [`cap_fire` / `cap_invoke` / `cap_enqueue`](../scenarios/capabilities.md) or custom routes that call `.via(&app)` |
 | **In-process** | Rust types + [`Route`](../scenarios/capabilities.md) | `Req.via(&app).route(…)` / `.fire()` / `.enqueue()` |
-| **Inter-node** | `CapWire { op, payload }` + postcard `Req` | Automatic for registered ops; authors do not define a parallel “cluster REST” |
+| **Inter-node** | `CapWire { op, payload }` + postcard `Req` | Automatic (runtime only); apps use [`CapRequest`](../../crates/trembita/src/capability/call.rs) + [`SessionHandle::fire_cap`](../../crates/trembita/src/gateway/session.rs) / `.via(&app)` |
 
 **Do not document** raw `/actors/{group}/cast` as a product path for new apps. The route may remain
 on the default gateway for tooling and migration demos until removed in a future release.
@@ -57,7 +57,7 @@ Sticky [`ActorSession`](../../crates/trembita-runtime/src/session.rs) is an **op
 ## Consequences
 
 - Docs, scaffold, and examples lead with **`capabilities/` + gateway**, not `actors/` + cast.
-- [`getting-started.md`](../getting-started.md) should treat § Workers as advanced or replace with capabilities (follow-up).
+- [`getting-started.md`](../getting-started.md) treats § Workers as advanced; product path is [`capabilities/`](../scenarios/capabilities.md).
 - New scaffolds call [`.without_actors_api()`](../crates/trembita/src/app/builder.rs); re-enable `/actors/*` with [`WorkerOpts::http_cast(true)`](../crates/trembita/src/worker_opts.rs) in `manifest.rs`.
 
 ## Non-goals

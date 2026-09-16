@@ -57,20 +57,33 @@ queue-only** streams until ops fully subsume them.
 // capabilities/orders/fulfill.rs
 use super::OrdersState;
 use crate::domain;
-use trembita::capability::{CapError, OpCtx};
+use trembita::{cap_handler, CapError, OpCtx};
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct Receipt(pub String);
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Fulfill {
     pub id: OrderId,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct Receipt(pub String);
-
-pub async fn run(msg: Fulfill, ctx: OpCtx<'_>, state: &mut OrdersState) -> Result<Receipt, CapError> {
-    domain::orders::fulfill(msg.id, ctx.deps()).await.map(Receipt)
+#[cap_handler(group = "orders")]
+pub fn run(msg: Fulfill, state: &mut OrdersState) -> Result<Receipt, CapError> {
+    // needs `ctx.app()`? use the 3-arg form `(Fulfill, OpCtx<'_>, &mut OrdersState)` instead
+    todo!()
 }
 ```
+
+Registration (routes live on the handler; no duplicate `CapOp::new`):
+
+```rust
+CapManifest::new().group(trembita::cap_register_chain!(
+    CapGroup::<OrdersState>::for_cap::<Fulfill>().instances(1),
+    run_register,
+))
+```
+
+(`Reply` from `Result<…>`; `op` from request struct name; `key = "field"` → `CapOp::key_cap` in `{handler}_register`. DTO-only: [`#[cap_request]`](../../crates/trembita-macros/src/lib.rs).)
 
 Registration (manifest) — **data, no attribute DSL on the handler**:
 
@@ -111,8 +124,9 @@ Fulfill { id }.via(&app).route(Route::Queued).await?; // -> EnqueueOutcome / job
 Fulfill { id }.via(&app).route(Route::InlineFire).await?;
 ```
 
-Default route per op is set in manifest (`default_route`); call site can override when the op
-allows that route (invalid pair → compile-time where possible, else `CapError::UnsupportedRoute`).
+**Route is chosen at the call site** (`.route(Route::Queued)`, `fire_cap`, session APIs). Registration
+does not whitelist routes unless an op uses [`.routes`](../../crates/trembita/src/capability/op.rs) for
+advanced restriction. Missing queue/topic wiring fails when that mode is invoked, not at handler define time.
 
 ### Routes (product contract)
 
@@ -150,7 +164,7 @@ decode + handler table).
 **Prelude (after MVP):** export `CapManifest`, `Route`, `OpCtx`, `CapError` — not worker traits.
 
 **Product vs advanced (shipped):** New apps use `CapManifest` + gateway `cap_*`; `WorkerOpts` /
-`UserActor` remain for realtime, migration labs, and custom mailboxes ([getting-started §5](../getting-started.md#5-product-workers) Advanced). `trembita::runtime` stays for cluster/advanced use
+`UserActor` remains for migration labs and custom mailboxes ([getting-started §5](../getting-started.md#5-product-workers) Advanced). Realtime and workflows use capabilities in scaffolds/showcases. `trembita::runtime` stays for cluster/advanced use
 ([facade](facade.md)).
 
 ### HTTP (wave 2)
@@ -207,7 +221,7 @@ enabled for tooling until B-22 removes it from default gateway presets.
 | Option | Verdict |
 |--------|---------|
 | `trait Capability` with associated `Msg` enum | Rejected — god enums, hard evolution |
-| `#[capability]` attribute on struct | Rejected for MVP — prefer manifest builder (user feedback) |
+| `#[capability]` attribute on struct | Rejected — replaced by [`#[cap_request]`](../../crates/trembita-macros/src/lib.rs) + manifest builder |
 | All ops require `UserActor` in app | Rejected — hide runtime worker trait |
 | Single route per op only | Rejected — user wants route at call site |
 

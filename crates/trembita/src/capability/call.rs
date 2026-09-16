@@ -304,7 +304,8 @@ fn ensure_route(
     route: Route,
     op: &str,
 ) -> Result<(), CapError> {
-    if binding.routes.contains(&route) {
+    // Empty `routes` on registration = all delivery modes allowed; call site picks `Route`.
+    if binding.routes.is_empty() || binding.routes.contains(&route) {
         Ok(())
     } else {
         Err(CapError::UnsupportedRoute {
@@ -312,6 +313,16 @@ fn ensure_route(
             op: op.to_string(),
         })
     }
+}
+
+/// Postcard frame for session cast/ask to a [`CapHost`](super::host::CapHost) (internal wire).
+pub(crate) fn cap_wire_bytes<Req: CapRequest>(req: &Req) -> Result<Vec<u8>, CapError> {
+    let body = encode(req).map_err(CapError::codec)?;
+    encode(&CapWire {
+        op: Req::OP.to_string(),
+        payload: body,
+    })
+    .map_err(CapError::codec)
 }
 
 async fn deliver_inline<Req: CapRequest>(
@@ -326,11 +337,7 @@ async fn deliver_inline<Req: CapRequest>(
         .as_ref()
         .and_then(|k| k(&body))
         .or_else(|| req.cap_key());
-    let wire = CapWire {
-        op: Req::OP.to_string(),
-        payload: body,
-    };
-    let bytes = encode(&wire).map_err(CapError::codec)?;
+    let bytes = cap_wire_bytes(req)?;
     if let Some(key) = routing_key {
         app.cluster()
             .messaging()
@@ -361,12 +368,7 @@ async fn deliver_session<Req: CapRequest>(
                 Req::GROUP
             ))
         })?;
-    let body = encode(req).map_err(CapError::codec)?;
-    let wire = CapWire {
-        op: Req::OP.to_string(),
-        payload: body,
-    };
-    let bytes = encode(&wire).map_err(CapError::codec)?;
+    let bytes = cap_wire_bytes(req)?;
     app.ask_session(&session, bytes)
         .await
         .map_err(|e| CapError::Deliver(e.to_string()))

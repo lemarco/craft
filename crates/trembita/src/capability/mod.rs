@@ -25,12 +25,14 @@ pub use call::{
 pub use ctx::OpCtx;
 pub use error::CapError;
 pub use event::deliver_event;
-pub use group::CapGroup;
+pub use group::{CapGroup, CapGroupScale};
 pub use manifest::CapManifest;
 pub use op::CapOp;
 pub use queue::deliver_queued;
 pub use route::Route;
 pub use runtime::CapRuntime;
 pub use wire::{CapQueued, CapWire};
+
+pub(crate) use call::cap_wire_bytes;
 
 pub(crate) use apply::CapGroupApply;

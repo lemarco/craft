@@ -1,5 +1,6 @@
 //! # Workflows showcase — saga coordination machinery (not embedded DB)
 
+mod capabilities;
 mod debug;
 mod onboarding;
 
@@ -10,24 +11,23 @@ use trembita_tools::showcase_common::{
     data_dir, display_addr, http_bind_display, http_disabled,
 };
 
-use crate::onboarding::{apply_workers, build_plan, run_onboarding_plan};
+use crate::onboarding::{app_manifest, build_plan, run_onboarding_plan};
 
 const DATA_DIR_NAME: &str = "trembita-showcase-workflows";
 
 fn server_builder() -> trembita::TrembitaAppBuilder {
     let dir = data_dir(DATA_DIR_NAME);
     let _ = std::fs::create_dir_all(&dir);
-    apply_workers(
-        TrembitaApp::from_env()
-            .expect("TREMBITA_LISTEN")
-            .data_dir(dir)
-            .workflows([WorkflowOpts::named("onboard", build_plan, run_onboarding_plan)])
-            .configure(TrembitaConfigure {
-                tick_period: Duration::from_millis(10),
-                reconcile_period: Duration::from_millis(20),
-                ..TrembitaConfigure::default()
-            }),
-    )
+    TrembitaApp::from_env()
+        .expect("TREMBITA_LISTEN")
+        .data_dir(dir)
+        .manifest(app_manifest())
+        .workflows([WorkflowOpts::named("onboard", build_plan, run_onboarding_plan)])
+        .configure(TrembitaConfigure {
+            tick_period: Duration::from_millis(10),
+            reconcile_period: Duration::from_millis(20),
+            ..TrembitaConfigure::default()
+        })
 }
 
 #[tokio::main]

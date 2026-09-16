@@ -128,15 +128,33 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
         &root.join("src/domain/mod.rs"),
         &vars.apply(app_tpl!("src/domain/mod.rs.tpl")),
     )?;
-    if opts.template != Some(AppTemplate::Realtime) {
-        write_file(
-            &root.join("src/capabilities/mod.rs"),
-            &vars.apply(app_tpl!("src/capabilities/mod.rs.tpl")),
-        )?;
-        write_file(
-            &root.join("src/capabilities/ping.rs"),
-            &vars.apply(app_tpl!("src/capabilities/ping.rs.tpl")),
-        )?;
+    let capabilities_mod = match opts.template {
+        Some(AppTemplate::Realtime) => generate_realtime_capabilities_mod(),
+        Some(AppTemplate::Workflows) => {
+            "//! Capability groups — saga side effects.\n\npub mod onboarding;\n".to_string()
+        }
+        _ => vars.apply(app_tpl!("src/capabilities/mod.rs.tpl")),
+    };
+    write_file(&root.join("src/capabilities/mod.rs"), &capabilities_mod)?;
+    match opts.template {
+        Some(AppTemplate::Realtime) => {
+            write_file(
+                &root.join("src/capabilities/chat.rs"),
+                &generate_realtime_chat_capability(),
+            )?;
+        }
+        Some(AppTemplate::Workflows) => {
+            write_file(
+                &root.join("src/capabilities/onboarding.rs"),
+                &vars.apply(app_tpl!("src/capabilities/onboarding.rs.tpl")),
+            )?;
+        }
+        _ => {
+            write_file(
+                &root.join("src/capabilities/ping.rs"),
+                &vars.apply(app_tpl!("src/capabilities/ping.rs.tpl")),
+            )?;
+        }
     }
 
     if features.contains(&AppFeature::Actors) {
@@ -144,12 +162,6 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
             &root.join("src/actors/mod.rs"),
             &generate_actors_mod_rs(opts),
         )?;
-        if opts.template == Some(AppTemplate::Realtime) {
-            write_file(
-                &root.join("src/actors/chat.rs"),
-                &generate_realtime_chat_actor(),
-            )?;
-        }
     }
     if features.contains(&AppFeature::Gateway) {
         write_file(
@@ -166,16 +178,26 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
                 &vars.apply(app_tpl!("src/http/jobs.rs.tpl")),
             )?;
         }
-        write_file(
-            &root.join("src/http/product.rs"),
-            &vars.apply(app_tpl!("src/http/product.rs.tpl")),
-        )?;
+        let product_rs = if opts.template == Some(AppTemplate::Realtime) {
+            generate_realtime_product_rs()
+        } else {
+            vars.apply(app_tpl!("src/http/product.rs.tpl"))
+        };
+        write_file(&root.join("src/http/product.rs"), &product_rs)?;
     }
     if features.contains(&AppFeature::Workflows) {
-        write_file(
-            &root.join("src/workflows/mod.rs"),
-            &vars.apply(app_tpl!("src/workflows/mod.rs.tpl")),
-        )?;
+        let workflows_mod = if opts.template == Some(AppTemplate::Workflows) {
+            "//! Saga workflows — register via `.workflows([...])` in `src/manifest.rs`.\n\npub mod onboarding;\n".to_string()
+        } else {
+            vars.apply(app_tpl!("src/workflows/mod.rs.tpl"))
+        };
+        write_file(&root.join("src/workflows/mod.rs"), &workflows_mod)?;
+        if opts.template == Some(AppTemplate::Workflows) {
+            write_file(
+                &root.join("src/workflows/onboarding.rs"),
+                &vars.apply(app_tpl!("src/workflows/onboarding.rs.tpl")),
+            )?;
+        }
     }
 
     Ok(root)
@@ -280,9 +302,7 @@ fn generate_main_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> St
         "mod domain;".to_string(),
         "mod manifest;".to_string(),
     ];
-    if opts.template != Some(AppTemplate::Realtime) {
-        mods.push("mod capabilities;".to_string());
-    }
+    mods.push("mod capabilities;".to_string());
     if features.contains(&AppFeature::Actors) {
         mods.push("mod actors;".to_string());
     }
@@ -342,12 +362,20 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
     if features.contains(&AppFeature::Topics) {
         imports.push("use trembita::TopicOpts;".to_string());
     }
-    if opts.template == Some(AppTemplate::Realtime) {
-        imports.push("use crate::actors::chat::ChatWorker;".to_string());
-        imports.push("use trembita::RealtimePreset;".to_string());
-    } else {
-        imports.push("use crate::capabilities::ping::{PingState, ping_op};".to_string());
-        imports.push("use trembita::{CapGroup, CapManifest};".to_string());
+    match opts.template {
+        Some(AppTemplate::Realtime) => {
+            imports.push("use crate::capabilities::chat;".to_string());
+        }
+        Some(AppTemplate::Workflows) => {
+            imports.push("use crate::capabilities::onboarding;".to_string());
+            imports.push(
+                "use crate::workflows::onboarding::{build_plan, run_onboarding_plan};".to_string(),
+            );
+        }
+        _ => {
+            imports.push("use crate::capabilities::ping::{PingState, ping_op};".to_string());
+            imports.push("use trembita::{CapGroup, CapManifest};".to_string());
+        }
     }
 
     let imports_block = format!(
@@ -386,14 +414,30 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
         );
     }
 
-    if opts.template == Some(AppTemplate::Realtime) {
-        chain.push_str(
-            r#"
-        .workers(RealtimePreset::worker_per_node("chat", ()))"#,
-        );
-    } else {
-        chain.push_str(
-            r#"
+    match opts.template {
+        Some(AppTemplate::Realtime) => {
+            chain.push_str(
+                r#"
+        .capabilities(
+            // trembita:capabilities
+            chat::manifest(),
+            // trembita:capabilities-end
+        )"#,
+            );
+        }
+        Some(AppTemplate::Workflows) => {
+            chain.push_str(
+                r#"
+        .capabilities(
+            // trembita:capabilities
+            onboarding::manifest(),
+            // trembita:capabilities-end
+        )"#,
+            );
+        }
+        _ => {
+            chain.push_str(
+                r#"
         .capabilities(
             // trembita:capabilities
             CapManifest::new().group(
@@ -403,18 +447,30 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
             ),
             // trembita:capabilities-end
         )"#,
-        );
+            );
+        }
     }
 
     if features.contains(&AppFeature::Workflows) {
         imports.push("use trembita::WorkflowOpts;".to_string());
-        chain.push_str(
-            r"
+        if opts.template == Some(AppTemplate::Workflows) {
+            chain.push_str(
+                r#"
+        .workflows([
+            // trembita:workflows
+            WorkflowOpts::named("onboard", build_plan, run_onboarding_plan),
+            // trembita:workflows-end
+        ])"#,
+            );
+        } else {
+            chain.push_str(
+                r"
         .workflows([
             // trembita:workflows
             // trembita:workflows-end
         ])",
-        );
+            );
+        }
     }
 
     format!(
@@ -446,9 +502,11 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
 
     if opts.template == Some(AppTemplate::Realtime) {
         imports.push(
-            "use trembita::{AuthMode, RouteTable, TrembitaGatewayState, mount_raw_websocket, run_text_loop, server_stream};".to_string(),
+            "use trembita::{AuthMode, RouteTable, TrembitaGatewayState, WsMessage, mount_sticky_websocket, server_stream};".to_string(),
         );
-        imports.push("use trembita::futures_util::SinkExt;".to_string());
+        imports.push("use trembita::futures_util::{SinkExt, StreamExt};".to_string());
+        imports.push("use crate::capabilities::chat::Append;".to_string());
+        imports.push("use trembita::CapRequest;".to_string());
     }
 
     if features.contains(&AppFeature::Gateway) {
@@ -463,17 +521,32 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     let mut preamble = String::new();
     if opts.template == Some(AppTemplate::Realtime) {
         preamble.push_str(
-            r#"        fn ws_echo_routes(state: TrembitaGatewayState) -> RouteTable {
-            mount_raw_websocket(
+            r#"        fn ws_chat_routes(state: TrembitaGatewayState) -> RouteTable {
+            mount_sticky_websocket(
                 RouteTable::new(),
                 "/ws",
                 AuthMode::Open,
                 state,
-                |raw| {
+                Append::GROUP,
+                None,
+                |sticky| {
                     Box::pin(async move {
-                        let ws = server_stream(raw.stream).await;
-                        run_text_loop(ws, |text| async move { Some(format!("echo: {text}")) })
-                            .await;
+                        let mut ws = server_stream(sticky.stream).await;
+                        let mut handle = sticky.handle;
+                        while let Some(Ok(msg)) = ws.next().await {
+                            if let WsMessage::Text(text) = msg {
+                                let text = text.to_string();
+                                if handle
+                                    .fire_cap(Append { text: text.clone() })
+                                    .await
+                                    .is_ok()
+                                {
+                                    let _ = ws
+                                        .send(WsMessage::Text(format!("ok: {text}").into()))
+                                        .await;
+                                }
+                            }
+                        }
                     })
                 },
             )
@@ -497,7 +570,7 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
                 r"            .gateway_routes(|state| {
                 // trembita:gateway-routes
                 let mut table = http::product::route_table(state.clone());
-                table.merge(ws_echo_routes(state));
+                table.merge(ws_chat_routes(state));
                 table
                 // trembita:gateway-routes-end
             })
@@ -547,42 +620,73 @@ impl App {{
     )
 }
 
-fn generate_actors_mod_rs(opts: &NewProjectOpts) -> String {
-    if opts.template == Some(AppTemplate::Realtime) {
-        "//! Stateful worker groups — register in `src/manifest.rs`.\n\npub mod chat;\n".into()
-    } else {
-        include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/templates/trembita-app/src/actors/mod.rs.tpl"
-        ))
-        .into()
-    }
+fn generate_actors_mod_rs(_opts: &NewProjectOpts) -> String {
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/templates/trembita-app/src/actors/mod.rs.tpl"
+    ))
+    .into()
 }
 
-fn generate_realtime_chat_actor() -> String {
-    r"//! `chat` worker group — extend for sticky session casts from WebSocket handlers.
+fn generate_realtime_capabilities_mod() -> String {
+    "//! Capability groups — sticky session chat in `chat`.\n\npub mod chat;\n".to_string()
+}
 
-use trembita::actor;
-use trembita::runtime::{MessageDecodeError, UserActor};
+fn generate_realtime_product_rs() -> String {
+    r"//! App-specific HTTP routes — extend with login/session (see `examples/realtime`).
 
-/// Echo-friendly worker stub for realtime templates.
-#[derive(Default)]
-pub struct ChatWorker;
+use trembita::{ProductRoutes, TrembitaGatewayState};
+use trembita_http::RouteTable;
 
-#[actor]
-impl UserActor for ChatWorker {
-    type Config = ();
-    type Message = Vec<u8>;
-    type Error = String;
-
-    fn decode_message(payload: &[u8]) -> Result<Self::Message, MessageDecodeError> {
-        Ok(payload.to_vec())
-    }
-
-    async fn handle(&mut self, _msg: Self::Message) -> Result<(), Self::Error> {
-        Ok(())
-    }
+/// Custom product routes (webhooks, BFF handlers, capability HTTP, …).
+#[must_use]
+pub fn route_table(_state: TrembitaGatewayState) -> RouteTable {
+    ProductRoutes::new()
+        // trembita:product-routes
+        .build()
 }
 "
+    .to_string()
+}
+
+fn generate_realtime_chat_capability() -> String {
+    r#"//! Chat — sticky session append on group `chat`.
+
+use serde::{Deserialize, Serialize};
+use trembita::{cap_handler, cap_register_chain, CapError, CapGroup, CapManifest};
+
+#[derive(Default)]
+struct State {
+    history: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct AppendAck {
+    pub lines: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Append {
+    /// Line from WebSocket (or HTTP when wired).
+    pub text: String,
+}
+
+#[cap_handler(group = "chat")]
+fn append(msg: Append, state: &mut State) -> Result<AppendAck, CapError> {
+    state.history.push(msg.text.clone());
+    println!("[chat] {}", msg.text);
+    Ok(AppendAck {
+        lines: state.history.len() as u64,
+    })
+}
+
+#[must_use]
+pub fn manifest() -> CapManifest {
+    CapManifest::new().group(cap_register_chain!(
+        CapGroup::<State>::for_cap::<Append>().per_node(),
+        append_register,
+    ))
+}
+"#
     .to_string()
 }

@@ -1,4 +1,8 @@
 //! Invocation routes (delivery mode), chosen at the call site.
+//!
+//! Ops registered without [`.routes`](super::CapOp::routes) allow **every** [`Route`]; the caller
+//! picks the mode (`.via(&app).route(…)`, `fire_cap`, session API, …). Queued/event still need
+//! group [`.queue_stream`](super::CapGroup::queue_stream) / [`.event_ingress`](super::CapGroup::event_ingress).
 
 use std::fmt;
 

@@ -121,7 +121,7 @@ fn postgres_adapters_forward_through_trembita_features() {
 }
 
 #[test]
-fn template_realtime_includes_ws_and_chat_worker() {
+fn template_realtime_includes_ws_and_chat_capability() {
     use trembita_cli::{AppTemplate, resolve_scaffold_features};
 
     let dir = tempdir().unwrap();
@@ -135,8 +135,36 @@ fn template_realtime_includes_ws_and_chat_worker() {
         trembita_path: None,
     };
     let root = scaffold_project(&opts).unwrap();
-    assert!(root.join("src/actors/chat.rs").is_file());
+    assert!(root.join("src/capabilities/chat.rs").is_file());
+    assert!(!root.join("src/actors/chat.rs").exists());
+    let manifest = std::fs::read_to_string(root.join("src/manifest.rs")).unwrap();
+    assert!(manifest.contains("chat::manifest()"));
     let app = std::fs::read_to_string(root.join("src/app.rs")).unwrap();
-    assert!(app.contains("mount_raw_websocket"));
+    assert!(app.contains("mount_sticky_websocket"));
+    assert!(app.contains("fire_cap"));
+    assert!(app.contains("Append"));
     assert!(!root.join("src/consumers/sample.rs").exists());
+}
+
+#[test]
+fn template_workflows_includes_onboarding_cap_and_named_workflow() {
+    use trembita_cli::{AppTemplate, resolve_scaffold_features};
+
+    let dir = tempdir().unwrap();
+    let features = resolve_scaffold_features(Some(AppTemplate::Workflows), "").unwrap();
+    let opts = NewProjectOpts {
+        name: "flow-app".into(),
+        output: dir.path().to_path_buf(),
+        features,
+        template: Some(AppTemplate::Workflows),
+        trembita_version: "0.3.2".into(),
+        trembita_path: None,
+    };
+    let root = scaffold_project(&opts).unwrap();
+    assert!(root.join("src/capabilities/onboarding.rs").is_file());
+    assert!(root.join("src/workflows/onboarding.rs").is_file());
+    let manifest = std::fs::read_to_string(root.join("src/manifest.rs")).unwrap();
+    assert!(manifest.contains("onboarding::manifest()"));
+    assert!(manifest.contains("WorkflowOpts::named(\"onboard\""));
+    assert!(!root.join("src/capabilities/ping.rs").exists());
 }

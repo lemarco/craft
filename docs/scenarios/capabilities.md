@@ -66,6 +66,7 @@ Authoritative domain data still lives in Raft SM or external DB — see [state-p
 
 ## Related
 
+- [capability-parity](capability-parity.md) — scenario matrix (same power, no `UserActor` in app)
 - [stateful-workers](stateful-workers.md) — showcase (capabilities + migration demo)
 - [background-jobs](background-jobs.md) — queue semantics for queued routes
 - [framework-conventions](../decisions/framework-conventions.md) — `capabilities/` layout

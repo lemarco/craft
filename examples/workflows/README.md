@@ -2,7 +2,9 @@
 
 Multi-step onboarding with compensators; journal in `group-meta.redb`.
 
-Uses [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) — same onboarding path as the other product showcases.
+Side effects run through the **`onboarding`** capability ([`src/capabilities/onboarding.rs`](src/capabilities/onboarding.rs)) — saga steps call `Route::Inline` ops from [`OnboardingWorkflowClient`](src/onboarding.rs), not app `UserActor` code.
+
+Uses [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) + [`CapManifest`](../../crates/trembita/src/capability/manifest.rs).
 
 ## What you run
 

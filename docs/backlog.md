@@ -27,10 +27,23 @@ Epics **B-01 … B-18** are **shipped** (see [Shipped epics](#shipped-epics-arch
 | B-21 | Capability DX — ops, routes, hide product actor path | ✅ | [ADR](decisions/capability-dx.md) Accepted |
 | B-22 | Greenfield wire — gateway-only product ingress | ✅ | [ADR](decisions/capability-greenfield-wire.md) Accepted |
 | B-23 | Capability migration story (showcase cleanup) | ✅ | [B-23](#b-23--capability-migration-story-) |
+| B-24 | Capability parity — no regression vs actors | ✅ | [B-24](#b-24--capability-parity--no-regression) |
+| B-25 | Capability registration DX — `cap_handler` routes + register chain | ✅ | [B-25](#b-25--capability-registration-dx) |
 
 
 
 For new feature epics, use the next **B-NN** id and link the scenario + ADR.
+
+### B-25 — Capability registration DX
+
+**Priority:** P2  
+**ADR:** [capability-dx](decisions/capability-dx.md)
+
+| Subtask | Description | Status |
+| ------- | ----------- | ------ |
+| B-25a | `#[cap_handler(routes(…))]` + `{handler}_register` | ✅ |
+| B-25b | `cap_register_chain!` + `CapOp::key_cap` | ✅ |
+| B-25c | Showcases + scaffold on register chain (no manual `CapOp::new`) | ✅ |
 
 ### B-21 — Capability DX (product API)
 
@@ -81,6 +94,18 @@ Shipped: orders capability idempotency; legacy `processor.rs` removed; RAM `migr
 | B-23a | Per-op idempotency + store as default migration (not RAM snapshot) | ✅ (orders capability showcase) |
 | B-23b | Rewrite `migrate-demo` on capabilities or document `UserActor` as advanced-only | ✅ (documented; RAM demo kept) |
 | B-23c | Remove dead `processor.rs` from showcase | ✅ |
+
+### B-24 — Capability parity (no regression) ✅
+
+**Priority:** P2  
+**Principle:** Same cluster power, better DX — [capability-parity](scenarios/capability-parity.md)
+
+| Subtask | Description | Status |
+| ------- | ----------- | ------ |
+| B-24a | Scenario parity matrix doc | ✅ |
+| B-24b | `examples/realtime` → cap `chat` + `CapWire` session cast | ✅ |
+| B-24c | Workflows showcase → cap ops in saga steps | ✅ |
+| B-24d | `trembita new --template realtime` cap chat (scaffold) | ✅ |
 
 ### B-18 ✅ Leader task primitive
 
@@ -358,11 +383,11 @@ flowchart TB
 
 | Subtask | Description                                                     | Status |
 | ------- | --------------------------------------------------------------- | ------ |
-| B-04a   | [`examples/realtime/`](../examples/realtime/) — native WS + `ChatWorker` | ✅      |
+| B-04a   | [`examples/realtime/`](../examples/realtime/) — native WS + cap `chat` | ✅      |
 | B-04b   | Homogeneous cluster showcases (same binary every node; no role env) | ✅ |
 | B-04c   | Auth stub + `ActorSession` open on connect                      | ✅ `GATEWAY_TOKEN` |
 | B-04d   | Reconnect: handle `NoTarget`, session TTL expiry                | ✅ auto reopen in example |
-| B-04e   | Optional: checkpoint last N messages to SM (comment in example) | ✅ comment on `ChatWorker` |
+| B-04e   | Optional: checkpoint last N messages to SM (comment in example) | ✅ comment on `ChatState` |
 | B-04f   | Product HTTP `POST /actors/{group}/ask` + `/cast` on gateway (`ActorsApi`) | ✅ `trembita-http`, `TrembitaApp::actors_api` |
 
 

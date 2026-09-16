@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use trembita::actor_store::{store_get, store_set};
-use trembita::{CapError, CapOp, OpCtx, Route};
+use trembita::{cap_handler, cap_register_chain, CapError, CapGroup, CapManifest, Route};
 use trembita_tools::showcase_common::data_dir;
 
 use crate::debug;
@@ -15,7 +15,6 @@ const DATA_DIR_NAME: &str = "trembita-showcase-stateful-workers";
 /// Marker stored under `order:{id}` — presence means "already handled".
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OrderDone {
-    /// Whether processing completed.
     pub processed: bool,
 }
 
@@ -41,35 +40,17 @@ impl OrdersState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessOrder {
-    /// Order id to process idempotently.
     pub order_id: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct ProcessAck {
-    /// `true` when the order was already processed.
     pub skipped: bool,
 }
 
-impl trembita::CapRequest for ProcessOrder {
-    const GROUP: &'static str = "orders";
-    const OP: &'static str = "process";
-    type Reply = ProcessAck;
-
-    fn cap_key(&self) -> Option<String> {
-        Some(self.order_id.to_string())
-    }
-}
-
-pub fn process_op() -> CapOp<OrdersState> {
-    CapOp::new("process", process_order)
-        .routes([Route::InlineFire, Route::Inline])
-        .key(|m: &ProcessOrder| m.order_id.to_string())
-}
-
+#[cap_handler(group = "orders", op = "process", key = "order_id")]
 fn process_order(
     msg: ProcessOrder,
-    _ctx: OpCtx<'_>,
     state: &mut OrdersState,
 ) -> Result<ProcessAck, CapError> {
     tokio::task::block_in_place(|| {
@@ -113,4 +94,12 @@ async fn process_order_async(
         msg.order_id
     );
     Ok(ProcessAck { skipped: false })
+}
+
+#[must_use]
+pub fn manifest() -> CapManifest {
+    CapManifest::new().group(cap_register_chain!(
+        CapGroup::<OrdersState>::for_cap::<ProcessOrder>().instances(1),
+        process_order_register,
+    ))
 }

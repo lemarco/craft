@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use crate::TopicOpts;
 use crate::capability::CapGroupApply;
+use crate::capability::CapGroupScale;
 use crate::capability::Route;
 use crate::capability::group::{CapGroup, CapHostActor};
 use crate::capability::runtime::{CapRuntime, OpBinding};
@@ -29,7 +30,7 @@ impl<S: Send + Default + 'static> CapGroupApply for CapGroup<S> {
     ) -> TrembitaAppBuilder {
         let group = *self;
         let name = group.name();
-        let instances = group.instances_count();
+        let scale = group.scale();
         let queue_stream = group.queued_stream();
         let event_ingress = group.event_ingress_spec();
         let config = group.host_config(builder.cap_runtime.app_slot());
@@ -62,9 +63,12 @@ impl<S: Send + Default + 'static> CapGroupApply for CapGroup<S> {
         }
 
         builder.registration.actors = true;
-        builder.inner = builder
-            .inner
-            .manage::<CapHostActor<S>>(name, instances, config);
+        builder.inner = match scale {
+            CapGroupScale::Fixed(instances) => builder
+                .inner
+                .manage::<CapHostActor<S>>(name, instances, config),
+            CapGroupScale::PerNode => builder.inner.manage_auto::<CapHostActor<S>>(name, config),
+        };
 
         if let Some(stream) = queue_stream {
             let has_queued = group.ops().iter().any(|o| {

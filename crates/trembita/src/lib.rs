@@ -107,9 +107,9 @@ pub use app::{
 pub use app_opts::RunOpts;
 pub use builder::StartError;
 pub use capability::{
-    CallBuilder, CapCallOpts, CapEnqueueOutcome, CapError, CapGroup, CapManifest, CapOp, CapQueued,
-    CapRequest, CapRuntime, CapVia, CapWire, OpCtx, Route, deliver_event, deliver_queued, enqueue,
-    fire, invoke, publish_event,
+    CallBuilder, CapCallOpts, CapEnqueueOutcome, CapError, CapGroup, CapGroupScale, CapManifest,
+    CapOp, CapQueued, CapRequest, CapRuntime, CapVia, CapWire, OpCtx, Route, deliver_event,
+    deliver_queued, enqueue, fire, invoke, publish_event,
 };
 pub use configure::TrembitaConfigure;
 pub use consumer::{ConsumerGroup, ConsumerOpts, IdempotencyKeyFn, IdempotencyOpts, JobConsumer};
@@ -198,7 +198,7 @@ pub use upgrade::{
     spawn_upgrade_runtime, upgrade_view, verify_sha256_hex,
 };
 
-pub use trembita_macros::{consumer, consumer_json};
+pub use trembita_macros::{cap_handler, cap_request, consumer, consumer_json};
 
 pub use trembita_dashboard::{
     EventBus, EventSubscription, Metrics, MetricsSink, MultiMetricsSink, NoopMetricsSink,
@@ -219,4 +219,14 @@ macro_rules! product_job {
     ($stream:expr, $consumer:expr) => {
         $crate::JobOpts::product($stream, $consumer)
     };
+}
+
+/// Chain [`CapGroup`](crate::CapGroup) `{handler}_register` helpers from [`cap_handler`](crate::cap_handler).
+#[macro_export]
+macro_rules! cap_register_chain {
+    ($init:expr $(, $register:ident)* $(,)?) => {{
+        let mut __cap_group = $init;
+        $( __cap_group = $register(__cap_group); )*
+        __cap_group
+    }};
 }

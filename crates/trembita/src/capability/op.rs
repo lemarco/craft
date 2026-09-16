@@ -7,6 +7,7 @@ use std::sync::Arc;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+use super::call::CapRequest;
 use super::ctx::OpCtx;
 use super::error::CapError;
 use super::host::{CapRegistry, OpRunner};
@@ -57,6 +58,16 @@ impl<S: Send + Default + 'static> CapOp<S> {
         }
     }
 
+    /// Register a sync handler; op name is [`CapRequest::OP`] on `Req`.
+    #[must_use]
+    pub fn for_request<Req, Reply>(handler: CapHandlerFn<S, Req, Reply>) -> Self
+    where
+        Req: CapRequest<Reply = Reply> + DeserializeOwned + Send + 'static,
+        Reply: Serialize + Send + 'static,
+    {
+        Self::new(Req::OP, handler)
+    }
+
     /// Register an **async** handler under `name`.
     ///
     /// Use a closure returning `Box::pin(async { ... })` (non-`move` async block when borrowing
@@ -90,7 +101,26 @@ impl<S: Send + Default + 'static> CapOp<S> {
         }
     }
 
-    /// Routes enabled for this op (call site may pick among these).
+    /// Register an async handler; op name is [`CapRequest::OP`] on `Req`.
+    #[must_use]
+    pub fn for_request_async<Req, Reply, H>(handler: H) -> Self
+    where
+        Req: CapRequest<Reply = Reply> + DeserializeOwned + Send + 'static,
+        Reply: Serialize + Send + 'static,
+        H: for<'a> Fn(
+                Req,
+                OpCtx<'a>,
+                &'a mut S,
+            ) -> std::pin::Pin<
+                Box<dyn Future<Output = Result<Reply, CapError>> + Send + 'a>,
+            > + Send
+            + Sync
+            + 'static,
+    {
+        Self::new_async(Req::OP, handler)
+    }
+
+    /// Optional route whitelist (empty = all [`Route`] values allowed at call site).
     #[must_use]
     pub fn routes(mut self, routes: impl IntoIterator<Item = Route>) -> Self {
         self.routes = routes.into_iter().collect();
@@ -105,6 +135,17 @@ impl<S: Send + Default + 'static> CapOp<S> {
     ) -> Self {
         self.key = Some(std::sync::Arc::new(move |bytes: &[u8]| {
             trembita_proto::decode::<Req>(bytes).ok().map(|req| f(&req))
+        }));
+        self
+    }
+
+    /// Inline routing key from [`CapRequest::cap_key`](super::call::CapRequest::cap_key) on decode.
+    #[must_use]
+    pub fn key_cap<Req: CapRequest + DeserializeOwned>(mut self) -> Self {
+        self.key = Some(std::sync::Arc::new(move |bytes: &[u8]| {
+            trembita_proto::decode::<Req>(bytes)
+                .ok()
+                .and_then(|req| req.cap_key())
         }));
         self
     }

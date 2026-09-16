@@ -1,8 +1,10 @@
-# Real-time sessions (stateful actors)
+# Real-time sessions (capability + sticky session)
 
-WebSocket **and authenticated HTTP** on one listener → sticky [`ActorSession`](../../crates/trembita-runtime/src/session.rs) → in-memory chat workers.
+WebSocket **and authenticated HTTP** on one listener → sticky session → **`Append`** via [`SessionHandle::fire_cap`](../../crates/trembita/src/gateway/session.rs) (`chat.append` capability).
 
 Ops routes (`/health`, `/dashboard`, …) are merged on the same bind — same model as [getting-started.md](../../docs/getting-started.md).
+
+See [capability-parity](../../docs/scenarios/capability-parity.md) for session + WebSocket contract.
 
 ## What you run
 
@@ -72,7 +74,7 @@ Optional session cookie tuning: `REALTIME_SESSION_COOKIE`, `REALTIME_SESSION_TTL
 
 ## Quick start (cluster — QUIC)
 
-Three **identical** nodes — each runs WS + HTTP + chat workers:
+Three **identical** nodes — each runs WS + HTTP + chat capability:
 
 ```bash
 cd examples/realtime

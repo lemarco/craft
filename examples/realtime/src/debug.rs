@@ -86,7 +86,7 @@ pub fn chat_message(text: &str) {
         showcase = NAME,
         node_id = ?std::env::var("TREMBITA_NODE_ID").ok(),
         text,
-        "ChatWorker received message"
+        "chat capability received message"
     );
 }
 

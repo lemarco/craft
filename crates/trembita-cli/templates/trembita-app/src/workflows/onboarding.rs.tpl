@@ -5,7 +5,7 @@ use std::sync::Arc;
 use trembita::TrembitaApp;
 use trembita::client::{Client, ClientError, KeyedClient, RemoteClient, SagaError, SagaOutcome, SagaPlan};
 use trembita::proto::{decode, encode};
-use trembita::{AppManifest, CapVia, Route};
+use trembita::{CapVia, Route};
 use serde::{Deserialize, Serialize};
 
 use crate::capabilities::onboarding::{
@@ -175,8 +175,3 @@ pub fn build_plan(saga_id: &str) -> SagaPlan {
         .expect("valid workflow")
 }
 
-/// Product manifest fragment — onboarding capability group.
-#[must_use]
-pub fn app_manifest() -> AppManifest {
-    AppManifest::new().capabilities(crate::capabilities::onboarding::manifest())
-}

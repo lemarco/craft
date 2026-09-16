@@ -6,7 +6,7 @@ Sidekiq-style async work on trembita: clients get **HTTP 202**, jobs survive res
 
 | Piece | Role |
 |-------|------|
-| This binary | `TrembitaApp` + gateway + `#[consumer]` email worker + `LedgerWorker` (queue → actor) |
+| This binary | `TrembitaApp` + gateway + `#[consumer]` email worker + `ledger.record` capability |
 | [`trigger.sh`](trigger.sh) | Enqueue via HTTP on `TREMBITA_LISTEN` (product routes) |
 | [`trigger-idempotent.sh`](trigger-idempotent.sh) | Same job twice with one `?dedup=` key — duplicate enqueue + redelivery |
 | Ops / dashboard | Same HTTP bind as gateway — `/dashboard`, `/health` on `:8090` (local or cluster node 1) |
@@ -103,13 +103,13 @@ so they survive the crash and are visible to whichever node redelivers.
 The stream also sets `.default_max_attempts(5)`, so an HTTP-enqueued job that keeps
 failing lands in the dead letter queue instead of retrying forever.
 
-## Queue → actor bridge
+## Queue → capability bridge
 
-After the email side effect, the consumer **casts** to `LedgerWorker` via
+After the email side effect, the consumer **fires** `ledger.record` via
 [`src/bridge.rs`](src/bridge.rs) (`ConsumerOpts::on_app` registers `Arc<TrembitaApp>`).
 Watch for `[ledger] recorded …` alongside `[worker] … sending email`.
 
-Guide: [background-jobs § Queue → actor bridge](../../docs/scenarios/background-jobs.md#queue--actor-bridge).
+Guide: [background-jobs § Queue → capability bridge](../../docs/scenarios/background-jobs.md#queue--capability-bridge).
 
 ## Env
 

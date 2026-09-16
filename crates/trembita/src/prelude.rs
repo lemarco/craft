@@ -37,5 +37,5 @@ pub use crate::{
 pub use crate::{cap_enqueue, cap_fire, cap_invoke};
 pub use trembita_dashboard::init_tracing;
 pub use trembita_jobs::{WorkTrigger, WorkloadOpts};
-pub use trembita_macros::consumer;
+pub use trembita_macros::{cap_handler, cap_request, consumer};
 pub use trembita_proto::NodeId;

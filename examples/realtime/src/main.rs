@@ -1,65 +1,30 @@
-//! # Real-time sessions showcase (sticky actor sessions + WebSocket gateway)
+//! # Real-time sessions showcase (capability + sticky sessions + WebSocket)
 //!
 //! Demonstrates **login → `Set-Cookie` → session-protected HTTP** plus WebSocket on the same gateway.
+//! Chat lines use [`capabilities::chat`] (`Route::Session`) — not app `UserActor` code.
 
+mod capabilities;
 mod debug;
 mod gateway_session;
 
 use std::env;
-use std::sync::Mutex;
 use std::time::Duration;
 
-use trembita::runtime::{UserActor, actor};
 use trembita::{
-    ActorGroupOpts, AuthMode, CookieConfig, Gateway, GatewayOpts, RequestCtx, RouteTable,
-    TrembitaApp, TrembitaConfigure, TrembitaGatewayState, WsMessage, futures_util::SinkExt,
-    mount_sticky_websocket, run_sticky_cast_loop, server_stream,
+    AppManifest, AuthMode, CapRequest, CookieConfig, Gateway,
+    GatewayOpts, RequestCtx, RouteTable, TrembitaApp, TrembitaConfigure, TrembitaGatewayState,
+    WsMessage,
+    futures_util::{SinkExt, StreamExt}, mount_sticky_websocket, server_stream,
 };
 use trembita_tools::showcase_common::{
     data_dir, display_addr, http_bind_display, http_bind_from_env, http_disabled,
 };
 
+use capabilities::chat::Append;
 use gateway_session::{SessionStore, session_gate};
 
 const DATA_DIR_NAME: &str = "trembita-showcase-realtime";
 const SESSION_TTL: Duration = Duration::from_secs(3600);
-
-#[derive(Debug)]
-struct ChatErr;
-impl std::fmt::Display for ChatErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("chat worker error")
-    }
-}
-impl std::error::Error for ChatErr {}
-
-struct ChatWorker {
-    history: Mutex<Vec<String>>,
-}
-
-#[actor]
-impl UserActor for ChatWorker {
-    type Config = u32;
-    type Message = String;
-    type Error = ChatErr;
-
-    fn start(_seed: Self::Config) -> Result<Self, ChatErr> {
-        Ok(Self {
-            history: Mutex::new(Vec::new()),
-        })
-    }
-
-    fn handle(
-        &mut self,
-        msg: Self::Message,
-    ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
-        let node = env::var("TREMBITA_NODE_ID").unwrap_or_else(|_| "?".into());
-        self.history.lock().unwrap().push(msg.clone());
-        crate::debug::chat_message(&msg);
-        println!("[chat node {node}] {msg}");
-        std::future::ready(Ok(()))
-    }
-}
 
 async fn handle_sticky_ws(sticky: trembita::StickyWs) {
     let session_key = sticky.session_key.clone();
@@ -71,10 +36,38 @@ async fn handle_sticky_ws(sticky: trembita::StickyWs) {
 
     let mut handle = sticky.handle;
     let log_key = session_key.clone();
-    run_sticky_cast_loop(ws, &mut handle, move |text, ok| {
-        debug::ws_message(&log_key, text, ok);
-    })
-    .await;
+    while let Some(Ok(msg)) = ws.next().await {
+        if let WsMessage::Text(text) = msg {
+            let text = text.to_string();
+            match handle
+                .fire_cap(Append {
+                    text: text.clone(),
+                })
+                .await
+            {
+                Ok(()) => {
+                    debug::ws_message(&log_key, &text, true);
+                    if ws
+                        .send(WsMessage::Text(format!("ok: {text}").into()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                Err(_) => {
+                    debug::ws_message(&log_key, &text, false);
+                    if ws
+                        .send(WsMessage::Text(format!("session error").into()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
@@ -93,7 +86,7 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
         "/ws",
         AuthMode::Identity,
         ws_state,
-        "chat",
+        Append::GROUP,
         Some(SESSION_TTL),
         |sticky| Box::pin(handle_sticky_ws(sticky)),
     );
@@ -124,7 +117,7 @@ fn server_builder() -> trembita::TrembitaAppBuilder {
     let _ = std::fs::create_dir_all(&dir);
     let gateway = http_bind_from_env("127.0.0.1:8290");
     TrembitaApp::builder()
-        .actors::<ChatWorker>("chat", ActorGroupOpts::new(0))
+        .manifest(AppManifest::new().capabilities(capabilities::chat::manifest()))
         .configure(TrembitaConfigure {
             tick_period: Duration::from_millis(10),
             reconcile_period: Duration::from_millis(20),
@@ -152,7 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn print_banner() {
-    println!("trembita showcase · real-time sessions (stateful actors)");
+    println!("trembita showcase · real-time sessions (capability + sticky session)");
     println!("  listen   {}", env::var("TREMBITA_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".into()));
     if !http_disabled() {
         let host = display_addr(&http_bind_display("127.0.0.1:8290"));

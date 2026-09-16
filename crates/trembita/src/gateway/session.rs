@@ -5,10 +5,13 @@ use std::time::Duration;
 
 use http::StatusCode;
 use trembita_http::Response;
-use trembita_runtime::{ActorSession, CastError, ClusterAskError};
+use trembita_runtime::{
+    ActorSession, CastError, ClusterAskError, DeliverError, MessageDecodeError,
+};
 
 use super::identity::{ExtractedIdentity, IdentityError};
 use crate::app::TrembitaApp;
+use crate::capability::{CapRequest, cap_wire_bytes};
 
 /// No worker available for the session key in the requested group.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -58,6 +61,16 @@ impl std::fmt::Debug for SessionHandle {
 }
 
 impl SessionHandle {
+    /// Open a sticky session for `session_key` in [`CapRequest::GROUP`].
+    #[must_use]
+    pub fn open_for<Req: CapRequest>(
+        app: &Arc<TrembitaApp>,
+        session_key: impl Into<String>,
+        ttl: Option<Duration>,
+    ) -> Option<Self> {
+        Self::open(app, Req::GROUP, session_key, ttl)
+    }
+
     /// Open a sticky session for `session_key` in worker group `group`.
     #[must_use]
     pub fn open(
@@ -121,6 +134,28 @@ impl SessionHandle {
     /// Returns [`CastError`] when no worker is available after reopen.
     pub async fn cast(&mut self, payload: Vec<u8>) -> Result<(), CastError> {
         self.cast_with_retries(payload, 1).await
+    }
+
+    /// Fire-and-forget capability op on this sticky session ([`Route::InlineFire`](crate::capability::Route) path).
+    ///
+    /// # Errors
+    /// Returns [`CastError`] when the request group does not match, encoding fails, or delivery fails.
+    pub async fn fire_cap<Req: CapRequest>(&mut self, req: Req) -> Result<(), CastError> {
+        let payload = cap_wire_for_session::<Req>(&self.group, &req)?;
+        self.cast(payload).await
+    }
+
+    /// Capability op on this sticky session with reply ([`Route::Session`](crate::capability::Route) ask path).
+    ///
+    /// # Errors
+    /// Returns [`ClusterAskError`] when the request group does not match, encoding fails, or delivery fails.
+    pub async fn ask_cap<Req: CapRequest>(
+        &mut self,
+        req: Req,
+    ) -> Result<Req::Reply, ClusterAskError> {
+        let payload = cap_wire_for_session(&self.group, &req).map_err(cast_err_to_ask)?;
+        let bytes = self.ask(payload).await?;
+        trembita_proto::decode(&bytes).map_err(|_| ClusterAskError::NoReply)
     }
 
     /// Ask with one automatic reopen when the target is gone or expired.
@@ -190,4 +225,31 @@ fn ask_session_recoverable(err: &ClusterAskError) -> bool {
     matches!(err, ClusterAskError::NoTarget(_))
         || err.to_string().contains("NoTarget")
         || err.to_string().contains("expired")
+}
+
+fn cap_wire_for_session<Req: CapRequest>(
+    session_group: &str,
+    req: &Req,
+) -> Result<Vec<u8>, CastError> {
+    if session_group != Req::GROUP {
+        return Err(CastError::Deliver(DeliverError::NotFound(format!(
+            "session group `{session_group}` != CapRequest::GROUP `{}`",
+            Req::GROUP
+        ))));
+    }
+    cap_wire_bytes(req).map_err(cap_encode_error)
+}
+
+fn cast_err_to_ask(err: CastError) -> ClusterAskError {
+    match err {
+        CastError::NoTarget(g) => ClusterAskError::NoTarget(g),
+        CastError::Deliver(d) => ClusterAskError::Deliver(d),
+        CastError::Remote(r) => ClusterAskError::Remote(r),
+    }
+}
+
+fn cap_encode_error(err: crate::capability::CapError) -> CastError {
+    CastError::Deliver(DeliverError::Decode(MessageDecodeError::Decode(
+        err.to_string(),
+    )))
 }

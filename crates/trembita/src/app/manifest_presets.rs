@@ -43,7 +43,10 @@ impl JobsPreset {
 pub struct RealtimePreset;
 
 impl RealtimePreset {
-    /// One worker group scaled per cluster node.
+    /// One **legacy** [`UserActor`](trembita_runtime::UserActor) group per cluster node.
+    ///
+    /// Product realtime apps should use [`CapGroup::per_node`](crate::capability::CapGroup::per_node)
+    /// in [`CapManifest`](crate::capability::CapManifest) instead.
     #[must_use]
     pub fn worker_per_node<W>(name: impl Into<String>, config: W::Config) -> WorkerGroup
     where

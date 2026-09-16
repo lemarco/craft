@@ -8,6 +8,7 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use trembita::{HttpError, RequestCtx, Response, SessionGate, SessionHandle, TrembitaGatewayState};
 
+use crate::capabilities::chat::Append;
 use crate::debug;
 
 const SESSION_TTL: Duration = Duration::from_secs(3600);
@@ -111,14 +112,17 @@ pub async fn post_chat(
     let token = ctx
         .cookie("sess")
         .ok_or_else(|| HttpError::Unauthorized("missing session cookie".into()))?;
-    let mut handle = SessionHandle::open(&state.app, "chat", token, Some(SESSION_TTL))
-        .ok_or_else(|| HttpError::Internal("no chat worker".into()))?;
+    let mut handle =
+        SessionHandle::open_for::<Append>(&state.app, token, Some(SESSION_TTL))
+            .ok_or_else(|| HttpError::Internal("no chat worker".into()))?;
     let body: ChatPost = ctx.json()?;
     let user = handle.session_key().to_string();
-    let payload = trembita::proto::encode(&body.message).map_err(|e| {
-        HttpError::Internal(format!("encode: {e}"))
-    })?;
-    match handle.cast(payload).await {
+    match handle
+        .fire_cap(Append {
+            text: body.message.clone(),
+        })
+        .await
+    {
         Ok(()) => {
             debug::http_message(&user, &body.message, true);
             Ok(Response::json(

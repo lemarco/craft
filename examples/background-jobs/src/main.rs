@@ -4,9 +4,9 @@
 //! (`TREMBITA_ALLOW_JOIN=1`); `./cluster.sh` adds nodes via dynamic join.
 
 mod bridge;
+mod capabilities;
 mod cron_bootstrap;
 mod debug;
-mod ledger;
 
 use std::collections::HashMap;
 use std::env;
@@ -15,14 +15,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use trembita::{
-    ActorGroupOpts, ConsumerOpts, JobOpts, TrembitaApp, TrembitaConfigure, consumer,
+    AppManifest, ConsumerOpts, JobOpts, TrembitaApp, TrembitaConfigure, consumer,
 };
 use trembita_tools::showcase_common::{
     data_dir, display_addr, http_bind_display, http_disabled, wire_bind_from_env,
 };
 
 use crate::bridge::register as register_bridge;
-use crate::ledger::LedgerWorker;
+use crate::capabilities::ledger::manifest as ledger_manifest;
 
 static HANDLED: AtomicUsize = AtomicUsize::new(0);
 /// Times the *real* side effect ran. Stays at one per key even under redelivery.
@@ -120,7 +120,7 @@ fn server_builder() -> Result<trembita::TrembitaAppBuilder, Box<dyn std::error::
     let _ = std::fs::create_dir_all(&dir);
     let mut builder = TrembitaApp::from_env()?
         .data_dir(dir)
-        .actors::<LedgerWorker>("ledger", ActorGroupOpts::new(0))
+        .manifest(AppManifest::new().capabilities(ledger_manifest()))
         .jobs([JobOpts::new(STREAM)
             .lease(Duration::from_secs(300))
             .default_max_attempts(5)

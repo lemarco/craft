@@ -2,7 +2,7 @@
 
 **Pattern:** WebSocket or long-lived HTTP to a **pinned worker**; gateway VPS stays stateless; workers scale on the cluster.
 
-**Status:** **Shipped** in 0.2.x — `ActorSession`, gateway showcase ([examples/realtime/](../../examples/realtime/)), `ActorsApi` on product gateway.
+**Status:** **Shipped** in 0.2.x — `ActorSession`, gateway showcase ([examples/realtime/](../../examples/realtime/)) on **capabilities** (`chat.append` + `Route::Session`). See [capability-parity](capability-parity.md).
 
 ## When to use
 
@@ -22,14 +22,13 @@
                              │ ask_session / cast_session
               ┌──────────────┼──────────────┐
               ▼              ▼              ▼
-         ChatWorker-0   ChatWorker-1   ChatWorker-2
+         chat host-0    chat host-1    chat host-2
          (VPS 1)        (VPS 2)        (VPS 3)
-         in-memory      in-memory      in-memory
-         session state  session state  session state
+         CapHost RAM    CapHost RAM    CapHost RAM
 ```
 
 - **Gateway:** accepts connections, holds `ActorSession`, forwards messages to pinned workers
-- **Workers:** `UserActor` instances; state in memory for session lifetime
+- **Workers:** capability group host (`CapHost`); in-memory state on the group for session lifetime
 - **Durability:** optional checkpoint to `StateMachine` or `ActorStateStore` (redb) if reconnect must restore history
 
 ## Session lifecycle
@@ -41,7 +40,16 @@
 
 ## Quick start (current API)
 
-### 1. Cluster + workers
+**Product path:** register `chat` in [`CapManifest`](../../crates/trembita/src/capability/manifest.rs), sticky WebSocket with `mount_sticky_websocket`, deliver lines via [`SessionHandle::fire_cap`](../../crates/trembita/src/gateway/session.rs) — see [`examples/realtime/`](../../examples/realtime/) and `trembita new --template realtime`.
+
+### 1. Manifest (capability group)
+
+```rust
+// capabilities/chat.rs
+capabilities::chat::manifest() // CapGroup + `.op_req(append, [Session, InlineFire])`
+```
+
+### 1b. Low-level cluster (advanced)
 
 ```rust
 TrembitaCluster::builder(node_id, machine)
@@ -49,12 +57,6 @@ TrembitaCluster::builder(node_id, machine)
     .directory_policy(DirectoryPolicy::ReadYourWrites)  // optional: fresher directory
     .start_quic(...)
     .await?;
-```
-
-Scale chat workers across VPS:
-
-```rust
-cluster.scale_cluster::<ChatWorker>("chat", node_count, config).await?;
 ```
 
 ### 2. Open sticky session

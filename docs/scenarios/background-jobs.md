@@ -161,26 +161,26 @@ let worker = app.spawn_consumer(
 
 **Idempotency:** use `EnqueueOptions::dedup_key` and/or store processed ids in your `StateMachine` or `ActorStateStore`.
 
-### Queue → actor bridge
+### Queue → capability bridge
 
-Use the queue for **durability and retry**; delegate **stateful side effects** to a worker group via `cast` / `ask`. The background-jobs showcase implements this in [`examples/background-jobs/src/bridge.rs`](../../examples/background-jobs/src/bridge.rs):
+Use the queue for **durability and retry**; delegate **stateful side effects** to a capability op. The background-jobs showcase implements this in [`examples/background-jobs/src/bridge.rs`](../../examples/background-jobs/src/bridge.rs):
 
 ```rust
 // Register Arc<TrembitaApp> when the consumer starts.
 ConsumerOpts::default().on_app(|app| bridge::register(app))
 
-// In the handler — fire-and-forget to a stateful worker group.
-app.cast("ledger", trembita::proto::encode(&job_key)?).await?;
+// In the handler — fire-and-forget to the ledger capability.
+Record { key: job_key }.via(app).fire().await?;
 ```
 
-Runnable showcase: [`examples/background-jobs/`](../../examples/background-jobs/) (`LedgerWorker` + `SendEmailConsumer`).
+Runnable showcase: [`examples/background-jobs/`](../../examples/background-jobs/) (`ledger.record` + `SendEmailConsumer`).
 
 Patterns:
 
 | Need | Use |
 |------|-----|
-| Fire-and-forget to a stateful worker | `app.cast(group, bytes)` |
-| Read-modify-write with reply | `app.ask(group, bytes)` |
+| Fire-and-forget side effect | `Req.via(&app).fire()` ([`Route::InlineFire`](../../crates/trembita/src/capability/route.rs)) |
+| Read-modify-write with reply | `Req.via(&app).route(Route::Inline).await?` |
 | Wire `TrembitaApp` into a `#[consumer]` handler | [`ConsumerOpts::on_app`](../../crates/trembita/src/consumer.rs) |
 | Cross-shard saga step | `app.enqueue_workflow_step` + [`WorkflowBuilder::step_dedup_key`](../../crates/trembita/src/workflow.rs) |
 

@@ -99,15 +99,15 @@ queue.enqueue_opts(payload, EnqueueOptions::dedup_key(saga_step_key)).await?;
 
 See [background-jobs](background-jobs.md).
 
-### 5. Compose with actors
+### 5. Side effects in saga steps (capabilities)
 
-Synchronous side effect in saga step:
+Synchronous step — inline capability op ([`examples/workflows`](../../examples/workflows/)):
 
 ```rust
-.cluster_ref("provisioner").ask(Provision { user_id }).await?;
+CreateAccount { user_id }.via(&app).route(Route::Inline).await?;
 ```
 
-Prefer queue when step can take minutes or must survive worker crash without blocking saga coordinator.
+Prefer [`Route::Queued`](capabilities.md) when the step can take minutes or must survive worker crash without blocking the saga coordinator. Raw `UserActor` remains an advanced escape hatch ([capability-parity](capability-parity.md)).
 
 ## Cross-shard workflows
 

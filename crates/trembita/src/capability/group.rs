@@ -2,14 +2,28 @@
 
 use std::sync::{Arc, OnceLock, Weak};
 
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+
+use super::call::CapRequest;
 use super::host::{CapHost, CapHostConfig, CapRegistry};
-use super::op::{CapOp, CapOpSpec};
+use super::op::{CapHandlerFn, CapOp, CapOpSpec};
+use super::route::Route;
 use crate::TrembitaApp;
+
+/// How many [`CapHost`](super::host::CapHost) instances run for a group.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CapGroupScale {
+    /// Fixed pool size cluster-wide.
+    Fixed(usize),
+    /// One host per live cluster node ([`manage_auto`](crate::cluster::TrembitaClusterBuilder::manage_auto)).
+    PerNode,
+}
 
 /// A named capability group (bounded context) on the cluster.
 pub struct CapGroup<S: Send + Default + 'static = ()> {
     name: &'static str,
-    instances: usize,
+    scale: CapGroupScale,
     queue_stream: Option<&'static str>,
     event_topic: Option<&'static str>,
     event_subscription: Option<&'static str>,
@@ -25,12 +39,18 @@ impl CapGroup<()> {
 }
 
 impl<S: Send + Default + 'static> CapGroup<S> {
+    /// Group name from [`CapRequest::GROUP`] on `Req`.
+    #[must_use]
+    pub fn for_cap<Req: CapRequest>() -> Self {
+        Self::with_state(Req::GROUP)
+    }
+
     /// Group with explicit shared state type `S`.
     #[must_use]
     pub fn with_state(name: &'static str) -> Self {
         Self {
             name,
-            instances: 1,
+            scale: CapGroupScale::Fixed(1),
             queue_stream: None,
             event_topic: None,
             event_subscription: None,
@@ -38,10 +58,17 @@ impl<S: Send + Default + 'static> CapGroup<S> {
         }
     }
 
-    /// Worker instances cluster-wide (default `1`).
+    /// Fixed host count cluster-wide (default `1`).
     #[must_use]
     pub fn instances(mut self, n: usize) -> Self {
-        self.instances = n.max(1);
+        self.scale = CapGroupScale::Fixed(n.max(1));
+        self
+    }
+
+    /// One capability host per live cluster node (realtime / stateful pools).
+    #[must_use]
+    pub fn per_node(mut self) -> Self {
+        self.scale = CapGroupScale::PerNode;
         self
     }
 
@@ -67,6 +94,20 @@ impl<S: Send + Default + 'static> CapGroup<S> {
     pub fn op(mut self, op: CapOp<S>) -> Self {
         self.ops.push(op.into_spec());
         self
+    }
+
+    /// Register a sync handler for [`CapRequest`] type `Req` (op name from `Req::OP`).
+    #[must_use]
+    pub fn op_req<Req, Reply>(
+        self,
+        handler: CapHandlerFn<S, Req, Reply>,
+        routes: impl IntoIterator<Item = Route>,
+    ) -> Self
+    where
+        Req: CapRequest<Reply = Reply> + DeserializeOwned + Send + 'static,
+        Reply: Serialize + Send + 'static,
+    {
+        self.op(CapOp::for_request(handler).routes(routes))
     }
 
     pub(crate) fn name(&self) -> &'static str {
@@ -95,8 +136,8 @@ impl<S: Send + Default + 'static> CapGroup<S> {
         &self.ops
     }
 
-    pub(crate) fn instances_count(&self) -> usize {
-        self.instances
+    pub(crate) fn scale(&self) -> CapGroupScale {
+        self.scale
     }
 
     pub(crate) fn queued_stream(&self) -> Option<&'static str> {

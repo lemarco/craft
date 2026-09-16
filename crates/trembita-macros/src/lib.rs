@@ -10,6 +10,8 @@
 //! (cross-node-actors). The state-machine "derive" of state-machine is instead served by serde
 //! blanket impls in `trembita-core` (see backlog D0/D1), so no `StateMachine` derive is exported.
 
+mod cap_handler;
+mod cap_request;
 mod consumer;
 mod consumer_json;
 
@@ -18,7 +20,7 @@ use quote::quote;
 use std::collections::HashSet;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{Ident, ImplItem, ItemFn, ItemImpl, LitStr, Path, Token, parse_macro_input};
+use syn::{Ident, ImplItem, ItemFn, ItemImpl, ItemStruct, LitStr, Path, Token, parse_macro_input};
 
 struct ConsumerArgs {
     stream: String,
@@ -59,6 +61,41 @@ impl Parse for ConsumerArgs {
             subscription,
         })
     }
+}
+
+/// Implement [`trembita::CapRequest`](trembita::CapRequest) on a serde request struct.
+///
+/// Prefer [`macro@cap_handler`] when the handler is in the same crate — it infers `Reply`
+/// from `Result<Reply, CapError>`. Use this attribute for request-only DTOs (gateway JSON)
+/// or when the handler lives elsewhere.
+///
+/// `op` defaults to the snake_case struct name (`Append` → `"append"`).
+#[proc_macro_attribute]
+pub fn cap_request(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(attr as cap_request::CapRequestArgs);
+    let input = parse_macro_input!(item as ItemStruct);
+    cap_request::expand_cap_request(args, &input).into()
+}
+
+/// Implement [`trembita::CapRequest`](trembita::CapRequest) from a sync capability handler.
+///
+/// Infers the request type (first parameter) and `Reply` from `Result<Reply, CapError>`.
+/// `op` defaults to the snake_case request struct name.
+///
+/// ```ignore
+/// #[cap_handler(group = "chat")]
+/// fn append(msg: Append, state: &mut State) -> Result<AppendAck, CapError> { … }
+///
+/// cap_register_chain!(CapGroup::<State>::for_cap::<Append>().per_node(), append_register)
+/// ```
+///
+/// Delivery mode ([`Route`](trembita::Route)) is chosen at the call site; registration does not whitelist routes.
+/// Generates `{handler}_register` for [`trembita::cap_register_chain`].
+#[proc_macro_attribute]
+pub fn cap_handler(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(attr as cap_handler::CapHandlerArgs);
+    let input_fn = parse_macro_input!(item as ItemFn);
+    cap_handler::expand_cap_handler(args, &input_fn).into()
 }
 
 /// Register an async job handler and generate a `JobConsumer` adapter.
