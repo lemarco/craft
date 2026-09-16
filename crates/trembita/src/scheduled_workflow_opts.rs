@@ -15,7 +15,6 @@ use crate::queue_opts::QueueOpts;
 /// on a dedicated stream (default `"orchestration"`).
 ///
 /// ```
-/// # use std::time::Duration;
 /// # use trembita::{AppManifest, ScheduledWorkflowOpts, TrembitaApp, TrembitaConfigure};
 /// # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
 /// TrembitaApp::builder()
