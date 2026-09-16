@@ -18,7 +18,7 @@ pub struct Record {
     pub key: String,
 }
 
-#[cap_handler(group = "ledger", op = "record")]
+#[cap_handler(group = "ledger")]
 fn record(msg: Record, _state: &mut LedgerState) -> Result<RecordAck, CapError> {
     LEDGER_RECORDS.fetch_add(1, Ordering::SeqCst);
     println!("[ledger] recorded {}", msg.key);

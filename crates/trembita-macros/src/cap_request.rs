@@ -7,7 +7,6 @@ use syn::{Ident, ItemStruct, LitStr, Token, Type};
 
 pub(crate) struct CapRequestArgs {
     group: LitStr,
-    op: Option<LitStr>,
     reply: Type,
     key: Option<LitStr>,
 }
@@ -15,7 +14,6 @@ pub(crate) struct CapRequestArgs {
 impl Parse for CapRequestArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let mut group = None;
-        let mut op = None;
         let mut reply = None;
         let mut key = None;
 
@@ -24,8 +22,6 @@ impl Parse for CapRequestArgs {
             input.parse::<Token![=]>()?;
             if name == "group" {
                 group = Some(input.parse()?);
-            } else if name == "op" {
-                op = Some(input.parse()?);
             } else if name == "reply" {
                 reply = Some(input.parse()?);
             } else if name == "key" {
@@ -33,7 +29,7 @@ impl Parse for CapRequestArgs {
             } else {
                 return Err(syn::Error::new_spanned(
                     name,
-                    "unknown option (expected `group`, `op`, `reply`, `key`)",
+                    "unknown option (expected `group`, `reply`, `key`)",
                 ));
             }
             if input.peek(Token![,]) {
@@ -43,7 +39,6 @@ impl Parse for CapRequestArgs {
 
         Ok(Self {
             group: group.ok_or_else(|| input.error("missing `group = \"…\"`"))?,
-            op,
             reply: reply.ok_or_else(|| input.error("missing `reply = …`"))?,
             key,
         })
@@ -70,10 +65,7 @@ pub(crate) fn ident_to_op(ident: &Ident) -> String {
 pub(crate) fn expand_cap_request(args: CapRequestArgs, input: &ItemStruct) -> TokenStream2 {
     let struct_name = &input.ident;
     let group = args.group.value();
-    let op = args
-        .op
-        .map(|l| l.value())
-        .unwrap_or_else(|| ident_to_op(struct_name));
+    let op = ident_to_op(struct_name);
     let reply = args.reply;
 
     let key_impl = match args.key {

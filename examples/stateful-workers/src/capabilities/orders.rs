@@ -48,7 +48,7 @@ pub struct ProcessAck {
     pub skipped: bool,
 }
 
-#[cap_handler(group = "orders", op = "process", key = "order_id")]
+#[cap_handler(group = "orders", key = "order_id")]
 fn process_order(
     msg: ProcessOrder,
     state: &mut OrdersState,

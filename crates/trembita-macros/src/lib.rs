@@ -69,7 +69,7 @@ impl Parse for ConsumerArgs {
 /// from `Result<Reply, CapError>`. Use this attribute for request-only DTOs (gateway JSON)
 /// or when the handler lives elsewhere.
 ///
-/// `op` defaults to the snake_case struct name (`Append` → `"append"`).
+/// Wire `OP` is always snake_case of the struct name (`Append` → `"append"`, `ProcessOrder` → `"process_order"`).
 #[proc_macro_attribute]
 pub fn cap_request(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as cap_request::CapRequestArgs);
@@ -80,7 +80,7 @@ pub fn cap_request(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// Implement [`trembita::CapRequest`](trembita::CapRequest) from a sync capability handler.
 ///
 /// Infers the request type (first parameter) and `Reply` from `Result<Reply, CapError>`.
-/// `op` defaults to the snake_case request struct name.
+/// Wire `OP` is always snake_case of the request struct name.
 ///
 /// ```ignore
 /// #[cap_handler(group = "chat")]

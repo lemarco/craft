@@ -13,22 +13,17 @@
 ## Quick sketch
 
 ```rust
-// capabilities/orders/process.rs — handler
-pub fn run(msg: ProcessOrder, ctx: OpCtx<'_>, state: &mut OrdersState) -> Result<Ack, CapError> { … }
+// capabilities/orders.rs — wire op `process_order` from struct name `ProcessOrder`
+#[cap_handler(group = "orders", key = "order_id")]
+fn process_order(msg: ProcessOrder, state: &mut OrdersState) -> Result<Ack, CapError> { … }
 
 // manifest.rs — registration
-CapManifest::new().group(
-    CapGroup::with_state("orders")
+CapManifest::new().group(cap_register_chain!(
+    CapGroup::<OrdersState>::for_cap::<ProcessOrder>()
         .queue_stream("orders")
-        .event_ingress("orders.events", "cap-handler")
-        .op(CapOp::new("process", run).routes([
-            Route::Inline,
-            Route::InlineFire,
-            Route::Queued,
-            Route::QueuedWait,
-            Route::Event,
-        ])),
-);
+        .event_ingress("orders.events", "cap-handler"),
+    process_order_register,
+));
 
 // call site
 ProcessOrder { id }.via(&app).route(Route::Inline).await?;

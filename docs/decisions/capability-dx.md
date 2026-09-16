@@ -83,7 +83,7 @@ CapManifest::new().group(trembita::cap_register_chain!(
 ))
 ```
 
-(`Reply` from `Result<…>`; `op` from request struct name; `key = "field"` → `CapOp::key_cap` in `{handler}_register`. DTO-only: [`#[cap_request]`](../../crates/trembita-macros/src/lib.rs).)
+(`Reply` from `Result<…>`; `OP` = snake_case of request struct (`ProcessOrder` → `process_order`); `key = "field"` → `CapOp::key_cap`. DTO-only: [`#[cap_request]`](../../crates/trembita-macros/src/lib.rs).)
 
 Registration (manifest) — **data, no attribute DSL on the handler**:
 

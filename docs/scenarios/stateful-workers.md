@@ -42,18 +42,15 @@ Cross-node paths: [cross-node-actors](../decisions/cross-node-actors.md) — `sp
 ## Quick start (capabilities)
 
 ```rust
-use trembita::{AppManifest, CapGroup, CapManifest, CapOp, Route, TrembitaApp, RunOpts};
+use trembita::{AppManifest, cap_register_chain, CapGroup, CapManifest, TrembitaApp, RunOpts};
 
 TrembitaApp::builder()
     .data_dir("/var/lib/trembita")
     .manifest(AppManifest::new().capabilities(
-        CapManifest::new().group(
-            CapGroup::with_state("orders")
-                .op(CapOp::new("process", process_order).routes([
-                    Route::InlineFire,
-                    Route::Queued,
-                ])),
-        ),
+        CapManifest::new().group(cap_register_chain!(
+            CapGroup::<OrdersState>::for_cap::<ProcessOrder>(),
+            process_order_register,
+        )),
     ))
     .run(RunOpts::default())
     .await?;

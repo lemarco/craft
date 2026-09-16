@@ -12,14 +12,12 @@ use super::cap_request::ident_to_op;
 
 pub(crate) struct CapHandlerArgs {
     group: LitStr,
-    op: Option<LitStr>,
     key: Option<LitStr>,
 }
 
 impl Parse for CapHandlerArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let mut group = None;
-        let mut op = None;
         let mut key = None;
 
         while !input.is_empty() {
@@ -27,14 +25,12 @@ impl Parse for CapHandlerArgs {
             input.parse::<Token![=]>()?;
             if name == "group" {
                 group = Some(input.parse()?);
-            } else if name == "op" {
-                op = Some(input.parse()?);
             } else if name == "key" {
                 key = Some(input.parse()?);
             } else {
                 return Err(syn::Error::new_spanned(
                     name,
-                    "unknown option (expected `group`, `op`, `key`)",
+                    "unknown option (expected `group`, `key`)",
                 ));
             }
             if input.peek(Token![,]) {
@@ -44,7 +40,6 @@ impl Parse for CapHandlerArgs {
 
         Ok(Self {
             group: group.ok_or_else(|| input.error("missing `group = \"…\"`"))?,
-            op,
             key,
         })
     }
@@ -283,11 +278,7 @@ pub(crate) fn expand_cap_handler(args: CapHandlerArgs, input_fn: &ItemFn) -> Tok
     };
 
     let group = args.group.value();
-    let op = args
-        .op
-        .as_ref()
-        .map(syn::LitStr::value)
-        .unwrap_or_else(|| ident_to_op(&req_ident_name));
+    let op = ident_to_op(&req_ident_name);
 
     let has_key = args.key.is_some();
     let key_impl = match &args.key {

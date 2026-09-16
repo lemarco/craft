@@ -30,7 +30,7 @@ fn keyed_run(msg: Keyed, _state: &mut ()) -> Result<DemoAck, CapError> {
     })
 }
 
-#[cap_request(group = "orphan", reply = DemoAck, op = "only_dto")]
+#[cap_request(group = "orphan", reply = DemoAck)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct OrphanDto {
     x: u8,
@@ -52,5 +52,5 @@ fn cap_handler_key_field() {
 
 #[test]
 fn cap_request_for_dto_without_handler() {
-    assert_eq!(OrphanDto::OP, "only_dto");
+    assert_eq!(OrphanDto::OP, "orphan_dto");
 }
