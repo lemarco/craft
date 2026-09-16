@@ -11,7 +11,7 @@ cargo build -p trembita-cli
 
 | Showcase | Pattern | Solo | Multi-node (debug CLI) |
 |----------|---------|------|------------------------|
-| [`background-jobs/`](background-jobs/) | HTTP `202` → queue → `#[consumer]` | `cargo run --release` | `./target/debug/trembita dev up --showcase background-jobs` |
+| [`background-jobs/`](background-jobs/) | HTTP `202` → cap enqueue → queue bridge | `cargo run --release` | `./target/debug/trembita dev up --showcase background-jobs` |
 | [`realtime/`](realtime/) | Cap `chat` + WebSocket/HTTP sticky `ActorSession` | `cargo run --release` | `./target/debug/trembita dev up --showcase realtime` |
 | [`stateful-workers/`](stateful-workers/) | Capabilities + `ActorStateStore` idempotency + `POST /orders/submit` | `cargo run --release` | `./target/debug/trembita dev up --showcase stateful-workers` |
 | [`workflows/`](workflows/) | Saga journal + capability inline steps | `cargo run --release` | `./target/debug/trembita dev up --showcase workflows` |

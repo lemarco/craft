@@ -7,7 +7,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use crate::NodeId;
-use crate::cluster::TrembitaCluster;
 use crate::cluster::{PeerDirectory, Security};
 use crate::integration::await_trembita_leader;
 use crate::net::tls::ClusterCa;

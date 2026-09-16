@@ -8,7 +8,7 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use trembita::{
     AppManifest, CapError, CapGroup, CapManifest, CapOp, CapRequest, Gateway, GatewayOpts, OpCtx,
-    ProductRoutes, Route, TrembitaApp, TrembitaConfigure, cap_invoke,
+    ProductRoutes, Route, TrembitaApp, TrembitaConfigure, cap_enqueue, cap_invoke,
 };
 use trembita_test_support::{
     advance, boot_local_app, eventually_default, spawn_test_gateway, wait_for_trembita_app_leader,
@@ -121,6 +121,101 @@ async fn gateway_cap_invoke_inline_json() {
     assert_eq!(resp.status(), StatusCode::OK);
     let sum: Sum = resp.json().await.expect("json");
     assert_eq!(sum, Sum { total: 7 });
+
+    app.shutdown();
+    let _ = std::fs::remove_dir_all(base);
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct EnqueueBody {
+    n: u64,
+}
+
+#[tokio::test(start_paused = true)]
+async fn gateway_cap_enqueue_honors_dedup_query() {
+    let caps = CapManifest::new().group(
+        CapGroup::with_state("math")
+            .instances(1)
+            .queue_stream("cap-math-http")
+            .op(CapOp::new("add", add_run).routes([Route::Queued])),
+    );
+    let manifest = AppManifest::new().capabilities(caps);
+
+    let base = std::env::temp_dir().join(format!(
+        "trembita-gateway-cap-dedup-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+
+    let app = boot_local_app(
+        || {
+            TrembitaApp::builder()
+                .configure(TrembitaConfigure {
+                    data_dir: Some(base.clone()),
+                    without_ops: false,
+                    without_jobs_api: false,
+                    without_schedules_api: false,
+                    without_workflows_api: false,
+                    without_topics_api: false,
+                    tick_period: Duration::from_millis(5),
+                    reconcile_period: Duration::from_millis(20),
+                    directory_publish_period: Duration::from_millis(20),
+                    ..TrembitaConfigure::default()
+                })
+                .manifest(manifest)
+                .gateway(
+                    GatewayOpts::new("127.0.0.1:0".parse().expect("addr")).surfaces(|state| {
+                        Gateway::new(false).dev_fallback(
+                            ProductRoutes::new()
+                                .post("/math/add", cap_enqueue::<Add>(state))
+                                .build(),
+                        )
+                    }),
+                )
+        },
+        None,
+    )
+    .await;
+
+    wait_for_trembita_app_leader(&app).await;
+    advance(Duration::from_millis(500)).await;
+
+    let config = GatewayOpts::new("127.0.0.1:0".parse().expect("addr"))
+        .surfaces(|state| {
+            Gateway::new(false).dev_fallback(
+                ProductRoutes::new()
+                    .post("/math/add", cap_enqueue::<Add>(state))
+                    .build(),
+            )
+        })
+        .build_config();
+    let addr = spawn_test_gateway(&app, config).await;
+
+    let client = reqwest::Client::new();
+    let url = format!("http://{addr}/math/add?dedup=invoice-1");
+    let first: serde_json::Value = client
+        .post(&url)
+        .json(&EnqueueBody { n: 1 })
+        .send()
+        .await
+        .expect("post")
+        .json()
+        .await
+        .expect("json");
+    let second: serde_json::Value = client
+        .post(&url)
+        .json(&EnqueueBody { n: 99 })
+        .send()
+        .await
+        .expect("post")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(first["job_id"], second["job_id"]);
 
     app.shutdown();
     let _ = std::fs::remove_dir_all(base);

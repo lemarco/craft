@@ -144,11 +144,15 @@ where
             Ok(Response::status(StatusCode::ACCEPTED))
         }
         Route::Queued => {
-            let outcome = req
-                .via(state.app.as_ref())
-                .enqueue()
-                .await
-                .map_err(map_cap_error)?;
+            let mut call = req.via(state.app.as_ref());
+            if let Some(dedup) = ctx
+                .query()
+                .iter()
+                .find_map(|(k, v)| (k == "dedup").then_some(v))
+            {
+                call = call.dedup_key(dedup.as_bytes());
+            }
+            let outcome = call.enqueue().await.map_err(map_cap_error)?;
             Ok(enqueue_response(outcome))
         }
         Route::QueuedWait => {
@@ -174,11 +178,15 @@ async fn handle_enqueue<Req: CapRequest + Sync>(
 ) -> Result<Response, HttpError> {
     open_group_session_if_identity::<Req>(state, &ctx).await?;
     let req: Req = ctx.json()?;
-    let outcome = req
-        .via(state.app.as_ref())
-        .enqueue()
-        .await
-        .map_err(map_cap_error)?;
+    let mut call = req.via(state.app.as_ref());
+    if let Some(dedup) = ctx
+        .query()
+        .iter()
+        .find_map(|(k, v)| (k == "dedup").then_some(v))
+    {
+        call = call.dedup_key(dedup.as_bytes());
+    }
+    let outcome = call.enqueue().await.map_err(map_cap_error)?;
     Ok(enqueue_response(outcome))
 }
 

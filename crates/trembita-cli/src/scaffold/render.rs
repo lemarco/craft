@@ -373,8 +373,7 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
             );
         }
         _ => {
-            imports.push("use crate::capabilities::ping::{PingState, ping_op};".to_string());
-            imports.push("use trembita::{CapGroup, CapManifest};".to_string());
+            imports.push("use crate::capabilities::ping;".to_string());
         }
     }
 
@@ -440,11 +439,7 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
                 r#"
         .capabilities(
             // trembita:capabilities
-            CapManifest::new().group(
-                CapGroup::<PingState>::with_state("app")
-                    .instances(1)
-                    .op(ping_op()),
-            ),
+            ping::manifest(),
             // trembita:capabilities-end
         )"#,
             );

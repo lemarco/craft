@@ -130,7 +130,7 @@ fn load_security(
             #[cfg(feature = "dev-certs")]
             {
                 let ca = trembita_net::tls::ClusterCa::generate()?;
-                return Ok((Security::dev(&ca, node_id)?, None));
+                Ok((Security::dev(&ca, node_id)?, None))
             }
             #[cfg(not(feature = "dev-certs"))]
             return Err(

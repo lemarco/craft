@@ -8,7 +8,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::NodeId;
-use crate::TrembitaApp;
 use crate::TrembitaConfigure;
 use crate::cluster::TrembitaCluster;
 use crate::core::{Config, FailureDetectorKind, ReachabilityConfig};
@@ -519,7 +518,6 @@ async fn telemetry_publishes_consensus_and_actor_metrics() {
 async fn metrics_sink_receives_runtime_samples() {
     use std::sync::Arc;
 
-    use crate::cluster::TrembitaCluster;
     use crate::{RecordedMetric, RecordingMetricsSink};
 
     let recorder = Arc::new(RecordingMetricsSink::new());

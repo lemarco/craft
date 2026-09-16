@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use trembita::{CapError, CapGroup, CapManifest, CapOp, OpCtx, Route};
+use trembita::{cap_handler, cap_register_chain, CapError, CapGroup, CapManifest};
 
 use crate::debug;
 
@@ -37,77 +37,9 @@ pub struct CompensateWelcome {
     pub user_id: String,
 }
 
-impl trembita::CapRequest for CreateAccount {
-    const GROUP: &'static str = "onboarding";
-    const OP: &'static str = "create_account";
-    type Reply = StepAck;
-
-    fn cap_key(&self) -> Option<String> {
-        Some(self.user_id.clone())
-    }
-}
-
-impl trembita::CapRequest for CompensateCreate {
-    const GROUP: &'static str = "onboarding";
-    const OP: &'static str = "compensate_create";
-    type Reply = StepAck;
-
-    fn cap_key(&self) -> Option<String> {
-        Some(self.user_id.clone())
-    }
-}
-
-impl trembita::CapRequest for SendWelcome {
-    const GROUP: &'static str = "onboarding";
-    const OP: &'static str = "send_welcome";
-    type Reply = StepAck;
-
-    fn cap_key(&self) -> Option<String> {
-        Some(self.user_id.clone())
-    }
-}
-
-impl trembita::CapRequest for CompensateWelcome {
-    const GROUP: &'static str = "onboarding";
-    const OP: &'static str = "compensate_welcome";
-    type Reply = StepAck;
-
-    fn cap_key(&self) -> Option<String> {
-        Some(self.user_id.clone())
-    }
-}
-
-#[must_use]
-pub fn create_account_op() -> CapOp<OnboardingState> {
-    CapOp::new("create_account", run_create_account)
-        .routes([Route::Inline, Route::InlineFire])
-        .key(|m: &CreateAccount| m.user_id.clone())
-}
-
-#[must_use]
-pub fn compensate_create_op() -> CapOp<OnboardingState> {
-    CapOp::new("compensate_create", run_compensate_create)
-        .routes([Route::Inline, Route::InlineFire])
-        .key(|m: &CompensateCreate| m.user_id.clone())
-}
-
-#[must_use]
-pub fn send_welcome_op() -> CapOp<OnboardingState> {
-    CapOp::new("send_welcome", run_send_welcome)
-        .routes([Route::Inline, Route::InlineFire])
-        .key(|m: &SendWelcome| m.user_id.clone())
-}
-
-#[must_use]
-pub fn compensate_welcome_op() -> CapOp<OnboardingState> {
-    CapOp::new("compensate_welcome", run_compensate_welcome)
-        .routes([Route::Inline, Route::InlineFire])
-        .key(|m: &CompensateWelcome| m.user_id.clone())
-}
-
-fn run_create_account(
+#[cap_handler(group = "onboarding", key = "user_id")]
+async fn create_account(
     msg: CreateAccount,
-    _ctx: OpCtx<'_>,
     state: &mut OnboardingState,
 ) -> Result<StepAck, CapError> {
     store_insert(
@@ -118,9 +50,9 @@ fn run_create_account(
     )
 }
 
-fn run_compensate_create(
+#[cap_handler(group = "onboarding", key = "user_id")]
+async fn compensate_create(
     msg: CompensateCreate,
-    _ctx: OpCtx<'_>,
     state: &mut OnboardingState,
 ) -> Result<StepAck, CapError> {
     store_remove(
@@ -130,11 +62,8 @@ fn run_compensate_create(
     )
 }
 
-fn run_send_welcome(
-    msg: SendWelcome,
-    _ctx: OpCtx<'_>,
-    state: &mut OnboardingState,
-) -> Result<StepAck, CapError> {
+#[cap_handler(group = "onboarding", key = "user_id")]
+async fn send_welcome(msg: SendWelcome, state: &mut OnboardingState) -> Result<StepAck, CapError> {
     store_insert(
         state,
         &format!("welcome:{}", msg.user_id),
@@ -143,9 +72,9 @@ fn run_send_welcome(
     )
 }
 
-fn run_compensate_welcome(
+#[cap_handler(group = "onboarding", key = "user_id")]
+async fn compensate_welcome(
     msg: CompensateWelcome,
-    _ctx: OpCtx<'_>,
     state: &mut OnboardingState,
 ) -> Result<StepAck, CapError> {
     store_remove(
@@ -189,12 +118,11 @@ fn store_remove(
 /// Register onboarding capability group for saga side effects.
 #[must_use]
 pub fn manifest() -> CapManifest {
-    CapManifest::new().group(
-        CapGroup::<OnboardingState>::with_state("onboarding")
-            .instances(1)
-            .op(create_account_op())
-            .op(compensate_create_op())
-            .op(send_welcome_op())
-            .op(compensate_welcome_op()),
-    )
+    CapManifest::new().group(cap_register_chain!(
+        CapGroup::<OnboardingState>::with_state("onboarding").instances(1),
+        create_account_register,
+        compensate_create_register,
+        send_welcome_register,
+        compensate_welcome_register,
+    ))
 }

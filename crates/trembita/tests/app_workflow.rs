@@ -33,7 +33,7 @@ impl GatewayIdentity for TestGatewayIdentity {
 
 #[tokio::test]
 async fn trembita_app_runs_workflow_locally() {
-    let dir = tempfile::tempdir().expect("tempdir");
+    let _dir = tempfile::tempdir().expect("tempdir");
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
@@ -61,7 +61,7 @@ async fn trembita_app_runs_workflow_locally() {
 
 #[tokio::test]
 async fn trembita_app_workflows_api_on_gateway() {
-    let dir = tempfile::tempdir().expect("tempdir");
+    let _dir = tempfile::tempdir().expect("tempdir");
     let app = boot_local_app(
         || {
             TrembitaApp::builder()
@@ -103,7 +103,7 @@ mod gateway_merge {
 
     #[tokio::test]
     async fn gateway_router_merges_workflows_api() {
-        let dir = tempfile::tempdir().expect("tempdir");
+        let _dir = tempfile::tempdir().expect("tempdir");
         let app = boot_local_app(
             || {
                 TrembitaApp::builder()

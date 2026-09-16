@@ -18,6 +18,7 @@
 
 mod capabilities;
 mod debug;
+mod domain;
 mod gateway_orders;
 mod migrate_counter;
 mod migrate_demo;

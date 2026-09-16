@@ -1,11 +1,10 @@
 //! Email delivery — queued capability (`Route::Queued` via HTTP `cap_enqueue`).
 
-use std::collections::HashMap;
 use std::env;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
+use trembita::actor_store::{store_get, store_set};
 use trembita::{cap_handler, cap_register_chain, CapError, CapGroup, CapVia, OpCtx};
 
 use crate::capabilities::ledger::Record;
@@ -15,15 +14,12 @@ pub static HANDLED: AtomicUsize = AtomicUsize::new(0);
 /// Times the *real* side effect ran. Stays at one per key even under redelivery.
 pub static SENT: AtomicUsize = AtomicUsize::new(0);
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Marker {
-    Done,
-}
+/// Marker stored under `email:{key}` after side effects succeed.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct EmailDone;
 
 #[derive(Default)]
-pub struct EmailState {
-    markers: Mutex<HashMap<String, Marker>>,
-}
+pub struct EmailState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct EmailAck;
@@ -41,27 +37,31 @@ fn simulate_redelivery() -> bool {
     env::var("TREMBITA_SIMULATE_REDELIVERY").as_deref() != Ok("0")
 }
 
-#[cap_handler(group = "emails")]
+#[cap_handler(group = "emails", key = "text")]
 async fn deliver_email(
     msg: DeliverEmail,
     ctx: OpCtx<'_>,
-    state: &mut EmailState,
+    _state: &mut EmailState,
 ) -> Result<EmailAck, CapError> {
     let delivery = HANDLED.fetch_add(1, Ordering::SeqCst) + 1;
     let key = job_key(&msg.text);
     debug::worker_job(0, msg.text.len(), &key);
 
+    let store = ctx
+        .app()
+        .and_then(trembita::TrembitaApp::actor_state_store)
+        .ok_or_else(|| CapError::Handler("data_dir / actor state store required".into()))?;
+
+    let store_key = format!("email:{key}");
+    if store_get::<EmailDone>(&*store, &store_key)
+        .await
+        .map_err(|e| CapError::Handler(e.to_string()))?
+        .is_some()
     {
-        let guard = state
-            .markers
-            .lock()
-            .map_err(|e| CapError::Handler(e.to_string()))?;
-        if guard.get(&key) == Some(&Marker::Done) {
-            println!(
-                "[worker] delivery #{delivery} — {key}: duplicate, side effect already applied (skipping)"
-            );
-            return Ok(EmailAck);
-        }
+        println!(
+            "[worker] delivery #{delivery} — {key}: duplicate, side effect already applied (skipping)"
+        );
+        return Ok(EmailAck);
     }
 
     let sent = SENT.fetch_add(1, Ordering::SeqCst) + 1;
@@ -78,11 +78,9 @@ async fn deliver_email(
     .await
     .map_err(|e| CapError::Handler(e.to_string()))?;
 
-    state
-        .markers
-        .lock()
-        .map_err(|e| CapError::Handler(e.to_string()))?
-        .insert(key.clone(), Marker::Done);
+    store_set(&*store, &store_key, &EmailDone, None)
+        .await
+        .map_err(|e| CapError::Handler(e.to_string()))?;
 
     if simulate_redelivery() && delivery == 1 {
         println!("[worker] delivery #{delivery} — {key}: failing before ack (expect redelivery)");

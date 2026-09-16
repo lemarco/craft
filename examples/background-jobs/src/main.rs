@@ -6,12 +6,11 @@
 mod capabilities;
 mod cron_bootstrap;
 mod debug;
+mod http;
 
 use std::time::Duration;
 
-use trembita::{
-    AppManifest, CapRequest, RouteTable, TrembitaApp, TrembitaConfigure, cap_enqueue,
-};
+use trembita::{AppManifest, CapRequest, TrembitaApp, TrembitaConfigure};
 use trembita_tools::showcase_common::{
     data_dir, display_addr, http_bind_display, http_disabled, wire_bind_from_env,
 };
@@ -30,12 +29,7 @@ fn server_builder() -> Result<trembita::TrembitaAppBuilder, Box<dyn std::error::
                 .capabilities(capabilities_manifest())
                 .scheduled_workflows(cron_bootstrap::weekly_scheduled_workflows()),
         )
-        .gateway_routes(|state| {
-            RouteTable::new().post(
-                "/jobs/emails",
-                cap_enqueue::<DeliverEmail>(state),
-            )
-        })
+        .gateway_routes(http::route_table)
         .configure(
             TrembitaConfigure::default()
                 .with_local_gateway_apis()

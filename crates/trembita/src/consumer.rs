@@ -490,11 +490,66 @@ impl TrembitaApp {
     }
 }
 
-/// Run `C::handle`, wrapped in the effectively-once guard when one is configured.
+/// Run an async delivery under the effectively-once guard when `idem` is set.
 ///
-/// Order is load-bearing: check `done` → claim `processing` → handler → mark `done`
-/// → ack. The `done` mark lands *before* the ack, so a crash in the redelivery
-/// window is caught by the first check next time round.
+/// Used by [`JobConsumer`] loops and the capability queue bridge.
+pub(crate) async fn run_delivery_with_idempotency<F, Fut>(
+    idem: Option<&IdempotencyOpts>,
+    payload: &[u8],
+    ctx: JobContext<'_>,
+    deliver: F,
+) -> Result<(), DeliveryGuardError>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<(), ()>>,
+{
+    let Some(idem) = idem else {
+        return deliver().await.map_err(|()| DeliveryGuardError::Handler);
+    };
+    let Some(suffix) = (idem.key_fn)(payload, ctx.clone()) else {
+        return deliver().await.map_err(|()| DeliveryGuardError::Handler);
+    };
+    let key = format!("{}{suffix}", idem.prefix);
+
+    match idem.store.get(&key).await {
+        Ok(Some(mark)) if mark == MARK_DONE => {
+            tracing::debug!(stream = ctx.stream, key = %key, "skipping duplicate delivery");
+            return Ok(());
+        }
+        Ok(_) => {}
+        Err(e) => return Err(DeliveryGuardError::Store(e)),
+    }
+
+    let claimed = idem
+        .store
+        .compare_and_set(&key, None, MARK_PROCESSING, idem.ttl)
+        .await
+        .map_err(DeliveryGuardError::Store)?;
+    if !claimed {
+        match idem.store.get(&key).await {
+            Ok(Some(mark)) if mark == MARK_DONE => return Ok(()),
+            Ok(_) => return Err(DeliveryGuardError::Contended),
+            Err(e) => return Err(DeliveryGuardError::Store(e)),
+        }
+    }
+
+    deliver().await.map_err(|()| DeliveryGuardError::Handler)?;
+
+    idem.store
+        .set(&key, MARK_DONE, idem.ttl)
+        .await
+        .map_err(DeliveryGuardError::Store)?;
+    Ok(())
+}
+
+/// Outcome of [`run_delivery_with_idempotency`].
+pub(crate) enum DeliveryGuardError {
+    Handler,
+    Store(#[allow(dead_code)] StoreError),
+    Contended,
+}
+
+/// Run `C::handle`, wrapped in the effectively-once guard when one is configured.
 async fn run_guarded<C: JobConsumer>(
     payload: &[u8],
     ctx: JobContext<'_>,
@@ -506,7 +561,6 @@ async fn run_guarded<C: JobConsumer>(
             .map_err(ConsumeError::Handler);
     };
     let Some(suffix) = (idem.key_fn)(payload, ctx.clone()) else {
-        // No key for this job — nothing to guard against.
         return C::handle_job(payload, ctx)
             .await
             .map_err(ConsumeError::Handler);
@@ -515,7 +569,6 @@ async fn run_guarded<C: JobConsumer>(
 
     match idem.store.get(&key).await {
         Ok(Some(mark)) if mark == MARK_DONE => {
-            // Redelivery of a job whose side effect already landed — ack it.
             tracing::debug!(stream = C::STREAM, key = %key, "skipping duplicate delivery");
             return Ok(());
         }
@@ -523,8 +576,6 @@ async fn run_guarded<C: JobConsumer>(
         Err(e) => return Err(ConsumeError::Store(e)),
     }
 
-    // Claim the key. Absent → processing; a stale `processing` from a dead worker
-    // is retaken once its marker TTL lapses.
     let claimed = idem
         .store
         .compare_and_set(&key, None, MARK_PROCESSING, idem.ttl)
@@ -542,7 +593,6 @@ async fn run_guarded<C: JobConsumer>(
         .await
         .map_err(ConsumeError::Handler)?;
 
-    // Durable before the ack.
     idem.store
         .set(&key, MARK_DONE, idem.ttl)
         .await

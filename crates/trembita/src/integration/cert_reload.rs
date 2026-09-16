@@ -5,7 +5,6 @@ use std::process::Command;
 use std::time::Duration;
 
 use crate::NodeId;
-use crate::cluster::TrembitaCluster;
 use crate::cluster::{CertPaths, PeerDirectory, PemSecurity, ReloadOpts};
 use trembita_test_support::{advance, free_udp};
 

@@ -6,7 +6,7 @@ Sidekiq-style async work on trembita: clients get **HTTP 202**, jobs survive res
 
 | Piece | Role |
 |-------|------|
-| This binary | `TrembitaApp` + gateway + `#[consumer]` email worker + `ledger.record` capability |
+| This binary | `TrembitaApp` + gateway + queued `emails` capability + `ledger.record` (`InlineFire`) |
 | [`trigger.sh`](trigger.sh) | Enqueue via HTTP on `TREMBITA_LISTEN` (product routes) |
 | [`trigger-idempotent.sh`](trigger-idempotent.sh) | Same job twice with one `?dedup=` key — duplicate enqueue + redelivery |
 | Ops / dashboard | Same HTTP bind as gateway — `/dashboard`, `/health` on `:8090` (local or cluster node 1) |
@@ -105,8 +105,8 @@ failing lands in the dead letter queue instead of retrying forever.
 
 ## Queue → capability bridge
 
-After the email side effect, the consumer **fires** `ledger.record` via
-[`src/bridge.rs`](src/bridge.rs) (`ConsumerOpts::on_app` registers `Arc<TrembitaApp>`).
+After the email side effect, the handler **fires** `ledger.record` via
+[`DeliverEmail`](src/capabilities/email.rs) (`OpCtx::app()` + `Route::InlineFire`).
 Watch for `[ledger] recorded …` alongside `[worker] … sending email`.
 
 Guide: [background-jobs § Queue → capability bridge](../../docs/scenarios/background-jobs.md#queue--capability-bridge).

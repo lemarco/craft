@@ -28,7 +28,8 @@ CapManifest::new().group(cap_register_chain!(
 
 // call site
 ProcessOrder { id }.via(&app).route(Route::Inline).await?;
-ProcessOrder { id }.via(&app).enqueue().await?;
+ProcessOrder { id }.via(&app).enqueue().await?; // dedup from `cap_key()` when `key = "…"` on handler
+ProcessOrder { id }.via(&app).dedup_key("client-token").enqueue().await?;
 ProcessOrder { id }.via(&app).queued_wait().await?;
 ProcessOrder { id }.via(&app).publish_event().await?; // Route::Event egress
 ```
@@ -59,6 +60,14 @@ Greenfield apps do **not** rely on `/actors/.../cast` — see [capability-greenf
 | `Event` | Topic — `.event_ingress(topic, sub)` + `.publish_event()`; subscriber runs same handler |
 
 Authoritative domain data still lives in Raft SM or external DB — see [state-placement](state-placement.md).
+
+## Queued idempotency
+
+At-least-once still applies; use **three layers** together ([idempotency-contract](../decisions/idempotency-contract.md)):
+
+1. **Enqueue** — `CallBuilder::dedup_key`, or `CapRequest::cap_key()` from `#[cap_handler(key = "field")]`, or HTTP `?dedup=` on [`cap_enqueue`](../../crates/trembita/src/gateway/cap_handlers.rs).
+2. **Bridge** — when `TREMBITA_DATA_DIR` opens [`ActorStateStore`](../../crates/trembita/src/app/runtime.rs), the cap queue consumer runs [`IdempotencyOpts::by_dedup_key`](../../crates/trembita/src/consumer.rs) around delivery (`cap:{stream}:` prefix).
+3. **Handler** — domain markers in store for partial failure before ack (see [background-jobs](background-jobs.md#effectively-once-recipe)).
 
 ## Related
 

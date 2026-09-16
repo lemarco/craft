@@ -41,7 +41,10 @@ fn scaffolds_default_layout() {
     assert!(root.join("src/domain/mod.rs").is_file());
     assert!(root.join("src/capabilities/ping.rs").is_file());
     let manifest = std::fs::read_to_string(root.join("src/manifest.rs")).unwrap();
-    assert!(manifest.contains("CapManifest"));
+    assert!(manifest.contains("ping::manifest()"));
+    let ping = std::fs::read_to_string(root.join("src/capabilities/ping.rs")).unwrap();
+    assert!(ping.contains("cap_handler"));
+    assert!(ping.contains("CapManifest"));
     assert!(root.join("deploy/.env.example").is_file());
     let readme = std::fs::read_to_string(root.join("README.md")).unwrap();
     assert!(
@@ -166,6 +169,9 @@ fn template_workflows_includes_onboarding_cap_and_named_workflow() {
     };
     let root = scaffold_project(&opts).unwrap();
     assert!(root.join("src/capabilities/onboarding.rs").is_file());
+    let onboarding = std::fs::read_to_string(root.join("src/capabilities/onboarding.rs")).unwrap();
+    assert!(onboarding.contains("cap_handler"));
+    assert!(onboarding.contains("cap_register_chain!"));
     assert!(root.join("src/workflows/onboarding.rs").is_file());
     let manifest = std::fs::read_to_string(root.join("src/manifest.rs")).unwrap();
     assert!(manifest.contains("onboarding::manifest()"));

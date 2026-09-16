@@ -5,7 +5,7 @@ use std::time::Duration;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use trembita_events::EventId;
-use trembita_jobs::JobId;
+use trembita_jobs::{EnqueueOptions, JobId};
 use trembita_proto::{self as proto, encode};
 
 use crate::TrembitaApp;
@@ -52,6 +52,8 @@ pub struct CapCallOpts {
     pub run_at_ms: Option<u64>,
     /// Max wait for [`Route::QueuedWait`] (default 30s).
     pub wait_timeout: Option<Duration>,
+    /// Enqueue dedup key (overrides [`CapRequest::cap_key`] when set).
+    pub dedup_key: Option<Vec<u8>>,
 }
 
 /// Call-site builder: `MyReq { .. }.via(&app).route(Route::Inline).await`.
@@ -99,6 +101,13 @@ impl<Req: CapRequest> CallBuilder<'_, Req> {
         self
     }
 
+    /// Client idempotency token for [`Route::Queued`] / [`Route::QueuedWait`] / [`Route::Scheduled`].
+    #[must_use]
+    pub fn dedup_key(mut self, key: impl Into<Vec<u8>>) -> Self {
+        self.opts.dedup_key = Some(key.into());
+        self
+    }
+
     /// Run the op using `route`.
     ///
     /// # Errors
@@ -114,7 +123,7 @@ impl<Req: CapRequest> CallBuilder<'_, Req> {
 
     /// Enqueue on the group's queue stream ([`Route::Queued`]).
     pub async fn enqueue(self) -> Result<CapEnqueueOutcome, CapError> {
-        enqueue_job(self.app, self.req, false).await
+        enqueue_job(self.app, self.req, false, &self.opts).await
     }
 
     /// Enqueue and await the handler reply ([`Route::QueuedWait`]).
@@ -127,7 +136,7 @@ impl<Req: CapRequest> CallBuilder<'_, Req> {
         let run_at_ms = self.opts.run_at_ms.ok_or_else(|| CapError::MissingOption {
             detail: "CallBuilder::run_at_ms required for schedule()".into(),
         })?;
-        scheduled_enqueue(self.app, self.req, run_at_ms).await
+        scheduled_enqueue(self.app, self.req, run_at_ms, &self.opts).await
     }
 
     /// Publish to the group's [`super::CapGroup::event_ingress`] topic ([`Route::Event`]).
@@ -161,7 +170,7 @@ async fn dispatch<Req: CapRequest>(
             op: Req::OP.to_string(),
         }),
         Route::QueuedWait => {
-            let outcome = enqueue_job(app, req, true).await?;
+            let outcome = enqueue_job(app, req, true, &opts).await?;
             let timeout = opts.wait_timeout.unwrap_or(Duration::from_secs(30));
             let bytes = app
                 .cap_runtime()
@@ -229,13 +238,27 @@ pub async fn enqueue<Req: CapRequest>(
     app: &TrembitaApp,
     req: Req,
 ) -> Result<CapEnqueueOutcome, CapError> {
-    enqueue_job(app, req, false).await
+    enqueue_job(app, req, false, &CapCallOpts::default()).await
+}
+
+fn enqueue_options<Req: CapRequest>(req: &Req, opts: &CapCallOpts) -> EnqueueOptions {
+    if let Some(key) = opts
+        .dedup_key
+        .as_ref()
+        .cloned()
+        .or_else(|| req.cap_key().map(|k| k.into_bytes()))
+    {
+        EnqueueOptions::dedup_key(key)
+    } else {
+        EnqueueOptions::default()
+    }
 }
 
 async fn enqueue_job<Req: CapRequest>(
     app: &TrembitaApp,
     req: Req,
     wait: bool,
+    call_opts: &CapCallOpts,
 ) -> Result<CapEnqueueOutcome, CapError> {
     let binding = binding(app, Req::GROUP, Req::OP)?;
     let route = if wait {
@@ -258,7 +281,7 @@ async fn enqueue_job<Req: CapRequest>(
     };
     let payload = encode(&queued).map_err(CapError::codec)?;
     let job_id = app
-        .enqueue(stream, &payload)
+        .enqueue_opts(stream, &payload, enqueue_options(&req, call_opts))
         .await
         .map_err(|e| CapError::Deliver(e.to_string()))?;
     Ok(CapEnqueueOutcome { stream, job_id })
@@ -268,6 +291,7 @@ async fn scheduled_enqueue<Req: CapRequest>(
     app: &TrembitaApp,
     req: Req,
     run_at_ms: u64,
+    call_opts: &CapCallOpts,
 ) -> Result<CapEnqueueOutcome, CapError> {
     let binding = binding(app, Req::GROUP, Req::OP)?;
     ensure_route(&binding, Route::Scheduled, Req::OP)?;
@@ -284,8 +308,10 @@ async fn scheduled_enqueue<Req: CapRequest>(
         wait: false,
     };
     let payload = encode(&queued).map_err(CapError::codec)?;
+    let mut opts = enqueue_options(&req, call_opts);
+    opts.not_before_ms = Some(run_at_ms);
     let job_id = app
-        .enqueue_at(stream, &payload, run_at_ms)
+        .enqueue_opts(stream, &payload, opts)
         .await
         .map_err(|e| CapError::Deliver(e.to_string()))?;
     Ok(CapEnqueueOutcome { stream, job_id })

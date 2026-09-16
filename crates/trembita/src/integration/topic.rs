@@ -5,7 +5,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::cluster::TrembitaCluster;
 use crate::core::StateMachine;
 use crate::integration::{await_trembita_leader, boot_local_app};
 use crate::net::LocalNetwork;

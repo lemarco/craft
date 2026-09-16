@@ -7,14 +7,9 @@ use super::group::CapGroup;
 use super::runtime::CapRuntime;
 
 /// Registry of capability groups — wire via [`crate::AppManifest::capabilities`].
+#[derive(Default)]
 pub struct CapManifest {
     pub(crate) groups: Vec<Box<dyn CapGroupApply>>,
-}
-
-impl Default for CapManifest {
-    fn default() -> Self {
-        Self { groups: Vec::new() }
-    }
 }
 
 impl CapManifest {

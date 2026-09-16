@@ -3,11 +3,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita_jobs::{JobId, WorkerId, run_queue_consumer};
+use trembita_jobs::{JobContext, JobId, WorkerId, run_queue_consumer};
 use trembita_proto::{self as proto, encode};
 
 use super::wire::{CapQueued, CapWire};
 use crate::TrembitaApp;
+use crate::consumer::{DeliveryGuardError, IdempotencyOpts, run_delivery_with_idempotency};
 
 /// Spawn the queue→ask bridge for a capability group stream.
 pub(crate) fn spawn_bridge(
@@ -16,6 +17,9 @@ pub(crate) fn spawn_bridge(
     stream: &'static str,
     stop: tokio::sync::watch::Receiver<bool>,
 ) -> tokio::task::JoinHandle<()> {
+    let idempotency = app
+        .actor_state_store()
+        .map(|store| IdempotencyOpts::by_dedup_key(store, format!("cap:{stream}:")));
     tokio::spawn(async move {
         let queue = app
             .job_queue(stream)
@@ -34,10 +38,35 @@ pub(crate) fn spawn_bridge(
                 let app = Arc::clone(&app);
                 let payload = job.payload.clone();
                 let job_id = job.job_id;
+                let lease_id = job.lease_id;
+                let attempts = job.attempts;
+                let dedup_key = job.dedup_key.clone();
+                let idempotency = idempotency.clone();
                 async move {
-                    deliver_queued_job(&app, &payload, job_id)
-                        .await
-                        .map_err(|_| ())
+                    let dedup_ref = dedup_key.as_deref();
+                    let ctx = JobContext::new(job_id, lease_id, stream, attempts, dedup_ref);
+                    let deliver = || {
+                        let app = Arc::clone(&app);
+                        let payload = payload.clone();
+                        async move {
+                            deliver_queued_job(&app, &payload, job_id)
+                                .await
+                                .map_err(|_| ())
+                        }
+                    };
+                    match run_delivery_with_idempotency(
+                        idempotency.as_ref(),
+                        &payload,
+                        ctx,
+                        deliver,
+                    )
+                    .await
+                    {
+                        Ok(()) => Ok(()),
+                        Err(DeliveryGuardError::Handler) => Err(()),
+                        Err(DeliveryGuardError::Store(_)) => Err(()),
+                        Err(DeliveryGuardError::Contended) => Err(()),
+                    }
                 }
             },
             None,
@@ -107,10 +136,10 @@ async fn run_queued_job(
             .map_err(|e| super::CapError::Deliver(e.to_string()))?
     };
 
-    if job.wait {
-        if let Some(id) = job_id {
-            app.cap_runtime().wait_store().store(id, reply);
-        }
+    if job.wait
+        && let Some(id) = job_id
+    {
+        app.cap_runtime().wait_store().store(id, reply);
     }
     Ok(())
 }

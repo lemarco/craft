@@ -1,10 +1,10 @@
 //! Sample capability — inline `ping` op.
 
 use serde::{Deserialize, Serialize};
-use trembita::{CapError, CapOp, OpCtx, Route};
+use trembita::{cap_handler, cap_register_chain, CapError, CapGroup, CapManifest};
 
 #[derive(Default)]
-pub struct PingState;
+struct PingState;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Ping {
@@ -16,17 +16,15 @@ pub struct Pong {
     pub echo: String,
 }
 
-impl trembita::CapRequest for Ping {
-    const GROUP: &'static str = "app";
-    const OP: &'static str = "ping";
-    type Reply = Pong;
-}
-
-fn ping_run(msg: Ping, _ctx: OpCtx<'_>, _state: &mut PingState) -> Result<Pong, CapError> {
+#[cap_handler(group = "app")]
+async fn ping(msg: Ping, _state: &mut PingState) -> Result<Pong, CapError> {
     Ok(Pong { echo: msg.msg })
 }
 
 #[must_use]
-pub fn ping_op() -> CapOp<PingState> {
-    CapOp::new("ping", ping_run).routes([Route::Inline, Route::InlineFire])
+pub fn manifest() -> CapManifest {
+    CapManifest::new().group(cap_register_chain!(
+        CapGroup::<PingState>::for_cap::<Ping>().instances(1),
+        ping_register,
+    ))
 }

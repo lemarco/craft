@@ -4,8 +4,6 @@
 
 #![allow(clippy::large_futures)]
 
-pub(crate) use trembita_assembly::TrembitaClusterBuilder;
-
 mod support;
 pub(crate) use support::{
     await_trembita_leader, boot_local_app, gateway_ops_surfaces, spawn_cluster_ops_gateway,

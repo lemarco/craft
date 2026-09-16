@@ -38,7 +38,7 @@ fn noop_plan(saga_id: &str) -> trembita::client::SagaPlan {
 
 #[tokio::test]
 async fn dispatch_runs_registered_workflow() {
-    let dir = tempfile::tempdir().expect("tempdir");
+    let _dir = tempfile::tempdir().expect("tempdir");
     let app = boot_local_app(
         || {
             TrembitaApp::builder()

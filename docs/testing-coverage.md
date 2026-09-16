@@ -279,6 +279,7 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-09 | B-24d realtime scaffold (`chat` cap + sticky WS) | `crates/trembita-cli/src/scaffold/render.rs`, `trembita-cli/tests/scaffold.rs` |
 | 2026-09 | B-24c workflows saga → onboarding cap ops | `examples/workflows/src/capabilities/onboarding.rs`, `examples/workflows/src/onboarding.rs` |
 | 2026-09 | CapGroup `per_node` + jobs ledger cap + workflows scaffold | `crates/trembita/src/capability/group.rs`, `examples/background-jobs/`, `trembita-cli/templates/…/onboarding.rs.tpl` |
+| 2026-09 | B-27i cap queued dedup + bridge idempotency | `trembita/src/capability/{call,queue}.rs`, `trembita/src/consumer.rs`, `trembita/tests/capability.rs` (`capability_enqueue_dedup_key_collapses`), `trembita/tests/gateway_cap_http.rs` (`gateway_cap_enqueue_honors_dedup_query`) |
 | 2026-09 | Schedule admin HTTP + facade (B-20) | `trembita-http/src/schedule_routes.rs`, `trembita/tests/http_schedules.rs`, `docs/scenarios/triggers-and-pipelines.md` |
 | 2026-09 | WorkTrigger + cron→workflow sugar | `trembita-jobs/src/work_trigger.rs`, `trembita/tests/work_trigger_dispatch.rs`, `docs/scenarios/cookbook-async-work.md` |
 | 2026-09 | `.scheduled_workflows()` product preset | `trembita/src/scheduled_workflow_opts.rs`, `trembita/tests/scheduled_workflows_builder.rs` |

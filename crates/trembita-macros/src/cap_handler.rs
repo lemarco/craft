@@ -60,7 +60,7 @@ fn type_last_ident(ty: &Type) -> Option<String> {
 }
 
 fn is_mut_state_ref(ty: &Type) -> bool {
-    matches!(&*ty, Type::Reference(r) if r.mutability.is_some())
+    matches!(ty, Type::Reference(r) if r.mutability.is_some())
 }
 
 fn result_ok_type(ty: &Type) -> Option<Type> {

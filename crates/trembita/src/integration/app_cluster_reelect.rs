@@ -3,20 +3,12 @@
 #![allow(clippy::large_futures)]
 
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use crate::NodeId;
-use crate::TrembitaApp;
-use crate::TrembitaConfigure;
-use crate::cluster::{EmptyStateMachine, TrembitaCluster};
-use crate::integration::boot_local_app;
+use crate::cluster::EmptyStateMachine;
 use trembita_net::LocalNetwork;
-use trembita_runtime::LeaderLoopOpts;
-use trembita_test_support::{
-    advance, eventually_default, fast_raft_config, wait_for_trembita_app_leader,
-};
+use trembita_test_support::{advance, fast_raft_config};
 
 fn temp_base(label: &str) -> PathBuf {
     let base = std::env::temp_dir().join(format!(

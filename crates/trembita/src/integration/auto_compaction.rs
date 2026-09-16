@@ -1,6 +1,5 @@
 //! Automatic Raft log compaction via [`TrembitaClusterBuilder::auto_compaction`].
 
-use crate::cluster::TrembitaCluster;
 use crate::core::CompactionPolicy;
 use crate::integration::{wait_for_trembita_leader, wait_for_trembita_stopped};
 use crate::net::LocalNetwork;

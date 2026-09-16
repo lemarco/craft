@@ -29,7 +29,7 @@ registry + adapters**.
 | **Group** | Named pool on the cluster (`"orders"`) — routing, optional shared `State`, one internal host |
 | **Op** | One operation: request struct, reply type, handler fn, metadata (optional key, queue stream on group) |
 | **Route** | Invocation mode for an op (inline, queued, …) — chosen at **call site**, not baked into the op definition |
-| **OpCtx** | Per-invocation context: `&TrembitaApp`, actor store, deps, tracing (no `UserActor` in app code) |
+| **OpCtx** | Per-invocation context: optional [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) via [`OpCtx::app`](../../crates/trembita/src/capability/ctx.rs) (queue bridge, HTTP). Store/deps/ingress on context: backlog B-27a–c |
 
 App code **must not** implement runtime worker traits or hand-encode mailbox payloads for
 product ops. Advanced / cluster authors may still use `trembita::runtime` directly.
@@ -130,6 +130,16 @@ advanced restriction. Missing queue/topic wiring fails when that mode is invoked
 **Not unified semantics:** `Inline` ≠ linearizable Raft; `Queued` = at-least-once. Docs and
 `Route` docs state this explicitly.
 
+### Queued enqueue dedup + bridge idempotency (shipped)
+
+| Layer | API |
+|-------|-----|
+| Enqueue | [`CallBuilder::dedup_key`](../../crates/trembita/src/capability/call.rs), default from [`CapRequest::cap_key`](../../crates/trembita/src/capability/call.rs) (`#[cap_handler(key = "field")]`), HTTP `?dedup=` on [`cap_enqueue`](../../crates/trembita/src/gateway/cap_handlers.rs) |
+| Bridge | [`capability/queue`](../../crates/trembita/src/capability/queue.rs) wraps delivery with [`IdempotencyOpts::by_dedup_key`](../../crates/trembita/src/consumer.rs) when cluster [`actor_state_store`](../../crates/trembita/src/app/runtime.rs) is configured |
+| Handler | Application markers — see [idempotency-contract](idempotency-contract.md) |
+
+Integration: [`capability_enqueue_dedup_key_collapses`](../../crates/trembita/tests/capability.rs).
+
 ### Internal implementation (not exported to apps)
 
 Each **group** with `State` or inline routes gets an internal **`CapHost`** (runtime): one
@@ -146,7 +156,7 @@ decode + handler table).
 | `CapManifest`, `CapGroup`, `OpRegistration` | manifest wiring |
 | `Route`, `OpCtx`, `CapError` | call + handler context |
 | `Via`, `CallBuilder` | `msg.via(&app).route(...)` |
-| `Deps` | app-injected domain ports (builder hook) |
+| `Deps` | app-injected domain ports (builder hook — **planned** B-27a) |
 
 **Prelude (after MVP):** export `CapManifest`, `Route`, `OpCtx`, `CapError` — not worker traits.
 

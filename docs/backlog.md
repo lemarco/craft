@@ -42,7 +42,7 @@ For new feature epics, use the next **B-NN** id and link the scenario + ADR.
 **Scenario:** [capabilities](scenarios/capabilities.md), [background-jobs](scenarios/background-jobs.md), [realtime-sessions](scenarios/realtime-sessions.md)  
 **ADR:** [capability-dx](decisions/capability-dx.md) — closes gaps noted after B-25/B-26 (ADR vs shipped surface, templates, queue bridge).
 
-Post-ship review: `OpCtx` thinner than ADR table; CLI templates still on manual `CapOp::new`; queued bridge without consumer-grade idempotency; examples skip `domain/` and ADR one-file-per-op layout.
+Post-ship review (2026-09): B-27i + cap HTTP dedup + scaffold `ping`/`onboarding` on `#[cap_handler]` shipped; `OpCtx` store/deps (B-27a–b), one-op-per-file layout, full showcase `domain/` polish remain.
 
 | Subtask | Wave | Description | Status |
 | ------- | ---- | ----------- | ------ |
@@ -50,17 +50,17 @@ Post-ship review: `OpCtx` thinner than ADR table; CLI templates still on manual 
 | B-27b | 1 | **`OpCtx` + store** — optional [`ActorStateStore`](decisions/actor-state-store.md) on context; reduce per-group manual redb open (cf. `stateful-workers` `OrdersState`) | 🔲 |
 | B-27c | 2 | **`OpCtx` ingress** — gateway identity / correlation id on handler context for audit | 🔲 |
 | B-27d | 2 | **Typed handler errors** — domain `Error` → `CapError` / HTTP mapping; less `CapError::Handler(String)` boilerplate | 🔲 |
-| B-27e | 1 | **CLI templates** — [`ping.rs.tpl`](../crates/trembita-cli/templates/trembita-app/src/capabilities/ping.rs.tpl) + [`onboarding.rs.tpl`](../crates/trembita-cli/templates/trembita-app/src/capabilities/onboarding.rs.tpl) on `#[cap_handler]` + `cap_register_chain!` (finishes intent of B-25c for scaffold) | 🔲 |
+| B-27e | 1 | **CLI templates** — [`ping.rs.tpl`](../crates/trembita-cli/templates/trembita-app/src/capabilities/ping.rs.tpl) + [`onboarding.rs.tpl`](../crates/trembita-cli/templates/trembita-app/src/capabilities/onboarding.rs.tpl) on `#[cap_handler]` + `cap_register_chain!` (finishes intent of B-25c for scaffold) | ✅ |
 | B-27f | 2 | **Capability layout** — scaffold group subdirs, one op per file ([ADR layout](decisions/capability-dx.md#app-layout-replaces-actors-as-the-default-path)); `trembita doctor` hints | 🔲 |
-| B-27g | 2 | **`domain/` module** — generated + migrate showcases ([framework-conventions](decisions/framework-conventions.md)); handlers call domain fns with no trembita in domain | 🔲 |
+| B-27g | 2 | **`domain/` module** — generated + migrate showcases ([framework-conventions](decisions/framework-conventions.md)); handlers call domain fns with no trembita in domain (`stateful-workers` started) | 🔲 |
 | B-27h | 3 | **Multi-op manifest sugar** — register many ops without rejected `cap_group!` DSL (e.g. module-level register list / chain helper) | 🔲 |
-| B-27i | 1 | **Queued idempotency** — [`capability/queue`](../crates/trembita/src/capability/queue.rs) bridge honors `IdempotencyOpts` / job `dedup_key`; optional link `#[cap_handler(key = …)]` → enqueue dedup | 🔲 |
+| B-27i | 1 | **Queued idempotency** — [`capability/queue`](../crates/trembita/src/capability/queue.rs) bridge honors `IdempotencyOpts` / job `dedup_key`; optional link `#[cap_handler(key = …)]` → enqueue dedup | ✅ |
 | B-27j | 2 | **Manifest / doctor validate** — warn when code or docs use `.enqueue()` / `Route::Queued` but op lacks `.default_queue_for` | 🔲 |
 | B-27k | 2 | **Greenfield queue story** — getting-started: new apps prefer `Route::Queued` + caps; `consumers/` + B-14k `on_app` → **Advanced** | 🔲 |
 | B-27l | 2 | **Gateway helpers** — `cap_queued_wait`, `cap_schedule`, session-oriented wrappers for [`http/product.rs`](decisions/framework-conventions.md) (extends B-21h) | 🔲 |
 | B-27m | 3 | **Cap observability** — tracing spans + metrics dimensions `(group, op, route)` at [`CapHost`](../crates/trembita/src/capability/host.rs) dispatch | 🔲 |
 | B-27n | 2 | **Integration test kit** — LocalNetwork helpers: boot `CapManifest`, `Req::via(app).route(...)` shortcuts | 🔲 |
-| B-27o | 2 | **Showcase polish** — [`background-jobs`](../examples/background-jobs/): store/dedup idempotency + `http/product.rs`; [`realtime`](../examples/realtime/): `domain/` + optional second inline op | 🔲 |
+| B-27o | 2 | **Showcase polish** — [`background-jobs`](../examples/background-jobs/) done (store/dedup, `http/product.rs`); [`realtime`](../examples/realtime/): `domain/` + second op still open | 🔲 |
 | B-27p | 3 | **OpenAPI / JSON Schema from `CapRequest`** — optional gateway DTO generation (not gRPC; HTTP-only) | 🔲 |
 
 **Out of scope (unchanged):** RAM `#[actor(migratable)]`, custom non-`CapWire` session bytes, linearizable inline ask — see [capability-parity](scenarios/capability-parity.md).

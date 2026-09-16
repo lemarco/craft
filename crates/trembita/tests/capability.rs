@@ -177,6 +177,42 @@ async fn capability_queued_job_runs_via_bridge() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn capability_enqueue_dedup_key_collapses() {
+    let base = std::env::temp_dir().join(format!(
+        "trembita-capability-dedup-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+
+    let boot = boot_math_app(&base).await;
+    let app = &boot.app;
+
+    wait_for_trembita_app_leader(app).await;
+    advance(Duration::from_millis(500)).await;
+
+    let first = Add { n: 1 }
+        .via(app)
+        .dedup_key("invoice-1")
+        .enqueue()
+        .await
+        .expect("enqueue");
+    let second = Add { n: 99 }
+        .via(app)
+        .dedup_key("invoice-1")
+        .enqueue()
+        .await
+        .expect("dedup enqueue");
+    assert_eq!(first.job_id, second.job_id);
+
+    boot.shutdown().await;
+    let _ = std::fs::remove_dir_all(base);
+}
+
+#[tokio::test(start_paused = true)]
 async fn capability_queued_wait_returns_reply() {
     let base = std::env::temp_dir().join(format!(
         "trembita-capability-qw-{}",
