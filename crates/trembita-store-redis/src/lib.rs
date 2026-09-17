@@ -1,15 +1,14 @@
 //! `trembita-store-redis` — Redis implementation of
-//! [`ActorStateStore`] ([actor-state-redis](../decisions/actor-state-redis.md)).
+//! [`CapStateStore`] ([actor-state-redis](../decisions/actor-state-redis.md)).
 //!
-//! Optional crate for externalizing stateful-actor data (backlog Track G) so it
-//! survives a VPS crash: when the leader respawns a worker on another node it
-//! reloads its keys from Redis (cross-node-actors, supervisor-leader). Consensus data stays in the
-//! Raft [`StateMachine`](trembita_core::StateMachine) — Redis holds
-//! only workflow/session/idempotency state.
+//! Optional crate for externalizing capability workflow keys so they survive a
+//! VPS crash and remain visible across nodes. Consensus data stays in the Raft
+//! [`StateMachine`](trembita_core::StateMachine) — Redis holds only cap-store
+//! idempotency and progress markers.
 //!
 //! ```no_run
 //! use std::sync::Arc;
-//! use trembita_actor_store::ActorStateStore;
+//! use trembita_capstore::CapStateStore;
 //! use trembita_store_redis::RedisStore;
 //!
 //! # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,7 +21,7 @@
 //! // )
 //! // .await?
 //! // .with_prefix("orders:");
-//! let store: Arc<dyn ActorStateStore> = Arc::new(store);
+//! let store: Arc<dyn CapStateStore> = Arc::new(store);
 //! store.set("order:42", b"processing", None).await?;
 //! assert_eq!(store.get("order:42").await?, Some(b"processing".to_vec()));
 //! # Ok(())
@@ -45,7 +44,7 @@ use std::time::Duration;
 
 use redis::AsyncCommands;
 use redis::aio::ConnectionManager;
-use trembita_actor_store::{ActorStateStore, BoxFuture, StoreError};
+use trembita_capstore::{BoxFuture, CapStateStore, StoreError};
 
 /// Atomic compare-and-set. `KEYS[1]` = key; `ARGV[1]` = `"1"`/`"0"` whether an
 /// expected value was supplied; `ARGV[2]` = expected bytes; `ARGV[3]` = new
@@ -68,7 +67,7 @@ end
 return 1
 ";
 
-/// A Redis-backed [`ActorStateStore`].
+/// A Redis-backed [`CapStateStore`].
 #[derive(Clone)]
 pub struct RedisStore {
     conn: ConnectionManager,
@@ -135,7 +134,7 @@ fn backend<E: std::fmt::Display>(err: E) -> StoreError {
     StoreError::Backend(err.to_string())
 }
 
-impl ActorStateStore for RedisStore {
+impl CapStateStore for RedisStore {
     fn get<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Option<Vec<u8>>, StoreError>> {
         Box::pin(async move {
             let mut conn = self.conn.clone();

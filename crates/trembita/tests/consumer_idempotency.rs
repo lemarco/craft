@@ -23,7 +23,7 @@ use trembita::{
     AppManifest, ConsumerOpts, IdempotencyOpts, JobContext, QueueOpts, TrembitaApp,
     TrembitaConfigure, consumer,
 };
-use trembita_actor_store::{ActorStateStore, InMemoryStore};
+use trembita_capstore::{CapStateStore, InMemoryStore};
 use trembita_jobs::EnqueueOptions;
 use trembita_test_facade::boot_local_app;
 
@@ -107,7 +107,7 @@ async fn boot(stream: &'static str, tag: &str) -> Arc<TrembitaApp> {
 async fn redelivery_runs_side_effect_once() {
     let app = boot("guarded", "idem-once").await;
 
-    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
+    let store: Arc<dyn CapStateStore> = Arc::new(InMemoryStore::new());
     let opts = ConsumerOpts::default()
         .batch(1)
         .idle_sleep(Duration::from_millis(10))

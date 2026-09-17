@@ -1,11 +1,11 @@
-//! 2PC client journal backed by Meta-Raft metadata and/or [`ActorStateStore`].
+//! 2PC client journal backed by Meta-Raft metadata and/or [`CapStateStore`].
 
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
-use trembita_actor_store::ActorStateStore;
+use trembita_capstore::CapStateStore;
 use trembita_client::{
     TwoPhaseEvent, TwoPhaseJournal, TwoPhaseJournalError, TwoPhaseJournalRecord,
     decode_two_phase_journal_record, encode_two_phase_journal_record,
@@ -29,13 +29,13 @@ fn journal_key(tx_id: &[u8]) -> String {
 
 /// Persist 2PC coordinator progress in an external workflow store (Redis / in-memory).
 pub struct StoreTwoPhaseJournal {
-    store: Arc<dyn ActorStateStore>,
+    store: Arc<dyn CapStateStore>,
 }
 
 impl StoreTwoPhaseJournal {
     /// Wrap `store` for 2PC client journaling.
     #[must_use]
-    pub fn new(store: Arc<dyn ActorStateStore>) -> Self {
+    pub fn new(store: Arc<dyn CapStateStore>) -> Self {
         Self { store }
     }
 

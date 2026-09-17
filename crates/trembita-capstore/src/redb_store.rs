@@ -1,4 +1,4 @@
-//! Durable [`ActorStateStore`](super::store::ActorStateStore) backed by `redb`
+//! Durable [`CapStateStore`](super::store::CapStateStore) backed by `redb`
 //! ([actor-state-store](../../../docs/decisions/actor-state-store.md)).
 
 use std::path::Path;
@@ -11,15 +11,15 @@ use trembita_storage::{now_ms, open_mutex_database};
 
 use trembita_proto::BoxFuture;
 
-use super::store::{ActorStateStore, StoreError};
+use super::store::{CapStateStore, StoreError};
 
 const KV: TableDefinition<&str, &[u8]> = TableDefinition::new("actor_store_kv");
 
 /// Default max expired keys removed per GC pass on the store leader.
-pub const DEFAULT_ACTOR_STORE_GC_MAX_KEYS: usize = 256;
+pub const DEFAULT_CAP_STORE_GC_MAX_KEYS: usize = 256;
 
 /// Default interval for the leader-only actor-store TTL GC loop.
-pub const DEFAULT_ACTOR_STORE_GC_PERIOD: Duration = Duration::from_secs(60);
+pub const DEFAULT_CAP_STORE_GC_PERIOD: Duration = Duration::from_secs(60);
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 struct StoredValue {
@@ -52,11 +52,11 @@ fn ttl_to_expires_at_ms(ttl: Option<Duration>) -> u64 {
 
 /// Crash-safe actor workflow store in `{data_dir}/actor-store.redb`.
 #[derive(Debug)]
-pub struct RedbActorStateStore {
+pub struct RedbCapStateStore {
     db: Mutex<Database>,
 }
 
-impl RedbActorStateStore {
+impl RedbCapStateStore {
     /// Open or create the store database at `path`.
     ///
     /// # Errors
@@ -156,7 +156,7 @@ impl RedbActorStateStore {
         }
     }
 
-    /// Like [`ActorStateStore::set`] but returns wire replication ops for followers.
+    /// Like [`CapStateStore::set`] but returns wire replication ops for followers.
     ///
     /// # Errors
     /// Returns [`StoreError::Backend`] when the redb transaction fails.
@@ -175,7 +175,7 @@ impl RedbActorStateStore {
         }])
     }
 
-    /// Like [`ActorStateStore::delete`] but returns wire replication ops for followers.
+    /// Like [`CapStateStore::delete`] but returns wire replication ops for followers.
     ///
     /// # Errors
     /// Returns [`StoreError::Backend`] when the redb transaction fails.
@@ -186,7 +186,7 @@ impl RedbActorStateStore {
         }])
     }
 
-    /// Like [`ActorStateStore::compare_and_set`] but returns `(applied, ops)`.
+    /// Like [`CapStateStore::compare_and_set`] but returns `(applied, ops)`.
     ///
     /// # Errors
     /// Returns [`StoreError::Backend`] when the redb transaction fails.
@@ -209,7 +209,7 @@ impl RedbActorStateStore {
     ///
     /// Returns the number of keys deleted and replication ops for voters.
     /// Keys with `expires_at_ms == 0` are never collected here (lazy expiry on
-    /// [`ActorStateStore::get`] still applies when they carry a TTL).
+    /// [`CapStateStore::get`] still applies when they carry a TTL).
     ///
     /// # Errors
     /// Returns [`StoreError`] when the redb scan or delete transaction fails.
@@ -251,7 +251,7 @@ impl RedbActorStateStore {
     }
 }
 
-impl ActorStateStore for RedbActorStateStore {
+impl CapStateStore for RedbCapStateStore {
     fn get<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Option<Vec<u8>>, StoreError>> {
         Box::pin(async move { self.read_value(key) })
     }
@@ -292,18 +292,18 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("actor-store.redb");
         {
-            let store = RedbActorStateStore::open(&path).expect("open");
+            let store = RedbCapStateStore::open(&path).expect("open");
             store.set("k", b"v", None).await.expect("set");
             assert_eq!(store.get("k").await.unwrap(), Some(b"v".to_vec()));
         }
-        let store = RedbActorStateStore::open(&path).expect("reopen");
+        let store = RedbCapStateStore::open(&path).expect("reopen");
         assert_eq!(store.get("k").await.unwrap(), Some(b"v".to_vec()));
     }
 
     #[tokio::test]
     async fn apply_replicate_matches_local_mutations() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let store = RedbActorStateStore::open(dir.path().join("actor-store.redb")).expect("open");
+        let store = RedbCapStateStore::open(dir.path().join("actor-store.redb")).expect("open");
         let ops = store.set_replicated("a", b"1", None).expect("set");
         for op in &ops {
             store.apply_replicate(op).expect("apply");
@@ -319,7 +319,7 @@ mod tests {
     #[tokio::test]
     async fn compare_and_set_replicated() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let store = RedbActorStateStore::open(dir.path().join("actor-store.redb")).expect("open");
+        let store = RedbCapStateStore::open(dir.path().join("actor-store.redb")).expect("open");
         let (applied, _) = store
             .compare_and_set_replicated("k", None, b"v", None)
             .expect("cas");
@@ -333,7 +333,7 @@ mod tests {
     #[tokio::test]
     async fn ttl_expires_lazily_on_get() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let store = RedbActorStateStore::open(dir.path().join("actor-store.redb")).expect("open");
+        let store = RedbCapStateStore::open(dir.path().join("actor-store.redb")).expect("open");
         store
             .set("k", b"v", Some(Duration::from_secs(3600)))
             .await
@@ -355,7 +355,7 @@ mod tests {
     #[tokio::test]
     async fn gc_expired_removes_unread_ttl_keys() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let store = RedbActorStateStore::open(dir.path().join("actor-store.redb")).expect("open");
+        let store = RedbCapStateStore::open(dir.path().join("actor-store.redb")).expect("open");
         store
             .apply_replicate(&StoreReplicateOp::Set {
                 key: StoreKey::try_from("stale").unwrap(),

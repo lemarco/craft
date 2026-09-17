@@ -1,8 +1,8 @@
-//! Integration contract for [`ActorStateStore`] backends (in-memory baseline).
+//! Integration contract for [`CapStateStore`] backends (in-memory baseline).
 
 use std::time::Duration;
 
-use trembita_actor_store::{ActorStateStore, InMemoryStore, StoreError};
+use trembita_capstore::{CapStateStore, InMemoryStore, StoreError};
 
 #[tokio::test]
 async fn in_memory_store_contract_round_trip() {

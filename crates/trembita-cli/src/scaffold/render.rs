@@ -403,7 +403,7 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
             JobsPreset::idempotent_stream(
                     SAMPLE_STREAM,
                     &HandleSampleConsumer,
-                    Arc::clone(&idem_store) as Arc<dyn trembita::actor_store::ActorStateStore>,
+                    Arc::clone(&idem_store) as Arc<dyn trembita::capstore::CapStateStore>,
                     "job:",
                 ),
             // trembita:jobs-end

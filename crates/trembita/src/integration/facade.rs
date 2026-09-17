@@ -592,10 +592,10 @@ async fn opt_in_tracing_emits_message_handled_events() {
 
 #[tokio::test(start_paused = true)]
 async fn builder_wires_actor_state_store() {
-    use crate::actor_store::{ActorStateStore, InMemoryStore};
+    use crate::capstore::{CapStore as CapStateStore, InMemoryStore};
 
     let net = LocalNetwork::new();
-    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
+    let store: Arc<dyn CapStateStore> = Arc::new(InMemoryStore::new());
     let cluster = trembita_assembly::builder::TrembitaClusterBuilder::new(NodeId(1), Kv::default())
         .actor_state_store(Arc::clone(&store))
         .start_local(&net)

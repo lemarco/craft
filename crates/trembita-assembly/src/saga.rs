@@ -1,11 +1,11 @@
-//! Saga journal backed by Meta-Raft metadata and/or [`ActorStateStore`].
+//! Saga journal backed by Meta-Raft metadata and/or [`CapStateStore`].
 
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
-use trembita_actor_store::ActorStateStore;
+use trembita_capstore::CapStateStore;
 use trembita_client::{
     SagaEvent, SagaJournal, SagaJournalError, SagaJournalPhase, SagaJournalRecord,
     decode_journal_record, encode_journal_record,
@@ -32,13 +32,13 @@ fn journal_key(saga_id: &[u8]) -> String {
 
 /// Persist saga progress in an external workflow store (Redis / in-memory).
 pub struct StoreSagaJournal {
-    store: Arc<dyn ActorStateStore>,
+    store: Arc<dyn CapStateStore>,
 }
 
 impl StoreSagaJournal {
     /// Wrap `store` for saga journaling.
     #[must_use]
-    pub fn new(store: Arc<dyn ActorStateStore>) -> Self {
+    pub fn new(store: Arc<dyn CapStateStore>) -> Self {
         Self { store }
     }
 

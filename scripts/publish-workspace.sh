@@ -49,7 +49,9 @@ PUBLISH_ORDER=(
     trembita-metrics-otlp
     trembita-test-support
     trembita-runtime
+    trembita-capstore
     trembita-actor-store
+    trembita-capstore-postgres
     trembita-jobs
     trembita-events
     trembita-events-postgres

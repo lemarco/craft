@@ -1,4 +1,4 @@
-//! Idempotent stateful-actor worker over an [`ActorStateStore`] (actor-state-redis G3).
+//! Idempotent stateful-actor worker over an [`CapStateStore`] (actor-state-redis G3).
 //!
 //! The store is the durable, crash-surviving home for *workflow* state (here,
 //! per-order progress): if the VPS running this worker crashes, the leader
@@ -6,10 +6,10 @@
 //!
 //! This example runs against the in-process [`InMemoryStore`] so it needs no
 //! Redis. In production, swap in `trembita_store_redis::RedisStore` — the worker
-//! code is identical because both implement [`ActorStateStore`]:
+//! code is identical because both implement [`CapStateStore`]:
 //!
 //! ```ignore
-//! let store: Arc<dyn ActorStateStore> =
+//! let store: Arc<dyn CapStateStore> =
 //!     Arc::new(RedisStore::connect("redis://127.0.0.1:6379").await?.with_prefix("orders:"));
 //! ```
 //!
@@ -18,13 +18,13 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use trembita_actor_store::{ActorStateStore, InMemoryStore};
+use trembita_capstore::{CapStateStore, InMemoryStore};
 
 /// Process `order_id` exactly once, even if the message is redelivered (retry,
 /// migration, at-least-once cluster delivery). `side_effects` counts how many
 /// times the *real* work actually ran, to prove the guard holds.
 async fn process_order(
-    store: &Arc<dyn ActorStateStore>,
+    store: &Arc<dyn CapStateStore>,
     order_id: u64,
     side_effects: &AtomicU32,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -52,7 +52,7 @@ async fn process_order(
     Ok(())
 }
 
-async fn load(store: &Arc<dyn ActorStateStore>, key: &str) -> String {
+async fn load(store: &Arc<dyn CapStateStore>, key: &str) -> String {
     store.get(key).await.ok().flatten().map_or_else(
         || "<absent>".into(),
         |b| String::from_utf8_lossy(&b).into_owned(),
@@ -61,7 +61,7 @@ async fn load(store: &Arc<dyn ActorStateStore>, key: &str) -> String {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
+    let store: Arc<dyn CapStateStore> = Arc::new(InMemoryStore::new());
     let side_effects = AtomicU32::new(0);
 
     // The same order is delivered three times (e.g. producer retry + migration

@@ -210,7 +210,7 @@ impl TrembitaApp {
 
     /// Workflow store when cluster `data_dir` / auto durable store is enabled ([`TrembitaConfigure::with_data_dir`](crate::TrembitaConfigure::with_data_dir)).
     #[must_use]
-    pub fn actor_state_store(&self) -> Option<Arc<dyn trembita_actor_store::ActorStateStore>> {
+    pub fn actor_state_store(&self) -> Option<Arc<dyn trembita_capstore::CapStateStore>> {
         self.cluster.actor_state_store()
     }
 

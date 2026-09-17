@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | **Stability** | Pre-**1.0** (APIs and env surface evolve — see [decisions/](decisions/)) |
-| **crates.io** | [`0.6.0`](https://crates.io/crates/trembita) · [release notes](releases/0.6.0.md) |
+| **crates.io** | [`0.6.1`](https://crates.io/crates/trembita) · [release notes](releases/0.6.1.md) |
 | **MSRV** | 1.94 |
 | **Distribution** | Published on [crates.io](https://crates.io/crates/trembita) — full test pyramid, E2E/chaos |
 

@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-08-28  
-**Updated:** 2026-09-16 — product naming **`CapStore`**, facade [`trembita::capstore`](../../crates/trembita/src/capstore.rs); workspace crate rename **`trembita-actor-store` → `trembita-capstore`** planned before 1.0 (trait remains `ActorStateStore` in that crate until then).
+**Updated:** 2026-09-17 — crates.io crate **`trembita-capstore`** ([0.6.1](../releases/0.6.1.md)); port trait **`CapStateStore`** (deprecated `ActorStateStore` alias). Product: [`trembita::capstore`](../../crates/trembita/src/capstore.rs). Shim **`trembita-actor-store`** re-exports for one transition cycle.
 
 ## Context
 

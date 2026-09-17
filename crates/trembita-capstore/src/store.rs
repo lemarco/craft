@@ -5,17 +5,17 @@
 //! * **Consensus state** lives in the Raft [`StateMachine`](trembita_core::StateMachine)
 //!   — linearizable, replicated, the source of truth for balances/config/orders.
 //! * **Actor workflow state** (session progress, job steps, idempotency keys,
-//!   locks) lives in an *external* store behind [`ActorStateStore`], so it
+//!   locks) lives in an *external* store behind [`CapStateStore`], so it
 //!   survives a VPS crash: the leader respawns the worker elsewhere and it
 //!   reloads its keys (cross-node-actors, supervisor-leader). Keeping this out of the Raft log
 //!   avoids log bloat and the wrong abstraction.
 //!
-//! This module defines the port ([`ActorStateStore`]) plus an in-process
+//! This module defines the port ([`CapStateStore`]) plus an in-process
 //! [`InMemoryStore`] used for tests and single-node development. Real backends
 //! (e.g. `trembita-store-redis`) live in their own crates.
 //!
 //! The trait uses boxed futures rather than `async fn` in trait position so it
-//! stays object-safe — actors hold an `Arc<dyn ActorStateStore>` and the
+//! stays object-safe — actors hold an `Arc<dyn CapStateStore>` and the
 //! concrete backend is chosen at the edge (wire-transport rationale, matching the
 //! transport port).
 
@@ -40,8 +40,8 @@ pub enum StoreError {
 ///
 /// Keys are UTF-8 strings (implementations may namespace them); values are
 /// opaque bytes. All methods are async and object-safe so an actor can hold an
-/// `Arc<dyn ActorStateStore>` regardless of backend.
-pub trait ActorStateStore: Send + Sync {
+/// `Arc<dyn CapStateStore>` regardless of backend.
+pub trait CapStateStore: Send + Sync {
     /// Fetch the value for `key`, or `None` if absent/expired.
     fn get<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Option<Vec<u8>>, StoreError>>;
 
@@ -83,7 +83,7 @@ impl Entry {
     }
 }
 
-/// An in-process [`ActorStateStore`] backed by a `HashMap`.
+/// An in-process [`CapStateStore`] backed by a `HashMap`.
 ///
 /// Intended for tests and single-node development — it is **not** durable
 /// across process restarts and does **not** survive a VPS crash, which is the
@@ -116,7 +116,7 @@ impl InMemoryStore {
     }
 }
 
-impl ActorStateStore for InMemoryStore {
+impl CapStateStore for InMemoryStore {
     fn get<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Option<Vec<u8>>, StoreError>> {
         Box::pin(async move { Ok(self.read(key)) })
     }

@@ -14,7 +14,7 @@ use trembita_net::transport::{Body, BoxFuture, RequestHandler};
 use trembita_net::{QuicTransport, Route, TransportError, decode_body, encode_body};
 use trembita_proto::{AdvertiseAddr, JoinRequest, NodeId, PeerBook, PeerEntry, ScaleRequest};
 
-use trembita_actor_store::StoreService;
+use trembita_capstore::StoreService;
 use trembita_events::TopicService;
 use trembita_jobs::QueueService;
 use trembita_runtime::{ClusterControl, ClusterMessaging, DirectorySync};

@@ -665,7 +665,7 @@ async fn membership_autoscale_invokes_join_hook() {
                 );
                 Ok(())
             })
-                as trembita_actor_store::BoxFuture<
+                as trembita_capstore::BoxFuture<
                     'static,
                     Result<(), trembita_runtime::ClusterScaleError>,
                 >

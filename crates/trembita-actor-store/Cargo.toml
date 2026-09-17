@@ -1,6 +1,6 @@
 [package]
 name = "trembita-actor-store"
-description = "Actor workflow state store port, redb adapter, and leader StoreService for trembita."
+description = "Deprecated compatibility crate — use trembita-capstore."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -19,18 +19,4 @@ all-features = true
 workspace = true
 
 [dependencies]
-trembita-proto.workspace = true
-trembita-core.workspace = true
-trembita-runtime.workspace = true
-trembita-storage.workspace = true
-trembita-net.workspace = true
-serde = { workspace = true, features = ["derive"] }
-postcard.workspace = true
-redb.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
-tokio.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true
-tokio.workspace = true
+trembita-capstore.workspace = true

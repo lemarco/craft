@@ -1,4 +1,4 @@
-//! Actor workflow store soak: `RedbActorStateStore` writes + full cluster restart loop (B-10a).
+//! Actor workflow store soak: `RedbCapStateStore` writes + full cluster restart loop (B-10a).
 //!
 //! Env: `SOAK_ACTOR_STORE_SECS` (default 15), `SOAK_ACTOR_STORE_SEED` (default 0xAC700).
 

@@ -1,6 +1,6 @@
 [package]
 name = "trembita-store-redis"
-description = "Redis-backed ActorStateStore for stateful trembita actors."
+description = "Redis-backed CapStateStore for trembita capability workflow keys."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -23,7 +23,7 @@ workspace = true
 docker-tests = []
 
 [dependencies]
-trembita-actor-store.workspace = true
+trembita-capstore.workspace = true
 trembita-core.workspace = true
 redis.workspace = true
 

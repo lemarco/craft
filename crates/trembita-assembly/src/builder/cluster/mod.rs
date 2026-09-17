@@ -61,7 +61,7 @@ pub struct TrembitaClusterBuilder<M: StateMachine> {
     group_learner_factor: u32,
     raft_machines: Option<Vec<M>>,
     data_dir: Option<PathBuf>,
-    actor_state_store: Option<Arc<dyn trembita_actor_store::ActorStateStore>>,
+    actor_state_store: Option<Arc<dyn trembita_capstore::CapStateStore>>,
     /// Open `{data_dir}/actor-store.redb` with voter replication when no explicit store is set.
     auto_durable_actor_store: bool,
     drain_timeout: Duration,

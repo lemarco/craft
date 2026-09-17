@@ -60,7 +60,7 @@ pub struct TrembitaCluster<M: StateMachine> {
     pub(crate) members: Vec<NodeId>,
     pub(crate) resource_profile: ResourceProfile,
     pub(crate) vps_resources: VpsResources,
-    pub(crate) actor_state_store: Option<Arc<dyn trembita_actor_store::ActorStateStore>>,
+    pub(crate) actor_state_store: Option<Arc<dyn trembita_capstore::CapStateStore>>,
     /// Cluster-facing queue clients keyed by stream name.
     pub(crate) job_queues: HashMap<String, Arc<dyn trembita_jobs::JobQueue>>,
     /// Cluster-facing topic clients keyed by topic name.
@@ -125,7 +125,7 @@ impl<M: StateMachine> TrembitaCluster<M> {
     /// if any (actor-state-redis). Clone the `Arc` into actor `Config` when spawning
     /// stateful workers.
     #[must_use]
-    pub fn actor_state_store(&self) -> Option<Arc<dyn trembita_actor_store::ActorStateStore>> {
+    pub fn actor_state_store(&self) -> Option<Arc<dyn trembita_capstore::CapStateStore>> {
         self.actor_state_store.clone()
     }
 

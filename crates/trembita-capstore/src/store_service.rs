@@ -17,13 +17,13 @@ use trembita_proto::{
     StoreReplicateRequest, StoreSetReply, StoreSetRequest, TtlSecs,
 };
 
-use crate::store::{ActorStateStore, StoreError};
+use crate::store::{CapStateStore, StoreError};
 use trembita_runtime::{
     ClusterState, authorize_replicate_leader, fanout_product_replicate, forward_to_leader,
     replicate_reply_err,
 };
 
-use crate::{RedbActorStateStore, StoreReplicationOps};
+use crate::{RedbCapStateStore, StoreReplicationOps};
 
 const REPLICATE_NOT_LEADER: &str = "actor store replicate rejected: caller is not raft leader";
 
@@ -34,7 +34,7 @@ fn ttl_from_secs(secs: u64) -> Option<Duration> {
 /// Serves `/raft/v1/actor-store/*` on the leader; followers apply replication ops.
 pub struct StoreService {
     node_id: NodeId,
-    local: Arc<RedbActorStateStore>,
+    local: Arc<RedbCapStateStore>,
     state: Arc<dyn ClusterState>,
     transport: Arc<dyn Transport>,
 }
@@ -44,7 +44,7 @@ impl StoreService {
     #[must_use]
     pub fn new(
         node_id: NodeId,
-        local: Arc<RedbActorStateStore>,
+        local: Arc<RedbCapStateStore>,
         state: Arc<dyn ClusterState>,
         transport: Arc<dyn Transport>,
     ) -> Self {
@@ -284,18 +284,18 @@ impl StoreService {
     }
 }
 
-/// Cluster-facing [`ActorStateStore`] — local reads, leader-routed writes.
-pub struct ClusterActorStateStore {
-    local: Arc<RedbActorStateStore>,
+/// Cluster-facing [`CapStateStore`] — local reads, leader-routed writes.
+pub struct ClusterCapStateStore {
+    local: Arc<RedbCapStateStore>,
     state: Arc<dyn ClusterState>,
     transport: Arc<dyn Transport>,
 }
 
-impl ClusterActorStateStore {
+impl ClusterCapStateStore {
     /// Route writes through the leader wire service; read from `local`.
     #[must_use]
     pub fn new(
-        local: Arc<RedbActorStateStore>,
+        local: Arc<RedbCapStateStore>,
         state: Arc<dyn ClusterState>,
         transport: Arc<dyn Transport>,
     ) -> Self {
@@ -313,7 +313,7 @@ impl ClusterActorStateStore {
     }
 }
 
-impl ActorStateStore for ClusterActorStateStore {
+impl CapStateStore for ClusterCapStateStore {
     fn get<'a>(&'a self, key: &'a str) -> StoreBoxFuture<'a, Result<Option<Vec<u8>>, StoreError>> {
         Box::pin(async move { self.local.get(key).await })
     }
@@ -398,7 +398,7 @@ impl ActorStateStore for ClusterActorStateStore {
 }
 
 /// Leader-only loop: purge expired actor-store TTL keys with voter replication.
-pub async fn run_actor_store_gc_ticker(
+pub async fn run_cap_store_gc_ticker(
     service: Arc<StoreService>,
     poll_interval: Duration,
     max_keys: usize,

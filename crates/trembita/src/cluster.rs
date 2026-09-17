@@ -13,9 +13,6 @@ pub use crate::gateway::{
 #[cfg(feature = "http-jobs")]
 pub use crate::gateway::{cluster_ops_route_table, spawn_cluster_ops_http};
 pub use crate::workflow::{WorkflowBuildError, WorkflowBuilder};
-pub use trembita_actor_store::{
-    ClusterActorStateStore, RedbActorStateStore, StoreService, run_actor_store_gc_ticker,
-};
 pub use trembita_assembly::Security;
 pub use trembita_assembly::StartError;
 pub use trembita_assembly::certs::{
@@ -38,6 +35,9 @@ pub use trembita_assembly::upgrade::{
     UpgradeFetchError, UpgradeInstallError, UpgradeOpts, UpgradeRunError, atomic_symlink_install,
     fetch_artifact, report_upgrade_boot, running_app_version, spawn_upgrade_coordinator,
     spawn_upgrade_runtime, verify_sha256_hex,
+};
+pub use trembita_capstore::{
+    ClusterCapStateStore, RedbCapStateStore, StoreService, run_cap_store_gc_ticker,
 };
 pub use trembita_core::ReachabilityConfig;
 pub use trembita_core::kv;

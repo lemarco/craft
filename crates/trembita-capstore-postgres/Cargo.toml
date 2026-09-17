@@ -1,6 +1,6 @@
 [package]
-name = "trembita-backlog-postgres"
-description = "PostgreSQL ExternalBacklog adapter for trembita job streams."
+name = "trembita-capstore-postgres"
+description = "PostgreSQL CapStateStore adapter for trembita capability workflow keys."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -19,7 +19,6 @@ all-features = true
 workspace = true
 
 [dependencies]
-trembita-jobs.workspace = true
 trembita-capstore.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true

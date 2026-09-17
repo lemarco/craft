@@ -27,7 +27,7 @@ trembita-net.workspace = true
 trembita-runtime.workspace = true
 trembita-jobs.workspace = true
 trembita-events.workspace = true
-trembita-actor-store.workspace = true
+trembita-capstore.workspace = true
 trembita-client.workspace = true
 trembita-macros.workspace = true
 trembita-dashboard.workspace = true
@@ -37,6 +37,7 @@ tokio-tungstenite = { workspace = true, optional = true }
 trembita-store-redis = { workspace = true, optional = true }
 trembita-backlog-postgres = { workspace = true, optional = true }
 trembita-events-postgres = { workspace = true, optional = true }
+trembita-capstore-postgres = { workspace = true, optional = true }
 hyper.workspace = true
 hyper-util.workspace = true
 http.workspace = true
@@ -65,8 +66,10 @@ json-wire = ["trembita-proto/json-wire"]
 # Built-in `/jobs/*`, `/actors/*`, `/workflows/*` gateway routes via `trembita-http`.
 # Custom gateway routes (WebSocket, native HTTP) work without this feature.
 http-jobs = ["dep:trembita-http", "dep:futures-util", "dep:tokio-tungstenite"]
-# Redis-backed [`ActorStateStore`](trembita_actor_store::ActorStateStore) for stateful actors.
+# Redis-backed [`CapStateStore`](trembita_capstore::CapStateStore) for external workflow keys.
 redis-store = ["dep:trembita-store-redis"]
+# PostgreSQL [`CapStateStore`](trembita_capstore::CapStateStore) adapter.
+capstore-postgres = ["dep:trembita-capstore-postgres"]
 # PostgreSQL [`ExternalBacklog`](trembita_jobs::ExternalBacklog) adapter.
 external-backlog = ["dep:trembita-backlog-postgres"]
 # PostgreSQL [`EventOutboxSource`](trembita_events::EventOutboxSource) adapter.
@@ -74,7 +77,14 @@ domain-outbox = ["dep:trembita-events-postgres"]
 # OpenTelemetry metrics export (`init_metrics_with_otlp`); tracing OTLP uses `trembita-runtime/otlp`.
 otlp-metrics = ["trembita-runtime/otlp"]
 # All optional integrations — used by docs.rs (`all-features = true`).
-full = ["http-jobs", "redis-store", "external-backlog", "domain-outbox", "otlp-metrics"]
+full = [
+    "http-jobs",
+    "redis-store",
+    "capstore-postgres",
+    "external-backlog",
+    "domain-outbox",
+    "otlp-metrics",
+]
 
 [dev-dependencies]
 trembita-http.workspace = true

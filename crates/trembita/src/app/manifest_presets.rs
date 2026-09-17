@@ -28,7 +28,7 @@ impl JobsPreset {
     pub fn idempotent_stream<C>(
         name: impl Into<String>,
         consumer: &C,
-        store: Arc<dyn trembita_actor_store::ActorStateStore>,
+        store: Arc<dyn trembita_capstore::CapStateStore>,
         key_prefix: impl Into<String>,
     ) -> JobOpts
     where

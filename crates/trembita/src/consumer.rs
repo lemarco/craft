@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use trembita_actor_store::{ActorStateStore, StoreError};
+use trembita_capstore::{CapStateStore, StoreError};
 use trembita_events::TopicContext;
 use trembita_events::run_topic_subscriber;
 use trembita_jobs::{JobContext, WorkerId, run_queue_consumer};
@@ -79,7 +79,7 @@ pub type IdempotencyKeyFn =
 /// is still at-least-once, and the guarantee is only as good as the store and the key.
 #[derive(Clone)]
 pub struct IdempotencyOpts {
-    store: Arc<dyn ActorStateStore>,
+    store: Arc<dyn CapStateStore>,
     prefix: String,
     key_fn: IdempotencyKeyFn,
     ttl: Option<Duration>,
@@ -101,7 +101,7 @@ impl IdempotencyOpts {
     /// not from payload bytes. Returning `None` runs the handler unguarded.
     #[must_use]
     pub fn new(
-        store: Arc<dyn ActorStateStore>,
+        store: Arc<dyn CapStateStore>,
         prefix: impl Into<String>,
         key_fn: impl Fn(&[u8], JobContext<'_>) -> Option<String> + Send + Sync + 'static,
     ) -> Self {
@@ -135,7 +135,7 @@ impl IdempotencyOpts {
     /// Convenience for the common case where the enqueue side already set a
     /// `dedup_key`.
     #[must_use]
-    pub fn by_dedup_key(store: Arc<dyn ActorStateStore>, prefix: impl Into<String>) -> Self {
+    pub fn by_dedup_key(store: Arc<dyn CapStateStore>, prefix: impl Into<String>) -> Self {
         Self::new(store, prefix, |_payload, ctx| {
             ctx.dedup_key
                 .map(|k| String::from_utf8_lossy(k).into_owned())

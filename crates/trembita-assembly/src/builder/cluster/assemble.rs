@@ -12,9 +12,9 @@ use trembita_net::transport::RequestHandler;
 use trembita_proto::CatalogCommand;
 use trembita_storage::GroupRedbLayout;
 
-use trembita_actor_store::{
-    ClusterActorStateStore, DEFAULT_ACTOR_STORE_GC_MAX_KEYS, DEFAULT_ACTOR_STORE_GC_PERIOD,
-    RedbActorStateStore, StoreService, run_actor_store_gc_ticker,
+use trembita_capstore::{
+    ClusterCapStateStore, DEFAULT_CAP_STORE_GC_MAX_KEYS, DEFAULT_CAP_STORE_GC_PERIOD,
+    RedbCapStateStore, StoreService, run_cap_store_gc_ticker,
 };
 use trembita_events::{
     ClusterEventTopic, EventOutboxCursor, EventTopic, InMemoryEventOutboxCursor,
@@ -577,7 +577,7 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
                 self.data_dir.as_ref().map(|data_dir| {
                     let path = data_dir.join("actor-store.redb");
                     let local =
-                        Arc::new(RedbActorStateStore::open(&path).unwrap_or_else(|e| {
+                        Arc::new(RedbCapStateStore::open(&path).unwrap_or_else(|e| {
                             panic!("open actor store at {}: {e}", path.display())
                         }));
                     let service = Arc::new(StoreService::new(
@@ -586,7 +586,7 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
                         Arc::clone(&facts) as Arc<dyn ClusterState>,
                         Arc::clone(&transport),
                     ));
-                    actor_state_store = Some(Arc::new(ClusterActorStateStore::new(
+                    actor_state_store = Some(Arc::new(ClusterCapStateStore::new(
                         Arc::clone(&local),
                         Arc::clone(&facts) as Arc<dyn ClusterState>,
                         Arc::clone(&transport),
@@ -995,10 +995,10 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
             let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
             leader_loop_stops.push(stop_tx);
             tasks.push(tokio::spawn(async move {
-                run_actor_store_gc_ticker(
+                run_cap_store_gc_ticker(
                     service,
-                    DEFAULT_ACTOR_STORE_GC_PERIOD,
-                    DEFAULT_ACTOR_STORE_GC_MAX_KEYS,
+                    DEFAULT_CAP_STORE_GC_PERIOD,
+                    DEFAULT_CAP_STORE_GC_MAX_KEYS,
                     stop_rx,
                 )
                 .await;

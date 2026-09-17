@@ -1,4 +1,4 @@
-//! Typed serde helpers at the [`ActorStateStore`] boundary (actor-state-redis, architecture-style).
+//! Typed serde helpers at the [`CapStateStore`] boundary (actor-state-redis, architecture-style).
 //!
 //! The port stays **opaque bytes** (`get`/`set`/`delete`) so every backend
 //! (Redis, in-memory, a fake in tests) implements one trait. Application types
@@ -12,14 +12,14 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use trembita_proto::{decode, encode};
 
-use crate::store::{ActorStateStore, StoreError};
+use crate::store::{CapStateStore, StoreError};
 
 /// Load and decode a value from `key`, or `None` if absent/expired.
 ///
 /// # Errors
 /// Returns [`StoreError`] if the backend read fails or bytes cannot be decoded.
 pub async fn store_get<T: DeserializeOwned>(
-    store: &dyn ActorStateStore,
+    store: &dyn CapStateStore,
     key: &str,
 ) -> Result<Option<T>, StoreError> {
     match store.get(key).await? {
@@ -35,7 +35,7 @@ pub async fn store_get<T: DeserializeOwned>(
 /// # Errors
 /// Returns [`StoreError`] if encoding or the backend write fails.
 pub async fn store_set<T: Serialize>(
-    store: &dyn ActorStateStore,
+    store: &dyn CapStateStore,
     key: &str,
     value: &T,
     ttl: Option<Duration>,

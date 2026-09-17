@@ -32,7 +32,8 @@
 //! |---------|---------|
 //! | `http-jobs` (default) | Product HTTP gateway (`Gateway`, `/jobs/*`, `cap_*`, …; `/actors/*` off by default) |
 //! | `dev-certs` | Ephemeral mTLS for local development |
-//! | `redis-store` | Redis [`ActorStateStore`](trembita_actor_store::ActorStateStore) |
+//! | `redis-store` | Redis [`CapStateStore`](trembita_capstore::CapStateStore) |
+//! | `capstore-postgres` | Postgres [`CapStateStore`](trembita_capstore::CapStateStore) via `trembita-capstore-postgres` |
 //! | `external-backlog` | Postgres [`ExternalBacklog`] adapter |
 //! | `domain-outbox` | Postgres [`EventOutboxSource`] adapter |
 //!
@@ -90,8 +91,8 @@ pub use trembita_proto::{self as proto, NodeId, PROTOCOL_VERSION, Term};
 
 #[doc(inline)]
 pub use {
-    trembita_actor_store as actor_store, trembita_client as client, trembita_core as core,
-    trembita_events as events, trembita_jobs as jobs, trembita_runtime as runtime,
+    trembita_client as client, trembita_core as core, trembita_events as events,
+    trembita_jobs as jobs, trembita_runtime as runtime,
 };
 
 #[doc(inline)]
@@ -136,10 +137,14 @@ pub use queue_opts::QueueOpts;
 pub use scheduled_workflow_opts::ScheduledWorkflowOpts;
 pub use shutdown_signal::wait_for_int_or_term;
 pub use topic_opts::TopicOpts;
-pub use trembita_actor_store::InMemoryStore;
+pub use trembita_capstore::InMemoryStore;
+
 pub use trembita_assembly::ReadyOpts;
 pub use trembita_assembly::StartError;
 pub use trembita_assembly::workload::WorkloadRuntime;
+/// Deprecated module alias — use [`capstore`] or `trembita_capstore`.
+#[deprecated(since = "0.6.1", note = "renamed to `capstore` / trembita-capstore")]
+pub use trembita_capstore as actor_store;
 pub use trembita_events::TopicContext;
 pub use trembita_events::{
     EventOutboxCursor, EventOutboxDrainOpts, EventOutboxError, EventOutboxPoll, EventOutboxSource,

@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use trembita::cluster::TrembitaCluster;
 use trembita_showcase::cluster::cluster_builder;
-use trembita::actor_store::{ActorStateStore, InMemoryStore};
+use trembita::actor_store::{CapStateStore, InMemoryStore};
 use trembita::client::{KeyedClient, RemoteClient, SagaOutcome, SagaPlan, SagaStep};
 use trembita::core::{RaftGroupId, Role};
 use trembita::net::LocalNetwork;
@@ -28,7 +28,7 @@ async fn spawn_cluster(
     ids: [NodeId; 3],
     base: &Path,
 ) -> Vec<Arc<TrembitaCluster<KvMachine>>> {
-    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
+    let store: Arc<dyn CapStateStore> = Arc::new(InMemoryStore::new());
     let mut clusters = Vec::new();
     for &id in &ids {
         let cluster = cluster_builder(id, KvMachine::default())

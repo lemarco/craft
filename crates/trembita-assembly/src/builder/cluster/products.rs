@@ -393,7 +393,7 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
         mut self,
         stream: &str,
         policy: &MembershipAutoscalePolicy,
-        join: impl Fn() -> trembita_actor_store::BoxFuture<
+        join: impl Fn() -> trembita_capstore::BoxFuture<
             'static,
             Result<(), trembita_runtime::ClusterScaleError>,
         > + Send

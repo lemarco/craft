@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use crate::actor_store::{ActorStateStore, InMemoryStore};
+use crate::capstore::{CapStore as CapStateStore, InMemoryStore};
 use crate::client::{
     KeyedClient, RemoteClient, RetryPolicy, RunSagaOpts, SagaJournal, SagaJournalPhase,
     SagaOutcome, SagaPlan, SagaStep, run_saga,
@@ -113,7 +113,7 @@ async fn cross_shard_saga_completes_two_groups() {
     let (key_a, key_b) = find_keys_for_two_groups(64, &groups);
 
     let client = RemoteClient::new(Arc::new(net.clone()), [leader.node_id()]);
-    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
+    let store: Arc<dyn CapStateStore> = Arc::new(InMemoryStore::new());
     let journal = StoreSagaJournal::new(Arc::clone(&store));
 
     let outcome = run_saga(
@@ -249,7 +249,7 @@ async fn cross_shard_saga_resume_completes_second_step() {
     let (key_a, key_b) = find_keys_for_two_groups(64, &groups);
     let plan = two_shard_plan(key_a.clone(), key_b.clone());
 
-    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
+    let store: Arc<dyn CapStateStore> = Arc::new(InMemoryStore::new());
     let journal = StoreSagaJournal::new(Arc::clone(&store));
     journal
         .on_started(
@@ -292,7 +292,7 @@ async fn run_keyed_saga_is_idempotent_when_journal_completed() {
     let (key_a, key_b) = find_keys_for_two_groups(64, &groups);
     let plan = two_shard_plan(key_a, key_b);
 
-    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
+    let store: Arc<dyn CapStateStore> = Arc::new(InMemoryStore::new());
     let journal = StoreSagaJournal::new(Arc::clone(&store));
     journal
         .on_started(
@@ -471,7 +471,7 @@ async fn run_keyed_saga_with_group0_journal_completes() {
 async fn composite_saga_journal_mirrors_to_actor_state_store() {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let net = LocalNetwork::new();
-    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
+    let store: Arc<dyn CapStateStore> = Arc::new(InMemoryStore::new());
     let mut clusters = Vec::new();
     for &id in &ids {
         let cluster =

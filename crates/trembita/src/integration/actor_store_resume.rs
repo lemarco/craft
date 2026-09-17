@@ -9,7 +9,7 @@ use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
 use crate::NodeId;
-use crate::actor_store::{ActorStateStore, InMemoryStore};
+use crate::capstore::{CapStore as CapStateStore, InMemoryStore};
 use crate::cluster::TrembitaCluster;
 use crate::core::{Config, StateMachine};
 use crate::net::LocalNetwork;
@@ -76,7 +76,7 @@ impl StateMachine for Kv {
 
 #[derive(Clone)]
 struct Fixture {
-    store: Arc<dyn ActorStateStore>,
+    store: Arc<dyn CapStateStore>,
     effects: Arc<AtomicU32>,
 }
 
@@ -84,7 +84,7 @@ static FIXTURES: LazyLock<Mutex<HashMap<u64, Fixture>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static NEXT_FIXTURE_ID: AtomicU64 = AtomicU64::new(1);
 
-fn register_fixture(store: Arc<dyn ActorStateStore>) -> (u64, Arc<AtomicU32>) {
+fn register_fixture(store: Arc<dyn CapStateStore>) -> (u64, Arc<AtomicU32>) {
     let id = NEXT_FIXTURE_ID.fetch_add(1, Ordering::Relaxed);
     let effects = Arc::new(AtomicU32::new(0));
     FIXTURES.lock().expect("fixtures").insert(
@@ -110,7 +110,7 @@ impl std::fmt::Display for OrderWorkerErr {
 impl std::error::Error for OrderWorkerErr {}
 
 struct OrderWorker {
-    store: Arc<dyn ActorStateStore>,
+    store: Arc<dyn CapStateStore>,
     effects: Arc<AtomicU32>,
 }
 
@@ -173,7 +173,7 @@ fn reachability_raft_config() -> Config {
 }
 
 async fn spawn_store_cluster(
-    store: Arc<dyn ActorStateStore>,
+    store: Arc<dyn CapStateStore>,
     cfg_id: u64,
 ) -> (LocalNetwork, Vec<Arc<TrembitaCluster<Kv>>>) {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
@@ -225,7 +225,7 @@ async fn wait_for_effects(effects: Arc<AtomicU32>, want: u32) {
     .await;
 }
 
-async fn wait_for_order_done(store: &dyn ActorStateStore, order_id: u64) {
+async fn wait_for_order_done(store: &dyn CapStateStore, order_id: u64) {
     let key = format!("order:{order_id}");
     eventually_async_default(&format!("{key} marked done"), || async {
         matches!(
@@ -240,7 +240,7 @@ async fn wait_for_order_done(store: &dyn ActorStateStore, order_id: u64) {
 
 #[tokio::test(start_paused = true)]
 async fn actor_store_redelivery_is_idempotent_on_one_node() {
-    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
+    let store: Arc<dyn CapStateStore> = Arc::new(InMemoryStore::new());
     let (cfg_id, effects) = register_fixture(Arc::clone(&store));
     let (_net, clusters) = spawn_store_cluster(Arc::clone(&store), cfg_id).await;
     wait_for_workers_on_every_node(&clusters).await;
@@ -275,7 +275,7 @@ async fn find_attached_leader(
 
 #[tokio::test(start_paused = true)]
 async fn actor_store_survives_unreachable_node_and_resumes_on_survivor() {
-    let store: Arc<dyn ActorStateStore> = Arc::new(InMemoryStore::new());
+    let store: Arc<dyn CapStateStore> = Arc::new(InMemoryStore::new());
     let (cfg_id, effects) = register_fixture(Arc::clone(&store));
     let (net, clusters) = spawn_store_cluster(Arc::clone(&store), cfg_id).await;
     wait_for_workers_on_every_node(&clusters).await;
