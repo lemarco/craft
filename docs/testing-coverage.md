@@ -7,13 +7,13 @@ closing a gap.
 **Strategy:** [testing-strategy](decisions/testing-strategy.md)  
 **Feature status:** [status.md](status.md)  
 **Product docs:** [product-terminology](decisions/product-terminology.md) (capabilities vs runtime actors)  
-**Last audit:** 2026-09-17 (B-28–B-32 wave index)
+**Last audit:** 2026-09-17 (B-28–B-33 wave index)
 
 Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** scheduled / `#[ignore]` only
 
 ---
 
-## Shipped backlog B-28–B-32
+## Shipped backlog B-28–B-36
 
 Product scale wave — quick regression commands (detail in scenario pages):
 
@@ -24,6 +24,15 @@ Product scale wave — quick regression commands (detail in scenario pages):
 | B-30 | Ingress `/health` vs `/ready` | `trembita-http`, `trembita-dashboard`, `ingress_lb*.rs` | `./scripts/test-fast.sh -p trembita --test ingress_lb_ops` |
 | B-31 | Founder scale doctor | `trembita-cli/.../doctor.rs`, `tests/cap_scale_doctor.rs` | `./scripts/test-fast.sh -p trembita-cli --test cap_scale_doctor` |
 | B-32 | Product coordination scale | `configure` / `queue_opts` / `job_opts`, `env_config`, `product_coordination_scale.rs` | `./scripts/test-fast.sh -p trembita --all-features --lib b32_` |
+| B-33 | Boot scale report + cap pool hardening | `app/scale_plan.rs` (`b33_*`), `integration/cap_scale.rs` (plan hosts), `tests/product_scale_report.rs`, `doctor.rs` (`b33_preflight_*`), `cap_scale_doctor.rs` | `./scripts/test-fast.sh -p trembita --lib b33_` · `./scripts/test-fast.sh -p trembita --test product_scale_report` · `./scripts/test-fast.sh -p trembita-cli --lib b33_preflight_join_seeds_scenarios_table` · `./scripts/test-fast.sh -p trembita-cli --test cap_scale_doctor` |
+| B-34 | Elastic join + LB + cluster session | `tests/elastic_lb_product.rs` (`b34_*`), `trembita-tools/e2e_elastic/cap.rs`, `e2e/elastic_lb.sh` | `./scripts/test-fast.sh -p trembita --test elastic_lb_product b34_` · `./scripts/test-fast.sh -p trembita-tools --lib b34_` · heavy: `./e2e/elastic_lb.sh` |
+| B-35 | Join readiness pipeline | `join_pipeline.rs`, `views.rs`, `ops_routes.rs`, `introspect_routes.rs`, `ingress_lb_ops.rs` | `./scripts/test-fast.sh -p trembita-assembly --lib b35_join_pipeline_scenarios_table` · `./scripts/test-fast.sh -p trembita-dashboard --lib b35_` · `./scripts/test-fast.sh -p trembita-http --lib b35_` · `./scripts/test-fast.sh -p trembita --test ingress_lb_ops b35_` |
+| B-36 | R3 directory visibility + sticky reopen | `directory_delivery.rs`, `directory.rs`, `session.rs`, `directory_r3_report.rs`, `integration/cap_rebalance.rs` | `./scripts/test-fast.sh -p trembita-runtime --lib b36_` · `./scripts/test-fast.sh -p trembita --test directory_r3_report b36_` · `./scripts/test-fast.sh -p trembita --lib capability_inline_survives_raft_group_rebalance` |
+| B-37 | Coordination growth presets | `coordination_profile.rs`, `env_config.rs`, `queue_auto_shard.rs`, `configure.rs`, `queue_opts.rs`, `job_opts.rs`, `coordination_growth_preset.rs` | `./scripts/test-fast.sh -p trembita-assembly --lib b37_` · `./scripts/test-fast.sh -p trembita-jobs --lib b37_` · `./scripts/test-fast.sh -p trembita --lib b37_` · `./scripts/test-fast.sh -p trembita --test coordination_growth_preset b37_` |
+| B-38 | Founder DX v2 (doctor + scaffold) | `doctor.rs`, `template.rs`, `task.rs.tpl`, `tests/scaffold.rs`, `tests/cap_scale_doctor.rs` | `./scripts/test-fast.sh -p trembita-cli --lib b38_` · `./scripts/test-fast.sh -p trembita-cli --test scaffold b38_` · `./scripts/test-fast.sh -p trembita-cli --test cap_scale_doctor b38_` |
+| B-39 | Local 3-node founder cluster | `dev/founder.rs`, `dev/showcases.rs`, `dev/cluster.rs`, `tests/dev.rs`, `dev/founder-3node/`, `founder-cluster.sh` | `./scripts/test-fast.sh -p trembita-cli --lib b39_` · `./scripts/test-fast.sh -p trembita-cli --test dev b39_` |
+| B-40 | Gateway session ports + rotation + OIDC helper | `session_ports.rs`, `cluster_session.rs`, `gateway_cluster_session.rs`, `trembita-gateway-auth` (`dev_oidc.rs`, `lib.rs`), `examples/oauth-gateway` | `./scripts/test-fast.sh -p trembita-http --lib b40_` · `./scripts/test-fast.sh -p trembita --lib b40_` · `./scripts/test-fast.sh -p trembita --test gateway_cluster_session b40_` · `./scripts/test-fast.sh -p trembita-gateway-auth --lib b40_` |
+| B-41 | Product surface: durable mailbox, leader hook, Pg schedules | `configure.rs`, `manifest.rs`, `trembita-schedule-postgres`, `app_cluster.rs`, `schedule_source.rs` | `./scripts/test-fast.sh -p trembita --lib b41_` · `./scripts/test-fast.sh -p trembita-schedule-postgres --lib b41_` · `./scripts/test-fast.sh -p trembita --test app_cluster b41_` · `./scripts/test-fast.sh -p trembita --test schedule_source b41_` |
 
 Index: [status § Product scale wave](status.md#product-scale-wave-b-28b32) · [capabilities scenarios](scenarios/capabilities.md).
 
@@ -148,6 +157,7 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | Sticky session / actor lease | ✅ `session` | ✅ `messaging` | — | — | ✅ |
 | `ask_linearizable` (directory retry) | — | ✅ `messaging` | — | — | ✅ |
 | Directory `ReadYourWrites` policy | ✅ `directory_policy` | ✅ `messaging` | — | — | ✅ |
+| R3 merge lag / NoTarget metrics (B-36) | ✅ `directory` merge_lag | ✅ `directory_delivery` | — | ✅ `directory_r3_report` | ✅ |
 | Per-group drain timeout override | — | ✅ `migration` | — | — | ✅ |
 | Placement / supervisor | — | ✅ | ✅ `rebalance_churn` | — | ✅ |
 | Crash-driven auto-respawn (reachable ≠ membership) | — | ✅ | ✅ | — | ✅ |
