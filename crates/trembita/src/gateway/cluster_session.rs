@@ -300,7 +300,10 @@ mod tests {
         let secret = ClusterSessionSecret::from_bytes("0123456789abcdef").unwrap();
         let mut token = secret.issue("bob", Duration::from_secs(60)).unwrap();
         token.push('x');
-        assert_eq!(secret.verify(&token), Err(ClusterSessionError::Malformed));
+        assert_eq!(
+            secret.verify(&token),
+            Err(ClusterSessionError::BadSignature)
+        );
     }
 
     #[test]
