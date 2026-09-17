@@ -79,6 +79,36 @@ Start with **one group** until metrics or latency justify adding groups — prem
 | `GET /introspect/product-scale` | Capability `resolved_scale`, queue shard mode, coordination Raft groups (B-33) |
 | `GET /introspect/directory-r3` | Directory RYW retry config, merge lag epochs, cumulative `NoTarget` by group (B-36) |
 | `GET /introspect/join-status` | Elastic join pipeline phase + catch-up / auto-host flags (B-35) |
+| `GET /introspect/ops-summary` | **Ops cockpit** — join + product scale + directory R3 + coordination preset + queue depths (B-43) |
+
+### Ops cockpit introspect (B-43)
+
+One JSON snapshot for deploy checks, CI preflight ([B-54](../backlog.md)), and on-call triage — same fields as the focused routes below, without chaining four curls:
+
+```bash
+curl -sf "https://node1/introspect/ops-summary" | jq '{
+  join: .join | {phase, log_caught_up, hosts_wired},
+  capability_groups: .product_scale.capability_groups,
+  coordination: .product_scale.coordination,
+  coordination_profile: .coordination_profile,
+  merge_lag_epochs: .directory_r3.merge_lag_epochs,
+  queue_depths
+}'
+```
+
+| Section | Source epic | Dedicated route |
+|---------|-------------|-----------------|
+| `join` | B-35 | `/introspect/join-status` |
+| `product_scale` | B-33 / B-32 | `/introspect/product-scale` |
+| `directory_r3` | B-36 | `/introspect/directory-r3` |
+| `coordination_profile` | B-37 | preset name + auto-shard hints (resolved Raft/queue layout under `product_scale`) |
+| `queue_depths` | queues | `/introspect/queues` (pending / leased / oldest age only; excludes dead-letter / redelivered) |
+
+**Contract:** nested sections are byte-for-byte the same JSON as the dedicated routes above (regression: `b43_ops_summary_nested_routes_match_dedicated_introspect_endpoints`). **`coordination_profile`** is only populated when a B-37 preset was set at boot; otherwise `{}`. Route is **GET-only**.
+
+Public type: [`OpsSummary`](../../crates/trembita/src/app/ops_summary.rs) · in-process: [`TrembitaApp::ops_summary`](../../crates/trembita/src/app/ops_summary.rs).
+
+Regression index (13 tests, `b43_*`): [capabilities § B-43 automated regression](../scenarios/capabilities.md#automated-regression-b-43).
 
 ### Join readiness (B-35)
 
@@ -205,7 +235,7 @@ If values disagree with the table, check whether explicit `TREMBITA_RAFT_*` / `T
 
 ### Product scale introspection (B-33)
 
-After the cluster is ready, the product emits a structured log line (`target: trembita::product_scale`) with the same fields as **`GET /introspect/product-scale`** on the unified ops listener. Use it to confirm multi-node cap pools, sharded queues, and multi-Raft coordination match the manifest/env before sending traffic.
+After the cluster is ready, the product emits a structured log line (`target: trembita::product_scale`) with the same fields as **`GET /introspect/product-scale`** on the unified ops listener (also nested under **`product_scale`** in **`GET /introspect/ops-summary`** — [§ B-43](#ops-cockpit-introspect-b-43)). Use it to confirm multi-node cap pools, sharded queues, and multi-Raft coordination match the manifest/env before sending traffic.
 
 - **Boot log:** `RUST_LOG=trembita::product_scale=info` (or `info` globally).
 - **HTTP:** scrape from a private network; response is JSON (capability groups, queue mode, `coordination_raft_groups`).
@@ -216,6 +246,7 @@ Scrape `/metrics` from a private network; do not expose the ops HTTP listener on
 ## Post-deploy verification
 
 - [ ] `/ready` returns 200 with `"join_phase":"pool_ready"` on every backend in the LB pool (B-30/B-35 — not only `/health`)
+- [ ] **`GET /introspect/ops-summary`** on each node: `join.phase` is `pool_ready`, `product_scale` matches manifest, `directory_r3.merge_lag_epochs` near zero when stable (B-43)
 - [ ] Cookie login works via LB VIP when using cluster sessions (B-29/B-40 — issuer/verifier ports)
 - [ ] `trembita doctor --preflight` clean on release manifest (B-31 scale foot-guns; B-33 join seeds + session secret in `deploy/.env.example`)
 - [ ] Sample `propose` / `query` or app-specific health check

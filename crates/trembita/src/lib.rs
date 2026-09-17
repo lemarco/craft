@@ -106,7 +106,7 @@ pub use trembita_storage as storage;
 
 pub use actor_group::ActorGroupOpts;
 pub use app::{
-    AppManifest, DefaultGatewayApis, JobsPreset, ProductScalePlan, RealtimePreset,
+    AppManifest, DefaultGatewayApis, JobsPreset, OpsSummary, ProductScalePlan, RealtimePreset,
     ScheduleSourceOpts, ShutdownOpts, TestBoot, TopicsPreset, TrembitaApp, TrembitaAppBuilder,
     journal_workflow,
 };

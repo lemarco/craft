@@ -22,6 +22,7 @@ use super::manifest::AppManifest;
 use super::scale_plan::ProductScalePlan;
 use super::shutdown::ShutdownOpts;
 use super::types::{EmptyStateMachine, WorkerInfo};
+use trembita_assembly::coordination_profile::CoordinationGrowthPreset;
 
 /// Running product app handle ([`EmptyStateMachine`] by default).
 pub struct TrembitaApp {
@@ -32,6 +33,7 @@ pub struct TrembitaApp {
     cap_runtime: CapRuntime,
     cap_deps: CapDeps,
     scale_plan: ProductScalePlan,
+    coordination_growth_preset: Option<CoordinationGrowthPreset>,
 }
 
 impl TrembitaApp {
@@ -41,6 +43,7 @@ impl TrembitaApp {
         cap_runtime: CapRuntime,
         cap_deps: CapDeps,
         scale_plan: ProductScalePlan,
+        coordination_growth_preset: Option<CoordinationGrowthPreset>,
     ) -> Self {
         Self {
             cluster,
@@ -50,6 +53,7 @@ impl TrembitaApp {
             cap_runtime,
             cap_deps,
             scale_plan,
+            coordination_growth_preset,
         }
     }
 
@@ -57,6 +61,12 @@ impl TrembitaApp {
     #[must_use]
     pub fn scale_plan(&self) -> &ProductScalePlan {
         &self.scale_plan
+    }
+
+    /// B-37 growth preset recorded at builder time (`None` when unset).
+    #[must_use]
+    pub fn coordination_growth_preset(&self) -> Option<CoordinationGrowthPreset> {
+        self.coordination_growth_preset
     }
 
     #[cfg(feature = "http-jobs")]
@@ -67,6 +77,11 @@ impl TrembitaApp {
     #[cfg(feature = "http-jobs")]
     pub(crate) fn directory_r3_route_table(self: &Arc<Self>) -> trembita_http::RouteTable {
         super::directory_r3::directory_r3_route_table(Arc::clone(self))
+    }
+
+    #[cfg(feature = "http-jobs")]
+    pub(crate) fn ops_summary_route_table(self: &Arc<Self>) -> trembita_http::RouteTable {
+        super::ops_summary::ops_summary_route_table(Arc::clone(self))
     }
 
     /// Builder-injected ports for [`OpCtx::deps`](crate::OpCtx::deps).

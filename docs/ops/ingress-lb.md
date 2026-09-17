@@ -48,7 +48,7 @@ Elastic joiners progress through **`join_phase`** before **`GET /ready`** return
 | `awaiting_membership`, `catching_up`, `awaiting_hosts` | **503** — keep backend **out** of rotation |
 | `pool_ready` | **200** — accept product HTTP / WebSocket (subject to drain — see [rolling-upgrade](rolling-upgrade.md)) |
 
-JSON on **`GET /ready`**: `join_phase`, `committed_learner`, `log_caught_up`, `hosts_wired`. Operators debugging a stuck joiner: **`GET /introspect/join-status`** (same pipeline + `local_workers`). ADR: [cluster-elasticity § B-35](../decisions/cluster-elasticity.md#join-readiness-pipeline-b-35).
+JSON on **`GET /ready`**: `join_phase`, `committed_learner`, `log_caught_up`, `hosts_wired`. Operators debugging a stuck joiner: **`GET /introspect/join-status`** (same pipeline + `local_workers`) or the **`join`** section of **`GET /introspect/ops-summary`** (B-43 — full ops cockpit: [production-runbook § B-43](production-runbook.md#ops-cockpit-introspect-b-43)). ADR: [cluster-elasticity § B-35](../decisions/cluster-elasticity.md#join-readiness-pipeline-b-35).
 
 #### Automated regression (B-35)
 

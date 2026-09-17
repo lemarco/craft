@@ -150,6 +150,7 @@ Evaluation lives in [`evaluate_join_pipeline`](../../crates/trembita-assembly/sr
 |-------|--------|
 | **`GET /ready`** | `join_phase`, `committed_learner`, `log_caught_up`, `hosts_wired`, `workers`, optional `reason` |
 | **`GET /introspect/join-status`** | Same pipeline snapshot as [`JoinStatusView`](../../crates/trembita-dashboard/src/views.rs) — includes `local_workers` ([production-runbook § B-35](../ops/production-runbook.md#join-readiness-b-35)) |
+| **`GET /introspect/ops-summary`** | **`join`** section ≡ `/introspect/join-status` plus scale/R3/preset/queues ([B-43](../scenarios/capabilities.md#ops-cockpit-introspect-b-43)) |
 
 **Product boot:** when `TREMBITA_JOIN_SEEDS` is set, [`TrembitaApp`](../../crates/trembita/src/app/builder.rs) enables [`ReadyOpts::pool_membership`](../../crates/trembita-assembly/src/ready.rs) — `wait_until_ready` waits for the pipeline, not Raft leadership. Seeds keep queue/leader wait when configured.
 

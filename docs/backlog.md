@@ -1,6 +1,6 @@
 # Backlog
 
-**Open work only.** Shipped capabilities: [status.md](status.md). Shipped epic history: [archive/backlog-shipped.md](archive/backlog-shipped.md) (B-01…B-27), [archive/backlog-wave-b28-b32.md](archive/backlog-wave-b28-b32.md) (B-28…B-32). **B-33…B-41** index: [status § Product scale wave](status.md#product-scale-wave-b-28b32). Design rationale: [decisions/](decisions/).
+**Open work only.** Shipped capabilities: [status.md](status.md). Shipped epic history: [archive/backlog-shipped.md](archive/backlog-shipped.md) (B-01…B-27), [archive/backlog-wave-b28-b32.md](archive/backlog-wave-b28-b32.md) (B-28…B-32). **B-33…B-43** index: [status § Product scale wave](status.md#product-scale-wave-b-28b32). Design rationale: [decisions/](decisions/).
 
 When an item ships, remove its row here, update [status.md](status.md), and move planning text to `docs/archive/` if it is no longer needed in live docs.
 
@@ -14,7 +14,6 @@ When an item ships, remove its row here, update [status.md](status.md), and move
 
 | Id | Pri | Item | Status | Notes |
 |----|-----|------|--------|-------|
-| **B-43** | P0 | **Ops cockpit (introspect)** | 📋 | Single **`GET /introspect/ops-summary`** (or extend [product-scale](ops/production-runbook.md#product-scale-introspection-b-33)): join phase ([B-35](decisions/cluster-elasticity.md#join-readiness-pipeline-b-35)), cap scale map, [directory-r3](decisions/actor-routing.md#r3-visibility--sticky-recovery-b-36), coordination profile ([B-37](decisions/capability-dx.md#coordination-growth-presets-b-37)), queue depth hints. JSON first; dashboard optional later. |
 | **B-44** | P1 | **Coordination closed-loop** | 📋 | Leader policy on top of B-32/B-37: auto-shard / [`add_raft_groups`](../crates/trembita/src/app/runtime.rs) from backlog/SLO signals; **hard ceilings** + introspect “why not scaling”. ADR touch: [multi-raft](decisions/multi-raft.md), [job-queue](decisions/job-queue.md). |
 | **B-45** | P1 | **Production deploy pack** | 📋 | `deploy/` + [production-runbook](ops/production-runbook.md): **systemd** unit templates, seed vs learner env matrix, certs, LB ([ingress-lb](ops/ingress-lb.md)), rolling upgrade hooks ([upgrade-coordinator](decisions/upgrade-coordinator.md)). VPS / bare metal only — no orchestrator charts. |
 | **B-46** | P2 | **Gateway session store adapters** | 📋 | Optional **`GatewaySessionStore` → Postgres** (separate crate or feature), composable with B-40 [`SessionIssuer` / `SessionVerifier`](decisions/gateway-cluster-auth.md#b-40--logic--storage-split) — not the cap-store registry path. |

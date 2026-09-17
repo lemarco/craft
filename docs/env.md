@@ -74,7 +74,7 @@ Single published port per node. Wire and HTTP share the port **number** (differe
 
 **Load balancing:** point your edge (DNS, floating IP, reverse proxy) at **each** node’s TCP listener on this port; use **`GET /ready`** for pool health. Inter-node QUIC uses **UDP** on the same port between real node IPs — see [ops/ingress-lb.md](ops/ingress-lb.md).
 
-**Ops (zero config):** `/health`, `/ready`, `/metrics`, `/dashboard`, `/introspect/*` on the same listener — no manual `http::ops` merge. Opt out with [`.without_ops()`](../crates/trembita/src/app/builder.rs) only when ops live on another host.
+**Ops (zero config):** `/health`, `/ready`, `/metrics`, `/dashboard`, `/introspect/*` on the same listener — no manual `http::ops` merge. **Aggregated cockpit (B-43):** **`GET /introspect/ops-summary`** — same listener; nested `product_scale` / `directory_r3` / `join` match the dedicated `/introspect/*` routes ([runbook § B-43](ops/production-runbook.md#ops-cockpit-introspect-b-43)). Opt out with [`.without_ops()`](../crates/trembita/src/app/builder.rs) only when ops live on another host.
 
 **Product APIs (registration-driven):** on the same listener when using [`from_env()`](../crates/trembita/src/app/runtime.rs) / default gateway surfaces:
 
@@ -159,6 +159,6 @@ Optional during secret rotation (B-40). Set to the **previous** signing key on a
 
 Run `trembita doctor` on scaffold projects — it checks `manifest.rs` ↔ `consumers/` wiring, gateway merges in `app.rs`, legacy keys in `deploy/.env.example`, **removed APIs** (`TrembitaCluster::builder`, old gateway toggles), and **capability scale foot-guns** (B-31 — e.g. `.instances(1)` with queued ops but no keyed handlers). Before deploy, use **`trembita doctor --preflight`**: stricter checks for `TREMBITA_LISTEN` / `DATA_DIR` / `CERT_DIR`, compose join pattern (no `TREMBITA_NODE_ID`), default ops gateway wiring, and local `deploy/certs/ca.pem` when present.
 
-**Scale wave env (B-28–B-33):** B-29 — [`TREMBITA_GATEWAY_SESSION_SECRET`](#trembita_gateway_session_secret); B-30 — pool health via **`GET /ready`** on [`TREMBITA_LISTEN`](#trembita_listen) ([ingress-lb](ops/ingress-lb.md)); B-32 — `TREMBITA_JOB_QUEUE_*`, `TREMBITA_RAFT_*` (table above); B-33 — boot **`product_scale`** log + **`GET /introspect/product-scale`** ([production-runbook](ops/production-runbook.md#product-scale-introspection-b-33)). Cap group defaults (B-28) are manifest-side, not env. Index: [status § Product scale wave](status.md#product-scale-wave-b-28b32).
+**Scale wave env (B-28–B-43):** B-29 — [`TREMBITA_GATEWAY_SESSION_SECRET`](#trembita_gateway_session_secret); B-30 — pool health via **`GET /ready`** on [`TREMBITA_LISTEN`](#trembita_listen) ([ingress-lb](ops/ingress-lb.md)); B-32 — `TREMBITA_JOB_QUEUE_*`, `TREMBITA_RAFT_*` (table above); B-33 — boot **`product_scale`** log + **`GET /introspect/product-scale`**; **B-43** — **`GET /introspect/ops-summary`** rolls up B-35/B-33/B-36/B-37 + queue depth hints ([production-runbook § B-43](ops/production-runbook.md#ops-cockpit-introspect-b-43)). Cap group defaults (B-28) are manifest-side, not env. Index: [status § Product scale wave](status.md#product-scale-wave-b-28b32).
 
 See also: [getting-started.md](getting-started.md), [certs.md](certs.md), [unified-listener](decisions/unified-listener.md).

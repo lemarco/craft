@@ -112,7 +112,7 @@ Optional: `TREMBITA_JOB_QUEUE`, `TREMBITA_ALLOW_JOIN` (seed, default on).
 
 **Dynamic join is learner-only by default.** Voter join needs `TREMBITA_JOIN_ROLE=voter` and seed `TREMBITA_ALLOW_VOTER_JOIN=1` ([env.md](env.md#advanced-same-binary-explicit-tuning)). Static voter bootstrap (`TREMBITA_PEERS`) is for `trembita-node` / ops, not typical app compose.
 
-**Ops (zero config):** `/health`, `/ready`, `/metrics`, `/dashboard`, `/introspect/*` on **`TREMBITA_LISTEN`** — enabled with [`TrembitaApp::from_env()`](../crates/trembita/src/app/runtime.rs) until you call [`.without_ops()`](../crates/trembita/src/app/builder.rs).
+**Ops (zero config):** `/health`, `/ready`, `/metrics`, `/dashboard`, `/introspect/*` on **`TREMBITA_LISTEN`** — enabled with [`TrembitaApp::from_env()`](../crates/trembita/src/app/runtime.rs) until you call [`.without_ops()`](../crates/trembita/src/app/builder.rs). **Post-deploy one-shot:** **`GET /introspect/ops-summary`** (B-43) — join + scale + R3 + coordination preset + queue depths in one JSON ([runbook § B-43](ops/production-runbook.md#ops-cockpit-introspect-b-43)).
 
 **Pre-deploy:** from your app repo, run `trembita doctor --preflight` (ports/listen format, cert dir, missing ops/jobs route merges, deprecated env). CI-friendly: non-zero exit when any `[error]` finding.
 
@@ -135,7 +135,7 @@ Use a **preset** when manual B-32 knobs are too low-level. Call [`.with_coordina
 
 **Env aliases:** `jobs`, `jobs-backlog`, `write`, `sharding`, `growth` — see [capabilities § B-37](scenarios/capabilities.md#coordination-growth-presets-b-37). Explicit `TREMBITA_RAFT_GROUPS`, `TREMBITA_RAFT_SHARD_COUNT`, and `TREMBITA_JOB_QUEUE_AUTO_SHARD` **override** the profile.
 
-After deploy, confirm with **`GET /introspect/product-scale`** (or boot log `trembita::product_scale=info`) — [production-runbook § B-37](ops/production-runbook.md#coordination-growth-preset-b-37).
+After deploy, confirm with **`GET /introspect/ops-summary`** (preferred) or **`GET /introspect/product-scale`** / boot log `trembita::product_scale=info` — [production-runbook § B-43](ops/production-runbook.md#ops-cockpit-introspect-b-43) · [§ B-37](ops/production-runbook.md#coordination-growth-preset-b-37).
 
 **Regression:** `./scripts/test-fast.sh -p trembita --test coordination_growth_preset b37_` — full matrix in [capabilities § Automated regression (B-37)](scenarios/capabilities.md#automated-regression-b-37).
 

@@ -471,6 +471,40 @@ Actor directory is **eventually consistent (R3)**. After rebalance or scale, **`
 
 ADR: [actor-routing § B-36](../decisions/actor-routing.md#r3-visibility--sticky-recovery-b-36) · [structural-limits § R3](structural-limits.md#r3--actor-directory-is-eventually-consistent) · Runbook: [production-runbook § R3](../ops/production-runbook.md#r3-directory-visibility-b-36).
 
+## Ops cockpit introspect (B-43)
+
+**`GET /introspect/ops-summary`** on the unified ops listener returns one JSON document: **`join`** ([B-35](#join-readiness-pipeline-b-35)), **`product_scale`** ([B-33](#boot-scale-report--preflight-b-33)), **`directory_r3`** ([B-36](#r3-directory-visibility-b-36)), **`coordination_profile`** ([B-37](#coordination-growth-presets-b-37)), and live **`queue_depths`** (subset of [`/introspect/queues`](../../crates/trembita-http/src/introspect_routes.rs)). In-process twin: [`TrembitaApp::ops_summary`](../../crates/trembita/src/app/ops_summary.rs) · public type [`OpsSummary`](../../crates/trembita/src/app/ops_summary.rs).
+
+| Top-level key | Contents |
+|---------------|----------|
+| `join` | [`JoinStatusView`](../../crates/trembita-dashboard/src/views.rs) — same JSON as `/introspect/join-status` |
+| `product_scale` | [`ProductScalePlan`](../../crates/trembita/src/app/scale_plan.rs) — same as `/introspect/product-scale` |
+| `directory_r3` | [`DirectoryR3Snapshot`](../../crates/trembita/src/app/directory_r3.rs) — same as `/introspect/directory-r3` |
+| `coordination_profile` | `preset`, optional auto-shard hints when B-37 preset set; `{}` when unset |
+| `queue_depths` | `[{ stream, pending, leased, oldest_pending_age_ms }]` per registered stream |
+
+Runbook: [production-runbook § B-43](../ops/production-runbook.md#ops-cockpit-introspect-b-43) · ADR note: [capability-dx § B-43](../decisions/capability-dx.md).
+
+### Automated regression (B-43)
+
+| Scenario | Regression |
+|----------|------------|
+| Queue depth hint maps stream pending/leased/age (ignores DLQ / redelivered) | `b43_queue_depth_hint_from_stream_view`, `b43_queue_depth_hint_scenarios_table` |
+| All B-37 presets → profile JSON | `b43_coordination_profile_presets_scenarios_table` |
+| Empty profile omits optional serde fields | `b43_coordination_profile_default_serializes_empty_object` |
+| Join phases serialize under `join.phase` | `b43_join_phase_json_scenarios_table` |
+| Serde shape includes join, scale, R3, queues | `b43_ops_summary_json_includes_join_and_scale_sections` |
+| Nested sections match dedicated introspect routes | `b43_ops_summary_nested_routes_match_dedicated_introspect_endpoints` |
+| No preset → empty `coordination_profile` | `b43_ops_summary_without_growth_preset_omits_profile_fields` |
+| `write_sharding` / `full` presets in live summary | `b43_write_sharding_ops_summary_reflects_multi_raft_in_product_scale`, `b43_full_preset_ops_summary_includes_auto_shard_profile_hints` |
+| HTTP body matches `ops_summary()` after boot | `b43_introspect_ops_summary_aggregates_join_scale_r3_and_preset` |
+| Default product ops registers route; GET only | `b43_product_ops_exposes_ops_summary_route`, `b43_ops_summary_http_get_only` |
+
+```bash
+./scripts/test-fast.sh -p trembita --lib b43_
+./scripts/test-fast.sh -p trembita --test ops_summary_report b43_
+```
+
 ## Product surface gaps (B-41)
 
 Three assembly-level features exposed on **`TrembitaApp`** for advanced apps (most capability-first services skip these).

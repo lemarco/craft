@@ -763,9 +763,17 @@ impl TrembitaAppBuilder {
             let cap_runtime = builder.cap_runtime;
             let cap_deps = builder.cap_deps.unwrap_or_default();
             let scale_plan = builder.scale_plan;
+            let coordination_growth_preset = builder.coordination_growth_preset;
             let cluster = builder.inner.start_local(net).await;
             return Self::finish_start(
-                TrembitaApp::assemble(cluster, workflows, cap_runtime, cap_deps, scale_plan),
+                TrembitaApp::assemble(
+                    cluster,
+                    workflows,
+                    cap_runtime,
+                    cap_deps,
+                    scale_plan,
+                    coordination_growth_preset,
+                ),
                 gateway,
                 opts.wait_ready.clone(),
             )
@@ -793,6 +801,7 @@ impl TrembitaAppBuilder {
         let cap_runtime = builder.cap_runtime;
         let cap_deps = builder.cap_deps.unwrap_or_default();
         let scale_plan = builder.scale_plan;
+        let coordination_growth_preset = builder.coordination_growth_preset;
         let cluster = builder
             .inner
             .start_quic_cluster(
@@ -804,7 +813,14 @@ impl TrembitaAppBuilder {
             )
             .await?;
         Self::finish_start(
-            TrembitaApp::assemble(cluster, workflows, cap_runtime, cap_deps, scale_plan),
+            TrembitaApp::assemble(
+                cluster,
+                workflows,
+                cap_runtime,
+                cap_deps,
+                scale_plan,
+                coordination_growth_preset,
+            ),
             gateway,
             opts.wait_ready.clone(),
         )

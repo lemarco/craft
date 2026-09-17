@@ -128,6 +128,8 @@ Explicit overrides: [`.instances(n)`](../../crates/trembita/src/capability/group
 
 **Boot scale report (B-33):** after `wait_until_ready`, the product logs a structured **`product_scale`** line (capability groups + `resolved_scale`, queue shard mode, coordination Raft groups) and exposes the same JSON at **`GET /introspect/product-scale`** on the unified ops listener. See [production-runbook § Product scale introspection](../ops/production-runbook.md#product-scale-introspection-b-33).
 
+**Ops cockpit (B-43):** **`GET /introspect/ops-summary`** aggregates join readiness (B-35), the B-33 **`product_scale`** snapshot, B-36 **`directory_r3`**, B-37 **`coordination_profile`** (when set at boot), and live **`queue_depths`** — nested sections match the dedicated introspect routes. Facade: [`OpsSummary`](../../crates/trembita/src/app/ops_summary.rs), [`TrembitaApp::ops_summary`](../../crates/trembita/src/app/runtime.rs). Runbook: [production-runbook § B-43](../ops/production-runbook.md#ops-cockpit-introspect-b-43) · regression: [capabilities § B-43](../scenarios/capabilities.md#automated-regression-b-43).
+
 ### Product scale model (B-31)
 
 Transparent split for **«add VPS + same binary»** — what actually scales when the cluster grows:

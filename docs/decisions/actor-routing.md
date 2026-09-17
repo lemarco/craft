@@ -59,6 +59,7 @@ The actor directory is **eventually consistent (R3)** — after join, scale, or 
 | `GET /metrics` | `trembita_directory_merge_lag_epochs{node}` (gauge), `trembita_directory_deliver_no_target_total{group}` (counter deltas) — refreshed in [`assemble.rs`](../../crates/trembita-assembly/src/builder/cluster/assemble.rs) |
 | [`TrembitaEvent::DirectoryDeliverNoTarget`](../../crates/trembita-dashboard/src/telemetry.rs) / `DirectoryMergeLag` | SSE / event sinks when lag or new `NoTarget` totals appear |
 | **`GET /introspect/directory-r3`** | Same numbers as metrics + retry config ([`DirectoryR3Snapshot`](../../crates/trembita/src/app/directory_r3.rs)) |
+| **`GET /introspect/ops-summary`** | **`directory_r3`** section ≡ `/introspect/directory-r3` ([B-43](../scenarios/capabilities.md#ops-cockpit-introspect-b-43)) |
 | [`ActorSession::reopen_keyed`](../../crates/trembita-runtime/src/session.rs) / [`reopen_str`](../../crates/trembita-runtime/src/session.rs) | Re-pin sticky workers after migration (reuse live target when still registered) |
 | [`TrembitaApp::reopen_session_str`](../../crates/trembita/src/app/runtime.rs) | Facade helper for app/gateway code |
 | [`SessionHandle::reopen`](../../crates/trembita/src/gateway/session.rs) | Gateway cast/ask auto-reopen |

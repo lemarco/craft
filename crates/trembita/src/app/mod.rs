@@ -15,6 +15,7 @@ pub(crate) use run_hint::ManifestRunHint;
 #[cfg(feature = "http-jobs")]
 pub use gateway::DefaultGatewayApis;
 mod directory_r3;
+mod ops_summary;
 mod runtime;
 mod scale_plan;
 mod shutdown;
@@ -25,6 +26,7 @@ mod workflow;
 
 pub use builder::TrembitaAppBuilder;
 pub use manifest::{AppManifest, JobsPreset, RealtimePreset, ScheduleSourceOpts, TopicsPreset};
+pub use ops_summary::OpsSummary;
 pub use runtime::TrembitaApp;
 pub use scale_plan::ProductScalePlan;
 pub use shutdown::ShutdownOpts;
