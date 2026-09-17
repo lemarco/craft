@@ -40,7 +40,7 @@ impl<S: Send + Default + 'static> CapGroupApply for CapGroup<S> {
     ) -> TrembitaAppBuilder {
         let group = *self;
         let name = group.name();
-        let scale = group.scale();
+        let scale = group.resolved_scale();
         let queue_stream = group.queued_stream();
         let event_ingress = group.event_ingress_spec();
         let config = group.host_config(builder.cap_runtime.app_slot());

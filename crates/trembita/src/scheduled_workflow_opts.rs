@@ -168,6 +168,7 @@ impl ScheduledWorkflowOpts {
                 lease: self.lease,
                 prefetch: self.prefetch,
                 default_max_attempts: self.default_max_attempts,
+                scale: crate::queue_opts::QueueRegistrationScale::Standard,
             },
             stream: self.stream,
             crons: self.crons,

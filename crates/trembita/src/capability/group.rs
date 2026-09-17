@@ -11,6 +11,19 @@ use super::op::{CapHandlerFn, CapOp, CapOpSpec};
 use super::route::Route;
 use crate::TrembitaApp;
 
+fn op_declares_session(routes: &[Route]) -> bool {
+    routes.iter().any(|r| matches!(r, Route::Session))
+}
+
+fn group_declares_session<S: Send + Default + 'static>(ops: &[CapOpSpec<S>]) -> bool {
+    ops.iter().any(|spec| op_declares_session(&spec.routes))
+}
+
+/// Shared RAM in the group host (non–zero-sized `State`); use explicit `.instances(n)` or accept `Fixed(1)` auto default.
+fn state_holds_shared_ram<S: Send + Default + 'static>() -> bool {
+    std::mem::size_of::<S>() > 0
+}
+
 /// How many capability host actor instances run for a group.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CapGroupScale {
@@ -23,7 +36,8 @@ pub enum CapGroupScale {
 /// A named capability group (bounded context) on the cluster.
 pub struct CapGroup<S: Send + Default + 'static = ()> {
     name: &'static str,
-    scale: CapGroupScale,
+    /// `None` → resolved at manifest apply ([`resolved_scale`](Self::resolved_scale)).
+    scale: Option<CapGroupScale>,
     queue_stream: Option<&'static str>,
     event_topic: Option<&'static str>,
     event_subscription: Option<&'static str>,
@@ -46,11 +60,15 @@ impl<S: Send + Default + 'static> CapGroup<S> {
     }
 
     /// Group with explicit shared state type `S`.
+    ///
+    /// Host scale is resolved at manifest apply unless you call [`.instances`](Self::instances) or
+    /// [`.per_node`](Self::per_node) (marker-only `State` → [`CapGroupScale::PerNode`], shared RAM
+    /// or any `Route::Session` op → [`CapGroupScale::Fixed`]).
     #[must_use]
     pub fn with_state(name: &'static str) -> Self {
         Self {
             name,
-            scale: CapGroupScale::Fixed(1),
+            scale: None,
             queue_stream: None,
             event_topic: None,
             event_subscription: None,
@@ -58,17 +76,17 @@ impl<S: Send + Default + 'static> CapGroup<S> {
         }
     }
 
-    /// Fixed host count cluster-wide (default `1`).
+    /// Fixed host count cluster-wide (opts out of automatic scale).
     #[must_use]
     pub fn instances(mut self, n: usize) -> Self {
-        self.scale = CapGroupScale::Fixed(n.max(1));
+        self.scale = Some(CapGroupScale::Fixed(n.max(1)));
         self
     }
 
     /// One capability host per live cluster node (realtime / stateful pools).
     #[must_use]
     pub fn per_node(mut self) -> Self {
-        self.scale = CapGroupScale::PerNode;
+        self.scale = Some(CapGroupScale::PerNode);
         self
     }
 
@@ -148,8 +166,17 @@ impl<S: Send + Default + 'static> CapGroup<S> {
         &self.ops
     }
 
-    pub(crate) fn scale(&self) -> CapGroupScale {
-        self.scale
+    pub(crate) fn resolved_scale(&self) -> CapGroupScale {
+        if let Some(scale) = self.scale {
+            return scale;
+        }
+        if group_declares_session(self.ops()) {
+            return CapGroupScale::Fixed(1);
+        }
+        if state_holds_shared_ram::<S>() {
+            return CapGroupScale::Fixed(1);
+        }
+        CapGroupScale::PerNode
     }
 
     pub(crate) fn queued_stream(&self) -> Option<&'static str> {
@@ -166,3 +193,92 @@ impl<S: Send + Default + 'static> CapGroup<S> {
 
 /// Internal host actor (not part of the app author API).
 pub(crate) type CapHostActor<S> = CapHost<S>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::capability::CapError;
+    use crate::capability::OpCtx;
+
+    #[derive(Default)]
+    struct MarkerState;
+
+    #[derive(Default)]
+    struct RamState {
+        _n: u64,
+    }
+
+    fn marker_op(_: (), _ctx: OpCtx<'_>, _state: &mut MarkerState) -> Result<(), CapError> {
+        Ok(())
+    }
+
+    fn ram_op(_: (), _ctx: OpCtx<'_>, _state: &mut RamState) -> Result<(), CapError> {
+        Ok(())
+    }
+
+    #[test]
+    fn auto_scale_marker_state_without_session_is_per_node() {
+        let group = CapGroup::<MarkerState>::with_state("ping")
+            .op(CapOp::new("ping", marker_op).routes([Route::Inline, Route::Queued]));
+        assert_eq!(group.resolved_scale(), CapGroupScale::PerNode);
+    }
+
+    #[test]
+    fn auto_scale_shared_ram_state_is_fixed_one() {
+        let group = CapGroup::<RamState>::with_state("math")
+            .op(CapOp::new("add", ram_op).routes([Route::Inline]));
+        assert_eq!(group.resolved_scale(), CapGroupScale::Fixed(1));
+    }
+
+    #[test]
+    fn auto_scale_session_route_is_fixed_one() {
+        let group = CapGroup::<MarkerState>::with_state("rt")
+            .op(CapOp::new("append", marker_op).routes([Route::Session]));
+        assert_eq!(group.resolved_scale(), CapGroupScale::Fixed(1));
+    }
+
+    #[test]
+    fn instances_overrides_auto_scale() {
+        let group = CapGroup::<MarkerState>::with_state("ping")
+            .instances(3)
+            .op(CapOp::new("ping", marker_op).routes([Route::Inline]));
+        assert_eq!(group.resolved_scale(), CapGroupScale::Fixed(3));
+    }
+
+    #[test]
+    fn per_node_overrides_auto_scale() {
+        let group = CapGroup::<RamState>::with_state("rt")
+            .per_node()
+            .op(CapOp::new("append", ram_op).routes([Route::Session]));
+        assert_eq!(group.resolved_scale(), CapGroupScale::PerNode);
+    }
+
+    /// B-31 — runtime defaults align with founder scale map (doctor catches manifest foot-guns).
+    #[test]
+    fn founder_scale_b31_runtime_defaults_table() {
+        let marker_queued = CapGroup::<MarkerState>::with_state("email")
+            .op(CapOp::new("deliver", marker_op).routes([Route::Queued]));
+        assert_eq!(
+            marker_queued.resolved_scale(),
+            CapGroupScale::PerNode,
+            "stateless queued: handlers scale PerNode"
+        );
+
+        let marker_pinned = CapGroup::<MarkerState>::with_state("email")
+            .instances(1)
+            .op(CapOp::new("deliver", marker_op).routes([Route::Queued]));
+        assert_eq!(
+            marker_pinned.resolved_scale(),
+            CapGroupScale::Fixed(1),
+            "explicit Fixed(1) overrides PerNode default"
+        );
+
+        let session_fixed = CapGroup::<MarkerState>::with_state("chat")
+            .op(CapOp::new("append", marker_op).routes([Route::Session]));
+        assert_eq!(
+            session_fixed.resolved_scale(),
+            CapGroupScale::Fixed(1),
+            "session ops default Fixed(1) until .per_node()"
+        );
+    }
+}

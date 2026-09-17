@@ -13,9 +13,7 @@ pub struct OrdersState;
 #[must_use]
 pub fn manifest() -> CapManifest {
     CapManifest::new().group(cap_register_chain!(
-        CapGroup::<OrdersState>::for_cap::<ProcessOrder>()
-            .instances(1)
-            .default_queue_for::<ProcessOrder>(),
+        CapGroup::<OrdersState>::for_cap::<ProcessOrder>().default_queue_for::<ProcessOrder>(),
         process_order_handler_register,
     ))
 }

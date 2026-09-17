@@ -92,9 +92,7 @@ async fn deliver_email(
 #[must_use]
 pub fn group() -> CapGroup<EmailState> {
     cap_register_chain!(
-        CapGroup::<EmailState>::for_cap::<DeliverEmail>()
-            .instances(1)
-            .default_queue_for::<DeliverEmail>(),
+        CapGroup::<EmailState>::for_cap::<DeliverEmail>().default_queue_for::<DeliverEmail>(),
         deliver_email_register,
     )
 }

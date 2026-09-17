@@ -6,19 +6,21 @@
 
 mod support;
 pub(crate) use support::{
-    await_trembita_leader, boot_local_app, gateway_ops_surfaces, spawn_cluster_ops_gateway,
-    wait_for_each_group_cluster_leader, wait_for_group_leaders, wait_for_trembita_leader,
-    wait_for_trembita_stopped,
+    await_trembita_leader, boot_local_app, gateway_ops_surfaces, http_get,
+    spawn_cluster_ops_gateway, wait_for_each_group_cluster_leader, wait_for_group_leaders,
+    wait_for_trembita_leader, wait_for_trembita_stopped,
 };
 
 mod actor_store_resume;
 mod app_cluster_reelect;
 mod auto_compaction;
 mod cap_rebalance;
+mod cap_scale;
 mod cert_reload;
 mod client_keyed;
 mod facade;
 mod graceful_leave;
+mod ingress_lb;
 mod multi_raft;
 mod persistence;
 mod queue;

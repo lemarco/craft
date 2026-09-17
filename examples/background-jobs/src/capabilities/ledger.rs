@@ -28,7 +28,7 @@ async fn record(msg: Record, _state: &mut LedgerState) -> Result<RecordAck, CapE
 #[must_use]
 pub fn manifest() -> CapManifest {
     CapManifest::new().group(cap_register_chain!(
-        CapGroup::<LedgerState>::for_cap::<Record>().instances(1),
+        CapGroup::<LedgerState>::for_cap::<Record>(),
         record_register,
     ))
 }
