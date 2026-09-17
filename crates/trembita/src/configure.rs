@@ -40,6 +40,10 @@ pub struct TrembitaConfigure {
     pub reconcile_period: Duration,
     /// Actor directory publish interval.
     pub directory_publish_period: Duration,
+    /// Multi-Raft coordination groups on [`EmptyStateMachine`] (`1` = single group, default).
+    pub coordination_raft_groups: u32,
+    /// Modulus / stable virtual shard count when [`Self::coordination_raft_groups`] > 1.
+    pub coordination_shard_count: Option<u32>,
     /// When `true`, omit ops HTTP (`/health`, `/ready`, `/metrics`, `/dashboard`, …). Or use
     /// [`TrembitaAppBuilder::without_ops`](crate::TrembitaAppBuilder::without_ops).
     #[cfg(feature = "http-jobs")]
@@ -73,6 +77,8 @@ impl Default for TrembitaConfigure {
             tick_period: Duration::from_millis(50),
             reconcile_period: Duration::from_millis(250),
             directory_publish_period: Duration::from_millis(250),
+            coordination_raft_groups: 1,
+            coordination_shard_count: None,
             #[cfg(feature = "http-jobs")]
             without_ops: true,
             #[cfg(feature = "http-jobs")]
@@ -132,6 +138,20 @@ impl TrembitaConfigure {
         self
     }
 
+    /// Host `count` independent Raft groups for coordination-scale keyed traffic (B-32).
+    #[must_use]
+    pub fn with_coordination_raft_groups(mut self, count: u32) -> Self {
+        self.coordination_raft_groups = count.max(1);
+        self
+    }
+
+    /// Shard routing table size when multi-Raft coordination is enabled.
+    #[must_use]
+    pub fn with_coordination_shard_count(mut self, count: u32) -> Self {
+        self.coordination_shard_count = Some(count.max(1));
+        self
+    }
+
     /// Apply Raft / tick settings to a cluster builder.
     #[must_use]
     pub(crate) fn apply_to(
@@ -146,6 +166,95 @@ impl TrembitaConfigure {
         if let Some(dir) = self.data_dir {
             inner = inner.data_dir(dir);
         }
+        if self.coordination_raft_groups > 1 {
+            let n = usize::try_from(self.coordination_raft_groups).unwrap_or(1);
+            inner = inner.raft_machines((0..n).map(|_| EmptyStateMachine));
+        }
+        if let Some(count) = self.coordination_shard_count {
+            inner = inner.shard_count(count);
+        }
         inner
+    }
+}
+
+#[cfg(test)]
+mod b32_tests {
+    use super::*;
+    use trembita_proto::NodeId;
+
+    /// B-32 — [`TrembitaConfigure`] coordination scale knobs (product multi-Raft path).
+    #[test]
+    fn b32_coordination_configure_scenarios_table() {
+        struct Row {
+            label: &'static str,
+            groups: u32,
+            want_groups: u32,
+            shard: Option<u32>,
+            want_shard: Option<u32>,
+        }
+        let rows = [
+            Row {
+                label: "default single group",
+                groups: 1,
+                want_groups: 1,
+                shard: None,
+                want_shard: None,
+            },
+            Row {
+                label: "shard count only when groups set in configure",
+                groups: 2,
+                want_groups: 2,
+                shard: Some(32),
+                want_shard: Some(32),
+            },
+            Row {
+                label: "explicit multi-Raft",
+                groups: 4,
+                want_groups: 4,
+                shard: Some(128),
+                want_shard: Some(128),
+            },
+            Row {
+                label: "zero groups clamps to one",
+                groups: 0,
+                want_groups: 1,
+                shard: Some(0),
+                want_shard: Some(1),
+            },
+        ];
+        for row in rows {
+            let mut cfg = TrembitaConfigure::default().with_coordination_raft_groups(row.groups);
+            if let Some(s) = row.shard {
+                cfg = cfg.with_coordination_shard_count(s);
+            }
+            assert_eq!(
+                cfg.coordination_raft_groups, row.want_groups,
+                "{}: groups",
+                row.label
+            );
+            if row.shard.is_some() {
+                assert_eq!(
+                    cfg.coordination_shard_count, row.want_shard,
+                    "{}: shard",
+                    row.label
+                );
+            } else {
+                assert_eq!(
+                    cfg.coordination_shard_count, None,
+                    "{}: shard unset",
+                    row.label
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn b32_apply_to_wires_multi_raft_on_empty_state_machine_builder() {
+        let inner = TrembitaClusterBuilder::new(NodeId(1), EmptyStateMachine);
+        let _inner = TrembitaConfigure::default()
+            .with_coordination_raft_groups(2)
+            .with_coordination_shard_count(64)
+            .apply_to(inner);
+        // Boot-level assertion lives in `product_coordination_scale` integration tests.
     }
 }

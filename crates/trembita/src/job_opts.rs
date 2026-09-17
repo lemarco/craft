@@ -6,7 +6,7 @@ use std::time::Duration;
 use trembita_jobs::{BacklogFeedOpts, ConsumerCount, DEFAULT_QUEUE_PREFETCH, ExternalBacklog};
 
 use crate::consumer::{ConsumerOpts, ConsumerSpawnFn, IdempotencyOpts, JobConsumer};
-use crate::queue_opts::QueueOpts;
+use crate::queue_opts::{QueueOpts, QueueRegistrationScale};
 
 /// One durable job stream with optional handler, scaling, and HTTP enqueue.
 ///
@@ -48,6 +48,7 @@ pub struct JobOpts {
     backlog: Option<(Arc<dyn ExternalBacklog>, BacklogFeedOpts)>,
     spawners: Vec<ConsumerSpawnFn>,
     config_error: Option<String>,
+    scale: QueueRegistrationScale,
 }
 
 impl std::fmt::Debug for JobOpts {
@@ -106,7 +107,29 @@ impl JobOpts {
             backlog: None,
             spawners: Vec::new(),
             config_error: None,
+            scale: QueueRegistrationScale::Standard,
         }
+    }
+
+    /// Federated queue shards for this stream (logical name unchanged for enqueue / consumers).
+    #[must_use]
+    pub fn sharded(mut self, shard_count: usize) -> Self {
+        self.scale = QueueRegistrationScale::Sharded(shard_count.max(1));
+        self
+    }
+
+    /// Leader-driven physical shard growth ([`trembita_jobs::AutoShardPolicy::default`]).
+    #[must_use]
+    pub fn auto_shard(mut self) -> Self {
+        self.scale = QueueRegistrationScale::AutoShard(trembita_jobs::AutoShardPolicy::default());
+        self
+    }
+
+    /// Leader-driven physical shard growth with explicit policy.
+    #[must_use]
+    pub fn auto_shard_policy(mut self, policy: trembita_jobs::AutoShardPolicy) -> Self {
+        self.scale = QueueRegistrationScale::AutoShard(policy);
+        self
     }
 
     /// Lease visibility timeout for workers holding jobs from this stream.
@@ -247,6 +270,7 @@ impl JobOpts {
                 lease: self.lease,
                 prefetch: self.prefetch,
                 default_max_attempts: self.default_max_attempts,
+                scale: self.scale,
             },
             stream: self.name,
             spawners: self.spawners,
@@ -264,4 +288,43 @@ pub(crate) struct JobRegistration {
     pub http_enqueue: bool,
     pub config_error: Option<String>,
     pub backlog: Option<(Arc<dyn ExternalBacklog>, BacklogFeedOpts)>,
+}
+
+#[cfg(test)]
+mod b32_tests {
+    use super::*;
+    use crate::queue_opts::QueueRegistrationScale;
+
+    #[test]
+    fn b32_job_opts_queue_scale_scenarios_table() {
+        let lease = Duration::from_secs(45);
+        struct Row {
+            label: &'static str,
+            opts: JobOpts,
+            check: fn(&QueueRegistrationScale) -> bool,
+        }
+        let rows = [
+            Row {
+                label: "standard stream",
+                opts: JobOpts::new("plain"),
+                check: |s| matches!(s, QueueRegistrationScale::Standard),
+            },
+            Row {
+                label: "fixed shards",
+                opts: JobOpts::new("sharded").sharded(5),
+                check: |s| matches!(s, QueueRegistrationScale::Sharded(5)),
+            },
+            Row {
+                label: "auto shard",
+                opts: JobOpts::new("grow").auto_shard(),
+                check: |s| matches!(s, QueueRegistrationScale::AutoShard(_)),
+            },
+        ];
+        for row in rows {
+            let reg = row.opts.lease(lease).into_registration();
+            assert_eq!(reg.queue.name, reg.stream, "{}: stream name", row.label);
+            assert_eq!(reg.queue.lease, lease, "{}: lease", row.label);
+            assert!((row.check)(&reg.queue.scale), "{}", row.label);
+        }
+    }
 }

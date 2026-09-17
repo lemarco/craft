@@ -37,6 +37,10 @@ mod merge_app_config_tests {
             data_dir: None,
             job_queue_stream: None,
             job_queue_lease: Duration::from_secs(60),
+            job_queue_shards: None,
+            job_queue_auto_shard: false,
+            coordination_raft_groups: 1,
+            coordination_shard_count: None,
             http_drain_timeout: crate::DEFAULT_GATEWAY_DRAIN_TIMEOUT,
             env: EnvOverrides::default(),
         }

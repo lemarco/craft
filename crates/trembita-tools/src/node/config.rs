@@ -374,6 +374,10 @@ impl NodeConfig {
             data_dir: self.data_dir.clone(),
             job_queue_stream: self.job_queue_stream.clone(),
             job_queue_lease: self.job_queue_lease,
+            job_queue_shards: None,
+            job_queue_auto_shard: false,
+            coordination_raft_groups: 1,
+            coordination_shard_count: None,
             http_drain_timeout,
             env: self.env,
         }

@@ -17,7 +17,7 @@ use crate::cron_opts::CronOpts;
 use crate::gateway::spawn_gateway as spawn_gateway_task;
 use crate::gateway::{GatewayBearerIdentity, GatewayConfig, GatewayOpts};
 use crate::job_opts::JobOpts;
-use crate::queue_opts::QueueOpts;
+use crate::queue_opts::{QueueOpts, QueueRegistrationScale};
 use crate::scheduled_workflow_opts::ScheduledWorkflowOpts;
 use crate::worker_opts::{WorkerGroup, WorkerOpts};
 use crate::workflow_opts::{WorkflowOpts, WorkflowRegistration};
@@ -197,15 +197,54 @@ impl TrembitaAppBuilder {
         self
     }
 
+    fn mount_queue_stream(
+        inner: TrembitaClusterBuilder<EmptyStateMachine>,
+        opts: &QueueOpts,
+    ) -> TrembitaClusterBuilder<EmptyStateMachine> {
+        let inner = match &opts.scale {
+            QueueRegistrationScale::Standard => inner.job_queue(&opts.name, opts.lease),
+            QueueRegistrationScale::Sharded(count) => {
+                inner.job_queue_sharded(&opts.name, *count, opts.lease)
+            }
+            QueueRegistrationScale::AutoShard(policy) => {
+                inner.job_queue_auto_shard(&opts.name, opts.lease, policy.clone())
+            }
+        };
+        inner
+            .job_queue_prefetch(&opts.name, opts.prefetch)
+            .job_queue_max_attempts(&opts.name, opts.default_max_attempts)
+    }
+
+    fn apply_env_coordination(
+        inner: TrembitaClusterBuilder<EmptyStateMachine>,
+        cfg: &AppConfig,
+    ) -> TrembitaClusterBuilder<EmptyStateMachine> {
+        let mut inner = inner;
+        if cfg.coordination_raft_groups > 1 {
+            let n = usize::try_from(cfg.coordination_raft_groups).unwrap_or(1);
+            inner = inner.raft_machines((0..n).map(|_| EmptyStateMachine));
+            if let Some(count) = cfg.coordination_shard_count {
+                inner = inner.shard_count(count);
+            }
+        }
+        inner
+    }
+
     /// Merge env-only settings into `builder` when not already set in code.
     fn apply_env_config(mut self, cfg: &AppConfig) -> Self {
-        self.inner = self.inner.merge_app_config(cfg);
+        self.inner = Self::apply_env_coordination(self.inner.merge_app_config(cfg), cfg);
         if let Some(stream) = cfg.job_queue_stream.clone()
             && !self.registration.jobs
         {
             self.registration.jobs = true;
             self.queue_streams.insert(stream.clone());
-            self = self.queue([QueueOpts::new(stream, cfg.job_queue_lease)]);
+            let mut opts = QueueOpts::new(stream, cfg.job_queue_lease);
+            if cfg.job_queue_auto_shard {
+                opts = opts.auto_shard();
+            } else if let Some(shards) = cfg.job_queue_shards {
+                opts = opts.sharded(shards);
+            }
+            self = self.queue([opts]);
         }
         if let Some(gateway) = self.gateway.as_mut()
             && gateway.tls.is_none()
@@ -369,13 +408,7 @@ impl TrembitaAppBuilder {
             }
             self.registration.jobs = true;
             self.queue_streams.insert(reg.stream.clone());
-            self.inner = self.inner.job_queue(&reg.queue.name, reg.queue.lease);
-            self.inner = self
-                .inner
-                .job_queue_prefetch(&reg.queue.name, reg.queue.prefetch);
-            self.inner = self
-                .inner
-                .job_queue_max_attempts(&reg.queue.name, reg.queue.default_max_attempts);
+            self.inner = Self::mount_queue_stream(self.inner, &reg.queue);
             if let Some((backlog, opts)) = reg.backlog {
                 self.inner = self
                     .inner
@@ -399,11 +432,7 @@ impl TrembitaAppBuilder {
         for opts in queues {
             self.registration.jobs = true;
             self.queue_streams.insert(opts.name.clone());
-            self.inner = self.inner.job_queue(&opts.name, opts.lease);
-            self.inner = self.inner.job_queue_prefetch(&opts.name, opts.prefetch);
-            self.inner = self
-                .inner
-                .job_queue_max_attempts(&opts.name, opts.default_max_attempts);
+            self.inner = Self::mount_queue_stream(self.inner, &opts);
         }
         self
     }

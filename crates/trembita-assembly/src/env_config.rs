@@ -97,6 +97,14 @@ pub struct AppConfig {
     pub job_queue_stream: Option<String>,
     /// Job queue lease timeout.
     pub job_queue_lease: Duration,
+    /// Physical shards for [`Self::job_queue_stream`] (`TREMBITA_JOB_QUEUE_SHARDS`).
+    pub job_queue_shards: Option<usize>,
+    /// Adaptive shard growth for env-only job queue (`TREMBITA_JOB_QUEUE_AUTO_SHARD`).
+    pub job_queue_auto_shard: bool,
+    /// Multi-Raft coordination groups (`TREMBITA_RAFT_GROUPS`, default `1`).
+    pub coordination_raft_groups: u32,
+    /// Key routing shard count when multi-Raft is enabled (`TREMBITA_RAFT_SHARD_COUNT`).
+    pub coordination_shard_count: Option<u32>,
     /// HTTP connection drain timeout (`TREMBITA_HTTP_DRAIN_TIMEOUT`).
     pub http_drain_timeout: Duration,
     /// Explicit env vars that were set for this parse.
@@ -391,6 +399,11 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
     let job_queue_lease = env("TREMBITA_JOB_QUEUE_LEASE_SECS")
         .and_then(|v| v.parse::<u64>().ok())
         .map_or(Duration::from_secs(60), Duration::from_secs);
+    let job_queue_shards = parse_job_queue_shards(env("TREMBITA_JOB_QUEUE_SHARDS"));
+    let job_queue_auto_shard = env_bool("TREMBITA_JOB_QUEUE_AUTO_SHARD");
+    validate_job_queue_scale_env(job_queue_shards, job_queue_auto_shard)?;
+    let coordination_raft_groups = parse_coordination_raft_groups(env("TREMBITA_RAFT_GROUPS"));
+    let coordination_shard_count = parse_coordination_shard_count(env("TREMBITA_RAFT_SHARD_COUNT"));
     let http_tls = match (
         env("TREMBITA_HTTP_TLS_CERT").or_else(|| env("TREMBITA_GATEWAY_TLS_CERT")),
         env("TREMBITA_HTTP_TLS_KEY").or_else(|| env("TREMBITA_GATEWAY_TLS_KEY")),
@@ -445,6 +458,10 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         data_dir,
         job_queue_stream,
         job_queue_lease,
+        job_queue_shards,
+        job_queue_auto_shard,
+        coordination_raft_groups,
+        coordination_shard_count,
         http_drain_timeout: http_drain_timeout_from_env(),
         env: env_overrides,
     })
@@ -502,6 +519,167 @@ pub fn log_non_product_env_warnings() {
             tracing::warn!(
                 target: "trembita::env",
                 "{key} is no longer read — use app registration / default gateway surfaces (0.5+)"
+            );
+        }
+    }
+}
+
+/// Parse `TREMBITA_JOB_QUEUE_SHARDS` (`None` when unset or invalid).
+#[must_use]
+pub fn parse_job_queue_shards(raw: Option<String>) -> Option<usize> {
+    raw.and_then(|v| v.parse::<usize>().ok())
+        .filter(|n| *n >= 1)
+}
+
+/// Parse `TREMBITA_RAFT_GROUPS` (default `1`, minimum `1`).
+#[must_use]
+pub fn parse_coordination_raft_groups(raw: Option<String>) -> u32 {
+    raw.and_then(|v| v.parse::<u32>().ok()).unwrap_or(1).max(1)
+}
+
+/// Parse `TREMBITA_RAFT_SHARD_COUNT` (`None` when unset or invalid).
+#[must_use]
+pub fn parse_coordination_shard_count(raw: Option<String>) -> Option<u32> {
+    raw.and_then(|v| v.parse::<u32>().ok()).map(|n| n.max(1))
+}
+
+/// Reject env that sets both fixed shards and auto-shard (B-32).
+///
+/// # Errors
+/// When both shard modes are enabled.
+pub fn validate_job_queue_scale_env(
+    shards: Option<usize>,
+    auto_shard: bool,
+) -> Result<(), Box<dyn Error>> {
+    if shards.is_some() && auto_shard {
+        return Err(
+            "set either TREMBITA_JOB_QUEUE_SHARDS or TREMBITA_JOB_QUEUE_AUTO_SHARD=1, not both"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod b32_env_tests {
+    use super::*;
+
+    #[test]
+    fn b32_parse_job_queue_shards_scenarios_table() {
+        struct Row {
+            raw: Option<&'static str>,
+            want: Option<usize>,
+        }
+        let rows = [
+            Row {
+                raw: None,
+                want: None,
+            },
+            Row {
+                raw: Some("3"),
+                want: Some(3),
+            },
+            Row {
+                raw: Some("0"),
+                want: None,
+            },
+            Row {
+                raw: Some("nope"),
+                want: None,
+            },
+        ];
+        for row in rows {
+            let got = parse_job_queue_shards(row.raw.map(str::to_string));
+            assert_eq!(got, row.want, "raw={:?}", row.raw);
+        }
+    }
+
+    #[test]
+    fn b32_parse_coordination_raft_groups_scenarios_table() {
+        struct Row {
+            raw: Option<&'static str>,
+            want: u32,
+        }
+        let rows = [
+            Row { raw: None, want: 1 },
+            Row {
+                raw: Some("4"),
+                want: 4,
+            },
+            Row {
+                raw: Some("0"),
+                want: 1,
+            },
+        ];
+        for row in rows {
+            let got = parse_coordination_raft_groups(row.raw.map(str::to_string));
+            assert_eq!(got, row.want, "raw={:?}", row.raw);
+        }
+    }
+
+    #[test]
+    fn b32_parse_coordination_shard_count_scenarios_table() {
+        struct Row {
+            raw: Option<&'static str>,
+            want: Option<u32>,
+        }
+        let rows = [
+            Row {
+                raw: None,
+                want: None,
+            },
+            Row {
+                raw: Some("64"),
+                want: Some(64),
+            },
+            Row {
+                raw: Some("0"),
+                want: Some(1),
+            },
+        ];
+        for row in rows {
+            let got = parse_coordination_shard_count(row.raw.map(str::to_string));
+            assert_eq!(got, row.want, "raw={:?}", row.raw);
+        }
+    }
+
+    #[test]
+    fn b32_validate_job_queue_scale_env_scenarios_table() {
+        struct Row {
+            shards: Option<usize>,
+            auto: bool,
+            ok: bool,
+        }
+        let rows = [
+            Row {
+                shards: None,
+                auto: false,
+                ok: true,
+            },
+            Row {
+                shards: Some(2),
+                auto: false,
+                ok: true,
+            },
+            Row {
+                shards: None,
+                auto: true,
+                ok: true,
+            },
+            Row {
+                shards: Some(2),
+                auto: true,
+                ok: false,
+            },
+        ];
+        for row in rows {
+            let result = validate_job_queue_scale_env(row.shards, row.auto);
+            assert_eq!(
+                result.is_ok(),
+                row.ok,
+                "shards={:?} auto={}",
+                row.shards,
+                row.auto
             );
         }
     }
