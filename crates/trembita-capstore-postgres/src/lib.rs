@@ -1,4 +1,4 @@
-//! PostgreSQL [`CapStateStore`](trembita_capstore::CapStateStore) adapter.
+//! PostgreSQL [`CapStateStore`] adapter.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 

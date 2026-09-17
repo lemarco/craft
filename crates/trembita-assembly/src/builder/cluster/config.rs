@@ -299,7 +299,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
         self
     }
 
-    /// External store for **stateful actor workflow data** ([`RedbCapStateStore`](trembita_capstore::RedbCapStateStore)
+    /// External store for **stateful capability workflow data** ([`RedbCapStateStore`]
     /// when [`data_dir`](Self::data_dir) is set). Override with an explicit store when needed.
     #[must_use]
     pub fn actor_state_store(mut self, store: Arc<dyn trembita_capstore::CapStateStore>) -> Self {
