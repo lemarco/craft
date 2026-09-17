@@ -53,12 +53,14 @@ PUBLISH_ORDER=(
     trembita-capstore-postgres
     trembita-gateway-session-postgres
     trembita-jobs
+    trembita-schedule-postgres
     trembita-events
     trembita-events-postgres
     trembita-client
     trembita-sim
     trembita-dashboard
     trembita-http
+    trembita-gateway-auth
     trembita-store-redis
     trembita-backlog-postgres
     trembita-assembly

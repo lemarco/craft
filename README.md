@@ -25,7 +25,7 @@
 | | |
 |---|---|
 | **Stability** | Pre-**1.0** experimental — [docs/status.md](docs/status.md) |
-| **Distribution** | [crates.io](https://crates.io/crates/trembita) (**0.6.0**) · [upgrade from 0.5.x](docs/releases/0.6.0.md) · E2E/chaos · product showcases |
+| **Distribution** | [crates.io](https://crates.io/crates/trembita) (**0.6.3**) · [release notes](docs/releases/0.6.3.md) · E2E/chaos · product showcases |
 | **Docs** | [docs.rs/trembita](https://docs.rs/trembita) · [0.x release notes](docs/releases/README.md) · summary [CHANGELOG.md](CHANGELOG.md) |
 | **Full status** | [docs/status.md](docs/status.md) |
 
