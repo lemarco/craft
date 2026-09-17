@@ -15,10 +15,11 @@ Symptoms:
 ## Mitigation checklist
 
 1. **Enable multi-Raft** — [`spawn_multi_raft_node`](../../crates/trembita-runtime/src/sharded.rs), `ShardedNodeService`, Meta-Raft coordinator ([multi-raft ADR](../decisions/multi-raft.md)).
-2. **Add groups** — `TrembitaCluster::add_raft_groups(n)` expands the catalog; rebalance migrates group hosting across nodes.
-3. **Route by key** — `propose_keyed`, `query_keyed`, `propose_keyed_batch` (sequential batch, partial errors surfaced).
-4. **Stable shards** — `activate_shards`, `switch_to_stable_shards` when moving from modulus to catalog-backed placement.
-5. **Keep commands small** — SM commands carry decisions; bytes live in queue, cap store, or your DB ([state-placement](state-placement.md)).
+2. **Add groups** — [`TrembitaCluster::add_raft_groups`](../../crates/trembita-assembly/src/cluster_handle/cluster.rs) or [`TrembitaApp::add_raft_groups`](../../crates/trembita/src/app/runtime.rs) expands the catalog; rebalance migrates group hosting across nodes.
+3. **Route by key** — `propose_keyed`, `query_keyed`, `propose_keyed_batch` (sequential batch, partial errors surfaced); from capabilities use [`OpCtx`](../../crates/trembita/src/capability/consensus.rs) / app helpers on [`TrembitaApp`](../../crates/trembita/src/app/runtime.rs).
+4. **Command size** — stay under [`MAX_RAFT_COMMAND_BYTES`](../../crates/trembita-proto/src/client.rs); oversize bodies fail before replication.
+5. **Stable shards** — `activate_shards`, `switch_to_stable_shards` when moving from modulus to catalog-backed placement.
+6. **Keep commands small** — SM commands carry decisions; bytes live in queue, cap store, or your DB ([state-placement](state-placement.md)).
 
 ## Ops introspection
 

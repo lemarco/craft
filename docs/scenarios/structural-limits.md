@@ -8,8 +8,9 @@ One Raft group = one leader log. More VPS nodes improve fault tolerance and comp
 
 | Do | API / pattern |
 |----|----------------|
-| Partition hot keys | Multi-Raft — [`ShardRouter`](../decisions/multi-raft.md), `add_raft_groups`, keyed `propose` / `query` |
+| Partition hot keys | Multi-Raft — [`ShardRouter`](../decisions/multi-raft.md), `add_raft_groups`, keyed `propose` / `query` ([`TrembitaApp`](../../crates/trembita/src/app/runtime.rs) / [`OpCtx::propose_keyed`](../../crates/trembita/src/capability/consensus.rs)) |
 | Keep commands small | Domain SM commands; bulk bytes in `JobQueue`, cap store, or app Postgres |
+| Respect wire limit | [`MAX_RAFT_COMMAND_BYTES`](../../crates/trembita-proto/src/client.rs) (512 KiB) — client + leader reject oversize (`CommandTooLarge`) |
 | Scale backlog throughput | `JobQueue` sharding, `ExternalBacklog`, not Raft log rows |
 
 Guide: [Write scaling](write-scaling.md).

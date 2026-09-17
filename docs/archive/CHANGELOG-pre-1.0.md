@@ -9,11 +9,30 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with all
 
 Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases may include breaking changes on minor bumps; each is noted here.
 
-**Crates.io:** [`0.6.0`](https://crates.io/crates/trembita) (2026-09-16). Prior: [0.5.1](#051--2026-09-15).
+**Crates.io:** [`0.6.1`](https://crates.io/crates/trembita) (2026-09-17). Prior: [0.6.0](#060--2026-09-16).
 
 ## [Unreleased]
 
-_(empty — see **0.6.0** below.)_
+### Added
+
+- **Structural limits product layer** — R1 wire command cap, `OpCtx` consensus helpers, R3 directory RYW + rebalance mitigation; docs [structural-limits](../scenarios/structural-limits.md), [write-scaling](../scenarios/write-scaling.md).
+- **Integration** — capability inline during `add_raft_groups` (`cap_rebalance`); leader rejects oversize propose on wire.
+
+### Changed
+
+- **`trembita doctor`** — capability store guard (`require_store`).
+
+## [0.6.1] — 2026-09-17
+
+Upgrade: [releases/0.6.1.md](../releases/0.6.1.md).
+
+### Added
+
+- **`trembita-capstore`** on crates.io (rename from in-repo `trembita-actor-store` implementation); **`trembita-capstore-postgres`** optional backend; facade feature **`capstore-postgres`**.
+
+### Changed
+
+- Deprecated **`ActorStateStore`** / **`RedbActorStateStore`** type aliases; **`trembita-actor-store` 0.6.1** on crates.io remains a one-release re-export shim.
 
 ## [0.6.0] — 2026-09-16
 

@@ -20,7 +20,7 @@ Structural limits and mitigations for trembita. Shipped capabilities are listed 
 Adding VPSes improves **fault tolerance** and **runtime compute** (capability hosts, consumers), not linear write throughput through a **single** Raft log ([cluster-elasticity](cluster-elasticity.md#scale-targets)).
 
 - **Mitigation (shipped):** multi-Raft — partition keys across groups; add groups via `add_raft_groups` ([multi-raft](multi-raft.md)).
-- **Guidance:** keep commands small; use Redis ([actor-state-redis](actor-state-redis.md)) for high-churn workflow state outside consensus.
+- **Guidance:** keep commands small ([`MAX_RAFT_COMMAND_BYTES`](../../crates/trembita-proto/src/client.rs), client + leader wire reject); use cap store / queue for bulk and idempotency markers — not oversized `propose` payloads ([write-scaling § R1](../scenarios/write-scaling.md)).
 
 ### R2 — Consensus starvation on shared QUIC listener
 
