@@ -23,10 +23,10 @@ fn doctor_errors_when_jobs_registered_in_app_rs() {
 
     let app_path = project.app_rs();
     let mut app = fs::read_to_string(&app_path).unwrap();
-    app = app.replace(".manifest(manifest::build())", "");
+    app = app.replace(".manifest(manifest)\n", "");
     app = app.replace(
-        "TrembitaApp::from_config(cfg)?",
-        "TrembitaApp::from_config(cfg)?\n            .jobs([])",
+        "TrembitaApp::from_config(cfg)\n",
+        "TrembitaApp::from_config(cfg)\n            .jobs([])\n",
     );
     fs::write(&app_path, app).unwrap();
 
