@@ -2,7 +2,7 @@
 
 Historical epics **B-01 … B-27**, contract fixes, and epic maps moved from [backlog.md](../backlog.md) on 2026-09-17.
 
-**B-28 … B-32 (product scale wave):** [backlog-wave-b28-b32.md](backlog-wave-b28-b32.md) · **Open work:** [backlog.md](../backlog.md#open-work) · **Current capabilities:** [status.md](../status.md)
+**B-28 … B-32:** [backlog-wave-b28-b32.md](backlog-wave-b28-b32.md) · **B-33 … B-41:** [backlog-wave-b33-b41.md](backlog-wave-b33-b41.md) · **Open work:** [backlog.md](../backlog.md#open-work) · **Current capabilities:** [status.md](../status.md)
 
 ---
 

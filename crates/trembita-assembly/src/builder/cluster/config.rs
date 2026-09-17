@@ -77,8 +77,16 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             workload: None,
             durable_mailbox: false,
             leader_tasks: Vec::new(),
+            coordination_ceilings: trembita_jobs::CoordinationCeilings::default(),
             overrides: BuilderOverrides::default(),
         }
+    }
+
+    /// B-44 — hard ceilings on auto-shard / runtime Raft group growth.
+    #[must_use]
+    pub fn coordination_ceilings(mut self, ceilings: trembita_jobs::CoordinationCeilings) -> Self {
+        self.coordination_ceilings = ceilings;
+        self
     }
 
     /// Mark [`node_id`](Self::new) as code-authoritative for env merge (used by [`TrembitaConfigure`](crate::configure::TrembitaConfigure)).
@@ -287,6 +295,12 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
         }
         if !cfg.join_seeds.is_empty() {
             self.join_seeds.clone_from(&cfg.join_seeds);
+        }
+        if let Some(max) = cfg.coordination_max_queue_shards {
+            self.coordination_ceilings.max_queue_shards = Some(max);
+        }
+        if let Some(max) = cfg.coordination_max_raft_groups {
+            self.coordination_ceilings.max_raft_groups = Some(max);
         }
         self
     }

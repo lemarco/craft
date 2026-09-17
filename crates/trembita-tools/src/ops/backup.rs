@@ -170,7 +170,7 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn export_import_roundtrip() {
+    fn b48_export_import_data_dir_roundtrip() {
         let data = tempdir().unwrap();
         let group = data.path().join("group-0.redb");
         std::fs::write(&group, b"snapshot").unwrap();

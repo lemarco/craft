@@ -72,6 +72,26 @@ Multi-Raft shards commit independently. Cross-shard patterns:
 
 Guides: [workflows](workflows.md) · [multi-raft § cross-shard](../decisions/multi-raft.md#cross-shard-transactions) · [state-placement](state-placement.md).
 
+## Domain patterns (B-52)
+
+Pick the **smallest** durable primitive — cap store markers are not a ledger.
+
+```text
+Side effect must survive retry?
+  ├─ yes, job/cap delivery only → require_store marker (jobs template task.rs)
+  ├─ yes, DB row + event same txn → domain outbox + TopicOpts::outbox (topics template)
+  └─ authoritative cluster fact → encode domain command → propose_keyed / query_keyed_linearizable
+```
+
+| Question | Use | Avoid |
+|----------|-----|-------|
+| “Enqueue once under redelivery?” | `dedup_key` / `#[cap_handler(key)]` + bridge idempotency | RAM-only handler state |
+| “Exactly-once side effect?” | Store marker **before** ack (at-least-once + idempotent handler) | Assuming `Queued` is once-only |
+| “Read balance for payment?” | `query_keyed_linearizable` on your SM | `ask` / inline cap reply |
+| “Update Postgres + notify subscribers?” | App outbox table + `EventOutboxSource` drainer | `publish` in same DB txn without outbox |
+
+Deep dive: [capability-dx § Domain DX patterns (B-52)](../decisions/capability-dx.md#domain-dx-patterns-b-52) · [capabilities § B-52](capabilities.md#domain-dx-patterns-b-52).
+
 ## Related
 
 - [status.md § scope boundaries](../status.md#scope-boundaries)

@@ -2,6 +2,7 @@
 
 mod backlog_settle_outbox;
 mod cluster_job_queue;
+mod coordination_closed_loop;
 mod depth_cache;
 mod external_backlog;
 mod queue;
@@ -22,6 +23,11 @@ pub use backlog_settle_outbox::{
     InMemoryBacklogSettleOutbox, RedbBacklogSettleOutbox, push_backlog_settle,
 };
 pub use cluster_job_queue::ClusterJobQueue;
+pub use coordination_closed_loop::{
+    AutoShardClosedLoopLine, AutoShardExpandResult, CoordinationCeilings,
+    CoordinationClosedLoopRegistry, CoordinationClosedLoopSnapshot, effective_max_shards,
+    raft_why_not_scaling,
+};
 pub use depth_cache::{CachedDepth, DepthCache};
 pub use external_backlog::{
     BacklogError, BacklogFeedOpts, BacklogItem, BacklogRegistry, BacklogSettleEvent,

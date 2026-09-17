@@ -137,4 +137,16 @@ impl QueueService {
             .streams
             .insert(stream.into(), queue);
     }
+
+    /// Physical shard count for a registered logical auto-shard / sharded queue.
+    #[must_use]
+    pub fn sharded_logical_shard_count(&self, logical: &str) -> usize {
+        self.registry
+            .lock()
+            .expect("poisoned")
+            .sharded
+            .get(logical)
+            .map(|q| q.shard_count())
+            .unwrap_or(1)
+    }
 }

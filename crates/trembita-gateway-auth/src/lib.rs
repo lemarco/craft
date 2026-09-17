@@ -2,13 +2,23 @@
 
 #![deny(unsafe_code)]
 
+mod authorize;
 mod dev_oidc;
+mod oauth_cookies;
+mod pkce;
+mod production;
+mod redirect;
 
 use std::sync::Arc;
 use std::time::Duration;
 
+pub use authorize::DevOidcAuthorize;
 pub use dev_oidc::DevOidcCallback;
 use http::StatusCode;
+pub use oauth_cookies::{OAUTH_PKCE_COOKIE, OAUTH_STATE_COOKIE};
+pub use pkce::{PkceMethod, PkcePair};
+pub use production::{OidcAuthorizeParams, OidcConfigError, OidcProductionConfig};
+pub use redirect::{RedirectAllowlist, RedirectError};
 use trembita_http::{HttpError, Response, SessionGate, SessionIssuer};
 
 /// After IdP success, mint product session cookie via [`SessionIssuer`].

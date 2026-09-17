@@ -16,8 +16,12 @@ homepage.workspace = true
 workspace = true
 
 [dependencies]
+base64.workspace = true
 bytes.workspace = true
+getrandom.workspace = true
+hex.workspace = true
 http.workspace = true
+sha2.workspace = true
 trembita-http.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

@@ -34,6 +34,7 @@
 //! | `dev-certs` | Ephemeral mTLS for local development |
 //! | `redis-store` | Redis `trembita_capstore::CapStateStore` |
 //! | `capstore-postgres` | Postgres `trembita_capstore::CapStateStore` via `trembita-capstore-postgres` |
+//! | `gateway-session-postgres` | Postgres [`GatewaySessionStore`] via `trembita-gateway-session-postgres` (B-46) |
 //! | `external-backlog` | Postgres [`ExternalBacklog`] adapter |
 //! | `schedule-postgres` | Postgres [`ScheduleSource`](trembita_jobs::ScheduleSource) via `trembita-schedule-postgres` |
 //! | `domain-outbox` | Postgres [`EventOutboxSource`] adapter |
@@ -135,9 +136,9 @@ pub use gateway::{
     CapStoreGatewaySessionStore, CapStoreSessionIssuer, CapStoreSessionVerifier,
     ClusterSessionError, ClusterSessionSecret, GatewaySessionStore, SignedCookieSessionIssuer,
     SignedCookieSessionVerifier, VerifiedClusterSession, capstore_session_gate,
-    cluster_session_gate, register_capstore_session, revoke_capstore_session,
-    rotating_cluster_session_gate, session_user_from_cookie, session_user_from_verifier,
-    verify_capstore_session,
+    cluster_session_gate, opaque_gateway_session_token, register_capstore_session,
+    revoke_capstore_session, rotating_cluster_session_gate, session_user_from_cookie,
+    session_user_from_verifier, validate_gateway_session_user, verify_capstore_session,
 };
 pub use gateway::{
     ConnectionGuard, ConnectionTracker, DEFAULT_GATEWAY_DRAIN_TIMEOUT, ExtractedIdentity,
@@ -229,6 +230,18 @@ pub use trembita_schedule_postgres as schedule_postgres;
 #[cfg(feature = "schedule-postgres")]
 pub use trembita_schedule_postgres::{PgScheduleSchema, PgScheduleSource};
 
+#[cfg(feature = "gateway-session-postgres")]
+#[doc(inline)]
+pub use trembita_gateway_session_postgres as gateway_session_postgres;
+
+#[cfg(feature = "gateway-session-postgres")]
+pub use trembita_gateway_session_postgres::{
+    PgGatewaySessionSchema, PgGatewaySessionStore, PgSessionLookup, PgVerifiedSession,
+};
+
+#[cfg(all(feature = "gateway-session-postgres", feature = "http-jobs"))]
+pub use gateway::pg_gateway_session_gate;
+
 pub use trembita_runtime::{LeaderGate, LeaderLoopOpts, LeaderSession, run_leader_loop};
 
 pub use upgrade::upgrade_api;
@@ -247,9 +260,11 @@ pub use trembita_dashboard::{
 };
 
 #[cfg(feature = "otlp-metrics")]
-pub use trembita_runtime::{
-    MetricsOpts, TracingOpts, init_metrics_with_otlp, init_tracing_with_otlp,
-};
+pub use crate::app::install_otlp_metrics;
+#[cfg(feature = "otlp-metrics")]
+pub use trembita_metrics_otlp::{MetricsOpts, OtlpMetricsSink, init_metrics_with_otlp};
+#[cfg(feature = "otlp-metrics")]
+pub use trembita_runtime::{TracingOpts, init_tracing_with_otlp};
 
 /// Library version string (from `Cargo.toml`).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

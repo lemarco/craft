@@ -130,8 +130,14 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
     }
     write_file(
         &root.join("src/domain/mod.rs"),
-        &vars.apply(app_tpl!("src/domain/mod.rs.tpl")),
+        &generate_domain_mod(opts, &features),
     )?;
+    if should_scaffold_domain_outbox(opts, &features) {
+        write_file(
+            &root.join("src/domain/outbox.rs"),
+            &vars.apply(app_tpl!("src/domain/outbox.rs.tpl")),
+        )?;
+    }
     let capabilities_mod = match opts.template {
         Some(AppTemplate::Realtime) => generate_realtime_capabilities_mod(),
         Some(AppTemplate::Workflows) => {
@@ -139,6 +145,10 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
         }
         Some(AppTemplate::Jobs) => {
             "//! Capability groups — queued idempotency reference (R4).\n\npub mod task;\n"
+                .to_string()
+        }
+        Some(AppTemplate::Api) => {
+            "//! Capability groups — inline ops + consensus helper reference (B-52).\n\npub mod consensus;\npub mod ping;\n"
                 .to_string()
         }
         _ => vars.apply(app_tpl!("src/capabilities/mod.rs.tpl")),
@@ -161,6 +171,16 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
             write_file(
                 &root.join("src/capabilities/task.rs"),
                 &vars.apply(app_tpl!("src/capabilities/task.rs.tpl")),
+            )?;
+        }
+        Some(AppTemplate::Api) => {
+            write_file(
+                &root.join("src/capabilities/consensus.rs"),
+                &vars.apply(app_tpl!("src/capabilities/consensus.rs.tpl")),
+            )?;
+            write_file(
+                &root.join("src/capabilities/ping.rs"),
+                &vars.apply(app_tpl!("src/capabilities/ping.rs.tpl")),
             )?;
         }
         _ => {
@@ -215,6 +235,22 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
     }
 
     Ok(root)
+}
+
+fn should_scaffold_domain_outbox(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> bool {
+    features.contains(&AppFeature::DomainOutbox) || opts.template == Some(AppTemplate::Topics)
+}
+
+fn generate_domain_mod(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> String {
+    let mut body =
+        String::from("//! Domain logic — no `trembita` imports (hexagon inner core).\n\n");
+    if should_scaffold_domain_outbox(opts, features) {
+        body.push_str("pub mod outbox;\n\n");
+    }
+    body.push_str("#[allow(dead_code)]\npub fn hello() -> &'static str {\n    \"");
+    body.push_str(&opts.name);
+    body.push_str("\"\n}\n");
+    body
 }
 
 fn generate_http_mod_rs(features: &HashSet<AppFeature>) -> String {

@@ -260,6 +260,92 @@ Rust mirrors: [`lb_smoke_min_distinct`](../../crates/trembita-cli/src/dev/local_
 ./scripts/test-fast.sh -p trembita-tools --lib b34_
 ```
 
+## Domain DX patterns (B-52)
+
+Scaffold + docs for **transactional outbox**, **queued idempotency** (`require_store`), and **consensus helpers** — see [capability-dx § B-52](../decisions/capability-dx.md#domain-dx-patterns-b-52) and [structural-limits § Domain patterns](structural-limits.md#domain-patterns-b-52).
+
+| Template | Sample file |
+|----------|-------------|
+| `jobs` | `src/capabilities/task.rs` — `require_store` + `default_queue_for` |
+| `topics` (+ optional `--features domain-outbox`) | `src/domain/outbox.rs` — `EventOutboxSource` wiring hint |
+| `api` | `src/capabilities/consensus.rs` — `propose_keyed` / `query_keyed_linearizable` pointers |
+
+Showcases: [stateful-workers](../../examples/stateful-workers/) (store + consensus) · [background-jobs](../../examples/background-jobs/) (queued caps).
+
+### Automated regression (B-52)
+
+| Scenario | Regression |
+|----------|------------|
+| Jobs template idempotency sample | `b52_jobs_template_task_idempotency_sample`, `b38_template_jobs_includes_queued_idempotency_capability` |
+| Topics template outbox stub | `b52_topics_template_includes_domain_outbox_stub` |
+| Api template consensus hints | `b52_api_template_includes_consensus_reference` |
+| Live docs sections | `b52_domain_patterns_documented_in_capability_dx_and_structural_limits` |
+
+```bash
+./scripts/test-fast.sh -p trembita-cli --test scaffold b52_
+```
+
+## Backlog / coverage hygiene (B-53)
+
+Doc-only epic: keep **shipped epic history** and **regression index** aligned when waves close.
+
+| Deliverable | Path |
+|-------------|------|
+| B-33…B-41 planning snapshot | [archive/backlog-wave-b33-b41.md](../archive/backlog-wave-b33-b41.md) |
+| Shipped regression tables | [testing-coverage § B-28–B-32](../testing-coverage.md#shipped-backlog-b-28b32) · [§ B-33–B-41](../testing-coverage.md#shipped-backlog-b-33b41) · [§ B-42+](../testing-coverage.md#shipped-backlog-b-42) |
+| Open work entry point | [backlog.md](../backlog.md) (links all archives) |
+
+### Automated regression (B-53)
+
+| Scenario | Regression |
+|----------|------------|
+| B-33…B-41 archive lists epics only | `b53_backlog_wave_b33_b41_archive_exists` |
+| Backlog + coverage + status cross-links | `b53_testing_coverage_links_b33_b41_archive` |
+
+```bash
+./scripts/test-fast.sh -p trembita --test deploy_pack b53_
+```
+
+## Ops observability layer (B-51)
+
+Join / queue / R3 signals from [B-43](#ops-cockpit-introspect-b-43) export on **`GET /metrics`** and optional OTLP (`otlp-metrics` + `OTEL_EXPORTER_OTLP_ENDPOINT`). [`TrembitaApp::from_env`](../../crates/trembita/src/app/runtime.rs) attaches [`OtlpMetricsSink`](../../crates/trembita-metrics-otlp/src/sink.rs) when configured.
+
+| Signal | Prometheus / OTLP name |
+|--------|-------------------------|
+| Join pipeline | `trembita_join_phase`, `trembita_join_pool_ready` |
+| Job backlog | `trembita_queue_pending`, `trembita_queue_oldest_pending_age_ms`, … |
+| Directory R3 | `trembita_directory_merge_lag_epochs`, `trembita_directory_deliver_no_target_total` |
+
+Alert thresholds: [production-runbook § B-51](../ops/production-runbook.md#ops-observability-layer-b-51) · env: [env.md § OpenTelemetry](../env.md#opentelemetry-metrics-b-51).
+
+```bash
+./scripts/test-fast.sh -p trembita-metrics-otlp --lib b51_
+./scripts/test-fast.sh -p trembita-assembly --lib b51_
+```
+
+## CI local elastic smoke (B-50)
+
+**Heavy CI lane** (MR label **`run-heavy`** or nightly schedule): [`scripts/ci-local-elastic-smoke.sh`](../../scripts/ci-local-elastic-smoke.sh) runs the same checks as **`./scripts/local-cluster.sh elastic-smoke`** ([B-42](#local-elastic-parity-b-42)) — 4th joiner, nginx **`:18290`**, `/ready` spread, cluster session, **`GET /e2e/whoami`** — without building the full [`e2e/elastic_lb.sh`](../../e2e/elastic_lb.sh) Docker compose stack. GitLab job: **`local-elastic-smoke`** in [`.gitlab-ci.yml`](../../.gitlab-ci.yml).
+
+Local dry-run (needs Docker + Rust):
+
+```bash
+bash scripts/ci-local-elastic-smoke.sh
+```
+
+Full QUIC compose proof remains **`e2e/elastic_lb.sh`** on the **`e2e`** heavy job.
+
+### Automated regression (B-50)
+
+| Scenario | Regression |
+|----------|------------|
+| CI script phases + docker preflight | `b50_ci_local_elastic_smoke_script_wires_local_cluster_phases` |
+| GitLab job wired | `b50_gitlab_ci_declares_local_elastic_smoke_job` |
+
+```bash
+./scripts/test-fast.sh -p trembita-cli --test dev b50_
+```
+
 ## Gateway auth split (B-40)
 
 Cluster cookie login ([B-29](../decisions/gateway-cluster-auth.md)) is implemented through **`SessionIssuer`** / **`SessionVerifier`** ports — HTTP [`SessionGate`](../../crates/trembita-http/src/routing/session_ports.rs) validates cookies via a verifier; login / OIDC callbacks call an issuer and [`set_session_cookie`](../../crates/trembita-http/src/routing/auth.rs). **No session storage inside `trembita-gateway-auth`** — only flow + `SessionIssuer`.
@@ -273,6 +359,26 @@ Cluster cookie login ([B-29](../decisions/gateway-cluster-auth.md)) is implement
 **Rotation:** `TREMBITA_GATEWAY_SESSION_SECRET_PREVIOUS` during secret roll — [env.md](../env.md) · [runbook § B-40](../ops/production-runbook.md#gateway-session-rotation-b-40).
 
 Demo: [`examples/oauth-gateway`](../../examples/oauth-gateway/README.md).
+
+## OAuth prod hardening (B-47)
+
+PKCE **S256** default, exact **`redirect_uri` allowlist** ([`RedirectAllowlist`](../../crates/trembita-gateway-auth/src/redirect.rs)), authorize/callback binding via [`DevOidcAuthorize`](../../crates/trembita-gateway-auth/src/authorize.rs) + [`DevOidcCallback::with_production`](../../crates/trembita-gateway-auth/src/dev_oidc.rs). Env: [env.md § B-47](../env.md#oauth-hardening-b-47) · runbook: [§ B-47](../ops/production-runbook.md#oauth-production-wiring-b-47). Gateway session rotation unchanged ([§ B-40](../ops/production-runbook.md#gateway-session-rotation-b-40)).
+
+### Automated regression (B-47)
+
+| Scenario | Regression |
+|----------|------------|
+| S256 PKCE roundtrip + env parse | `b47_pkce_*` (`pkce.rs`) |
+| Redirect allowlist exact match | `b47_redirect_*` (`redirect.rs`) |
+| Authorize params + allowlist gate | `b47_authorize_params_require_allowlisted_redirect` |
+| Dev authorize sets pending cookies | `b47_dev_authorize_sets_pending_cookies_and_json` |
+| Hardened dev callback | `b47_dev_oidc_callback_production_pkce_and_state` |
+
+```bash
+./scripts/test-fast.sh -p trembita-gateway-auth --lib b47_
+```
+
+ADR: [gateway-cluster-auth § B-47](../decisions/gateway-cluster-auth.md#b-47--oauth-prod-hardening).
 
 ### Automated regression (B-40)
 
@@ -291,6 +397,32 @@ Demo: [`examples/oauth-gateway`](../../examples/oauth-gateway/README.md).
 ```
 
 ADR: [gateway-cluster-auth § B-40](../decisions/gateway-cluster-auth.md#b-40--logic--storage-split).
+
+## Gateway session store adapters (B-46)
+
+Dedicated Postgres table for **opaque** gateway sessions — composes with B-40 [`CapStoreSessionIssuer`](../../crates/trembita/src/gateway/cluster_session.rs) / [`CapStoreSessionVerifier`](../../crates/trembita/src/gateway/cluster_session.rs), separate from cap-store KV ([`CapStoreGatewaySessionStore`](../../crates/trembita/src/gateway/cluster_session.rs)).
+
+| Piece | Location |
+|-------|----------|
+| Crate | [`trembita-gateway-session-postgres`](../../crates/trembita-gateway-session-postgres/) |
+| Facade feature | `gateway-session-postgres` on `trembita` |
+| [`GatewaySessionStore`](../../crates/trembita/src/gateway/cluster_session.rs) impl | [`pg_gateway_session.rs`](../../crates/trembita/src/gateway/pg_gateway_session.rs) |
+| Session gate helper | [`pg_gateway_session_gate`](../../crates/trembita/src/gateway/pg_gateway_session.rs) |
+
+ADR: [gateway-cluster-auth § B-46](../decisions/gateway-cluster-auth.md#b-46--postgres-gateway-session-store).
+
+### Automated regression (B-46)
+
+| Scenario | Regression |
+|----------|------------|
+| Shared session user validation | `b46_validate_gateway_session_user_scenarios_table` |
+| Postgres DDL / ident / token | `b46_*` in `trembita-gateway-session-postgres` |
+| Docker roundtrip | `b46_register_lookup_revoke_roundtrip` (`#[ignore]`, `docker-tests`) |
+
+```bash
+./scripts/test-fast.sh -p trembita --lib b46_validate
+./scripts/test-fast.sh -p trembita-gateway-session-postgres --lib b46_
+```
 
 ## Coordination scale (B-32)
 
@@ -473,7 +605,7 @@ ADR: [actor-routing § B-36](../decisions/actor-routing.md#r3-visibility--sticky
 
 ## Ops cockpit introspect (B-43)
 
-**`GET /introspect/ops-summary`** on the unified ops listener returns one JSON document: **`join`** ([B-35](#join-readiness-pipeline-b-35)), **`product_scale`** ([B-33](#boot-scale-report--preflight-b-33)), **`directory_r3`** ([B-36](#r3-directory-visibility-b-36)), **`coordination_profile`** ([B-37](#coordination-growth-presets-b-37)), and live **`queue_depths`** (subset of [`/introspect/queues`](../../crates/trembita-http/src/introspect_routes.rs)). In-process twin: [`TrembitaApp::ops_summary`](../../crates/trembita/src/app/ops_summary.rs) · public type [`OpsSummary`](../../crates/trembita/src/app/ops_summary.rs).
+**`GET /introspect/ops-summary`** on the unified ops listener returns one JSON document: **`join`** ([B-35](#join-readiness-pipeline-b-35)), **`product_scale`** ([B-33](#boot-scale-report--preflight-b-33)), **`directory_r3`** ([B-36](#r3-directory-visibility-b-36)), **`coordination_profile`** ([B-37](#coordination-growth-presets-b-37)), live **`queue_depths`** (subset of [`/introspect/queues`](../../crates/trembita-http/src/introspect_routes.rs)), and **`coordination_closed_loop`** ([B-44](#coordination-closed-loop-b-44)). In-process twin: [`TrembitaApp::ops_summary`](../../crates/trembita/src/app/ops_summary.rs) · public type [`OpsSummary`](../../crates/trembita/src/app/ops_summary.rs).
 
 | Top-level key | Contents |
 |---------------|----------|
@@ -482,6 +614,7 @@ ADR: [actor-routing § B-36](../decisions/actor-routing.md#r3-visibility--sticky
 | `directory_r3` | [`DirectoryR3Snapshot`](../../crates/trembita/src/app/directory_r3.rs) — same as `/introspect/directory-r3` |
 | `coordination_profile` | `preset`, optional auto-shard hints when B-37 preset set; `{}` when unset |
 | `queue_depths` | `[{ stream, pending, leased, oldest_pending_age_ms }]` per registered stream |
+| `coordination_closed_loop` | B-44 ceilings, per auto-shard stream state, `raft_why_not_scaling` |
 
 Runbook: [production-runbook § B-43](../ops/production-runbook.md#ops-cockpit-introspect-b-43) · ADR note: [capability-dx § B-43](../decisions/capability-dx.md).
 
@@ -503,6 +636,141 @@ Runbook: [production-runbook § B-43](../ops/production-runbook.md#ops-cockpit-i
 ```bash
 ./scripts/test-fast.sh -p trembita --lib b43_
 ./scripts/test-fast.sh -p trembita --test ops_summary_report b43_
+```
+
+## Coordination closed-loop (B-44)
+
+Leader auto-shard coordinator (B-32/B-37) records per-stream depth, hot ticks, effective shard ceiling, and stable **`why_not_scaling`** codes into [`CoordinationClosedLoopRegistry`](../../crates/trembita-jobs/src/coordination_closed_loop.rs). Ops read the same snapshot via **`coordination_closed_loop`** on [ops-summary (B-43)](#ops-cockpit-introspect-b-43) or [`TrembitaApp::coordination_closed_loop_snapshot`](../../crates/trembita/src/app/ops_summary.rs).
+
+| Control | API |
+|---------|-----|
+| Queue shard ceiling | `TREMBITA_COORDINATION_MAX_QUEUE_SHARDS`, [`.with_coordination_max_queue_shards`](../../crates/trembita/src/configure.rs) |
+| Raft catalog ceiling | `TREMBITA_COORDINATION_MAX_RAFT_GROUPS`, [`.with_coordination_max_raft_groups`](../../crates/trembita/src/configure.rs), enforced on [`add_raft_groups`](../../crates/trembita/src/app/runtime.rs) |
+
+Runbook reason codes: [production-runbook § B-44](../ops/production-runbook.md#coordination-closed-loop-b-44).
+
+### Automated regression (B-44)
+
+| Scenario | Regression |
+|----------|------------|
+| Effective max shards = min(policy, ceiling) | `b44_effective_max_shards_respects_ceiling` |
+| Auto-shard `why_not_scaling` table | `b44_why_not_after_tick_scenarios_table` |
+| Raft hint at / below ceiling | `b44_raft_why_not_scaling_at_ceiling` |
+| Registry snapshot shape | `b44_registry_snapshot_lists_registered_streams` |
+| Env parsers for max vars | `b44_parse_coordination_max_ceilings_scenarios_table` |
+| `add_raft_groups` at ceiling | `b44_add_raft_groups_rejected_at_coordination_ceiling` |
+| Ops-summary JSON includes closed-loop | `b44_ops_summary_includes_closed_loop_ceilings_and_raft_hint` |
+
+```bash
+./scripts/test-fast.sh -p trembita-jobs --lib b44_
+./scripts/test-fast.sh -p trembita-assembly --lib b44_
+./scripts/test-fast.sh -p trembita --test product_coordination_scale b44_
+./scripts/test-fast.sh -p trembita --test ops_summary_report b44_
+```
+
+## Production deploy pack (B-45)
+
+VPS / bare-metal templates in **[`deploy/`](../../deploy/README.md)** — systemd unit, seed vs joiner env examples, nginx upstream snippet, rolling upgrade notes. Not Docker Compose/K8s ([deployment-model](../decisions/deployment-model.md)).
+
+| Deliverable | Path |
+|-------------|------|
+| Index + install layout | [`deploy/README.md`](../../deploy/README.md) |
+| systemd | [`deploy/systemd/trembita.service`](../../deploy/systemd/trembita.service) |
+| Env matrix | [`deploy/env/matrix.md`](../../deploy/env/matrix.md) |
+| LB example | [`deploy/nginx/upstream.conf.example`](../../deploy/nginx/upstream.conf.example) |
+| Upgrade | [`deploy/rolling-upgrade-systemd.md`](../../deploy/rolling-upgrade-systemd.md) · [upgrade-coordinator](../decisions/upgrade-coordinator.md) |
+
+Runbook: [production-runbook § B-45](../ops/production-runbook.md#production-deploy-pack-b-45). Scaffold apps keep Compose under `deploy/` in the project tree; production VPS uses the **repo** pack above.
+
+### Automated regression (B-45)
+
+| Scenario | Regression |
+|----------|------------|
+| Required template files exist | `b45_deploy_pack_artifacts_exist` |
+| systemd restart + drain timeout | `b45_systemd_unit_mentions_drain_and_restart` |
+| Seed vs joiner env contract | `b45_seed_env_omits_join_seeds_joiner_requires_them` |
+| Matrix documents foot-guns | `b45_matrix_documents_product_footguns` |
+
+```bash
+./scripts/test-fast.sh -p trembita --test deploy_pack b45_
+```
+
+## Backup / restore / DR (B-48)
+
+Per-node **`TREMBITA_DATA_DIR`** + **`TREMBITA_CERT_DIR`** — export while stopped ([`trembita-ops`](../../crates/trembita-tools/) or [`scripts/backup-data-dir.sh`](../../scripts/backup-data-dir.sh)). Restore **same `node-id`** on replacement hardware; prefer **fresh join** for lost joiners when quorum is healthy. Not automatic: schedules, hot copy, quorum rebuild from one tarball.
+
+| Deliverable | Path |
+|-------------|------|
+| Runbook | [docs/ops/backup-restore.md](../ops/backup-restore.md) |
+| VPS cheat sheet | [deploy/backup-restore.md](../../deploy/backup-restore.md) |
+| Preflight hint | `trembita doctor --preflight` |
+
+Runbook index: [production-runbook § B-48](../ops/production-runbook.md#backup-restore-dr-b-48).
+
+### Automated regression (B-48)
+
+| Scenario | Regression |
+|----------|------------|
+| `data_dir` tarball roundtrip | `b48_export_import_data_dir_roundtrip` (`trembita-tools`) |
+| Deploy pack links + runbook scope | `b48_backup_script_and_runbook_linked_from_deploy`, `b48_deploy_backup_cheat_sheet_mentions_stop` |
+
+```bash
+./scripts/test-fast.sh -p trembita-tools --lib b48_
+./scripts/test-fast.sh -p trembita --test deploy_pack b48_
+```
+
+## Rolling upgrade proof (B-49)
+
+Simulated **3-node** rolling upgrade: coordinator dry-run to a new **`app_version`**, HTTP **`POST /cluster/upgrade/desired`** + **`GET /cluster/upgrade`**, cluster session on a peer gateway, queued job completion while one node is stopped. Manual two-version lab: [`scripts/rolling-upgrade-lab.sh`](../../scripts/rolling-upgrade-lab.sh) → [`examples/self-update`](../../examples/self-update/README.md) (optional **`run-heavy`** MR lane).
+
+Runbook: [deploy/rolling-upgrade-systemd § B-49](../../deploy/rolling-upgrade-systemd.md#b-49--automated-proof-vs-manual-lab) · [upgrade-coordinator](../decisions/upgrade-coordinator.md).
+
+### Automated regression (B-49)
+
+| Scenario | Regression |
+|----------|------------|
+| 3-node coordinator dry-run fleet_ready | `b49_coordinator_dry_run_two_version_manifest`, `b49_coordinator_rolls_all_nodes_dry_run` (integration) |
+| HTTP upgrade routes | `b49_http_upgrade_routes_set_desired_and_poll_fleet_ready` |
+| Session on peer during fleet up | `b49_cluster_session_cookie_valid_on_peer_during_fleet_up` |
+| Job with one node stopped | `b49_queued_job_completes_while_one_node_stopped` |
+
+```bash
+./scripts/test-fast.sh -p trembita --test rolling_upgrade_proof b49_
+```
+
+## CI cluster upgrade operator (B-54)
+
+External **one-shot** rolling upgrade over HTTP — not an SSH/systemd fleet loop. Requires path **B** in [deploy/rolling-upgrade-systemd.md](../../deploy/rolling-upgrade-systemd.md) (`UpgradeApi` + in-cluster coordinator from [upgrade-coordinator](../decisions/upgrade-coordinator.md)). Complements [B-49](#rolling-upgrade-proof-b-49) sim proof and [B-45](#production-deploy-pack-b-45) templates.
+
+| Step | Behaviour |
+|------|-----------|
+| Preflight | `GET /ready` (200), `GET /cluster/upgrade` (200 or fail-fast 404/401), optional `GET /introspect/ops-summary` join-phase warning |
+| Drive | `POST /cluster/upgrade/desired` (artifact URL + sha256 + `app_version`) |
+| Poll | `GET /cluster/upgrade` until `fleet_ready` or `aborted` / timeout |
+| Post smoke | `GET /ready` again (skippable) |
+
+```bash
+cargo build -p trembita-tools --release --bin trembita-ops
+./target/release/trembita-ops upgrade run \
+  --gateway "https://seed.example:443" \
+  --app-version "1.2.3" \
+  --url "https://releases.example/myapp-1.2.3" \
+  --sha256-hex "<64-char-hex>" \
+  --timeout 15m --poll-interval 5s
+```
+
+Bearer: `--bearer-token` or `GATEWAY_TOKEN` / `TREMBITA_GATEWAY_TOKEN`. Runbook: [production-runbook § B-54](../ops/production-runbook.md#ci-cluster-upgrade-operator-b-54).
+
+### Automated regression (B-54)
+
+| Scenario | Regression |
+|----------|------------|
+| Preflight status table (404 UpgradeApi, auth hints) | `b54_preflight_upgrade_api_fails_fast_on_404`, `b54_preflight_ready_requires_200_table`, `b54_preflight_upgrade_auth_errors_table` |
+| Mock gateway happy path + missing route | `b54_run_upgrade_happy_path_mock_gateway`, `b54_run_upgrade_fails_when_upgrade_route_missing` |
+
+```bash
+./scripts/test-fast.sh -p trembita-tools --lib b54_
+./scripts/test-fast.sh -p trembita-tools --test upgrade_operator b54_
 ```
 
 ## Product surface gaps (B-41)
@@ -546,12 +814,4 @@ Getting started: [§ Durable mailbox + leader tasks](../getting-started.md#durab
 At-least-once still applies; use **three layers** together ([idempotency-contract](../decisions/idempotency-contract.md)):
 
 1. **Enqueue** — `CallBuilder::dedup_key`, or `CapRequest::cap_key()` from `#[cap_handler(key = "field")]`, or HTTP `?dedup=` on [`cap_enqueue`](../../crates/trembita/src/gateway/cap_handlers.rs).
-2. **Bridge** — when `TREMBITA_DATA_DIR` enables [`TrembitaApp::actor_state_store`](../../crates/trembita/src/app/runtime.rs) (cap store), the cap queue consumer runs [`IdempotencyOpts::by_dedup_key`](../../crates/trembita/src/consumer.rs) around delivery (`cap:{stream}:` prefix).
-3. **Handler** — domain markers in store for partial failure before ack (see [background-jobs](background-jobs.md#effectively-once-recipe)).
-
-## Related
-
-- [capability-parity](capability-parity.md) — scenario matrix (same power, no `UserActor` in app)
-- [stateful-workers](stateful-workers.md) — showcase (capabilities + migration demo)
-- [background-jobs](background-jobs.md) — queue semantics for queued routes
-- [framework-conventions](../decisions/framework-conventions.md) — `capabilities/` layout
+2. **Bridge** — when `TREMBITA_DATA_DIR` enables [`TrembitaApp::actor_state_store`](../../crates

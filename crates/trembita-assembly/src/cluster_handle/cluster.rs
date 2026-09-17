@@ -56,6 +56,8 @@ pub struct TrembitaCluster<M: StateMachine> {
     pub(crate) saga_registry: crate::saga::SagaRegistry,
     pub(crate) two_phase_registry: crate::two_phase::TwoPhaseRegistry,
     pub(crate) queue_autoscale_registry: Arc<trembita_jobs::QueueAutoscaleRegistry>,
+    pub(crate) coordination_closed_loop_registry:
+        Arc<trembita_jobs::CoordinationClosedLoopRegistry>,
     pub(crate) telemetry: Arc<ActorTelemetry>,
     pub(crate) members: Vec<NodeId>,
     pub(crate) resource_profile: ResourceProfile,
@@ -292,6 +294,15 @@ impl<M: StateMachine> TrembitaCluster<M> {
     #[must_use]
     pub fn queue_autoscale_registry(&self) -> Arc<trembita_jobs::QueueAutoscaleRegistry> {
         Arc::clone(&self.queue_autoscale_registry)
+    }
+
+    /// B-44 closed-loop growth state (auto-shard + Raft ceiling hints).
+    #[must_use]
+    pub fn coordination_closed_loop_snapshot(
+        &self,
+    ) -> trembita_jobs::CoordinationClosedLoopSnapshot {
+        self.coordination_closed_loop_registry
+            .snapshot(self.raft_groups())
     }
 
     /// Default saga journal: Meta-Raft metadata (multi-Raft) or group 0 (single-group),
@@ -879,6 +890,16 @@ impl<M: StateMachine> TrembitaCluster<M> {
         }
         if count == 0 {
             return Err(AddRaftGroupsError::InvalidCount);
+        }
+        if let Some(max) = self
+            .coordination_closed_loop_registry
+            .ceilings()
+            .max_raft_groups
+        {
+            let current = self.raft_groups();
+            if current.saturating_add(count) > max {
+                return Err(AddRaftGroupsError::AtRaftGroupsCeiling { max, current });
+            }
         }
         let deadline = Instant::now() + CATALOG_ADD_TIMEOUT;
         loop {

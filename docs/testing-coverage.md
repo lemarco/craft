@@ -7,15 +7,15 @@ closing a gap.
 **Strategy:** [testing-strategy](decisions/testing-strategy.md)  
 **Feature status:** [status.md](status.md)  
 **Product docs:** [product-terminology](decisions/product-terminology.md) (capabilities vs runtime actors)  
-**Last audit:** 2026-09-17 (B-43 ops cockpit + B-42 local cluster index)
+**Last audit:** 2026-09-17 (B-53 backlog/coverage hygiene — B-33…B-41 archive + index split)
 
 Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** scheduled / `#[ignore]` only
 
 ---
 
-## Shipped backlog B-28–B-36
+## Shipped backlog B-28–B-32
 
-Product scale wave — quick regression commands (detail in scenario pages):
+Planning snapshot: [archive/backlog-wave-b28-b32.md](archive/backlog-wave-b28-b32.md). Quick regression commands:
 
 | Id | Focus | Primary tests | Fast command |
 |----|-------|---------------|--------------|
@@ -24,17 +24,46 @@ Product scale wave — quick regression commands (detail in scenario pages):
 | B-30 | Ingress `/health` vs `/ready` | `trembita-http`, `trembita-dashboard`, `ingress_lb*.rs` | `./scripts/test-fast.sh -p trembita --test ingress_lb_ops` |
 | B-31 | Product scale doctor | `trembita-cli/.../doctor.rs`, `tests/cap_scale_doctor.rs` | `./scripts/test-fast.sh -p trembita-cli --test cap_scale_doctor` |
 | B-32 | Product coordination scale | `configure` / `queue_opts` / `job_opts`, `env_config`, `product_coordination_scale.rs` | `./scripts/test-fast.sh -p trembita --all-features --lib b32_` |
+
+---
+
+## Shipped backlog B-33–B-41
+
+Planning snapshot: [archive/backlog-wave-b33-b41.md](archive/backlog-wave-b33-b41.md).
+
+| Id | Focus | Primary tests | Fast command |
+|----|-------|---------------|--------------|
 | B-33 | Boot scale report + cap pool hardening | `app/scale_plan.rs` (`b33_*`), `integration/cap_scale.rs` (plan hosts), `tests/product_scale_report.rs`, `doctor.rs` (`b33_preflight_*`), `cap_scale_doctor.rs` | `./scripts/test-fast.sh -p trembita --lib b33_` · `./scripts/test-fast.sh -p trembita --test product_scale_report` · `./scripts/test-fast.sh -p trembita-cli --lib b33_preflight_join_seeds_scenarios_table` · `./scripts/test-fast.sh -p trembita-cli --test cap_scale_doctor` |
 | B-34 | Elastic join + LB + cluster session | `tests/elastic_lb_product.rs` (`b34_*`), `trembita-tools/e2e_elastic/cap.rs`, `e2e/elastic_lb.sh` | `./scripts/test-fast.sh -p trembita --test elastic_lb_product b34_` · `./scripts/test-fast.sh -p trembita-tools --lib b34_` · heavy: `./e2e/elastic_lb.sh` |
 | B-35 | Join readiness pipeline | `join_pipeline.rs`, `views.rs`, `ops_routes.rs`, `introspect_routes.rs`, `ingress_lb_ops.rs` | `./scripts/test-fast.sh -p trembita-assembly --lib b35_join_pipeline_scenarios_table` · `./scripts/test-fast.sh -p trembita-dashboard --lib b35_` · `./scripts/test-fast.sh -p trembita-http --lib b35_` · `./scripts/test-fast.sh -p trembita --test ingress_lb_ops b35_` |
 | B-36 | R3 directory visibility + sticky reopen | `directory_delivery.rs`, `directory.rs`, `session.rs`, `directory_r3_report.rs`, `integration/cap_rebalance.rs` | `./scripts/test-fast.sh -p trembita-runtime --lib b36_` · `./scripts/test-fast.sh -p trembita --test directory_r3_report b36_` · `./scripts/test-fast.sh -p trembita --lib capability_inline_survives_raft_group_rebalance` |
 | B-37 | Coordination growth presets | `coordination_profile.rs`, `env_config.rs`, `queue_auto_shard.rs`, `configure.rs`, `queue_opts.rs`, `job_opts.rs`, `coordination_growth_preset.rs` | `./scripts/test-fast.sh -p trembita-assembly --lib b37_` · `./scripts/test-fast.sh -p trembita-jobs --lib b37_` · `./scripts/test-fast.sh -p trembita --lib b37_` · `./scripts/test-fast.sh -p trembita --test coordination_growth_preset b37_` |
-| B-38 | Scale & scaffold DX (B-38) (doctor + scaffold) | `doctor.rs`, `template.rs`, `task.rs.tpl`, `tests/scaffold.rs`, `tests/cap_scale_doctor.rs` | `./scripts/test-fast.sh -p trembita-cli --lib b38_` · `./scripts/test-fast.sh -p trembita-cli --test scaffold b38_` · `./scripts/test-fast.sh -p trembita-cli --test cap_scale_doctor b38_` |
+| B-38 | Scale & scaffold DX (doctor + scaffold) | `doctor.rs`, `template.rs`, `task.rs.tpl`, `tests/scaffold.rs`, `tests/cap_scale_doctor.rs` | `./scripts/test-fast.sh -p trembita-cli --lib b38_` · `./scripts/test-fast.sh -p trembita-cli --test scaffold b38_` · `./scripts/test-fast.sh -p trembita-cli --test cap_scale_doctor b38_` |
 | B-39 | Local 3-node cluster | `dev/local_cluster.rs`, `dev/showcases.rs`, `dev/cluster.rs`, `tests/dev.rs`, `dev/local-3node/`, `local-cluster.sh` | `./scripts/test-fast.sh -p trembita-cli --lib b39_` · `./scripts/test-fast.sh -p trembita-cli --test dev b39_` |
-| B-42 | Local elastic parity (4th joiner + LB/cap smoke) | `dev/cluster.rs`, `dev/local_cluster.rs` (spawn waves, `lb_smoke_min_distinct`, `resolve_lb_backend_count`), `dev/showcases.rs`, `tests/dev.rs`, `e2e_elastic/{gateway,cap}.rs`, `examples/realtime`, `local-cluster.sh` — index: [capabilities § B-42 regression](scenarios/capabilities.md#automated-regression-b-42) | `./scripts/test-fast.sh -p trembita-cli --lib b42_` · `./scripts/test-fast.sh -p trembita-cli --test dev b42_` · `./scripts/test-fast.sh -p trembita-tools --lib b42_` · live: `./scripts/local-cluster.sh elastic-smoke` |
-| B-43 | Ops cockpit introspect | `app/ops_summary.rs` (6× `b43_*` unit: presets table, queue hints, join phases, serde), `tests/ops_summary_report.rs` (7× integration: nested route parity, presets, GET-only) — full table: [capabilities § B-43 regression](scenarios/capabilities.md#automated-regression-b-43) | `./scripts/test-fast.sh -p trembita --lib b43_` · `./scripts/test-fast.sh -p trembita --test ops_summary_report b43_` |
 | B-40 | Gateway session ports + rotation + OIDC helper | `session_ports.rs`, `cluster_session.rs`, `gateway_cluster_session.rs`, `trembita-gateway-auth` (`dev_oidc.rs`, `lib.rs`), `examples/oauth-gateway` | `./scripts/test-fast.sh -p trembita-http --lib b40_` · `./scripts/test-fast.sh -p trembita --lib b40_` · `./scripts/test-fast.sh -p trembita --test gateway_cluster_session b40_` · `./scripts/test-fast.sh -p trembita-gateway-auth --lib b40_` |
 | B-41 | Product surface: durable mailbox, leader hook, Pg schedules | `configure.rs`, `manifest.rs`, `trembita-schedule-postgres`, `app_cluster.rs`, `schedule_source.rs` | `./scripts/test-fast.sh -p trembita --lib b41_` · `./scripts/test-fast.sh -p trembita-schedule-postgres --lib b41_` · `./scripts/test-fast.sh -p trembita --test app_cluster b41_` · `./scripts/test-fast.sh -p trembita --test schedule_source b41_` |
+
+---
+
+## Shipped backlog B-42+
+
+Ops / deploy / observability epics after the B-33–B-41 wave (numeric id order):
+
+| Id | Focus | Primary tests | Fast command |
+|----|-------|---------------|--------------|
+| B-42 | Local elastic parity (4th joiner + LB/cap smoke) | `dev/cluster.rs`, `dev/local_cluster.rs`, `dev/showcases.rs`, `tests/dev.rs`, `e2e_elastic/{gateway,cap}.rs`, `examples/realtime`, `local-cluster.sh` — [capabilities § B-42 regression](scenarios/capabilities.md#automated-regression-b-42) | `./scripts/test-fast.sh -p trembita-cli --lib b42_` · `./scripts/test-fast.sh -p trembita-cli --test dev b42_` · `./scripts/test-fast.sh -p trembita-tools --lib b42_` · live: `./scripts/local-cluster.sh elastic-smoke` |
+| B-43 | Ops cockpit introspect | `app/ops_summary.rs` (`b43_*`), `tests/ops_summary_report.rs` — [capabilities § B-43 regression](scenarios/capabilities.md#automated-regression-b-43) | `./scripts/test-fast.sh -p trembita --lib b43_` · `./scripts/test-fast.sh -p trembita --test ops_summary_report b43_` |
+| B-44 | Coordination closed-loop ceilings + why-not | `coordination_closed_loop.rs`, `env_config.rs`, `queue_auto_shard.rs`, `product_coordination_scale.rs`, `ops_summary_report.rs` — [capabilities § B-44](scenarios/capabilities.md#automated-regression-b-44) | `./scripts/test-fast.sh -p trembita-jobs --lib b44_` · `./scripts/test-fast.sh -p trembita-assembly --lib b44_` · `./scripts/test-fast.sh -p trembita --test product_coordination_scale b44_` · `./scripts/test-fast.sh -p trembita --test ops_summary_report b44_` |
+| B-45 | Production deploy pack templates | [`deploy/`](../deploy/README.md) + `tests/deploy_pack.rs` (`b45_*`, `b53_*`) — [capabilities § B-45](scenarios/capabilities.md#automated-regression-b-45) | `./scripts/test-fast.sh -p trembita --test deploy_pack b45_` · `./scripts/test-fast.sh -p trembita --test deploy_pack b53_` |
+| B-46 | Gateway session Postgres store | `trembita-gateway-session-postgres`, `pg_gateway_session.rs` — [capabilities § B-46](scenarios/capabilities.md#automated-regression-b-46) | `./scripts/test-fast.sh -p trembita-gateway-session-postgres --lib b46_` · `./scripts/test-fast.sh -p trembita --lib b46_validate` |
+| B-47 | OAuth PKCE + redirect allowlist | `trembita-gateway-auth` — [capabilities § B-47](scenarios/capabilities.md#automated-regression-b-47) | `./scripts/test-fast.sh -p trembita-gateway-auth --lib b47_` |
+| B-48 | Backup / restore DR pack | `trembita-tools/backup.rs`, `deploy_pack.rs` — [capabilities § B-48](scenarios/capabilities.md#automated-regression-b-48) | `./scripts/test-fast.sh -p trembita-tools --lib b48_` · `./scripts/test-fast.sh -p trembita --test deploy_pack b48_` |
+| B-49 | Rolling upgrade proof | `rolling_upgrade_proof.rs`, `upgrade_coordinator.rs` — [capabilities § B-49](scenarios/capabilities.md#automated-regression-b-49) | `./scripts/test-fast.sh -p trembita --test rolling_upgrade_proof b49_` · heavy lab: `./scripts/rolling-upgrade-lab.sh` |
+| B-50 | CI local elastic smoke (heavy lane) | `ci-local-elastic-smoke.sh`, `.gitlab-ci.yml`, `tests/dev.rs` — [capabilities § B-50](scenarios/capabilities.md#automated-regression-b-50) | `./scripts/test-fast.sh -p trembita-cli --test dev b50_` · live: `bash scripts/ci-local-elastic-smoke.sh` |
+| B-51 | Ops OTLP + join phase metrics | `trembita-metrics-otlp`, `join_pipeline.rs` | `./scripts/test-fast.sh -p trembita-metrics-otlp --lib b51_` · `./scripts/test-fast.sh -p trembita-assembly --lib b51_` |
+| B-52 | Domain DX patterns (scaffold + docs) | `tests/scaffold.rs` (`b52_*`) — [capabilities § B-52](scenarios/capabilities.md#automated-regression-b-52) | `./scripts/test-fast.sh -p trembita-cli --test scaffold b52_` |
+| B-53 | Backlog / coverage hygiene (archives + index) | `tests/deploy_pack.rs` (`b53_*`) — [capabilities § B-53](scenarios/capabilities.md#backlog-coverage-hygiene-b-53) | `./scripts/test-fast.sh -p trembita --test deploy_pack b53_` |
+| B-54 | CI cluster upgrade operator | `ops/upgrade.rs`, `upgrade_operator.rs` — [capabilities § B-54](scenarios/capabilities.md#automated-regression-b-54) | `./scripts/test-fast.sh -p trembita-tools --lib b54_` · `./scripts/test-fast.sh -p trembita-tools --test upgrade_operator b54_` |
 
 Index: [status § Product scale wave](status.md#product-scale-wave-b-28b32) · [capabilities scenarios](scenarios/capabilities.md).
 
@@ -276,7 +305,7 @@ Track open gaps here; append fixed rows to [archive/testing-closed-gaps.md](arch
 |----------|-----|-------------------------|--------|
 | Medium | Actor store redb contract at crate level | `trembita-capstore/tests/redb_contract.rs` | S |
 | Low | `doctor --preflight` on full synthetic `deploy/` tree | `tests/add_doctor.rs` or `scaffold/doctor.rs` | S |
-| Low | `trembita dev up` multi-node smoke in CI (debug CLI) | `tests/dev.rs` + job label `run-heavy` | M |
+| ~~Low~~ | ~~`trembita dev up` multi-node smoke in CI~~ | **Shipped B-50** — `local-elastic-smoke` job + `ci-local-elastic-smoke.sh` | — |
 
 **Closed gaps (historical):** [archive/testing-closed-gaps.md](archive/testing-closed-gaps.md) — append new rows there when fixing a gap.
 

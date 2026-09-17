@@ -40,6 +40,7 @@ trembita-store-redis = { workspace = true, optional = true }
 trembita-backlog-postgres = { workspace = true, optional = true }
 trembita-events-postgres = { workspace = true, optional = true }
 trembita-capstore-postgres = { workspace = true, optional = true }
+trembita-gateway-session-postgres = { workspace = true, optional = true }
 hyper.workspace = true
 hyper-util.workspace = true
 http.workspace = true
@@ -56,6 +57,7 @@ reqwest.workspace = true
 sha2.workspace = true
 hex.workspace = true
 tracing.workspace = true
+trembita-metrics-otlp = { workspace = true, optional = true }
 
 [features]
 default = ["http-jobs"]
@@ -75,12 +77,13 @@ schedule-postgres = ["dep:trembita-schedule-postgres"]
 redis-store = ["dep:trembita-store-redis"]
 # PostgreSQL [`CapStateStore`](trembita_capstore::CapStateStore) adapter.
 capstore-postgres = ["dep:trembita-capstore-postgres"]
+gateway-session-postgres = ["dep:trembita-gateway-session-postgres", "http-jobs"]
 # PostgreSQL [`ExternalBacklog`](trembita_jobs::ExternalBacklog) adapter.
 external-backlog = ["dep:trembita-backlog-postgres"]
 # PostgreSQL [`EventOutboxSource`](trembita_events::EventOutboxSource) adapter.
 domain-outbox = ["dep:trembita-events-postgres"]
 # OpenTelemetry metrics export (`init_metrics_with_otlp`); tracing OTLP uses `trembita-runtime/otlp`.
-otlp-metrics = ["trembita-runtime/otlp"]
+otlp-metrics = ["trembita-runtime/otlp", "dep:trembita-metrics-otlp"]
 # All optional integrations — used by docs.rs (`all-features = true`).
 full = [
     "http-jobs",
@@ -88,6 +91,7 @@ full = [
     "schedule-postgres",
     "redis-store",
     "capstore-postgres",
+    "gateway-session-postgres",
     "external-backlog",
     "domain-outbox",
     "otlp-metrics",
@@ -151,3 +155,8 @@ required-features = ["http-jobs"]
 [[test]]
 name = "app_cluster"
 path = "tests/app_cluster.rs"
+
+[[test]]
+name = "rolling_upgrade_proof"
+path = "tests/rolling_upgrade_proof.rs"
+required-features = ["http-jobs"]

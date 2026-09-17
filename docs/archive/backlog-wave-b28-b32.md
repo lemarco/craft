@@ -1,8 +1,8 @@
 # Shipped backlog wave B-28–B-32 (archive)
 
-Product scale epics closed **2026-09-17**. **Current index:** [status § Product scale wave](../status.md#product-scale-wave-b-28b32). **Regression commands:** [testing-coverage § B-28–B-32](../testing-coverage.md#shipped-backlog-b-28b32).
+Product scale epics closed **2026-09-17**. **Current index:** [status § Product scale wave](../status.md#product-scale-wave-b-28b32) (full table **B-28 … B-54**). **Regression commands:** [testing-coverage § B-28–B-32](../testing-coverage.md#shipped-backlog-b-28b32) · follow-on [§ B-33–B-41](../testing-coverage.md#shipped-backlog-b-33b41) · [§ B-42+](../testing-coverage.md#shipped-backlog-b-42).
 
-**Context:** homogeneous cluster growth — add VPS, same binary, `TREMBITA_JOIN_SEEDS` — without orchestrator-specific packaging. Follow-up **B-33** (regression hardening + boot scale report): [status § B-33](../status.md#product-scale-wave-b-28b32). Next open epic: **B-34** ([backlog](../backlog.md#open-work)).
+**Context:** homogeneous cluster growth — add VPS, same binary, `TREMBITA_JOIN_SEEDS` — without orchestrator-specific packaging. Follow-on wave **B-33 … B-41:** [backlog-wave-b33-b41.md](backlog-wave-b33-b41.md). **Open work:** [backlog](../backlog.md#open-work).
 
 ---
 

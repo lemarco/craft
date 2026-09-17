@@ -239,7 +239,7 @@ Pre-upgrade: `trembita-ops backup export` remains recommended ([backup-restore.m
 | `UpgradeCommand` / `UpgradeState` types | User `StateMachine` |
 | Leader reconcile tick | User actor or `TrembitaApp` extension |
 | Download / install / exit | User binary |
-| systemd unit | Operator |
+| systemd unit | Operator — template: [deploy/systemd/trembita.service](../../deploy/systemd/trembita.service) · roll: [rolling-upgrade-systemd.md](../../deploy/rolling-upgrade-systemd.md) (B-45) |
 | Artifact registry | Operator |
 
 Optional future **trembita** crate additions (not required for the pattern):

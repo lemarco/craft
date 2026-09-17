@@ -65,6 +65,14 @@ pub enum AddRaftGroupsError {
     /// The requested group count must be at least 1.
     #[error("add_groups must be at least 1")]
     InvalidCount,
+    /// `TREMBITA_COORDINATION_MAX_RAFT_GROUPS` ceiling would be exceeded.
+    #[error("coordination max raft groups ceiling ({max}) with current {current}")]
+    AtRaftGroupsCeiling {
+        /// Configured ceiling.
+        max: u32,
+        /// Live catalog group count before the request.
+        current: u32,
+    },
     /// The node runtime has stopped, so catalog updates are unavailable.
     #[error("node runtime has stopped")]
     Stopped,

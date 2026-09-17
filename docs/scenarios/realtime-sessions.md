@@ -243,7 +243,7 @@ Set `TREMBITA_GATEWAY_SESSION_SECRET` identically on all nodes ([env.md](../env.
 ./scripts/test-fast.sh -p trembita --lib cluster_session
 ```
 
-Full ADR + env table: [gateway-cluster-auth § B-29](../decisions/gateway-cluster-auth.md). Wave index: [status § B-28–B-32](../status.md#product-scale-wave-b-28b32).
+Full ADR + env table: [gateway-cluster-auth § B-29](../decisions/gateway-cluster-auth.md). Wave index: [status § Product scale wave](../status.md#product-scale-wave-b-28b32).
 
 ## Related
 

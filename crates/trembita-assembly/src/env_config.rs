@@ -107,6 +107,10 @@ pub struct AppConfig {
     pub coordination_shard_count: Option<u32>,
     /// Parsed `TREMBITA_COORDINATION_PROFILE` (B-37).
     pub coordination_growth_profile: Option<crate::coordination_profile::CoordinationGrowthPreset>,
+    /// B-44 cap on physical auto-shard queue shards (`TREMBITA_COORDINATION_MAX_QUEUE_SHARDS`).
+    pub coordination_max_queue_shards: Option<usize>,
+    /// B-44 cap on coordination Raft groups (`TREMBITA_COORDINATION_MAX_RAFT_GROUPS`).
+    pub coordination_max_raft_groups: Option<u32>,
     /// HTTP connection drain timeout (`TREMBITA_HTTP_DRAIN_TIMEOUT`).
     pub http_drain_timeout: Duration,
     /// Explicit env vars that were set for this parse.
@@ -463,6 +467,11 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         Duration::from_secs(60)
     };
 
+    let coordination_max_queue_shards =
+        parse_coordination_max_queue_shards(env("TREMBITA_COORDINATION_MAX_QUEUE_SHARDS"));
+    let coordination_max_raft_groups =
+        parse_coordination_max_raft_groups(env("TREMBITA_COORDINATION_MAX_RAFT_GROUPS"));
+
     log_non_product_env_warnings();
 
     Ok(AppConfig {
@@ -493,6 +502,8 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         coordination_raft_groups,
         coordination_shard_count,
         coordination_growth_profile,
+        coordination_max_queue_shards,
+        coordination_max_raft_groups,
         http_drain_timeout: http_drain_timeout_from_env(),
         env: env_overrides,
     })
@@ -572,6 +583,19 @@ pub fn parse_coordination_raft_groups(raw: Option<String>) -> u32 {
 #[must_use]
 pub fn parse_coordination_shard_count(raw: Option<String>) -> Option<u32> {
     raw.and_then(|v| v.parse::<u32>().ok()).map(|n| n.max(1))
+}
+
+/// Parse `TREMBITA_COORDINATION_MAX_QUEUE_SHARDS` (B-44).
+#[must_use]
+pub fn parse_coordination_max_queue_shards(raw: Option<String>) -> Option<usize> {
+    raw.and_then(|v| v.parse::<usize>().ok())
+        .filter(|n| *n >= 1)
+}
+
+/// Parse `TREMBITA_COORDINATION_MAX_RAFT_GROUPS` (B-44).
+#[must_use]
+pub fn parse_coordination_max_raft_groups(raw: Option<String>) -> Option<u32> {
+    raw.and_then(|v| v.parse::<u32>().ok()).filter(|n| *n >= 1)
 }
 
 /// Reject env that sets both fixed shards and auto-shard (B-32).
@@ -671,6 +695,47 @@ mod b32_env_tests {
         for row in rows {
             let got = parse_coordination_shard_count(row.raw.map(str::to_string));
             assert_eq!(got, row.want, "raw={:?}", row.raw);
+        }
+    }
+
+    #[test]
+    fn b44_parse_coordination_max_ceilings_scenarios_table() {
+        struct Row {
+            raw: Option<&'static str>,
+            want_shards: Option<usize>,
+            want_groups: Option<u32>,
+        }
+        let rows = [
+            Row {
+                raw: None,
+                want_shards: None,
+                want_groups: None,
+            },
+            Row {
+                raw: Some("8"),
+                want_shards: Some(8),
+                want_groups: Some(8),
+            },
+            Row {
+                raw: Some("0"),
+                want_shards: None,
+                want_groups: None,
+            },
+        ];
+        for row in rows {
+            let raw = row.raw.map(str::to_string);
+            assert_eq!(
+                parse_coordination_max_queue_shards(raw.clone()),
+                row.want_shards,
+                "queue shards raw={:?}",
+                row.raw
+            );
+            assert_eq!(
+                parse_coordination_max_raft_groups(raw),
+                row.want_groups,
+                "raft groups raw={:?}",
+                row.raw
+            );
         }
     }
 

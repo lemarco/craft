@@ -64,9 +64,19 @@ Common optional:
 | `TREMBITA_RAFT_GROUPS` | Multi-Raft coordination groups on the product **`EmptyStateMachine`** path (default `1`). Use with `TREMBITA_DATA_DIR` for keyed queue/topic/store traffic ([multi-raft](decisions/multi-raft.md)) |
 | `TREMBITA_RAFT_SHARD_COUNT` | Virtual shard modulus when `TREMBITA_RAFT_GROUPS` > 1 (optional; assembly default applies when unset) |
 | `TREMBITA_COORDINATION_PROFILE` | B-37 growth preset — canonical: `standard`, `jobs_backlog`, `write_sharding`, `full`. Aliases: `jobs`, `jobs-backlog`, `write`, `sharding`, `growth`. Fills default `TREMBITA_RAFT_*` and env-only `TREMBITA_JOB_QUEUE_AUTO_SHARD` when those vars are unset. Explicit `TREMBITA_RAFT_GROUPS`, `TREMBITA_RAFT_SHARD_COUNT`, and `TREMBITA_JOB_QUEUE_AUTO_SHARD` **override** the profile ([getting-started § B-37](getting-started.md#when-to-enable-coordination-growth-b-37), [capabilities § B-37](scenarios/capabilities.md#coordination-growth-presets-b-37), [runbook verify](ops/production-runbook.md#coordination-growth-preset-b-37)) |
+| `TREMBITA_COORDINATION_MAX_QUEUE_SHARDS` | B-44 — hard cap on physical shards per logical auto-shard stream (`min` with preset/policy `max_shards`). Unset = policy only. See [runbook § B-44](ops/production-runbook.md#coordination-closed-loop-b-44) |
+| `TREMBITA_COORDINATION_MAX_RAFT_GROUPS` | B-44 — hard cap on coordination Raft catalog size (boot layout + [`add_raft_groups`](../crates/trembita/src/app/runtime.rs)). Unset = no extra cap beyond runtime defaults |
 | `TREMBITA_ALLOW_JOIN` | Seed accepts dynamic join (default **on** when not joining) |
 
 **Do not set** `TREMBITA_NODE_ID` on product nodes — id comes from join assignment and `{data_dir}/node-id`.
+
+### `TREMBITA_COORDINATION_MAX_QUEUE_SHARDS`
+
+B-44 closed-loop ceiling for leader auto-shard physical shards (combined with B-37 preset `max_shards` via `min`). Introspect: **`coordination_closed_loop.auto_shard_streams[].why_not_scaling`** on **`GET /introspect/ops-summary`**. Configure twin: [`.with_coordination_max_queue_shards`](../crates/trembita/src/configure.rs). Runbook: [§ B-44](ops/production-runbook.md#coordination-closed-loop-b-44).
+
+### `TREMBITA_COORDINATION_MAX_RAFT_GROUPS`
+
+B-44 hard cap on multi-Raft catalog size; [`TrembitaApp::add_raft_groups`](../crates/trembita/src/app/runtime.rs) returns **`AtRaftGroupsCeiling`** when exceeded. Introspect: **`coordination_closed_loop.raft_why_not_scaling`**. Configure twin: [`.with_coordination_max_raft_groups`](../crates/trembita/src/configure.rs).
 
 ### `TREMBITA_LISTEN`
 
@@ -93,7 +103,7 @@ Declare capabilities in [`AppManifest`](../crates/trembita/src/app/manifest.rs) 
 
 Enables durable job queue, **cap store** (`trembita::capstore`), and node id persistence. Required when `TREMBITA_JOB_QUEUE` is set. Sharded / multi-Raft coordination env vars also require a data directory.
 
-**Manifest alternative (B-32):** [`.sharded(n)`](../crates/trembita/src/queue_opts.rs) / [`.auto_shard()`](../crates/trembita/src/queue_opts.rs) on [`QueueOpts`](../crates/trembita/src/queue_opts.rs) / [`JobOpts`](../crates/trembita/src/job_opts.rs); [`.with_coordination_raft_groups(n)`](../crates/trembita/src/configure.rs) / [`.with_coordination_shard_count(n)`](../crates/trembita/src/configure.rs) on [`TrembitaConfigure`](../crates/trembita/src/configure.rs). Runtime catalog expansion: [`TrembitaApp::add_raft_groups`](../crates/trembita/src/app/runtime.rs).
+**Manifest alternative (B-32 / B-44):** [`.sharded(n)`](../crates/trembita/src/queue_opts.rs) / [`.auto_shard()`](../crates/trembita/src/queue_opts.rs) on [`QueueOpts`](../crates/trembita/src/queue_opts.rs) / [`JobOpts`](../crates/trembita/src/job_opts.rs); [`.with_coordination_raft_groups(n)`](../crates/trembita/src/configure.rs) / [`.with_coordination_shard_count(n)`](../crates/trembita/src/configure.rs) / [`.with_coordination_max_queue_shards(n)`](../crates/trembita/src/configure.rs) / [`.with_coordination_max_raft_groups(n)`](../crates/trembita/src/configure.rs) on [`TrembitaConfigure`](../crates/trembita/src/configure.rs). Runtime catalog expansion: [`TrembitaApp::add_raft_groups`](../crates/trembita/src/app/runtime.rs) (respects B-44 Raft ceiling).
 
 ### `TREMBITA_CERT_DIR`
 
@@ -121,6 +131,17 @@ Optional during secret rotation (B-40). Set to the **previous** signing key on a
 
 `cookie-only` (default) or `external-idp` — composition hint for [`GatewayAuthProfile`](../crates/trembita/src/gateway/auth_profile.rs); OAuth/OIDC stays app-owned via [`.identity()`](../crates/trembita/src/gateway/opts.rs).
 
+### OAuth hardening (B-47)
+
+Used by app-owned IdP handlers via [`trembita-gateway-auth`](../crates/trembita-gateway-auth/) — not read by the runtime automatically.
+
+| Variable | Purpose |
+|----------|---------|
+| `TREMBITA_OAUTH_REDIRECT_ALLOWLIST` | Comma/space-separated **exact** `redirect_uri` values permitted on authorize/callback |
+| `TREMBITA_OAUTH_PKCE_METHOD` | `S256` (default when unset in helpers); plain-text PKCE is rejected |
+
+Runbook: [production-runbook § B-47](ops/production-runbook.md#oauth-production-wiring-b-47).
+
 ---
 
 ## Do not use in product deploys
@@ -133,6 +154,19 @@ Optional during secret rotation (B-40). Set to the **previous** signing key on a
 | `TREMBITA_NODE_CERT`, `TREMBITA_NODE_KEY`, `TREMBITA_CA_CERT` | Low-level PEM paths — use `TREMBITA_CERT_DIR` + `node-{id}.pem` instead. |
 | `TREMBITA_GATEWAY_*` (API toggles) | **Do not use** — routes come from app registration / default gateway surfaces. |
 | `TREMBITA_ADMIN`, split admin ports | **Do not use** — [unified-listener](decisions/unified-listener.md) |
+
+---
+
+## OpenTelemetry metrics (B-51)
+
+Enable facade feature **`otlp-metrics`** and set a collector endpoint. [`TrembitaApp::from_env`](../crates/trembita/src/app/runtime.rs) / [`from_config`](../crates/trembita/src/app/builder.rs) installs OTLP export and wires [`OtlpMetricsSink`](../crates/trembita-metrics-otlp/src/sink.rs) automatically when the endpoint is present. Prometheus **`GET /metrics`** on the unified listener stays enabled.
+
+| Variable | Purpose |
+|----------|---------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | gRPC OTLP collector (e.g. `http://otel-collector:4317`) — required for push export |
+| `OTEL_SERVICE_NAME` | Resource `service.name` (default `trembita`) |
+
+Product-facing gauge/counter names (also on `/metrics`): **`trembita_join_phase`**, **`trembita_join_pool_ready`**, **`trembita_queue_pending`**, **`trembita_directory_merge_lag_epochs`** — alert thresholds: [production-runbook § B-51](ops/production-runbook.md#ops-observability-layer-b-51).
 
 ---
 
@@ -159,6 +193,6 @@ Optional during secret rotation (B-40). Set to the **previous** signing key on a
 
 Run `trembita doctor` on scaffold projects — it checks `manifest.rs` ↔ `consumers/` wiring, gateway merges in `app.rs`, legacy keys in `deploy/.env.example`, **removed APIs** (`TrembitaCluster::builder`, old gateway toggles), and **capability scale foot-guns** (B-31 — e.g. `.instances(1)` with queued ops but no keyed handlers). Before deploy, use **`trembita doctor --preflight`**: stricter checks for `TREMBITA_LISTEN` / `DATA_DIR` / `CERT_DIR`, compose join pattern (no `TREMBITA_NODE_ID`), default ops gateway wiring, and local `deploy/certs/ca.pem` when present.
 
-**Scale wave env (B-28–B-43):** B-29 — [`TREMBITA_GATEWAY_SESSION_SECRET`](#trembita_gateway_session_secret); B-30 — pool health via **`GET /ready`** on [`TREMBITA_LISTEN`](#trembita_listen) ([ingress-lb](ops/ingress-lb.md)); B-32 — `TREMBITA_JOB_QUEUE_*`, `TREMBITA_RAFT_*` (table above); B-33 — boot **`product_scale`** log + **`GET /introspect/product-scale`**; **B-43** — **`GET /introspect/ops-summary`** rolls up B-35/B-33/B-36/B-37 + queue depth hints ([production-runbook § B-43](ops/production-runbook.md#ops-cockpit-introspect-b-43)). Cap group defaults (B-28) are manifest-side, not env. Index: [status § Product scale wave](status.md#product-scale-wave-b-28b32).
+**Scale wave env (B-28–B-44):** B-29 — [`TREMBITA_GATEWAY_SESSION_SECRET`](#trembita_gateway_session_secret); B-30 — pool health via **`GET /ready`** on [`TREMBITA_LISTEN`](#trembita_listen) ([ingress-lb](ops/ingress-lb.md)); B-32 — `TREMBITA_JOB_QUEUE_*`, `TREMBITA_RAFT_*` (table above); B-33 — boot **`product_scale`** log + **`GET /introspect/product-scale`**; **B-43** — **`GET /introspect/ops-summary`** rolls up B-35/B-33/B-36/B-37 + queue depth hints ([production-runbook § B-43](ops/production-runbook.md#ops-cockpit-introspect-b-43)); **B-44** — `TREMBITA_COORDINATION_MAX_*` ceilings + **`coordination_closed_loop`** on ops-summary ([runbook § B-44](ops/production-runbook.md#coordination-closed-loop-b-44)). Cap group defaults (B-28) are manifest-side, not env. Index: [status § Product scale wave](status.md#product-scale-wave-b-28b32). Regression commands: [testing-coverage § B-28–B-32](testing-coverage.md#shipped-backlog-b-28b32) · [§ B-33–B-41](testing-coverage.md#shipped-backlog-b-33b41) · [§ B-42+](testing-coverage.md#shipped-backlog-b-42).
 
 See also: [getting-started.md](getting-started.md), [certs.md](certs.md), [unified-listener](decisions/unified-listener.md).

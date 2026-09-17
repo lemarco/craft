@@ -186,6 +186,11 @@ impl<M: StateMachine> Observer for TrembitaObserver<M> {
             } else {
                 role_str(status.role).to_string()
             };
+            crate::join_pipeline::publish_join_phase_metrics(
+                &self.metrics,
+                self.node_id,
+                pipeline.phase,
+            );
             Readiness {
                 node_id: self.node_id.0,
                 role,

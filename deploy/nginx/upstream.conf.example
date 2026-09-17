@@ -1,0 +1,43 @@
+# Nginx HTTP upstream — readiness on GET /ready (B-45 / B-30)
+# Docs: docs/ops/ingress-lb.md
+#
+# Terminate TLS at nginx or use ssl passthrough (stream {}) for TCP :443.
+# Replace backend IPs with your VPS private or public addresses.
+
+upstream trembita_product {
+    # Readiness-only: nginx plus checks /ready (not /health)
+    server 10.0.0.11:443 max_fails=3 fail_timeout=10s;
+    server 10.0.0.12:443 max_fails=3 fail_timeout=10s;
+    server 10.0.0.13:443 max_fails=3 fail_timeout=10s;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name api.example.com;
+
+    ssl_certificate     /etc/nginx/ssl/api.example.com.fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/api.example.com.key;
+
+    location / {
+        proxy_pass https://trembita_product;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket / long poll
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+    }
+
+    # Optional: active health check module or external monitor hitting each backend :443/ready
+}
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# Minimal active check (requires nginx-plus or open-source health check module):
+# Alternatively run cron/curl against each backend IP:
+#   curl -sf "https://10.0.0.11:443/ready" || mark down in your LB API

@@ -1,4 +1,4 @@
-//! Queued capability with cap-store idempotency (R4) — reference for durable side effects.
+//! Queued capability with cap-store idempotency (R4 / B-52) — reference for durable side effects.
 
 use serde::{Deserialize, Serialize};
 use trembita::capstore::{store_get, store_set};

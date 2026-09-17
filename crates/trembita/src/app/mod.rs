@@ -16,6 +16,10 @@ pub(crate) use run_hint::ManifestRunHint;
 pub use gateway::DefaultGatewayApis;
 mod directory_r3;
 mod ops_summary;
+#[cfg(feature = "otlp-metrics")]
+mod otlp_metrics;
+#[cfg(feature = "otlp-metrics")]
+pub use otlp_metrics::install_otlp_metrics;
 mod runtime;
 mod scale_plan;
 mod shutdown;

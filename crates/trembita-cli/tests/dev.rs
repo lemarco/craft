@@ -169,6 +169,34 @@ fn workspace_root_from_env_or_cwd() {
     assert!(root.join("examples/stateful-workers").is_dir());
 }
 
+/// B-50 — CI heavy lane wraps B-42 local-cluster elastic smoke.
+#[test]
+fn b50_ci_local_elastic_smoke_script_wires_local_cluster_phases() {
+    let root = workspace_root().expect("repo");
+    let script = std::fs::read_to_string(root.join("scripts/ci-local-elastic-smoke.sh")).unwrap();
+    for needle in [
+        "B-50",
+        "local-cluster.sh",
+        "elastic-up",
+        "lb-up",
+        "elastic-smoke",
+        "docker info",
+    ] {
+        assert!(
+            script.contains(needle),
+            "ci-local-elastic-smoke.sh missing: {needle}"
+        );
+    }
+}
+
+#[test]
+fn b50_gitlab_ci_declares_local_elastic_smoke_job() {
+    let root = workspace_root().expect("repo");
+    let ci = std::fs::read_to_string(root.join(".gitlab-ci.yml")).unwrap();
+    assert!(ci.contains("local-elastic-smoke:"));
+    assert!(ci.contains("scripts/ci-local-elastic-smoke.sh"));
+}
+
 #[test]
 fn trigger_requires_script_or_fails_gracefully() {
     let root = workspace_root().expect("repo");

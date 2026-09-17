@@ -132,6 +132,7 @@ async fn b43_introspect_ops_summary_aggregates_join_scale_r3_and_preset() {
     assert_eq!(body["directory_r3"]["directory_policy"], "read_your_writes");
     assert_eq!(body["coordination_profile"]["preset"], "jobs_backlog");
     assert!(body.get("queue_depths").is_some());
+    assert!(body.get("coordination_closed_loop").is_some());
 
     let expected = serde_json::to_value(&live).expect("live json");
     assert_eq!(body, expected, "HTTP body must match ops_summary()");
@@ -201,6 +202,52 @@ async fn b43_ops_summary_nested_routes_match_dedicated_introspect_endpoints() {
         summary["queue_depths"],
         queue_depth_hints_from_queues_view(&queues),
         "queue_depths must mirror /introspect/queues depth fields"
+    );
+
+    app.shutdown();
+    let _ = std::fs::remove_dir_all(base);
+}
+
+#[tokio::test]
+async fn b44_ops_summary_includes_closed_loop_ceilings_and_raft_hint() {
+    let base = temp_data_dir("b44-closed-loop");
+    let app = boot_local_app(
+        || {
+            TrembitaApp::builder()
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_data_dir(&base)
+                        .with_coordination_raft_groups(2)
+                        .with_coordination_max_raft_groups(2)
+                        .with_coordination_growth_preset(CoordinationGrowthPreset::Full),
+                )
+                .manifest(
+                    AppManifest::new().queue([QueueOpts::new("jobs", Duration::from_secs(30))]),
+                )
+        },
+        Some(ReadyOpts::default()),
+    )
+    .await;
+
+    let summary = app.ops_summary().await;
+    assert_eq!(
+        summary.coordination_closed_loop.ceilings.max_raft_groups,
+        Some(2)
+    );
+    assert_eq!(summary.coordination_closed_loop.coordination_raft_groups, 2);
+    assert_eq!(
+        summary
+            .coordination_closed_loop
+            .raft_why_not_scaling
+            .as_deref(),
+        Some("at_max_raft_groups_ceiling")
+    );
+
+    let table = product_ops_table(&app);
+    let json = dispatch_json(&table, &Method::GET, "/introspect/ops-summary").await;
+    assert_eq!(
+        json["coordination_closed_loop"]["ceilings"]["max_raft_groups"],
+        2
     );
 
     app.shutdown();

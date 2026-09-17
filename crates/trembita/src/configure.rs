@@ -49,6 +49,10 @@ pub struct TrembitaConfigure {
     pub coordination_shard_count: Option<u32>,
     /// Named growth profile (B-37) — sets coordination + default queue auto-shard policy.
     pub coordination_growth_preset: Option<CoordinationGrowthPreset>,
+    /// B-44 cap on physical auto-shard shards (`TREMBITA_COORDINATION_MAX_QUEUE_SHARDS`).
+    pub coordination_max_queue_shards: Option<usize>,
+    /// B-44 cap on coordination Raft groups (`TREMBITA_COORDINATION_MAX_RAFT_GROUPS`).
+    pub coordination_max_raft_groups: Option<u32>,
     /// Durable cross-node actor mailbox spool (`{data_dir}/mailbox-spool.redb`) — B-41.
     pub durable_mailbox: bool,
     /// When `true`, omit ops HTTP (`/health`, `/ready`, `/metrics`, `/dashboard`, …). Or use
@@ -87,6 +91,8 @@ impl Default for TrembitaConfigure {
             coordination_raft_groups: 1,
             coordination_shard_count: None,
             coordination_growth_preset: None,
+            coordination_max_queue_shards: None,
+            coordination_max_raft_groups: None,
             durable_mailbox: false,
             #[cfg(feature = "http-jobs")]
             without_ops: true,
@@ -168,6 +174,20 @@ impl TrembitaConfigure {
         self
     }
 
+    /// B-44 — cap closed-loop queue shard expansion.
+    #[must_use]
+    pub fn with_coordination_max_queue_shards(mut self, max: usize) -> Self {
+        self.coordination_max_queue_shards = Some(max.max(1));
+        self
+    }
+
+    /// B-44 — cap runtime [`add_raft_groups`](crate::TrembitaApp::add_raft_groups) growth.
+    #[must_use]
+    pub fn with_coordination_max_raft_groups(mut self, max: u32) -> Self {
+        self.coordination_max_raft_groups = Some(max.max(1));
+        self
+    }
+
     /// Apply a B-37 growth profile (coordination + leader auto-shard policy defaults).
     ///
     /// Call **before** [`.manifest`](crate::TrembitaAppBuilder::manifest) / [`.queue`](crate::TrembitaAppBuilder::queue)
@@ -206,7 +226,10 @@ impl TrembitaConfigure {
         if self.durable_mailbox {
             inner = inner.durable_mailbox(true);
         }
-        inner
+        inner.coordination_ceilings(trembita_jobs::CoordinationCeilings {
+            max_queue_shards: self.coordination_max_queue_shards,
+            max_raft_groups: self.coordination_max_raft_groups,
+        })
     }
 }
 

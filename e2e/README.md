@@ -88,9 +88,9 @@ Product-scale proof: **QUIC/mTLS cluster join**, **HTTP LB**, **cluster session 
 3. `POST`-less login on node 1 → cookie → **`GET /me` on node 2** returns `lbproof`.
 4. **`GET /e2e/whoami`** through LB hits **≥2 distinct** capability host `node_id`s.
 
-**CI:** heavy lane — MR label **`run-heavy`** ([process.md](../docs/process.md)). **Fast parity** (no Docker): `./scripts/test-fast.sh -p trembita --test elastic_lb_product b34_`.
+**CI:** heavy lane — MR label **`run-heavy`** ([process.md](../docs/process.md)). **B-50** job **`local-elastic-smoke`**: [`../scripts/ci-local-elastic-smoke.sh`](../scripts/ci-local-elastic-smoke.sh) (B-42 laptop path, no compose stack). **`e2e`** job still runs full **`elastic_lb.sh`**. **Fast parity** (no Docker): `./scripts/test-fast.sh -p trembita --test elastic_lb_product b34_`.
 
-**Laptop parity (B-42, no E2E containers):** [`../scripts/local-cluster.sh`](../scripts/local-cluster.sh) `elastic-up` + `elastic-smoke` on **realtime** (**8290–8293**, LB **:18290**) — same `/ready`, session, and **`/e2e/whoami`** checks. Regression: `./scripts/test-fast.sh -p trembita-cli --lib b42_` · `./scripts/test-fast.sh -p trembita-tools --lib b42_` · index [capabilities § B-42](../docs/scenarios/capabilities.md#automated-regression-b-42).
+**Laptop parity (B-42, no E2E containers):** [`../scripts/local-cluster.sh`](../scripts/local-cluster.sh) `elastic-up` + `elastic-smoke` on **realtime** (**8290–8293**, LB **:18290**) — same `/ready`, session, and **`/e2e/whoami`** checks. Regression: `./scripts/test-fast.sh -p trembita-cli --lib b42_` · `./scripts/test-fast.sh -p trembita-tools --lib b42_` · index [capabilities § B-42](../docs/scenarios/capabilities.md#automated-regression-b-42) · CI wrapper [B-50](../docs/scenarios/capabilities.md#ci-local-elastic-smoke-b-50).
 
 Docs: [ingress-lb § B-34](../docs/ops/ingress-lb.md#elastic-join--http-lb-proof-b-34) · [capabilities § B-34](../docs/scenarios/capabilities.md#elastic-join--lb-b-34) · [B-42 local elastic](../docs/scenarios/capabilities.md#local-elastic-parity-b-42).
 

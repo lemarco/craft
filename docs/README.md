@@ -4,7 +4,7 @@ Architecture and decision records for the trembita distributed runtime (product:
 
 **Start here:** [status.md](status.md) (current capabilities and limits) · [architecture.md](architecture.md) (crate graph)
 
-**Product teams:** [scenarios/](scenarios/README.md) (jobs, event topics, workers, sessions, workflows — no mandatory Redis) · [examples/](../examples/README.md) (runnable showcases) · [backlog.md](backlog.md#open-work) (open work)
+**Product teams:** [scenarios/](scenarios/README.md) (jobs, event topics, workers, sessions, workflows — no mandatory Redis) · [examples/](../examples/README.md) (runnable showcases) · [status.md](status.md) (shipped **B-28…B-54**) · [backlog.md](backlog.md#open-work) (schedule new epics)
 
 **Contributors:** [../CONTRIBUTING.md](../CONTRIBUTING.md) · [../AGENTS.md](../AGENTS.md) (AI agents)
 
@@ -92,8 +92,9 @@ Architecture and decision records for the trembita distributed runtime (product:
 | [getting-started.md](getting-started.md) | **TrembitaApp** quick start |
 | [status.md](status.md) | **Current capabilities and limits** |
 | [scenarios/](scenarios/README.md) | **Product scenario guides** (jobs, topics, workers, sessions, workflows) |
-| [backlog.md](backlog.md) | Open backlog |
-| [testing-coverage.md](testing-coverage.md) | Test inventory and coverage matrix |
+| [backlog.md](backlog.md) | Open backlog + epic archives (B-01…B-41) |
+| [testing-coverage.md](testing-coverage.md) | Test inventory; [shipped epic regressions](testing-coverage.md#shipped-backlog-b-28b32) (B-28…B-54) |
+| [archive/](archive/README.md) | Shipped backlog planning snapshots |
 | [releasing.md](releasing.md) | crates.io publish workflow |
 | [../CHANGELOG.md](../CHANGELOG.md) | Changelog policy (detailed history from **1.0**) |
 

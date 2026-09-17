@@ -1,0 +1,38 @@
+[package]
+name = "trembita-gateway-session-postgres"
+description = "PostgreSQL GatewaySessionStore adapter for trembita cluster gateway sessions (B-46)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+readme = "README.md"
+homepage.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints]
+workspace = true
+
+[features]
+# Docker/testcontainers integration tests (heavy CI lane only).
+docker-tests = []
+
+[dependencies]
+trembita-capstore.workspace = true
+sqlx.workspace = true
+sha2.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+testcontainers-modules = { workspace = true, features = ["postgres"] }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
+
+[[test]]
+name = "postgres"
+path = "tests/postgres.rs"
+required-features = ["docker-tests"]

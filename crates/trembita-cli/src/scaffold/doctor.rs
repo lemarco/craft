@@ -1029,6 +1029,28 @@ fn check_deploy_preflight(project: &TrembitaProject, strict: bool, report: &mut 
         preflight_compose(&content, "deploy/docker-compose.yml", strict, report);
     }
     check_deploy_cert_material(project, strict, report);
+    check_backup_dr_preflight(project, strict, report);
+}
+
+/// B-48 — remind operators to schedule `data_dir` + cert backups.
+fn check_backup_dr_preflight(project: &TrembitaProject, strict: bool, report: &mut DoctorReport) {
+    let readme = project.root.join("deploy/README.md");
+    let readme_mentions_backup = readme.is_file()
+        && fs::read_to_string(&readme)
+            .ok()
+            .is_some_and(|c| c.to_ascii_lowercase().contains("backup"));
+    let has_helper = project.root.join("scripts/backup-data-dir.sh").is_file()
+        || project.root.join("deploy/backup-restore.md").is_file();
+    if readme_mentions_backup && has_helper {
+        report.ok("preflight: backup/DR docs present (B-48)");
+        return;
+    }
+    let msg = "preflight: schedule stop-safe backup for TREMBITA_DATA_DIR + TREMBITA_CERT_DIR — docs/ops/backup-restore.md";
+    if strict {
+        report.warn(msg);
+    } else if has_helper || readme_mentions_backup {
+        report.warn(format!("{msg} (partial deploy backup docs)"));
+    }
 }
 
 fn preflight_env_vars(content: &str, path: &str, strict: bool, report: &mut DoctorReport) {
@@ -2289,5 +2311,29 @@ pub fn manifest() -> CapManifest {
                 row.name, report.findings
             );
         }
+    }
+
+    /// B-48 — preflight reminds to document backup when deploy/ exists without B-48 helpers.
+    #[test]
+    fn b48_doctor_preflight_warns_backup_dr_on_scaffold_deploy() {
+        let dir = tempfile::tempdir().unwrap();
+        let opts = NewProjectOpts {
+            name: "b48-backup".into(),
+            output: dir.path().to_path_buf(),
+            features: AppFeature::defaults(),
+            trembita_version: "0.3.2".into(),
+            trembita_path: None,
+            template: None,
+        };
+        let root = scaffold_project(&opts).unwrap();
+        let project = TrembitaProject { root };
+        let report = run_doctor(&project, true);
+        assert!(
+            report.findings.iter().any(|f| {
+                f.level == Level::Warn && f.message.to_ascii_lowercase().contains("backup")
+            }),
+            "expected backup DR preflight warn: {:?}",
+            report.findings
+        );
     }
 }

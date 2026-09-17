@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use tempfile::tempdir;
-use trembita_cli::{AppFeature, NewProjectOpts, scaffold_project};
+use trembita_cli::{AppFeature, NewProjectOpts, scaffold_project, workspace_root};
 
 #[test]
 fn scaffolds_default_layout() {
@@ -247,6 +247,80 @@ fn b38_profile_realtime_includes_session_per_node_wiring() {
     let chat = std::fs::read_to_string(root.join("src/capabilities/chat.rs")).unwrap();
     assert!(chat.contains(".per_node()"));
     assert!(chat.contains("session"));
+}
+
+/// B-52 — jobs template ships queued idempotency reference (`task.rs`).
+#[test]
+fn b52_jobs_template_task_idempotency_sample() {
+    use trembita_cli::{AppTemplate, resolve_scaffold_features};
+
+    let dir = tempdir().unwrap();
+    let features = resolve_scaffold_features(Some(AppTemplate::Jobs), "").unwrap();
+    let opts = NewProjectOpts {
+        name: "b52-jobs".into(),
+        output: dir.path().to_path_buf(),
+        features,
+        template: Some(AppTemplate::Jobs),
+        trembita_version: "0.6.3".into(),
+        trembita_path: None,
+    };
+    let root = scaffold_project(&opts).unwrap();
+    let task = std::fs::read_to_string(root.join("src/capabilities/task.rs")).unwrap();
+    assert!(task.contains("B-52") || task.contains("require_store"));
+    assert!(task.contains("store_set"));
+}
+
+#[test]
+fn b52_topics_template_includes_domain_outbox_stub() {
+    use trembita_cli::{AppTemplate, resolve_scaffold_features};
+
+    let dir = tempdir().unwrap();
+    let features = resolve_scaffold_features(Some(AppTemplate::Topics), "").unwrap();
+    let opts = NewProjectOpts {
+        name: "b52-topics".into(),
+        output: dir.path().to_path_buf(),
+        features,
+        template: Some(AppTemplate::Topics),
+        trembita_version: "0.6.3".into(),
+        trembita_path: None,
+    };
+    let root = scaffold_project(&opts).unwrap();
+    let outbox = std::fs::read_to_string(root.join("src/domain/outbox.rs")).unwrap();
+    assert!(outbox.contains("EventOutboxSource"));
+    assert!(outbox.contains("TopicOpts::outbox"));
+    let domain_mod = std::fs::read_to_string(root.join("src/domain/mod.rs")).unwrap();
+    assert!(domain_mod.contains("pub mod outbox"));
+}
+
+#[test]
+fn b52_api_template_includes_consensus_reference() {
+    use trembita_cli::{AppTemplate, resolve_scaffold_features};
+
+    let dir = tempdir().unwrap();
+    let features = resolve_scaffold_features(Some(AppTemplate::Api), "").unwrap();
+    let opts = NewProjectOpts {
+        name: "b52-api".into(),
+        output: dir.path().to_path_buf(),
+        features,
+        template: Some(AppTemplate::Api),
+        trembita_version: "0.6.3".into(),
+        trembita_path: None,
+    };
+    let root = scaffold_project(&opts).unwrap();
+    let consensus = std::fs::read_to_string(root.join("src/capabilities/consensus.rs")).unwrap();
+    assert!(consensus.contains("propose_keyed"));
+    assert!(consensus.contains("query_keyed_linearizable"));
+}
+
+#[test]
+fn b52_domain_patterns_documented_in_capability_dx_and_structural_limits() {
+    let root = workspace_root().expect("repo");
+    let dx = std::fs::read_to_string(root.join("docs/decisions/capability-dx.md")).unwrap();
+    let limits = std::fs::read_to_string(root.join("docs/scenarios/structural-limits.md")).unwrap();
+    assert!(dx.contains("Domain DX patterns (B-52)"));
+    assert!(limits.contains("Domain patterns (B-52)"));
+    assert!(dx.contains("EventOutboxSource"));
+    assert!(limits.contains("require_store"));
 }
 
 #[test]

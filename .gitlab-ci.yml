@@ -2,7 +2,7 @@
 #
 # Lanes:
 #   check  — every MR / branch push (fast lane, msrv, website build)
-#   heavy  — nightly schedule or MR label run-heavy
+#   heavy  — nightly schedule or MR label run-heavy (incl. local-elastic-smoke B-50)
 #   release — version tags: gate → release build → manual crates.io publish
 #   deploy — GitLab Pages (master + release tags)
 #
@@ -140,6 +140,25 @@ fuzz:
   script:
     - cargo install cargo-fuzz
     - cd crates/trembita-fuzz && cargo fuzz run wire_decode -- -max_total_time=300
+
+local-elastic-smoke:
+  stage: heavy
+  image: rust:latest
+  extends: .rust_registry_cache
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_HOST: "tcp://docker:2375"
+    DOCKER_TLS_CERTDIR: ""
+  rules:
+    - !reference [.run-heavy-rules, rules]
+  timeout: 45m
+  before_script:
+    - !reference [.rust_ci_setup, before_script]
+    - apt-get update -qq
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl docker.io
+  script:
+    - bash scripts/ci-local-elastic-smoke.sh
 
 e2e:
   stage: heavy

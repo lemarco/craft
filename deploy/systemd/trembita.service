@@ -1,0 +1,43 @@
+# Trembita product node — template (B-45)
+#
+# Substitute placeholders, then:
+#   sudo cp trembita.service /etc/systemd/system/myapp.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now myapp.service
+#
+# Placeholders (sed or hand-edit):
+#   @APP_USER@     — unprivileged user (owns TREMBITA_DATA_DIR)
+#   @APP_INSTALL@  — binary path, often /opt/myapp/current (symlink)
+#   @ENV_FILE@     — e.g. /etc/myapp/trembita.env (see deploy/env/*.example)
+#   @APP_WORKDIR@  — working directory for relative paths in the app
+
+[Unit]
+Description=Trembita application node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@APP_USER@
+Group=@APP_USER@
+WorkingDirectory=@APP_WORKDIR@
+EnvironmentFile=-@ENV_FILE@
+ExecStart=@APP_INSTALL@
+Restart=always
+RestartSec=5
+
+# Graceful leave + gateway drain — must cover TREMBITA_DRAIN_TIMEOUT and
+# TREMBITA_HTTP_DRAIN_TIMEOUT (see docs/decisions/drain-timeout.md).
+TimeoutStopSec=120
+
+# File descriptors for many QUIC peers / HTTP connections
+LimitNOFILE=65535
+
+# Optional hardening (adjust ReadWritePaths for your data + cert dirs)
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib
+
+[Install]
+WantedBy=multi-user.target

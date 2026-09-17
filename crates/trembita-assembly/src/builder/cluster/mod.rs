@@ -88,6 +88,8 @@ pub struct TrembitaClusterBuilder<M: StateMachine> {
     durable_mailbox: bool,
     /// User-defined leader-only periodic tasks ([`Self::on_leader`]).
     leader_tasks: Vec<UserLeaderTaskSpec>,
+    /// B-44 hard caps on closed-loop queue / Raft growth.
+    coordination_ceilings: trembita_jobs::CoordinationCeilings,
     /// Code-first settings that must not be overwritten by env merge.
     overrides: BuilderOverrides,
 }

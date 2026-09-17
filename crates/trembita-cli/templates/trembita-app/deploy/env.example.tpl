@@ -1,4 +1,5 @@
 # Copy to deploy/.env — product surface (see docs/env.md in trembita repo).
+# VPS systemd deploy: trembita repo deploy/ (B-45) — seed.env.example / joiner.env.example.
 
 # Required
 TREMBITA_DATA_DIR=/data

@@ -3,8 +3,8 @@
 Guides for building on trembita **without mandatory Redis** — same binary on each VPS, scale by adding nodes ([deployment-model](../decisions/deployment-model.md)).
 
 **Decision record:** [product-scenarios](../decisions/product-scenarios.md)  
-**Backlog:** [open work](../backlog.md#open-work) · **Shipped:** [status.md](../status.md)  
-**Scale wave (B-28–B-32):** [status § Product scale wave](../status.md#product-scale-wave-b-28b32)
+**Backlog:** [open work](../backlog.md#open-work) (no open P0–P2 epics) · **Shipped:** [status.md](../status.md)  
+**Scale & ops wave (B-28–B-54):** [status § Product scale wave](../status.md#product-scale-wave-b-28b32) · archives [B-28–B-32](../archive/backlog-wave-b28-b32.md) · [B-33–B-41](../archive/backlog-wave-b33-b41.md) · [testing-coverage](../testing-coverage.md#shipped-backlog-b-28b32)
 
 ## Choose your pattern
 
@@ -89,5 +89,5 @@ E2E: `./e2e/queue.sh` (QUIC/mTLS, failover). Product HTTP/WS: [`examples/`](../.
 - [status.md](../status.md) — shipped vs deferred
 - [architecture.md](../architecture.md) — crate graph
 - [getting-started.md](../getting-started.md) — TrembitaApp tutorial
-- [ops/production-runbook.md](../ops/production-runbook.md) — VPS deployment checklist
+- [ops/production-runbook.md](../ops/production-runbook.md) — VPS deployment checklist · [deploy/](../../deploy/README.md) — systemd + env templates (B-45)
 - [deployment-model](../decisions/deployment-model.md) — one binary, N VPS

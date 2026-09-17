@@ -55,7 +55,7 @@ async fn single_node_set_desired() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn coordinator_rolls_all_nodes_dry_run() {
+async fn b49_coordinator_rolls_all_nodes_dry_run() {
     let ids = [NodeId(1), NodeId(2), NodeId(3)];
     let net = LocalNetwork::new();
     let tmp = TempDir::new().expect("tempdir");

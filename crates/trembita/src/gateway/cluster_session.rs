@@ -54,7 +54,7 @@ impl ClusterSessionSecret {
 
     /// Issue a tamper-evident session token for `user` (session key for sticky routing).
     pub fn issue(&self, user: &str, ttl: Duration) -> Result<String, ClusterSessionError> {
-        validate_session_user(user)?;
+        validate_gateway_session_user(user)?;
         let exp = unix_now().saturating_add(ttl.as_secs());
         let body = format!("{TOKEN_VERSION}|{exp}|{user}");
         let sig = mac_hex(self.0.as_ref(), body.as_bytes());
@@ -87,7 +87,7 @@ impl ClusterSessionSecret {
         if parts.next().is_some() {
             return Err(ClusterSessionError::Malformed);
         }
-        validate_session_user(user)?;
+        validate_gateway_session_user(user)?;
         if exp <= unix_now() {
             return Err(ClusterSessionError::Expired);
         }
@@ -144,7 +144,8 @@ pub struct ClusterSessionRecord {
     pub user: String,
 }
 
-pub(crate) fn validate_session_user(user: &str) -> Result<(), ClusterSessionError> {
+/// Session key constraints shared by signed cookies and opaque registry rows (B-46).
+pub fn validate_gateway_session_user(user: &str) -> Result<(), ClusterSessionError> {
     if user.is_empty() || user.len() > 256 || user.contains('|') {
         return Err(ClusterSessionError::Malformed);
     }
@@ -189,8 +190,9 @@ pub async fn register_capstore_session(
     user: &str,
     ttl: Duration,
 ) -> Result<String, StoreError> {
-    validate_session_user(user).map_err(|_| StoreError::Backend("invalid session user".into()))?;
-    let token = opaque_session_token(user);
+    validate_gateway_session_user(user)
+        .map_err(|_| StoreError::Backend("invalid session user".into()))?;
+    let token = opaque_gateway_session_token(user);
     let key = capstore_session_key(&token);
     store_set(
         store,
@@ -296,7 +298,8 @@ fn parse_cookie_header<'a>(header: &'a str, name: &str) -> Option<&'a str> {
     })
 }
 
-pub(crate) fn opaque_session_token(user: &str) -> String {
+/// Opaque cookie value for cap-store / Postgres session registries (B-40/B-46).
+pub fn opaque_gateway_session_token(user: &str) -> String {
     let n = unix_now();
     let body = format!("opaque|{n}|{user}");
     format!("cs_{}", hex::encode(Sha256::digest(body.as_bytes())))
@@ -705,5 +708,35 @@ mod tests {
         );
         let user = session_user_from_cookie("sess", &headers, &secret).expect("user");
         assert_eq!(user, "multi");
+    }
+
+    #[test]
+    fn b46_validate_gateway_session_user_scenarios_table() {
+        struct Row {
+            user: &'static str,
+            ok: bool,
+        }
+        let rows = [
+            Row {
+                user: "alice",
+                ok: true,
+            },
+            Row {
+                user: "",
+                ok: false,
+            },
+            Row {
+                user: "a|b",
+                ok: false,
+            },
+        ];
+        for row in rows {
+            assert_eq!(
+                validate_gateway_session_user(row.user).is_ok(),
+                row.ok,
+                "user={:?}",
+                row.user
+            );
+        }
     }
 }

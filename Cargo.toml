@@ -49,6 +49,7 @@ members = [
     "crates/trembita-backlog-postgres",
     "crates/trembita-events-postgres",
     "crates/trembita-capstore-postgres",
+    "crates/trembita-gateway-session-postgres",
     "crates/trembita-metrics-otlp",
 ]
 # `benchmarks/` and `examples/` are standalone crates (own workspace tables) so
@@ -111,6 +112,7 @@ rustls-pemfile = "2"
 rcgen = "0.14"
 sha2 = "0.11"
 hex = "0.4"
+getrandom = { version = "0.3", features = ["std"] }
 
 # --- HTTP (TCP gateway, ops, product routes) ----------------------------------
 http = "1"
@@ -194,6 +196,7 @@ trembita-jobs = { path = "crates/trembita-jobs", version = "0.6.3" }
 trembita-events = { path = "crates/trembita-events", version = "0.6.3" }
 trembita-capstore = { path = "crates/trembita-capstore", version = "0.6.3" }
 trembita-capstore-postgres = { path = "crates/trembita-capstore-postgres", version = "0.6.3" }
+trembita-gateway-session-postgres = { path = "crates/trembita-gateway-session-postgres", version = "0.6.3" }
 trembita-client = { path = "crates/trembita-client", version = "0.6.3" }
 trembita-store-redis = { path = "crates/trembita-store-redis", version = "0.6.3" }
 trembita-dashboard = { path = "crates/trembita-dashboard", version = "0.6.3" }

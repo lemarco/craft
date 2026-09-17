@@ -145,9 +145,9 @@ This ADR states **product positioning and composition**. What is implemented tod
 - WebSocket gateway auth: [`GatewayBearerIdentity`](../../crates/trembita/src/gateway/identity.rs) covers bearer tokens on product routes; session/OAuth/JWT for custom WebSocket handlers remains app-owned via `.identity()` and custom routes
 - Stateful workers need `RedbActorStateStore` + SM discipline — keys without SM still require explicit design
 
-### Scale on N identical VPS (B-28–B-32)
+### Scale on N identical VPS (B-28–B-54)
 
-Shipped — index: [status § Product scale wave](../status.md#product-scale-wave-b-28b32). Epic snapshot: [archive/backlog-wave-b28-b32.md](../archive/backlog-wave-b28-b32.md).
+Shipped — live index: [status § Product scale wave](../status.md#product-scale-wave-b-28b32) (**B-28 … B-54**). Planning archives: [B-28–B-32](../archive/backlog-wave-b28-b32.md) · [B-33–B-41](../archive/backlog-wave-b33-b41.md). Regression commands: [testing-coverage § B-28–B-32](../testing-coverage.md#shipped-backlog-b-28b32) · [§ B-33–B-41](../testing-coverage.md#shipped-backlog-b-33b41) · [§ B-42+](../testing-coverage.md#shipped-backlog-b-42).
 
 ## Related
 

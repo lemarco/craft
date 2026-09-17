@@ -35,4 +35,4 @@ Set `GATEWAY_TOKEN` (or `TREMBITA_GATEWAY_TOKEN`) before calling identity-protec
 
 See `deploy/docker-compose.yml` and `deploy/.env.example`.
 
-Docs: [getting-started]({{TREMBITA_DOC_BASE}}/docs/getting-started.md) · [capabilities scenario]({{TREMBITA_DOC_BASE}}/docs/scenarios/capabilities.md) · [scenarios]({{TREMBITA_DOC_BASE}}/docs/scenarios/README.md)
+Docs: [getting-started]({{TREMBITA_DOC_BASE}}/docs/getting-started.md) · [capabilities scenario]({{TREMBITA_DOC_BASE}}/docs/scenarios/capabilities.md) · [domain patterns (B-52)]({{TREMBITA_DOC_BASE}}/docs/decisions/capability-dx.md#domain-dx-patterns-b-52) · [scenarios]({{TREMBITA_DOC_BASE}}/docs/scenarios/README.md)

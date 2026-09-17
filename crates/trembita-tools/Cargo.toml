@@ -45,7 +45,9 @@ path = "src/bin/e2e-elastic.rs"
 
 [dependencies]
 trembita = { workspace = true, features = ["dev-certs", "http-jobs"] }
+trembita-core.workspace = true
 trembita-http.workspace = true
+reqwest = { workspace = true, features = ["json"] }
 http.workspace = true
 trembita-runtime.workspace = true
 trembita-client.workspace = true
@@ -67,4 +69,9 @@ walkdir.workspace = true
 [dev-dependencies]
 temp-env.workspace = true
 tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util"] }
 trembita-tools = { workspace = true }
+
+[[test]]
+name = "upgrade_operator"
+path = "tests/upgrade_operator.rs"

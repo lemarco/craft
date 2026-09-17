@@ -22,11 +22,11 @@ use trembita_events::{
 };
 use trembita_jobs::{
     AutoShardStreamSpec, BacklogRegistry, BacklogSettleOutbox, BacklogSettleOutboxOpts,
-    ClusterJobQueue, CompositeScheduleSource, InMemoryBacklogSettleOutbox, JobQueue,
-    QueueAutoscaleRegistry, QueueService, RecurringJob, RedbBacklogSettleOutbox, RedbJobQueue,
-    ScheduleSource, ShardedJobQueue, StaticScheduleSource, WorkloadMetricsSnapshot,
-    run_backlog_feeder, run_backlog_settle_drainer, run_queue_auto_shard_coordinator,
-    run_queue_schedule_ticker, run_workload_governor,
+    ClusterJobQueue, CompositeScheduleSource, CoordinationClosedLoopRegistry,
+    InMemoryBacklogSettleOutbox, JobQueue, QueueAutoscaleRegistry, QueueService, RecurringJob,
+    RedbBacklogSettleOutbox, RedbJobQueue, ScheduleSource, ShardedJobQueue, StaticScheduleSource,
+    WorkloadMetricsSnapshot, run_backlog_feeder, run_backlog_settle_drainer,
+    run_queue_auto_shard_coordinator, run_queue_schedule_ticker, run_workload_governor,
 };
 use trembita_runtime::{
     ActorDirectory, ActorRegistry, ClusterControl, ClusterMessaging, ClusterState,
@@ -121,6 +121,8 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
             });
 
         let queue_autoscale_registry = Arc::new(QueueAutoscaleRegistry::new());
+        let coordination_closed_loop_registry =
+            CoordinationClosedLoopRegistry::new(self.coordination_ceilings);
         let queue_autoscale_hook_reg = Arc::clone(&queue_autoscale_registry);
         let on_queue_autoscale_policy_applied: trembita_runtime::QueueAutoscalePolicyAppliedFn =
             Arc::new(move |cmd| {
@@ -956,8 +958,17 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
             let service = Arc::clone(service);
             let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
             leader_loop_stops.push(stop_tx);
+            let closed_loop = Arc::clone(&coordination_closed_loop_registry);
             tasks.push(tokio::spawn(async move {
-                run_queue_auto_shard_coordinator(state, queue, service, stream_spec, stop_rx).await;
+                run_queue_auto_shard_coordinator(
+                    state,
+                    queue,
+                    service,
+                    stream_spec,
+                    closed_loop,
+                    stop_rx,
+                )
+                .await;
             }));
         }
 
@@ -1223,6 +1234,7 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
             saga_registry,
             two_phase_registry,
             queue_autoscale_registry,
+            coordination_closed_loop_registry,
             telemetry,
             members: self.members,
             resource_profile,

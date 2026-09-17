@@ -51,6 +51,7 @@ PUBLISH_ORDER=(
     trembita-runtime
     trembita-capstore
     trembita-capstore-postgres
+    trembita-gateway-session-postgres
     trembita-jobs
     trembita-events
     trembita-events-postgres

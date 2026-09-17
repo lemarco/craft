@@ -62,7 +62,7 @@ Debug CLI: `./target/debug/trembita dev cluster-up --setup --nodes 4 --lb` · `.
 | `cap-smoke` | PerNode **`GET /e2e/whoami`** via LB — ≥2 handler `node_id`s |
 | `elastic-smoke` | All of the above in one pass |
 
-**Authoritative regression index:** [capabilities § B-42](../../docs/scenarios/capabilities.md#automated-regression-b-42) (full `b42_*` table + smoke thresholds).
+**Authoritative regression index:** [capabilities § B-42](../../docs/scenarios/capabilities.md#automated-regression-b-42) (full `b42_*` table + smoke thresholds). **CI (B-50):** `bash scripts/ci-local-elastic-smoke.sh` — GitLab **`local-elastic-smoke`** on MR **`run-heavy`** ([capabilities § B-50](../../docs/scenarios/capabilities.md#ci-local-elastic-smoke-b-50)).
 
 ### Automated regression (B-39)
 

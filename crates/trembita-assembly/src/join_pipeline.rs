@@ -1,8 +1,41 @@
 //! B-35 — join → catch-up → auto-hosts → LB pool readiness.
 
-use trembita_dashboard::{JoinPhase, JoinStatusView};
+use trembita_dashboard::{JoinPhase, JoinStatusView, Metrics};
 use trembita_proto::{LogIndex, NodeId};
 use trembita_runtime::NodeStatus;
+
+/// Numeric join phase for `trembita_join_phase` (B-51 alert rules).
+#[must_use]
+pub fn join_phase_ordinal(phase: JoinPhase) -> u8 {
+    match phase {
+        JoinPhase::AwaitingMembership => 0,
+        JoinPhase::CatchingUp => 1,
+        JoinPhase::AwaitingHosts => 2,
+        JoinPhase::PoolReady => 3,
+    }
+}
+
+/// Publish join pipeline gauges (same signal as `/introspect/join-status` and B-43 ops-summary `join`).
+pub fn publish_join_phase_metrics(metrics: &Metrics, node_id: NodeId, phase: JoinPhase) {
+    let node = node_id.0.to_string();
+    let ord = f64::from(join_phase_ordinal(phase));
+    metrics.set(
+        "trembita_join_phase",
+        "Elastic join pipeline phase (0=awaiting_membership, 1=catching_up, 2=awaiting_hosts, 3=pool_ready).",
+        &[("node", node.as_str())],
+        ord,
+    );
+    metrics.set(
+        "trembita_join_pool_ready",
+        "1 when join phase is pool_ready (eligible for HTTP LB pool).",
+        &[("node", node.as_str())],
+        if phase == JoinPhase::PoolReady {
+            1.0
+        } else {
+            0.0
+        },
+    );
+}
 
 /// Evaluate elastic join lifecycle for ops [`Readiness`](trembita_dashboard::Readiness).
 #[must_use]
@@ -162,5 +195,14 @@ mod tests {
             let view = evaluate_join_pipeline(NodeId(u64::from(row.node)), &s, &workers);
             assert_eq!(view.phase, row.want, "{}: phase", row.name);
         }
+    }
+
+    /// B-51 — stable ordinals for `trembita_join_phase`.
+    #[test]
+    fn b51_join_phase_ordinal_scenarios_table() {
+        assert_eq!(join_phase_ordinal(JoinPhase::AwaitingMembership), 0);
+        assert_eq!(join_phase_ordinal(JoinPhase::CatchingUp), 1);
+        assert_eq!(join_phase_ordinal(JoinPhase::AwaitingHosts), 2);
+        assert_eq!(join_phase_ordinal(JoinPhase::PoolReady), 3);
     }
 }

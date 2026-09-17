@@ -1,6 +1,10 @@
-//! Optional OpenTelemetry metrics export (observability backlog O-03).
+//! Optional OpenTelemetry metrics export (B-51 ops observability layer).
+
+mod sink;
 
 use std::sync::OnceLock;
+
+pub use sink::OtlpMetricsSink;
 
 static INIT: OnceLock<()> = OnceLock::new();
 
@@ -38,15 +42,20 @@ impl MetricsOpts {
 /// Install a global OTLP metrics pipeline. Idempotent; no-op when endpoint is unset.
 ///
 /// Pair with `trembita_runtime::init_tracing_with_otlp` when exporting traces and metrics.
+/// Wire samples via [`trembita_runtime::install_otlp_metrics`] (returns a [`MetricsSink`](trembita_dashboard::MetricsSink) bridge).
 pub fn init_metrics_with_otlp(opts: MetricsOpts) {
     INIT.get_or_init(|| install(opts));
 }
 
+fn otlp_endpoint(opts: &MetricsOpts) -> Option<String> {
+    opts.otlp_endpoint
+        .clone()
+        .or_else(|| std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok())
+        .filter(|s| !s.is_empty())
+}
+
 fn install(opts: MetricsOpts) {
-    let endpoint = opts
-        .otlp_endpoint
-        .or_else(|| std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok());
-    let Some(endpoint) = endpoint else {
+    let Some(endpoint) = otlp_endpoint(&opts) else {
         tracing::debug!(service = %opts.service_name, "metrics: no OTLP endpoint; skipped");
         return;
     };
@@ -84,4 +93,14 @@ fn install_otlp(service_name: &str, endpoint: &str) -> Result<(), String> {
 
     global::set_meter_provider(provider);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn b51_init_metrics_with_otlp_noops_without_endpoint() {
+        init_metrics_with_otlp(MetricsOpts::new("test-no-endpoint"));
+    }
 }

@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use trembita::cluster::AddRaftGroupsError;
 use trembita::{AppManifest, JobOpts, QueueOpts, TrembitaApp, TrembitaConfigure, consumer};
 use trembita_test_facade::{boot_local_app, wait_for_trembita_app_leader};
 use trembita_test_support::advance;
@@ -122,6 +123,48 @@ async fn trembita_app_multi_raft_coordination_boots_with_empty_state_machine() {
     let _ = std::fs::remove_dir_all(base);
 }
 
+#[tokio::test(start_paused = true)]
+async fn b44_add_raft_groups_rejected_at_coordination_ceiling() {
+    let base = temp_data_dir("b44-raft-ceiling");
+    let app = boot_local_app(
+        || {
+            TrembitaApp::builder()
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_data_dir(&base)
+                        .with_coordination_raft_groups(2)
+                        .with_coordination_max_raft_groups(2)
+                        .with_tick_period(Duration::from_millis(5)),
+                )
+                .manifest(
+                    AppManifest::new().queue([QueueOpts::new("meta", Duration::from_secs(30))]),
+                )
+        },
+        None,
+    )
+    .await;
+
+    wait_for_trembita_app_leader(&app).await;
+    advance(Duration::from_millis(200)).await;
+
+    assert_eq!(app.cluster().raft_groups(), 2);
+    let err = app.add_raft_groups(1).await.expect_err("at ceiling");
+    assert!(matches!(
+        err,
+        AddRaftGroupsError::AtRaftGroupsCeiling { max: 2, current: 2 }
+    ));
+
+    let snap = app.coordination_closed_loop_snapshot();
+    assert_eq!(snap.ceilings.max_raft_groups, Some(2));
+    assert_eq!(
+        snap.raft_why_not_scaling.as_deref(),
+        Some("at_max_raft_groups_ceiling")
+    );
+
+    app.shutdown();
+    let _ = std::fs::remove_dir_all(base);
+}
+
 #[cfg(feature = "dev-certs")]
 mod from_config_tests {
     use super::*;
@@ -168,6 +211,8 @@ mod from_config_tests {
             coordination_raft_groups: 1,
             coordination_shard_count: None,
             coordination_growth_profile: None,
+            coordination_max_queue_shards: None,
+            coordination_max_raft_groups: None,
             http_drain_timeout: trembita_assembly::DEFAULT_GATEWAY_DRAIN_TIMEOUT,
             env: EnvOverrides::default(),
         };

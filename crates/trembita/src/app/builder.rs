@@ -299,7 +299,27 @@ impl TrembitaAppBuilder {
             builder.apply_env_listen_gateway_defaults();
         }
         builder.boot_config = Some(cfg);
-        builder
+        builder.maybe_wire_otlp_metrics_sink()
+    }
+
+    #[cfg(feature = "otlp-metrics")]
+    fn maybe_wire_otlp_metrics_sink(self) -> Self {
+        use super::otlp_metrics::install_otlp_metrics;
+        use trembita_metrics_otlp::MetricsOpts;
+        let service = std::env::var("OTEL_SERVICE_NAME")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "trembita".into());
+        if let Some(sink) = install_otlp_metrics(MetricsOpts::from_env(service)) {
+            self.metrics_sink(sink)
+        } else {
+            self
+        }
+    }
+
+    #[cfg(not(feature = "otlp-metrics"))]
+    fn maybe_wire_otlp_metrics_sink(self) -> Self {
+        self
     }
 
     /// Ops + registration-driven product HTTP when `TREMBITA_LISTEN` is set ([`Self::from_env`]); `/actors/*` stays off.

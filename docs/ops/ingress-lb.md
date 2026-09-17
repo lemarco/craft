@@ -186,7 +186,8 @@ Docker layout: [e2e/docker-compose-elastic.yml](../../e2e/docker-compose-elastic
 ```bash
 ./scripts/test-fast.sh -p trembita --test elastic_lb_product b34_
 ./scripts/test-fast.sh -p trembita-tools --lib b34_
-./e2e/elastic_lb.sh   # heavy — CI: MR label run-heavy ([process.md](../process.md))
+bash scripts/ci-local-elastic-smoke.sh   # B-50 — heavy job local-elastic-smoke (B-42 path, no compose stack)
+./e2e/elastic_lb.sh   # heavy — CI e2e job; MR label run-heavy ([process.md](../process.md))
 ```
 
 Primary tests: [`elastic_lb_product.rs`](../../crates/trembita/tests/elastic_lb_product.rs). Scenario index: [capabilities § B-34](../scenarios/capabilities.md#elastic-join--lb-b-34).
@@ -198,7 +199,7 @@ Primary tests: [`elastic_lb_product.rs`](../../crates/trembita/tests/elastic_lb_
 3. Add one node — LB discovers it when `/ready` is 200 ([cluster-elasticity](../decisions/cluster-elasticity.md)).
 4. Rolling upgrade — pool shrinks while `/ready` fails on draining nodes ([rolling-upgrade](rolling-upgrade.md)).
 
-Wave index (B-28–B-32): [status § Product scale wave](../status.md#product-scale-wave-b-28b32).
+Wave index (B-28–B-54): [status § Product scale wave](../status.md#product-scale-wave-b-28b32) · [testing-coverage § B-33–B-41](../testing-coverage.md#shipped-backlog-b-33b41) (B-34/B-35 elastic + join readiness).
 
 ## Related
 

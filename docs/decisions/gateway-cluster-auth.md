@@ -60,7 +60,7 @@ OAuth/OIDC stays **app-owned**: implement [`GatewayIdentity`] against your IdP; 
 ./scripts/test-fast.sh -p trembita --test gateway_cluster_session
 ```
 
-Wave index: [status § B-28–B-32](../status.md#product-scale-wave-b-28b32).
+Wave index: [status § Product scale wave](../status.md#product-scale-wave-b-28b32) (B-28…B-54).
 
 ## B-40 — logic / storage split
 
@@ -71,7 +71,7 @@ Wave index: [status § B-28–B-32](../status.md#product-scale-wave-b-28b32).
 | [`SessionVerifier`](../../crates/trembita-http/src/routing/session_ports.rs) | `trembita-http` | Opaque or signed cookie token → [`VerifiedSession`](../../crates/trembita-http/src/routing/session_ports.rs) (`user` sticky key) |
 | [`SessionIssuer`](../../crates/trembita-http/src/routing/session_ports.rs) | `trembita-http` | After edge identity / OIDC → session token + TTL |
 | [`SessionGate::from_verifier`](../../crates/trembita-http/src/routing/session_ports.rs) | `trembita-http` | HTTP routes use the verifier trait instead of ad-hoc cookie parsing |
-| [`GatewaySessionStore`](../../crates/trembita/src/gateway/cluster_session.rs) | `trembita` | Optional server-side registry ([`CapStoreGatewaySessionStore`](../../crates/trembita/src/gateway/cluster_session.rs)) |
+| [`GatewaySessionStore`](../../crates/trembita/src/gateway/cluster_session.rs) | `trembita` | Optional server-side registry ([`CapStoreGatewaySessionStore`](../../crates/trembita/src/gateway/cluster_session.rs), [`PgGatewaySessionStore`](../../crates/trembita-gateway-session-postgres/) — B-46) |
 
 **Adapters (pick one verify path per app):**
 
@@ -79,11 +79,12 @@ Wave index: [status § B-28–B-32](../status.md#product-scale-wave-b-28b32).
 |------|-------|--------|--------------|
 | **Signed cookie** (default product) | [`SignedCookieSessionIssuer`](../../crates/trembita/src/gateway/cluster_session.rs) | [`SignedCookieSessionVerifier`](../../crates/trembita/src/gateway/cluster_session.rs) | Stateless — same `TREMBITA_GATEWAY_SESSION_SECRET` on all nodes |
 | **Cap store opaque** | [`register_capstore_session`](../../crates/trembita/src/gateway/cluster_session.rs) | [`CapStoreSessionVerifier`](../../crates/trembita/src/gateway/cluster_session.rs) | Requires shared/durable cap store ([B-29](#decision) registry row) |
+| **Postgres opaque (B-46)** | [`CapStoreSessionIssuer`](../../crates/trembita/src/gateway/cluster_session.rs) + [`PgGatewaySessionStore`](../../crates/trembita-gateway-session-postgres/) | [`CapStoreSessionVerifier`](../../crates/trembita/src/gateway/cluster_session.rs) | Dedicated `trembita_gateway_sessions` table — feature `gateway-session-postgres` on `trembita` |
 | **External IdP** | App handler → `SessionIssuer` | Usually signed cookie or cap-store verifier on protected routes | OAuth/OIDC logic stays app-owned |
 
 **Secret rotation:** set **`TREMBITA_GATEWAY_SESSION_SECRET`** to the new value and **`TREMBITA_GATEWAY_SESSION_SECRET_PREVIOUS`** to the old value on **all** nodes; [`SignedCookieSessionVerifier`](../../crates/trembita/src/gateway/cluster_session.rs) accepts cookies signed with either key; new logins use the primary via [`rotating_cluster_session_gate`](../../crates/trembita/src/gateway/cluster_session.rs). Runbook: [production-runbook § B-40](../ops/production-runbook.md#gateway-session-rotation-b-40).
 
-**OIDC helper crate:** [`trembita-gateway-auth`](../../crates/trembita-gateway-auth/) — callback flow only; [`issue_gateway_session`](../../crates/trembita-gateway-auth/src/lib.rs) + [`DevOidcCallback`](../../crates/trembita-gateway-auth/src/dev_oidc.rs) for local demos. Enable on apps: `trembita` feature **`gateway-auth`**. Example: [`examples/oauth-gateway`](../../examples/oauth-gateway/).
+**OIDC helper crate:** [`trembita-gateway-auth`](../../crates/trembita-gateway-auth/) — authorize + callback helpers; [`issue_gateway_session`](../../crates/trembita-gateway-auth/src/lib.rs), [`DevOidcAuthorize`](../../crates/trembita-gateway-auth/src/authorize.rs), [`DevOidcCallback`](../../crates/trembita-gateway-auth/src/dev_oidc.rs). Enable on apps: `trembita` feature **`gateway-auth`**. Example: [`examples/oauth-gateway`](../../examples/oauth-gateway/) (B-47: PKCE + redirect allowlist).
 
 Scenario index: [capabilities § B-40](../scenarios/capabilities.md#gateway-auth-split-b-40).
 
@@ -111,6 +112,37 @@ Scenario index: [capabilities § B-40](../scenarios/capabilities.md#gateway-auth
 ```
 
 **Related cluster session tests (B-29):** `./scripts/test-fast.sh -p trembita --test gateway_cluster_session` (full file, not only `b40_`).
+
+## B-47 — OAuth prod hardening
+
+Production OAuth checks live in app handlers (not trembita core). [`OidcProductionConfig`](../../crates/trembita-gateway-auth/src/production.rs) loads **`TREMBITA_OAUTH_REDIRECT_ALLOWLIST`** and defaults PKCE to **S256** ([`PkcePair`](../../crates/trembita-gateway-auth/src/pkce.rs)). Demo wiring: `/oauth/start` → `/oauth/callback` in [`examples/oauth-gateway`](../../examples/oauth-gateway/README.md). Gateway session secret rotation remains [§ B-40](../ops/production-runbook.md#gateway-session-rotation-b-40).
+
+### Automated regression (B-47)
+
+```bash
+./scripts/test-fast.sh -p trembita-gateway-auth --lib b47_
+```
+
+Scenario index: [capabilities § B-47](../scenarios/capabilities.md#oauth-prod-hardening-b-47).
+
+## B-46 — Postgres gateway session store
+
+Optional crate [`trembita-gateway-session-postgres`](../../crates/trembita-gateway-session-postgres/) implements opaque session persistence **outside** cap-store KV. Enable on apps with `trembita` feature **`gateway-session-postgres`** — [`GatewaySessionStore`](../../crates/trembita/src/gateway/cluster_session.rs) is implemented in [`pg_gateway_session.rs`](../../crates/trembita/src/gateway/pg_gateway_session.rs); helper [`pg_gateway_session_gate`](../../crates/trembita/src/gateway/pg_gateway_session.rs) mirrors [`capstore_session_gate`](../../crates/trembita/src/gateway/cluster_session.rs).
+
+Scenario index: [capabilities § B-46](../scenarios/capabilities.md#gateway-session-store-adapters-b-46).
+
+### Automated regression (B-46)
+
+| Scenario | Regression |
+|----------|------------|
+| DDL + SQL ident validation | `b46_ddl_default_table_name`, `b46_ident_rejects_invalid_table` |
+| Opaque token + user validation | `b46_opaque_token_prefix_and_validate_user` |
+| Docker register / lookup / revoke | `b46_register_lookup_revoke_roundtrip` (`#[ignore]`, `docker-tests`) |
+
+```bash
+./scripts/test-fast.sh -p trembita-gateway-session-postgres --lib b46_
+cargo test -p trembita-gateway-session-postgres --features docker-tests -- --ignored
+```
 
 ## Related
 

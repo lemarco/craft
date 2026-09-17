@@ -379,6 +379,8 @@ impl NodeConfig {
             coordination_raft_groups: 1,
             coordination_shard_count: None,
             coordination_growth_profile: None,
+            coordination_max_queue_shards: None,
+            coordination_max_raft_groups: None,
             http_drain_timeout,
             env: self.env,
         }

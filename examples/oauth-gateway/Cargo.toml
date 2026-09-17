@@ -1,7 +1,7 @@
 # OAuth-shaped gateway demo — IdP callback → SessionIssuer (B-40).
 #
 #   cargo run --release
-#   curl -s 'http://127.0.0.1:8395/oauth/callback?user=alice' -c /tmp/sess.txt
+#   See README.md — /oauth/start then /oauth/callback (B-47 PKCE)
 #   curl -s 'http://127.0.0.1:8395/me' -b /tmp/sess.txt
 [package]
 name = "trembita-showcase-oauth-gateway"
@@ -13,7 +13,7 @@ publish = false
 
 [dependencies]
 trembita = { path = "../../crates/trembita", features = ["http-jobs", "gateway-auth"] }
-trembita-gateway-auth = { path = "../../crates/trembita-gateway-auth" }
+trembita-tools = { path = "../../crates/trembita-tools" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 http = "1"
 serde_json = "1"

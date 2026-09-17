@@ -114,13 +114,15 @@ Optional: `TREMBITA_JOB_QUEUE`, `TREMBITA_ALLOW_JOIN` (seed, default on).
 
 **Ops (zero config):** `/health`, `/ready`, `/metrics`, `/dashboard`, `/introspect/*` on **`TREMBITA_LISTEN`** — enabled with [`TrembitaApp::from_env()`](../crates/trembita/src/app/runtime.rs) until you call [`.without_ops()`](../crates/trembita/src/app/builder.rs). **Post-deploy one-shot:** **`GET /introspect/ops-summary`** (B-43) — join + scale + R3 + coordination preset + queue depths in one JSON ([runbook § B-43](ops/production-runbook.md#ops-cockpit-introspect-b-43)).
 
+**Production VPS (B-45):** systemd + env templates in [`deploy/`](../deploy/README.md) — seed/joiner matrix, LB snippet, rolling upgrade on systemd ([runbook § B-45](ops/production-runbook.md#production-deploy-pack-b-45)).
+
 **Pre-deploy:** from your app repo, run `trembita doctor --preflight` (ports/listen format, cert dir, missing ops/jobs route merges, deprecated env). CI-friendly: non-zero exit when any `[error]` finding.
 
 **Homogeneous nodes:** every VPS runs the same binary (gateway + consumers when configured). Local **API vs jobs** fairness uses [`.workload()`](../crates/trembita/src/app/builder.rs) compute tokens ([workload governor](decisions/workload-governor.md)) — not static node roles. Edge-only ingress without local consumers: omit `.jobs()` / `.workers()` on those nodes (deployment choice), not a role env var.
 
 **Production ingress:** point DNS / floating IP / reverse proxy at each node’s [`TREMBITA_LISTEN`](env.md#trembita_listen); health-check **`GET /ready`** (not `/health` alone for pool membership — B-30). Recipe: [ops/ingress-lb.md](ops/ingress-lb.md).
 
-**Scaling on N VPS (B-28–B-32):** capability groups default to **PerNode** for stateless ops; use **`trembita doctor`** before deploy (B-31); set **`TREMBITA_GATEWAY_SESSION_SECRET`** for cookie login behind LB (B-29); optional sharded queues / multi-Raft via manifest or env (B-32). Index: [status § Product scale wave](status.md#product-scale-wave-b-28b32).
+**Scaling on N VPS (B-28–B-32):** capability groups default to **PerNode** for stateless ops; use **`trembita doctor`** before deploy (B-31); set **`TREMBITA_GATEWAY_SESSION_SECRET`** for cookie login behind LB (B-29); optional sharded queues / multi-Raft via manifest or env (B-32). **Follow-on ops wave (B-33–B-54):** join readiness, local 3-node lab, deploy pack, OAuth hardening, ops-summary, OTLP — [status § Product scale wave](status.md#product-scale-wave-b-28b32) · [testing-coverage](testing-coverage.md#shipped-backlog-b-33b41).
 
 ### When to enable coordination growth (B-37)
 
@@ -198,7 +200,7 @@ Docs: [dev/local-3node](../dev/local-3node/README.md) · [capabilities § B-39](
 ./scripts/local-cluster.sh stop
 ```
 
-Regression: `./scripts/test-fast.sh -p trembita-cli --lib b42_` · `./scripts/test-fast.sh -p trembita-cli --test dev b42_` · `./scripts/test-fast.sh -p trembita-tools --lib b42_`. Full `b42_*` table: [capabilities § B-42 regression](scenarios/capabilities.md#automated-regression-b-42). Heavy CI lane: [`e2e/elastic_lb.sh`](../e2e/elastic_lb.sh).
+Regression: `./scripts/test-fast.sh -p trembita-cli --lib b42_` · `./scripts/test-fast.sh -p trembita-cli --test dev b42_` · `./scripts/test-fast.sh -p trembita-tools --lib b42_`. Full `b42_*` table: [capabilities § B-42 regression](scenarios/capabilities.md#automated-regression-b-42). Heavy CI: [B-50 `ci-local-elastic-smoke.sh`](../scripts/ci-local-elastic-smoke.sh) (laptop path, MR **`run-heavy`**) · full compose [`e2e/elastic_lb.sh`](../e2e/elastic_lb.sh) on **`e2e`** job.
 
 Reference KV [`StateMachine`](../crates/trembita-core/src/kv.rs) (`trembita::kv` on the facade) for low-level Raft `propose` / `query` without a full product app.
 

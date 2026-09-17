@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-09-16  
-**Backlog:** B-21 … B-27, **B-28**, **B-31**, **B-32**, **B-33** (shipped in this ADR). **B-29** / **B-30** — [gateway-cluster-auth](gateway-cluster-auth.md), [ops/ingress-lb.md](../ops/ingress-lb.md). Wave index: [status § B-28–B-32](../status.md#product-scale-wave-b-28b32).
+**Backlog:** B-21 … B-27, **B-28**, **B-31**, **B-32**, **B-33** (shipped in this ADR). **B-29** / **B-30** — [gateway-cluster-auth](gateway-cluster-auth.md), [ops/ingress-lb.md](../ops/ingress-lb.md). Wave index: [status § Product scale wave](../status.md#product-scale-wave-b-28b32) (B-28…B-54) · archives [B-28–B-32](../archive/backlog-wave-b28-b32.md) · [B-33–B-41](../archive/backlog-wave-b33-b41.md).
 
 ## Context
 
@@ -128,7 +128,7 @@ Explicit overrides: [`.instances(n)`](../../crates/trembita/src/capability/group
 
 **Boot scale report (B-33):** after `wait_until_ready`, the product logs a structured **`product_scale`** line (capability groups + `resolved_scale`, queue shard mode, coordination Raft groups) and exposes the same JSON at **`GET /introspect/product-scale`** on the unified ops listener. See [production-runbook § Product scale introspection](../ops/production-runbook.md#product-scale-introspection-b-33).
 
-**Ops cockpit (B-43):** **`GET /introspect/ops-summary`** aggregates join readiness (B-35), the B-33 **`product_scale`** snapshot, B-36 **`directory_r3`**, B-37 **`coordination_profile`** (when set at boot), and live **`queue_depths`** — nested sections match the dedicated introspect routes. Facade: [`OpsSummary`](../../crates/trembita/src/app/ops_summary.rs), [`TrembitaApp::ops_summary`](../../crates/trembita/src/app/runtime.rs). Runbook: [production-runbook § B-43](../ops/production-runbook.md#ops-cockpit-introspect-b-43) · regression: [capabilities § B-43](../scenarios/capabilities.md#automated-regression-b-43).
+**Ops cockpit (B-43):** **`GET /introspect/ops-summary`** aggregates join readiness (B-35), the B-33 **`product_scale`** snapshot, B-36 **`directory_r3`**, B-37 **`coordination_profile`** (when set at boot), live **`queue_depths`**, and B-44 **`coordination_closed_loop`** (ceilings + `why_not_scaling`) — nested B-35/B-33/B-36 sections match the dedicated introspect routes. Facade: [`OpsSummary`](../../crates/trembita/src/app/ops_summary.rs), [`TrembitaApp::ops_summary`](../../crates/trembita/src/app/runtime.rs). Runbook: [production-runbook § B-43](../ops/production-runbook.md#ops-cockpit-introspect-b-43) · B-44: [§ closed-loop](../ops/production-runbook.md#coordination-closed-loop-b-44) · regression: [capabilities § B-43](../scenarios/capabilities.md#automated-regression-b-43), [§ B-44](../scenarios/capabilities.md#automated-regression-b-44).
 
 ### Product scale model (B-31)
 
@@ -336,6 +336,18 @@ Custom HTTP shapes (extra response fields, different DTO) remain plain handlers 
 
 Greenfield product policy: no documented reliance on `/actors/{group}/cast` or ad-hoc cast bytes —
 see [capability-greenfield-wire](capability-greenfield-wire.md). Default product gateway **excludes** `/actors/*`; re-enable with [`.http_cast(true)`](../../crates/trembita/src/worker_opts.rs) / [`.with_actors_api()`](../../crates/trembita/src/app/builder.rs) for advanced labs only.
+
+### Domain DX patterns (B-52)
+
+Three recurring “how do I do this in Raft?” answers — **no new runtime primitives**; scaffold + docs only.
+
+| Pattern | When | Product API | Scaffold / example |
+|---------|------|-------------|-------------------|
+| **Transactional outbox** | Domain DB commit + emit event atomically | [`TopicOpts::outbox`](../../crates/trembita/src/topic_opts.rs) + [`EventOutboxSource`](../../crates/trembita-events/src/event_outbox.rs); feature `domain-outbox` for Postgres | `trembita new --template topics` → `src/domain/outbox.rs` · [event-outbox](event-outbox.md) |
+| **Queued idempotency (R4)** | At-least-once jobs / caps with durable side effects | Enqueue dedup + [`OpCtx::require_store`](../../crates/trembita/src/capability/ctx.rs) markers | `trembita new --template jobs` → [`task.rs.tpl`](../../crates/trembita-cli/templates/trembita-app/src/capabilities/task.rs.tpl) · [idempotency-contract](idempotency-contract.md) |
+| **Consensus helpers** | Authoritative balances, audit facts, keyed writes | [`OpCtx::query_keyed_linearizable`](../../crates/trembita/src/capability/consensus.rs), `propose_keyed`, `run_keyed_saga` — **not** actor `ask` | `trembita new --template api` → `src/capabilities/consensus.rs` · [stateful-workers](../../examples/stateful-workers/) |
+
+Decision tree: [structural-limits § Domain patterns](../scenarios/structural-limits.md#domain-patterns-b-52). Regression: `./scripts/test-fast.sh -p trembita-cli --test scaffold b52_`.
 
 ### Non-goals
 

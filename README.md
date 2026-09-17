@@ -123,7 +123,7 @@ See [multi-raft](docs/decisions/multi-raft.md), [job-queue](docs/decisions/job-q
 
 ## Design principles
 
-- **Library-first** — embed `trembita`, no sidecar ([deployment-model](docs/decisions/deployment-model.md))
+- **Library-first** — embed `trembita`, no sidecar ([deployment-model](docs/decisions/deployment-model.md)); VPS templates in [`deploy/`](deploy/README.md) (B-45)
 - **Linearizable SM** — `propose` / `query` via Raft ([client-and-routing](docs/decisions/client-and-routing.md))
 - **Transparent routing** — any node forwards to leader ([client-and-routing](docs/decisions/client-and-routing.md))
 - **Pure core** — `trembita-core` is I/O-free; ports & adapters ([architecture-style](docs/decisions/architecture-style.md))

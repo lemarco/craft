@@ -7,6 +7,9 @@ use std::time::Duration;
 use trembita_runtime::{LeaderLoopOpts, run_leader_loop};
 
 use crate::JobQueue;
+use crate::coordination_closed_loop::{
+    AutoShardExpandResult, CoordinationClosedLoopRegistry, effective_max_shards,
+};
 use crate::queue_service::QueueService;
 
 /// When sustained `pending` exceeds this, the leader may add a physical shard.
@@ -80,8 +83,11 @@ pub async fn run_queue_auto_shard_coordinator(
     queue: Arc<dyn JobQueue>,
     service: Arc<QueueService>,
     spec: AutoShardStreamSpec,
+    closed_loop: Arc<CoordinationClosedLoopRegistry>,
     stop: tokio::sync::watch::Receiver<bool>,
 ) {
+    let max_queue_shards = closed_loop.ceilings().max_queue_shards;
+    closed_loop.register_stream(&spec.logical, spec.policy.max_shards);
     let hot_ticks = Arc::new(Mutex::new(0u32));
     let opts = LeaderLoopOpts::new(spec.policy.poll_interval).with_name("queue_auto_shard");
     let _ = run_leader_loop(state, opts, stop, move |gate| {
@@ -89,6 +95,7 @@ pub async fn run_queue_auto_shard_coordinator(
         let service = Arc::clone(&service);
         let spec = spec.clone();
         let hot_ticks = Arc::clone(&hot_ticks);
+        let closed_loop = Arc::clone(&closed_loop);
         async move {
             if !gate.is_active() {
                 return;
@@ -96,7 +103,24 @@ pub async fn run_queue_auto_shard_coordinator(
             let Ok(metrics) = queue.metrics().await else {
                 return;
             };
-            tick_auto_shard(&service, &spec, metrics.pending, &hot_ticks).await;
+            let shard_count = service.sharded_logical_shard_count(&spec.logical);
+            let expand = tick_auto_shard(
+                &service,
+                &spec,
+                metrics.pending,
+                &hot_ticks,
+                max_queue_shards,
+            )
+            .await;
+            let ticks = *hot_ticks.lock().expect("poisoned");
+            closed_loop.record_auto_shard_tick(
+                &spec.logical,
+                metrics.pending,
+                ticks,
+                shard_count,
+                spec.policy.max_shards,
+                expand,
+            );
         }
     })
     .await;
@@ -107,27 +131,33 @@ async fn tick_auto_shard(
     spec: &AutoShardStreamSpec,
     pending: u64,
     hot_ticks: &Mutex<u32>,
-) {
+    max_queue_shards: Option<usize>,
+) -> AutoShardExpandResult {
+    let effective_max = effective_max_shards(spec.policy.max_shards, max_queue_shards);
     let mut ticks = hot_ticks.lock().expect("poisoned");
     if pending >= spec.policy.pending_threshold {
         *ticks = ticks.saturating_add(1);
     } else {
         *ticks = 0;
-        return;
+        return AutoShardExpandResult::Idle;
     }
     if *ticks < spec.policy.ticks_above_threshold {
-        return;
+        return AutoShardExpandResult::Idle;
     }
     *ticks = 0;
     drop(ticks);
-    let _ = service.try_expand_sharded_stream(
+    match service.try_expand_sharded_stream(
         &spec.logical,
         &spec.data_dir,
         spec.lease_timeout,
         spec.prefetch,
         spec.default_max_attempts,
-        spec.policy.max_shards,
-    );
+        effective_max,
+    ) {
+        Ok(()) => AutoShardExpandResult::Expanded,
+        Err(e) if e.to_string().contains("max_shards") => AutoShardExpandResult::AtCeiling,
+        Err(e) => AutoShardExpandResult::ExpandFailed(e.to_string()),
+    }
 }
 
 #[cfg(test)]

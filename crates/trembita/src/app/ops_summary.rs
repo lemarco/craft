@@ -5,6 +5,7 @@ use std::sync::Arc;
 use serde::Serialize;
 use trembita_assembly::coordination_profile::CoordinationGrowthPreset;
 use trembita_dashboard::{JoinStatusView, QueueStreamView};
+use trembita_jobs::CoordinationClosedLoopSnapshot;
 
 use super::directory_r3::DirectoryR3Snapshot;
 use super::runtime::TrembitaApp;
@@ -82,6 +83,8 @@ pub struct OpsSummary {
     pub coordination_profile: CoordinationProfileSnapshot,
     /// Live queue depth hints from the observer (same source as `/introspect/queues`).
     pub queue_depths: Vec<OpsQueueDepthHint>,
+    /// B-44 auto-shard / Raft ceiling state and `why_not_scaling` hints.
+    pub coordination_closed_loop: CoordinationClosedLoopSnapshot,
 }
 
 impl TrembitaApp {
@@ -99,7 +102,14 @@ impl TrembitaApp {
                 .map(CoordinationProfileSnapshot::from_preset)
                 .unwrap_or_default(),
             queue_depths: queues.streams.iter().map(OpsQueueDepthHint::from).collect(),
+            coordination_closed_loop: self.coordination_closed_loop_snapshot(),
         }
+    }
+
+    /// B-44 closed-loop growth snapshot (leader auto-shard registry + Raft hints).
+    #[must_use]
+    pub fn coordination_closed_loop_snapshot(&self) -> CoordinationClosedLoopSnapshot {
+        self.cluster().coordination_closed_loop_snapshot()
     }
 }
 
@@ -279,6 +289,7 @@ mod tests {
                 },
                 coordination_profile: CoordinationProfileSnapshot::default(),
                 queue_depths: Vec::new(),
+                coordination_closed_loop: CoordinationClosedLoopSnapshot::default(),
             };
             let json = serde_json::to_value(&summary).expect("serialize");
             assert_eq!(json["join"]["phase"], want, "join phase json");
@@ -310,11 +321,13 @@ mod tests {
             },
             coordination_profile: CoordinationProfileSnapshot::default(),
             queue_depths: Vec::new(),
+            coordination_closed_loop: CoordinationClosedLoopSnapshot::default(),
         };
         let json = serde_json::to_value(&summary).expect("serialize");
         assert_eq!(json["join"]["phase"], "pool_ready");
         assert!(json.get("product_scale").is_some());
         assert!(json.get("directory_r3").is_some());
         assert!(json.get("queue_depths").is_some());
+        assert!(json.get("coordination_closed_loop").is_some());
     }
 }

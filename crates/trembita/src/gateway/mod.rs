@@ -14,6 +14,8 @@ mod config;
 mod drain;
 mod identity;
 mod opts;
+#[cfg(all(feature = "http-jobs", feature = "gateway-session-postgres"))]
+mod pg_gateway_session;
 #[cfg(feature = "http-jobs")]
 mod product_routes;
 mod rate_limit;
@@ -38,9 +40,9 @@ pub use cluster_session::{
     CapStoreGatewaySessionStore, CapStoreSessionIssuer, CapStoreSessionVerifier,
     ClusterSessionError, ClusterSessionSecret, GatewaySessionStore, SignedCookieSessionIssuer,
     SignedCookieSessionVerifier, VerifiedClusterSession, capstore_session_gate,
-    cluster_session_gate, register_capstore_session, revoke_capstore_session,
-    rotating_cluster_session_gate, session_user_from_cookie, session_user_from_verifier,
-    verify_capstore_session,
+    cluster_session_gate, opaque_gateway_session_token, register_capstore_session,
+    revoke_capstore_session, rotating_cluster_session_gate, session_user_from_cookie,
+    session_user_from_verifier, validate_gateway_session_user, verify_capstore_session,
 };
 pub(crate) use config::GatewaySurfacesFn;
 pub use config::{
@@ -68,5 +70,7 @@ pub use cap_handlers::{
 };
 #[cfg(feature = "http-jobs")]
 pub use cluster_ops::{cluster_ops_route_table, spawn_cluster_ops_http};
+#[cfg(all(feature = "http-jobs", feature = "gateway-session-postgres"))]
+pub use pg_gateway_session::pg_gateway_session_gate;
 #[cfg(feature = "http-jobs")]
 pub use product_routes::ProductRoutes;

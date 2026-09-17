@@ -92,4 +92,4 @@ mod tracing_otlp;
 #[cfg(feature = "otlp")]
 pub use tracing_otlp::{TracingOpts, init_tracing_with_otlp};
 #[cfg(feature = "otlp")]
-pub use trembita_metrics_otlp::{MetricsOpts, init_metrics_with_otlp};
+pub use trembita_metrics_otlp::{MetricsOpts, OtlpMetricsSink, init_metrics_with_otlp};
