@@ -806,7 +806,7 @@ impl TrembitaAppBuilder {
 
     /// Omit `/actors/*` on the default gateway (default for product apps; idempotent).
     ///
-    /// Legacy HTTP cast/ask requires [`.workers(…)`](Self::workers) with
+    /// Legacy HTTP cast/ask requires [`.workers(…)`](crate::AppManifest::workers) with
     /// [`WorkerOpts::http_cast(true)`](crate::WorkerOpts::http_cast) and
     /// [`.with_actors_api()`](Self::with_actors_api).
     #[cfg(feature = "http-jobs")]

@@ -1,6 +1,6 @@
 //! # trembita
 //!
-//! Distributed Raft runtime — **product apps** via [`TrembitaApp`] + **capabilities** ([`CapManifest`](crate::CapManifest)); cluster APIs via [`cluster`].
+//! Distributed Raft runtime — **product apps** via [`TrembitaApp`] + **capabilities** ([`CapManifest`]); cluster APIs via [`cluster`].
 //! User-facing handlers are typed ops (`#[cap_handler]`), not app-authored [`UserActor`](trembita_runtime::UserActor) (runtime-internal / advanced only).
 //!
 //! ## Product path
