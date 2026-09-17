@@ -3,10 +3,13 @@
 //! Declare host surfaces with [`GatewayOpts::surfaces`] — see
 //! [gateway-routing-v2](../../docs/decisions/gateway-routing-v2.md).
 
+mod auth_profile;
 #[cfg(feature = "http-jobs")]
 mod cap_handlers;
 #[cfg(feature = "http-jobs")]
 mod cluster_ops;
+#[cfg(feature = "http-jobs")]
+mod cluster_session;
 mod config;
 mod drain;
 mod identity;
@@ -29,6 +32,13 @@ use trembita_dashboard::AdminTlsPaths;
 /// PEM paths for server-only TLS on the product gateway (HTTPS / WSS).
 pub type GatewayTlsPaths = AdminTlsPaths;
 
+pub use auth_profile::GatewayAuthProfile;
+#[cfg(feature = "http-jobs")]
+pub use cluster_session::{
+    ClusterSessionError, ClusterSessionSecret, VerifiedClusterSession, capstore_session_gate,
+    cluster_session_gate, register_capstore_session, session_user_from_cookie,
+    verify_capstore_session,
+};
 pub(crate) use config::GatewaySurfacesFn;
 pub use config::{
     DEFAULT_CONSUMER_DRAIN_TIMEOUT, DEFAULT_GATEWAY_DRAIN_TIMEOUT, GATEWAY_MAX_BODY_BYTES,

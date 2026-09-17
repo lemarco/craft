@@ -9,8 +9,8 @@ use std::sync::Arc;
 use http::{HeaderMap, Method, StatusCode, Uri};
 use trembita_http::Response;
 
-/// Constant-time string equality for shared API tokens.
-fn constant_time_eq(a: &str, b: &str) -> bool {
+/// Constant-time string equality for shared API tokens and session MACs.
+pub(crate) fn constant_time_eq(a: &str, b: &str) -> bool {
     if a.len() != b.len() {
         return false;
     }

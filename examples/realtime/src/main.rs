@@ -22,7 +22,7 @@ use trembita_tools::showcase_common::{
 };
 
 use capabilities::chat::Append;
-use gateway_session::{SessionStore, session_gate};
+use gateway_session::ClusterGatewaySession;
 
 const DATA_DIR_NAME: &str = "trembita-showcase-realtime";
 const SESSION_TTL: Duration = Duration::from_secs(3600);
@@ -72,12 +72,13 @@ async fn handle_sticky_ws(sticky: trembita::StickyWs) {
 }
 
 fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
-    let store = SessionStore::new();
-    let gate = session_gate(store.clone());
+    let session = ClusterGatewaySession::from_env();
+    let gate = session.gate.clone();
     let login_state = state.clone();
-    let login_gate = gate.clone();
-    let login_store = store.clone();
+    let login_session = session.clone();
     let chat_state = state.clone();
+    let chat_session = session.clone();
+    let me_session = session.clone();
     let ops = state.app.ops_api().route_table();
     let ws_state = state;
 
@@ -97,16 +98,17 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
             table
                 .post_identity("/login", move |ctx: RequestCtx| {
                     let st = login_state.clone();
-                    let g = login_gate.clone();
-                    let s = login_store.clone();
-                    async move { gateway_session::post_login(st, g, s, ctx).await }
+                    let s = login_session.clone();
+                    async move { gateway_session::post_login(st, s, ctx).await }
                 })
                 .post_session("/chat", move |ctx: RequestCtx| {
                     let st = chat_state.clone();
-                    async move { gateway_session::post_chat(st, ctx).await }
+                    let s = chat_session.clone();
+                    async move { gateway_session::post_chat(st, s, ctx).await }
                 })
                 .get_session("/me", move |ctx: RequestCtx| {
-                    async move { gateway_session::get_me(ctx).await }
+                    let s = me_session.clone();
+                    async move { gateway_session::get_me(s, ctx).await }
                 })
                 .merge(ops),
         )
@@ -157,6 +159,7 @@ fn print_banner() {
         println!("  me        GET  http://{host}/me      (session cookie)");
         println!("  ops       http://{host}/dashboard  /health  /metrics");
         let _ = CookieConfig::from_env("REALTIME", "sess");
+        println!("  session  set TREMBITA_GATEWAY_SESSION_SECRET (same on all nodes) for cluster cookies");
     }
     if env::var("TREMBITA_JOIN_SEEDS").is_ok() {
         println!("  join     via TREMBITA_JOIN_SEEDS");

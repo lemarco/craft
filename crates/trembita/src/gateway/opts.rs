@@ -10,6 +10,7 @@ use crate::app::DefaultGatewayApis;
 use trembita_assembly::{AppConfig, app_config_from_env};
 
 use super::GatewayTlsPaths;
+use super::auth_profile::GatewayAuthProfile;
 use super::config::{DEFAULT_GATEWAY_DRAIN_TIMEOUT, GatewayConfig, GatewaySurfacesFn};
 use super::identity::{self, GatewayBearerIdentity, GatewayIdentity, SessionKey};
 use super::state::TrembitaGatewayState;
@@ -24,6 +25,7 @@ pub struct GatewayOpts {
     rate_limit_per_sec: Option<u32>,
     websocket_routes: Option<Arc<dyn Fn(TrembitaGatewayState) -> RouteTable + Send + Sync>>,
     ws_mounts: Vec<super::ws::WsMount>,
+    auth_profile: GatewayAuthProfile,
 }
 
 impl fmt::Debug for GatewayOpts {
@@ -35,6 +37,7 @@ impl fmt::Debug for GatewayOpts {
             .field("drain_timeout", &self.drain_timeout)
             .field("tls", &self.tls.as_ref().map(|_| "<pem>"))
             .field("rate_limit_per_sec", &self.rate_limit_per_sec)
+            .field("auth_profile", &self.auth_profile)
             .finish()
     }
 }
@@ -80,7 +83,15 @@ impl GatewayOpts {
             rate_limit_per_sec: None,
             websocket_routes: None,
             ws_mounts: Vec::new(),
+            auth_profile: GatewayAuthProfile::from_env(),
         }
+    }
+
+    /// Auth composition profile (`TREMBITA_GATEWAY_AUTH_PROFILE`).
+    #[must_use]
+    pub fn auth_profile(mut self, profile: GatewayAuthProfile) -> Self {
+        self.auth_profile = profile;
+        self
     }
 
     /// Public HTTP bind address (TCP).
@@ -255,6 +266,11 @@ impl GatewayOpts {
                 }
                 table
             }));
+        }
+        if self.auth_profile == GatewayAuthProfile::ExternalIdp && self.identity.is_none() {
+            tracing::warn!(
+                "TREMBITA_GATEWAY_AUTH_PROFILE=external-idp but GatewayOpts has no .identity() — protected routes will 401"
+            );
         }
         GatewayConfig {
             addr: self.addr,

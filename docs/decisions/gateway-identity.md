@@ -68,6 +68,7 @@ Auth is **never** prescribed (no JWT crate, no cookie store in trembita).
 
 ## Related
 
+- [gateway-cluster-auth](gateway-cluster-auth.md) — cluster-verifiable session cookies (B-29); wave index [status § B-28–B-32](../status.md#product-scale-wave-b-28b32)
 - [realtime-sessions](../scenarios/realtime-sessions.md)
 - [product-scenarios](product-scenarios.md)
 - [security](security.md) — browser TLS stays user-owned

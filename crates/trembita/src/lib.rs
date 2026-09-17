@@ -125,15 +125,21 @@ pub use gateway::{
     cap_enqueue, cap_fire, cap_invoke, cap_queued_wait, cap_schedule, cluster_ops_route_table,
     spawn_cluster_ops_http,
 };
+#[cfg(feature = "http-jobs")]
+pub use gateway::{
+    ClusterSessionError, ClusterSessionSecret, VerifiedClusterSession, capstore_session_gate,
+    cluster_session_gate, register_capstore_session, session_user_from_cookie,
+    verify_capstore_session,
+};
 pub use gateway::{
     ConnectionGuard, ConnectionTracker, DEFAULT_GATEWAY_DRAIN_TIMEOUT, ExtractedIdentity,
-    GatewayBearerIdentity, GatewayConfig, GatewayHandle, GatewayIdentity, GatewayOpts,
-    GatewayRequest, GatewayTlsPaths, GatewayTokenIdentity, IdentityError, IdentityTypeError,
-    NoWorkerError, OpenWorkerSessionError, SessionHandle, SessionKey, TrembitaGatewayState,
-    WrappedGatewayService, build_gateway_service, spawn_gateway,
+    GatewayAuthProfile, GatewayBearerIdentity, GatewayConfig, GatewayHandle, GatewayIdentity,
+    GatewayOpts, GatewayRequest, GatewayTlsPaths, GatewayTokenIdentity, IdentityError,
+    IdentityTypeError, NoWorkerError, OpenWorkerSessionError, SessionHandle, SessionKey,
+    TrembitaGatewayState, WrappedGatewayService, build_gateway_service, spawn_gateway,
 };
 pub use job_opts::JobOpts;
-pub use queue_opts::QueueOpts;
+pub use queue_opts::{QueueOpts, QueueRegistrationScale};
 pub use scheduled_workflow_opts::ScheduledWorkflowOpts;
 pub use shutdown_signal::wait_for_int_or_term;
 pub use topic_opts::TopicOpts;

@@ -1,38 +1,50 @@
-//! Cookie session flow: login → `Set-Cookie` → `post_session` routes.
+//! Cookie session flow: login → cluster-signed `Set-Cookie` → `post_session` routes.
+//!
+//! Any gateway node verifies the cookie with `TREMBITA_GATEWAY_SESSION_SECRET` (no per-process `HashSet`).
 
-use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
-use trembita::{HttpError, RequestCtx, Response, SessionGate, SessionHandle, TrembitaGatewayState};
+use trembita::{
+    ClusterSessionSecret, CookieConfig, HttpError, RequestCtx, Response, SessionGate,
+    SessionHandle, TrembitaGatewayState, cluster_session_gate, session_user_from_cookie,
+};
 
 use crate::capabilities::chat::Append;
 use crate::debug;
 
 const SESSION_TTL: Duration = Duration::from_secs(3600);
 
-/// In-memory session tokens issued by [`post_login`].
-#[derive(Clone, Default)]
-pub struct SessionStore(Arc<Mutex<HashSet<String>>>);
+/// Shared cluster session wiring for the realtime gateway surface.
+#[derive(Clone)]
+pub struct ClusterGatewaySession {
+    /// HMAC secret — same on every node in the cluster.
+    pub secret: ClusterSessionSecret,
+    /// Cookie gate for `AuthMode::Session` routes.
+    pub gate: SessionGate,
+    /// Cookie name (`REALTIME_COOKIE_*` / `sess`).
+    pub cookie_name: String,
+}
 
-impl SessionStore {
-    /// Empty store.
+impl ClusterGatewaySession {
+    /// Load secret from env (or showcase dev fallback) and build [`SessionGate`].
     #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Register a token as valid until logout / expiry (showcase only).
-    pub fn insert(&self, token: impl Into<String>) {
-        self.0.lock().unwrap().insert(token.into());
-    }
-
-    /// Whether `token` was issued by login.
-    #[must_use]
-    pub fn contains(&self, token: &str) -> bool {
-        self.0.lock().unwrap().contains(token)
+    pub fn from_env() -> Self {
+        let secret = ClusterSessionSecret::from_env().unwrap_or_else(|_| {
+            eprintln!(
+                "warning: TREMBITA_GATEWAY_SESSION_SECRET unset — using showcase dev secret (single-node only)"
+            );
+            ClusterSessionSecret::showcase_dev()
+        });
+        let cookie = CookieConfig::from_env("REALTIME", "sess");
+        let cookie_name = cookie.name.clone();
+        let gate = cluster_session_gate(secret.clone(), cookie);
+        Self {
+            secret,
+            gate,
+            cookie_name,
+        }
     }
 }
 
@@ -62,31 +74,10 @@ pub struct MeResponse {
     pub user: String,
 }
 
-/// Build a [`SessionGate`] backed by `store` with showcase cookie defaults.
-#[must_use]
-pub fn session_gate(store: SessionStore) -> SessionGate {
-    let cookie = trembita::CookieConfig::from_env("REALTIME", "sess");
-    SessionGate::validate(cookie.name.clone(), {
-        let store = store.clone();
-        move |token| {
-            let store = store.clone();
-            async move {
-                if store.contains(&token) {
-                    Ok(())
-                } else {
-                    Err(HttpError::Unauthorized("invalid or expired session".into()))
-                }
-            }
-        }
-    })
-    .with_cookie_config(cookie)
-}
-
-/// `POST /login` — gateway identity → issue session cookie (`Set-Cookie: sess=…`).
+/// `POST /login` — gateway identity → issue cluster session cookie.
 pub async fn post_login(
     state: TrembitaGatewayState,
-    gate: SessionGate,
-    store: SessionStore,
+    session: ClusterGatewaySession,
     ctx: RequestCtx,
 ) -> Result<Response, HttpError> {
     let extracted = state
@@ -94,12 +85,15 @@ pub async fn post_login(
         .await
         .map_err(|e| HttpError::Unauthorized(e.to_string()))?;
     let user = extracted.session_key().to_string();
-    store.insert(&user);
+    let token = session
+        .secret
+        .issue(&user, SESSION_TTL)
+        .map_err(|e| HttpError::Internal(e.to_string()))?;
     let mut resp = Response::json(
         StatusCode::OK,
         serde_json::to_value(LoginResponse { user: user.clone() }).expect("json"),
     );
-    gate.set_session_cookie(&mut resp, &user)?;
+    session.gate.set_session_cookie(&mut resp, &token)?;
     debug::session_open(&user, true);
     Ok(resp)
 }
@@ -107,16 +101,13 @@ pub async fn post_login(
 /// `POST /chat` — requires session cookie (see [`post_login`]).
 pub async fn post_chat(
     state: TrembitaGatewayState,
+    session: ClusterGatewaySession,
     ctx: RequestCtx,
 ) -> Result<Response, HttpError> {
-    let token = ctx
-        .cookie("sess")
-        .ok_or_else(|| HttpError::Unauthorized("missing session cookie".into()))?;
-    let mut handle =
-        SessionHandle::open_for::<Append>(&state.app, token, Some(SESSION_TTL))
-            .ok_or_else(|| HttpError::Internal("no chat worker".into()))?;
+    let user = session_user_from_cookie(&session.cookie_name, ctx.headers(), &session.secret)?;
+    let mut handle = SessionHandle::open_for::<Append>(&state.app, &user, Some(SESSION_TTL))
+        .ok_or_else(|| HttpError::Internal("no chat worker".into()))?;
     let body: ChatPost = ctx.json()?;
-    let user = handle.session_key().to_string();
     match handle
         .fire_cap(Append {
             text: body.message.clone(),
@@ -138,11 +129,11 @@ pub async fn post_chat(
 }
 
 /// `GET /me` — session cookie → JSON profile.
-pub async fn get_me(ctx: RequestCtx) -> Result<Response, HttpError> {
-    let user = ctx
-        .cookie("sess")
-        .ok_or_else(|| HttpError::Unauthorized("missing session cookie".into()))?
-        .to_string();
+pub async fn get_me(
+    session: ClusterGatewaySession,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    let user = session_user_from_cookie(&session.cookie_name, ctx.headers(), &session.secret)?;
     Ok(Response::json(
         StatusCode::OK,
         serde_json::to_value(MeResponse { user }).expect("json"),
