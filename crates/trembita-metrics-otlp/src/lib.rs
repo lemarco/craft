@@ -41,8 +41,8 @@ impl MetricsOpts {
 
 /// Install a global OTLP metrics pipeline. Idempotent; no-op when endpoint is unset.
 ///
-/// Pair with `trembita_runtime::init_tracing_with_otlp` when exporting traces and metrics.
-/// Wire samples via [`trembita_runtime::install_otlp_metrics`] (returns a [`MetricsSink`](trembita_dashboard::MetricsSink) bridge).
+/// Pair with `init_tracing_with_otlp` on the `trembita` facade when exporting traces and metrics.
+/// Wire samples via `trembita::install_otlp_metrics`, which returns an `Arc<dyn MetricsSink>` bridge.
 pub fn init_metrics_with_otlp(opts: MetricsOpts) {
     INIT.get_or_init(|| install(opts));
 }
