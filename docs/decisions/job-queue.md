@@ -127,7 +127,7 @@ Wire routes (under `/raft/v1/queue/`):
 | `GET .../metrics` | Depth for autoscale & observability |
 | `POST .../replicate` | Leader → voter idempotent state sync |
 
-Optional **[`TrembitaClusterBuilder::durable_mailbox`](../../crates/trembita-assembly/src/builder/cluster/config.rs)** (assembly / integration tests) persists cross-node mailbox outbox/inbox under `data_dir` — not exposed on [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) today.
+Cross-node mailbox spool: **[`TrembitaConfigure::with_durable_mailbox`](../../crates/trembita/src/configure.rs)** on product apps (B-41) or **[`TrembitaClusterBuilder::durable_mailbox`](../../crates/trembita-assembly/src/builder/cluster/config.rs)** in assembly tests — `{data_dir}/mailbox-spool.redb` ([capabilities § B-41](../scenarios/capabilities.md#product-surface-gaps-b-41)).
 
 ### Sharded streams
 

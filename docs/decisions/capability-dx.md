@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-09-16  
-**Backlog:** B-21 … B-27, **B-28**, **B-31**, **B-32** (shipped in this ADR). **B-29** / **B-30** — [gateway-cluster-auth](gateway-cluster-auth.md), [ops/ingress-lb.md](../ops/ingress-lb.md). Wave index: [status § B-28–B-32](../status.md#product-scale-wave-b-28b32).
+**Backlog:** B-21 … B-27, **B-28**, **B-31**, **B-32**, **B-33** (shipped in this ADR). **B-29** / **B-30** — [gateway-cluster-auth](gateway-cluster-auth.md), [ops/ingress-lb.md](../ops/ingress-lb.md). Wave index: [status § B-28–B-32](../status.md#product-scale-wave-b-28b32).
 
 ## Context
 
@@ -124,6 +124,10 @@ Explicit overrides: [`.instances(n)`](../../crates/trembita/src/capability/group
 
 **CI regression:** [capabilities § Automated regression (B-28)](../scenarios/capabilities.md#automated-regression-b-28).
 
+**Multi-node cap hosts (B-33):** when `resolved_scale` is `Fixed(n>1)` or `PerNode`, the runtime registers a **local spawn config** per group name and uses **remote `CapHost` spawn** on peer nodes so directory pools are not stuck on the boot node. Regression: [`product_coordination_scale`](../../crates/trembita/tests/product_coordination_scale.rs), [`cap_scale`](../../crates/trembita/src/integration/cap_scale.rs) unit tests.
+
+**Boot scale report (B-33):** after `wait_until_ready`, the product logs a structured **`product_scale`** line (capability groups + `resolved_scale`, queue shard mode, coordination Raft groups) and exposes the same JSON at **`GET /introspect/product-scale`** on the unified ops listener. See [production-runbook § Product scale introspection](../ops/production-runbook.md#product-scale-introspection-b-33).
+
 ### Founder scale model (B-31)
 
 Transparent split for **«add VPS + same binary»** — what actually scales when the cluster grows:
@@ -155,6 +159,83 @@ When **enqueue throughput** or **keyed coordination** (cap store, topics, multi-
 This path uses **`EmptyStateMachine`** (default `TrembitaApp`) — not custom application state machines. See [multi-raft](multi-raft.md), [job-queue § sharded](job-queue.md).
 
 **CI regression:** [`product_coordination_scale.rs`](../../crates/trembita/tests/product_coordination_scale.rs), env parse tables in [`env_config.rs`](../../crates/trembita-assembly/src/env_config.rs), unit tables in [`configure.rs`](../../crates/trembita/src/configure.rs) / [`queue_opts.rs`](../../crates/trembita/src/queue_opts.rs) / [`job_opts.rs`](../../crates/trembita/src/job_opts.rs). Scenario index: [capabilities § B-32](../scenarios/capabilities.md#automated-regression-b-32).
+
+### Coordination growth presets (B-37)
+
+Presets bundle [B-32](#coordination-scale-b-32) defaults so founders pick a **named growth path** instead of tuning Raft groups and queue auto-shard separately. Apply on [`TrembitaConfigure`](../../crates/trembita/src/configure.rs) **before** [`.manifest()`](../../crates/trembita/src/app/builder.rs); the builder stores the preset for standard manifest queues ([`builder.rs`](../../crates/trembita/src/app/builder.rs)).
+
+| Profile | API | Env |
+|---------|-----|-----|
+| Bundled B-32 defaults | [`TrembitaConfigure::with_coordination_growth_preset`](../../crates/trembita/src/configure.rs) | `TREMBITA_COORDINATION_PROFILE` |
+| Per-stream tuning | [`.with_coordination_growth_preset`](../../crates/trembita/src/queue_opts.rs) on [`QueueOpts`](../../crates/trembita/src/queue_opts.rs) / [`JobOpts`](../../crates/trembita/src/job_opts.rs) | — |
+| Resolved spec (tests + env assembly) | [`CoordinationGrowthPreset::spec`](../../crates/trembita-assembly/src/coordination_profile.rs) | parsed in [`env_config.rs`](../../crates/trembita-assembly/src/env_config.rs) |
+
+Leader auto-shard **depth / ceiling** live in [`AutoShardPolicy::jobs_backlog_growth`](../../crates/trembita-jobs/src/queue_auto_shard.rs) and [`full_growth`](../../crates/trembita-jobs/src/queue_auto_shard.rs). Explicit `TREMBITA_RAFT_*` and `TREMBITA_JOB_QUEUE_AUTO_SHARD` override the profile.
+
+**When to enable:** [getting-started § B-37](../getting-started.md#when-to-enable-coordination-growth-b-37). **Ops check:** [production-runbook § B-37](../ops/production-runbook.md#coordination-growth-preset-b-37).
+
+#### Automated regression (B-37)
+
+Scenario index + exact test names: [capabilities § B-37](../scenarios/capabilities.md#automated-regression-b-37).
+
+```bash
+./scripts/test-fast.sh -p trembita-assembly --lib b37_
+./scripts/test-fast.sh -p trembita-jobs --lib b37_
+./scripts/test-fast.sh -p trembita --lib b37_
+./scripts/test-fast.sh -p trembita --test coordination_growth_preset b37_
+```
+
+### Founder DX v2 (B-38)
+
+Builds on [Founder scale model (B-31)](#founder-scale-model-b-31): founders get **narrative scale help**, **actionable lint**, and **profile scaffolds** without learning every `--template` id upfront.
+
+| Tool | Purpose |
+|------|---------|
+| `trembita doctor --explain-scale` | [`run_explain_scale`](../../crates/trembita-cli/src/scaffold/doctor.rs) — founder scale copy + capability foot-guns; **does not** fail on missing scaffold paths |
+| `trembita doctor` | Full layout + manifest lint; B-38 adds optional **`suggestion`** on findings (scale + [`check_capability_store`](../../crates/trembita-cli/src/scaffold/doctor.rs)) |
+| `trembita new --profile …` | [`AppTemplate::parse_profile`](../../crates/trembita-cli/src/scaffold/template.rs) — alias for `--template` |
+| Jobs **`task.rs.tpl`** | Queued handler pattern: `default_queue_for`, `require_store`, marker get/set ([structural-limits § R4](../scenarios/structural-limits.md#r4--handler-ram-without-cap-store)) |
+
+**Profile map:** `jobs` / `realtime` / `api` / `workflows` / `topics` — see [capabilities § B-38](../scenarios/capabilities.md#founder-dx-v2-b-38). **`api`** omits the jobs feature and sample consumer; **`realtime`** scaffolds `.per_node()` session caps.
+
+**Ops:** run `doctor --explain-scale` when tuning scale; `doctor --preflight` before deploy ([production-runbook § B-38](../ops/production-runbook.md#founder-dx-v2-b-38)).
+
+#### Automated regression (B-38)
+
+Full scenario index: [capabilities § Automated regression (B-38)](../scenarios/capabilities.md#automated-regression-b-38).
+
+```bash
+./scripts/test-fast.sh -p trembita-cli --lib b38_
+./scripts/test-fast.sh -p trembita-cli --test scaffold b38_
+./scripts/test-fast.sh -p trembita-cli --test cap_scale_doctor b38_
+```
+
+### Local 3-node cluster (B-39)
+
+Founders validate **multi-node gateway + shared session secret** locally before VPS deploy. Three **release-built showcase** processes join via seed **`1@127.0.0.1:<base>`**; [`up_with_founder_gateway`](../../crates/trembita-cli/src/dev/cluster.rs) injects the same [`FOUNDER_GATEWAY_SESSION_SECRET`](../../crates/trembita-cli/src/dev/founder.rs) on each node.
+
+| Tool | Purpose |
+|------|---------|
+| [`scripts/founder-cluster.sh`](../../scripts/founder-cluster.sh) | Bash phases: setup, up, session-smoke, lb-up/down, stop |
+| `trembita dev cluster-up [--setup] [--lb]` | Debug CLI wrapper ([`dev_cluster_up`](../../crates/trembita-cli/src/dev/mod.rs)) — **not** in release `trembita-cli` install |
+| `trembita dev cluster-lb-up` | Renders [`nginx.conf.template`](../../dev/founder-3node/nginx.conf.template) → `nginx.generated.conf`, `docker compose up` |
+
+Default **`realtime`** — cookie login across nodes ([B-29](../decisions/gateway-cluster-auth.md) / [B-40](../decisions/gateway-cluster-auth.md#b-40--logic--storage-split)). Optional nginx on **`:18290`** mirrors ingress **`GET /ready`** checks ([B-30](../ops/ingress-lb.md), [B-35](../decisions/cluster-elasticity.md#join-readiness-pipeline-b-35)).
+
+| vs | B-39 (founder 3-node) | B-34 (elastic E2E) |
+|----|------------------------|---------------------|
+| Nodes | 3 showcases on localhost | 4th joiner + product binary |
+| Packaging | `founder-cluster.sh` / `dev cluster-*` | `e2e/elastic_lb.sh`, Docker elastic compose |
+| Primary proof | Session smoke + optional nginx | PerNode cap + LB round-robin under CI |
+
+**CI:** [capabilities § B-39](../scenarios/capabilities.md#local-3-node-founder-cluster-b-39) · [founder-3node README](../../dev/founder-3node/README.md).
+
+#### Automated regression (B-39)
+
+```bash
+./scripts/test-fast.sh -p trembita-cli --lib b39_
+./scripts/test-fast.sh -p trembita-cli --test dev b39_
+```
 
 ### Routes (product contract)
 

@@ -50,6 +50,42 @@ spawn/scale (mitigates R3). Facade helper
 [`TrembitaCluster::publish_directory_visible`] publishes then waits for local
 visibility. Default remains eventual + periodic anti-entropy.
 
+### R3 visibility & sticky recovery (B-36)
+
+The actor directory is **eventually consistent (R3)** — after join, scale, or **multi-Raft rebalance**, merged views can lag and cross-node deliver may return **`NoTarget`**. B-36 adds **operator surfaces** and **sticky session recovery** without changing the default eventual policy.
+
+| Surface | Purpose |
+|---------|---------|
+| `GET /metrics` | `trembita_directory_merge_lag_epochs{node}` (gauge), `trembita_directory_deliver_no_target_total{group}` (counter deltas) — refreshed in [`assemble.rs`](../../crates/trembita-assembly/src/builder/cluster/assemble.rs) |
+| [`TrembitaEvent::DirectoryDeliverNoTarget`](../../crates/trembita-dashboard/src/telemetry.rs) / `DirectoryMergeLag` | SSE / event sinks when lag or new `NoTarget` totals appear |
+| **`GET /introspect/directory-r3`** | Same numbers as metrics + retry config ([`DirectoryR3Snapshot`](../../crates/trembita/src/app/directory_r3.rs)) |
+| [`ActorSession::reopen_keyed`](../../crates/trembita-runtime/src/session.rs) / [`reopen_str`](../../crates/trembita-runtime/src/session.rs) | Re-pin sticky workers after migration (reuse live target when still registered) |
+| [`TrembitaApp::reopen_session_str`](../../crates/trembita/src/app/runtime.rs) | Facade helper for app/gateway code |
+| [`SessionHandle::reopen`](../../crates/trembita/src/gateway/session.rs) | Gateway cast/ask auto-reopen |
+
+**`DirectoryR3Snapshot` JSON fields:** `directory_policy` (`read_your_writes` for product caps), `directory_retry_max_attempts`, `directory_retry_backoff_ms`, `directory_retry_boost_active`, `local_directory_epoch`, `merge_lag_epochs`, `deliver_no_target_totals` (map group → cumulative count since process start).
+
+Product [`CapManifest`](../../crates/trembita/src/capability/manifest.rs) apps default to **ReadYourWrites** (**8 × 25 ms**). Assembly temporarily boosts to **24 × 40 ms** for **3 s** after multi-Raft group adopt/retire ([`boost_directory_retry_after_rebalance`](../../crates/trembita-runtime/src/messaging.rs)). Counters live in [`DirectoryDeliveryStats`](../../crates/trembita-runtime/src/directory_delivery.rs); merge lag math in [`ActorDirectory::merge_lag_epochs`](../../crates/trembita-runtime/src/directory.rs).
+
+Runbook: [production-runbook § R3 directory](../ops/production-runbook.md#r3-directory-visibility-b-36) · cheat sheet: [structural-limits § R3](../scenarios/structural-limits.md#r3--actor-directory-is-eventually-consistent) · scenarios: [capabilities § B-36](../scenarios/capabilities.md#r3-directory-visibility-b-36).
+
+#### Automated regression (B-36)
+
+| Scenario | Test filter |
+|----------|-------------|
+| Per-group `NoTarget` totals + hook | `b36_no_target_totals_*`, `b36_on_no_target_*` (`trembita-runtime/directory_delivery.rs`) |
+| Merge lag epoch table | `b36_merge_lag_scenarios_table` (`trembita-runtime/directory.rs`) |
+| Sticky reopen (reuse / re-pick / empty group) | `b36_reopen_*` (`trembita-runtime/session.rs`) |
+| HTTP body ≡ `directory_r3_snapshot()` | `b36_introspect_directory_r3_reports_ryw_defaults` |
+| Ops route mounted + JSON fields | `b36_product_ops_only_exposes_directory_r3_route` (`tests/directory_r3_report.rs`) |
+| Inline caps during `add_raft_groups` + bounded lag | `capability_inline_survives_raft_group_rebalance` (`integration/cap_rebalance.rs`) |
+
+```bash
+./scripts/test-fast.sh -p trembita-runtime --lib b36_
+./scripts/test-fast.sh -p trembita --test directory_r3_report b36_
+./scripts/test-fast.sh -p trembita --lib capability_inline_survives_raft_group_rebalance
+```
+
 ## Consequences
 
 **Positive**

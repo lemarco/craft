@@ -133,11 +133,14 @@ The **`trembita`** binary lives in [`trembita-cli`](../../crates/trembita-cli/) 
 cargo install --path crates/trembita-cli          # from repo
 cargo install trembita-cli                        # from crates.io
 trembita new my-service --template jobs
+trembita new my-service --profile jobs          # B-38 alias (--profile api | realtime | …)
 trembita new my-service --template realtime
 trembita new my-service --features jobs,gateway,telemetry   # advanced override
 trembita new my-service --output ../my-service --trembita-path ../trembita
 trembita doctor
-trembita doctor --preflight   # deploy: listen, certs, compose join, ops gateway
+trembita doctor --explain-scale   # founder scale narrative (B-38) — see capabilities § B-38
+trembita doctor --preflight       # deploy: listen, certs, compose join, ops gateway
+trembita dev cluster-up --setup   # local 3-node + shared session secret (B-39, debug CLI)
 ```
 
 [`trembita-init.sh`](../../scripts/trembita-init.sh) remains as a thin wrapper delegating to the Rust CLI (`new` only).

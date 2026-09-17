@@ -118,6 +118,72 @@ Leader reconciliation is **declarative**: desired state = N auto workers on N no
 
 **Rejected:** every node supervises cluster-wide (split-brain placement risk).
 
+## Elastic join + HTTP LB proof (B-34)
+
+**Shipped regression** tying elastic join to the **product** ingress story ([ingress-lb](../ops/ingress-lb.md#elastic-join--http-lb-proof-b-34)):
+
+1. **Four members** — seed plus joiners (in-process sim or Docker `node4` profile).
+2. **LB pool** — only backends with **`GET /ready` → 200** (see B-35 for join phases on joiners).
+3. **Gateway session** — shared `TREMBITA_GATEWAY_SESSION_SECRET`; round-robin HTTP is safe for cookie-protected routes after login ([gateway-cluster-auth](gateway-cluster-auth.md)).
+4. **PerNode capabilities** — directory pool grows with membership; boot [`scale_plan`](../../crates/trembita/src/app/scale_plan.rs) reports `PerNode`.
+
+Fast tests: `./scripts/test-fast.sh -p trembita --test elastic_lb_product b34_`. Heavy Docker: `./e2e/elastic_lb.sh`. Scenario table: [capabilities § B-34](../scenarios/capabilities.md#elastic-join--lb-b-34).
+
+**Not the same as B-39:** [founder-3node](../../dev/founder-3node/README.md) is a **3-node showcase** dev path (realtime ports **8290–8292**); B-34 proves **4th joiner + product E2E binary** under nginx.
+
+## Join readiness pipeline (B-35)
+
+Product joiners (`TREMBITA_JOIN_SEEDS`, default **learner** role) become **LB pool members** only after a fixed pipeline. Load balancers must health-check **`GET /ready`** (HTTP **200** only when `join_phase` is **`pool_ready`**); **`GET /health`** stays liveness-only ([ingress-lb § B-35](../ops/ingress-lb.md#join-readiness-pipeline-b-35)).
+
+| Phase (`join_phase`) | Meaning | `/ready` |
+|----------------------|---------|----------|
+| `awaiting_membership` | Node id not yet in committed voters/learners | **503** |
+| `catching_up` | Membership committed; `last_applied` < `commit_index` | **503** |
+| `awaiting_hosts` | Log caught up (typical **learner**); no local auto-hosted workers/caps yet | **503** |
+| `pool_ready` | Safe for product HTTP — voters after catch-up; learners after catch-up **and** `hosts_wired` | **200** |
+
+Evaluation lives in [`evaluate_join_pipeline`](../../crates/trembita-assembly/src/join_pipeline.rs); [`Readiness::is_ready`](../../crates/trembita-dashboard/src/views.rs) returns true only when `!draining && join_phase == pool_ready` (legacy `member` alone is **not** enough for learners mid-pipeline).
+
+**Observability**
+
+| Route | Fields |
+|-------|--------|
+| **`GET /ready`** | `join_phase`, `committed_learner`, `log_caught_up`, `hosts_wired`, `workers`, optional `reason` |
+| **`GET /introspect/join-status`** | Same pipeline snapshot as [`JoinStatusView`](../../crates/trembita-dashboard/src/views.rs) — includes `local_workers` ([production-runbook § B-35](../ops/production-runbook.md#join-readiness-b-35)) |
+
+**Product boot:** when `TREMBITA_JOIN_SEEDS` is set, [`TrembitaApp`](../../crates/trembita/src/app/builder.rs) enables [`ReadyOpts::pool_membership`](../../crates/trembita-assembly/src/ready.rs) — `wait_until_ready` waits for the pipeline, not Raft leadership. Seeds keep queue/leader wait when configured.
+
+**Relation to B-34:** elastic E2E assumes joiners eventually reach **`pool_ready`** before nginx marks a backend up ([capabilities § B-34](../scenarios/capabilities.md#elastic-join--lb-b-34)).
+
+```mermaid
+stateDiagram-v2
+    [*] --> awaiting_membership
+    awaiting_membership --> catching_up: membership committed
+    catching_up --> awaiting_hosts: log caught up (learner)
+    catching_up --> pool_ready: log caught up (voter)
+    awaiting_hosts --> pool_ready: auto-hosts wired
+    pool_ready --> [*]
+```
+
+### Automated regression (B-35)
+
+| Scenario | Test filter |
+|----------|-------------|
+| Phase table (membership → catch-up → hosts → pool) | `b35_join_pipeline_scenarios_table` (`trembita-assembly`) |
+| `Readiness::is_ready` vs `join_phase` | `b35_is_ready_join_phase_*`, `b35_join_status_view_*` (`trembita-dashboard`) |
+| `join_phase` JSON snake_case on `/ready` | `b35_join_phase_serializes_snake_case` (`trembita-http/ops_routes`) |
+| `/introspect/join-status` payload | `b35_join_status_json_*` (`trembita-http/introspect_routes`) |
+| Product boot `/ready` + ops route mounted | `b35_*` in `tests/ingress_lb_ops.rs` |
+
+```bash
+./scripts/test-fast.sh -p trembita-assembly --lib b35_join_pipeline_scenarios_table
+./scripts/test-fast.sh -p trembita-dashboard --lib b35_
+./scripts/test-fast.sh -p trembita-http --lib b35_
+./scripts/test-fast.sh -p trembita --test ingress_lb_ops b35_
+```
+
+Scenario index: [capabilities § B-35](../scenarios/capabilities.md#join-readiness-pipeline-b-35).
+
 ## Consequences
 
 **Positive:** Deploy story: `TREMBITA_JOIN_SEEDS` + same binary → worker appears; clear 1 VPS = 1 worker ops model; single planner consistent with Raft leadership.

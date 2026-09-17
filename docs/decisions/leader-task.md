@@ -160,6 +160,12 @@ Wire-handler leader checks (`QueueService`, etc.) **stay** — they are request-
 
 Update [testing-coverage.md](../testing-coverage.md) when tests land.
 
+### Product surface (B-41)
+
+[`TrembitaAppBuilder::on_leader`](../../crates/trembita/src/app/builder.rs) forwards to the inner [`TrembitaClusterBuilder::on_leader`](../../crates/trembita-assembly/src/builder/cluster/mod.rs) — same semantics as assembly (`LeaderLoopOpts`, `LeaderGate`, shutdown bundle tracking). Use for app-owned leader reconcile instead of copying `run_leader_loop` + facts refresh.
+
+**Regression:** `b41_on_leader_ticks_while_raft_leader` in [`tests/app_cluster.rs`](../../crates/trembita/tests/app_cluster.rs). Index: [capabilities § B-41](../scenarios/capabilities.md#product-surface-gaps-b-41).
+
 ## Consequences
 
 **Positive**
