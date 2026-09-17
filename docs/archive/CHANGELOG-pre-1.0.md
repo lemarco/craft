@@ -9,9 +9,15 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with all
 
 Under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), `0.x` releases may include breaking changes on minor bumps; each is noted here.
 
-**Crates.io:** [`0.6.1`](https://crates.io/crates/trembita) (2026-09-17). Prior: [0.6.0](#060--2026-09-16).
+**Crates.io:** [`0.6.2`](https://crates.io/crates/trembita) (2026-09-17). Prior: [0.6.1](#061--2026-09-17).
 
 ## [Unreleased]
+
+_(empty.)_
+
+## [0.6.2] — 2026-09-17
+
+Upgrade: [releases/0.6.2.md](../releases/0.6.2.md).
 
 ### Added
 
