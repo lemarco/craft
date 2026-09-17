@@ -163,20 +163,28 @@ mod tests {
     use http::HeaderMap;
     use trembita_dashboard::BoxFuture;
 
-    struct FakeObserver;
+    use crate::ResponseBody;
+
+    #[derive(Clone)]
+    struct FakeObserver(Readiness);
+
+    impl FakeObserver {
+        fn ready_leader() -> Self {
+            Self(Readiness {
+                node_id: 1,
+                role: "leader".into(),
+                member: true,
+                draining: false,
+                workers: Vec::new(),
+                reason: None,
+            })
+        }
+    }
 
     impl Observer for FakeObserver {
         fn readiness(&self) -> BoxFuture<'_, Readiness> {
-            Box::pin(async {
-                Readiness {
-                    node_id: 1,
-                    role: "leader".into(),
-                    member: true,
-                    draining: false,
-                    workers: Vec::new(),
-                    reason: None,
-                }
-            })
+            let snapshot = self.0.clone();
+            Box::pin(async move { snapshot })
         }
 
         fn cluster(&self) -> BoxFuture<'_, trembita_dashboard::ClusterView> {
@@ -234,31 +242,221 @@ mod tests {
         }
     }
 
+    async fn dispatch_get(table: &RouteTable, path: &str) -> StatusCode {
+        table
+            .dispatch_open(
+                &http::Method::GET,
+                path,
+                HashMap::default(),
+                HeaderMap::default(),
+                Bytes::new(),
+            )
+            .await
+            .expect("dispatch")
+            .status_code()
+    }
+
+    async fn dispatch_method(table: &RouteTable, method: &http::Method, path: &str) -> StatusCode {
+        table
+            .dispatch_open(
+                method,
+                path,
+                HashMap::default(),
+                HeaderMap::default(),
+                Bytes::new(),
+            )
+            .await
+            .expect("dispatch")
+            .status_code()
+    }
+
+    fn ops_table(readiness: Readiness) -> RouteTable {
+        OpsApi::new(
+            Arc::new(FakeObserver(readiness)),
+            Metrics::new(),
+            EventBus::new(16),
+        )
+        .route_table()
+    }
+
     #[tokio::test]
     async fn ops_health_and_ready() {
-        let api = OpsApi::new(Arc::new(FakeObserver), Metrics::new(), EventBus::new(16));
-        let table = api.route_table();
-        let health = table
-            .dispatch_open(
-                &http::Method::GET,
-                "/health",
-                HashMap::default(),
-                HeaderMap::default(),
-                Bytes::new(),
-            )
-            .await
-            .expect("health");
-        assert_eq!(health.status_code(), StatusCode::OK);
-        let ready = table
-            .dispatch_open(
-                &http::Method::GET,
-                "/ready",
-                HashMap::default(),
-                HeaderMap::default(),
-                Bytes::new(),
-            )
-            .await
-            .expect("ready");
-        assert_eq!(ready.status_code(), StatusCode::OK);
+        let table = ops_table(FakeObserver::ready_leader().0);
+        assert_eq!(dispatch_get(&table, "/health").await, StatusCode::OK);
+        assert_eq!(dispatch_get(&table, "/ready").await, StatusCode::OK);
+    }
+
+    /// B-30 — table-driven LB pool contract on `/ready` and liveness on `/health`.
+    #[tokio::test]
+    async fn ingress_lb_readiness_pool_contract_scenarios() {
+        let scenarios: &[(&str, Readiness, StatusCode)] = &[
+            (
+                "member leader in pool",
+                Readiness {
+                    node_id: 1,
+                    role: "leader".into(),
+                    member: true,
+                    draining: false,
+                    workers: vec!["w#1".into()],
+                    reason: None,
+                },
+                StatusCode::OK,
+            ),
+            (
+                "member follower in pool",
+                Readiness {
+                    node_id: 2,
+                    role: "follower".into(),
+                    member: true,
+                    draining: false,
+                    workers: Vec::new(),
+                    reason: None,
+                },
+                StatusCode::OK,
+            ),
+            (
+                "joining not in pool",
+                Readiness {
+                    node_id: 3,
+                    role: "follower".into(),
+                    member: false,
+                    draining: false,
+                    workers: Vec::new(),
+                    reason: Some("joining".into()),
+                },
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            (
+                "draining removed from pool",
+                Readiness {
+                    node_id: 1,
+                    role: "leader".into(),
+                    member: true,
+                    draining: true,
+                    workers: Vec::new(),
+                    reason: Some("drain".into()),
+                },
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            (
+                "non-member without reason",
+                Readiness {
+                    node_id: 4,
+                    role: "learner".into(),
+                    member: false,
+                    draining: false,
+                    workers: Vec::new(),
+                    reason: None,
+                },
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            (
+                "member draining even with workers",
+                Readiness {
+                    node_id: 2,
+                    role: "follower".into(),
+                    member: true,
+                    draining: true,
+                    workers: vec!["w#9".into()],
+                    reason: Some("upgrade".into()),
+                },
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            (
+                "candidate still member",
+                Readiness {
+                    node_id: 1,
+                    role: "candidate".into(),
+                    member: true,
+                    draining: false,
+                    workers: Vec::new(),
+                    reason: None,
+                },
+                StatusCode::OK,
+            ),
+            (
+                "learner not in voter pool",
+                Readiness {
+                    node_id: 5,
+                    role: "learner".into(),
+                    member: false,
+                    draining: false,
+                    workers: Vec::new(),
+                    reason: Some("learner".into()),
+                },
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            (
+                "rolling upgrade drain flag",
+                Readiness {
+                    node_id: 2,
+                    role: "follower".into(),
+                    member: true,
+                    draining: true,
+                    workers: vec!["w#2".into()],
+                    reason: Some("rolling-upgrade".into()),
+                },
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+        ];
+
+        for (name, readiness, want_ready) in scenarios {
+            let table = ops_table(readiness.clone());
+            let health = dispatch_get(&table, "/health").await;
+            assert_eq!(health, StatusCode::OK, "{name}: liveness must stay 200");
+            let ready = dispatch_get(&table, "/ready").await;
+            assert_eq!(ready, *want_ready, "{name}: readiness status");
+            let body = table
+                .dispatch_open(
+                    &http::Method::GET,
+                    "/ready",
+                    HashMap::default(),
+                    HeaderMap::default(),
+                    Bytes::new(),
+                )
+                .await
+                .expect("ready body");
+            let json = match body.body() {
+                ResponseBody::Json(v) => v.clone(),
+                ResponseBody::Bytes(b) => serde_json::from_slice(b).expect("ready json"),
+                other => panic!("{name}: expected json, got {other:?}"),
+            };
+            assert_eq!(
+                json["member"].as_bool(),
+                Some(readiness.member),
+                "{name}: member field"
+            );
+            assert_eq!(
+                json["draining"].as_bool(),
+                Some(readiness.draining),
+                "{name}: draining field"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn ingress_lb_health_check_http_methods() {
+        let table = ops_table(FakeObserver::ready_leader().0);
+        assert_eq!(
+            dispatch_method(&table, &http::Method::GET, "/health").await,
+            StatusCode::OK
+        );
+        assert_eq!(
+            dispatch_method(&table, &http::Method::GET, "/ready").await,
+            StatusCode::OK
+        );
+        assert_eq!(
+            dispatch_method(&table, &http::Method::POST, "/health").await,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            dispatch_method(&table, &http::Method::POST, "/ready").await,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            dispatch_get(&table, "/healthz").await,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(dispatch_get(&table, "/Ready").await, StatusCode::NOT_FOUND);
     }
 }

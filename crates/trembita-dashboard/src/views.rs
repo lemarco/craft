@@ -258,3 +258,53 @@ pub trait Observer: Send + Sync + 'static {
     /// Saga journal records known on this node (workflow observability).
     fn sagas(&self) -> BoxFuture<'_, Vec<SagaRecordView>>;
 }
+
+#[cfg(test)]
+mod readiness_tests {
+    use super::Readiness;
+
+    fn sample(member: bool, draining: bool) -> Readiness {
+        Readiness {
+            node_id: 1,
+            role: "leader".into(),
+            member,
+            draining,
+            workers: Vec::new(),
+            reason: None,
+        }
+    }
+
+    #[test]
+    fn ingress_lb_member_not_draining_is_in_pool() {
+        assert!(sample(true, false).is_ready());
+    }
+
+    #[test]
+    fn ingress_lb_draining_member_out_of_pool() {
+        assert!(!sample(true, true).is_ready());
+    }
+
+    #[test]
+    fn ingress_lb_joining_non_member_out_of_pool() {
+        assert!(!sample(false, false).is_ready());
+    }
+
+    #[test]
+    fn ingress_lb_non_member_draining_out_of_pool() {
+        assert!(!sample(false, true).is_ready());
+    }
+
+    #[test]
+    fn ingress_lb_reason_does_not_affect_is_ready() {
+        let mut r = sample(true, false);
+        r.reason = Some("joining".into());
+        assert!(r.is_ready());
+    }
+
+    #[test]
+    fn ingress_lb_workers_list_does_not_affect_is_ready() {
+        let mut r = sample(true, false);
+        r.workers = vec!["w#1".into(), "w#2".into()];
+        assert!(r.is_ready());
+    }
+}

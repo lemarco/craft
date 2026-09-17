@@ -21,8 +21,7 @@ use trembita_test_support::{
     eventually_async_default, eventually_default, fast_raft_config,
 };
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
+use super::http_get;
 
 // --- A managed auto-worker ------------------------------------------------
 
@@ -185,26 +184,6 @@ async fn wait_for_workers_on_every_node(clusters: &[Arc<TrembitaCluster<Kv>>]) {
     }
 }
 
-/// Minimal blocking-free HTTP/1.1 GET returning `(status_code, body)`.
-async fn http_get(addr: std::net::SocketAddr, path: &str) -> (u16, String) {
-    let mut stream = TcpStream::connect(addr).await.expect("connect admin");
-    let req = format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
-    stream.write_all(req.as_bytes()).await.expect("send req");
-    let mut raw = Vec::new();
-    stream.read_to_end(&mut raw).await.expect("read resp");
-    let text = String::from_utf8_lossy(&raw).into_owned();
-    let status = text
-        .split_whitespace()
-        .nth(1)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
-    let body = text
-        .split_once("\r\n\r\n")
-        .map(|(_, b)| b.to_string())
-        .unwrap_or_default();
-    (status, body)
-}
-
 async fn https_get(
     addr: std::net::SocketAddr,
     path: &str,
@@ -214,6 +193,8 @@ async fn https_get(
 
     use rustls::pki_types::ServerName;
     use rustls::{ClientConfig, RootCertStore};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpStream;
     use tokio_rustls::TlsConnector;
 
     let mut roots = RootCertStore::empty();

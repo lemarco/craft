@@ -15,7 +15,29 @@ use crate::TrembitaAppBuilder;
 use crate::TrembitaGatewayState;
 use crate::cluster::{TrembitaCluster, cluster_ops_route_table};
 use crate::core::{Role, StateMachine};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
 use trembita_test_support::{POLL_STEP, advance};
+
+/// Minimal HTTP/1.1 `GET` returning `(status_code, body)` — LB health-check style.
+pub(crate) async fn http_get(addr: SocketAddr, path: &str) -> (u16, String) {
+    let mut stream = TcpStream::connect(addr).await.expect("connect ops http");
+    let req = format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    stream.write_all(req.as_bytes()).await.expect("send req");
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).await.expect("read resp");
+    let text = String::from_utf8_lossy(&raw).into_owned();
+    let status = text
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let body = text
+        .split_once("\r\n\r\n")
+        .map(|(_, b)| b.to_string())
+        .unwrap_or_default();
+    (status, body)
+}
 
 /// Dev-fallback gateway with ops routes (health, metrics, dashboard, introspect).
 #[must_use]
