@@ -12,19 +12,17 @@ When an item ships, remove its row here, update [status.md](status.md), and move
 
 **Priority hint:** P0 → P1 → P2 within this table (top first). Next epic id when adding work: **B-55**. **1.0 stabilization** (API freeze, Jepsen, semver) — **not** listed here; see [public-api-1.0](decisions/public-api-1.0.md) / [jepsen-1.0](decisions/jepsen-1.0.md) when scheduling that program explicitly.
 
-_No open P0–P2 epics in this table (2026-09-17). Add rows here when scheduling new work._
+**Wave status:** product scale & ops epics **B-28 … B-54** (incl. doc hygiene **B-53**) are shipped — see [status § Product scale wave](status.md#product-scale-wave-b-28b32). Add new rows below when scheduling **B-55+**.
 
 ### Deferred decisions (ADR when epic starts)
 
+Not scheduled as epics until product asks. Resolved items live in [status](status.md) / archives above.
+
 | Topic | Options | Current lean |
 |-------|---------|--------------|
-| Coordination profile | Env-only vs `TrembitaConfigure` | **Shipped B-37** — both via [`CoordinationGrowthPreset`](../crates/trembita/src/configure.rs) |
-| Closed-loop ceilings | Env-only vs configure API | **Shipped B-44** — `TREMBITA_COORDINATION_MAX_*` + [`TrembitaConfigure`](../crates/trembita/src/configure.rs) |
-| Ops cockpit UI | Dashboard page vs JSON only | **JSON introspect first** (B-43); reuse [trembita-dashboard](../crates/trembita-dashboard/) only if a page adds clear value |
-| Backup scope | Hot copy vs snapshot API | **Document supported manual procedure first** (B-48); automated snapshot only if ops demand it |
-| CI upgrade binary | `trembita-ops` vs `trembita-cli` release | **Shipped B-54** — [`trembita-ops upgrade run`](../crates/trembita-tools/src/bin/ops.rs) |
-| Upgrade without self-update API | SSH/systemd manual roll | **Shipped B-45** — [deploy/rolling-upgrade-systemd.md](../deploy/rolling-upgrade-systemd.md); operator **fails fast** on 404 `/cluster/upgrade` |
-| 1.0 program | When to schedule | **Explicit decision only** — not part of the B-42…B-54 shipped wave; track in [public-api-1.0](decisions/public-api-1.0.md) / [jepsen-1.0](decisions/jepsen-1.0.md) |
+| Ops cockpit UI | Dashboard page vs JSON only | **JSON introspect** shipped (B-43); add a dashboard page only if it beats raw `/introspect/*` for operators |
+| Backup automation | Hot copy vs snapshot API vs trembita-ops only | **Manual DR pack** shipped (B-48); automated snapshot API only if ops demand it |
+| 1.0 program | When to schedule | **Explicit decision only** — [public-api-1.0](decisions/public-api-1.0.md) · [jepsen-1.0](decisions/jepsen-1.0.md) |
 
 **How to update:** pick an id; set 🚧 while working; on release update [status.md](status.md); reference GitLab issues as `#<number>` in commits/MRs.
 
