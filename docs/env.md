@@ -63,6 +63,7 @@ Common optional:
 | `TREMBITA_JOB_QUEUE_AUTO_SHARD` | `1` / `true` — leader adaptive shard growth for env-only queue ([job-queue](decisions/job-queue.md)) |
 | `TREMBITA_RAFT_GROUPS` | Multi-Raft coordination groups on the product **`EmptyStateMachine`** path (default `1`). Use with `TREMBITA_DATA_DIR` for keyed queue/topic/store traffic ([multi-raft](decisions/multi-raft.md)) |
 | `TREMBITA_RAFT_SHARD_COUNT` | Virtual shard modulus when `TREMBITA_RAFT_GROUPS` > 1 (optional; assembly default applies when unset) |
+| `TREMBITA_COORDINATION_PROFILE` | B-37 growth preset — canonical: `standard`, `jobs_backlog`, `write_sharding`, `full`. Aliases: `jobs`, `jobs-backlog`, `write`, `sharding`, `growth`. Fills default `TREMBITA_RAFT_*` and env-only `TREMBITA_JOB_QUEUE_AUTO_SHARD` when those vars are unset. Explicit `TREMBITA_RAFT_GROUPS`, `TREMBITA_RAFT_SHARD_COUNT`, and `TREMBITA_JOB_QUEUE_AUTO_SHARD` **override** the profile ([getting-started § B-37](getting-started.md#when-to-enable-coordination-growth-b-37), [capabilities § B-37](scenarios/capabilities.md#coordination-growth-presets-b-37), [runbook verify](ops/production-runbook.md#coordination-growth-preset-b-37)) |
 | `TREMBITA_ALLOW_JOIN` | Seed accepts dynamic join (default **on** when not joining) |
 
 **Do not set** `TREMBITA_NODE_ID` on product nodes — id comes from join assignment and `{data_dir}/node-id`.
@@ -110,7 +111,11 @@ Also accepted as `TREMBITA_GATEWAY_TOKEN` (legacy name). Unset = open product HT
 
 ### `TREMBITA_GATEWAY_SESSION_SECRET`
 
-Shared signing key for product session cookies (≥16 bytes). Every gateway process in the cluster must use the **same** value so [`SessionGate`](../crates/trembita-http/src/routing/auth.rs) accepts cookies on any node. Alias: `GATEWAY_SESSION_SECRET`. See [gateway-cluster-auth](decisions/gateway-cluster-auth.md) and [`ClusterSessionSecret`](../crates/trembita/src/gateway/cluster_session.rs).
+Shared signing key for product session cookies (≥16 bytes). Every gateway process in the cluster must use the **same** value so [`SessionGate`](../crates/trembita-http/src/routing/auth.rs) accepts cookies on any node. Alias: `GATEWAY_SESSION_SECRET`. Ports: [gateway-cluster-auth § B-40](decisions/gateway-cluster-auth.md#b-40--logic--storage-split) · [`ClusterSessionSecret`](../crates/trembita/src/gateway/cluster_session.rs).
+
+### `TREMBITA_GATEWAY_SESSION_SECRET_PREVIOUS`
+
+Optional during secret rotation (B-40). Set to the **previous** signing key on all nodes while **`TREMBITA_GATEWAY_SESSION_SECRET`** holds the new key — [`SignedCookieSessionVerifier`](../crates/trembita/src/gateway/cluster_session.rs) accepts either signature. Remove after max session TTL. [runbook § B-40](ops/production-runbook.md#gateway-session-rotation-b-40).
 
 ### `TREMBITA_GATEWAY_AUTH_PROFILE`
 
@@ -154,6 +159,6 @@ Shared signing key for product session cookies (≥16 bytes). Every gateway proc
 
 Run `trembita doctor` on scaffold projects — it checks `manifest.rs` ↔ `consumers/` wiring, gateway merges in `app.rs`, legacy keys in `deploy/.env.example`, **removed APIs** (`TrembitaCluster::builder`, old gateway toggles), and **capability scale foot-guns** (B-31 — e.g. `.instances(1)` with queued ops but no keyed handlers). Before deploy, use **`trembita doctor --preflight`**: stricter checks for `TREMBITA_LISTEN` / `DATA_DIR` / `CERT_DIR`, compose join pattern (no `TREMBITA_NODE_ID`), default ops gateway wiring, and local `deploy/certs/ca.pem` when present.
 
-**Scale wave env (B-28–B-32):** B-29 — [`TREMBITA_GATEWAY_SESSION_SECRET`](#trembita_gateway_session_secret); B-30 — pool health via **`GET /ready`** on [`TREMBITA_LISTEN`](#trembita_listen) ([ingress-lb](ops/ingress-lb.md)); B-32 — `TREMBITA_JOB_QUEUE_*`, `TREMBITA_RAFT_*` (table above). Cap group defaults (B-28) are manifest-side, not env. Index: [status § Product scale wave](status.md#product-scale-wave-b-28b32).
+**Scale wave env (B-28–B-33):** B-29 — [`TREMBITA_GATEWAY_SESSION_SECRET`](#trembita_gateway_session_secret); B-30 — pool health via **`GET /ready`** on [`TREMBITA_LISTEN`](#trembita_listen) ([ingress-lb](ops/ingress-lb.md)); B-32 — `TREMBITA_JOB_QUEUE_*`, `TREMBITA_RAFT_*` (table above); B-33 — boot **`product_scale`** log + **`GET /introspect/product-scale`** ([production-runbook](ops/production-runbook.md#product-scale-introspection-b-33)). Cap group defaults (B-28) are manifest-side, not env. Index: [status § Product scale wave](status.md#product-scale-wave-b-28b32).
 
 See also: [getting-started.md](getting-started.md), [certs.md](certs.md), [unified-listener](decisions/unified-listener.md).

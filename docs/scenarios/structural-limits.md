@@ -21,10 +21,15 @@ After join, scale, or **Raft group rebalance**, the merged directory can lag bri
 
 | Mitigation | When |
 |------------|------|
-| [`DirectoryPolicy::ReadYourWrites`](../../crates/trembita-runtime/src/directory_policy.rs) | Brief retry before `NoTarget` (default for [`CapManifest`](../../crates/trembita/src/capability/manifest.rs) apps) |
+| [`DirectoryPolicy::ReadYourWrites`](../../crates/trembita-runtime/src/directory_policy.rs) | Brief retry before `NoTarget` (default **8 × 25 ms** for [`CapManifest`](../../crates/trembita/src/capability/manifest.rs) apps) |
 | [`TrembitaAppBuilder::directory_retry`](../../crates/trembita/src/app/builder.rs) | Tune attempts/backoff after heavy rebalance |
-| [`ActorSession`](../../crates/trembita-runtime/src/session.rs) TTL + re-open | Sticky workflows after migration |
+| [`ActorSession::reopen_str`](../../crates/trembita-runtime/src/session.rs) / [`SessionHandle`](../../crates/trembita/src/gateway/session.rs) | Sticky workflows after migration (B-36) |
+| `GET /metrics` + **`GET /introspect/directory-r3`** | `trembita_directory_merge_lag_epochs`, `trembita_directory_deliver_no_target_total{group}`, plus JSON snapshot (B-36) |
 | Anti-entropy + liveness | Automatic; ops: drain before leave |
+
+**Ops snapshot (B-36):** scrape **`GET /introspect/directory-r3`** during rebalance drills — expect brief **`merge_lag_epochs` > 0** and possibly rising **`deliver_no_target_totals`**; both should settle after directory merge. If totals keep climbing, check cap/worker registration and RYW tuning ([`TrembitaAppBuilder::directory_retry`](../../crates/trembita/src/app/builder.rs)).
+
+Regression: [capabilities § B-36](capabilities.md#r3-directory-visibility-b-36) · ADR: [actor-routing § B-36](../decisions/actor-routing.md#automated-regression-b-36).
 
 Advanced: [`TrembitaCluster::publish_directory_visible`](../../crates/trembita-assembly/src/cluster_handle/cluster.rs) after local spawn.
 

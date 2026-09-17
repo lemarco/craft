@@ -28,6 +28,8 @@ Enable on the same `trembita` dependency — no separate adapter crates in your 
 |---------|----------------|
 | `http-jobs` (default) | Product gateway, `/jobs/*`, optional `/actors/*` (advanced), `/workflows/*`, custom [`RouteTable`](decisions/gateway-routing-v2.md) + [`cap_*`](decisions/capability-dx.md) |
 | `dev-certs` | Solo local seed without operator-provided mTLS PEMs |
+| `gateway-auth` | [`trembita-gateway-auth`](../crates/trembita-gateway-auth/) OIDC-shaped helpers → [`SessionIssuer`](../crates/trembita-http/src/routing/session_ports.rs) (B-40) |
+| `schedule-postgres` | Postgres [`ScheduleSource`](../crates/trembita-jobs/src/schedule_source.rs) via [`PgScheduleSource`](../crates/trembita-schedule-postgres/) (B-41) |
 | `redis-store` | Redis-backed [`ActorStateStore`](decisions/actor-state-redis.md) instead of embedded redb |
 | `external-backlog` | Postgres (or compatible) work table as [`ExternalBacklog`](decisions/external-backlog.md) source |
 | `domain-outbox` | Postgres transactional outbox → event topic drainer ([event-outbox](decisions/event-outbox.md)) |
@@ -120,6 +122,23 @@ Optional: `TREMBITA_JOB_QUEUE`, `TREMBITA_ALLOW_JOIN` (seed, default on).
 
 **Scaling on N VPS (B-28–B-32):** capability groups default to **PerNode** for stateless ops; use **`trembita doctor`** before deploy (B-31); set **`TREMBITA_GATEWAY_SESSION_SECRET`** for cookie login behind LB (B-29); optional sharded queues / multi-Raft via manifest or env (B-32). Index: [status § Product scale wave](status.md#product-scale-wave-b-28b32).
 
+### When to enable coordination growth (B-37)
+
+Use a **preset** when manual B-32 knobs are too low-level. Call [`.with_coordination_growth_preset`](../crates/trembita/src/configure.rs) on [`TrembitaConfigure`](../crates/trembita/src/configure.rs) **before** [`.manifest()`](../crates/trembita/src/app/manifest.rs), or set **`TREMBITA_COORDINATION_PROFILE`** for env-only queue boot (`TREMBITA_JOB_QUEUE` + `TREMBITA_DATA_DIR`).
+
+| Profile | Enable when | Effect |
+|---------|-------------|--------|
+| `standard` (default) | Solo node or modest backlog | Single Raft group, standard queue layout |
+| `jobs_backlog` | Job depth grows on every node but enqueue is the bottleneck | Leader **auto-shard** on standard queues (depth **256**, max **16** physical shards) |
+| `write_sharding` | Keyed cap store / topics / coordination hot spots hit **R1** on one Raft group | **2** coordination Raft groups, **64** virtual shards |
+| `full` | Large deployments with both backlog and keyed coordination pressure | Auto-shard (**512** / **12** shards) + multi-Raft |
+
+**Env aliases:** `jobs`, `jobs-backlog`, `write`, `sharding`, `growth` — see [capabilities § B-37](scenarios/capabilities.md#coordination-growth-presets-b-37). Explicit `TREMBITA_RAFT_GROUPS`, `TREMBITA_RAFT_SHARD_COUNT`, and `TREMBITA_JOB_QUEUE_AUTO_SHARD` **override** the profile.
+
+After deploy, confirm with **`GET /introspect/product-scale`** (or boot log `trembita::product_scale=info`) — [production-runbook § B-37](ops/production-runbook.md#coordination-growth-preset-b-37).
+
+**Regression:** `./scripts/test-fast.sh -p trembita --test coordination_growth_preset b37_` — full matrix in [capabilities § Automated regression (B-37)](scenarios/capabilities.md#automated-regression-b-37).
+
 ## 4. Try the showcases
 
 From the **trembita repo root** (set `TREMBITA_ROOT` if needed):
@@ -152,6 +171,23 @@ cargo build -p trembita-tools --bin trembita-showcase-client
 
 Prefer `./target/debug/trembita dev http --showcase background-jobs -- job emails hello` when using the debug CLI from the repo root.
 
+### Local 3-node cluster (B-39)
+
+Exercise **multi-node gateway** with a shared **`TREMBITA_GATEWAY_SESSION_SECRET`** (default **`realtime`** on **8290–8292**):
+
+```bash
+./scripts/founder-cluster.sh setup
+./scripts/founder-cluster.sh up
+./scripts/founder-cluster.sh session-smoke          # login node1 → /me node2
+./scripts/founder-cluster.sh lb-up                  # nginx :18290 (Docker)
+./scripts/founder-cluster.sh session-smoke --lb
+./scripts/founder-cluster.sh stop
+```
+
+Debug CLI (repo checkout only): `./target/debug/trembita dev cluster-up --setup` · `dev cluster-lb-up`.
+
+Docs: [dev/founder-3node](../dev/founder-3node/README.md) · [capabilities § B-39](scenarios/capabilities.md#local-3-node-founder-cluster-b-39). Regression: `./scripts/test-fast.sh -p trembita-cli --lib b39_`. Heavier LB proof: [B-34](scenarios/capabilities.md#elastic-join--lb-b-34).
+
 Reference KV [`StateMachine`](../crates/trembita-core/src/kv.rs) (`trembita::kv` on the facade) for low-level Raft `propose` / `query` without a full product app.
 
 ## 5. Product workers
@@ -163,6 +199,43 @@ Register ops in `capabilities/` + [`CapManifest`](decisions/capability-dx.md), c
 **Advanced — `consumers/` only:** raw [`#[consumer]`](../crates/trembita-macros/src/lib.rs) streams without a matching capability op, or advanced queue→actor bridges (prefer capability ops + `Route::Queued`). New backlog work should be a capability op + optional `Route::Queued`, not a standalone consumer module.
 
 Scaffolded apps ship sample `POST /ping` → inline `app.ping` in `src/http/product.rs`.
+
+### Durable mailbox + leader tasks (B-41)
+
+**Most apps skip this** — prefer capabilities + queued routes. Enable when you use advanced [`UserActor`](../crates/trembita-runtime/src/registry/actor.rs) and cross-node `/actor/deliver` ([protocol § mailbox spool](protocol.md#actor-mailbox-spool-durable-delivery)).
+
+Cross-node actor delivery with redb spool (`{data_dir}/mailbox-spool.redb`):
+
+```rust
+TrembitaApp::builder().configure(
+    TrembitaConfigure::default()
+        .with_data_dir("/var/lib/trembita")
+        .with_durable_mailbox(true),
+);
+// or: .with_durable_mailbox(true) on the builder (same flag)
+```
+
+Leader-only side work ([leader-task § B-41](decisions/leader-task.md#product-surface-b-41)):
+
+```rust
+use std::time::Duration;
+use trembita::{LeaderLoopOpts, TrembitaApp, TrembitaConfigure};
+
+TrembitaApp::builder()
+    .configure(TrembitaConfigure::default().with_data_dir("/var/lib/trembita"))
+    .on_leader(
+        LeaderLoopOpts::new(Duration::from_secs(30)).run_on_acquire(),
+        |gate| async move {
+            if gate.first_in_term() {
+                // one-shot after election
+            }
+        },
+    );
+```
+
+Postgres-backed recurring jobs — feature **`schedule-postgres`**, [`PgScheduleSource`](../crates/trembita-schedule-postgres/src/lib.rs) on [`AppManifest::schedule_source`](../crates/trembita/src/app/manifest.rs) ([schedule-source § B-41](decisions/schedule-source.md#postgres-adapter-b-41)).
+
+**Regression:** [capabilities § B-41](scenarios/capabilities.md#product-surface-gaps-b-41) · `./scripts/test-fast.sh -p trembita --test app_cluster b41_`.
 
 ### Advanced — `UserActor`
 
@@ -320,11 +393,14 @@ Generates the [framework layout](decisions/framework-conventions.md):
 | `actors/` | Optional (`--features actors`) — advanced `UserActor` only |
 | `deploy/` | `.env.example` + optional `docker-compose.yml` for local cluster |
 
+**Profiles (B-38):** `--profile jobs|realtime|api` is an alias for `--template` — see [capabilities § B-38](scenarios/capabilities.md#founder-dx-v2-b-38). The **jobs** profile adds **`src/capabilities/task.rs`** (queued + `require_store` idempotency sample).
+
 Add capabilities by editing **`src/manifest.rs`** (`// trembita:capabilities` region) and **`src/capabilities/`**,
 wire HTTP in **`src/http/product.rs`** ([`cap_invoke`](../crates/trembita/src/gateway/cap_handlers.rs)), add job handlers under `consumers/`. Then:
 
 ```bash
-trembita doctor   # manifest ↔ files consistency (read-only)
+trembita doctor --explain-scale   # founder scale narrative (B-38; no layout lint)
+trembita doctor                   # manifest ↔ files consistency (read-only)
 cargo check       # greenfield scaffold should compile (sample job + /ping cap route)
 ```
 

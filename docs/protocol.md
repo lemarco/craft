@@ -193,7 +193,7 @@ Optional write-ahead **`MailboxSpool`** (`RedbMailboxSpool` at `{data_dir}/mailb
 | **Inbox** | Envelope persisted before local mailbox enqueue; removed after accept |
 | **Recovery** | Background drainer + startup replay of pending rows |
 
-Enable via in-crate [`TrembitaClusterBuilder::durable_mailbox`](../crates/trembita-assembly/src/builder/cluster/mod.rs)(`true`) with [`data_dir`](../crates/trembita-assembly/src/builder/cluster/mod.rs) (framework tests / showcases — not product `TrembitaApp` API yet).
+Enable via [`TrembitaConfigure::with_durable_mailbox`](../crates/trembita/src/configure.rs) on [`TrembitaApp`](../crates/trembita/src/app/mod.rs) (B-41) or [`TrembitaClusterBuilder::durable_mailbox`](../crates/trembita-assembly/src/builder/cluster/mod.rs) in assembly — requires [`data_dir`](../crates/trembita/src/configure.rs) ([capabilities § B-41](scenarios/capabilities.md#product-surface-gaps-b-41)).
 
 ## Connections
 
