@@ -6,6 +6,21 @@ use serde::{Deserialize, Serialize};
 
 use crate::{LogIndex, NodeId, Term};
 
+/// Maximum encoded size of a single replicated command (R1 — keep log entries small).
+pub const MAX_RAFT_COMMAND_BYTES: usize = 512 * 1024;
+
+/// Reject oversize propose / prepare bodies before decode or replication.
+pub fn reject_oversized_raft_command(bytes: &[u8]) -> Result<(), ClientWireError> {
+    if bytes.len() > MAX_RAFT_COMMAND_BYTES {
+        Err(ClientWireError::CommandTooLarge {
+            len: bytes.len(),
+            max: MAX_RAFT_COMMAND_BYTES,
+        })
+    } else {
+        Ok(())
+    }
+}
+
 /// A request from a client to the cluster.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClientRequest {
@@ -91,6 +106,13 @@ pub enum ClientWireError {
     TwoPhaseMisrouted,
     /// Routing key is outside the active shard range.
     KeyOutsideShardRange,
+    /// Command body exceeds [`MAX_RAFT_COMMAND_BYTES`].
+    CommandTooLarge {
+        /// Encoded length.
+        len: usize,
+        /// Configured limit.
+        max: usize,
+    },
 }
 
 impl fmt::Display for ClientWireError {
@@ -111,6 +133,9 @@ impl fmt::Display for ClientWireError {
             }
             Self::TwoPhaseMisrouted => write!(f, "two-phase request misrouted"),
             Self::KeyOutsideShardRange => write!(f, "key outside active shard range"),
+            Self::CommandTooLarge { len, max } => {
+                write!(f, "raft command too large: {len} bytes (max {max})")
+            }
         }
     }
 }

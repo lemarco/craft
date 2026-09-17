@@ -23,7 +23,7 @@ use crate::worker_opts::{WorkerGroup, WorkerOpts};
 use crate::workflow_opts::{WorkflowOpts, WorkflowRegistration};
 use trembita_assembly::{AppConfig, app_config_from_env};
 use trembita_assembly::{StartError, TrembitaClusterBuilder};
-use trembita_runtime::{LeaderGate, LeaderLoopOpts, UserActor};
+use trembita_runtime::{DirectoryPolicy, DirectoryRetry, LeaderGate, LeaderLoopOpts, UserActor};
 
 use super::manifest::AppManifest;
 use super::run_hint::ManifestRunHint;
@@ -120,7 +120,30 @@ impl TrembitaAppBuilder {
     pub(crate) fn capabilities(self, caps: CapManifest) -> Self {
         let (mut builder, runtime) = caps.apply(self);
         builder.cap_runtime = runtime;
+        // R3: product capability delivery uses directory RYW (spawn, scale, rebalance).
+        builder.inner = builder
+            .inner
+            .directory_policy(DirectoryPolicy::ReadYourWrites);
         builder
+    }
+
+    /// Directory visibility for cross-node capability / actor delivery (R3 in `future-work-and-risks`).
+    ///
+    /// [`AppManifest`](super::manifest::AppManifest) capabilities enable
+    /// [`DirectoryPolicy::ReadYourWrites`] by default (brief retry on `NoTarget` after
+    /// spawn, scale, or Raft group rebalance). Override for lowest-latency advanced paths.
+    #[must_use]
+    pub fn directory_policy(mut self, policy: DirectoryPolicy) -> Self {
+        self.inner = self.inner.directory_policy(policy);
+        self
+    }
+
+    /// Retry budget when [`directory_policy`](Self::directory_policy) is
+    /// [`DirectoryPolicy::ReadYourWrites`].
+    #[must_use]
+    pub fn directory_retry(mut self, retry: DirectoryRetry) -> Self {
+        self.inner = self.inner.directory_retry(retry);
+        self
     }
 
     #[must_use]

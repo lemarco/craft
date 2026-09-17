@@ -45,6 +45,15 @@ pub enum CapError {
         /// What was required.
         detail: String,
     },
+    /// Authoritative state must use Raft `query` / `query_keyed`, not actor `ask`.
+    NotLinearizable {
+        /// What the caller attempted.
+        detail: String,
+    },
+    /// Raft client propose/query failed.
+    Consensus(String),
+    /// Saga coordinator failed.
+    Saga(String),
 }
 
 impl fmt::Display for CapError {
@@ -70,6 +79,9 @@ impl fmt::Display for CapError {
                 write!(f, "capability queued wait timed out for job {}", job_id.0)
             }
             Self::MissingOption { detail } => write!(f, "capability call: {detail}"),
+            Self::NotLinearizable { detail } => write!(f, "capability not linearizable: {detail}"),
+            Self::Consensus(e) => write!(f, "capability consensus: {e}"),
+            Self::Saga(e) => write!(f, "capability saga: {e}"),
         }
     }
 }
@@ -93,5 +105,27 @@ impl CapError {
     #[must_use]
     pub fn handler(err: impl fmt::Display) -> Self {
         Self::Handler(err.to_string())
+    }
+
+    /// Map a Raft client error from handler-side propose/query.
+    #[must_use]
+    pub fn consensus(err: impl fmt::Display) -> Self {
+        Self::Consensus(err.to_string())
+    }
+
+    /// Map a saga coordinator error.
+    #[must_use]
+    pub fn saga(err: impl fmt::Display) -> Self {
+        Self::Saga(err.to_string())
+    }
+
+    /// Actor `ask` cannot serve linearizable SM reads — use [`super::OpCtx::query_linearizable`].
+    #[must_use]
+    pub fn not_linearizable_actor_read(operation: &str) -> Self {
+        Self::NotLinearizable {
+            detail: format!(
+                "{operation}: use OpCtx::query_linearizable or query_keyed_linearizable (not actor ask)"
+            ),
+        }
     }
 }

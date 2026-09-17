@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::Mutex;
-use trembita_client::{SagaError, SagaOutcome, SagaPlan};
+use trembita_client::{Client, KeyedClient, SagaError, SagaOutcome, SagaPlan};
 use trembita_jobs::{EnqueueOptions, JobId, JobQueue, JobStatus, LeaseId, WorkerId};
 use trembita_runtime::{
     ActorRegistry, ActorSession, CastError, ClientError, ClusterAskError, ClusterControl,
@@ -206,6 +206,68 @@ impl TrembitaApp {
     /// Returns [`ClientError`] when the proposal fails or the node is not leader.
     pub async fn propose(&self, command: ()) -> Result<(), ClientError> {
         self.handle().propose(command).await
+    }
+
+    /// Linearizable read on the default Raft group (authoritative SM data).
+    ///
+    /// # Errors
+    /// [`ClientError`] when the query fails.
+    pub async fn query_linearizable(
+        &self,
+        query: &[u8],
+    ) -> Result<Vec<u8>, trembita_client::ClientError> {
+        self.keyed_client().query(query.to_vec()).await
+    }
+
+    /// Linearizable read on the shard that owns `key`.
+    ///
+    /// # Errors
+    /// [`ClientError`] when the query fails.
+    pub async fn query_keyed_linearizable(
+        &self,
+        key: &[u8],
+        query: &[u8],
+    ) -> Result<Vec<u8>, trembita_client::ClientError> {
+        self.keyed_client()
+            .query_keyed(key.to_vec(), query.to_vec())
+            .await
+    }
+
+    /// Replicated write on the shard that owns `key` ([`trembita_proto::MAX_RAFT_COMMAND_BYTES`] limit).
+    ///
+    /// # Errors
+    /// [`ClientError`] when propose fails.
+    pub async fn propose_keyed(
+        &self,
+        key: &[u8],
+        command: &[u8],
+    ) -> Result<Vec<u8>, trembita_client::ClientError> {
+        self.keyed_client()
+            .propose_keyed(key.to_vec(), command.to_vec())
+            .await
+    }
+
+    /// Grow the multi-Raft catalog (R1 write scaling).
+    ///
+    /// # Errors
+    /// [`AddRaftGroupsError`](crate::cluster::AddRaftGroupsError) when multi-Raft is disabled or the leader rejects the change.
+    pub async fn add_raft_groups(
+        &self,
+        count: u32,
+    ) -> Result<Vec<u32>, crate::cluster::AddRaftGroupsError> {
+        self.cluster.add_raft_groups(count).await
+    }
+
+    /// Cross-shard 2PC with the node's durable journal and metrics wired.
+    ///
+    /// # Errors
+    /// [`trembita_client::TwoPhaseError`] when prepare/commit fails.
+    pub async fn run_cross_shard_2pc(
+        &self,
+        plan: &trembita_core::TwoPhasePlan,
+    ) -> Result<Vec<Vec<u8>>, trembita_client::TwoPhaseError> {
+        let client = self.keyed_client();
+        self.cluster.run_keyed_2pc(client.as_ref(), plan).await
     }
 
     /// Workflow store when cluster `data_dir` / auto durable store is enabled ([`TrembitaConfigure::with_data_dir`](crate::TrembitaConfigure::with_data_dir)).

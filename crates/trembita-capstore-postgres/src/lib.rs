@@ -1,4 +1,8 @@
 //! PostgreSQL [`CapStateStore`] adapter.
+//!
+//! [`CapStateStore::compare_and_set`] uses single-statement `INSERT … ON CONFLICT`
+//! / conditional `UPDATE … RETURNING` so idempotency guards stay correct when the
+//! pool serves concurrent workers.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -35,6 +39,10 @@ fn now_ms() -> i64 {
             .as_millis(),
     )
     .unwrap_or(i64::MAX)
+}
+
+fn ttl_to_expires_at_ms(ttl: Option<Duration>) -> Option<i64> {
+    ttl.map(|d| now_ms().saturating_add(i64::try_from(d.as_millis()).unwrap_or(i64::MAX)))
 }
 
 impl PgCapStore {
@@ -111,6 +119,56 @@ impl PgCapStore {
         row.try_get("value")
             .map_err(|e| StoreError::Backend(e.to_string()))
     }
+
+    /// Single-statement compare-and-set (safe under pool concurrency).
+    async fn compare_and_set_atomic(
+        &self,
+        key: &str,
+        expected: Option<&[u8]>,
+        value: &[u8],
+        ttl: Option<Duration>,
+    ) -> Result<bool, StoreError> {
+        let table = Self::ident(self.table())?;
+        let now = now_ms();
+        let expires_at_ms = ttl_to_expires_at_ms(ttl);
+
+        if let Some(exp) = expected {
+            let sql = format!(
+                "UPDATE {table} SET value = $2, expires_at_ms = $3
+                 WHERE key = $1 AND value = $4
+                 AND (expires_at_ms IS NULL OR expires_at_ms > $5)
+                 RETURNING key"
+            );
+            let row = sqlx::query(AssertSqlSafe(sql))
+                .bind(key)
+                .bind(value)
+                .bind(expires_at_ms)
+                .bind(exp)
+                .bind(now)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|e| StoreError::Backend(e.to_string()))?;
+            return Ok(row.is_some());
+        }
+
+        let sql = format!(
+            "INSERT INTO {table} (key, value, expires_at_ms) VALUES ($1, $2, $3)
+             ON CONFLICT (key) DO UPDATE SET
+               value = EXCLUDED.value,
+               expires_at_ms = EXCLUDED.expires_at_ms
+             WHERE {table}.expires_at_ms IS NOT NULL AND {table}.expires_at_ms <= $4
+             RETURNING key"
+        );
+        let row = sqlx::query(AssertSqlSafe(sql))
+            .bind(key)
+            .bind(value)
+            .bind(expires_at_ms)
+            .bind(now)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| StoreError::Backend(e.to_string()))?;
+        Ok(row.is_some())
+    }
 }
 
 impl CapStateStore for PgCapStore {
@@ -126,8 +184,7 @@ impl CapStateStore for PgCapStore {
     ) -> BoxFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
             let table = Self::ident(self.table())?;
-            let expires_at_ms = ttl
-                .map(|d| now_ms().saturating_add(i64::try_from(d.as_millis()).unwrap_or(i64::MAX)));
+            let expires_at_ms = ttl_to_expires_at_ms(ttl);
             let sql = format!(
                 "INSERT INTO {table} (key, value, expires_at_ms) VALUES ($1, $2, $3)
                  ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, expires_at_ms = EXCLUDED.expires_at_ms"
@@ -163,18 +220,6 @@ impl CapStateStore for PgCapStore {
         value: &'a [u8],
         ttl: Option<Duration>,
     ) -> BoxFuture<'a, Result<bool, StoreError>> {
-        Box::pin(async move {
-            let current = self.read_live(key).await?;
-            let matches = match (current.as_deref(), expected) {
-                (None, None) => true,
-                (Some(cur), Some(exp)) => cur == exp,
-                _ => false,
-            };
-            if !matches {
-                return Ok(false);
-            }
-            self.set(key, value, ttl).await?;
-            Ok(true)
-        })
+        Box::pin(async move { self.compare_and_set_atomic(key, expected, value, ttl).await })
     }
 }

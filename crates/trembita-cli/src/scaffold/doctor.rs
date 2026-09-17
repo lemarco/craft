@@ -99,6 +99,7 @@ pub fn run_doctor(project: &TrembitaProject, preflight: bool) -> DoctorReport {
     check_domain_module_declared(project, &mut report);
     check_consumers(project, &manifest, &mut report);
     check_capabilities(project, &manifest, &mut report);
+    check_capability_store(project, &manifest, &mut report);
     check_actors(project, &manifest, &mut report);
     check_http(project, &app, &mut report);
     check_gateway_wiring(&app, &mut report);
@@ -386,6 +387,37 @@ fn check_capabilities(project: &TrembitaProject, manifest: &str, report: &mut Do
             report.warn(
                 "actors/ and capabilities/ both present — register new product ops in capabilities/ (actors/ is Advanced)",
             );
+        }
+    }
+}
+
+fn check_capability_store(project: &TrembitaProject, manifest: &str, report: &mut DoctorReport) {
+    if !manifest.contains(".capabilities(") && !manifest.contains("CapManifest") {
+        return;
+    }
+    let cap_dir = project.capabilities_dir();
+    if !cap_dir.is_dir() {
+        return;
+    }
+    for entry in walk_rs_files(&cap_dir) {
+        if entry.file_name().is_some_and(|n| n == "mod.rs") {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(&entry) else {
+            continue;
+        };
+        if !content.contains("#[cap_handler") {
+            continue;
+        }
+        let uses_store_api = content.contains("store_get")
+            || content.contains("store_set")
+            || content.contains("store_cas")
+            || content.contains("CapStore");
+        if uses_store_api && !content.contains("require_store") {
+            report.error(format!(
+                "{} uses cap store APIs but never calls OpCtx::require_store() (R4 — see docs/scenarios/structural-limits.md)",
+                entry.display()
+            ));
         }
     }
 }

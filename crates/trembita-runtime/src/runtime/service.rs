@@ -139,6 +139,9 @@ async fn route_two_phase_prepare<M: StateMachine>(
     route_key: Vec<u8>,
     command: Vec<u8>,
 ) -> ClientResponse {
+    if let Err(e) = trembita_proto::reject_oversized_raft_command(&command) {
+        return ClientResponse::Err(e);
+    }
     match handle
         .two_phase_prepare(tx_id.clone(), route_key.clone(), command.clone())
         .await
@@ -423,6 +426,9 @@ async fn serve_locally<M: StateMachine>(
 ) -> ClientResponse {
     match request {
         ClientRequest::Propose(bytes) | ClientRequest::ProposeKeyed { command: bytes, .. } => {
+            if let Err(e) = trembita_proto::reject_oversized_raft_command(&bytes) {
+                return ClientResponse::Err(e);
+            }
             let command = match M::Command::from_bytes(&bytes) {
                 Ok(c) => c,
                 Err(e) => {

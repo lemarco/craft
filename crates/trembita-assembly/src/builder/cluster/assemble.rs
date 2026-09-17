@@ -63,6 +63,23 @@ fn metric_u64(v: u64) -> f64 {
     v as f64
 }
 
+async fn apply_rebalance_directory_mitigation(
+    report: &trembita_runtime::GroupRebalanceReport,
+    messaging: &Arc<ClusterMessaging>,
+    directory_sync: &Arc<DirectorySync>,
+    registry: &ActorRegistry,
+    node_id: trembita_proto::NodeId,
+    members: &[trembita_proto::NodeId],
+) {
+    if report.plan.adopt.is_empty() && report.plan.retire.is_empty() {
+        return;
+    }
+    messaging.boost_directory_retry_after_rebalance();
+    let rates = registry.group_message_rates();
+    let regs = registry.local_registrations(node_id, Some(&rates));
+    let _ = directory_sync.publish(members, regs).await;
+}
+
 impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
     #[allow(clippy::too_many_lines)]
     pub(super) async fn assemble(
@@ -632,6 +649,10 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
             // Explicit keepalive: rebalance state must outlive this task.
             let multi_raft_keepalive = multi_raft.clone();
             let meta_for_facts = meta_handle.clone();
+            let messaging_rebalance = Arc::clone(&messaging);
+            let directory_sync_rebalance = Arc::clone(&directory_sync);
+            let registry_rebalance = registry.clone();
+            let members_rebalance = self.members.clone();
             let mut catalog_events = catalog_event_rx;
             let mut telemetry = crate::cluster_handle::MembershipTelemetry::new(
                 node_id,
@@ -650,6 +671,15 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
                             mr.apply_catalog_command(&cmd);
                             if let Ok(report) = mr.rebalance(Arc::clone(&facts)).await {
                                 MultiRaftState::<M>::emit_rebalance(&events, &report);
+                                apply_rebalance_directory_mitigation(
+                                    &report,
+                                    &messaging_rebalance,
+                                    &directory_sync_rebalance,
+                                    &registry_rebalance,
+                                    node_id,
+                                    &members_rebalance,
+                                )
+                                .await;
                             }
                             catalog_cmds += 1;
                             if catalog_cmds.is_multiple_of(4) {
@@ -684,6 +714,15 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
                             let _ = supervisor.reconcile().await;
                             if let Ok(report) = mr.rebalance(Arc::clone(&facts)).await {
                                 MultiRaftState::<M>::emit_rebalance(&events, &report);
+                                apply_rebalance_directory_mitigation(
+                                    &report,
+                                    &messaging_rebalance,
+                                    &directory_sync_rebalance,
+                                    &registry_rebalance,
+                                    node_id,
+                                    &members_rebalance,
+                                )
+                                .await;
                             }
                         }
                     } else if delta.membership_changed || delta.reachability_changed {

@@ -66,8 +66,8 @@ Details below ↓
 ### Runtime placement (internal + advanced)
 
 - Supervised workers (capability **`CapHost`**, optional app **`UserActor`**), cross-node deliver, auto-spawn on join, one instance/VPS typical in production
-- Consistent-hash ring, sticky `ActorSession`, per-group drain (`TREMBITA_DRAIN_TIMEOUT`); directory RYW / `ask_linearizable` (visibility, not SM-linearizable reads)
-- **Cap store** — `RedbActorStateStore` + voter replication; auto with `.data_dir()` ([actor-state-store](decisions/actor-state-store.md)); TTL/GC; optional Redis (`redis-store`); migration RPC for advanced workers
+- Consistent-hash ring, sticky `ActorSession`, per-group drain (`TREMBITA_DRAIN_TIMEOUT`); **`CapManifest` apps default `DirectoryPolicy::ReadYourWrites`** (`TrembitaAppBuilder`); `ask_linearizable` (directory visibility only, not SM-linearizable reads)
+- **Cap store** — `RedbCapStateStore` + voter replication; auto with `.data_dir()` ([actor-state-store](decisions/actor-state-store.md)); TTL/GC; optional Redis (`redis-store`) and Postgres (`capstore-postgres`, transactional CAS); migration RPC for advanced workers
 - **Durable mailbox spool** — assembly-only [`durable_mailbox`](../crates/trembita-assembly/src/builder/cluster/config.rs) + `/actor/deliver` wire (not `TrembitaApp` today)
 
 **Job queue** ([job-queue](decisions/job-queue.md)): `RedbJobQueue`, batch enqueue/ack, prefetch, DLQ, cron, `ClusterJobQueue`, `#[trembita::consumer]`, autoscale; manual **`job_queue_sharded`** and leader **`job_queue_auto_shard`** under sustained depth; **`ExternalBacklog`** ([external-backlog](decisions/external-backlog.md), facade feature `external-backlog`); **`ScheduleSource`** ([schedule-source](decisions/schedule-source.md)).
@@ -137,10 +137,10 @@ Documented in [future-work-and-risks](decisions/future-work-and-risks.md):
 
 | Risk | Summary |
 |------|---------|
-| **R1** | Single Raft group still has a per-group write ceiling; mitigation is **multi-Raft + add groups**, not bigger VPS count alone |
+| **R1** | Single Raft group still has a per-group write ceiling; mitigation is **multi-Raft + add groups**, not bigger VPS count alone — [write-scaling](scenarios/write-scaling.md) |
 | **R2** | Shared QUIC listener — mitigated by peer connection isolation + optional rate limiting |
-| **R3** | Actor directory is eventually consistent — mitigated by TTL, RYW policy, anti-entropy |
-| **R4** | Actor memory without Redis is lost on crash — use write-through to `ActorStateStore` |
+| **R3** | Actor directory is eventually consistent — mitigated by TTL, RYW (default for capabilities), anti-entropy — [structural-limits](scenarios/structural-limits.md#r3--actor-directory-is-eventually-consistent) |
+| **R4** | Handler RAM without cap store is lost on crash — `OpCtx::require_store`, domain in SM via `propose` — [structural-limits](scenarios/structural-limits.md#r4--handler-ram-without-cap-store) |
 | **R5** | Deep tracing has a performance cost — metrics on by default, tracing opt-in |
 | **R6** | mTLS ops burden — mitigated by hot reload + step-ca example |
 

@@ -187,6 +187,7 @@ store-redis:
     - !reference [.rust_ci_setup, before_script]
   script:
     - cargo test -p trembita-store-redis --features docker-tests -- --ignored
+    - cargo test -p trembita-capstore-postgres --features docker-tests -- --ignored
 
 bench:
   stage: heavy

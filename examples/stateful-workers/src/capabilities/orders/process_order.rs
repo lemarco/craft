@@ -1,4 +1,9 @@
 //! Process one order idempotently ([`CapStore`](trembita::capstore::CapStore) marker).
+//!
+//! **R4:** workflow keys go through [`OpCtx::require_store`] — not RAM on the host.
+//! **Authoritative totals** (audit / linearizable) belong in your Raft SM via
+//! [`OpCtx::query_keyed_linearizable`](trembita::OpCtx::query_keyed_linearizable) — not actor `ask`.
+//! See [structural-limits](../../../../docs/scenarios/structural-limits.md).
 
 use std::env;
 

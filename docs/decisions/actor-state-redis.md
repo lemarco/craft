@@ -88,8 +88,9 @@ Raft `migration_snapshot` remains for **small hot buffers**; **Redis is source o
 
 | Shipped | Not in core |
 |---------|-------------|
-| `ActorStateStore` trait + **`RedisStore`** in `trembita-store-redis` | Built-in PostgreSQL `ActorStateStore` |
-| Docs + integration path | Redis Cluster auto-discovery, framework-hosted Redis |
+| `CapStateStore` trait + **`RedisStore`** in `trembita-store-redis` | Redis Cluster auto-discovery, framework-hosted Redis |
+| **`PgCapStore`** in `trembita-capstore-postgres` (`capstore-postgres`) | Auto-wiring Postgres into `TrembitaApp::from_env()` (explicit inject only) |
+| Docs + integration path | — |
 
 Core trembita **works without Redis** — default stateful path is [`RedbActorStateStore`](actor-state-store.md). Use Redis when you already run it for non-trembita services or need a shared cache outside `data_dir`.
 

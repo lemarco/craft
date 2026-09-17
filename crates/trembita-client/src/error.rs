@@ -34,4 +34,12 @@ pub enum ClientError {
     /// A request/response body could not be encoded or decoded.
     #[error("codec error: {0}")]
     Codec(String),
+    /// Command exceeds [`trembita_proto::MAX_RAFT_COMMAND_BYTES`] (R1 — use queue / cap store).
+    #[error("raft command too large: {len} bytes (max {max})")]
+    CommandTooLarge {
+        /// Encoded command length.
+        len: usize,
+        /// Configured limit.
+        max: usize,
+    },
 }

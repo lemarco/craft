@@ -30,3 +30,5 @@ store.set("order:42", b"processing", None).await?;
 ```
 
 Pair with the facade via feature `capstore-postgres` on `trembita` when wiring custom boot code.
+
+[`compare_and_set`](https://docs.rs/trembita-capstore/latest/trembita_capstore/trait.CapStateStore.html#tymethod.compare_and_set) is implemented with conditional SQL (`INSERT … ON CONFLICT` / `UPDATE … RETURNING`) so concurrent workers sharing a pool get the same semantics as Redis Lua CAS.

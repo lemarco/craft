@@ -299,7 +299,7 @@ Target **0.5.0** — unified HTTP listener; see [unified-listener](../decisions/
 ### Added
 
 - **Crate layout** — [`trembita-runtime`](../../crates/trembita-runtime/), [`trembita-jobs`](../../crates/trembita-jobs/),
-  [`trembita-events`](../../crates/trembita-events/), and [`trembita-actor-store`](../../crates/trembita-actor-store/).
+  [`trembita-events`](../../crates/trembita-events/), and [`trembita-capstore`](../../crates/trembita-capstore/).
 - **Facade modules** — `trembita::runtime`, `trembita::jobs`, `trembita::events`, `trembita::actor_store`;
   user actors via `trembita::actor::{UserActor, actor}` and `#[actor]` / `#[actor(migratable)]`.
 - **Dev tooling** — unpublished [`trembita-tools`](../../crates/trembita-tools/) bundles node/ops/showcase binaries;

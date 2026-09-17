@@ -78,7 +78,7 @@ lefthook run pre-push --tags release     # include release build
 | **fast** | every MR / branch push | `ci-fast-lane.sh` |
 | **msrv** | every MR / branch push | `cargo check` on Rust 1.94 |
 | **website-check** | every MR / branch push | `gate-website.sh` (VitePress build) |
-| **heavy** (e2e, store-redis) | nightly schedule **or** MR label `run-heavy` | e2e scripts / redis tests |
+| **heavy** (e2e, store-redis, capstore-postgres) | nightly schedule **or** MR label `run-heavy` | e2e scripts / optional store integration tests |
 | **publish-dry-run** | version tag `v*.*.*` | full `ci-fast-lane.sh` |
 | **release-build** | version tag `v*.*.*` | `--release` workspace + showcase client |
 | **publish** | manual on tag | `publish-workspace.sh` + `post-publish-docs.sh` |

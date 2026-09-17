@@ -953,3 +953,25 @@ async fn auto_compaction_runs_when_entry_threshold_reached() {
 
     handle.shutdown();
 }
+
+#[tokio::test(start_paused = true)]
+async fn leader_rejects_oversized_propose_on_wire() {
+    use trembita_runtime::trembita_proto::{
+        ClientRequest, ClientResponse, ClientWireError, MAX_RAFT_COMMAND_BYTES,
+    };
+
+    let ids = [NodeId(1)];
+    let cluster = Cluster::start(&ids);
+    let leader = cluster.wait_for_leader().await;
+
+    let oversized = ClientRequest::Propose(vec![0u8; MAX_RAFT_COMMAND_BYTES + 1]);
+    let response = send_client_request(&cluster.net, leader, &oversized)
+        .await
+        .expect("wire response");
+    match response {
+        ClientResponse::Err(ClientWireError::CommandTooLarge { .. }) => {}
+        other => panic!("expected CommandTooLarge, got {other:?}"),
+    }
+
+    cluster.shutdown();
+}

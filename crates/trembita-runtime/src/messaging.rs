@@ -21,6 +21,7 @@ use std::hash::Hash;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use trembita_net::transport::{Body, BoxFuture};
 use trembita_net::{
@@ -138,6 +139,8 @@ pub struct ClusterMessaging {
     dedup: Arc<Mutex<DedupCache>>,
     directory_policy: DirectoryPolicy,
     directory_retry: DirectoryRetry,
+    /// Unix millis until [`Self::boost_directory_retry_after_rebalance`] extra attempts apply.
+    directory_retry_boost_until_ms: AtomicU64,
     /// Optional shared compute pool ([workload governor](../../../docs/decisions/workload-governor.md)).
     compute_tokens: Option<Arc<ComputeTokenPool>>,
     /// Optional durable outbox/inbox ([`MailboxSpool`]).
@@ -183,8 +186,30 @@ impl ClusterMessaging {
             dedup: Arc::new(Mutex::new(DedupCache::default())),
             directory_policy,
             directory_retry,
+            directory_retry_boost_until_ms: AtomicU64::new(0),
             compute_tokens: None,
             spool: None,
+        }
+    }
+
+    /// Extend directory RYW attempts briefly after Raft group adopt/retire (R3).
+    pub fn boost_directory_retry_after_rebalance(&self) {
+        const BOOST_MS: u64 = 3_000;
+        let until = unix_now_ms().saturating_add(BOOST_MS);
+        self.directory_retry_boost_until_ms
+            .fetch_max(until, Ordering::SeqCst);
+    }
+
+    fn effective_directory_retry(&self) -> DirectoryRetry {
+        let until = self.directory_retry_boost_until_ms.load(Ordering::SeqCst);
+        if unix_now_ms() < until {
+            let boosted = DirectoryRetry::after_rebalance();
+            DirectoryRetry {
+                max_attempts: self.directory_retry.max_attempts.max(boosted.max_attempts),
+                backoff: self.directory_retry.backoff.max(boosted.backoff),
+            }
+        } else {
+            self.directory_retry
         }
     }
 
@@ -452,13 +477,14 @@ impl ClusterMessaging {
         match policy {
             DirectoryPolicy::Eventual => pick(),
             DirectoryPolicy::ReadYourWrites => {
-                let attempts = self.directory_retry.max_attempts.max(1);
+                let retry = self.effective_directory_retry();
+                let attempts = retry.max_attempts.max(1);
                 for attempt in 0..attempts {
                     if let Some(reg) = pick() {
                         return Some(reg);
                     }
                     if attempt + 1 < attempts {
-                        tokio::time::sleep(self.directory_retry.backoff).await;
+                        tokio::time::sleep(retry.backoff).await;
                     }
                 }
                 None
@@ -699,6 +725,13 @@ pub async fn run_mailbox_spool_drainer(
             () = tokio::time::sleep(poll) => {}
         }
     }
+}
+
+fn unix_now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 impl RequestHandler for ClusterMessaging {

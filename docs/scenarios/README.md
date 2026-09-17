@@ -15,6 +15,7 @@ Guides for building on trembita **without mandatory Redis** — same binary on e
 | WebSocket / live session to one worker | [Real-time sessions](realtime-sessions.md) · [WebSocket wiring](websocket-wiring.md) | ✅ `ActorSession`, gateway showcase | `GatewayBearerIdentity` + `AuthMode::Identity` on protected routes |
 | Multi-step process with compensation | [Workflows](workflows.md) | ✅ `WorkflowBuilder`, Meta-Raft journal | Dashboard saga view |
 | Where to put state (queue vs SM vs store) | [State placement](state-placement.md) | ✅ cheat sheet | — |
+| R1–R4 limits, reads vs query, saga/2PC guarantees | [Structural limits](structural-limits.md) · [Write scaling](write-scaling.md) | ✅ product cheat sheet | — |
 | Typed ops + inline/queued/event routes (capability DX) | [Capabilities](capabilities.md) · [parity matrix](capability-parity.md) | ✅ [ADR](../decisions/capability-dx.md) · [greenfield wire](../decisions/capability-greenfield-wire.md) | — |
 | Cron + events + long runs (how they compose) | [Triggers & pipelines](triggers-and-pipelines.md) · [Cookbook](cookbook-async-work.md) | ✅ patterns + `WorkTrigger` + schedule HTTP | — |
 | Same binary everywhere; API vs jobs on one node | [Workload governor](../decisions/workload-governor.md) | ✅ compute tokens + consumer tune; subprocess [`ExternalLoad`](../decisions/external-load.md) | Finer HTTP / consumer in-flight signals (ADR future) |

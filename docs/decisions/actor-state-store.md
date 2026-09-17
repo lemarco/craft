@@ -26,6 +26,7 @@
 | **`InMemoryStore`** | Tests, single-node dev | **shipped** |
 | **`RedbActorStateStore`** | Production, `{data_dir}/actor-store.redb`, voter replication like `RedbJobQueue` | **shipped** |
 | **`RedisStore`** (`trembita-store-redis`) | Optional — shared cache with non-trembita services | **shipped** |
+| **`PgCapStore`** (`trembita-capstore-postgres`) | Optional — transactional SQL CAS for teams standardizing on Postgres | **shipped** |
 
 Product getting started and [scenario guides](../scenarios/README.md) use **redb or SM only**. Redis is documented under optional integration.
 

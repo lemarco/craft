@@ -5,6 +5,7 @@
 
 mod apply;
 mod call;
+mod consensus;
 mod ctx;
 mod deps;
 mod error;

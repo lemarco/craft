@@ -32,7 +32,7 @@ Peer, client, and actor traffic share one port ([wire-protocol](wire-protocol.md
 
 Actor directory ([cross-node-actors](cross-node-actors.md)) is eventually consistent; brief stale entries after node changes.
 
-- **Mitigation:** TTL + liveness; `DirectoryPolicy::ReadYourWrites`; `ClusterRef` retries after directory update ([actor-routing](actor-routing.md)).
+- **Mitigation:** TTL + liveness; `DirectoryPolicy::ReadYourWrites` (default for [`CapManifest`](../../crates/trembita/src/capability/manifest.rs) via [`TrembitaAppBuilder`](../../crates/trembita/src/app/builder.rs)); brief retry after spawn, scale, and group rebalance ([actor-routing](actor-routing.md), [structural-limits § R3](../scenarios/structural-limits.md#r3--actor-directory-is-eventually-consistent)).
 
 ### R4 — Hot handler memory is not durable by default
 

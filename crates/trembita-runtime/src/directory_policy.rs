@@ -30,3 +30,14 @@ impl Default for DirectoryRetry {
         }
     }
 }
+
+impl DirectoryRetry {
+    /// Stronger pick budget after multi-Raft group rebalance (R3).
+    #[must_use]
+    pub fn after_rebalance() -> Self {
+        Self {
+            max_attempts: 24,
+            backoff: Duration::from_millis(40),
+        }
+    }
+}

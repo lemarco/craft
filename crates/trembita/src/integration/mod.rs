@@ -14,6 +14,7 @@ pub(crate) use support::{
 mod actor_store_resume;
 mod app_cluster_reelect;
 mod auto_compaction;
+mod cap_rebalance;
 mod cert_reload;
 mod client_keyed;
 mod facade;

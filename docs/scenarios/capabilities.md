@@ -59,7 +59,7 @@ Greenfield apps do **not** rely on `/actors/.../cast` — see [capability-greenf
 | `Session` | Sticky session — `.session_key(k).route(Route::Session)` |
 | `Event` | Topic — `.event_ingress(topic, sub)` + `.publish_event()`; subscriber runs same handler |
 
-Authoritative domain data still lives in Raft SM or external DB — see [state-placement](state-placement.md).
+Authoritative domain data still lives in Raft SM or external DB — see [state-placement](state-placement.md). Platform limits (R1–R4, query vs ask, sagas): [structural-limits](structural-limits.md).
 
 ## Queued idempotency
 

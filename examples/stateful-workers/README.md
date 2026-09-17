@@ -70,6 +70,16 @@ curl -X POST 'http://127.0.0.1:8190/orders/submit?user=dev&token=showcase' \
   -d '{"order_id":1001}'
 ```
 
+## Durability vs consensus (R4 + linearizable reads)
+
+| Need | API in handler |
+|------|----------------|
+| Idempotent order marker (this showcase) | [`OpCtx::require_store`](../../crates/trembita/src/capability/ctx.rs) — see [`process_order.rs`](src/capabilities/orders/process_order.rs) |
+| Authoritative balance / audit fact | Raft SM: `OpCtx::query_keyed_linearizable` / `propose_keyed` ([`consensus.rs`](../../crates/trembita/src/capability/consensus.rs)) — **not** actor `ask` |
+| Cross-shard money move | `OpCtx::run_keyed_saga` or `run_cross_shard_2pc` ([structural-limits](../../docs/scenarios/structural-limits.md)) |
+
+This example uses **cap store only** (`EmptyStateMachine` app). When you add a custom state machine + multi-Raft, wire the same `OpCtx` helpers from [`TrembitaApp::add_raft_groups`](../../crates/trembita/src/app/runtime.rs).
+
 ## Env
 
 | Var | Default | Meaning |

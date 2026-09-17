@@ -18,10 +18,20 @@ all-features = true
 [lints]
 workspace = true
 
+[features]
+# Docker/testcontainers integration tests (heavy CI lane only).
+docker-tests = []
+
 [dependencies]
 trembita-capstore.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-tokio.workspace = true
+testcontainers-modules = { workspace = true, features = ["postgres"] }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
+
+[[test]]
+name = "postgres"
+path = "tests/postgres.rs"
+required-features = ["docker-tests"]

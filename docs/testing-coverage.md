@@ -24,7 +24,8 @@ Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** sch
 | Deterministic sim | Whole cluster, virtual clock | `trembita-sim` harness + scenarios | 27 tests | ✅ |
 | Linearizability | Client-visible histories | `trembita-sim/tests/linearizability.rs` | 2 | ✅ |
 | Doctests | Public API examples | `cargo test --doc` | — | ✅ |
-| Redis integration | Real `ActorStateStore` | `trembita-store-redis/tests/{redis,tls}.rs` | 10 | 🔒 nightly |
+| Redis integration | Real `CapStateStore` | `trembita-store-redis/tests/{redis,tls}.rs` | 10 | 🔒 nightly |
+| Postgres cap store | Real `CapStateStore` CAS | `trembita-capstore-postgres/tests/postgres.rs` | 4 | 🔒 nightly |
 | E2E | Real processes, QUIC, mTLS, chaos | `e2e/run.sh`, `e2e/leave.sh`, `e2e/queue.sh`, `e2e/chaos.sh`, `e2e/cert_renew.sh`, `e2e/linearizability.sh` | 6 scenarios | 🔒 nightly |
 | Fuzz | Wire decode never panics | `trembita-fuzz` | 1 target | 🔒 nightly |
 | Bench / soak | Throughput, long-run sim | `benchmarks/` | — | 🔒 nightly |
@@ -45,6 +46,7 @@ Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** sch
 | `trembita-storage` | 0 | 7 | **7** | Store contract (Memory + Redb), namespaced groups, reopen |
 | `trembita-proto` | 7 | 0 | **7** | Encode/decode roundtrips, protocol compat band |
 | `trembita-store-redis` | 0 | 10 (7 `redis` + 3 `tls`, `#[ignore]` except 2 fast) | **10** | Redis CAS/TTL, dual conn, idempotent worker, reconnect, `rediss://` |
+| `trembita-capstore-postgres` | 0 | 4 (`#[ignore]`, `docker-tests`) | **4** | SQL CAS, concurrency claim, idempotent worker, TTL |
 | `trembita-client` | 1 | **8** | **9** | Remote client propose/query, follower forward, failover, retry policy, keyed batch |
 | `trembita-ops` | 0 | 2 | **2** | Snapshot export/import, object-store push/pull |
 | `trembita-macros` | — | via trybuild in `trembita-runtime` | — | Compile-pass/fail |
@@ -182,7 +184,7 @@ Published binary **`trembita`** ([`crates/trembita-cli`](../crates/trembita-cli/
 | Command | Behavior under test | Tests |
 |---------|---------------------|-------|
 | **`new`** | Layout incl. `manifest.rs`, `.without_actors_api()` in `app.rs`, `manifest` marker regions (`jobs`/`topics`/`workers`/`capabilities`), path dep canonicalization, `cargo check`-clean templates (`serde`, `trembita::RouteTable`) | `tests/scaffold.rs`, `scaffold/render.rs`, `scaffold/features.rs` |
-| **`doctor`** | manifest ↔ consumers/actors/workflows; `// trembita:topics` / `// trembita:workers` markers; duplicate ids; `.manifest()` in `app.rs`; no inline capabilities in `app.rs`; missing `mod` declarations (reports only) | `scaffold/doctor.rs`, `tests/add_doctor.rs` |
+| **`doctor`** | manifest ↔ consumers/actors/workflows; `// trembita:topics` / `// trembita:workers` markers; duplicate ids; `.manifest()` in `app.rs`; no inline capabilities in `app.rs`; missing `mod` declarations (reports only); cap store API without `OpCtx::require_store` (R4) | `scaffold/doctor.rs`, `tests/add_doctor.rs` |
 | **`doctor --preflight`** | deploy env / gateway ops hints | `scaffold/doctor.rs` (unit scenarios) |
 | **`dev *`** (debug CLI) | showcase registry, workspace root, `trigger.sh` path | `tests/dev.rs`; full `dev up` 🔒 manual / `TREMBITA_DEV_INTEGRATION` |
 | **Project discover** | walk parents; requires `app.rs` + `manifest.rs` | `tests/add_doctor.rs`, `scaffold/project.rs` |
@@ -226,7 +228,8 @@ Facade registry type: [`AppManifest`](../crates/trembita/src/app/manifest.rs) un
 | `msrv` | Every MR / push | `cargo check` on Rust 1.94 |
 | `e2e` | Scheduled | `e2e/run.sh` + `e2e/leave.sh` + `e2e/chaos.sh` + `e2e/cert_renew.sh` + docker phase of `e2e/linearizability.sh` |
 | `linearizability-sim` | Scheduled | trembita-sim linearizability + read_index seed sweep (`e2e/linearizability.sh`) |
-| `store-redis` | Scheduled | `cargo test -p trembita-store-redis -- --ignored` |
+| `store-redis` | Scheduled | `cargo test -p trembita-store-redis --features docker-tests -- --ignored` |
+| `capstore-postgres` | Scheduled | `cargo test -p trembita-capstore-postgres --features docker-tests -- --ignored` |
 | `bench` | Scheduled | criterion (`append`/`apply`/`deliver`/`queue`) + 120s `soak` + 60s `soak_multi_raft` + 60s `soak_queue` + 60s `soak_actor_store` + 60s `soak_saga` + 60s `soak_session` |
 | `fuzz` | Scheduled | `cargo-fuzz` wire_decode in `crates/trembita-fuzz` |
 
@@ -251,6 +254,7 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 
 | Closed | What | Where |
 |--------|------|-------|
+| 2026-09-17 | R1 client + leader wire `CommandTooLarge`; OpCtx consensus; R3 cap inline during `add_raft_groups` | `trembita-client/tests/command_size.rs`, `trembita-test-runtime/tests/runtime.rs` (`leader_rejects_oversized_propose_on_wire`), `trembita/src/integration/cap_rebalance.rs`, `capability/consensus.rs`, `trembita-assembly/.../assemble.rs` |
 | 2026-09-15 | CLI **`new`** + read-only **`doctor`**; removed **`trembita add`**, **`doctor --fix`**, release **`dev`** | `trembita-cli`, `docs/{getting-started,decisions/framework-conventions}.md` |
 | 2026-09 | Product **`AppManifest`** + scaffold **`manifest.rs`** (layout; manual edits in marker regions) | `trembita/src/app/manifest.rs`, `trembita-cli/src/scaffold/render.rs`, `tests/{scaffold,add_doctor}.rs` |
 | 2026-09 | Doctor duplicate manifest ids + workflow wiring checks | `trembita-cli/src/scaffold/doctor.rs`, `tests/add_doctor.rs` |

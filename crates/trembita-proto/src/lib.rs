@@ -42,7 +42,10 @@ pub use actor_store::{
     StoreReplicateOp, StoreReplicateReply, StoreReplicateRequest, StoreSetReply, StoreSetRequest,
 };
 pub use catalog::{CatalogAddRequest, CatalogAddResponse, CatalogCommand, CatalogRejection};
-pub use client::{ClientRequest, ClientResponse, ClientWireError};
+pub use client::{
+    ClientRequest, ClientResponse, ClientWireError, MAX_RAFT_COMMAND_BYTES,
+    reject_oversized_raft_command,
+};
 pub use group::GroupPeerEnvelope;
 pub use group_migrate::{
     GroupMigrateReply, GroupMigrateRequest, GroupMigrationBundle, GroupMigrationHardState,

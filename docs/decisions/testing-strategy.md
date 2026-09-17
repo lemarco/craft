@@ -54,6 +54,7 @@ Adopt a **testing pyramid** with deterministic simulation at its core.
 | `trembita-runtime` | integration, driven by `trembita-sim` (migrate/scale/deliver) |
 | `trembita-client` | integration (forward, leader-follow, retries) |
 | `trembita-store-redis` | **testcontainers** Redis integration |
+| `trembita-capstore-postgres` | **testcontainers** Postgres cap-store CAS |
 | `trembita-sim` | the harness itself + scenario suite |
 | `trembita` / `trembita-tools` (`trembita-node`) | E2E (docker-compose + chaos) |
 | `trembita-cli` | integration (`tests/scaffold`, `add_doctor`, `manifest_doctor`, `dev` debug-only); unit in `scaffold/{doctor,render,markers}` — `new` + read-only `doctor` only (no `add`, no `--fix`) |

@@ -10,10 +10,7 @@ When an item ships, remove its row here and update [status.md](status.md) (and t
 
 Optional integrations and maintenance — not blockers for [product scenarios](decisions/product-scenarios.md).
 
-| Id | Item | Status | Notes |
-|----|------|--------|-------|
-| O-01 | `trembita-store-redis` maintenance | ongoing | Optional Redis `CapStateStore`; heavy tests in CI `run-heavy` |
-| O-02 | PostgreSQL cap store hardening | ongoing | [`trembita-capstore-postgres`](../crates/trembita-capstore-postgres/README.md) — production CAS under concurrency (transactional) |
+_No open rows._ Optional cap-store backends (Redis, Postgres) ship via `trembita` features — see [status.md](status.md).
 
 New feature epics: next **B-NN** (after B-27); add a row here with scenario + ADR links.
 

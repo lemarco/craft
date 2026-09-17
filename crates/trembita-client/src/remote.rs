@@ -7,9 +7,25 @@ use std::time::Duration;
 
 use trembita_net::send_client_request;
 use trembita_net::transport::Transport;
-use trembita_proto::{ClientRequest, ClientResponse, ClientWireError, NodeId};
+use trembita_proto::{
+    ClientRequest, ClientResponse, ClientWireError, NodeId, reject_oversized_raft_command,
+};
 
 use crate::error::ClientError;
+
+fn check_raft_command_size(payload: &[u8]) -> Result<(), ClientError> {
+    reject_oversized_raft_command(payload).map_err(|e| match e {
+        ClientWireError::CommandTooLarge { len, max } => ClientError::CommandTooLarge { len, max },
+        other => ClientError::Server(other.to_string()),
+    })
+}
+
+fn wire_err_to_client(err: ClientWireError) -> ClientError {
+    match err {
+        ClientWireError::CommandTooLarge { len, max } => ClientError::CommandTooLarge { len, max },
+        other => ClientError::Server(other.to_string()),
+    }
+}
 
 /// A cluster client: submit an application-encoded write (`propose`) or
 /// linearizable read (`query`) and get the application-encoded response back.
@@ -115,6 +131,15 @@ impl RemoteClient {
 
     /// Send one request with failover + leader-follow retry.
     async fn call(&self, request: ClientRequest) -> Result<Vec<u8>, ClientError> {
+        match &request {
+            ClientRequest::Propose(p) | ClientRequest::ProposeKeyed { command: p, .. } => {
+                check_raft_command_size(p)?;
+            }
+            ClientRequest::TwoPhasePrepare { command, .. } => {
+                check_raft_command_size(command)?;
+            }
+            _ => {}
+        }
         let n = self.targets.len();
         if n == 0 {
             return Err(ClientError::NoTargets);
@@ -143,7 +168,7 @@ impl RemoteClient {
                         last = ClientError::NoLeader { attempts };
                         idx += 1;
                     } else {
-                        return Err(ClientError::Server(err.to_string()));
+                        return Err(wire_err_to_client(err));
                     }
                 }
                 Ok(Ok(ClientResponse::ReadIndexConfirmed { .. })) => {
