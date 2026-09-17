@@ -254,9 +254,9 @@ mod tests {
         assert_eq!(group.resolved_scale(), CapGroupScale::PerNode);
     }
 
-    /// B-31 — runtime defaults align with founder scale map (doctor catches manifest foot-guns).
+    /// B-31 — runtime defaults align with product scale map (doctor catches manifest foot-guns).
     #[test]
-    fn founder_scale_b31_runtime_defaults_table() {
+    fn product_scale_b31_runtime_defaults_table() {
         let marker_queued = CapGroup::<MarkerState>::with_state("email")
             .op(CapOp::new("deliver", marker_op).routes([Route::Queued]));
         assert_eq!(

@@ -128,11 +128,11 @@ Explicit overrides: [`.instances(n)`](../../crates/trembita/src/capability/group
 
 **Boot scale report (B-33):** after `wait_until_ready`, the product logs a structured **`product_scale`** line (capability groups + `resolved_scale`, queue shard mode, coordination Raft groups) and exposes the same JSON at **`GET /introspect/product-scale`** on the unified ops listener. See [production-runbook § Product scale introspection](../ops/production-runbook.md#product-scale-introspection-b-33).
 
-### Founder scale model (B-31)
+### Product scale model (B-31)
 
 Transparent split for **«add VPS + same binary»** — what actually scales when the cluster grows:
 
-| Op shape | What scales with more nodes | Founder rule |
+| Op shape | What scales with more nodes | Author rule |
 |----------|----------------------------|--------------|
 | **Stateless** inline / fire (`Route::Inline`, `InlineFire`) on marker-only `State` | **Capability hosts** — default [`PerNode`](../../crates/trembita/src/capability/group.rs) | Do not `.instances(1)` unless you mean a single global owner |
 | **Keyed** inline / fire (`#[cap_handler(key = "field")]`) | **Shard / single owner per key** — directory routes to the host for that key | Use for per-entity RAM or single-writer semantics |
@@ -141,7 +141,7 @@ Transparent split for **«add VPS + same binary»** — what actually scales whe
 
 **Two layers for queued work:** the **job stream** (backlog depth, consumer count) is independent from **cap host placement** (where `run` executes). Misconfiguring `.instances(1)` on a stateless queued group looks like “queue scales” but handlers do not.
 
-Tooling: [`trembita doctor`](../../crates/trembita-cli/src/scaffold/doctor.rs) flags Fixed(1)+queued without keys, stateless `.instances(1)`, and session routes without `.per_node()`. See [capabilities § Founder scale](../scenarios/capabilities.md#founder-scale-b-31).
+Tooling: [`trembita doctor`](../../crates/trembita-cli/src/scaffold/doctor.rs) flags Fixed(1)+queued without keys, stateless `.instances(1)`, and session routes without `.per_node()`. See [capabilities § Product scale](../scenarios/capabilities.md#product-scale-b-31).
 
 **CI regression:** [capabilities § Automated regression (B-31)](../scenarios/capabilities.md#automated-regression-b-31).
 
@@ -162,7 +162,7 @@ This path uses **`EmptyStateMachine`** (default `TrembitaApp`) — not custom ap
 
 ### Coordination growth presets (B-37)
 
-Presets bundle [B-32](#coordination-scale-b-32) defaults so founders pick a **named growth path** instead of tuning Raft groups and queue auto-shard separately. Apply on [`TrembitaConfigure`](../../crates/trembita/src/configure.rs) **before** [`.manifest()`](../../crates/trembita/src/app/builder.rs); the builder stores the preset for standard manifest queues ([`builder.rs`](../../crates/trembita/src/app/builder.rs)).
+Presets bundle [B-32](#coordination-scale-b-32) defaults so teams pick a **named growth path** instead of tuning Raft groups and queue auto-shard separately. Apply on [`TrembitaConfigure`](../../crates/trembita/src/configure.rs) **before** [`.manifest()`](../../crates/trembita/src/app/builder.rs); the builder stores the preset for standard manifest queues ([`builder.rs`](../../crates/trembita/src/app/builder.rs)).
 
 | Profile | API | Env |
 |---------|-----|-----|
@@ -185,20 +185,20 @@ Scenario index + exact test names: [capabilities § B-37](../scenarios/capabilit
 ./scripts/test-fast.sh -p trembita --test coordination_growth_preset b37_
 ```
 
-### Founder DX v2 (B-38)
+### Scale & scaffold DX (B-38)
 
-Builds on [Founder scale model (B-31)](#founder-scale-model-b-31): founders get **narrative scale help**, **actionable lint**, and **profile scaffolds** without learning every `--template` id upfront.
+Builds on [Product scale model (B-31)](#product-scale-model-b-31): app authors get **narrative scale help**, **actionable lint**, and **profile scaffolds** without learning every `--template` id upfront.
 
 | Tool | Purpose |
 |------|---------|
-| `trembita doctor --explain-scale` | [`run_explain_scale`](../../crates/trembita-cli/src/scaffold/doctor.rs) — founder scale copy + capability foot-guns; **does not** fail on missing scaffold paths |
+| `trembita doctor --explain-scale` | [`run_explain_scale`](../../crates/trembita-cli/src/scaffold/doctor.rs) — product scale copy + capability foot-guns; **does not** fail on missing scaffold paths |
 | `trembita doctor` | Full layout + manifest lint; B-38 adds optional **`suggestion`** on findings (scale + [`check_capability_store`](../../crates/trembita-cli/src/scaffold/doctor.rs)) |
 | `trembita new --profile …` | [`AppTemplate::parse_profile`](../../crates/trembita-cli/src/scaffold/template.rs) — alias for `--template` |
 | Jobs **`task.rs.tpl`** | Queued handler pattern: `default_queue_for`, `require_store`, marker get/set ([structural-limits § R4](../scenarios/structural-limits.md#r4--handler-ram-without-cap-store)) |
 
-**Profile map:** `jobs` / `realtime` / `api` / `workflows` / `topics` — see [capabilities § B-38](../scenarios/capabilities.md#founder-dx-v2-b-38). **`api`** omits the jobs feature and sample consumer; **`realtime`** scaffolds `.per_node()` session caps.
+**Profile map:** `jobs` / `realtime` / `api` / `workflows` / `topics` — see [capabilities § B-38](../scenarios/capabilities.md#scale-scaffold-dx-b-38). **`api`** omits the jobs feature and sample consumer; **`realtime`** scaffolds `.per_node()` session caps.
 
-**Ops:** run `doctor --explain-scale` when tuning scale; `doctor --preflight` before deploy ([production-runbook § B-38](../ops/production-runbook.md#founder-dx-v2-b-38)).
+**Ops:** run `doctor --explain-scale` when tuning scale; `doctor --preflight` before deploy ([production-runbook § B-38](../ops/production-runbook.md#scale-scaffold-dx-b-38)).
 
 #### Automated regression (B-38)
 
@@ -212,23 +212,23 @@ Full scenario index: [capabilities § Automated regression (B-38)](../scenarios/
 
 ### Local 3-node cluster (B-39)
 
-Founders validate **multi-node gateway + shared session secret** locally before VPS deploy. Three **release-built showcase** processes join via seed **`1@127.0.0.1:<base>`**; [`up_with_founder_gateway`](../../crates/trembita-cli/src/dev/cluster.rs) injects the same [`FOUNDER_GATEWAY_SESSION_SECRET`](../../crates/trembita-cli/src/dev/founder.rs) on each node.
+Teams validate **multi-node gateway + shared session secret** locally before VPS deploy. Three **release-built showcase** processes join via seed **`1@127.0.0.1:<base>`**; [`up_with_shared_gateway_env`](../../crates/trembita-cli/src/dev/cluster.rs) injects the same [`LOCAL_CLUSTER_GATEWAY_SESSION_SECRET`](../../crates/trembita-cli/src/dev/local_cluster.rs) on each node.
 
 | Tool | Purpose |
 |------|---------|
-| [`scripts/founder-cluster.sh`](../../scripts/founder-cluster.sh) | Bash phases: setup, up, session-smoke, lb-up/down, stop |
+| [`scripts/local-cluster.sh`](../../scripts/local-cluster.sh) | Bash phases: setup, up, session-smoke, lb-up/down, stop |
 | `trembita dev cluster-up [--setup] [--lb]` | Debug CLI wrapper ([`dev_cluster_up`](../../crates/trembita-cli/src/dev/mod.rs)) — **not** in release `trembita-cli` install |
-| `trembita dev cluster-lb-up` | Renders [`nginx.conf.template`](../../dev/founder-3node/nginx.conf.template) → `nginx.generated.conf`, `docker compose up` |
+| `trembita dev cluster-lb-up` | Renders [`nginx.conf.template`](../../dev/local-3node/nginx.conf.template) → `nginx.generated.conf`, `docker compose up` |
 
 Default **`realtime`** — cookie login across nodes ([B-29](../decisions/gateway-cluster-auth.md) / [B-40](../decisions/gateway-cluster-auth.md#b-40--logic--storage-split)). Optional nginx on **`:18290`** mirrors ingress **`GET /ready`** checks ([B-30](../ops/ingress-lb.md), [B-35](../decisions/cluster-elasticity.md#join-readiness-pipeline-b-35)).
 
-| vs | B-39 (founder 3-node) | B-34 (elastic E2E) |
+| vs | B-39 (local 3-node) | B-34 (elastic E2E) |
 |----|------------------------|---------------------|
 | Nodes | 3 showcases on localhost | 4th joiner + product binary |
-| Packaging | `founder-cluster.sh` / `dev cluster-*` | `e2e/elastic_lb.sh`, Docker elastic compose |
+| Packaging | `local-cluster.sh` / `dev cluster-*` | `e2e/elastic_lb.sh`, Docker elastic compose |
 | Primary proof | Session smoke + optional nginx | PerNode cap + LB round-robin under CI |
 
-**CI:** [capabilities § B-39](../scenarios/capabilities.md#local-3-node-founder-cluster-b-39) · [founder-3node README](../../dev/founder-3node/README.md).
+**CI:** [capabilities § B-39](../scenarios/capabilities.md#local-3-node-cluster-b-39) · [local-3node README](../../dev/local-3node/README.md).
 
 #### Automated regression (B-39)
 

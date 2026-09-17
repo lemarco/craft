@@ -1,4 +1,4 @@
-# Founder local 3-node cluster (B-39)
+# Local 3-node cluster (B-39)
 
 Three **identical** showcase processes on `127.0.0.1`, with the same
 **`TREMBITA_GATEWAY_SESSION_SECRET`** on every node so cluster session cookies work
@@ -11,13 +11,13 @@ on another node.
 ## Quick start (script)
 
 ```bash
-./scripts/founder-cluster.sh setup
-./scripts/founder-cluster.sh up
-./scripts/founder-cluster.sh session-smoke    # login node1 → /me node2
-./scripts/founder-cluster.sh lb-up            # Docker nginx on :18290
-./scripts/founder-cluster.sh lb-smoke
-./scripts/founder-cluster.sh session-smoke --lb
-./scripts/founder-cluster.sh stop
+./scripts/local-cluster.sh setup
+./scripts/local-cluster.sh up
+./scripts/local-cluster.sh session-smoke    # login node1 → /me node2
+./scripts/local-cluster.sh lb-up            # Docker nginx on :18290
+./scripts/local-cluster.sh lb-smoke
+./scripts/local-cluster.sh session-smoke --lb
+./scripts/local-cluster.sh stop
 ```
 
 ## Debug CLI (same flow)
@@ -29,7 +29,7 @@ cargo build -p trembita-cli
 ./target/debug/trembita dev cluster-lb-down
 ```
 
-Other showcases (`TREMBITA_FOUNDER_SHOWCASE` or `--showcase`):
+Other showcases (`TREMBITA_LOCAL_CLUSTER_SHOWCASE` or `--showcase`):
 
 | Showcase | Ports | Session smoke |
 |----------|-------|---------------|
@@ -44,27 +44,27 @@ Use **`GET /ready`** for LB backends ([ingress-lb § B-35](../../docs/ops/ingres
 
 | Scenario | Regression |
 |----------|------------|
-| Secret ≥16 chars, default showcase `realtime` @ 8290 | `b39_founder_gateway_secret_meets_env_min_length`, `b39_cluster_up_defaults_to_realtime` |
+| Secret ≥16 chars, default showcase `realtime` @ 8290 | `b39_local_cluster_gateway_secret_meets_env_min_length`, `b39_cluster_up_defaults_to_realtime` |
 | Invalid node count (0, 9) | `b39_cluster_up_rejects_invalid_node_count` |
-| `dev/founder-3node/*` + `founder-cluster.sh` exist | `b39_founder_3node_packaging_files_exist_in_repo` |
-| Constants match script env defaults | `b39_founder_secret_and_token_match_script_defaults` |
+| `dev/local-3node/*` + `local-cluster.sh` exist | `b39_local_3node_packaging_files_exist_in_repo` |
+| Constants match script env defaults | `b39_local_cluster_secret_and_token_match_script_defaults` |
 | `render_lb_nginx_ports` for multiple base ports | `b39_lb_nginx_render_scenarios_table` |
 | Realtime `listen_addr` + `join_seed` | `b39_realtime_showcase_three_node_addrs_and_join_seed` |
 | Repo nginx template → docker backends | `b39_repo_nginx_template_renders_realtime_backends` |
-| Showcase `base_port` table vs script | `b39_founder_showcase_base_ports_match_script_table` |
+| Showcase `base_port` table vs script | `b39_local_cluster_showcase_base_ports_match_script_table` |
 
 ```bash
 ./scripts/test-fast.sh -p trembita-cli --lib b39_
 ./scripts/test-fast.sh -p trembita-cli --test dev b39_
 ```
 
-Scenario index: [capabilities § B-39](../../docs/scenarios/capabilities.md#local-3-node-founder-cluster-b-39).
+Scenario index: [capabilities § B-39](../../docs/scenarios/capabilities.md#local-3-node-cluster-b-39).
 
 ## Env (set automatically by `cluster-up`)
 
-| Variable | Founder dev value |
-|----------|-------------------|
-| `TREMBITA_GATEWAY_SESSION_SECRET` | `trembita-founder-3node-dev-secret` |
+| Variable | Local dev value |
+|----------|-----------------|
+| `TREMBITA_GATEWAY_SESSION_SECRET` | `trembita-local-3node-dev-secret` |
 | `GATEWAY_TOKEN` | `dev-secret` (realtime login) |
 
 Copy the same secret into **`deploy/.env`** for multi-node product apps
@@ -89,7 +89,7 @@ curl -sf http://127.0.0.1:18290/ready
 
 | Path | Purpose |
 |------|---------|
-| [`scripts/founder-cluster.sh`](../../scripts/founder-cluster.sh) | Phase 1 entrypoint |
+| [`scripts/local-cluster.sh`](../../scripts/local-cluster.sh) | Phase 1 entrypoint |
 | [`nginx.conf.template`](nginx.conf.template) | Rendered to `nginx.generated.conf` for Docker |
 | [`docker-compose.yml`](docker-compose.yml) | nginx only — not a trembita orchestrator |
 

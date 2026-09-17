@@ -1,0 +1,15 @@
+# Optional round-robin LB for local 3-node cluster (B-39).
+# Backends must be reachable from the container (host.docker.internal).
+#
+#   LOCAL_CLUSTER_NODE1_PORT=8290 LOCAL_CLUSTER_NODE2_PORT=8291 LOCAL_CLUSTER_NODE3_PORT=8292 \
+#     docker compose -f dev/local-3node/docker-compose.yml up -d
+#
+services:
+  lb:
+    image: nginx:alpine
+    ports:
+      - "${LOCAL_CLUSTER_LB_PORT:-18290}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./nginx.generated.conf:/etc/nginx/conf.d/default.conf:ro

@@ -80,13 +80,13 @@ ADR: [capability-dx § Group scale (B-28)](../decisions/capability-dx.md#group-s
 | 3-node PerNode pool + shared-RAM single host + session Fixed(1) | `trembita/src/integration/cap_scale.rs` |
 
 ```bash
-./scripts/test-fast.sh -p trembita --lib founder_scale_b31_runtime_defaults_table
+./scripts/test-fast.sh -p trembita --lib product_scale_b31_runtime_defaults_table
 ./scripts/test-fast.sh -p trembita --lib auto_scale_marker_state_spawns_one_host_per_node
 ./scripts/test-fast.sh -p trembita --lib auto_scale_shared_ram_state_spawns_single_cluster_host
 ./scripts/test-fast.sh -p trembita --lib auto_scale_session_route_defaults_to_single_host
 ```
 
-## Founder scale (B-31)
+## Product scale (B-31)
 
 When you add VPS nodes with the same binary, scale follows **how the op is invoked**, not a single “autoscale” knob:
 
@@ -99,30 +99,30 @@ When you add VPS nodes with the same binary, scale follows **how the op is invok
 
 **Foot-gun:** `.instances(1)` + queued wiring without keyed handlers — queue depth grows on all nodes but only one host runs handlers. **`trembita doctor`** reports an `[error]`; remove `.instances(1)` or add keys / shared-state intent.
 
-Full table: [capability-dx § Founder scale model](../decisions/capability-dx.md#founder-scale-model-b-31).
+Full table: [capability-dx § Product scale model](../decisions/capability-dx.md#product-scale-model-b-31).
 
 ### Automated regression (B-31)
 
 | Area | Location |
 |------|----------|
-| Doctor foot-guns (table + scaffold) | `trembita-cli/src/scaffold/doctor.rs` (`founder_scale_b31_*`) |
+| Doctor foot-guns (table + scaffold) | `trembita-cli/src/scaffold/doctor.rs` (`product_scale_b31_*`) |
 | Doctor on real scaffold tree | `trembita-cli/tests/cap_scale_doctor.rs` |
-| Runtime scale defaults vs founder map | `trembita/src/capability/group.rs` (`founder_scale_b31_runtime_defaults_table`) |
+| Runtime scale defaults vs product scale map | `trembita/src/capability/group.rs` (`product_scale_b31_runtime_defaults_table`) |
 | 3-node host placement | `trembita/src/integration/cap_scale.rs` (B-28) |
 
 ```bash
-./scripts/test-fast.sh -p trembita-cli --lib founder_scale_b31
+./scripts/test-fast.sh -p trembita-cli --lib product_scale_b31
 ./scripts/test-fast.sh -p trembita-cli --test cap_scale_doctor
-./scripts/test-fast.sh -p trembita --lib founder_scale_b31
+./scripts/test-fast.sh -p trembita --lib product_scale_b31
 ```
 
-## Founder DX v2 (B-38)
+## Scale & scaffold DX (B-38)
 
-CLI improvements on top of [B-31 founder scale](#founder-scale-b-31) — faster onboarding, actionable doctor output, profile-based scaffolds.
+CLI improvements on top of [B-31 product scale](#product-scale-b-31) — faster onboarding, actionable doctor output, profile-based scaffolds.
 
 | Tool | Purpose |
 |------|---------|
-| `trembita doctor --explain-scale` | **Founder scale narrative** + B-31 foot-gun checks only — **no** layout / missing-path lint ([`run_explain_scale`](../../crates/trembita-cli/src/scaffold/doctor.rs)) |
+| `trembita doctor --explain-scale` | **Product scale narrative** + B-31 foot-gun checks only — **no** layout / missing-path lint ([`run_explain_scale`](../../crates/trembita-cli/src/scaffold/doctor.rs)) |
 | `trembita doctor` (lint v2) | [`DoctorFinding::suggestion`](../../crates/trembita-cli/src/scaffold/doctor.rs) — optional `→` hint on scale foot-guns and R4 store misuse |
 | `trembita new --profile …` | Alias for `--template` via [`AppTemplate::parse_profile`](../../crates/trembita-cli/src/scaffold/template.rs) |
 | Jobs template **`capabilities/task.rs`** | Sample **queued** cap with `require_store()` + idempotency marker ([R4](structural-limits.md#r4--handler-ram-without-cap-store)) |
@@ -142,7 +142,7 @@ trembita doctor --explain-scale    # before changing scale in manifest
 trembita doctor --preflight        # deploy checklist (B-33 join + session still applies)
 ```
 
-Runbook: [production-runbook § B-38](../ops/production-runbook.md#founder-dx-v2-b-38) · ADR: [capability-dx § B-38](../decisions/capability-dx.md#founder-dx-v2-b-38) · CLI: [framework-conventions § CLI](../decisions/framework-conventions.md#cli).
+Runbook: [production-runbook § B-38](../ops/production-runbook.md#scale-scaffold-dx-b-38) · ADR: [capability-dx § B-38](../decisions/capability-dx.md#scale-scaffold-dx-b-38) · CLI: [framework-conventions § CLI](../decisions/framework-conventions.md#cli).
 
 ### Automated regression (B-38)
 
@@ -168,15 +168,15 @@ Runbook: [production-runbook § B-38](../ops/production-runbook.md#founder-dx-v2
 ./scripts/test-fast.sh -p trembita-cli --test cap_scale_doctor b38_
 ```
 
-## Local 3-node founder cluster (B-39)
+## Local 3-node cluster (B-39)
 
 **Dev-only** packaging to run **three identical showcase binaries** on `127.0.0.1` with the same **`TREMBITA_GATEWAY_SESSION_SECRET`** on every node — exercise cluster session cookies and optional nginx round-robin **without** the B-34 four-node elastic E2E binary.
 
 | Entry | Purpose |
 |-------|---------|
-| [`scripts/founder-cluster.sh`](../../scripts/founder-cluster.sh) | `setup` / `up` / `session-smoke` / `lb-up` / `lb-smoke` / `stop` |
-| `trembita dev cluster-up` | Same flow via debug CLI ([`founder.rs`](../../crates/trembita-cli/src/dev/founder.rs)) |
-| `trembita dev cluster-lb-up` | Docker nginx on **`:18290`** — [`dev/founder-3node/`](../../dev/founder-3node/README.md) |
+| [`scripts/local-cluster.sh`](../../scripts/local-cluster.sh) | `setup` / `up` / `session-smoke` / `lb-up` / `lb-smoke` / `stop` |
+| `trembita dev cluster-up` | Same flow via debug CLI ([`local_cluster.rs`](../../crates/trembita-cli/src/dev/local_cluster.rs)) |
+| `trembita dev cluster-lb-up` | Docker nginx on **`:18290`** — [`dev/local-3node/`](../../dev/local-3node/README.md) |
 
 Default showcase **`realtime`** (ports **8290–8292**): `POST /login` on node1 → `GET /me` on node2 with cookie. **`background-jobs`** uses the same 3-node layout (**8090–8092**) but LB smoke is **`/ready`** only (no session routes).
 
@@ -187,24 +187,24 @@ Default showcase **`realtime`** (ports **8290–8292**): `POST /login` on node1 
 | `stateful-workers` | 8190–8192 | `/ready` only |
 | `workflows` | 8490–8492 | `/ready` only |
 
-Founder dev env (set by `cluster-up`): `TREMBITA_GATEWAY_SESSION_SECRET=trembita-founder-3node-dev-secret`, `GATEWAY_TOKEN=dev-secret`. LB health checks should use **`GET /ready`** ([B-35](../decisions/cluster-elasticity.md#join-readiness-pipeline-b-35)).
+Local dev env (set by `cluster-up`): `TREMBITA_GATEWAY_SESSION_SECRET=trembita-local-3node-dev-secret`, `GATEWAY_TOKEN=dev-secret`. LB health checks should use **`GET /ready`** ([B-35](../decisions/cluster-elasticity.md#join-readiness-pipeline-b-35)).
 
 **Not production orchestration** — Docker Compose here is **nginx demo only** ([deployment-model](../decisions/deployment-model.md)). Production elastic proof: [Elastic join + LB (B-34)](#elastic-join--lb-b-34).
 
-Guide: [dev/founder-3node/README.md](../../dev/founder-3node/README.md) · ADR: [capability-dx § B-39](../decisions/capability-dx.md#local-3-node-cluster-b-39).
+Guide: [dev/local-3node/README.md](../../dev/local-3node/README.md) · ADR: [capability-dx § B-39](../decisions/capability-dx.md#local-3-node-cluster-b-39).
 
 ### Automated regression (B-39)
 
 | Scenario | Regression |
 |----------|------------|
-| Secret length, default showcase, LB port constants | `b39_founder_gateway_secret_meets_env_min_length`, `b39_cluster_up_defaults_to_realtime` |
+| Secret length, default showcase, LB port constants | `b39_local_cluster_gateway_secret_meets_env_min_length`, `b39_cluster_up_defaults_to_realtime` |
 | `cluster-up` rejects 0 or 9 nodes | `b39_cluster_up_rejects_invalid_node_count` |
-| Repo packaging (`docker-compose`, nginx template, script) | `b39_founder_3node_packaging_files_exist_in_repo` |
-| Rust constants match script defaults | `b39_founder_secret_and_token_match_script_defaults` |
+| Repo packaging (`docker-compose`, nginx template, script) | `b39_local_cluster_3node_packaging_files_exist_in_repo` |
+| Rust constants match script defaults | `b39_local_cluster_secret_and_token_match_script_defaults` |
 | nginx port substitution (8290 / 8090 / 8190 bases) | `b39_lb_nginx_render_scenarios_table` |
 | Realtime listen addrs + join seed | `b39_realtime_showcase_three_node_addrs_and_join_seed` |
 | Template renders `host.docker.internal:829x` | `b39_repo_nginx_template_renders_realtime_backends` |
-| Showcase base ports match `founder-cluster.sh` | `b39_founder_showcase_base_ports_match_script_table` |
+| Showcase base ports match `local-cluster.sh` | `b39_local_cluster_showcase_base_ports_match_script_table` |
 
 ```bash
 ./scripts/test-fast.sh -p trembita-cli --lib b39_
@@ -217,7 +217,7 @@ Cluster cookie login ([B-29](../decisions/gateway-cluster-auth.md)) is implement
 
 | Pattern | When |
 |---------|------|
-| Signed cookie (stateless) | Default — `TREMBITA_GATEWAY_SESSION_SECRET` on every node ([B-34](#elastic-join--lb-b-34), [B-39](#local-3-node-founder-cluster-b-39)) |
+| Signed cookie (stateless) | Default — `TREMBITA_GATEWAY_SESSION_SECRET` on every node ([B-34](#elastic-join--lb-b-34), [B-39](#local-3-node-cluster-b-39)) |
 | Cap-store opaque token | Logout/revoke registry when cap store is cluster-visible |
 | `trembita-gateway-auth` + `gateway-auth` feature | Dev OIDC-shaped callback; production IdP replaces [`DevOidcCallback`](../../crates/trembita-gateway-auth/src/dev_oidc.rs) |
 

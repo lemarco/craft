@@ -167,7 +167,7 @@ End-to-end story for **«add VPS + same binary + join seeds»** behind an HTTP r
 | **PerNode** cap hosts on every node | Directory pool size 4 + `scale_plan` `PerNode` | `/e2e/whoami` via LB hits ≥2 distinct handler `node_id`s |
 | Product E2E binary | `trembita-tools/e2e_elastic/cap.rs` (`b34_*`) | Binary `trembita-e2e-elastic` in `Dockerfile.elastic` |
 
-Shared secret in lab: `TREMBITA_GATEWAY_SESSION_SECRET=e2e-elastic-secret-16b` (compose + tests). Session mechanics: [gateway-cluster-auth § B-29/B-40](../decisions/gateway-cluster-auth.md) · [capabilities § B-40](../scenarios/capabilities.md#gateway-auth-split-b-40) · rotation [runbook § B-40](../ops/production-runbook.md#gateway-session-rotation-b-40). Join gating before pool: [cluster-elasticity § B-35](../decisions/cluster-elasticity.md#join-readiness-pipeline-b-35). Local **3-node** founder path (no 4th joiner): [founder-3node](../../dev/founder-3node/README.md) (B-39).
+Shared secret in lab: `TREMBITA_GATEWAY_SESSION_SECRET=e2e-elastic-secret-16b` (compose + tests). Session mechanics: [gateway-cluster-auth § B-29/B-40](../decisions/gateway-cluster-auth.md) · [capabilities § B-40](../scenarios/capabilities.md#gateway-auth-split-b-40) · rotation [runbook § B-40](../ops/production-runbook.md#gateway-session-rotation-b-40). Join gating before pool: [cluster-elasticity § B-35](../decisions/cluster-elasticity.md#join-readiness-pipeline-b-35). Local **3-node** local 3-node path (no 4th joiner): [local-3node](../../dev/local-3node/README.md) (B-39).
 
 Docker layout: [e2e/docker-compose-elastic.yml](../../e2e/docker-compose-elastic.yml) — direct ops HTTP **`:18181`–`:18184`**, LB **`:18180`**.
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# founder-cluster.sh — B-39 local 3-node cluster (shared session secret + LB curl).
+# local-cluster.sh — B-39 local 3-node cluster (shared session secret + LB curl).
 #
-#   ./scripts/founder-cluster.sh setup          # certs + release build (realtime default)
-#   ./scripts/founder-cluster.sh up             # 3 nodes in background
-#   ./scripts/founder-cluster.sh session-smoke  # login :8290 → /me on :8291
-#   ./scripts/founder-cluster.sh lb-up          # nginx round-robin on :18290 (Docker)
-#   ./scripts/founder-cluster.sh lb-smoke       # /ready spread via LB or direct ports
-#   ./scripts/founder-cluster.sh stop
+#   ./scripts/local-cluster.sh setup          # certs + release build (realtime default)
+#   ./scripts/local-cluster.sh up             # 3 nodes in background
+#   ./scripts/local-cluster.sh session-smoke  # login :8290 → /me on :8291
+#   ./scripts/local-cluster.sh lb-up          # nginx round-robin on :18290 (Docker)
+#   ./scripts/local-cluster.sh lb-smoke       # /ready spread via LB or direct ports
+#   ./scripts/local-cluster.sh stop
 #
 # Prefer debug CLI when available:
 #   cargo build -p trembita-cli
@@ -15,10 +15,10 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLI="${TREMBITA_CLI:-$ROOT/target/debug/trembita}"
-SHOWCASE="${TREMBITA_FOUNDER_SHOWCASE:-realtime}"
-LB_PORT="${FOUNDER_LB_PORT:-18290}"
+SHOWCASE="${TREMBITA_LOCAL_CLUSTER_SHOWCASE:-realtime}"
+LB_PORT="${LOCAL_CLUSTER_LB_PORT:-18290}"
 TOKEN="${GATEWAY_TOKEN:-dev-secret}"
-SECRET="${TREMBITA_GATEWAY_SESSION_SECRET:-trembita-founder-3node-dev-secret}"
+SECRET="${TREMBITA_GATEWAY_SESSION_SECRET:-trembita-local-3node-dev-secret}"
 
 case "$SHOWCASE" in
   realtime) BASE_PORT=8290 ;;
@@ -26,7 +26,7 @@ case "$SHOWCASE" in
   stateful-workers) BASE_PORT=8190 ;;
   workflows) BASE_PORT=8490 ;;
   *)
-    echo "error: unknown TREMBITA_FOUNDER_SHOWCASE=$SHOWCASE" >&2
+    echo "error: unknown TREMBITA_LOCAL_CLUSTER_SHOWCASE=$SHOWCASE" >&2
     exit 1
     ;;
 esac
@@ -84,11 +84,11 @@ session_smoke() {
   echo ">> POST /login on $login_host"
   curl -sf -m 5 -X POST "http://${login_host}/login" \
     -H "Authorization: Bearer ${TOKEN}" \
-    -H "X-Trembita-User: founder-lb" \
+    -H "X-Trembita-User: local-lb-smoke" \
     -c "$COOKIE_JAR" >/dev/null
   echo ">> GET /me on $peer_host (cluster session cookie)"
   me=$(curl -sf -m 5 "http://${peer_host}/me" -b "$COOKIE_JAR")
-  if [ "$me" != '{"user":"founder-lb"}' ] && [ "$me" != "founder-lb" ]; then
+  if [ "$me" != '{"user":"local-lb-smoke"}' ] && [ "$me" != "local-lb-smoke" ]; then
     echo "FAIL: unexpected /me body: $me" >&2
     exit 1
   fi

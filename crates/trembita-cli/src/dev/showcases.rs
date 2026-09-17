@@ -155,9 +155,9 @@ impl Showcase {
 mod b39_tests {
     use super::*;
 
-    /// B-39 — base ports match [`scripts/founder-cluster.sh`](../../../../scripts/founder-cluster.sh).
+    /// B-39 — base ports match [`scripts/local-cluster.sh`](../../../../scripts/local-cluster.sh).
     #[test]
-    fn b39_founder_showcase_base_ports_match_script_table() {
+    fn b39_local_cluster_showcase_base_ports_match_script_table() {
         struct Row {
             id: &'static str,
             base: u16,

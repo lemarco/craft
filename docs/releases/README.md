@@ -4,10 +4,11 @@ Pre-1.0 **upgrade guides** for crates.io releases. The root [CHANGELOG.md](../..
 
 | Version | Upgrade guide |
 |---------|----------------|
+| **0.6.3** | [0.6.3.md](0.6.3.md) |
 | **0.6.2** | [0.6.2.md](0.6.2.md) |
 | **0.6.1** | [0.6.1.md](0.6.1.md) |
 | **0.6.0** | [0.6.0.md](0.6.0.md) |
 | **0.7.0** (draft) | [0.7.0.md](0.7.0.md) |
 | 0.5.x | [unified-listener](../decisions/unified-listener.md), [env.md](../env.md) |
 
-**Publish:** [releasing.md](../releasing.md) — `./scripts/release.sh 0.6.2 --publish`.
+**Publish:** [releasing.md](../releasing.md) — `./scripts/release.sh 0.6.3 --publish`.

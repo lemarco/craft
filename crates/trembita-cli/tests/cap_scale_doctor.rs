@@ -1,4 +1,4 @@
-//! B-31 — integration tests for founder scale doctor findings on scaffold projects.
+//! B-31 — integration tests for product scale doctor findings on scaffold projects.
 
 use tempfile::tempdir;
 use trembita_cli::{
@@ -7,7 +7,7 @@ use trembita_cli::{
 };
 
 #[test]
-fn scaffold_passes_founder_scale_doctor_checks() {
+fn scaffold_passes_product_scale_doctor_checks() {
     let dir = tempdir().unwrap();
     let opts = NewProjectOpts {
         name: "b31-scaffold".into(),
@@ -226,7 +226,7 @@ fn b38_explain_scale_on_realtime_scaffold_mentions_session() {
         report
             .findings
             .iter()
-            .any(|f| f.message.contains("Founder scale")),
+            .any(|f| f.message.contains("Product scale")),
         "{:?}",
         report.findings
     );
@@ -251,7 +251,7 @@ fn b38_explain_scale_on_jobs_scaffold_lists_queued_guidance() {
     assert!(!report.has_errors(), "explain-scale: {:?}", report.findings);
     assert!(
         report.findings.iter().any(|f| {
-            f.message.contains("Queued capabilities") || f.message.contains("Founder scale")
+            f.message.contains("Queued capabilities") || f.message.contains("Product scale")
         }),
         "findings: {:?}",
         report.findings

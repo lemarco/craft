@@ -130,7 +130,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn scale_labels_match_founder_map() {
+    fn scale_labels_match_product_scale_map() {
         assert_eq!(scale_label(CapGroupScale::PerNode), "PerNode");
         assert_eq!(scale_label(CapGroupScale::Fixed(1)), "Fixed(1)");
         assert_eq!(

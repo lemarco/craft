@@ -10,7 +10,7 @@ Historical log moved from [testing-coverage.md](../testing-coverage.md) on 2026-
 | 2026-09 | Doctor duplicate manifest ids + workflow wiring checks | `trembita-cli/src/scaffold/doctor.rs`, `tests/add_doctor.rs` |
 | 2026-09 | Topic replicate auth rejects non-leader caller | `trembita/tests/topic.rs` |
 | 2026-09 | Product gateway symmetry (topics/workflows HTTP + identity) | `trembita/tests/gateway_product_http.rs`, `gateway_product_symmetry.rs` |
-| 2026-09 | B-31 founder scale — doctor table + integration + runtime defaults | `trembita-cli/src/scaffold/doctor.rs` (`founder_scale_b31_*`), `trembita-cli/tests/cap_scale_doctor.rs`, `trembita/src/capability/group.rs`, [capabilities § B-31 regression](../scenarios/capabilities.md#automated-regression-b-31) |
+| 2026-09 | B-31 product scale — doctor table + integration + runtime defaults | `trembita-cli/src/scaffold/doctor.rs` (`product_scale_b31_*`), `trembita-cli/tests/cap_scale_doctor.rs`, `trembita/src/capability/group.rs`, [capabilities § B-31 regression](../scenarios/capabilities.md#automated-regression-b-31) |
 | 2026-09 | B-32 coordination scale — unit tables, env parse, product boot | `trembita/src/{configure,queue_opts,job_opts}.rs`, `trembita-assembly/src/env_config.rs` (`b32_*`), `trembita/tests/product_coordination_scale.rs`, [capabilities § B-32](../scenarios/capabilities.md#automated-regression-b-32) |
 | 2026-09 | B-30 ingress/LB — `/health` liveness vs `/ready` pool contract | `trembita-http/src/ops_routes.rs`, `trembita-dashboard/src/views.rs`, `trembita/src/integration/ingress_lb.rs`, `trembita/tests/ingress_lb_ops.rs`, [ingress-lb](../ops/ingress-lb.md) |
 | 2026-09 | Introspect `GET /introspect/topics` | `trembita-dashboard/tests/admin.rs`, `trembita/tests/gateway_product_http.rs` |

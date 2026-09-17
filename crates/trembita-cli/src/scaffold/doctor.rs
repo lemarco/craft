@@ -101,7 +101,7 @@ impl DoctorReport {
     }
 }
 
-/// Founder scale narrative + B-31 footguns only ([`--explain-scale`](../../docs/decisions/capability-dx.md#founder-dx-v2-b-38)).
+/// Product scale narrative + B-31 footguns only ([`--explain-scale`](../../docs/decisions/capability-dx.md#scale-scaffold-dx-b-38)).
 #[must_use]
 pub fn run_explain_scale(project: &TrembitaProject) -> DoctorReport {
     let mut report = DoctorReport::default();
@@ -125,7 +125,7 @@ fn explain_scale_narrative(project: &TrembitaProject, manifest: &str, report: &m
     let session_ops = capability_uses_session_route(manifest, &cap_dir);
 
     report.ok(
-        "Founder scale (B-28/B-31): stateless inline caps default to PerNode — add VPS with the same binary to grow handler hosts",
+        "Product scale (B-28/B-31): stateless inline caps default to PerNode — add VPS with the same binary to grow handler hosts",
     );
     if uses_queued {
         report.ok(
@@ -475,7 +475,7 @@ fn check_capabilities(project: &TrembitaProject, manifest: &str, report: &mut Do
     }
 }
 
-/// B-31 — founder scale model: catch manifest combos that pin compute to one host while
+/// B-31 — product scale model: catch manifest combos that pin compute to one host while
 /// queued or stateless ops should fan out with the cluster.
 fn check_capability_scale_footguns(
     project: &TrembitaProject,
@@ -1718,7 +1718,7 @@ async fn handle_extra(_: &[u8]) -> Result<(), ()> { Ok(()) }
 
     /// B-31 table — `check_capability_scale_footguns` outcomes on synthetic capability trees.
     #[test]
-    fn founder_scale_b31_doctor_scenarios_table() {
+    fn product_scale_b31_doctor_scenarios_table() {
         const QUEUED_FOOTGUN: &str = r#"
 use trembita::{cap_handler, CapGroup};
 
@@ -2060,14 +2060,14 @@ async fn read_marker(ctx: &mut OpCtx) -> Result<(), CapError> {
             explain
                 .findings
                 .iter()
-                .any(|f| f.message.contains("Founder scale")),
+                .any(|f| f.message.contains("Product scale")),
             "{:?}",
             explain.findings
         );
     }
 
     #[test]
-    fn founder_scale_b31_helper_key_and_queue_detection() {
+    fn product_scale_b31_helper_key_and_queue_detection() {
         let (_dir, project, manifest) = b31_minimal_cap_project(&[(
             "detect.rs",
             r#"

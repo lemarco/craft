@@ -15,9 +15,9 @@ pub use scaffold::{
 };
 
 #[cfg(debug_assertions)]
-pub use dev::founder::{
-    DEFAULT_CLUSTER_UP_SHOWCASE, FOUNDER_GATEWAY_SESSION_SECRET, FOUNDER_GATEWAY_TOKEN,
-    FOUNDER_LB_PORT,
+pub use dev::local_cluster::{
+    DEFAULT_CLUSTER_UP_SHOWCASE, LOCAL_CLUSTER_GATEWAY_SESSION_SECRET, LOCAL_CLUSTER_GATEWAY_TOKEN,
+    LOCAL_CLUSTER_LB_PORT,
 };
 #[cfg(debug_assertions)]
 pub use dev::{

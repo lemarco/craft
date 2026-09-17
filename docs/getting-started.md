@@ -176,17 +176,17 @@ Prefer `./target/debug/trembita dev http --showcase background-jobs -- job email
 Exercise **multi-node gateway** with a shared **`TREMBITA_GATEWAY_SESSION_SECRET`** (default **`realtime`** on **8290–8292**):
 
 ```bash
-./scripts/founder-cluster.sh setup
-./scripts/founder-cluster.sh up
-./scripts/founder-cluster.sh session-smoke          # login node1 → /me node2
-./scripts/founder-cluster.sh lb-up                  # nginx :18290 (Docker)
-./scripts/founder-cluster.sh session-smoke --lb
-./scripts/founder-cluster.sh stop
+./scripts/local-cluster.sh setup
+./scripts/local-cluster.sh up
+./scripts/local-cluster.sh session-smoke          # login node1 → /me node2
+./scripts/local-cluster.sh lb-up                  # nginx :18290 (Docker)
+./scripts/local-cluster.sh session-smoke --lb
+./scripts/local-cluster.sh stop
 ```
 
 Debug CLI (repo checkout only): `./target/debug/trembita dev cluster-up --setup` · `dev cluster-lb-up`.
 
-Docs: [dev/founder-3node](../dev/founder-3node/README.md) · [capabilities § B-39](scenarios/capabilities.md#local-3-node-founder-cluster-b-39). Regression: `./scripts/test-fast.sh -p trembita-cli --lib b39_`. Heavier LB proof: [B-34](scenarios/capabilities.md#elastic-join--lb-b-34).
+Docs: [dev/local-3node](../dev/local-3node/README.md) · [capabilities § B-39](scenarios/capabilities.md#local-3-node-cluster-b-39). Regression: `./scripts/test-fast.sh -p trembita-cli --lib b39_`. Heavier LB proof: [B-34](scenarios/capabilities.md#elastic-join--lb-b-34).
 
 Reference KV [`StateMachine`](../crates/trembita-core/src/kv.rs) (`trembita::kv` on the facade) for low-level Raft `propose` / `query` without a full product app.
 
@@ -393,13 +393,13 @@ Generates the [framework layout](decisions/framework-conventions.md):
 | `actors/` | Optional (`--features actors`) — advanced `UserActor` only |
 | `deploy/` | `.env.example` + optional `docker-compose.yml` for local cluster |
 
-**Profiles (B-38):** `--profile jobs|realtime|api` is an alias for `--template` — see [capabilities § B-38](scenarios/capabilities.md#founder-dx-v2-b-38). The **jobs** profile adds **`src/capabilities/task.rs`** (queued + `require_store` idempotency sample).
+**Profiles (B-38):** `--profile jobs|realtime|api` is an alias for `--template` — see [capabilities § B-38](scenarios/capabilities.md#scale-scaffold-dx-b-38). The **jobs** profile adds **`src/capabilities/task.rs`** (queued + `require_store` idempotency sample).
 
 Add capabilities by editing **`src/manifest.rs`** (`// trembita:capabilities` region) and **`src/capabilities/`**,
 wire HTTP in **`src/http/product.rs`** ([`cap_invoke`](../crates/trembita/src/gateway/cap_handlers.rs)), add job handlers under `consumers/`. Then:
 
 ```bash
-trembita doctor --explain-scale   # founder scale narrative (B-38; no layout lint)
+trembita doctor --explain-scale   # product scale narrative (B-38; no layout lint)
 trembita doctor                   # manifest ↔ files consistency (read-only)
 cargo check       # greenfield scaffold should compile (sample job + /ping cap route)
 ```

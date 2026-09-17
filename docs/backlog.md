@@ -1,6 +1,6 @@
 # Backlog
 
-**Open work only.** Shipped capabilities: [status.md](status.md). Shipped epic history: [archive/backlog-shipped.md](archive/backlog-shipped.md) (B-01…B-27), [archive/backlog-wave-b28-b32.md](archive/backlog-wave-b28-b32.md). Design rationale: [decisions/](decisions/).
+**Open work only.** Shipped capabilities: [status.md](status.md). Shipped epic history: [archive/backlog-shipped.md](archive/backlog-shipped.md) (B-01…B-27), [archive/backlog-wave-b28-b32.md](archive/backlog-wave-b28-b32.md) (B-28…B-32). **B-33…B-41** index: [status § Product scale wave](status.md#product-scale-wave-b-28b32). Design rationale: [decisions/](decisions/).
 
 When an item ships, remove its row here, update [status.md](status.md), and move planning text to `docs/archive/` if it is no longer needed in live docs.
 
@@ -10,15 +10,32 @@ When an item ships, remove its row here, update [status.md](status.md), and move
 
 **Pre-1.0 policy:** breaking API/default changes are OK when they match product intent. Optional cap-store backends ship via `trembita` features — see [status.md](status.md).
 
-**Priority hint:** P0 → P1 → P2 within this table (top first). Next epic id after B-41 ships: **B-42**. **1.0 stabilization** — out of active backlog; see [public-api-1.0](decisions/public-api-1.0.md) / [jepsen-1.0](decisions/jepsen-1.0.md).
+**Priority hint:** P0 → P1 → P2 within this table (top first). Next epic id after this table ships: **B-54**. **1.0 stabilization** (API freeze, Jepsen, semver) — **not** listed here; see [public-api-1.0](decisions/public-api-1.0.md) / [jepsen-1.0](decisions/jepsen-1.0.md) when scheduling that program explicitly.
 
 | Id | Pri | Item | Status | Notes |
 |----|-----|------|--------|-------|
+| **B-42** | P0 | **Local elastic parity** | 📋 | Extend [`local-cluster.sh`](../scripts/local-cluster.sh) / `trembita dev cluster-up`: optional **4th joiner**, LB smoke aligned with [B-34](scenarios/capabilities.md#elastic-join--lb-b-34) / [`e2e/elastic_lb.sh`](../e2e/elastic_lb.sh) (PerNode cap ping, `/ready` spread). Same mental model as CI elastic proof on a laptop. |
+| **B-43** | P0 | **Ops cockpit (introspect)** | 📋 | Single **`GET /introspect/ops-summary`** (or extend [product-scale](ops/production-runbook.md#product-scale-introspection-b-33)): join phase ([B-35](decisions/cluster-elasticity.md#join-readiness-pipeline-b-35)), cap scale map, [directory-r3](decisions/actor-routing.md#r3-visibility--sticky-recovery-b-36), coordination profile ([B-37](decisions/capability-dx.md#coordination-growth-presets-b-37)), queue depth hints. JSON first; dashboard optional later. |
+| **B-44** | P1 | **Coordination closed-loop** | 📋 | Leader policy on top of B-32/B-37: auto-shard / [`add_raft_groups`](../crates/trembita/src/app/runtime.rs) from backlog/SLO signals; **hard ceilings** + introspect “why not scaling”. ADR touch: [multi-raft](decisions/multi-raft.md), [job-queue](decisions/job-queue.md). |
+| **B-45** | P1 | **Production deploy pack** | 📋 | `deploy/` + [production-runbook](ops/production-runbook.md): **systemd** unit templates, seed vs learner env matrix, certs, LB ([ingress-lb](ops/ingress-lb.md)), rolling upgrade hooks ([upgrade-coordinator](decisions/upgrade-coordinator.md)). VPS / bare metal only — no orchestrator charts. |
+| **B-46** | P2 | **Gateway session store adapters** | 📋 | Optional **`GatewaySessionStore` → Postgres** (separate crate or feature), composable with B-40 [`SessionIssuer` / `SessionVerifier`](decisions/gateway-cluster-auth.md#b-40--logic--storage-split) — not the cap-store registry path. |
+| **B-47** | P2 | **OAuth prod hardening** | 📋 | [`trembita-gateway-auth`](../crates/trembita-gateway-auth/): PKCE defaults, redirect allowlist, production wiring doc + harden [`examples/oauth-gateway`](../examples/oauth-gateway/). Rotation stays [runbook § B-40](ops/production-runbook.md#gateway-session-rotation-b-40). |
+| **B-48** | P1 | **Backup / restore / DR** | 📋 | Runbook + supported procedure for **`TREMBITA_DATA_DIR`** (Raft + redb), cert material, and **safe restore/join** after node loss. Document what is *not* automatic; optional ops script or `trembita doctor` preflight checks. Depends on [B-45](backlog.md) env layout. |
+| **B-49** | P1 | **Rolling upgrade proof** | 📋 | End-to-end **two-version binary** story on multi-node lab: drain, coordinator / cluster upgrade routes, re-join, session + queue continuity. Extends B-45 runbook with **automated regression** (sim or e2e lane; document `run-heavy` if needed). |
+| **B-50** | P2 | **CI local elastic smoke** | 📋 | Optional CI job (MR label **`run-heavy`**): `local-cluster` **or** slim script mirroring [B-42](backlog.md) — 4th joiner + `/ready` + session smoke; faster feedback than full [`elastic_lb.sh`](../e2e/elastic_lb.sh) when B-42 ships. |
+| **B-51** | P2 | **Ops observability layer** | 📋 | Map [B-43](backlog.md) / join / queue / R3 signals to **OTLP metrics + documented alert thresholds** (join stuck, backlog depth, directory merge lag). Reuse existing runtime OTLP; product-facing metric names in [env.md](env.md) / runbook. |
+| **B-52** | P2 | **Domain DX patterns** | 📋 | Scaffold + docs for common app patterns: **transactional outbox**, job **idempotency** with `require_store`, cap **consensus helpers** usage — reduce “how do I do this in Raft?” without new runtime primitives. Touch [capability-dx](decisions/capability-dx.md), [structural-limits](scenarios/structural-limits.md), optional `trembita new` samples. |
+| **B-53** | P2 | **Backlog / coverage hygiene** | 📋 | Add `archive/backlog-wave-b33-b41.md` (mirror [B-28–B-32 archive](archive/backlog-wave-b28-b32.md)); align [testing-coverage.md](testing-coverage.md) shipped index **B-33…B-41**; fix cross-links from backlog header when archive exists. |
+
 ### Deferred decisions (ADR when epic starts)
 
 | Topic | Options | Current lean |
 |-------|---------|--------------|
 | Coordination profile | Env-only vs `TrembitaConfigure` | **Shipped B-37** — both via [`CoordinationGrowthPreset`](../crates/trembita/src/configure.rs) |
+| Closed-loop ceilings | Env-only vs configure API | **`TREMBITA_COORDINATION_MAX_*`** env with conservative defaults; override in `TrembitaConfigure` if B-44 needs it |
+| Ops cockpit UI | Dashboard page vs JSON only | **JSON introspect first** (B-43); reuse [trembita-dashboard](../crates/trembita-dashboard/) only if a page adds clear value |
+| Backup scope | Hot copy vs snapshot API | **Document supported manual procedure first** (B-48); automated snapshot only if ops demand it |
+| 1.0 program | When to schedule | **Explicit decision only** — not part of B-42…B-53; track in [public-api-1.0](decisions/public-api-1.0.md) / [jepsen-1.0](decisions/jepsen-1.0.md) |
 
 **How to update:** pick an id; set 🚧 while working; on release update [status.md](status.md); reference GitLab issues as `#<number>` in commits/MRs.
 

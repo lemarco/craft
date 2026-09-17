@@ -138,7 +138,7 @@ trembita new my-service --template realtime
 trembita new my-service --features jobs,gateway,telemetry   # advanced override
 trembita new my-service --output ../my-service --trembita-path ../trembita
 trembita doctor
-trembita doctor --explain-scale   # founder scale narrative (B-38) — see capabilities § B-38
+trembita doctor --explain-scale   # product scale narrative (B-38) — see capabilities § B-38
 trembita doctor --preflight       # deploy: listen, certs, compose join, ops gateway
 trembita dev cluster-up --setup   # local 3-node + shared session secret (B-39, debug CLI)
 ```

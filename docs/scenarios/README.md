@@ -23,7 +23,7 @@ Guides for building on trembita **without mandatory Redis** — same binary on e
 | Auto cap hosts when cluster grows (B-28) | [Capabilities § Group scale](capabilities.md#group-scale-b-28) | ✅ `resolved_scale` defaults | — |
 | LB + `/ready` pool health (B-30) | [ops/ingress-lb.md](../ops/ingress-lb.md) | ✅ ops routes on `TREMBITA_LISTEN` | — |
 | Cookie sessions on any gateway node (B-29) | [Real-time § B-29](realtime-sessions.md#cluster-session-cookies-b-29) | ✅ `TREMBITA_GATEWAY_SESSION_SECRET` | — |
-| Manifest scale foot-guns (B-31) | [Capabilities § Founder scale](capabilities.md#founder-scale-b-31) | ✅ `trembita doctor` | — |
+| Manifest scale foot-guns (B-31) | [Capabilities § Product scale](capabilities.md#product-scale-b-31) | ✅ `trembita doctor` | — |
 | Sharded queue / product multi-Raft (B-32) | [Capabilities § Coordination scale](capabilities.md#coordination-scale-b-32) | ✅ manifest + `TREMBITA_*` | — |
 
 ## Shared persistence model

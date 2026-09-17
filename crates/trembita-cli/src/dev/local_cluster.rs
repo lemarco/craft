@@ -1,4 +1,4 @@
-//! Founder local 3-node cluster (B-39): shared gateway session secret + optional LB smoke.
+//! Local 3-node showcase cluster (B-39): shared gateway session secret + optional LB smoke.
 
 use std::fs;
 use std::path::Path;
@@ -12,15 +12,15 @@ use super::showcases::Showcase;
 pub const DEFAULT_CLUSTER_UP_SHOWCASE: &str = "realtime";
 
 /// Same on every node when exercising cluster session cookies locally ([`env.md`](../../../../docs/env.md)).
-pub const FOUNDER_GATEWAY_SESSION_SECRET: &str = "trembita-founder-3node-dev-secret";
+pub const LOCAL_CLUSTER_GATEWAY_SESSION_SECRET: &str = "trembita-local-3node-dev-secret";
 
 /// Matches [`examples/realtime/trigger-http.sh`](../../../../examples/realtime/trigger-http.sh).
-pub const FOUNDER_GATEWAY_TOKEN: &str = "dev-secret";
+pub const LOCAL_CLUSTER_GATEWAY_TOKEN: &str = "dev-secret";
 
-/// TCP port for optional nginx round-robin in [`dev/founder-3node`](../../../../dev/founder-3node/README.md).
-pub const FOUNDER_LB_PORT: u16 = 18_290;
+/// TCP port for optional nginx round-robin in [`dev/local-3node`](../../../../dev/local-3node/README.md).
+pub const LOCAL_CLUSTER_LB_PORT: u16 = 18_290;
 
-/// Start 3-node cluster with founder gateway env; optional local nginx LB.
+/// Start 3-node cluster with shared gateway env; optional local nginx LB.
 pub fn cluster_up(
     showcase: &Showcase,
     workspace: &Path,
@@ -31,7 +31,7 @@ pub fn cluster_up(
     if run_setup {
         cluster::setup(showcase, workspace)?;
     }
-    cluster::up_with_founder_gateway(showcase, workspace, nodes)?;
+    cluster::up_with_shared_gateway_env(showcase, workspace, nodes)?;
     print_smoke_hints(showcase);
     if with_lb {
         lb_up(workspace, showcase)?;
@@ -42,7 +42,7 @@ pub fn cluster_up(
 
 /// `docker compose` nginx LB (optional; requires Docker).
 pub fn lb_up(workspace: &Path, showcase: &Showcase) -> Result<(), DevError> {
-    let dir = workspace.join("dev/founder-3node");
+    let dir = workspace.join("dev/local-3node");
     let compose = dir.join("docker-compose.yml");
     if !compose.is_file() {
         return Err(DevError::MissingScript(compose));
@@ -52,10 +52,10 @@ pub fn lb_up(workspace: &Path, showcase: &Showcase) -> Result<(), DevError> {
     let status = Command::new("docker")
         .args(["compose", "-f"])
         .arg(&compose)
-        .env("FOUNDER_LB_PORT", FOUNDER_LB_PORT.to_string())
-        .env("FOUNDER_NODE1_PORT", base.to_string())
-        .env("FOUNDER_NODE2_PORT", (base + 1).to_string())
-        .env("FOUNDER_NODE3_PORT", (base + 2).to_string())
+        .env("LOCAL_CLUSTER_LB_PORT", LOCAL_CLUSTER_LB_PORT.to_string())
+        .env("LOCAL_CLUSTER_NODE1_PORT", base.to_string())
+        .env("LOCAL_CLUSTER_NODE2_PORT", (base + 1).to_string())
+        .env("LOCAL_CLUSTER_NODE3_PORT", (base + 2).to_string())
         .args(["up", "-d"])
         .current_dir(workspace)
         .stdout(Stdio::inherit())
@@ -66,14 +66,14 @@ pub fn lb_up(workspace: &Path, showcase: &Showcase) -> Result<(), DevError> {
         Ok(())
     } else {
         Err(DevError::CommandFailed(
-            "docker compose up (founder LB)".into(),
+            "docker compose up (local cluster LB)".into(),
         ))
     }
 }
 
 /// Stop nginx LB container.
 pub fn lb_down(workspace: &Path) -> Result<(), DevError> {
-    let compose = workspace.join("dev/founder-3node/docker-compose.yml");
+    let compose = workspace.join("dev/local-3node/docker-compose.yml");
     if !compose.is_file() {
         return Err(DevError::MissingScript(compose));
     }
@@ -91,20 +91,20 @@ fn print_smoke_hints(showcase: &Showcase) {
     let p1 = showcase.base_port;
     let p2 = p1 + 1;
     eprintln!();
-    eprintln!("Founder cluster smoke (shared TREMBITA_GATEWAY_SESSION_SECRET):");
+    eprintln!("Local 3-node cluster smoke (shared TREMBITA_GATEWAY_SESSION_SECRET):");
     eprintln!("  curl -sf http://127.0.0.1:{p1}/ready | jq .");
     if showcase.id == "realtime" {
-        eprintln!("  ./scripts/founder-cluster.sh session-smoke");
+        eprintln!("  ./scripts/local-cluster.sh session-smoke");
         eprintln!("  # or: login :{p1} → GET /me on :{p2} with cookie");
     } else {
         eprintln!(
-            "  ./scripts/founder-cluster.sh lb-smoke   # /ready spread (set --showcase {id} if needed)",
+            "  ./scripts/local-cluster.sh lb-smoke   # /ready spread (set --showcase {id} if needed)",
             id = showcase.id
         );
     }
     eprintln!(
-        "  ./scripts/founder-cluster.sh lb-up      # optional nginx on :{}",
-        FOUNDER_LB_PORT
+        "  ./scripts/local-cluster.sh lb-up      # optional nginx on :{}",
+        LOCAL_CLUSTER_LB_PORT
     );
 }
 
@@ -117,14 +117,14 @@ fn write_lb_nginx(dir: &Path, showcase: &Showcase) -> Result<(), DevError> {
     Ok(())
 }
 
-/// Substitute backend ports in [`dev/founder-3node/nginx.conf.template`](../../../../dev/founder-3node/nginx.conf.template).
+/// Substitute backend ports in [`dev/local-3node/nginx.conf.template`](../../../../dev/local-3node/nginx.conf.template).
 #[must_use]
 pub(crate) fn render_lb_nginx_ports(template: &str, base_port: u16) -> String {
     let base = u32::from(base_port);
     template
-        .replace("${FOUNDER_NODE1_PORT}", &base.to_string())
-        .replace("${FOUNDER_NODE2_PORT}", &(base + 1).to_string())
-        .replace("${FOUNDER_NODE3_PORT}", &(base + 2).to_string())
+        .replace("${LOCAL_CLUSTER_NODE1_PORT}", &base.to_string())
+        .replace("${LOCAL_CLUSTER_NODE2_PORT}", &(base + 1).to_string())
+        .replace("${LOCAL_CLUSTER_NODE3_PORT}", &(base + 2).to_string())
 }
 
 fn print_lb_hints(showcase: &Showcase) {
@@ -133,11 +133,11 @@ fn print_lb_hints(showcase: &Showcase) {
 
 /// Hints after LB is up (CLI + script).
 pub fn print_lb_hints_public(showcase: &Showcase) {
-    let lb = FOUNDER_LB_PORT;
+    let lb = LOCAL_CLUSTER_LB_PORT;
     eprintln!("LB listening on http://127.0.0.1:{lb}/");
     eprintln!("  curl -sf http://127.0.0.1:{lb}/ready   # round-robin backends");
     if showcase.id == "realtime" {
-        eprintln!("  ./scripts/founder-cluster.sh session-smoke --lb");
+        eprintln!("  ./scripts/local-cluster.sh session-smoke --lb");
     }
 }
 
@@ -147,13 +147,13 @@ mod b39_tests {
     use crate::dev::showcases::find;
 
     #[test]
-    fn b39_founder_secret_and_token_match_script_defaults() {
+    fn b39_local_cluster_secret_and_token_match_script_defaults() {
         assert_eq!(
-            FOUNDER_GATEWAY_SESSION_SECRET,
-            "trembita-founder-3node-dev-secret"
+            LOCAL_CLUSTER_GATEWAY_SESSION_SECRET,
+            "trembita-local-3node-dev-secret"
         );
-        assert_eq!(FOUNDER_GATEWAY_TOKEN, "dev-secret");
-        assert_eq!(FOUNDER_LB_PORT, 18_290);
+        assert_eq!(LOCAL_CLUSTER_GATEWAY_TOKEN, "dev-secret");
+        assert_eq!(LOCAL_CLUSTER_LB_PORT, 18_290);
     }
 
     #[test]
@@ -162,7 +162,7 @@ mod b39_tests {
             base: u16,
             want: [&'static str; 3],
         }
-        let template = "p1=${FOUNDER_NODE1_PORT} p2=${FOUNDER_NODE2_PORT} p3=${FOUNDER_NODE3_PORT}";
+        let template = "p1=${LOCAL_CLUSTER_NODE1_PORT} p2=${LOCAL_CLUSTER_NODE2_PORT} p3=${LOCAL_CLUSTER_NODE3_PORT}";
         let rows = [
             Row {
                 base: 8290,
@@ -183,7 +183,7 @@ mod b39_tests {
                 assert!(got.contains(port), "base={} slot={i}", row.base);
             }
             assert!(
-                !got.contains("${FOUNDER_"),
+                !got.contains("${LOCAL_CLUSTER_"),
                 "base={}: unexpanded placeholders",
                 row.base
             );
@@ -204,7 +204,7 @@ mod b39_tests {
         use crate::dev::workspace::workspace_root;
 
         let root = workspace_root().expect("repo");
-        let template = fs::read_to_string(root.join("dev/founder-3node/nginx.conf.template"))
+        let template = fs::read_to_string(root.join("dev/local-3node/nginx.conf.template"))
             .expect("nginx template");
         let rendered = render_lb_nginx_ports(&template, 8290);
         assert!(rendered.contains("host.docker.internal:8290"));

@@ -129,7 +129,7 @@ Leader reconciliation is **declarative**: desired state = N auto workers on N no
 
 Fast tests: `./scripts/test-fast.sh -p trembita --test elastic_lb_product b34_`. Heavy Docker: `./e2e/elastic_lb.sh`. Scenario table: [capabilities § B-34](../scenarios/capabilities.md#elastic-join--lb-b-34).
 
-**Not the same as B-39:** [founder-3node](../../dev/founder-3node/README.md) is a **3-node showcase** dev path (realtime ports **8290–8292**); B-34 proves **4th joiner + product E2E binary** under nginx.
+**Not the same as B-39:** [local-3node](../../dev/local-3node/README.md) is a **3-node showcase** dev path (realtime ports **8290–8292**); B-34 proves **4th joiner + product E2E binary** under nginx.
 
 ## Join readiness pipeline (B-35)
 

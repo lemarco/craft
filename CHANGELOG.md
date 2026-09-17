@@ -8,6 +8,7 @@ trembita is **pre-1.0** — an experimental framework. We iterate on design; we 
 | How to configure and run | [docs/env.md](docs/env.md), [docs/getting-started.md](docs/getting-started.md) |
 | Why the architecture looks this way | [docs/decisions/](docs/decisions/) |
 | Planned / open work | [docs/backlog.md](docs/backlog.md) |
+| **0.6.3** | [docs/releases/0.6.3.md](docs/releases/0.6.3.md) |
 | **0.6.2** | [docs/releases/0.6.2.md](docs/releases/0.6.2.md) |
 | **0.6.1** | [docs/releases/0.6.1.md](docs/releases/0.6.1.md) |
 | **0.6.0** | [docs/releases/0.6.0.md](docs/releases/0.6.0.md) |

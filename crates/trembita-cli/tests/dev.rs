@@ -3,13 +3,14 @@
 #![cfg(debug_assertions)]
 
 use trembita_cli::{
-    DEFAULT_CLUSTER_UP_SHOWCASE, DevError, FOUNDER_GATEWAY_SESSION_SECRET, FOUNDER_LB_PORT,
-    dev_cluster_up, dev_trigger, find_showcase, showcase_ids, workspace_root,
+    DEFAULT_CLUSTER_UP_SHOWCASE, DevError, LOCAL_CLUSTER_GATEWAY_SESSION_SECRET,
+    LOCAL_CLUSTER_LB_PORT, dev_cluster_up, dev_trigger, find_showcase, showcase_ids,
+    workspace_root,
 };
 
 #[test]
-fn b39_founder_gateway_secret_meets_env_min_length() {
-    assert!(FOUNDER_GATEWAY_SESSION_SECRET.len() >= 16);
+fn b39_local_cluster_gateway_secret_meets_env_min_length() {
+    assert!(LOCAL_CLUSTER_GATEWAY_SESSION_SECRET.len() >= 16);
 }
 
 #[test]
@@ -28,19 +29,18 @@ fn b39_cluster_up_rejects_invalid_node_count() {
 }
 
 #[test]
-fn b39_founder_3node_packaging_files_exist_in_repo() {
+fn b39_local_3node_packaging_files_exist_in_repo() {
     let root = workspace_root().expect("repo");
-    assert!(root.join("dev/founder-3node/docker-compose.yml").is_file());
-    assert!(root.join("dev/founder-3node/nginx.conf.template").is_file());
-    assert!(root.join("scripts/founder-cluster.sh").is_file());
-    let compose =
-        std::fs::read_to_string(root.join("dev/founder-3node/docker-compose.yml")).unwrap();
-    assert!(compose.contains("FOUNDER_LB_PORT"));
+    assert!(root.join("dev/local-3node/docker-compose.yml").is_file());
+    assert!(root.join("dev/local-3node/nginx.conf.template").is_file());
+    assert!(root.join("scripts/local-cluster.sh").is_file());
+    let compose = std::fs::read_to_string(root.join("dev/local-3node/docker-compose.yml")).unwrap();
+    assert!(compose.contains("LOCAL_CLUSTER_LB_PORT"));
     assert!(compose.contains("nginx.generated.conf"));
     let template =
-        std::fs::read_to_string(root.join("dev/founder-3node/nginx.conf.template")).unwrap();
-    assert!(template.contains("${FOUNDER_NODE1_PORT}"));
-    assert_eq!(FOUNDER_LB_PORT, 18_290);
+        std::fs::read_to_string(root.join("dev/local-3node/nginx.conf.template")).unwrap();
+    assert!(template.contains("${LOCAL_CLUSTER_NODE1_PORT}"));
+    assert_eq!(LOCAL_CLUSTER_LB_PORT, 18_290);
 }
 
 #[test]

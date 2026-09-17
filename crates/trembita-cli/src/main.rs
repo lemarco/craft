@@ -70,7 +70,7 @@ enum Command {
         /// Apply safe mechanical fixes (e.g. simplify `.run()` in app.rs).
         #[arg(long)]
         fix: bool,
-        /// Print founder scale narrative + B-31 footguns (no full layout lint).
+        /// Print product scale narrative + B-31 footguns (no full layout lint).
         #[arg(long)]
         explain_scale: bool,
     },
@@ -152,7 +152,7 @@ enum DevCommand {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
-    /// Founder 3-node cluster: shared session secret + smoke hints (B-39).
+    /// Local 3-node cluster: shared session secret + smoke hints (B-39).
     ClusterUp {
         /// Showcase id (default: `realtime` — login + cluster cookies).
         #[arg(long)]
@@ -173,7 +173,7 @@ enum DevCommand {
         #[arg(long)]
         showcase: Option<String>,
     },
-    /// Stop founder nginx LB container.
+    /// Stop local cluster nginx LB container.
     ClusterLbDown,
 }
 

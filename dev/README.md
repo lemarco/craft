@@ -20,7 +20,7 @@ Infrastructure below supports legacy `./cluster.sh`, CI compose, and CA demos. P
 | [`certs/generate.sh`](certs/generate.sh) | Mint dev/small-prod mTLS PKI (`openssl` only) |
 | [`step-ca/`](step-ca/) | Optional step-ca docker-compose + renewal demo |
 | [`3node/README.md`](3node/README.md) | Live 3-node `trembita-node` cluster — `./scripts/dev-3node.sh` |
-| [`founder-3node/README.md`](founder-3node/README.md) | **Founder** 3-node product cluster (B-39) — session smoke + optional nginx `:18290`; docs [capabilities § B-39](../docs/scenarios/capabilities.md#local-3-node-founder-cluster-b-39) |
+| [`local-3node/README.md`](local-3node/README.md) | Local **3-node** product cluster (B-39) — session smoke + optional nginx `:18290`; docs [capabilities § B-39](../docs/scenarios/capabilities.md#local-3-node-cluster-b-39) |
 | [`cluster-common.sh`](cluster-common.sh) | Shared `cluster.sh` helpers (certs, build, `./cluster.sh up`) |
 | [`compose/`](compose/) | One-command Docker Compose clusters per showcase |
 | [`gitlab-runner/`](gitlab-runner/) | Self-hosted GitLab CI runner (Docker on local PC) |

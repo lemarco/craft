@@ -7,7 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use super::DevError;
-use super::founder::{FOUNDER_GATEWAY_SESSION_SECRET, FOUNDER_GATEWAY_TOKEN};
+use super::local_cluster::{LOCAL_CLUSTER_GATEWAY_SESSION_SECRET, LOCAL_CLUSTER_GATEWAY_TOKEN};
 use super::showcases::Showcase;
 
 /// Build release binary + optional showcase client.
@@ -111,8 +111,8 @@ pub fn stop(showcase: &Showcase) -> Result<(), DevError> {
     Ok(())
 }
 
-/// Start `nodes` cluster members with founder gateway env (B-39).
-pub fn up_with_founder_gateway(
+/// Start `nodes` cluster members with shared gateway session env (B-39).
+pub fn up_with_shared_gateway_env(
     showcase: &Showcase,
     workspace: &Path,
     nodes: u32,
@@ -129,7 +129,7 @@ fn up_inner(
     showcase: &Showcase,
     workspace: &Path,
     nodes: u32,
-    founder_gateway: bool,
+    shared_gateway_env: bool,
 ) -> Result<(), DevError> {
     if nodes == 0 || nodes > 8 {
         return Err(DevError::InvalidNodes(nodes));
@@ -157,7 +157,7 @@ fn up_inner(
         stop(showcase)?;
         fs::create_dir_all(cluster.join("logs"))?;
         for node in 1..=nodes {
-            spawn_node(showcase, workspace, node, &bin, founder_gateway)?;
+            spawn_node(showcase, workspace, node, &bin, shared_gateway_env)?;
         }
     }
 
@@ -210,7 +210,7 @@ fn spawn_node(
     workspace: &Path,
     node: u32,
     bin: &Path,
-    founder_gateway: bool,
+    shared_gateway_env: bool,
 ) -> Result<(), DevError> {
     let listen = showcase.listen_addr(node);
     let port = listen.split(':').next_back().unwrap_or("443");
@@ -244,12 +244,12 @@ fn spawn_node(
             "info,showcase=debug,trembita=info,trembita_net=warn",
         );
     }
-    if founder_gateway {
+    if shared_gateway_env {
         cmd.env(
             "TREMBITA_GATEWAY_SESSION_SECRET",
-            FOUNDER_GATEWAY_SESSION_SECRET,
+            LOCAL_CLUSTER_GATEWAY_SESSION_SECRET,
         )
-        .env("GATEWAY_TOKEN", FOUNDER_GATEWAY_TOKEN);
+        .env("GATEWAY_TOKEN", LOCAL_CLUSTER_GATEWAY_TOKEN);
     }
 
     let log_file = fs::OpenOptions::new()

@@ -120,7 +120,7 @@ mod tests {
         assert!(feats.contains(&AppFeature::Gateway));
     }
 
-    /// B-38 — `--profile` is an alias for `--template` ([capability-dx § B-38](../../../docs/decisions/capability-dx.md#founder-dx-v2-b-38)).
+    /// B-38 — `--profile` is an alias for `--template` ([capability-dx § B-38](../../../docs/decisions/capability-dx.md#scale-scaffold-dx-b-38)).
     #[test]
     fn b38_parse_profile_matches_template_aliases_table() {
         struct Row {

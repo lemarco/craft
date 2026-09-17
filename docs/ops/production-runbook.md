@@ -148,27 +148,27 @@ Rolling **`TREMBITA_GATEWAY_SESSION_SECRET`** without kicking all users immediat
 3. Restart nodes (or rolling restart behind drain). Existing cookies signed with the old key keep working until TTL; new logins get cookies signed with the primary secret.
 4. After max session TTL, remove **`TREMBITA_GATEWAY_SESSION_SECRET_PREVIOUS`** on all nodes and restart again.
 
-Verify: login on one node, `GET /me` (or app session route) on another — [B-39 founder smoke](../../dev/founder-3node/README.md) or [B-34 elastic tests](../scenarios/capabilities.md#elastic-join--lb-b-34). Regression: [gateway-cluster-auth § B-40](../decisions/gateway-cluster-auth.md#automated-regression-b-40).
+Verify: login on one node, `GET /me` (or app session route) on another — [B-39 local cluster smoke](../../dev/local-3node/README.md) or [B-34 elastic tests](../scenarios/capabilities.md#elastic-join--lb-b-34). Regression: [gateway-cluster-auth § B-40](../decisions/gateway-cluster-auth.md#automated-regression-b-40).
 
 **Cap-store sessions:** revoke via [`revoke_capstore_session`](../../crates/trembita/src/gateway/cluster_session.rs) on logout; registry must be visible on all nodes (shared store adapter).
 
-### Local founder cluster (B-39)
+### Local 3-node cluster (B-39)
 
 **Not a production deploy path** — use on a developer machine to validate **shared `TREMBITA_GATEWAY_SESSION_SECRET`** and **`GET /ready`** behind nginx before copying secrets into **`deploy/.env`** for VPS.
 
 ```bash
-./scripts/founder-cluster.sh setup && ./scripts/founder-cluster.sh up
-./scripts/founder-cluster.sh session-smoke
+./scripts/local-cluster.sh setup && ./scripts/local-cluster.sh up
+./scripts/local-cluster.sh session-smoke
 ```
 
-Mirror the same secret on every production node when using cluster session cookies ([gateway-cluster-auth § B-29](../decisions/gateway-cluster-auth.md)). Full local guide: [founder-3node](../../dev/founder-3node/README.md) · [capabilities § B-39](../scenarios/capabilities.md#local-3-node-founder-cluster-b-39).
+Mirror the same secret on every production node when using cluster session cookies ([gateway-cluster-auth § B-29](../decisions/gateway-cluster-auth.md)). Full local guide: [local-3node](../../dev/local-3node/README.md) · [capabilities § B-39](../scenarios/capabilities.md#local-3-node-cluster-b-39).
 
-### Founder DX v2 (B-38)
+### Scale & scaffold DX (B-38)
 
 Before changing capability **scale** or adding **queued** routes in a scaffolded app:
 
 ```bash
-trembita doctor --explain-scale   # founder narrative + foot-guns; no layout failures on partial trees
+trembita doctor --explain-scale   # scale narrative + foot-guns; no layout failures on partial trees
 trembita doctor                   # full lint — fix [error] lines (suggestions may follow `→`)
 trembita doctor --preflight       # deploy/env + B-33 join/session checks
 ```
@@ -180,7 +180,7 @@ trembita doctor --preflight       # deploy/env + B-33 join/session checks
 | `Route::Session` without `.per_node()` | Point to realtime template wiring |
 | `store_get` / `store_set` without `require_store` | Reference jobs **`task.rs`** pattern |
 
-New services: `trembita new my-app --profile jobs|realtime|api` (alias for `--template`). Scenario + test names: [capabilities § B-38](../scenarios/capabilities.md#founder-dx-v2-b-38).
+New services: `trembita new my-app --profile jobs|realtime|api` (alias for `--template`). Scenario + test names: [capabilities § B-38](../scenarios/capabilities.md#scale-scaffold-dx-b-38).
 
 ### Coordination growth preset (B-37)
 
