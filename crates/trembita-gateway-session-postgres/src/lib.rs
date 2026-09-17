@@ -1,7 +1,7 @@
 //! PostgreSQL opaque gateway session registry (B-46).
 //!
-//! Wire through [`GatewaySessionStore`](trembita::GatewaySessionStore) via the
-//! `gateway-session-postgres` feature on `trembita` (avoids a crate dependency cycle).
+//! Wire through `GatewaySessionStore` on the `trembita` facade via the
+//! `gateway-session-postgres` feature (avoids a crate dependency cycle).
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
