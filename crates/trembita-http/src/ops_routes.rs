@@ -256,20 +256,6 @@ mod tests {
             .status_code()
     }
 
-    async fn dispatch_method(table: &RouteTable, method: &http::Method, path: &str) -> StatusCode {
-        table
-            .dispatch_open(
-                method,
-                path,
-                HashMap::default(),
-                HeaderMap::default(),
-                Bytes::new(),
-            )
-            .await
-            .expect("dispatch")
-            .status_code()
-    }
-
     fn ops_table(readiness: Readiness) -> RouteTable {
         OpsApi::new(
             Arc::new(FakeObserver(readiness)),
@@ -434,29 +420,43 @@ mod tests {
         }
     }
 
+    async fn dispatch_open_status(
+        table: &RouteTable,
+        method: &http::Method,
+        path: &str,
+    ) -> Result<StatusCode, HttpError> {
+        table
+            .dispatch_open(
+                method,
+                path,
+                HashMap::default(),
+                HeaderMap::default(),
+                Bytes::new(),
+            )
+            .await
+            .map(|r| r.status_code())
+    }
+
     #[tokio::test]
     async fn ingress_lb_health_check_http_methods() {
         let table = ops_table(FakeObserver::ready_leader().0);
-        assert_eq!(
-            dispatch_method(&table, &http::Method::GET, "/health").await,
-            StatusCode::OK
-        );
-        assert_eq!(
-            dispatch_method(&table, &http::Method::GET, "/ready").await,
-            StatusCode::OK
-        );
-        assert_eq!(
-            dispatch_method(&table, &http::Method::POST, "/health").await,
-            StatusCode::NOT_FOUND
-        );
-        assert_eq!(
-            dispatch_method(&table, &http::Method::POST, "/ready").await,
-            StatusCode::NOT_FOUND
-        );
-        assert_eq!(
-            dispatch_get(&table, "/healthz").await,
-            StatusCode::NOT_FOUND
-        );
-        assert_eq!(dispatch_get(&table, "/Ready").await, StatusCode::NOT_FOUND);
+        assert_eq!(dispatch_get(&table, "/health").await, StatusCode::OK);
+        assert_eq!(dispatch_get(&table, "/ready").await, StatusCode::OK);
+        assert!(matches!(
+            dispatch_open_status(&table, &http::Method::POST, "/health").await,
+            Err(HttpError::NotFound)
+        ));
+        assert!(matches!(
+            dispatch_open_status(&table, &http::Method::POST, "/ready").await,
+            Err(HttpError::NotFound)
+        ));
+        assert!(matches!(
+            dispatch_open_status(&table, &http::Method::GET, "/healthz").await,
+            Err(HttpError::NotFound)
+        ));
+        assert!(matches!(
+            dispatch_open_status(&table, &http::Method::GET, "/Ready").await,
+            Err(HttpError::NotFound)
+        ));
     }
 }
