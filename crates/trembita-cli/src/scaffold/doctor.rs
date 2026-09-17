@@ -99,6 +99,7 @@ pub fn run_doctor(project: &TrembitaProject, preflight: bool) -> DoctorReport {
     check_domain_module_declared(project, &mut report);
     check_consumers(project, &manifest, &mut report);
     check_capabilities(project, &manifest, &mut report);
+    check_capability_scale_footguns(project, &manifest, &mut report);
     check_capability_store(project, &manifest, &mut report);
     check_actors(project, &manifest, &mut report);
     check_http(project, &app, &mut report);
@@ -389,6 +390,161 @@ fn check_capabilities(project: &TrembitaProject, manifest: &str, report: &mut Do
             );
         }
     }
+}
+
+/// B-31 — founder scale model: catch manifest combos that pin compute to one host while
+/// queued or stateless ops should fan out with the cluster.
+fn check_capability_scale_footguns(
+    project: &TrembitaProject,
+    manifest: &str,
+    report: &mut DoctorReport,
+) {
+    if !manifest.contains(".capabilities(") && !manifest.contains("CapManifest") {
+        return;
+    }
+    let cap_dir = project.capabilities_dir();
+    if !cap_dir.is_dir() {
+        return;
+    }
+
+    let keyed = capabilities_have_keyed_handlers(&cap_dir);
+    let shared_ram = capabilities_likely_shared_ram(&cap_dir);
+    let uses_queued = capability_queued_wiring(manifest, &cap_dir);
+    let fixed_one =
+        manifest.contains(".instances(1)") || capabilities_declare_instances_one(&cap_dir);
+    let session_ops = capability_uses_session_route(manifest, &cap_dir);
+    let per_node = manifest.contains(".per_node()") || capabilities_declare_per_node(&cap_dir);
+
+    if fixed_one && uses_queued && !keyed {
+        report.error(
+            "capability group uses `.instances(1)` with queued/default_queue wiring but no `#[cap_handler(key = …)]` — \
+             queue consumers scale cluster-wide while Fixed(1) pins handlers to one host; remove `.instances(1)` for PerNode or add keyed ops (B-31 — docs/decisions/capability-dx.md#founder-scale-model-b-31)",
+        );
+    } else if fixed_one && !shared_ram && !keyed {
+        report.warn(
+            "`.instances(1)` on a stateless capability group — omit it to use automatic PerNode scale when you add VPS nodes (B-28/B-31)",
+        );
+    }
+
+    if session_ops && !per_node {
+        report.warn(
+            "capabilities use `Route::Session` but manifest has no `.per_node()` — default host scale is Fixed(1); add `.per_node()` for a pool on each node (realtime pattern)",
+        );
+    }
+
+    if (!fixed_one || keyed || !uses_queued)
+        && uses_queued
+        && (has_queue_wiring(manifest) || capability_queued_wiring("", &cap_dir))
+    {
+        report.ok(
+            "capability queued wiring: handler placement follows group scale; job consumers scale separately (B-31)",
+        );
+    }
+}
+
+fn has_queue_wiring(manifest: &str) -> bool {
+    manifest.contains("queue_stream(") || manifest.contains("default_queue_for")
+}
+
+fn capability_queued_wiring(manifest: &str, cap_dir: &Path) -> bool {
+    if manifest.contains("Route::Queued")
+        || manifest.contains("Route::QueuedWait")
+        || manifest.contains("Route::Scheduled")
+        || manifest.contains(".enqueue(")
+        || manifest.contains("default_queue_for")
+        || manifest.contains("queue_stream(")
+    {
+        return true;
+    }
+    for entry in walk_rs_files(cap_dir) {
+        let Ok(content) = fs::read_to_string(&entry) else {
+            continue;
+        };
+        if content.contains("Route::Queued")
+            || content.contains("Route::QueuedWait")
+            || content.contains(".enqueue(")
+            || content.contains("cap_enqueue")
+            || content.contains("default_queue_for")
+            || content.contains("queue_stream(")
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn capability_uses_session_route(manifest: &str, cap_dir: &Path) -> bool {
+    if manifest.contains("Route::Session") {
+        return true;
+    }
+    for entry in walk_rs_files(cap_dir) {
+        let Ok(content) = fs::read_to_string(&entry) else {
+            continue;
+        };
+        if content.contains("Route::Session") {
+            return true;
+        }
+    }
+    false
+}
+
+fn capabilities_have_keyed_handlers(cap_dir: &Path) -> bool {
+    for entry in walk_rs_files(cap_dir) {
+        let Ok(content) = fs::read_to_string(&entry) else {
+            continue;
+        };
+        for line in content.lines() {
+            if line.contains("#[cap_handler") && (line.contains("key =") || line.contains("key=\""))
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn capabilities_declare_instances_one(cap_dir: &Path) -> bool {
+    for entry in walk_rs_files(cap_dir) {
+        let Ok(content) = fs::read_to_string(&entry) else {
+            continue;
+        };
+        if content.contains(".instances(1)") {
+            return true;
+        }
+    }
+    false
+}
+
+fn capabilities_declare_per_node(cap_dir: &Path) -> bool {
+    for entry in walk_rs_files(cap_dir) {
+        let Ok(content) = fs::read_to_string(&entry) else {
+            continue;
+        };
+        if content.contains(".per_node()") {
+            return true;
+        }
+    }
+    false
+}
+
+fn capabilities_likely_shared_ram(cap_dir: &Path) -> bool {
+    for entry in walk_rs_files(cap_dir) {
+        let Ok(content) = fs::read_to_string(&entry) else {
+            continue;
+        };
+        if !content.contains("pub struct") {
+            continue;
+        }
+        if content.contains("Mutex<")
+            || content.contains("RwLock<")
+            || content.contains("BTreeMap")
+            || content.contains("HashMap<")
+            || content.contains("Vec<")
+        {
+            return true;
+        }
+    }
+    false
 }
 
 fn check_capability_store(project: &TrembitaProject, manifest: &str, report: &mut DoctorReport) {
@@ -1384,6 +1540,354 @@ async fn handle_extra(_: &[u8]) -> Result<(), ()> { Ok(()) }
             }),
             "doctor errors: {:?}",
             report.findings
+        );
+    }
+
+    fn b31_minimal_cap_project(
+        cap_files: &[(&str, &str)],
+    ) -> (tempfile::TempDir, TrembitaProject, String) {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("src");
+        let cap = src.join("capabilities");
+        fs::create_dir_all(&cap).unwrap();
+        fs::write(src.join("app.rs"), "// trembita app").unwrap();
+        let manifest = "// CapManifest wiring\npub fn caps() -> trembita::CapManifest {\n    trembita::CapManifest::new()\n}\n".to_string();
+        fs::write(src.join("manifest.rs"), &manifest).unwrap();
+        for (name, body) in cap_files {
+            fs::write(cap.join(name), body).unwrap();
+        }
+        let project = TrembitaProject {
+            root: dir.path().to_path_buf(),
+        };
+        (dir, project, manifest)
+    }
+
+    fn scale_findings(report: &DoctorReport) -> Vec<&Finding> {
+        report
+            .findings
+            .iter()
+            .filter(|f| {
+                f.message.contains("B-31")
+                    || f.message.contains("instances(1)")
+                    || f.message.contains("Route::Session")
+                    || f.message.contains("PerNode")
+            })
+            .collect()
+    }
+
+    /// B-31 table — `check_capability_scale_footguns` outcomes on synthetic capability trees.
+    #[test]
+    fn founder_scale_b31_doctor_scenarios_table() {
+        const QUEUED_FOOTGUN: &str = r#"
+use trembita::{cap_handler, CapGroup};
+
+#[derive(Default)]
+struct S;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Work { n: u32 }
+
+#[cap_handler(group = "g")]
+async fn work(_: Work, _: &mut S) -> Result<(), trembita::CapError> { Ok(()) }
+
+fn _w() {
+    let _ = CapGroup::<S>::for_cap::<Work>()
+        .instances(1)
+        .default_queue_for::<Work>();
+}
+"#;
+        const KEYED_QUEUED_OK: &str = r#"
+use std::sync::Mutex;
+use trembita::{cap_handler, CapGroup};
+
+#[derive(Default)]
+pub struct S { store: Mutex<()> }
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Work { id: String }
+
+#[cap_handler(group = "g", key = "id")]
+async fn work(_: Work, _: &mut S) -> Result<(), trembita::CapError> { Ok(()) }
+
+fn _w() {
+    let _ = CapGroup::<S>::for_cap::<Work>()
+        .instances(1)
+        .default_queue_for::<Work>();
+}
+"#;
+        const STATELESS_FIXED_WARN: &str = r#"
+use trembita::CapGroup;
+
+#[derive(Default)]
+struct S;
+
+fn _w() {
+    let _ = CapGroup::<S>::with_state("g").instances(1);
+}
+"#;
+        const SESSION_WARN: &str = r#"
+fn _call() {
+    let _ = trembita::Route::Session;
+}
+"#;
+        const SESSION_PER_NODE_OK: &str = r#"
+use trembita::CapGroup;
+
+#[derive(Default)]
+struct S;
+
+fn _w() {
+    let _ = CapGroup::<S>::with_state("rt")
+        .per_node();
+    let _ = trembita::Route::Session;
+}
+"#;
+        const QUEUE_STREAM_ERROR: &str = r#"
+use trembita::CapGroup;
+
+#[derive(Default)]
+struct S;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Work { n: u32 }
+
+fn _w() {
+    let _ = CapGroup::<S>::for_cap::<Work>()
+        .instances(1)
+        .queue_stream("g.work");
+}
+"#;
+
+        struct Row {
+            name: &'static str,
+            files: &'static [(&'static str, &'static str)],
+            want_error: bool,
+            want_warn: bool,
+            want_ok_b31: bool,
+        }
+
+        let rows = [
+            Row {
+                name: "queued+Fixed(1)+no key",
+                files: &[("bad.rs", QUEUED_FOOTGUN)],
+                want_error: true,
+                want_warn: false,
+                want_ok_b31: false,
+            },
+            Row {
+                name: "queued+Fixed(1)+key+shared ram",
+                files: &[("ok.rs", KEYED_QUEUED_OK)],
+                want_error: false,
+                want_warn: false,
+                want_ok_b31: true,
+            },
+            Row {
+                name: "stateless Fixed(1) inline",
+                files: &[("pin.rs", STATELESS_FIXED_WARN)],
+                want_error: false,
+                want_warn: true,
+                want_ok_b31: false,
+            },
+            Row {
+                name: "session without per_node",
+                files: &[("sess.rs", SESSION_WARN)],
+                want_error: false,
+                want_warn: true,
+                want_ok_b31: false,
+            },
+            Row {
+                name: "session with per_node",
+                files: &[("rt.rs", SESSION_PER_NODE_OK)],
+                want_error: false,
+                want_warn: false,
+                want_ok_b31: false,
+            },
+            Row {
+                name: "queue_stream+Fixed(1)+no key",
+                files: &[("qs.rs", QUEUE_STREAM_ERROR)],
+                want_error: true,
+                want_warn: false,
+                want_ok_b31: false,
+            },
+            Row {
+                name: "QueuedWait+Fixed(1)+no key",
+                files: &[(
+                    "qw.rs",
+                    r#"
+use trembita::CapGroup;
+#[derive(Default)] struct S;
+#[derive(serde::Serialize, serde::Deserialize)] struct Work { n: u32 }
+fn _w() {
+    let _ = CapGroup::<S>::for_cap::<Work>().instances(1);
+    let _ = trembita::Route::QueuedWait;
+}
+"#,
+                )],
+                want_error: true,
+                want_warn: false,
+                want_ok_b31: false,
+            },
+            Row {
+                name: "cap_enqueue mention+Fixed(1)",
+                files: &[(
+                    "ce.rs",
+                    r#"
+use trembita::CapGroup;
+#[derive(Default)] struct S;
+fn _w() {
+    let _ = CapGroup::<S>::with_state("g").instances(1);
+    let _ = "cap_enqueue";
+}
+"#,
+                )],
+                want_error: true,
+                want_warn: false,
+                want_ok_b31: false,
+            },
+            Row {
+                name: "marker queued PerNode no doctor error",
+                files: &[(
+                    "pn.rs",
+                    r#"
+use trembita::CapGroup;
+#[derive(Default)] struct S;
+fn _w() {
+    let _ = CapGroup::<S>::with_state("g").default_queue_for::<Work>();
+}
+#[derive(serde::Serialize, serde::Deserialize)] struct Work { n: u32 }
+"#,
+                )],
+                want_error: false,
+                want_warn: false,
+                want_ok_b31: true,
+            },
+        ];
+
+        for row in rows {
+            let (_dir, project, manifest) = b31_minimal_cap_project(row.files);
+            let mut report = DoctorReport::default();
+            check_capability_scale_footguns(&project, &manifest, &mut report);
+            let scale = scale_findings(&report);
+            let has_error = report.findings.iter().any(|f| f.level == Level::Error);
+            let has_warn = report.findings.iter().any(|f| f.level == Level::Warn);
+            let has_ok_b31 = report
+                .findings
+                .iter()
+                .any(|f| f.level == Level::Ok && f.message.contains("B-31"));
+            assert_eq!(
+                has_error, row.want_error,
+                "{}: errors={has_error} scale={scale:?}",
+                row.name
+            );
+            assert_eq!(
+                has_warn, row.want_warn,
+                "{}: warns={has_warn} scale={scale:?}",
+                row.name
+            );
+            assert_eq!(
+                has_ok_b31, row.want_ok_b31,
+                "{}: ok_b31={has_ok_b31} scale={scale:?}",
+                row.name
+            );
+        }
+    }
+
+    #[test]
+    fn founder_scale_b31_helper_key_and_queue_detection() {
+        let (_dir, project, manifest) = b31_minimal_cap_project(&[(
+            "detect.rs",
+            r#"
+#[cap_handler(group = "g", key = "id")]
+async fn h() {}
+
+fn q() {
+    let _ = trembita::Route::Queued;
+}
+"#,
+        )]);
+        let cap = project.capabilities_dir();
+        assert!(capabilities_have_keyed_handlers(&cap));
+        assert!(capability_queued_wiring(&manifest, &cap));
+        assert!(!capabilities_likely_shared_ram(&cap));
+    }
+
+    #[test]
+    fn doctor_errors_queued_fixed_one_without_keyed_handlers() {
+        let dir = tempdir().unwrap();
+        let opts = NewProjectOpts {
+            name: "scale-footgun".into(),
+            output: dir.path().to_path_buf(),
+            features: AppFeature::defaults(),
+            trembita_version: "0.3.2".into(),
+            trembita_path: None,
+            template: None,
+        };
+        let root = scaffold_project(&opts).unwrap();
+        let project = TrembitaProject { root };
+        fs::write(
+            project.capabilities_dir().join("bad_queue.rs"),
+            r#"
+use trembita::{cap_handler, cap_register_chain, CapError, CapGroup, CapManifest};
+
+#[derive(Default)]
+pub struct BadState;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct Work { pub n: u32 }
+
+#[cap_handler(group = "bad")]
+async fn work(_: Work, _: &mut BadState) -> Result<(), CapError> { Ok(()) }
+
+#[must_use]
+pub fn manifest() -> CapManifest {
+    CapManifest::new().group(cap_register_chain!(
+        CapGroup::<BadState>::for_cap::<Work>()
+            .instances(1)
+            .default_queue_for::<Work>(),
+        work_register,
+    ))
+}
+"#,
+        )
+        .unwrap();
+        let report = run_doctor(&project, false);
+        assert!(
+            report.findings.iter().any(|f| {
+                f.level == Level::Error
+                    && f.message.contains("instances(1)")
+                    && f.message.contains("queued")
+            }),
+            "findings: {:?}",
+            report.findings
+        );
+    }
+
+    #[test]
+    fn doctor_accepts_onboarding_keyed_shared_fixed_one() {
+        let dir = tempdir().unwrap();
+        let opts = NewProjectOpts {
+            name: "scale-ok".into(),
+            output: dir.path().to_path_buf(),
+            features: AppFeature::defaults(),
+            trembita_version: "0.3.2".into(),
+            trembita_path: None,
+            template: None,
+        };
+        let root = scaffold_project(&opts).unwrap();
+        let project = TrembitaProject { root };
+        let report = run_doctor(&project, false);
+        assert!(
+            !report.findings.iter().any(|f| {
+                f.level == Level::Error
+                    && f.message.contains("instances(1)")
+                    && f.message.contains("queued")
+            }),
+            "onboarding template: {:?}",
+            report
+                .findings
+                .iter()
+                .filter(|f| f.level == Level::Error)
+                .collect::<Vec<_>>()
         );
     }
 

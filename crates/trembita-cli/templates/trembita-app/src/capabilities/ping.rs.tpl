@@ -28,7 +28,7 @@ async fn ping(msg: Ping, ctx: OpCtx<'_>, _state: &mut PingState) -> Result<Pong,
 #[must_use]
 pub fn manifest() -> CapManifest {
     CapManifest::new().group(cap_register_chain!(
-        CapGroup::<PingState>::for_cap::<Ping>().instances(1),
+        CapGroup::<PingState>::for_cap::<Ping>(),
         ping_register,
     ))
 }
