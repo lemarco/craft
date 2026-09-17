@@ -117,8 +117,13 @@ pub fn up_with_shared_gateway_env(
     workspace: &Path,
     nodes: u32,
 ) -> Result<(), DevError> {
-    let staged_elastic_join = nodes >= 4;
-    up_inner(showcase, workspace, nodes, true, staged_elastic_join)
+    up_inner(
+        showcase,
+        workspace,
+        nodes,
+        true,
+        use_staged_elastic_join(nodes),
+    )
 }
 
 /// Start `nodes` cluster members in the background.
@@ -158,35 +163,25 @@ fn up_inner(
         }
         stop(showcase)?;
         fs::create_dir_all(cluster.join("logs"))?;
+        let waves = cluster_spawn_waves(nodes, staged_elastic_join);
         if staged_elastic_join && nodes >= 4 {
             eprintln!(">> elastic join: seed nodes 1–3, then joiners 4–{nodes}");
-            for node in 1..=3 {
+        }
+        for wave in &waves {
+            for &node in wave {
                 spawn_node(showcase, workspace, node, &bin, shared_gateway_env)?;
             }
-            for node in 1..=3 {
-                let port = u32::from(showcase.base_port) + node - 1;
-                eprintln!(">> waiting for node {node} GET /ready on :{port}");
-                if !wait_ready(u16::try_from(port).unwrap_or(showcase.base_port), 120) {
-                    return Err(DevError::CommandFailed(format!(
-                        "node {node} /ready timeout (see {}/logs/)",
-                        cluster.display()
-                    )));
+            if staged_elastic_join && nodes >= 4 {
+                for &node in wave {
+                    let port = ready_port_for_node(showcase.base_port, node);
+                    eprintln!(">> waiting for node {node} GET /ready on :{port}");
+                    if !wait_ready(port, 120) {
+                        return Err(DevError::CommandFailed(format!(
+                            "node {node} /ready timeout (see {}/logs/)",
+                            cluster.display()
+                        )));
+                    }
                 }
-            }
-            for node in 4..=nodes {
-                spawn_node(showcase, workspace, node, &bin, shared_gateway_env)?;
-                let port = u32::from(showcase.base_port) + node - 1;
-                eprintln!(">> waiting for node {node} GET /ready on :{port}");
-                if !wait_ready(u16::try_from(port).unwrap_or(showcase.base_port), 120) {
-                    return Err(DevError::CommandFailed(format!(
-                        "node {node} /ready timeout (see {}/logs/)",
-                        cluster.display()
-                    )));
-                }
-            }
-        } else {
-            for node in 1..=nodes {
-                spawn_node(showcase, workspace, node, &bin, shared_gateway_env)?;
             }
         }
     }
@@ -369,6 +364,31 @@ fn run_bash(script: &Path, cwd: &Path, args: &[&str]) -> Result<(), DevError> {
     }
 }
 
+/// Staged seed-then-joiner sequencing for `cluster-up --nodes N` when `N >= 4` (B-42).
+#[must_use]
+pub(crate) fn use_staged_elastic_join(nodes: u32) -> bool {
+    nodes >= 4
+}
+
+/// HTTP port for `GET /ready` wait during elastic join (node index 1-based).
+#[must_use]
+pub(crate) fn ready_port_for_node(base_port: u16, node: u32) -> u16 {
+    let port = u32::from(base_port) + node.saturating_sub(1);
+    u16::try_from(port).unwrap_or(base_port)
+}
+
+/// Process spawn order: one wave for normal up; `[1,2,3]` then `[4..=N]` when staging (B-42).
+#[must_use]
+pub(crate) fn cluster_spawn_waves(nodes: u32, staged_elastic_join: bool) -> Vec<Vec<u32>> {
+    if nodes == 0 {
+        return Vec::new();
+    }
+    if staged_elastic_join && nodes >= 4 {
+        return vec![vec![1, 2, 3], (4..=nodes).collect()];
+    }
+    vec![(1..=nodes).collect()]
+}
+
 /// Print cluster / port summary.
 pub fn status(showcase: &Showcase, workspace: &Path) -> Result<(), DevError> {
     let _ = workspace;
@@ -383,4 +403,136 @@ pub fn status(showcase: &Showcase, workspace: &Path) -> Result<(), DevError> {
         eprint!("{}", String::from_utf8_lossy(&out.stdout));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod b42_tests {
+    use super::*;
+
+    #[test]
+    fn b42_use_staged_elastic_join_scenarios_table() {
+        struct Row {
+            nodes: u32,
+            want: bool,
+        }
+        let rows = [
+            Row {
+                nodes: 1,
+                want: false,
+            },
+            Row {
+                nodes: 3,
+                want: false,
+            },
+            Row {
+                nodes: 4,
+                want: true,
+            },
+            Row {
+                nodes: 8,
+                want: true,
+            },
+        ];
+        for row in rows {
+            assert_eq!(
+                use_staged_elastic_join(row.nodes),
+                row.want,
+                "nodes={}",
+                row.nodes
+            );
+        }
+    }
+
+    #[test]
+    fn b42_ready_port_for_node_scenarios_table() {
+        struct Row {
+            base: u16,
+            node: u32,
+            want: u16,
+        }
+        let rows = [
+            Row {
+                base: 8290,
+                node: 1,
+                want: 8290,
+            },
+            Row {
+                base: 8290,
+                node: 4,
+                want: 8293,
+            },
+            Row {
+                base: 8090,
+                node: 4,
+                want: 8093,
+            },
+        ];
+        for row in rows {
+            assert_eq!(
+                ready_port_for_node(row.base, row.node),
+                row.want,
+                "base={} node={}",
+                row.base,
+                row.node
+            );
+        }
+    }
+
+    #[test]
+    fn b42_cluster_spawn_waves_scenarios_table() {
+        struct Row {
+            nodes: u32,
+            staged: bool,
+            want: &'static [&'static [u32]],
+        }
+        let rows = [
+            Row {
+                nodes: 2,
+                staged: false,
+                want: &[&[1, 2]],
+            },
+            Row {
+                nodes: 3,
+                staged: false,
+                want: &[&[1, 2, 3]],
+            },
+            Row {
+                nodes: 3,
+                staged: true,
+                want: &[&[1, 2, 3]],
+            },
+            Row {
+                nodes: 4,
+                staged: true,
+                want: &[&[1, 2, 3], &[4]],
+            },
+            Row {
+                nodes: 5,
+                staged: true,
+                want: &[&[1, 2, 3], &[4, 5]],
+            },
+            Row {
+                nodes: 4,
+                staged: false,
+                want: &[&[1, 2, 3, 4]],
+            },
+        ];
+        for row in rows {
+            let got = cluster_spawn_waves(row.nodes, row.staged);
+            assert_eq!(
+                got.len(),
+                row.want.len(),
+                "nodes={} staged={}",
+                row.nodes,
+                row.staged
+            );
+            for (i, wave) in row.want.iter().enumerate() {
+                assert_eq!(
+                    got[i], *wave,
+                    "nodes={} staged={} wave={i}",
+                    row.nodes, row.staged
+                );
+            }
+        }
+    }
 }

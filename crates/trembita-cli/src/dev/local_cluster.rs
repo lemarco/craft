@@ -84,9 +84,10 @@ pub fn detect_lb_backends(showcase: &Showcase, max_nodes: u32) -> u32 {
     for n in (3..=cap).rev() {
         let port = u32::from(showcase.base_port) + n - 1;
         if let Ok(port) = u16::try_from(port)
-            && curl_ready(port) {
-                return n;
-            }
+            && curl_ready(port)
+        {
+            return n;
+        }
     }
     3
 }
@@ -395,5 +396,23 @@ mod b42_tests {
         let template = "${LOCAL_CLUSTER_NODE4_SERVER}";
         let got = render_lb_nginx_ports(template, 8490, 4);
         assert!(got.contains("host.docker.internal:8493"));
+    }
+
+    #[test]
+    fn b42_ready_port_matches_showcase_listen_addr() {
+        use crate::dev::cluster::ready_port_for_node;
+
+        let s = find("realtime").expect("realtime");
+        for node in 1..=4 {
+            assert_eq!(
+                ready_port_for_node(s.base_port, node),
+                s.listen_addr(node)
+                    .split(':')
+                    .next_back()
+                    .unwrap()
+                    .parse::<u16>()
+                    .expect("port")
+            );
+        }
     }
 }

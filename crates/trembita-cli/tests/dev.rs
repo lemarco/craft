@@ -78,6 +78,54 @@ fn b42_elastic_lb_e2e_script_uses_same_whoami_path_as_local_cap_smoke() {
     assert!(local.contains("/e2e/whoami"));
 }
 
+/// B-42 — `--nodes 4` is valid before release binary / setup checks.
+#[test]
+fn b42_cluster_up_four_nodes_rejects_invalid_nodes_not_first() {
+    let err = dev_cluster_up(Some("realtime"), 4, false, false).unwrap_err();
+    assert!(
+        !matches!(err, DevError::InvalidNodes(_)),
+        "expected setup/binary error, got {err:?}"
+    );
+}
+
+/// B-42 — LB smoke thresholds aligned with [`e2e/elastic_lb.sh`](../../e2e/elastic_lb.sh).
+#[test]
+fn b42_lb_smoke_distinct_thresholds_match_e2e_elastic_script() {
+    let root = workspace_root().expect("repo");
+    let e2e = std::fs::read_to_string(root.join("e2e/elastic_lb.sh")).unwrap();
+    let local = std::fs::read_to_string(root.join("scripts/local-cluster.sh")).unwrap();
+    assert!(
+        e2e.contains("distinct") && e2e.contains("-lt 3"),
+        "e2e LB expects ≥3 distinct node_id"
+    );
+    assert!(local.contains("lb_min_distinct"));
+    assert!(local.contains('3') && local.contains("cap_distinct") && local.contains("-lt 2"));
+}
+
+#[test]
+fn b42_realtime_example_wires_e2e_pool_manifest() {
+    let root = workspace_root().expect("repo");
+    let main_rs = std::fs::read_to_string(root.join("examples/realtime/src/main.rs")).unwrap();
+    assert!(main_rs.contains("capabilities_manifest()"));
+    assert!(main_rs.contains("mount_whoami"));
+}
+
+#[test]
+fn b42_cluster_showcases_include_node_four_cert_id() {
+    for id in [
+        "realtime",
+        "background-jobs",
+        "stateful-workers",
+        "workflows",
+    ] {
+        let s = find_showcase(id).unwrap_or_else(|| panic!("{id}"));
+        assert!(
+            s.cert_ids.contains(&4),
+            "{id}: cert id 4 required for elastic join"
+        );
+    }
+}
+
 #[test]
 fn showcase_registry_includes_stateful_workers() {
     let s = find_showcase("stateful-workers").expect("showcase");

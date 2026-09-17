@@ -232,8 +232,12 @@ Ports (**realtime**): **8290–8293**. Guide: [dev/local-3node § B-42](../../de
 | Fourth nginx upstream when `backends=4` | `b42_repo_nginx_template_renders_fourth_backend_when_elastic`, `b42_workflows_fourth_nginx_upstream_port` (placeholder `${LOCAL_CLUSTER_NODE4_SERVER}` in `b39_local_3node_packaging_files_exist_in_repo`) |
 | LB upstream count clamped to 3..=4 | `b42_clamp_lb_backends_scenarios_table` |
 | Fourth listen addr per showcase (8093 / 8193 / 8293 / 8493) | `b42_showcase_fourth_listen_addr_scenarios_table`, `b42_realtime_fourth_listen_addr_matches_elastic_ports` |
+| Staged join policy + spawn waves + `/ready` ports | `b42_use_staged_elastic_join_scenarios_table`, `b42_cluster_spawn_waves_scenarios_table`, `b42_ready_port_for_node_scenarios_table`, `b42_ready_port_matches_showcase_listen_addr` |
+| `--nodes 4` valid before binary/setup errors | `b42_cluster_up_four_nodes_rejects_invalid_nodes_not_first` |
+| LB/cap distinct thresholds vs E2E script | `b42_lb_smoke_distinct_thresholds_match_e2e_elastic_script` |
+| Node 4 dev cert + realtime `e2e_pool` wiring | `b42_cluster_showcases_include_node_four_cert_id`, `b42_realtime_example_wires_e2e_pool_manifest` |
 | Script phases mirror `e2e/elastic_lb.sh` | `b42_local_cluster_script_elastic_phases_exist`, `b42_elastic_lb_e2e_script_uses_same_whoami_path_as_local_cap_smoke` |
-| Shared **`/e2e/whoami`** path constant | `b42_whoami_path_matches_elastic_lb_and_local_cluster_scripts` (`trembita-tools/e2e_elastic/gateway.rs`) |
+| Shared **`/e2e/whoami`** path + cap metadata | `b42_whoami_path_matches_elastic_lb_and_local_cluster_scripts`, `b42_whoami_cap_request_metadata_scenarios_table` |
 | Staged join waits on `/ready` (nodes ≥ 4) | [`cluster.rs`](../../crates/trembita-cli/src/dev/cluster.rs) — live check: `./scripts/local-cluster.sh elastic-smoke` |
 
 ```bash
