@@ -48,7 +48,9 @@ fn gateway_with_session_routes(secret: ClusterSessionSecret) -> trembita::Gatewa
     GatewayOpts::new("127.0.0.1:0".parse().unwrap())
         .identity(LoginIdentity)
         .surfaces(move |_state| {
-            Gateway::new(false).surface(|s| s.session(gate.clone()).routes(routes.clone()))
+            Gateway::new(false)
+                .dev_fallback_session(gate.clone())
+                .dev_fallback(routes.clone())
         })
         .build_config()
 }
@@ -111,47 +113,40 @@ async fn login_issues_set_cookie_then_session_route_reads_verified_user() {
         .surfaces({
             let gate = gate.clone();
             move |_state| {
-                Gateway::new(false).surface(|s| {
-                    s.session(gate.clone()).routes(
-                        RouteTable::new()
-                            .get_identity("/login", {
-                                let gate = gate.clone();
-                                let secret = secret.clone();
-                                move |ctx: RequestCtx| {
-                                    let gate = gate.clone();
-                                    let secret = secret.clone();
-                                    async move {
-                                        let user = ctx
-                                            .query_param("user")
-                                            .unwrap_or("anonymous")
-                                            .to_string();
-                                        let token = secret
-                                            .issue(&user, Duration::from_secs(3600))
-                                            .map_err(|e| {
-                                                trembita_http::HttpError::Internal(e.to_string())
-                                            })?;
-                                        let mut resp = Response::text(StatusCode::OK, user.clone());
-                                        gate.set_session_cookie(&mut resp, &token)?;
-                                        Ok(resp)
-                                    }
-                                }
-                            })
-                            .get_session("/me", {
-                                let secret = secret.clone();
-                                move |ctx: RequestCtx| {
-                                    let secret = secret.clone();
-                                    async move {
-                                        let user = session_user_from_cookie(
-                                            "sess",
-                                            ctx.headers(),
-                                            &secret,
-                                        )?;
-                                        Ok(Response::text(StatusCode::OK, user))
-                                    }
-                                }
-                            }),
-                    )
-                })
+                let routes = RouteTable::new()
+                    .get_identity("/login", {
+                        let gate = gate.clone();
+                        let secret = secret.clone();
+                        move |ctx: RequestCtx| {
+                            let gate = gate.clone();
+                            let secret = secret.clone();
+                            async move {
+                                let user =
+                                    ctx.query_param("user").unwrap_or("anonymous").to_string();
+                                let token =
+                                    secret.issue(&user, Duration::from_secs(3600)).map_err(
+                                        |e| trembita_http::HttpError::Internal(e.to_string()),
+                                    )?;
+                                let mut resp = Response::text(StatusCode::OK, user.clone());
+                                gate.set_session_cookie(&mut resp, &token)?;
+                                Ok(resp)
+                            }
+                        }
+                    })
+                    .get_session("/me", {
+                        let secret = secret.clone();
+                        move |ctx: RequestCtx| {
+                            let secret = secret.clone();
+                            async move {
+                                let user =
+                                    session_user_from_cookie("sess", ctx.headers(), &secret)?;
+                                Ok(Response::text(StatusCode::OK, user))
+                            }
+                        }
+                    });
+                Gateway::new(false)
+                    .dev_fallback_session(gate.clone())
+                    .dev_fallback(routes)
             }
         })
         .build_config();
@@ -238,28 +233,22 @@ async fn capstore_session_gate_accepts_registered_token_on_http_route() {
             let store = Arc::clone(&store);
             move |_state| {
                 let store = Arc::clone(&store);
-                Gateway::new(false).surface(|s| {
-                    s.session(gate.clone())
-                        .routes(
-                            RouteTable::new().get_session("/me", move |ctx: RequestCtx| {
-                                let store = Arc::clone(&store);
-                                async move {
-                                    let token = ctx.cookie("sess").ok_or_else(|| {
-                                        trembita_http::HttpError::Unauthorized(
-                                            "missing session cookie".into(),
-                                        )
-                                    })?;
-                                    let user = verify_capstore_session(store.as_ref(), token)
-                                        .await
-                                        .map_err(|e| {
-                                            trembita_http::HttpError::Unauthorized(e.to_string())
-                                        })?
-                                        .user;
-                                    Ok(Response::text(StatusCode::OK, user))
-                                }
-                            }),
-                        )
-                })
+                let routes = RouteTable::new().get_session("/me", move |ctx: RequestCtx| {
+                    let store = Arc::clone(&store);
+                    async move {
+                        let token = ctx.cookie("sess").ok_or_else(|| {
+                            trembita_http::HttpError::Unauthorized("missing session cookie".into())
+                        })?;
+                        let user = verify_capstore_session(store.as_ref(), token)
+                            .await
+                            .map_err(|e| trembita_http::HttpError::Unauthorized(e.to_string()))?
+                            .user;
+                        Ok(Response::text(StatusCode::OK, user))
+                    }
+                });
+                Gateway::new(false)
+                    .dev_fallback_session(gate.clone())
+                    .dev_fallback(routes)
             }
         })
         .build_config();
