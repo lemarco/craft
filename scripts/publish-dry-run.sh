@@ -88,11 +88,26 @@ if crate_version_on_index "$LEAF" "$VERSION"; then
     trap - EXIT
 else
     echo ">> publish dry-run (workspace v${VERSION}, dependency order — not yet on crates.io)…"
+    trembita_backup="" trembita_path=""
+    cli_backup="" cli_path=""
+    readarray -t trembita_ctx < <(prepare_leaf_manifest trembita)
+    trembita_backup="${trembita_ctx[0]:-}"
+    trembita_path="${trembita_ctx[1]:-}"
+    readarray -t cli_ctx < <(prepare_leaf_manifest trembita-cli)
+    cli_backup="${cli_ctx[0]:-}"
+    cli_path="${cli_ctx[1]:-}"
+    restore_workspace_manifests() {
+        restore_manifest "$trembita_backup" "$trembita_path"
+        restore_manifest "$cli_backup" "$cli_path"
+    }
+    trap restore_workspace_manifests EXIT
     if ! output=$(cargo publish --workspace --dry-run --allow-dirty 2>&1); then
         printf '%s\n' "$output" >&2
         echo "error: publish dry-run failed for workspace v${VERSION}." >&2
         exit 1
     fi
+    restore_workspace_manifests
+    trap - EXIT
     printf '%s\n' "$output"
 fi
 
