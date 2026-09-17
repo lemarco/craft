@@ -157,6 +157,7 @@ impl<S: Send + Default + 'static> CapGroup<S> {
         app_slot: Arc<OnceLock<Weak<TrembitaApp>>>,
     ) -> CapHostConfig<S> {
         CapHostConfig {
+            group: self.name,
             registry: self.build_registry().arc(),
             app_slot,
         }

@@ -69,6 +69,7 @@ impl<S: Send + Default + 'static> CapGroupApply for CapGroup<S> {
         }
 
         builder.registration.actors = true;
+        CapHostActor::<S>::register_local_spawn_config(&config);
         builder.inner = match scale {
             CapGroupScale::Fixed(instances) => builder
                 .inner
