@@ -1,11 +1,8 @@
 # trembita
 
-**A distributed Raft + actor framework for Rust: one codebase, N nodes, elastic and self-healing.**
+**A distributed Raft runtime for Rust: one codebase, N nodes, elastic and self-healing.**
 
-Write your state machine and actors once, then run the *same* binary on as many
-nodes as you like. Nodes form a [Raft](https://raft.github.io/) cluster over
-HTTP/3 (QUIC + mTLS), replicate a linearizable state machine, and host
-supervised actors that can message, spawn, and migrate across the cluster.
+Product services register **capabilities** (`CapManifest`, `#[cap_handler]`), jobs, and topics on [`TrembitaApp`](../../crates/trembita/src/app/mod.rs). The cluster runs over HTTP/3 (QUIC + mTLS) with embedded redb — no mandatory Redis. Custom **`UserActor`** groups and `/actors/*` HTTP are **advanced** and off by default ([product terminology](../../docs/decisions/product-terminology.md)).
 
 This crate is the **facade**: it re-exports the stable public API, so most users
 depend only on `trembita`.
@@ -41,11 +38,11 @@ See [getting-started.md](../../docs/getting-started.md), [env.md](../../docs/env
 
 ## Runtime embedding (`trembita::cluster`)
 
-Handles, enqueue options, saga journals, and TLS helpers: [`trembita::cluster`](src/cluster.rs). **Cluster assembly** lives in unpublished `trembita-assembly` / `trembita-showcase` — not on the product API ([facade-layering ADR](../../docs/decisions/facade-layering.md), [public-api ADR](../../docs/decisions/public-api-1.0.md)).
+Handles, enqueue options, saga journals, and TLS helpers: [`trembita::cluster`](src/cluster.rs). Prefer **`trembita`** over direct `trembita-assembly`; **`trembita-showcase`** is workspace-only ([facade-layering ADR](../../docs/decisions/facade-layering.md), [public-api ADR](../../docs/decisions/public-api-1.0.md)).
 
 ## Features
 
-- `http-jobs` (default) — product HTTP gateway helpers (`GatewayOpts`, `/jobs/*`, `/actors/*`, `/workflows/*`)
+- `http-jobs` (default) — product HTTP gateway (`GatewayOpts`, `/jobs/*`, `cap_*`, `/workflows/*`; `/actors/*` advanced, default off)
 - `dev-certs` — ephemeral mTLS for solo local seeds without PEM files
 - `redis-store` — Redis [`ActorStateStore`](https://docs.rs/trembita-store-redis) via `trembita::store_redis`
 - `external-backlog` — Postgres [`ExternalBacklog`](https://docs.rs/trembita-backlog-postgres) via `trembita::backlog_postgres`

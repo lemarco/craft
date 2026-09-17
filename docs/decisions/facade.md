@@ -7,7 +7,7 @@
 
 [trembita](naming.md) is a **library-first framework**: product teams embed one binary, run it on N VPS nodes, and wire domain logic through [`TrembitaApp`](../../crates/trembita/src/app/mod.rs). The workspace splits implementation across many `trembita-*` crates ([architecture-style](architecture-style.md)).
 
-Unpublished workspace crates **`trembita-assembly`** (cluster boot) and **`trembita-showcase`** (maintainer harnesses) sit behind the facade — see [facade-layering](facade-layering.md).
+**`trembita-assembly`** is on crates.io for advanced authors; **`trembita-showcase`** is workspace-only. Product apps depend on **`trembita`** — see [facade-layering](facade-layering.md).
 
 Embedders should not need a mental map of fifteen crate names. They need:
 
@@ -21,7 +21,7 @@ Embedders should not need a mental map of fifteen crate names. They need:
 
 ```toml
 [dependencies]
-trembita = "0.4"
+trembita = "0.6"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 ```
 
@@ -140,7 +140,8 @@ crates/
 ├── trembita-store-redis/     # optional via redis-store
 ├── trembita-backlog-postgres/# optional via external-backlog
 ├── trembita-events-postgres/ # optional via domain-outbox
-├── trembita-cli/             # scaffolding (not a runtime dep)
+├── trembita-assembly/        # advanced cluster boot (crates.io)
+├── trembita-cli/             # `trembita` scaffold CLI (crates.io)
 └── trembita-tools/           # reference binaries (publish = false)
 ```
 

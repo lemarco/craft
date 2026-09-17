@@ -104,7 +104,7 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
                 let st = ws_state.clone();
                 Box::pin(async move {
                     match st
-                        .open_actor_session_parts(
+                        .open_worker_session_parts(
                             "echo",
                             req.method(),
                             req.uri(),

@@ -1,4 +1,4 @@
-# Stateful actors — workflow store (`CapStore` / `trembita-capstore`, redb-first)
+# Cap store — durable op keys (`CapStore` / `trembita-capstore`, redb-first)
 
 **Status:** Accepted  
 **Date:** 2026-08-28  
@@ -6,7 +6,7 @@
 
 ## Context
 
-Stateful actors need workflow data that survives VPS crash without putting every byte in the Raft log ([cross-node-actors](cross-node-actors.md)). The default is **embedded `redb`** under `data_dir`, same durability class as [job-queue](job-queue.md) and Raft storage — **no mandatory external infra**. Optional Redis integration is documented in [actor-state-redis](actor-state-redis.md).
+**Capability handlers** (and advanced runtime workers) need workflow data that survives VPS crash without putting every byte in the Raft log. The default is **embedded `redb`** under `data_dir`, same durability class as [job-queue](job-queue.md) and Raft storage — **no mandatory external infra**. Product access: [`OpCtx::require_store`](../../crates/trembita/src/capability/ctx.rs) / [`trembita::capstore`](../../crates/trembita/src/capstore.rs). Optional Redis: [actor-state-redis](actor-state-redis.md).
 
 ## Decision
 
@@ -15,9 +15,9 @@ Stateful actors need workflow data that survives VPS crash without putting every
 | Layer | Store | Purpose |
 |-------|--------|---------|
 | **Authoritative / consensus** | Raft → `StateMachine` | Orders, balances, config — linearizable and replicated |
-| **Actor workflow** | [`CapStore`](../../crates/trembita/src/capstore.rs) ([`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs) in the port crate) | Session progress, idempotency keys, locks, handler caches — survives crash when backed by durable store |
+| **Cap / workflow keys** | [`CapStore`](../../crates/trembita/src/capstore.rs) ([`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs) port name) | Idempotency keys, step progress, handler caches — survives crash when `data_dir` is set |
 
-**Do not** put routine actor workflow bytes in the Raft log — avoids R1 write ceiling and wrong abstraction ([future-work-and-risks](future-work-and-risks.md)).
+**Do not** put routine workflow bytes in the Raft log — avoids R1 write ceiling and wrong abstraction ([future-work-and-risks](future-work-and-risks.md)).
 
 ### Default backend: embedded redb
 
@@ -108,4 +108,4 @@ Not required for any of the four [product scenarios](product-scenarios.md) when 
 - [stateful-workers](../scenarios/stateful-workers.md)
 - [cross-node-actors](cross-node-actors.md)
 - [job-queue](job-queue.md)
-- [backlog.md](../backlog.md) — B-01
+- Durable cap store — [status.md](../status.md) · this ADR

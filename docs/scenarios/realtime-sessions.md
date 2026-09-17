@@ -1,13 +1,13 @@
-# Real-time / session — sticky actors + stateless gateway
+# Real-time / session — sticky sessions + stateless gateway
 
-**Pattern:** WebSocket or long-lived HTTP to a **pinned worker**; gateway VPS stays stateless; workers scale on the cluster.
+**Pattern:** WebSocket or long-lived HTTP to a **pinned capability group** (`Route::Session`); gateway stays stateless; group hosts scale on the cluster ([product-terminology](../decisions/product-terminology.md)).
 
 **Status:** **Shipped** in 0.2.x — `ActorSession`, gateway showcase ([examples/realtime/](../../examples/realtime/)) on **capabilities** (`chat.append` + `Route::Session`). See [capability-parity](capability-parity.md).
 
 ## When to use
 
 - Chat, collaborative editing, game session, live notifications
-- Client must hit the **same actor instance** for a period (in-memory state)
+- Client must hit the **same group host instance** for a period (in-memory session state)
 - Gateway can sit behind a load balancer; workers run anywhere in cluster
 
 **Do not** require Redis for session stickiness — use [`ActorSession`](../../crates/trembita-runtime/src/session.rs) ([actor-routing](../decisions/actor-routing.md)).
@@ -27,9 +27,9 @@
          CapHost RAM    CapHost RAM    CapHost RAM
 ```
 
-- **Gateway:** accepts connections, holds `ActorSession`, forwards messages to pinned workers
-- **Workers:** capability group host (`CapHost`); in-memory state on the group for session lifetime
-- **Durability:** optional checkpoint to `StateMachine` or `ActorStateStore` (redb) if reconnect must restore history
+- **Gateway:** accepts connections, holds [`SessionHandle`](../../crates/trembita/src/gateway/session.rs), forwards typed ops to pinned hosts
+- **Group host:** internal `CapHost`; in-memory state for session lifetime
+- **Durability:** optional checkpoint to `StateMachine` or **cap store** (redb) if reconnect must restore history
 
 ## Session lifecycle
 
@@ -130,7 +130,7 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
         let st = state.clone();
         Box::pin(async move {
             match st
-                .open_actor_session_parts(
+                .open_worker_session_parts(
                     "chat",
                     req.method(),
                     req.uri(),
@@ -165,53 +165,17 @@ Gateway does **not** hold conversation state — only the session handle ([`Sess
 
 ### 5. HTTP handlers (same identity)
 
-Use [`open_actor_session_parts`](../../crates/trembita/src/gateway/mod.rs) when the handler also extracts a JSON body; use [`open_actor_session_from`](../../crates/trembita/src/gateway/mod.rs) / [`extract_session_from`](../../crates/trembita/src/gateway/mod.rs) on plain GET handlers.
+Prefer **cookie session + typed op** (no raw mailbox bytes). Reference: [`examples/realtime/src/gateway_session.rs`](../../examples/realtime/src/gateway_session.rs) — `SessionHandle::open_for::<Append>` then [`fire_cap`](../../crates/trembita/src/gateway/session.rs).
 
-Showcases: [`examples/realtime`](../../examples/realtime/) (`POST /chat`, `GET /me`), [`examples/stateful-workers`](../../examples/stateful-workers/) (`POST /orders/submit` beside built-in `/actors/*`).
+Showcases: [`examples/realtime`](../../examples/realtime/) (`POST /chat`, `GET /me` via `fire_cap`), [`examples/stateful-workers`](../../examples/stateful-workers/) (`POST /orders/submit` via `cap_fire` — no `/actors/*` on default gateway).
 
 ```rust
-use http::StatusCode;
-use trembita_http::{RequestCtx, Response};
-
-#[derive(Deserialize)]
-struct ChatPost { message: String }
-
-async fn post_chat(state: TrembitaGatewayState, ctx: RequestCtx) -> Result<Response, trembita_http::HttpError> {
-    let body: ChatPost = ctx.json()?;
-    let mut handle = match state
-        .open_actor_session_parts(
-            "chat",
-            ctx.method(),
-            ctx.uri(),
-            ctx.headers(),
-            Some(Duration::from_secs(3600)),
-        )
-        .await
-    {
-        Ok(h) => h,
-        Err(e) => return Ok(e.into_http_response()),
-    };
-    let payload = trembita::proto::encode(&body.message).unwrap();
-    handle
-        .cast(payload)
-        .await
-        .map_err(|e| trembita_http::HttpError::Internal(e.to_string()))?;
-    Ok(Response::json(StatusCode::OK, serde_json::json!({ "ok": true })))
-}
-
-async fn get_me(state: TrembitaGatewayState, ctx: RequestCtx) -> Result<Response, trembita_http::HttpError> {
-    match state
-        .extract_session_parts(ctx.method(), ctx.uri(), ctx.headers())
-        .await
-    {
-        Ok(id) => Ok(Response::json(
-            StatusCode::OK,
-            serde_json::json!({ "user": id.session_key() }),
-        )),
-        Err(e) => Ok(e.into_http_response()),
-    }
-}
+let mut handle = SessionHandle::open_for::<Append>(&state.app, session_key, Some(ttl))
+    .ok_or_else(|| HttpError::Internal("no chat host".into()))?;
+handle.fire_cap(Append { text: body.message }).await?;
 ```
+
+Legacy [`open_actor_session_parts`](../../crates/trembita/src/gateway/state.rs) (deprecated) alias [`open_worker_session_parts`](../../crates/trembita/src/gateway/state.rs); greenfield uses capability session mounts + `fire_cap` ([capability-greenfield-wire](../decisions/capability-greenfield-wire.md), [gateway-session-naming](../decisions/gateway-session-naming.md)).
 
 Integration tests: [`trembita/tests/gateway_http.rs`](../../crates/trembita/tests/gateway_http.rs).
 
@@ -259,11 +223,11 @@ See [read-consistency](../decisions/client-and-routing.md#read-consistency).
 
 ## Future polish
 
-Gateway auth: [`GatewayBearerIdentity`](../../crates/trembita/src/gateway/identity.rs) on [`GatewayOpts::identity`](../../crates/trembita/src/gateway/opts.rs) plus [`AuthMode::Identity`](../../crates/trembita-http/src/routing/auth.rs) on sticky WebSocket and login routes (see [`examples/realtime/`](../../examples/realtime/)). Custom routes use the same identity via [`TrembitaGatewayState::open_actor_session_parts`](../../crates/trembita/src/gateway/mod.rs).
+Gateway auth: [`GatewayBearerIdentity`](../../crates/trembita/src/gateway/identity.rs) on [`GatewayOpts::identity`](../../crates/trembita/src/gateway/opts.rs) plus [`AuthMode::Identity`](../../crates/trembita-http/src/routing/auth.rs) on sticky WebSocket and login routes (see [`examples/realtime/`](../../examples/realtime/)). Custom routes use the same identity via [`TrembitaGatewayState::open_worker_session_parts`](../../crates/trembita/src/gateway/state.rs).
 
 ## Related
 
 - [actor-routing](../decisions/actor-routing.md)
 - [cross-node-actors](../decisions/cross-node-actors.md)
 - [stateful-workers](stateful-workers.md) — durable history
-- [backlog.md](../backlog.md) — B-04
+- [status.md](../status.md) — sessions / gateway · [examples/realtime/](../../examples/realtime/)

@@ -3,9 +3,10 @@
 use std::sync::Arc;
 
 use trembita::{AuthMode, TrembitaApp, TrembitaGatewayState};
-use trembita_http::RouteTable;
+use trembita::RouteTable;
 
 /// Job API route table (identity-protected when gateway identity is configured).
+#[allow(dead_code)] // optional brownfield merge — `.jobs()` + `from_config` mounts `/jobs/*`
 #[must_use]
 pub fn route_table(state: &TrembitaGatewayState) -> RouteTable {
     TrembitaApp::jobs_api(Arc::clone(&state.app))

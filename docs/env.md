@@ -48,7 +48,7 @@ Register domain wiring in [`AppManifest`](../crates/trembita/src/app/manifest.rs
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | [`TREMBITA_LISTEN`](#trembita_listen) | yes (default `0.0.0.0:443`) | **One port number:** QUIC wire (UDP) + product/ops HTTP (TCP) on the same `host:port` |
-| [`TREMBITA_DATA_DIR`](#trembita_data_dir) | yes for queues/actors | redb, snapshots, persisted **`node-id`** after join |
+| [`TREMBITA_DATA_DIR`](#trembita_data_dir) | yes for queues + cap store | redb (`queue-*`, `actor-store.redb` / cap store), snapshots, persisted **`node-id`** after join |
 | [`TREMBITA_CERT_DIR`](#trembita_cert_dir) | yes in prod (or `dev-certs` feature locally) | Shared dir: `ca.pem`, `node-{id}.pem` — joiners boot with `node-0.pem`, reload after id assign |
 | [`TREMBITA_JOIN_SEEDS`](#trembita_join_seeds) | joiners only | `id@host:port` of a seed (`1@node1:443`) — **no static peer mesh** in the happy path |
 | [`GATEWAY_TOKEN`](#gateway_token) | optional | Bearer + `X-Trembita-User` for identity-protected `/jobs/*` and sticky routing ([gateway-identity](decisions/gateway-identity.md)) |
@@ -64,7 +64,7 @@ Common optional:
 
 ### `TREMBITA_LISTEN`
 
-Single published port per node. Wire and HTTP share the port **number** (different protocols). Default gateway surfaces bind here automatically when using [`from_env()`](../crates/trembita/src/app/runtime.rs).
+Single published port per node. Wire and HTTP share the port **number** (different protocols). Default gateway surfaces bind here automatically when using [`from_env()`](../crates/trembita/src/app/runtime.rs) / [`from_config()`](../crates/trembita/src/app/builder.rs) (ops + registration-driven APIs; not `/actors/*`).
 
 **Ops (zero config):** `/health`, `/ready`, `/metrics`, `/dashboard`, `/introspect/*` on the same listener — no manual `http::ops` merge. Opt out with [`.without_ops()`](../crates/trembita/src/app/builder.rs) only when ops live on another host.
 
@@ -83,7 +83,7 @@ Declare capabilities in [`AppManifest`](../crates/trembita/src/app/manifest.rs) 
 
 ### `TREMBITA_DATA_DIR`
 
-Enables durable job queue, actor store, and node id persistence. Required when `TREMBITA_JOB_QUEUE` is set.
+Enables durable job queue, **cap store** (`trembita::capstore`), and node id persistence. Required when `TREMBITA_JOB_QUEUE` is set.
 
 ### `TREMBITA_CERT_DIR`
 

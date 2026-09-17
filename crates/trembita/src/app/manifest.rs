@@ -127,7 +127,8 @@ impl AppManifest {
         self
     }
 
-    /// Stateful worker actor groups ([`WorkerGroup`] / [`workers!`](crate::workers)).
+    /// **Advanced:** legacy [`UserActor`](trembita_runtime::UserActor) worker groups ([`WorkerGroup`] /
+    /// [`workers!`](crate::workers)). Product stateful logic belongs in [`.capabilities`](Self::capabilities).
     #[must_use]
     pub fn workers(mut self, group: WorkerGroup) -> Self {
         self.workers = Some(group);

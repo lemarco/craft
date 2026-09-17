@@ -1,6 +1,8 @@
 # Getting started — product apps (no Redis)
 
-Quick path for **product teams** using [`TrembitaApp`](../crates/trembita/src/app/mod.rs) — **capabilities**, jobs, and durable workflow keys on **embedded redb** (library-first VPS deploy, no mandatory Redis).
+Quick path for **product teams** using [`TrembitaApp`](../crates/trembita/src/app/mod.rs) — **capabilities** (`capabilities/` + `#[cap_handler]`), jobs, and durable keys via **`trembita::capstore`** on **embedded redb** (library-first VPS deploy, no mandatory Redis).
+
+**Not the product path:** implementing [`UserActor`](../crates/trembita-runtime/src/registry/actor.rs) or exposing `/actors/*` — advanced only ([product-terminology](decisions/product-terminology.md), default [`without_actors_api`](../crates/trembita/src/configure.rs)).
 
 **Scenarios:** [scenarios/README.md](scenarios/README.md) · **Showcases:** [examples/README.md](../examples/README.md) · **Backlog:** [backlog.md](backlog.md)
 
@@ -48,7 +50,7 @@ Every process is a **QUIC cluster member**: solo `cargo run` is a one-node seed 
 | Style | When | Where capabilities go |
 |-------|------|------------------------|
 | **Scaffold** (`trembita new`) | Product services with standard layout | [`manifest.rs`](decisions/framework-conventions.md) + thin [`app.rs`](decisions/framework-conventions.md); edit capabilities manually — see [§9](#9-scaffold-a-new-project) |
-| **Builder in `main`** | Examples, prototypes, custom layouts | [`.jobs()` / `.topics()` / `.workers()`](../crates/trembita/src/app/builder.rs) on [`TrembitaAppBuilder`](../crates/trembita/src/app/mod.rs), or [`.manifest()`](../crates/trembita/src/app/manifest.rs) with [`AppManifest`](../crates/trembita/src/app/manifest.rs) |
+| **Builder in `main`** | Examples, prototypes, custom layouts | [`.manifest()`](../crates/trembita/src/app/manifest.rs) with [`AppManifest`](../crates/trembita/src/app/manifest.rs) (jobs, topics, **capabilities**); avoid `.workers()` unless advanced |
 
 Single-file minimal (same runtime as scaffold; no `manifest.rs`):
 
@@ -154,7 +156,7 @@ Reference KV [`StateMachine`](../crates/trembita-core/src/kv.rs) (`trembita::kv`
 
 Register ops in `capabilities/` + [`CapManifest`](decisions/capability-dx.md), call with `.via(&app)` — **prefer [`Route::Queued`](../crates/trembita/src/capability/route.rs) + `.default_queue_for::<YourReq>()`** on the group for durable work (same handler as inline; bridge idempotency when `data_dir` is set). HTTP: [`cap_fire` / `cap_invoke` / `cap_enqueue` / `cap_queued_wait` / `cap_schedule`](decisions/capability-dx.md#http-wave-2). Handlers use [`OpCtx::require_store()`](../crates/trembita/src/capability/ctx.rs) and [`.cap_deps(AppDeps)`](../crates/trembita/src/app/builder.rs) → [`OpCtx::deps`](../crates/trembita/src/capability/ctx.rs) for idempotency and injected ports. Policy: [capability-greenfield-wire](decisions/capability-greenfield-wire.md). Guide: [scenarios/capabilities.md](scenarios/capabilities.md).
 
-**Advanced — `consumers/` only:** raw [`#[consumer]`](../crates/trembita-macros/src/lib.rs) streams without a matching capability op, or [B-14k](backlog.md) queue→actor bridges. New backlog work should be a capability op + optional `Route::Queued`, not a standalone consumer module.
+**Advanced — `consumers/` only:** raw [`#[consumer]`](../crates/trembita-macros/src/lib.rs) streams without a matching capability op, or advanced queue→actor bridges (prefer capability ops + `Route::Queued`). New backlog work should be a capability op + optional `Route::Queued`, not a standalone consumer module.
 
 Scaffolded apps ship sample `POST /ping` → inline `app.ping` in `src/http/product.rs`.
 
@@ -293,10 +295,10 @@ See [WebSocket wiring](scenarios/websocket-wiring.md), [realtime-sessions](scena
 ## 9. Scaffold a new project
 
 ```bash
-# From the trembita repo (path dependency):
+# From the trembita repo (path dependency — init script resolves an absolute repo root):
 ./scripts/trembita-init.sh my-app
-# or:
-cargo run -p trembita-cli -- new my-app --trembita-path .
+# or (use an absolute --trembita-path if the project lives outside the repo):
+cargo run -p trembita-cli -- new my-app --trembita-path "$(pwd)"
 
 # With feature selection:
 cargo run -p trembita-cli -- new my-app \
@@ -307,18 +309,19 @@ Generates the [framework layout](decisions/framework-conventions.md):
 
 | Path | Role |
 |------|------|
-| `main.rs` | Boot only — `App::new(AppConfig::from_env()).run().await` |
-| `manifest.rs` | [`AppManifest::build()`](../crates/trembita/src/app/manifest.rs) — jobs, topics, capabilities (`// trembita:*` marker comments) |
-| `app.rs` | [`.manifest(manifest::build())`](../crates/trembita/src/app/builder.rs), [`.without_actors_api()`](../crates/trembita/src/app/builder.rs), gateway [`.gateway_routes()`](../crates/trembita/src/app/builder.rs), `.run()` |
-| `capabilities/`, `consumers/`, `http/`, `domain/` | Typed ops, job handlers, `cap_*` routes, hexagon |
+| `main.rs` | Boot only — `App::new(config::from_env()?).run().await` + tracing init |
+| `manifest.rs` | [`manifest::build()`](../crates/trembita/src/app/manifest.rs) → [`AppManifest`](../crates/trembita/src/app/manifest.rs) (jobs, capabilities; `// trembita:*` marker regions for topics/workers) |
+| `app.rs` | [`TrembitaApp::from_config`](../crates/trembita/src/app/builder.rs), [`.manifest(manifest::build())`](../crates/trembita/src/app/builder.rs), [`.configure(TrembitaConfigure::…)`](../crates/trembita/src/configure.rs), [`.without_actors_api()`](../crates/trembita/src/app/builder.rs), [`.cap_deps`](../crates/trembita/src/capability/deps.rs), [`.gateway_routes()`](../crates/trembita/src/app/builder.rs), `.run()` |
+| `capabilities/`, `consumers/`, `http/`, `domain/` | Typed ops, `#[consumer]` handlers, `cap_*` in `http/product.rs`, hexagon |
 | `actors/` | Optional (`--features actors`) — advanced `UserActor` only |
-| `deploy/` | Local cluster env + compose |
+| `deploy/` | `.env.example` + optional `docker-compose.yml` for local cluster |
 
 Add capabilities by editing **`src/manifest.rs`** (`// trembita:capabilities` region) and **`src/capabilities/`**,
 wire HTTP in **`src/http/product.rs`** ([`cap_invoke`](../crates/trembita/src/gateway/cap_handlers.rs)), add job handlers under `consumers/`. Then:
 
 ```bash
 trembita doctor   # manifest ↔ files consistency (read-only)
+cargo check       # greenfield scaffold should compile (sample job + /ping cap route)
 ```
 
 ## 10. Observability & ops

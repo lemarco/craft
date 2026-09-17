@@ -117,6 +117,8 @@ Request/response types: `CatalogAddRequest` / `CatalogAddResponse` in `trembita-
 
 ### Actor delivery (cross-node, v1)
 
+**Inter-node mTLS wire only** — not product HTTP `/actors/*` ([product-terminology](decisions/product-terminology.md)). Used by the runtime for mailboxes, capability hosts, and advanced workers.
+
 | Route | Purpose |
 |-------|---------|
 | `POST /raft/v1/actor/deliver` | Message / ask to actor mailbox |
@@ -158,9 +160,9 @@ Content-Type: application/x-postcard
 | `.../metrics` | `QueueMetricsRequest` | `QueueMetricsReply` | `pending`, `leased`, `oldest_pending_age_ms` for autoscale |
 | `.../replicate` | `QueueReplicateRequest` | `QueueReplicateReply { error }` | Idempotent `QueueReplicateOp` batch; leader-authenticated |
 
-### Actor workflow store (workflow keys)
+### Cap store / workflow keys (`actor-store` wire name)
 
-Leader-gated durable KV for stateful actors ([actor-state-store](decisions/actor-state-store.md)). Same leader-forward + voter-replicate pattern as the job queue. Default file: `{data_dir}/actor-store.redb`.
+Leader-gated durable KV for capability op state ([actor-state-store](decisions/actor-state-store.md), product [`trembita::capstore`](../crates/trembita/src/capstore.rs)). Same leader-forward + voter-replicate pattern as the job queue. Default file: `{data_dir}/actor-store.redb`.
 
 ```
 POST /raft/v1/actor-store/set

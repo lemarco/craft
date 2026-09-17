@@ -41,7 +41,10 @@ pub use identity::{
 };
 pub use opts::GatewayOpts;
 pub use router::{WrappedGatewayService, build_gateway_service};
-pub use session::{NoWorkerError, OpenActorSessionError, SessionHandle};
+pub use session::{NoWorkerError, OpenWorkerSessionError, SessionHandle};
+
+#[allow(deprecated)]
+pub use session::OpenActorSessionError;
 pub use spawn::{GatewaySpawnError, spawn_gateway};
 pub use state::TrembitaGatewayState;
 

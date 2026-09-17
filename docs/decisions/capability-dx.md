@@ -2,17 +2,13 @@
 
 **Status:** Accepted  
 **Date:** 2026-09-16  
-**Epic:** [B-21](../backlog.md#b-21--capability-dx-product-api)
+**Backlog:** B-21 … B-27 (shipped)
 
 ## Context
 
 Product teams want **one mental model** for cluster work: typed operations, location-transparent
 execution, good performance (postcard wire, single binary), without choosing up front between
-“sync service” and “async job”. Today that split is visible in APIs:
-
-- Stateful / RPC-ish paths → `UserActor`, `WorkerOpts`, manual `cast`/`ask` bytes
-- Backlog paths → `#[consumer]`, separate streams and handlers
-- Bridge patterns (queue → actor) are manual ([B-14k](../backlog.md))
+“sync service” and “async job”. **Shipped (0.6):** that model is **capabilities** — routes at call site, shared groups, gateway `cap_*`. Legacy split (app `UserActor`, manual cast bytes, queue→actor bridges) remains **advanced** only ([capability-parity](../scenarios/capability-parity.md), [product-terminology](product-terminology.md)).
 
 **Capability** is the product name for a **registered operation** (`Op`) with explicit **routes**
 (how to invoke), shared **group** state when needed, and **domain logic** kept in plain functions.

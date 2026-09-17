@@ -1,9 +1,5 @@
 # Archive
 
-Frozen snapshots kept for archaeology only — **not** maintained.
+Local-only snapshots — **not linked from maintained docs** and safe to delete.
 
-| File | Contents |
-|------|----------|
-| [CHANGELOG-pre-1.0.md](CHANGELOG-pre-1.0.md) | Early `0.x` Keep a Changelog entries (links inside may be stale) |
-
-Current product docs: [../status.md](../status.md), [../env.md](../env.md), [../decisions/](../decisions/).
+Nothing in [../README.md](../README.md), [../backlog.md](../backlog.md), ADRs, or release notes depends on files here. Use git history if you need old planning text.

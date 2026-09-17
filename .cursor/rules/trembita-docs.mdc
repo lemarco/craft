@@ -30,11 +30,16 @@ Use only **in-repo** illustrations:
 
 Decision records describe **current** trembita design — not third-party adoption timelines or out-of-repo parity tooling.
 
+## Product docs: capabilities, not actors
+
+For product-facing text ([getting-started](../../docs/getting-started.md), scenarios, env, README, facade rustdoc), follow [product-terminology](../../docs/decisions/product-terminology.md): lead with **`CapManifest` / `#[cap_handler]` / `cap_*`**. Mention **`UserActor`**, `/actors/*`, `cast`/`ask` only under **Advanced** (defaults: `without_actors_api`, `http_cast = false`).
+
 ## Pre-1.0 (no history narrative)
 
 Until **1.0**, docs describe **what to do now**, not what changed between `0.x` releases:
 
 - No version-to-version migration guides ([docs/README.md](../../docs/README.md))
-- No detailed [CHANGELOG.md](../../CHANGELOG.md) entries (archive only: [docs/archive/](../../docs/archive/))
+- No detailed [CHANGELOG.md](../../CHANGELOG.md) entries until 1.0 — use [docs/releases/](../../docs/releases/) for upgrade guides
+- Do **not** link to [docs/archive/](../../docs/archive/) from maintained docs (archive may be deleted)
 - ADRs: problem + decision + consequences — avoid “removed in 0.x”, “breaking from 0.y”, and old-vs-new comparison tables unless essential to the decision
 - Prefer **ops HTTP** / **`TREMBITA_LISTEN`** over separate “admin port” or third-party router names; backlog items describe shipped [`RouteTable`](../crates/trembita-http/src/routing/table.rs) APIs, not removed stacks

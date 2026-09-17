@@ -1,4 +1,6 @@
-//! Declarative actor (worker) registration for [`TrembitaAppBuilder`](super::app::TrembitaAppBuilder).
+//! **Advanced:** declarative [`UserActor`](trembita_runtime::UserActor) worker registration for
+//! [`TrembitaAppBuilder`](super::app::TrembitaAppBuilder). Product apps register
+//! [`CapManifest`](crate::capability::CapManifest) instead.
 
 use std::marker::PhantomData;
 use std::time::Duration;
@@ -24,9 +26,10 @@ pub enum WorkerScale {
     },
 }
 
-/// One managed actor group with explicit scale and optional queue autoscale.
+/// One managed **legacy worker** ([`UserActor`](trembita_runtime::UserActor)) group with scale and optional queue autoscale.
 ///
-/// Scale and optional queue autoscale for [`AppManifest::workers`](crate::AppManifest::workers).
+/// **Advanced** — see [`AppManifest::workers`](crate::AppManifest::workers). HTTP `/actors/*` stays off unless
+/// [`.http_cast(true)`](Self::http_cast) and [`TrembitaAppBuilder::with_actors_api`](crate::TrembitaAppBuilder::with_actors_api).
 ///
 /// Register several heterogeneous worker types via [`WorkerGroup`] or the [`workers!`](crate::workers) macro
 /// (call as `workers!(…)`):

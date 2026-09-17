@@ -142,7 +142,7 @@ pub fn mount_sticky_websocket_group(
         let on_connected = Arc::clone(&on_connected);
         Box::pin(async move {
             match state
-                .open_actor_session_parts(&group, req.method(), req.uri(), req.headers(), ttl)
+                .open_worker_session_parts(&group, req.method(), req.uri(), req.headers(), ttl)
                 .await
             {
                 Ok(handle) => {

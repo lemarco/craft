@@ -1,6 +1,6 @@
 # trembita
 
-**A distributed Raft + actor framework for Rust: one codebase, N nodes, elastic and self-healing.**
+**A distributed Raft runtime for Rust: one codebase, N nodes, elastic and self-healing. Product apps use typed capabilities — not app-authored actors.**
 
 [![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![rust](https://img.shields.io/badge/rustc-1.94%2B-orange.svg)](#msrv)
@@ -14,7 +14,7 @@
 
 **Problem:** Running a stateful app on multiple VPS or bare-metal nodes usually means bolting together separate pieces — a consensus library, an actor runtime, a transport layer, mTLS, membership, observability — and wiring them yourself.
 
-**Idea:** Embed consensus + actors in *your* binary. Same artifact on every node; the cluster bootstraps, elects a leader, replicates a linearizable state machine, and hosts supervised actors that can message and migrate across nodes. No sidecar, no separate control plane.
+**Idea:** Embed consensus + coordination in *your* binary. Same artifact on every node; the cluster bootstraps, elects a leader, replicates a linearizable state machine, and runs **capabilities**, jobs, topics, and workflows on a shared runtime (actors exist internally — you register **`#[cap_handler]`** ops, not `UserActor` for product work). No sidecar, no separate control plane.
 
 **Product teams:** jobs, event topics, stateful workers, real-time sessions, and workflows on **embedded redb** — library-first on VPS, no mandatory Redis. Start with [docs/getting-started.md](docs/getting-started.md) and [docs/scenarios/README.md](docs/scenarios/README.md).
 
@@ -31,7 +31,7 @@
 
 ### Highlights
 
-- Pure Raft FSM, HTTP/3/mTLS, redb persistence, cross-node actors
+- Pure Raft FSM, HTTP/3/mTLS, redb persistence, capability platform (runtime actors internal)
 - Multi-Raft write scaling: **Meta-Raft coordinator** (join/catalog/saga isolated from user groups), dynamic catalog, stable shards, group migration, per-group membership
 - Cross-shard saga coordinator + optional 2PC; follower/lease reads
 - mTLS hot reload, reachability-driven supervisor, `trembita-ops` backup

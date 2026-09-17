@@ -286,6 +286,7 @@ publish = false
 {trembita_dep}
 tokio = {{ version = "1", features = ["rt-multi-thread", "macros", "signal"] }}
 tracing = "0.1"
+serde = {{ version = "1", features = ["derive"] }}
 {extra_deps}
 [features]
 default = [{default_features}]
@@ -360,9 +361,7 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
             "use crate::consumers::sample::{HandleSampleConsumer, STREAM as SAMPLE_STREAM};"
                 .to_string(),
         );
-        imports.push(
-            "use trembita::{IdempotencyOpts, InMemoryStore, JobOpts, JobsPreset};".to_string(),
-        );
+        imports.push("use trembita::{InMemoryStore, JobsPreset};".to_string());
     }
     if features.contains(&AppFeature::Topics) {
         imports.push("use trembita::TopicOpts;".to_string());
@@ -388,6 +387,11 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
     );
 
     let mut body = String::new();
+    if !features.contains(&AppFeature::Topics) {
+        body.push_str("    // trembita:topics\n    // trembita:topics-end\n\n");
+    }
+    body.push_str("    // trembita:workers\n    // trembita:workers-end\n\n");
+
     let mut chain = String::from("    AppManifest::new()");
 
     if features.contains(&AppFeature::Jobs) {
@@ -557,11 +561,11 @@ fn generate_app_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -> Str
     }
 
     let mut builder = String::from(
-        "        let cfg = self.config;\n        let data_dir = cfg.data_dir.clone();\n        let manifest = manifest::build();\n        TrembitaApp::from_config(cfg)?\n",
+        "        let cfg = self.config;\n        let data_dir = cfg.data_dir.clone();\n        let manifest = manifest::build();\n        TrembitaApp::from_config(cfg)\n",
     );
     builder.push_str("            .manifest(manifest)\n");
     builder.push_str(
-        "            .configure({\n                let mut c = TrembitaConfigure::default().with_local_gateway_apis();\n                c.data_dir = data_dir;\n                c\n            })\n            .cap_deps(CapDeps::new(AppDeps::new()))\n",
+        "            .configure({\n                let mut c = TrembitaConfigure::default().with_local_gateway_apis();\n                c.data_dir = data_dir;\n                c\n            })\n            .without_actors_api()\n            .cap_deps(CapDeps::new(AppDeps::new()))\n",
     );
 
     if features.contains(&AppFeature::Gateway) {

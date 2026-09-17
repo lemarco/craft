@@ -40,22 +40,27 @@ pub struct TrembitaConfigure {
     pub reconcile_period: Duration,
     /// Actor directory publish interval.
     pub directory_publish_period: Duration,
-    /// When `true`, omit ops HTTP (`/health`, `/ready`, `/metrics`, `/dashboard`, …).
+    /// When `true`, omit ops HTTP (`/health`, `/ready`, `/metrics`, `/dashboard`, …). Or use
+    /// [`TrembitaAppBuilder::without_ops`](crate::TrembitaAppBuilder::without_ops).
     #[cfg(feature = "http-jobs")]
     pub without_ops: bool,
-    /// When `true`, omit `POST/GET /jobs/*` on the default gateway.
+    /// When `true`, omit `POST/GET /jobs/*` on the default gateway. Or use
+    /// [`TrembitaAppBuilder::without_jobs_api`](crate::TrembitaAppBuilder::without_jobs_api).
     #[cfg(feature = "http-jobs")]
     pub without_jobs_api: bool,
-    /// When `true`, omit job schedule HTTP on the default gateway.
+    /// When `true`, omit job schedule HTTP on the default gateway. Or use
+    /// [`TrembitaAppBuilder::without_schedules_api`](crate::TrembitaAppBuilder::without_schedules_api).
     #[cfg(feature = "http-jobs")]
     pub without_schedules_api: bool,
-    /// When `true`, omit `/actors/*` (use [`WorkerOpts::http_cast`](crate::WorkerOpts::http_cast)).
+    /// When `true`, omit `/actors/*`. Same as [`TrembitaAppBuilder::without_actors_api`](crate::TrembitaAppBuilder::without_actors_api).
     #[cfg(feature = "http-jobs")]
     pub without_actors_api: bool,
-    /// When `true`, omit `POST /workflows/*` on the default gateway.
+    /// When `true`, omit `POST /workflows/*` on the default gateway. Or use
+    /// [`TrembitaAppBuilder::without_workflows_api`](crate::TrembitaAppBuilder::without_workflows_api).
     #[cfg(feature = "http-jobs")]
     pub without_workflows_api: bool,
-    /// When `true`, omit topic publish/metrics HTTP on the default gateway.
+    /// When `true`, omit topic publish/metrics HTTP on the default gateway. Or use
+    /// [`TrembitaAppBuilder::without_topics_api`](crate::TrembitaAppBuilder::without_topics_api).
     #[cfg(feature = "http-jobs")]
     pub without_topics_api: bool,
 }

@@ -97,7 +97,7 @@ Add label **`run-heavy`** to an MR to run e2e and Redis integration without wait
 Recommended one-liner (gate + bump + tag + publish + push + release build):
 
 ```bash
-# 1. Pre-1.0: optional archive note only; detailed CHANGELOG from 1.0 (see CHANGELOG.md)
+# 1. Pre-1.0: docs/releases/X.Y.Z.md upgrade guide; detailed CHANGELOG from 1.0 (see CHANGELOG.md)
 ./scripts/release.sh 0.7.0 --publish
 ```
 

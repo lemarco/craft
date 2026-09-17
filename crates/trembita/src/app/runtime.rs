@@ -69,7 +69,10 @@ impl TrembitaApp {
 
     /// Load cluster + optional job-queue registration from `TREMBITA_*`, then add domain wiring (`.jobs`, `.consumers`, …).
     ///
-    /// Product HTTP on `TREMBITA_LISTEN` gets default ops/jobs/actors/workflow surfaces from registration flags.
+    /// When `TREMBITA_LISTEN` is set, [`from_config`](crate::TrembitaAppBuilder::from_config) enables ops and
+    /// registration-driven product HTTP (jobs, workflows, topics, capabilities). Override with
+    /// [`.configure`](crate::TrembitaAppBuilder::configure) / [`without_*`](crate::TrembitaAppBuilder::without_jobs_api).
+    /// **`/actors/*` stays off** until [`.with_actors_api`](crate::TrembitaAppBuilder::with_actors_api) + [`WorkerOpts::http_cast`](crate::WorkerOpts::http_cast).
     /// Prefer [`Self::from_config`] when configuration is already parsed in `main`.
     ///
     /// # Errors
@@ -408,13 +411,16 @@ impl TrembitaApp {
             .await
     }
 
-    /// Worker group names known cluster-wide (from the actor directory).
+    /// Worker group names known cluster-wide (runtime actor directory).
+    ///
+    /// **Advanced:** product apps use capability groups ([`CapManifest`](crate::CapManifest)), not custom
+    /// [`UserActor`](trembita_runtime::UserActor) workers.
     #[must_use]
     pub fn worker_groups(&self) -> Vec<String> {
         self.cluster.directory().groups()
     }
 
-    /// Instances registered for a worker group.
+    /// Instances registered for a worker group (**advanced** — see [`Self::worker_groups`]).
     #[must_use]
     pub fn workers(&self, group: &str) -> Vec<WorkerInfo> {
         self.cluster
@@ -428,7 +434,8 @@ impl TrembitaApp {
             .collect()
     }
 
-    /// Round-robin cast to any instance in `group`.
+    /// Round-robin cast to any instance in `group` (**advanced** — migration / tooling; product code uses
+    /// [`invoke`](crate::invoke) / [`fire`](crate::fire) on capabilities).
     ///
     /// # Errors
     /// Returns [`CastError::NoTarget`] when the group has no live workers.
@@ -436,7 +443,7 @@ impl TrembitaApp {
         self.cluster.messaging().cast(group, payload).await
     }
 
-    /// Round-robin ask (request/reply) to any instance in `group`.
+    /// Round-robin ask (request/reply) to any instance in `group` (**advanced** — see [`Self::cast`]).
     ///
     /// # Errors
     /// Returns [`ClusterAskError`] when the group has no workers, delivery fails, or the handler
@@ -445,7 +452,7 @@ impl TrembitaApp {
         self.cluster.messaging().ask(group, payload).await
     }
 
-    /// Cast to a sticky session opened via [`Self::session`].
+    /// Cast to a sticky session opened via [`Self::session`] (**advanced** raw mailbox API).
     ///
     /// # Errors
     /// Returns [`CastError`] when the session target is gone or delivery fails.
@@ -460,7 +467,7 @@ impl TrembitaApp {
             .await
     }
 
-    /// Ask through a sticky session opened via [`Self::session`].
+    /// Ask through a sticky session opened via [`Self::session`] (**advanced** — see [`Self::cast_session`]).
     ///
     /// # Errors
     /// Returns [`ClusterAskError`] when the session target is gone, delivery fails, or the
@@ -473,7 +480,8 @@ impl TrembitaApp {
         self.cluster.messaging().ask_session(session, payload).await
     }
 
-    /// Open a sticky session to a keyed worker pool (product helper).
+    /// Open a sticky session to a keyed worker pool (**advanced**; product realtime uses capability
+    /// [`Route::Session`](crate::Route) + gateway [`SessionHandle`](crate::SessionHandle)).
     pub fn session<K: Hash>(
         &self,
         group: &str,
@@ -760,15 +768,10 @@ impl TrembitaApp {
         )
     }
 
-    /// HTTP actor cast / ask API. Requires `http-jobs` feature.
+    /// HTTP `/actors/*` cast / ask routes (**advanced** / migration). Requires `http-jobs` feature.
     ///
-    /// ```no_run
-    /// # use std::sync::Arc;
-    /// # use trembita::TrembitaApp;
-    /// # async fn demo(app: Arc<TrembitaApp>) {
-    /// let _api = TrembitaApp::actors_api(app);
-    /// # }
-    /// ```
+    /// Default product boot omits this ([`TrembitaAppBuilder::without_actors_api`]). Enable with
+    /// [`WorkerOpts::http_cast`](crate::WorkerOpts::http_cast) + [`TrembitaAppBuilder::with_actors_api`].
     #[cfg(feature = "http-jobs")]
     pub fn actors_api(app: Arc<Self>) -> trembita_http::ActorsApi {
         let ask_app = Arc::clone(&app);

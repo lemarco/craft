@@ -1,11 +1,11 @@
-# Product scenarios — actor-first platform (no mandatory Redis)
+# Product scenarios — capability-first platform (no mandatory Redis)
 
 **Status:** Accepted  
 **Date:** 2026-08-28
 
 ## Context
 
-trembita targets **product teams**, not teams whose primary job is wiring a separate microservice mesh. The deployment model is [library-first](deployment-model.md): **one Rust codebase**, **one binary**, **N identical VPS processes** that join a cluster incrementally. Scale unit = **actors and VPS count**, not new Deployments or service meshes.
+trembita targets **product teams**, not teams whose primary job is wiring a separate microservice mesh. The deployment model is [library-first](deployment-model.md): **one Rust codebase**, **one binary**, **N identical VPS processes** that join a cluster incrementally. Product logic is registered as **capabilities**, jobs, and topics — not app-authored [`UserActor`](../../crates/trembita-runtime/src/registry/actor.rs) groups ([product-terminology](product-terminology.md)).
 
 Five application patterns cover most distributed product work:
 
@@ -13,8 +13,8 @@ Five application patterns cover most distributed product work:
 |----------|------------------|-------|
 | Background jobs | Sidekiq-style durable queue | [background-jobs](../scenarios/background-jobs.md) |
 | Event topics | Pub/sub with independent subscribers | [event-topics](../scenarios/event-topics.md) |
-| Stateful workers | Crash-safe actors + migration | [stateful-workers](../scenarios/stateful-workers.md) |
-| Real-time / session | Sticky actors + stateless gateway | [realtime-sessions](../scenarios/realtime-sessions.md) |
+| Stateful workers | Durable ops + cap store (advanced RAM migration demo) | [stateful-workers](../scenarios/stateful-workers.md) |
+| Real-time / session | Sticky sessions + capability WS | [realtime-sessions](../scenarios/realtime-sessions.md) |
 | Workflow | Saga coordination (not embedded DB) | [workflows](../scenarios/workflows.md) |
 
 All five compose on the same runtime. No separate job server, workflow server, or mandatory external KV.
@@ -23,16 +23,16 @@ All five compose on the same runtime. No separate job server, workflow server, o
 
 ### Positioning
 
-> **Trembita** — a **distributed coordination runtime**: cache hooks, job queue, actors, workflow machinery, cron. **Same [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) API** on one laptop or N VPSes. Domain data stays in **your** Postgres / services — trembita is not an application database. Cluster membership is **automatic** (seed + join); graceful shutdown drains actors and can leave the cluster. No mandatory Redis.
+> **Trembita** — a **distributed coordination runtime**: job queue, **typed capabilities**, workflow machinery, cron, event topics. **Same [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) API** on one laptop or N VPSes. Domain data stays in **your** Postgres / services — trembita is not an application database. Cluster membership is **automatic** (seed + join); graceful shutdown drains runtime workers and can leave the cluster. No mandatory Redis.
 
 ### Coordination vs domain data
 
 | Built into trembita | Stays external |
 |-------------------|----------------|
 | Job queue, cron, lease/ack | Business tables (Postgres, …) |
-| Actors, sessions, directory | Authoritative domain SM as product DB |
-| Saga / workflow **journal** | Long-running side effects via enqueue / HTTP / cast |
-| `ActorStateStore` (idempotency, step keys) | Mandatory Redis |
+| Capability hosts, sessions, directory (runtime) | Authoritative domain SM as product DB |
+| Saga / workflow **journal** | Long-running side effects via enqueue / HTTP / capability ops |
+| **Cap store** (`trembita::capstore`, idempotency keys) | Mandatory Redis |
 
 Advanced teams may embed a custom [`StateMachine`](../../crates/trembita-core/src/lib.rs) via [`TrembitaCluster`](../../crates/trembita/src/cluster.rs) — that is **not** the default [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) product path.
 
@@ -40,12 +40,13 @@ Advanced teams may embed a custom [`StateMachine`](../../crates/trembita-core/sr
 
 | Layer | Mechanism | Product use |
 |-------|-----------|-------------|
-| **Actor mailbox** | `send` / `ask` / `ActorSession` | RPC, sync HTTP, real-time session to a pinned worker |
-| **Job queue** | `JobQueue` → `RedbJobQueue` | Async backlog, many workers, autoscale |
+| **Capabilities** | `CapRequest` + [`Route`](../../crates/trembita/src/capability/route.rs) (`Inline`, `Queued`, `Session`, …) | Default path: HTTP `cap_*`, in-process `.via(&app)`, cluster `CapWire` |
+| **Job queue** | `JobQueue` → `RedbJobQueue` | Async backlog, consumers, autoscale |
 | **Event topic** | `EventTopic` → `RedbEventTopic` | Fan-out domain events; per-subscription cursors ([event-topics](event-topics.md)) |
-| **Workflow machinery** | Meta-Raft saga journal + steps | Multi-step processes with compensators; steps call mailbox/queue/topic or external APIs |
+| **Workflow machinery** | Meta-Raft saga journal + steps | Multi-step processes; steps call capability ops, enqueue, or external APIs |
+| **Sessions (realtime)** | `SessionHandle` + sticky routing | WebSocket / long-lived ingress ([realtime-sessions](../scenarios/realtime-sessions.md)) |
 
-Actor **workflow keys** (idempotency, step progress outside SM) use [`ActorStateStore`](actor-state-store.md) — default path **`redb`**, not Redis.
+Durable op state (idempotency, step keys) uses [`trembita::capstore`](../../crates/trembita/src/capstore.rs) — default **`redb`**, not Redis. Raw **`cast`/`ask`** mailboxes are **advanced** ([product-terminology](product-terminology.md)).
 
 See [job-queue](job-queue.md) for why mailboxes and Raft logs are not misused as queues.
 
@@ -62,7 +63,7 @@ See [job-queue](job-queue.md) for why mailboxes and Raft logs are not misused as
 
 ### Homogeneous nodes — compute tokens (B-16)
 
-Every VPS runs the **same binary** (gateway when configured + job consumers + actors). There is no fleet-wide “gateway pool vs worker pool” env switch.
+Every VPS runs the **same binary** (gateway when configured + job consumers + capability runtime). There is no fleet-wide “gateway pool vs worker pool” env switch.
 
 When ingress is quiet, **job consumers use spare CPU** on that node (night batch scenario). When gateway load rises, a per-node **workload governor** throttles consumer parallelism so API latency stays bounded — without rescaling the cluster.
 
@@ -128,7 +129,7 @@ Typical flows:
 
 ### Shipped capabilities and open work
 
-This ADR states **product positioning and composition**. What is implemented today and what remains optional lives in [status.md](../status.md) (current index) and [backlog.md](../backlog.md) (open work) — not duplicated here.
+This ADR states **product positioning and composition**. What is implemented today and what remains optional lives in [status.md](../status.md) (current index) and [backlog.md](../backlog.md#open-work) (open work) — not duplicated here.
 
 ## Consequences
 

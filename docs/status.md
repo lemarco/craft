@@ -25,7 +25,7 @@
 | Workflows | [scenarios/workflows.md](scenarios/workflows.md) | ✅ Meta-Raft saga journal |
 | Product API | [getting-started.md](getting-started.md) | ✅ `capabilities/` + **`async` [`#[cap_handler]`](../crates/trembita-macros/src/lib.rs)** + gateway [`cap_*`](../crates/trembita/src/gateway/cap_handlers.rs); `/actors/*` off by default ([`WorkerOpts::http_cast`](../crates/trembita/src/worker_opts.rs) advanced) |
 
-**Platform core:** pure Raft FSM, HTTP/3/mTLS, redb persistence, cross-node actors, multi-Raft sharding, cross-shard saga/2PC, self-update coordinator, E2E/chaos.
+**Platform core:** pure Raft FSM, HTTP/3/mTLS, redb persistence, supervised runtime (capability hosts + optional advanced `UserActor`), multi-Raft sharding, cross-shard saga/2PC, self-update coordinator, E2E/chaos. Product surface: [product-terminology](decisions/product-terminology.md).
 
 **Not goals:** linearizable actor `ask`, global cross-shard serializable isolation. **Optional work:** [backlog.md](backlog.md#open-work).
 
@@ -58,16 +58,17 @@ Details below ↓
 - `trembita-ops` snapshot backup/restore; rolling wire N/N−1 compatibility
 - **Self-update coordinator** — `trembita_core::upgrade` reference SM, leader reconcile + local executor (`trembita::upgrade`), HTTP `GET/POST /cluster/upgrade*` ([upgrade-coordinator](decisions/upgrade-coordinator.md), [examples/self-update](../examples/self-update/))
 
-### Actors
+### Capabilities (product)
 
-- Cross-node actors, auto-spawn on join, one worker per VPS (production)
-- Consistent-hash ring keyed routing, sticky `ActorSession`, per-group drain override (`TREMBITA_DRAIN_TIMEOUT`)
-- Optional `DirectoryPolicy::ReadYourWrites` and `ask_linearizable` (directory visibility, not Raft-linearizable actor state)
-- **Durable mailbox spool** — redb outbox/inbox for cross-node `/actor/deliver` (`.durable_mailbox(true)` + `data_dir`)
-- **Durable actor workflow store** — `RedbActorStateStore` + voter replication; auto with `.data_dir()` ([actor-state-store](decisions/actor-state-store.md))
-- **Actor store TTL + GC** — per-key TTL on `set`/`set_with_ttl`; periodic leader GC ticker replicates expired-key deletes to voters
-- **Product API** — [`TrembitaApp`](../crates/trembita/src/app/mod.rs), [`AppManifest`](../crates/trembita/src/app/manifest.rs) (scaffold registry), [getting-started.md](getting-started.md)
-- Redis-backed `ActorStateStore` (`trembita` feature `redis-store`); actor migration RPC
+- [`CapManifest`](../crates/trembita/src/capability/manifest.rs), `#[cap_handler]`, routes (`Inline`, `Queued`, `Session`, …), gateway `cap_*`, `OpCtx` store/deps/ingress — [capability-dx](decisions/capability-dx.md), [getting-started.md](getting-started.md)
+- Default gateway **without** `/actors/*` ([product-terminology](decisions/product-terminology.md))
+
+### Runtime placement (internal + advanced)
+
+- Supervised workers (capability **`CapHost`**, optional app **`UserActor`**), cross-node deliver, auto-spawn on join, one instance/VPS typical in production
+- Consistent-hash ring, sticky `ActorSession`, per-group drain (`TREMBITA_DRAIN_TIMEOUT`); directory RYW / `ask_linearizable` (visibility, not SM-linearizable reads)
+- **Cap store** — `RedbActorStateStore` + voter replication; auto with `.data_dir()` ([actor-state-store](decisions/actor-state-store.md)); TTL/GC; optional Redis (`redis-store`); migration RPC for advanced workers
+- **Durable mailbox spool** — assembly-only [`durable_mailbox`](../crates/trembita-assembly/src/builder/cluster/config.rs) + `/actor/deliver` wire (not `TrembitaApp` today)
 
 **Job queue** ([job-queue](decisions/job-queue.md)): `RedbJobQueue`, batch enqueue/ack, prefetch, DLQ, cron, `ClusterJobQueue`, `#[trembita::consumer]`, autoscale; **`ExternalBacklog`** ([external-backlog](decisions/external-backlog.md), facade feature `external-backlog`); **`ScheduleSource`** ([schedule-source](decisions/schedule-source.md)).
 
@@ -75,11 +76,9 @@ Details below ↓
 
 **Gateway & HTTP** ([unified-listener](decisions/unified-listener.md), [gateway-routing-v2](decisions/gateway-routing-v2.md), [gateway-identity](decisions/gateway-identity.md)): one TCP bind on `TREMBITA_LISTEN`; default ops/jobs surfaces from env boot or explicit `.surfaces()`; `AuthMode` on route tables; native `Gateway`/`RouteTable` + hyper WebSocket. Cluster-only: [`spawn_cluster_ops_http`](../crates/trembita/src/gateway/cluster_ops.rs). Env: [env.md](env.md).
 
-**Workload governor** ([workload-governor](decisions/workload-governor.md)): per-node compute tokens + consumer tuning from gateway connections and queue depth; subprocess load via [`compute_cost`](../crates/trembita/src/job_opts.rs) + optional [`ExternalLoad`](decisions/external-load.md) ([B-17](backlog.md#b-17--external-compute-load)).
+**Workload governor** ([workload-governor](decisions/workload-governor.md)): per-node compute tokens + consumer tuning from gateway connections and queue depth; subprocess load via [`compute_cost`](../crates/trembita/src/job_opts.rs) + optional [`ExternalLoad`](decisions/external-load.md) ([external-load](decisions/external-load.md)).
 
 **Consumer DX** — `#[consumer_json]`, `ConsumerOpts::on_app`, `IdempotencyOpts::retain_for`, graceful drain, workflow step helpers.
-
-**Capability DX (B-21–B-23)** — [`CapManifest`](../crates/trembita/src/capability/manifest.rs), routes (`Inline` … `Event`), gateway adapters, scaffold `capabilities/ping`, [ADR](decisions/capability-dx.md).
 
 **E2E & showcases** — `./e2e/queue.sh`, gateway/idempotency scripts; `examples/background-jobs`, `stateful-workers`, `realtime`, `workflows`.
 
@@ -153,7 +152,7 @@ Documented in [future-work-and-risks](decisions/future-work-and-risks.md):
 |-----|---------|
 | [examples/README.md](../examples/README.md) | Product showcases (local + QUIC cluster) |
 | [scenarios/README.md](scenarios/README.md) | Product scenario index |
-| [backlog.md](backlog.md) | Open work + shipped epic archive |
+| [backlog.md](backlog.md) | Open work |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Contributor guide (humans) |
 | [architecture.md](architecture.md) | Crate graph, data flows |
 | [decisions/](decisions/) | Design decision records |

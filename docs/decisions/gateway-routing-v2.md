@@ -48,7 +48,7 @@ Use [`GatewayOpts::surfaces`](../../crates/trembita/src/gateway/opts.rs) — not
 
 - **hyper** edge for plain HTTP, TLS, and WebSocket upgrades ([`drain.rs`](../../crates/trembita/src/gateway/drain.rs)).
 - **tower** middleware: connection tracking, rate limit, body limit, CORS, session gates.
-- [`TrembitaGatewayState::open_actor_session_parts`] for sticky WebSocket sessions.
+- [`TrembitaGatewayState::open_worker_session_parts`](../../crates/trembita/src/gateway/state.rs) for sticky WebSocket sessions.
 
 ### Built-in product APIs
 

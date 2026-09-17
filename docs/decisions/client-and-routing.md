@@ -5,7 +5,7 @@
 
 ## Context
 
-Trembita is **Rust-native, no gRPC**. Clients may connect to any node; only the leader appends to the log. Actor messages need cluster-wide routing. Reads of authoritative state must define a consistency level.
+Trembita is **Rust-native, no gRPC**. Clients may connect to any node; only the leader appends to the log. **Product** cluster work goes through **capabilities** (`.via(&app)`) and jobs — not hand-built mailbox bytes ([product-terminology](product-terminology.md)). The sections below also cover **runtime** routing (`ask`, directory) used internally and for advanced embedders. Reads of authoritative state must define a consistency level.
 
 ## Client API — no gRPC
 

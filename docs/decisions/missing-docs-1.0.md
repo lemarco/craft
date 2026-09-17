@@ -26,7 +26,7 @@ facade first (see [public-api-1.0.md](public-api-1.0.md)).
 
 ## Exemptions
 
-- `publish = false` crates (`trembita-test-support`, `trembita-e2e-*`, benchmarks)
+- `publish = false` crates (`trembita-tools`, `trembita-showcase`, `trembita-test-facade`, `trembita-test-runtime`, e2e/fuzz/benchmarks)
 - Private / `pub(crate)` items (no rustdoc required)
 - Do **not** blanket-allow `missing_docs` at 1.0 — use targeted `#[expect(missing_docs)]`
   only for generated or truly internal modules, with a comment.

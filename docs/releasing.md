@@ -8,7 +8,7 @@ See [process.md](process.md) for the full commit → push → CI → release dia
 ## TL;DR
 
 ```sh
-# 1. Add/update docs/archive/CHANGELOG-pre-1.0.md and docs/releases/X.Y.Z.md (see docs/releases/README.md).
+# 1. Add/update docs/releases/X.Y.Z.md (see docs/releases/README.md).
 # 2. One-shot (recommended): release gate + bump + tag + publish + push + release build
 ./scripts/release.sh 0.6.0 --publish
 
@@ -30,8 +30,7 @@ See [process.md](process.md) for the full commit → push → CI → release dia
   use `cargo publish --workspace` for real uploads.
 - **Rate limits & resume.** Default **30s** pause between uploads
   (`TREMBITA_PUBLISH_DELAY_SECS`). Re-run the same command after a partial publish.
-- **Not published.** `publish = false` crates are skipped, including
-  `trembita-node` (reference binary — build from the repo or Docker/e2e only).
+- **Not published.** `publish = false` workspace crates are skipped (`trembita-tools`, `trembita-showcase`, test harnesses, e2e/fuzz). Published **`trembita-cli`** is the crates.io scaffold; reference **`trembita-node`** still builds from `trembita-tools` in-repo.
 - **Release gate.** `./scripts/release-gate.sh` (= `gate.sh --tier release`) runs
   autofix, [ci-fast-lane.sh](../scripts/ci-fast-lane.sh), examples, showcase,
   MSRV (**strict**), and release build when publishing.

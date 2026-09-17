@@ -1,13 +1,15 @@
 //! Product-oriented re-exports — typical `use trembita::prelude::*` import set.
+//!
+//! Legacy worker types ([`WorkerOpts`](crate::WorkerOpts), [`WorkerGroup`](crate::WorkerGroup),
+//! [`OpenWorkerSessionError`](crate::OpenWorkerSessionError)) live on the crate root, not in the prelude.
 
 #[cfg(feature = "http-jobs")]
 pub use crate::AuthMode;
 #[cfg(feature = "http-jobs")]
 pub use crate::ProductRoutes;
-pub use crate::actor_group::ActorGroupOpts;
 pub use crate::app::{
-    AppManifest, DefaultGatewayApis, JobsPreset, RealtimePreset, ShutdownOpts, TopicsPreset,
-    TrembitaApp, TrembitaAppBuilder, journal_workflow,
+    AppManifest, DefaultGatewayApis, JobsPreset, ShutdownOpts, TopicsPreset, TrembitaApp,
+    TrembitaAppBuilder, journal_workflow,
 };
 pub use crate::app_opts::RunOpts;
 pub use crate::configure::TrembitaConfigure;
@@ -15,14 +17,13 @@ pub use crate::consumer::{ConsumerGroup, ConsumerOpts, IdempotencyOpts, JobConsu
 pub use crate::cron_opts::CronOpts;
 pub use crate::gateway::{
     ExtractedIdentity, GatewayBearerIdentity, GatewayIdentity, GatewayOpts, GatewayRequest,
-    GatewayTokenIdentity, IdentityError, IdentityTypeError, OpenActorSessionError, SessionHandle,
-    SessionKey, TrembitaGatewayState,
+    GatewayTokenIdentity, IdentityError, IdentityTypeError, SessionHandle, SessionKey,
+    TrembitaGatewayState,
 };
 pub use crate::job_opts::JobOpts;
 pub use crate::queue_opts::QueueOpts;
 pub use crate::scheduled_workflow_opts::ScheduledWorkflowOpts;
 pub use crate::work_trigger::{DispatchOutcome, dispatch_work_trigger};
-pub use crate::worker_opts::{WorkerGroup, WorkerOpts, WorkerScale};
 pub use crate::workflow::{WorkflowBuildError, WorkflowBuilder};
 pub use crate::workflow_opts::WorkflowOpts;
 pub use crate::{

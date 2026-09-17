@@ -2,7 +2,7 @@
 
 **Status:** Accepted (implemented)  
 **Date:** 2026-09-03  
-**Epic:** [B-18](../backlog.md#b-18--leader-task-primitive)
+**Backlog:** B-18 (shipped)
 
 ## Context
 

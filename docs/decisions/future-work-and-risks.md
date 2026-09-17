@@ -17,7 +17,7 @@ Structural limits and mitigations for trembita. Shipped capabilities are listed 
 
 ### R1 — Write throughput ceiling (per Raft group)
 
-Adding VPSes improves **fault tolerance** and **actor compute**, not linear write throughput through a **single** Raft log ([cluster-elasticity](cluster-elasticity.md#scale-targets)).
+Adding VPSes improves **fault tolerance** and **runtime compute** (capability hosts, consumers), not linear write throughput through a **single** Raft log ([cluster-elasticity](cluster-elasticity.md#scale-targets)).
 
 - **Mitigation (shipped):** multi-Raft — partition keys across groups; add groups via `add_raft_groups` ([multi-raft](multi-raft.md)).
 - **Guidance:** keep commands small; use Redis ([actor-state-redis](actor-state-redis.md)) for high-churn workflow state outside consensus.
@@ -34,11 +34,11 @@ Actor directory ([cross-node-actors](cross-node-actors.md)) is eventually consis
 
 - **Mitigation:** TTL + liveness; `DirectoryPolicy::ReadYourWrites`; `ClusterRef` retries after directory update ([actor-routing](actor-routing.md)).
 
-### R4 — Stateful actor durability depends on external store
+### R4 — Hot handler memory is not durable by default
 
-On crash, actor memory not in Redis ([actor-state-redis](actor-state-redis.md)) is lost.
+On crash, in-memory session/handler state not written to **cap store** or Redis ([actor-state-redis](actor-state-redis.md)) is lost.
 
-- **Mitigation:** write-through to `ActorStateStore`; consensus data via `propose` → `StateMachine`.
+- **Mitigation:** `OpCtx::require_store` / write-through keys; authoritative domain data via `propose` → `StateMachine`.
 
 ### R5 — Observability performance cost
 

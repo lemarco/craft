@@ -290,7 +290,7 @@ Target **0.5.0** — unified HTTP listener; see [unified-listener](../decisions/
 
 ### Fixed
 
-- **`EnqueueOptions::dedup_key` rustdoc** — documents that the key is held while a job exists and released after ack ([CF-010](../backlog.md#cf-010--dedup_key-lifecycle-docs)).
+- **`EnqueueOptions::dedup_key` rustdoc** — documents that the key is held while a job exists and released after ack ([CF-010](backlog-shipped.md#cf-010--dedup_key-lifecycle-docs)).
 
 ## [0.2.0] — 2026-09-03
 

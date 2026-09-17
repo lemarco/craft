@@ -27,12 +27,16 @@ fn scaffolds_default_layout() {
     assert!(app.contains("let manifest = manifest::build()"));
     assert!(app.contains(".manifest(manifest)"));
     assert!(
+        !app.contains("from_config(cfg)?"),
+        "from_config is infallible — do not use ? on the builder"
+    );
+    assert!(
         app.contains("TrembitaConfigure"),
         "scaffold configures data_dir and gateway via TrembitaConfigure"
     );
     assert!(
-        !app.contains(".without_actors_api()"),
-        "actors HTTP stays off via TrembitaConfigure defaults (without_actors_api=true)"
+        app.contains(".without_actors_api()"),
+        "greenfield scaffold must omit /actors/* explicitly"
     );
     let product = std::fs::read_to_string(root.join("src/http/product.rs")).unwrap();
     assert!(product.contains("cap_invoke::<Ping>"));
@@ -41,6 +45,8 @@ fn scaffolds_default_layout() {
     assert!(root.join("src/domain/mod.rs").is_file());
     assert!(root.join("src/capabilities/ping.rs").is_file());
     let manifest = std::fs::read_to_string(root.join("src/manifest.rs")).unwrap();
+    assert!(manifest.contains("// trembita:topics"));
+    assert!(manifest.contains("// trembita:workers"));
     assert!(manifest.contains("ping::manifest()"));
     let ping = std::fs::read_to_string(root.join("src/capabilities/ping.rs")).unwrap();
     assert!(ping.contains("cap_handler"));

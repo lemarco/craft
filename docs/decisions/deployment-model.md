@@ -5,7 +5,7 @@
 
 ## Context
 
-Should this repo ship a standalone binary, an embeddable library, or both? The product goal is a **framework** where the user writes **one application codebase** (state machine + actors + business logic), deploys it to **any VPS**, and **adds more VPS instances over time** — each new instance **joins the existing cluster** (first node, then second connects to first, and so on).
+Should this repo ship a standalone binary, an embeddable library, or both? The product goal is a **framework** where the user writes **one application codebase** (capabilities, jobs, topics, optional custom Raft SM), deploys it to **any VPS**, and **adds more VPS instances over time** — each new instance **joins the existing cluster** (first node, then second connects to first, and so on). App-authored **`UserActor`** groups are **advanced**, not the default product path ([product-terminology](product-terminology.md)).
 
 Operational model: **VPS / bare metal** — one process per node; docker-compose optional for local multi-node demos.
 
@@ -20,7 +20,7 @@ Operational model: **VPS / bare metal** — one process per node; docker-compose
 | **`dev/`** | Shared cluster helpers (`cluster-common.sh`), certs, optional Docker Compose per showcase |
 | **`trembita-node` (optional)** | Reference product node from env (empty SM, ops HTTP) — e2e/Docker/3-node demos; not a plugin host |
 
-The user ships **one binary** built from their app. Production runs **N processes** (N VPSes), each process = **one Raft peer** + **local actor runtime**. Same codebase everywhere; config differs per VPS (`TREMBITA_*` — assigned `node-id` under `data_dir`, listen addr, join seeds).
+The user ships **one binary** built from their app. Production runs **N processes** (N VPSes), each process = **one Raft peer** + **local runtime** (capability hosts, job consumers, optional advanced workers). Same codebase everywhere; config differs per VPS (`TREMBITA_*` — assigned `node-id` under `data_dir`, listen addr, join seeds).
 
 ## User application shape (draft)
 
@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     TrembitaApp::from_env()?
         .manifest(
             AppManifest::new()
-                .workers(/* WorkerOpts / groups from manifest.rs */)
+                .capabilities(/* CapManifest from manifest.rs */)
                 .jobs(/* JobOpts */),
         )
         .configure(TrembitaConfigure::default())
@@ -55,7 +55,7 @@ sequenceDiagram
     V1->>V1: TREMBITA_JOIN_SEEDS unset; TREMBITA_ALLOW_JOIN=1 → accept joins
     V2->>V1: TREMBITA_JOIN_SEEDS=1@vps1:443 → join cluster (membership)
     V3->>V1: TREMBITA_JOIN_SEEDS=1@vps1:443 (or any member) → join cluster
-    Note over V1,V3: Same binary, same actor definitions; scale by adding VPSes
+    Note over V1,V3: Same binary, same manifest; scale by adding VPSes
 ```
 
 1. **First VPS:** omit `TREMBITA_JOIN_SEEDS` — becomes seed (single-node Raft until peers arrive).
@@ -71,11 +71,11 @@ The framework separates:
 | Layer | What scales | Mechanism |
 |-------|-------------|-----------|
 | **Cluster** | Raft peers (VPS count) | Incremental join/leave ([cluster-elasticity](cluster-elasticity.md), [cluster-membership](cluster-membership.md#discovery)) |
-| **Application** | User **actors** | 1 worker/VPS (prod); scale via new VPS ([cluster-elasticity](cluster-elasticity.md#one-worker-per-vps-production)) |
+| **Application** | Capability groups + job consumers | Per-group placement; prod often **1 instance/VPS** ([cluster-elasticity](cluster-elasticity.md#one-worker-per-vps-production)); scale via new VPS |
 
-Raft gives **consistent replicated state** (via user `StateMachine`). **Actors** handle concurrent work, messages, and domain logic — scaled by spawning more actor instances (local or distributed — see elastic-cluster).
+Raft gives **consistent replicated state** (via user `StateMachine` when used). **Capabilities** and queues handle concurrent product work on the runtime; advanced **`UserActor`** pools use the same placement rules.
 
-**Important:** adding Raft nodes improves **fault tolerance** and **capacity for actor work**; it does **not** linearly multiply write throughput to one Raft log. Document this in user-facing guides.
+**Important:** adding Raft nodes improves **fault tolerance** and **capacity for runtime work**; it does **not** linearly multiply write throughput to one Raft log. Document this in user-facing guides.
 
 ## What we do not require
 

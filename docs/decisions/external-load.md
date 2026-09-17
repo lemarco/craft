@@ -1,7 +1,7 @@
 # External compute load — weighted tokens and load port
 
 **Status:** Accepted (implemented)  
-**Epic:** [B-17](../backlog.md#b-17--external-compute-load)  
+**Backlog:** B-17 (shipped)  
 **Extends:** [workload-governor](workload-governor.md)
 
 ## Context

@@ -172,4 +172,4 @@ app.workflow("onboard_user", |w| async move {
 - [background-jobs](background-jobs.md)
 - [background-jobs § Delivery semantics](background-jobs.md#delivery-semantics) — saga step keys as the third idempotency layer
 - [stateful-workers](stateful-workers.md)
-- [backlog.md](../backlog.md) — B-05, B-07
+- [status.md](../status.md) — workflows / saga · [examples/workflows/](../../examples/workflows/)

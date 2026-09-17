@@ -13,9 +13,10 @@ The **`trembita` facade** is the semver surface for product teams. Internal crat
 
 | Area | Types | Notes |
 |------|-------|-------|
-| App | `TrembitaApp`, `TrembitaAppBuilder`, `AppManifest`, `TrembitaConfigure`, `JobOpts`, `WorkerOpts`, `WorkerScale`, `QueueOpts`, `CronOpts`, `ActorGroupOpts`, `GatewayOpts`, `RunOpts` | Primary entry; cluster join/membership via `TREMBITA_*` + [`from_env`](../../crates/trembita/src/app/runtime.rs) / [`from_config`](../../crates/trembita/src/app/runtime.rs) + [`.manifest`](../../crates/trembita/src/app/manifest.rs) — not cluster builder setters |
+| App | `TrembitaApp`, `TrembitaAppBuilder`, `AppManifest`, `TrembitaConfigure`, `JobOpts`, `QueueOpts`, `CronOpts`, `CapManifest`, `GatewayOpts`, `RunOpts` | Primary entry; register **capabilities** + jobs/topics/workflows in [`.manifest`](../../crates/trembita/src/app/manifest.rs); cluster join via `TREMBITA_*` + [`from_env`](../../crates/trembita/src/app/runtime.rs) / [`from_config`](../../crates/trembita/src/app/runtime.rs) |
 | Env (embedders) | [`trembita::env::AppConfig`](../../crates/trembita/src/env.rs), `EnvOverrides`, `app_config_from_env` | Parse once in `main`, then `TrembitaApp::from_config(cfg)`. [`trembita-node`](../../crates/trembita-tools/src/bin/node.rs): [`NodeConfig::into_app_config`](../../crates/trembita-tools/src/node/config.rs) copies [`EnvOverrides`](../../crates/trembita-assembly/src/env_config.rs) (e.g. `peers` for `TREMBITA_PEERS`) so builder merge applies static membership. |
-| App runtime | `node_id`, `control`, `registry`, `supervisor`, `enqueue`, `cast`, `ask`, `shutdown_graceful` | Product control plane on `TrembitaApp` |
+| App runtime (product) | `node_id`, `enqueue`, `shutdown_graceful`, capability call sites (`.via(&app)`) | Day-to-day product control on `TrembitaApp` |
+| App runtime (advanced) | `cast`, `ask`, `registry`, `supervisor`, `TrembitaApp::actors_api`, `WorkerOpts`, `ActorGroupOpts` | Legacy/custom **`UserActor`** + optional `/actors/*` ([`WorkerOpts::http_cast`](../../crates/trembita/src/worker_opts.rs)); default gateway excludes actors API ([product-terminology](product-terminology.md)) |
 | Identity | `NodeId`, `Security`, `PeerDirectory`, cert reload helpers | Multi-node wiring |
 | Jobs | `JobQueue`, `EnqueueOptions`, `run_queue_consumer`, `ClusterJobQueue` | Via `TrembitaApp::enqueue` |
 | Workflows | `WorkflowBuilder`, `run_workflow` / `resume_workflow` on app | Saga journal durable |

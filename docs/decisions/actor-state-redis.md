@@ -1,6 +1,6 @@
-# Stateful actors — external store (Redis)
+# Cap store — optional Redis adapter
 
-> **Product default:** embedded **redb** via [`ActorStateStore`](actor-state-store.md) — no mandatory Redis.
+> **Product default:** embedded **redb** via [`trembita::capstore`](../../crates/trembita/src/capstore.rs) ([actor-state-store](actor-state-store.md)) — no mandatory Redis.
 > This record covers the **optional** Redis adapter (`trembita` feature `redis-store`) and integration with non-trembita services. Scenario: [stateful-workers](../scenarios/stateful-workers.md).
 
 **Status:** Accepted (optional adapter path)  
@@ -8,7 +8,7 @@
 
 ## Context
 
-Medium open question **#2**: what happens to **stateful actor** memory on VPS crash?
+What happens to **in-memory handler state** on VPS crash when not written to cap store or Raft?
 
 Options considered: document-only, Raft log snapshots, hybrid. User chose **external database** — **Redis as the primary example** — rather than persisting actor state through the Raft log.
 

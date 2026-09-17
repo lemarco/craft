@@ -24,7 +24,7 @@ Options considered:
 | **Dedicated `JobQueue` port** + embedded disk + optional Redis adapter | **Accepted** |
 | Replace all mailboxes with a durable queue | Rejected — local `ask`/control paths must stay fast; layered model instead |
 
-Relationship to [actor-state-redis](actor-state-redis.md): Redis is an **optional** adapter for workflow keys only. Queue backlog is **`redb` on local disk** by default — no mandatory external dependency. A remote Redis queue adapter is not shipped; track open work in [backlog.md](../backlog.md).
+Relationship to [actor-state-redis](actor-state-redis.md): Redis is an **optional** adapter for workflow keys only. Queue backlog is **`redb` on local disk** by default — no mandatory external dependency. A remote Redis queue adapter is not shipped; track open work in [backlog.md](../backlog.md#open-work).
 
 ## Decision
 
@@ -127,7 +127,7 @@ Wire routes (under `/raft/v1/queue/`):
 | `GET .../metrics` | Depth for autoscale & observability |
 | `POST .../replicate` | Leader → voter idempotent state sync |
 
-Optional **`.durable_mailbox()`** on the cluster builder persists cross-node mailbox outbox/inbox under `data_dir` (complements in-memory mailboxes; not a job queue).
+Optional **[`TrembitaClusterBuilder::durable_mailbox`](../../crates/trembita-assembly/src/builder/cluster/config.rs)** (assembly / integration tests) persists cross-node mailbox outbox/inbox under `data_dir` — not exposed on [`TrembitaApp`](../../crates/trembita/src/app/mod.rs) today.
 
 ### Sharded streams
 
@@ -147,9 +147,9 @@ Optional **`.durable_mailbox()`** on the cluster builder persists cross-node mai
 
 ### Worker consumption model
 
-Queue-backed workers are still **`UserActor`** instances, but **jobs are not pushed into the mailbox**:
+Job **consumers** run as runtime tasks (often backed by an internal worker host), but **jobs are not actor mailboxes**:
 
-- A **consumer loop** (spawned from `UserActor::start`) calls `lease` → user handler → `ack`/`nack`.
+- A **consumer loop** calls `lease` → user handler (`#[consumer]` or capability bridge) → `ack`/`nack`.
 - The **mailbox** handles **control** messages only: drain, health, migration snapshot ([cross-node-actors](cross-node-actors.md)).
 
 ```rust
@@ -188,7 +188,7 @@ Scaling **out beyond node count** in production still means **add VPS + join** (
 
 ## Shipped capabilities
 
-The workspace ships the full embedded queue stack: `JobQueue` port, `InMemoryJobQueue`, `RedbJobQueue`, leader `QueueService` with `/raft/v1/queue/*` and voter `/queue/replicate`, `ClusterJobQueue` + follower forward, worker consumer helpers, facade `job_queue` / `job_queue_autoscale` / `job_queue_sharded` / `job_queue_membership_autoscale`, priority and delayed enqueue, Meta-Raft autoscale policy, periodic `RedbJobQueue` compaction, and optional `.durable_mailbox()`.
+The workspace ships the full embedded queue stack: `JobQueue` port, `InMemoryJobQueue`, `RedbJobQueue`, leader `QueueService` with `/raft/v1/queue/*` and voter `/queue/replicate`, `ClusterJobQueue` + follower forward, worker consumer helpers, facade `job_queue` / `job_queue_autoscale` / `job_queue_sharded` / `job_queue_membership_autoscale`, priority and delayed enqueue, Meta-Raft autoscale policy, and periodic `RedbJobQueue` compaction.
 
 For a product-oriented checklist and gaps, see [status.md](../status.md) and [backlog.md](../backlog.md).
 

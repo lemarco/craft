@@ -53,4 +53,4 @@ Internal: every capability group **is** a `UserActor` host — users never imple
 - [stateful-workers](stateful-workers.md) — store idempotency (default migration story)
 - [realtime-sessions](realtime-sessions.md) — sessions + WS
 - [background-jobs](background-jobs.md) — queue semantics for `Route::Queued`
-- [backlog B-24](../backlog.md#b-24--capability-parity-no-regression)
+- Shipped capability parity matrix (this doc)

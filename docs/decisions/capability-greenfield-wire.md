@@ -3,7 +3,7 @@
 **Status:** Accepted  
 **Date:** 2026-09-16  
 **Supersedes (product policy):** ad-hoc “use `/actors/cast` for product work”  
-**Related:** [capability-dx](capability-dx.md), [wire-protocol](wire-protocol.md), [gateway-routing-v2](gateway-routing-v2.md)
+**Related:** [capability-dx](capability-dx.md), [product-terminology](product-terminology.md), [wire-protocol](wire-protocol.md), [gateway-routing-v2](gateway-routing-v2.md)
 
 ## Context
 

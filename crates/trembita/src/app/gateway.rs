@@ -17,7 +17,7 @@ pub struct DefaultGatewayApis {
     pub jobs: bool,
     /// `GET/PUT/DELETE /jobs/{stream}/schedules` (requires `jobs`).
     pub schedules: bool,
-    /// Actor cast/ask HTTP API.
+    /// Legacy `/actors/*` cast/ask HTTP (advanced; default off on product builder).
     pub actors: bool,
     /// Workflow trigger HTTP API.
     pub workflows: bool,

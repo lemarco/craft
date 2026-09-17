@@ -2,7 +2,7 @@
 
 **Status:** Accepted (implemented)  
 **Date:** 2026-09-02  
-**Epic:** [B-16](../backlog.md#b-16--workload-governor-compute-tokens)
+**Backlog:** B-16 (shipped)
 
 ## Context
 
@@ -38,7 +38,7 @@ No cluster topology change. No leader election for this loop. No `TREMBITA_ROLE`
 | In-flight HTTP (future) | Gateway middleware counter | Same, finer than connections alone — see [Future work](#future-work) |
 | Queue depth (local view) | `JobQueue::metrics` / external backlog | Opportunistic job boost when API quiet **and** work waiting |
 | Consumer in-flight (future) | governor-owned counter | Avoid over-subscription — see [Future work](#future-work) |
-| External subprocess load (shipped) | [`ExternalLoad`](external-load.md) + `ComputeTokenPool` weighted acquire | CPU in child processes (ffmpeg, shell) the tokio pool cannot see — [B-17](../backlog.md#b-17--external-compute-load) |
+| External subprocess load (shipped) | [`ExternalLoad`](external-load.md) + `ComputeTokenPool` weighted acquire | CPU in child processes (ffmpeg, shell) the tokio pool cannot see — [external-load](external-load.md) |
 
 ### Actions (outputs)
 
@@ -99,7 +99,7 @@ Homogeneous nodes use `.workload()` for local API vs jobs fairness. To run gatew
 
 ## Future work
 
-Finer ingress and consumer signals — **not shipped**; tracked as follow-ups to B-16.
+Finer ingress and consumer signals — **not shipped**; tracked as [O-04](../backlog.md#open-work).
 
 ### In-flight HTTP
 

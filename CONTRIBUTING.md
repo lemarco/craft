@@ -10,7 +10,7 @@ Thank you for helping improve trembita. This guide is for **human contributors**
 4. [docs/decisions/testing-strategy.md](docs/decisions/testing-strategy.md) — which test layer to use
 
 **Product features:** [docs/scenarios/](docs/scenarios/README.md) and [examples/](examples/README.md).  
-**Planned work:** [docs/backlog.md](docs/backlog.md) (open items in **Open work**).
+**Planned work:** [docs/backlog.md](docs/backlog.md) (open table). **Shipped:** [docs/status.md](docs/status.md).
 
 ## Local setup
 

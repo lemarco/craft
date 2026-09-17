@@ -42,12 +42,13 @@ Runtime behaviour:
 
 ## Related
 
-- [leader-task.md](leader-task.md) — proposed execution primitive for leader-only loops
+- [leader-task.md](leader-task.md) — leader-only loop primitive (shipped)
+- [triggers-and-pipelines](../scenarios/triggers-and-pipelines.md) — `SchedulesApi` HTTP + facade `upsert_schedule`
 
 ## Alternatives considered
 
 | Option | Verdict |
 |--------|---------|
-| HTTP schedule admin on trembita | Rejected — operator UI stays in the app |
-| Keep build-time-only schedules | Rejected — forces redeploy for checkbox toggles |
-| Imperative API only (no port) | Acceptable interim; port is the goal |
+| HTTP schedule admin on trembita | **Shipped** — `SchedulesApi` on unified listener; app mounts routes + auth ([triggers-and-pipelines](../scenarios/triggers-and-pipelines.md)) |
+| Keep build-time-only schedules | Rejected alone — use `.cron()` or [`ScheduleSource`](../../crates/trembita-jobs/src/schedule_source.rs) for DB sync |
+| Imperative API only (no port) | Superseded — both port and HTTP/facade mutations ship |

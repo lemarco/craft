@@ -7,7 +7,7 @@ use serde::Serialize;
 use trembita_http::{Handler, HttpError, RequestCtx, Response};
 
 use crate::capability::{CapEnqueueOutcome, CapError, CapIngress, CapRequest, CapVia, Route};
-use crate::gateway::{IdentityError, OpenActorSessionError, TrembitaGatewayState};
+use crate::gateway::{IdentityError, OpenWorkerSessionError, TrembitaGatewayState};
 
 /// `POST` body → capability fire ([`Route::InlineFire`]), **`202 Accepted`** (no body).
 #[must_use]
@@ -275,13 +275,13 @@ async fn open_group_session_if_identity<Req: CapRequest>(
 ) -> Result<(), HttpError> {
     let uri = request_uri(ctx);
     match state
-        .open_actor_session_parts(Req::GROUP, ctx.method(), &uri, ctx.headers(), None)
+        .open_worker_session_parts(Req::GROUP, ctx.method(), &uri, ctx.headers(), None)
         .await
     {
         Ok(_) => Ok(()),
-        Err(OpenActorSessionError::Identity(IdentityError::NotConfigured)) => Ok(()),
-        Err(OpenActorSessionError::Identity(e)) => Err(HttpError::Unauthorized(e.to_string())),
-        Err(OpenActorSessionError::NoWorker(e)) => Err(HttpError::Internal(e.to_string())),
+        Err(OpenWorkerSessionError::Identity(IdentityError::NotConfigured)) => Ok(()),
+        Err(OpenWorkerSessionError::Identity(e)) => Err(HttpError::Unauthorized(e.to_string())),
+        Err(OpenWorkerSessionError::NoWorker(e)) => Err(HttpError::Internal(e.to_string())),
     }
 }
 

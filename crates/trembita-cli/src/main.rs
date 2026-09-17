@@ -180,6 +180,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let features = resolve_scaffold_features(template, &features)?;
             let output =
                 output.unwrap_or_else(|| default_output(&std::env::current_dir().expect("cwd")));
+            let trembita_path = trembita_path.map(|p| {
+                p.canonicalize()
+                    .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default().join(p))
+            });
             let opts = NewProjectOpts {
                 name,
                 output,

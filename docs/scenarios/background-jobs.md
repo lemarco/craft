@@ -128,7 +128,7 @@ app.enqueue_batch("emails", &[b"a".as_slice(), b"b"]).await?;
 
 ### 3. Consume — `#[trembita::consumer]` (recommended)
 
-Annotate an async handler; the macro generates a `JobConsumer` adapter. Spawn with `TrembitaApp::spawn_consumer` — no manual `tokio::spawn` + `run_queue_consumer` boilerplate ([backlog B-03b](../backlog.md)).
+Annotate an async handler; the macro generates a `JobConsumer` adapter. Spawn with `TrembitaApp::spawn_consumer` — no manual `tokio::spawn` + `run_queue_consumer` boilerplate ([`#[consumer]`](../../crates/trembita-macros/src/lib.rs) + [`TrembitaApp::spawn_consumer`](../../crates/trembita/src/app/runtime.rs)).
 
 ```rust
 use std::sync::Arc;
@@ -510,4 +510,4 @@ See [examples/background-jobs/](../../examples/background-jobs/) for the full [`
 - [job-queue](../decisions/job-queue.md) — ADR
 - [stateful-workers](stateful-workers.md) — durable handler state, and the CAS layer for [effectively-once](#effectively-once-recipe)
 - [workflows](workflows.md) — saga step → enqueue, step keys as a third idempotency layer
-- [backlog.md](../backlog.md) — B-02, B-03, B-13
+- [status.md](../status.md) — job queue capabilities · [backlog.md](../backlog.md#open-work) — deferred items

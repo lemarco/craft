@@ -6,6 +6,7 @@ closing a gap.
 
 **Strategy:** [testing-strategy](decisions/testing-strategy.md)  
 **Feature status:** [status.md](status.md)  
+**Product docs:** [product-terminology](decisions/product-terminology.md) (capabilities vs runtime actors)  
 **Last audit:** 2026-09-15
 
 Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** scheduled / `#[ignore]` only
@@ -179,8 +180,8 @@ Published binary **`trembita`** ([`crates/trembita-cli`](../crates/trembita-cli/
 
 | Command | Behavior under test | Tests |
 |---------|---------------------|-------|
-| **`new`** | Layout incl. `manifest.rs`, features → `Cargo.toml`, README | `tests/scaffold.rs`, `scaffold/features.rs` |
-| **`doctor`** | manifest ↔ consumers/actors/workflows; duplicate ids; `.manifest()` in `app.rs`; no inline capabilities in `app.rs`; missing `mod` declarations (reports only) | `scaffold/doctor.rs`, `tests/add_doctor.rs` |
+| **`new`** | Layout incl. `manifest.rs`, `.without_actors_api()` in `app.rs`, `manifest` marker regions (`jobs`/`topics`/`workers`/`capabilities`), path dep canonicalization, `cargo check`-clean templates (`serde`, `trembita::RouteTable`) | `tests/scaffold.rs`, `scaffold/render.rs`, `scaffold/features.rs` |
+| **`doctor`** | manifest ↔ consumers/actors/workflows; `// trembita:topics` / `// trembita:workers` markers; duplicate ids; `.manifest()` in `app.rs`; no inline capabilities in `app.rs`; missing `mod` declarations (reports only) | `scaffold/doctor.rs`, `tests/add_doctor.rs` |
 | **`doctor --preflight`** | deploy env / gateway ops hints | `scaffold/doctor.rs` (unit scenarios) |
 | **`dev *`** (debug CLI) | showcase registry, workspace root, `trigger.sh` path | `tests/dev.rs`; full `dev up` 🔒 manual / `TREMBITA_DEV_INTEGRATION` |
 | **Project discover** | walk parents; requires `app.rs` + `manifest.rs` | `tests/add_doctor.rs`, `scaffold/project.rs` |
@@ -273,8 +274,8 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-09 | B-26a — `#[cap_handler]` on `async fn` | `trembita-macros/src/cap_handler.rs`, `examples/stateful-workers/src/capabilities/orders.rs` |
 | 2026-09 | B-26c–d — typed WS mount, `{group}.{op}` on `CapRequest` | `gateway/ws/mod.rs`, `capability/call.rs`, showcases |
 | 2026-09 | Async-only `#[cap_handler]`; jobs showcase → cap queue | `trembita-macros`, `examples/background-jobs/`, `capability_wiring.rs` |
-| 2026-09 | Greenfield default — no `/actors/*` on builder | `app/builder.rs` |
-| 2026-09 | B-22/B-23 scaffold greenfield (`without_actors_api`, `cap_invoke` `/ping`) | `trembita-cli/src/scaffold/render.rs`, `trembita-cli/tests/scaffold.rs`, `trembita-cli/templates/trembita-app/` |
+| 2026-09 | Product gateway opt-out sugar — [`TrembitaAppBuilder::without_*`](../../crates/trembita/src/app/builder.rs), [`with_actors_api`](../../crates/trembita/src/app/builder.rs); `from_config` + `TREMBITA_LISTEN` enables ops/registration HTTP (not `/actors/*`) | `trembita/src/app/builder.rs` (`env_listen_gateway_tests`), `docs/decisions/product-terminology.md` |
+| 2026-09 | B-22/B-23 scaffold greenfield — `.without_actors_api()`, `cap_invoke` `/ping`, infallible `from_config`, compile-ready `cargo check` | `trembita-cli/src/scaffold/{render.rs,main.rs}`, `trembita-cli/tests/scaffold.rs`, `trembita-cli/templates/trembita-app/` |
 | 2026-09 | B-24 parity matrix + realtime cap session | `docs/scenarios/capability-parity.md`, `examples/realtime/src/capabilities/` |
 | 2026-09 | B-24d realtime scaffold (`chat` cap + sticky WS) | `crates/trembita-cli/src/scaffold/render.rs`, `trembita-cli/tests/scaffold.rs` |
 | 2026-09 | B-24c workflows saga → onboarding cap ops | `examples/workflows/src/capabilities/onboarding.rs`, `examples/workflows/src/onboarding.rs` |

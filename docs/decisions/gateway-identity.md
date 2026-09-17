@@ -34,7 +34,7 @@ Teams need:
 | [`GatewayOpts::identity_mapped`] | Custom session key when identity ≠ key |
 | [`TrembitaGatewayState::extract_session`] | Auth + session key (HTTP) |
 | [`TrembitaGatewayState::extract_session_parts`] | Same for WebSocket upgrade (`Method`, `Uri`, `HeaderMap`) |
-| [`TrembitaGatewayState::open_actor_session_parts`] | Auth + [`SessionHandle`] on WebSocket upgrade |
+| [`TrembitaGatewayState::open_worker_session_parts`](../../crates/trembita/src/gateway/state.rs) | Auth + [`SessionHandle`] on WebSocket upgrade |
 | [`SessionHandle`] | cast / ask with auto-reopen |
 | [`GatewayHandle`] | Graceful drain on shutdown |
 

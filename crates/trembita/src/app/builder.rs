@@ -199,11 +199,29 @@ impl TrembitaAppBuilder {
     #[must_use]
     pub fn from_config(cfg: AppConfig) -> Self {
         let mut builder = Self::new_default().apply_env_config(&cfg);
+        #[cfg(feature = "http-jobs")]
+        if cfg.http.is_some() {
+            builder.apply_env_listen_gateway_defaults();
+        }
         builder.boot_config = Some(cfg);
         builder
     }
 
+    /// Ops + registration-driven product HTTP when `TREMBITA_LISTEN` is set ([`Self::from_env`]); `/actors/*` stays off.
+    #[cfg(feature = "http-jobs")]
+    fn apply_env_listen_gateway_defaults(&mut self) {
+        self.gateway_include_ops = true;
+        self.gateway_exclude_apis.jobs = false;
+        self.gateway_exclude_apis.schedules = false;
+        self.gateway_exclude_apis.workflows = false;
+        self.gateway_exclude_apis.topics = false;
+    }
+
     /// Env-first builder: cluster join/listen/data_dir/job queue from `TREMBITA_*` (see [`trembita_assembly::env_config::app_config_from_env`]).
+    ///
+    /// When `TREMBITA_LISTEN` / [`AppConfig::http`](trembita_assembly::env_config::AppConfig) is set, ops (`/health`, `/metrics`, …) and
+    /// registration-driven product APIs mount automatically; `/actors/*` stays off until
+    /// [`.with_actors_api`](Self::with_actors_api) + [`WorkerOpts::http_cast`](crate::WorkerOpts::http_cast).
     ///
     /// Prefer [`Self::from_config`] when `main` already parsed env once. Register domain wiring (`.jobs`, `.manifest`, …), then [`.run`](Self::run)([`RunOpts::for_manifest`](crate::app_opts::RunOpts::for_manifest)).
     ///
@@ -762,6 +780,66 @@ impl TrembitaAppBuilder {
         self
     }
 
+    /// Omit ops HTTP on the default gateway (`/health`, `/ready`, `/metrics`, …).
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn without_ops(mut self) -> Self {
+        self.gateway_include_ops = false;
+        self
+    }
+
+    /// Omit `POST/GET /jobs/*` on the default gateway (registration may still enqueue via cluster APIs).
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn without_jobs_api(mut self) -> Self {
+        self.gateway_exclude_apis.jobs = true;
+        self
+    }
+
+    /// Omit job schedule HTTP on the default gateway.
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn without_schedules_api(mut self) -> Self {
+        self.gateway_exclude_apis.schedules = true;
+        self
+    }
+
+    /// Omit `/actors/*` on the default gateway (default for product apps; idempotent).
+    ///
+    /// Legacy HTTP cast/ask requires [`.workers(…)`](Self::workers) with
+    /// [`WorkerOpts::http_cast(true)`](crate::WorkerOpts::http_cast) and
+    /// [`.with_actors_api()`](Self::with_actors_api).
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn without_actors_api(mut self) -> Self {
+        self.gateway_exclude_apis.actors = true;
+        self
+    }
+
+    /// Allow `/actors/*` when worker groups opt in via [`WorkerOpts::http_cast`](crate::WorkerOpts::http_cast).
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn with_actors_api(mut self) -> Self {
+        self.gateway_exclude_apis.actors = false;
+        self
+    }
+
+    /// Omit `POST /workflows/*` on the default gateway.
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn without_workflows_api(mut self) -> Self {
+        self.gateway_exclude_apis.workflows = true;
+        self
+    }
+
+    /// Omit topic publish/metrics HTTP on the default gateway.
+    #[cfg(feature = "http-jobs")]
+    #[must_use]
+    pub fn without_topics_api(mut self) -> Self {
+        self.gateway_exclude_apis.topics = true;
+        self
+    }
+
     /// Forward runtime metrics to an external [`MetricsSink`] (Prometheus scrape stays enabled).
     #[must_use]
     pub fn metrics_sink(mut self, sink: Arc<dyn MetricsSink>) -> Self {
@@ -774,5 +852,30 @@ impl TrembitaAppBuilder {
     #[must_use]
     pub fn inner_mut(&mut self) -> &mut TrembitaClusterBuilder<EmptyStateMachine> {
         &mut self.inner
+    }
+}
+
+#[cfg(all(test, feature = "http-jobs"))]
+mod env_listen_gateway_tests {
+    use super::TrembitaAppBuilder;
+
+    #[test]
+    fn new_default_keeps_gateway_opt_out_defaults() {
+        let builder = TrembitaAppBuilder::new_default();
+        assert!(!builder.gateway_include_ops);
+        assert!(builder.gateway_exclude_apis.jobs);
+        assert!(builder.gateway_exclude_apis.actors);
+    }
+
+    #[test]
+    fn env_listen_defaults_enable_ops_and_product_apis() {
+        let mut builder = TrembitaAppBuilder::new_default();
+        builder.apply_env_listen_gateway_defaults();
+        assert!(builder.gateway_include_ops);
+        assert!(!builder.gateway_exclude_apis.jobs);
+        assert!(!builder.gateway_exclude_apis.schedules);
+        assert!(!builder.gateway_exclude_apis.workflows);
+        assert!(!builder.gateway_exclude_apis.topics);
+        assert!(builder.gateway_exclude_apis.actors);
     }
 }

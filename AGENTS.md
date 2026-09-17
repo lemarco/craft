@@ -1,6 +1,6 @@
 # Agent guide (trembita)
 
-Distributed Raft + actor framework in Rust. Read before making changes.
+Distributed Raft runtime in Rust (product: **capabilities** on `TrembitaApp`). Read before making changes.
 
 **Human contributors:** [CONTRIBUTING.md](CONTRIBUTING.md)
 
@@ -11,14 +11,16 @@ Distributed Raft + actor framework in Rust. Read before making changes.
 3. [docs/decisions/framework-conventions.md](docs/decisions/framework-conventions.md) — scaffold layout (`manifest.rs` registry + `app.rs` gateway)
 4. [docs/scenarios/README.md](docs/scenarios/README.md) — product scenarios (jobs, topics, workers, sessions, workflows)
 5. [examples/README.md](examples/README.md) — product showcases (local + QUIC cluster)
-6. [docs/backlog.md](docs/backlog.md) — implementation backlog
+6. [docs/backlog.md](docs/backlog.md) — open backlog · [docs/status.md](docs/status.md) — shipped index
 7. [docs/architecture.md](docs/architecture.md) — crate graph
 8. [docs/decisions/facade-layering.md](docs/decisions/facade-layering.md) — `trembita` vs `trembita-assembly` vs `trembita-showcase`
 9. [docs/decisions/architecture-style.md](docs/decisions/architecture-style.md) — pure core, trait ports
-10. [docs/decisions/product-scenarios.md](docs/decisions/product-scenarios.md) — actor-first platform, no mandatory Redis
-11. [docs/decisions/testing-strategy.md](docs/decisions/testing-strategy.md) — test pyramid
-12. [docs/testing-coverage.md](docs/testing-coverage.md) — test inventory
-13. [docs/process.md](docs/process.md) — gates, CI, release flow
+10. [docs/decisions/product-scenarios.md](docs/decisions/product-scenarios.md) — capability-first platform, no mandatory Redis
+11. [docs/decisions/product-terminology.md](docs/decisions/product-terminology.md) — product docs: capabilities vs runtime actors
+12. [docs/decisions/gateway-session-naming.md](docs/decisions/gateway-session-naming.md) — `open_worker_session_*` vs legacy actor names
+13. [docs/decisions/testing-strategy.md](docs/decisions/testing-strategy.md) — test pyramid
+14. [docs/testing-coverage.md](docs/testing-coverage.md) — test inventory
+15. [docs/process.md](docs/process.md) — gates, CI, release flow
 
 ## Cursor config
 

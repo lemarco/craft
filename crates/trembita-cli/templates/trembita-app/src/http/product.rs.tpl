@@ -1,7 +1,6 @@
 //! App-specific HTTP routes — merged into the default gateway via `.gateway_routes()`.
 
-use trembita::{ProductRoutes, Route, TrembitaGatewayState, cap_invoke};
-use trembita_http::RouteTable;
+use trembita::{ProductRoutes, Route, RouteTable, TrembitaGatewayState, cap_invoke};
 
 use crate::capabilities::ping::Ping;
 

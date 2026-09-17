@@ -9,7 +9,7 @@ use super::drain::{ConnectionGuard, ConnectionTracker};
 use super::identity::{
     self, ExtractedIdentity, GatewayIdentity, GatewayRequest, IdentityError, SessionKey,
 };
-use super::session::{NoWorkerError, OpenActorSessionError, SessionHandle};
+use super::session::{NoWorkerError, OpenWorkerSessionError, SessionHandle};
 
 /// Shared Axum state for gateway handlers that need the running app.
 #[derive(Clone)]
@@ -81,30 +81,30 @@ impl TrembitaGatewayState {
     /// Auth + sticky [`SessionHandle`] in one call.
     ///
     /// # Errors
-    /// Returns identity errors, or [`OpenActorSessionError::NoWorker`] when no worker is available.
-    pub async fn open_actor_session(
+    /// Returns identity errors, or [`OpenWorkerSessionError::NoWorker`] when no worker is available.
+    pub async fn open_worker_session(
         &self,
         group: &str,
         req: &GatewayRequest<'_>,
         ttl: Option<Duration>,
-    ) -> Result<SessionHandle, OpenActorSessionError> {
+    ) -> Result<SessionHandle, OpenWorkerSessionError> {
         let extracted = self.extract_session(req).await?;
         SessionHandle::open_from_extracted(&self.app, group, &extracted, ttl)
             .ok_or_else(|| NoWorkerError(group.to_string()).into())
     }
 
-    /// Like [`Self::open_actor_session`] from any HTTP request.
+    /// Like [`Self::open_worker_session`] from any HTTP request.
     ///
     /// # Errors
-    /// Same as [`Self::open_actor_session`].
-    pub async fn open_actor_session_from<B>(
+    /// Same as [`Self::open_worker_session`].
+    pub async fn open_worker_session_from<B>(
         &self,
         group: &str,
         req: &http::Request<B>,
         ttl: Option<Duration>,
-    ) -> Result<SessionHandle, OpenActorSessionError> {
+    ) -> Result<SessionHandle, OpenWorkerSessionError> {
         let gw_req = GatewayRequest::from_http(req);
-        self.open_actor_session(group, &gw_req, ttl).await
+        self.open_worker_session(group, &gw_req, ttl).await
     }
 
     /// [`extract_session`](Self::extract_session) from HTTP **parts** (WebSocket upgrade handlers).
@@ -121,10 +121,46 @@ impl TrembitaGatewayState {
         self.extract_session(&gw_req).await
     }
 
-    /// Like [`Self::open_actor_session`] from HTTP **parts** (WebSocket upgrade handlers).
+    /// Like [`Self::open_worker_session`] from HTTP **parts** (WebSocket upgrade handlers).
     ///
     /// # Errors
-    /// Same as [`Self::open_actor_session`].
+    /// Same as [`Self::open_worker_session`].
+    pub async fn open_worker_session_parts(
+        &self,
+        group: &str,
+        method: &Method,
+        uri: &Uri,
+        headers: &HeaderMap,
+        ttl: Option<Duration>,
+    ) -> Result<SessionHandle, OpenWorkerSessionError> {
+        let gw_req = GatewayRequest::from_parts(method, uri, headers);
+        self.open_worker_session(group, &gw_req, ttl).await
+    }
+
+    /// Renamed to [`Self::open_worker_session`].
+    #[deprecated(since = "0.7.0", note = "renamed to `open_worker_session`")]
+    pub async fn open_actor_session(
+        &self,
+        group: &str,
+        req: &GatewayRequest<'_>,
+        ttl: Option<Duration>,
+    ) -> Result<SessionHandle, OpenWorkerSessionError> {
+        self.open_worker_session(group, req, ttl).await
+    }
+
+    /// Renamed to [`Self::open_worker_session_from`].
+    #[deprecated(since = "0.7.0", note = "renamed to `open_worker_session_from`")]
+    pub async fn open_actor_session_from<B>(
+        &self,
+        group: &str,
+        req: &http::Request<B>,
+        ttl: Option<Duration>,
+    ) -> Result<SessionHandle, OpenWorkerSessionError> {
+        self.open_worker_session_from(group, req, ttl).await
+    }
+
+    /// Renamed to [`Self::open_worker_session_parts`].
+    #[deprecated(since = "0.7.0", note = "renamed to `open_worker_session_parts`")]
     pub async fn open_actor_session_parts(
         &self,
         group: &str,
@@ -132,9 +168,9 @@ impl TrembitaGatewayState {
         uri: &Uri,
         headers: &HeaderMap,
         ttl: Option<Duration>,
-    ) -> Result<SessionHandle, OpenActorSessionError> {
-        let gw_req = GatewayRequest::from_parts(method, uri, headers);
-        self.open_actor_session(group, &gw_req, ttl).await
+    ) -> Result<SessionHandle, OpenWorkerSessionError> {
+        self.open_worker_session_parts(group, method, uri, headers, ttl)
+            .await
     }
 
     /// Gateway state with app handle and identity extractor.

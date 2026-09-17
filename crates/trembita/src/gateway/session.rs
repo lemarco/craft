@@ -18,9 +18,9 @@ use crate::capability::{CapRequest, cap_wire_bytes};
 #[error("no worker for group {0}")]
 pub struct NoWorkerError(pub String);
 
-/// Opening an actor session failed (auth or no worker).
+/// Opening a sticky worker session failed (auth or no worker).
 #[derive(Debug, thiserror::Error)]
-pub enum OpenActorSessionError {
+pub enum OpenWorkerSessionError {
     /// Identity extraction failed.
     #[error(transparent)]
     Identity(#[from] IdentityError),
@@ -29,7 +29,11 @@ pub enum OpenActorSessionError {
     NoWorker(#[from] NoWorkerError),
 }
 
-impl OpenActorSessionError {
+/// Renamed to [`OpenWorkerSessionError`] (gateway session naming ADR).
+#[deprecated(since = "0.7.0", note = "renamed to `OpenWorkerSessionError`")]
+pub type OpenActorSessionError = OpenWorkerSessionError;
+
+impl OpenWorkerSessionError {
     /// Map to a gateway [`Response`].
     #[must_use]
     pub fn into_http_response(self) -> Response {

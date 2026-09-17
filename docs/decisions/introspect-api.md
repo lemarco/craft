@@ -2,7 +2,7 @@
 
 **Status:** Accepted (implemented)  
 **Date:** 2026-09-03  
-**Epic:** [B-19](../backlog.md#b-19--introspect-api-gateway-router)
+**Backlog:** B-19 (shipped)
 
 ## Context
 
@@ -21,7 +21,7 @@ Cluster introspection JSON is defined in [observability §4](observability.md):
 
 [`TrembitaObserver`](../../crates/trembita-assembly/src/observer.rs) implements the port. On the **unified HTTP bind** ([wire-protocol § ops HTTP](wire-protocol.md#ops-http-tcp-on-trembita_listen), typically **`TREMBITA_LISTEN`**), [`TrembitaApp::default_surfaces`](../../crates/trembita/src/app/gateway.rs) serves the same JSON alongside `/health`, `/ready`, `/metrics`, and the embedded dashboard. [`AdminServer`](../../crates/trembita-dashboard/src/server.rs) is for tests and tooling — not a separate production listener.
 
-Product HTTP merges optional [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) entries ([`JobsApi`](../../crates/trembita-http/src/lib.rs), [`ActorsApi`](../../crates/trembita-http/src/lib.rs), [`WorkflowsApi`](../../crates/trembita-http/src/lib.rs), [`IntrospectApi`](../../crates/trembita-http/src/lib.rs)) via [`GatewayOpts::surfaces`](../../crates/trembita/src/gateway/opts.rs) and [`build_gateway_service`](../../crates/trembita/src/gateway/mod.rs). [`TrembitaApp::from_env()`](../../crates/trembita/src/app/runtime.rs) mounts default ops + registration-driven product APIs on **`TREMBITA_LISTEN`**.
+Product HTTP merges optional [`RouteTable`](../../crates/trembita-http/src/routing/table.rs) entries ([`JobsApi`](../../crates/trembita-http/src/lib.rs), [`WorkflowsApi`](../../crates/trembita-http/src/lib.rs), [`IntrospectApi`](../../crates/trembita-http/src/lib.rs), …) via [`GatewayOpts::surfaces`](../../crates/trembita/src/gateway/opts.rs). **[`ActorsApi`](../../crates/trembita-http/src/lib.rs)** (`/actors/*`) is **advanced** — default product boot omits it ([`without_actors_api`](../../crates/trembita/src/configure.rs), [product-terminology](product-terminology.md)). [`TrembitaApp::from_env()`](../../crates/trembita/src/app/runtime.rs) mounts default ops + registration-driven product APIs on **`TREMBITA_LISTEN`**.
 
 Teams whose **operator UI is the product** mount the same snapshots beside custom routes on the product hostname, typically behind [`AuthMode::Identity`](../../crates/trembita-http/src/routing/auth.rs).
 

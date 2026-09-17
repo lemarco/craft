@@ -17,14 +17,15 @@
 |-------|-----------|----------|
 | `trembita` | **Yes** — primary | Framework users depend on this; optional integrations via [Cargo features](facade.md) |
 | `trembita-macros` | Yes | Re-exported by `trembita`; direct dep optional |
-| `trembita-proto`, `trembita-core`, `trembita-storage`, `trembita-net`, `trembita-runtime`, `trembita-client` | Yes | Advanced users / composability |
+| `trembita-proto`, `trembita-core`, `trembita-storage`, `trembita-net`, `trembita-runtime`, `trembita-jobs`, `trembita-events`, `trembita-actor-store`, `trembita-client`, `trembita-assembly`, `trembita-test-support`, `trembita-metrics-otlp` | Yes | Advanced users / composability |
+| `trembita-cli` | Yes | Scaffold CLI (`trembita new`, `doctor`, …) |
 | `trembita-http` | Yes (optional) | Product HTTP — enabled via `trembita/http-jobs` |
 | `trembita-store-redis` | Yes (optional) | Redis `ActorStateStore` — `trembita/redis-store` |
 | `trembita-backlog-postgres` | Yes (optional) | Postgres `ExternalBacklog` — `trembita/external-backlog` |
 | `trembita-events-postgres` | Yes (optional) | Postgres outbox — `trembita/domain-outbox` |
 | `trembita-dashboard` | Yes (optional) | Monitoring UI (always linked by facade today) |
 | `trembita-sim` | Yes (dev) | Testing / simulation |
-| `trembita-tools` (`trembita-node` binary) | **No** (`publish = false`) | Reference/demo runner — build from repo or e2e Docker |
+| `trembita-tools`, `trembita-showcase`, `trembita-test-facade`, `trembita-test-runtime`, e2e/fuzz | **No** (`publish = false`) | Build from repo; reference `trembita-node` / showcase bins |
 
 `trembita` facade re-exports the stable public API so users typically add **one dependency** and enable integrations with features ([facade.md](facade.md)).
 
@@ -55,7 +56,7 @@
 ### Release process
 
 - `cargo release` (or workspace script) publishes crates in dependency order:
-  `trembita-proto → trembita-core / trembita-storage / trembita-macros → trembita-net → trembita-runtime (+ trembita-jobs / trembita-events / trembita-actor-store) → trembita-client → optional adapters → trembita`.
+  `./scripts/publish-workspace.sh` order (see script `PUBLISH_ORDER`): proto → core/storage/macros/net → test-support → runtime → jobs/events/actor-store → client → optional adapters → **assembly** → **trembita** → **trembita-cli**.
 - Tag `vX.Y.Z`; GitLab release with CHANGELOG excerpt.
 - `docs.rs` builds automatically on publish.
 

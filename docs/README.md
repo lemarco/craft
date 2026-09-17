@@ -1,6 +1,6 @@
 # Documentation
 
-Architecture and decision records for the distributive Raft actor system.
+Architecture and decision records for the trembita distributed runtime (product: **capabilities**, not app-authored actors).
 
 **Start here:** [status.md](status.md) (current capabilities and limits) · [architecture.md](architecture.md) (crate graph)
 
@@ -44,8 +44,8 @@ Architecture and decision records for the distributive Raft actor system.
 
 | Topic | Record |
 |-------|--------|
-| Cross-node actors | [cross-node-actors](decisions/cross-node-actors.md) |
-| Product scenarios (actor-first platform) | [product-scenarios](decisions/product-scenarios.md) |
+| Runtime: cross-node workers (advanced `UserActor`) | [cross-node-actors](decisions/cross-node-actors.md) |
+| Product scenarios + terminology | [product-scenarios](decisions/product-scenarios.md) · [product-terminology](decisions/product-terminology.md) |
 | Stateful actors → workflow store (redb-first) | [actor-state-store](decisions/actor-state-store.md) |
 | Stateful actors → Redis (optional adapter) | [actor-state-redis](decisions/actor-state-redis.md) |
 | Durable job queue (mailbox vs backlog, autoscale) | [job-queue](decisions/job-queue.md) |
@@ -92,7 +92,7 @@ Architecture and decision records for the distributive Raft actor system.
 | [getting-started.md](getting-started.md) | **TrembitaApp** quick start |
 | [status.md](status.md) | **Current capabilities and limits** |
 | [scenarios/](scenarios/README.md) | **Product scenario guides** (jobs, topics, workers, sessions, workflows) |
-| [backlog.md](backlog.md) | Implementation backlog |
+| [backlog.md](backlog.md) | Open backlog |
 | [testing-coverage.md](testing-coverage.md) | Test inventory and coverage matrix |
 | [releasing.md](releasing.md) | crates.io publish workflow |
 | [../CHANGELOG.md](../CHANGELOG.md) | Changelog policy (detailed history from **1.0**) |

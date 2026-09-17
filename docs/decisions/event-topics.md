@@ -34,7 +34,7 @@ app.publish("platform.events", payload).await?;
 async fn on_event(payload: &[u8], ctx: TopicContext<'_>) -> Result<(), MyError> { … }
 ```
 
-Subscriptions are declared at **build time** in app code (not operational data in Meta-Raft). Runtime subscription registration is not shipped — see [backlog.md](../backlog.md).
+Subscriptions are declared at **build time** in app code via [`.topics()`](../../crates/trembita/src/app/builder.rs) / [`TopicOpts`](../../crates/trembita/src/topic_opts.rs) (not operational data in Meta-Raft). Dynamic runtime subscription registration is intentionally out of scope.
 
 ### Retention
 

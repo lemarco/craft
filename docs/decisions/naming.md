@@ -23,8 +23,8 @@ Repository: `distributive_raft_actor_system`. Crates need a unique, memorable na
 ```
 crates/
 ├── trembita/              # facade — what most users depend on (TrembitaApp, product gateway)
-├── trembita-assembly/     # unpublished — cluster boot, TrembitaClusterBuilder, env merge
-├── trembita-showcase/     # unpublished — maintainer harnesses + showcase bins
+├── trembita-assembly/     # crates.io (advanced) — cluster boot, TrembitaClusterBuilder, env merge
+├── trembita-showcase/     # workspace-only — maintainer harnesses + showcase bins
 ├── trembita-proto/
 ├── trembita-core/
 ├── trembita-storage/

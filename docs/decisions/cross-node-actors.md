@@ -3,9 +3,11 @@
 **Status:** Accepted  
 **Date:** 2026-07-05  
 
+> **Product apps:** register domain work as **capabilities** ([capability-greenfield-wire](capability-greenfield-wire.md), [product-terminology](product-terminology.md)). This ADR is the **runtime** actor layer in `trembita-runtime` (supervisor, directory, migration, internal `CapHost`).
+
 ## Context
 
-Users deploy multiple VPSes with the same app. **All use cases are actors that scale on demand** across the cluster:
+Homogeneous VPS deploys share one binary. The runtime places **supervised actor instances** on nodes for mailboxes, capability hosts, and optional **`UserActor`** groups (advanced):
 
 - Cross-node **messaging**
 - Cross-node **spawn and scale** from code (`spawn_remote`, `scale_cluster`)

@@ -3,7 +3,7 @@
 Guides for building on trembita **without mandatory Redis** — same binary on each VPS, scale by adding nodes ([deployment-model](../decisions/deployment-model.md)).
 
 **Decision record:** [product-scenarios](../decisions/product-scenarios.md)  
-**Implementation backlog:** [backlog.md](../backlog.md)
+**Backlog:** [open work](../backlog.md#open-work) · **Shipped:** [status.md](../status.md)
 
 ## Choose your pattern
 

@@ -58,10 +58,17 @@ pub fn build() -> AppManifest {
 
 ```rust
 let cfg = self.config;
+let data_dir = cfg.data_dir.clone();
 let manifest = manifest::build();
 TrembitaApp::from_config(cfg)?
     .manifest(manifest)
+    .configure({
+        let mut c = TrembitaConfigure::default().with_local_gateway_apis();
+        c.data_dir = data_dir;
+        c
+    })
     .without_actors_api() // greenfield — opt in via WorkerOpts::http_cast(true)
+    .cap_deps(CapDeps::new(AppDeps::new()))
     .gateway_routes(|state| http::product::route_table(state))
     .run()
     .await?;

@@ -1,12 +1,12 @@
-# Stateful workers — crash-safe actors + migration
+# Stateful workers — durable capability ops
 
-**Pattern:** Long-running or resumable work on actors; state survives VPS crash and graceful leave without Redis.
+**Pattern:** Long-running or resumable work via **capabilities** + cap store; state survives VPS crash and graceful leave without Redis. Runtime actors are an implementation detail — not the product API.
 
 **Status:** **Shipped** in 0.2.x — migration + supervisor + **`RedbActorStateStore`** (voter replication, TTL/GC).
 
 ## Capabilities first (recommended)
 
-The [`examples/stateful-workers/`](../../examples/stateful-workers/) HTTP showcase registers **`orders`** via [`CapManifest`](../../crates/trembita/src/capability/manifest.rs): idempotent keys in [`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs), product ingress **`POST /orders/submit`** (`cap_fire`), no built-in `/actors/*` on the default gateway.
+The [`examples/stateful-workers/`](../../examples/stateful-workers/) HTTP showcase registers **`orders`** via [`CapManifest`](../../crates/trembita/src/capability/manifest.rs): idempotent keys in **cap store** ([`trembita::capstore`](../../crates/trembita/src/capstore.rs)), product ingress **`POST /orders/submit`** (`cap_fire`), no built-in `/actors/*` on the default gateway.
 
 See [capabilities](capabilities.md) and [capability-greenfield-wire](../decisions/capability-greenfield-wire.md).
 
@@ -177,4 +177,4 @@ Advanced workers: [`.workers()`](../../crates/trembita/src/worker_opts.rs) + opt
 - [background-jobs](background-jobs.md) — async alternative to long handler
 - [background-jobs § Effectively-once recipe](background-jobs.md#effectively-once-recipe) — this store as the CAS layer that makes a redelivered job safe
 - [realtime-sessions](realtime-sessions.md) — sticky in-memory state
-- [backlog.md](../backlog.md) — polish items
+- [status.md](../status.md) · [capabilities.md](capabilities.md)

@@ -5,7 +5,7 @@
 
 ## Context
 
-trembita is actor-native on `ractor` (modeled on Erlang/OTP). Observability targets **BEAM-level monitoring** — metrics, telemetry, introspection, supervision visibility, and an optional live dashboard — mapped to trembita's distributed cross-node model, with heavy tracing opt-in ([Performance caveats](#performance-caveats-vs-beam)).
+The runtime is **supervisor-native** on `ractor` (Erlang/OTP-style). Product apps register **capabilities**; internal **`CapHost`** and optional advanced **`UserActor`** groups still appear in telemetry as runtime workers ([product-terminology](product-terminology.md)). Observability targets **BEAM-level monitoring** — metrics, telemetry, introspection, supervision visibility, and an optional live dashboard — with heavy tracing opt-in ([Performance caveats](#performance-caveats-vs-beam)).
 
 ## Decision
 
@@ -33,7 +33,7 @@ All read surfaces live on the **ops HTTP bind** ([wire-protocol](wire-protocol.m
 |--------|---------|
 | Raft | term, role, commit_index, election_count, append_latency, leader_changes |
 | Cluster | live_nodes, membership_changes, join/leave counts |
-| Actors | actor_count, mailbox_depth, message_rate, handle_latency, restarts, migrations |
+| Runtime workers | actor_count, mailbox_depth, message_rate, handle_latency, restarts, migrations (capability hosts + optional `UserActor`) |
 | Client | request_rate, forward_count, readindex_latency |
 | Store | redis_ops, redis_errors ([actor-state-redis](actor-state-redis.md)) |
 
@@ -85,13 +85,13 @@ Backed by a broadcast channel; drops for slow consumers are counted (never block
 
 ### 4. Introspection API (Observer-like)
 
-Read-only cluster/actor state over ops HTTP (JSON):
+Read-only cluster/runtime state over ops HTTP (JSON). **`/introspect/actors`** lists **runtime worker instances** (including internal capability hosts) — not a product CRUD API ([product-terminology](product-terminology.md)).
 
 | Route | Returns |
 |-------|---------|
 | `GET /introspect/cluster` | nodes, roles, leader, membership |
-| `GET /introspect/actors` | all actors: id, node, type, mailbox depth, uptime, generation |
-| `GET /introspect/actors/{id}` | single actor detail |
+| `GET /introspect/actors` | runtime workers: id, node, type, mailbox depth, uptime, generation |
+| `GET /introspect/actors/{id}` | single worker detail |
 | `GET /introspect/node/{id}` | per-VPS: workers, resources, store health |
 
 Cross-node aggregation: ops handlers fan out via existing actor directory ([cross-node-actors](cross-node-actors.md)) / peer RPC; leader can serve cluster-wide view.

@@ -1,6 +1,7 @@
 //! # trembita
 //!
-//! Distributed Raft + actor framework — product apps via [`TrembitaApp`], cluster APIs via [`cluster`].
+//! Distributed Raft runtime — **product apps** via [`TrembitaApp`] + **capabilities** ([`CapManifest`](crate::CapManifest)); cluster APIs via [`cluster`].
+//! User-facing handlers are typed ops (`#[cap_handler]`), not app-authored [`UserActor`](trembita_runtime::UserActor) (runtime-internal / advanced only).
 //!
 //! ## Product path
 //!
@@ -24,12 +25,12 @@
 //! Add a single crate to `Cargo.toml` and enable integrations via features:
 //!
 //! ```toml
-//! trembita = { version = "0.3", features = ["http-jobs", "dev-certs", "external-backlog"] }
+//! trembita = { version = "0.6", features = ["http-jobs", "dev-certs", "external-backlog"] }
 //! ```
 //!
 //! | Feature | Purpose |
 //! |---------|---------|
-//! | `http-jobs` (default) | Product HTTP gateway (`Gateway`, `/jobs/*`, …) |
+//! | `http-jobs` (default) | Product HTTP gateway (`Gateway`, `/jobs/*`, `cap_*`, …; `/actors/*` off by default) |
 //! | `dev-certs` | Ephemeral mTLS for local development |
 //! | `redis-store` | Redis [`ActorStateStore`](trembita_actor_store::ActorStateStore) |
 //! | `external-backlog` | Postgres [`ExternalBacklog`] adapter |
@@ -115,6 +116,8 @@ pub use capability::{
 pub use configure::TrembitaConfigure;
 pub use consumer::{ConsumerGroup, ConsumerOpts, IdempotencyKeyFn, IdempotencyOpts, JobConsumer};
 pub use cron_opts::CronOpts;
+#[allow(deprecated)]
+pub use gateway::OpenActorSessionError;
 #[cfg(feature = "http-jobs")]
 pub use gateway::{
     CapEnqueueHandler, CapFireHandler, CapInvokeHandler, CapScheduleHandler, ProductRoutes,
@@ -125,7 +128,7 @@ pub use gateway::{
     ConnectionGuard, ConnectionTracker, DEFAULT_GATEWAY_DRAIN_TIMEOUT, ExtractedIdentity,
     GatewayBearerIdentity, GatewayConfig, GatewayHandle, GatewayIdentity, GatewayOpts,
     GatewayRequest, GatewayTlsPaths, GatewayTokenIdentity, IdentityError, IdentityTypeError,
-    NoWorkerError, OpenActorSessionError, SessionHandle, SessionKey, TrembitaGatewayState,
+    NoWorkerError, OpenWorkerSessionError, SessionHandle, SessionKey, TrembitaGatewayState,
     WrappedGatewayService, build_gateway_service, spawn_gateway,
 };
 pub use job_opts::JobOpts;

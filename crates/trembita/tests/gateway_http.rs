@@ -8,7 +8,7 @@ use std::time::Duration;
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use trembita::{
-    AppManifest, GatewayOpts, OpenActorSessionError, TrembitaApp, TrembitaConfigure,
+    AppManifest, GatewayOpts, OpenWorkerSessionError, TrembitaApp, TrembitaConfigure,
     TrembitaGatewayState, WorkerOpts, WorkerScale, workers,
 };
 use trembita_http::{Gateway, HttpError, RequestCtx, Response, RouteTable};
@@ -115,7 +115,7 @@ fn ctx_uri(ctx: &RequestCtx) -> http::Uri {
 async fn post_chat(state: TrembitaGatewayState, ctx: RequestCtx) -> Result<Response, HttpError> {
     let uri = ctx_uri(&ctx);
     let mut handle = state
-        .open_actor_session_parts(
+        .open_worker_session_parts(
             "echo",
             ctx.method(),
             &uri,
@@ -151,10 +151,10 @@ async fn get_me(state: TrembitaGatewayState, ctx: RequestCtx) -> Result<Response
     }
 }
 
-fn session_err(err: OpenActorSessionError) -> HttpError {
+fn session_err(err: OpenWorkerSessionError) -> HttpError {
     match err {
-        OpenActorSessionError::Identity(e) => HttpError::Unauthorized(e.to_string()),
-        OpenActorSessionError::NoWorker(e) => HttpError::Internal(e.to_string()),
+        OpenWorkerSessionError::Identity(e) => HttpError::Unauthorized(e.to_string()),
+        OpenWorkerSessionError::NoWorker(e) => HttpError::Internal(e.to_string()),
     }
 }
 
