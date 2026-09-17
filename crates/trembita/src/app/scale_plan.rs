@@ -42,7 +42,7 @@ impl Default for CoordinationScaleLine {
     }
 }
 
-/// Snapshot merged from manifest + env at builder time; logged after [`TrembitaApp::wait_until_ready`].
+/// Snapshot merged from manifest + env at builder time; logged after `TrembitaApp::wait_until_ready`.
 #[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
 pub struct ProductScalePlan {
     /// One row per [`CapManifest`](crate::CapManifest) group.

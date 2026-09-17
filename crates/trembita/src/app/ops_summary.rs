@@ -70,14 +70,14 @@ impl CoordinationProfileSnapshot {
     }
 }
 
-/// Single JSON snapshot for operators ([`GET /introspect/ops-summary`](Self::ops_summary_route_table)).
+/// Single JSON snapshot for operators — **`GET /introspect/ops-summary`** on the unified listener.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct OpsSummary {
     /// Elastic join pipeline ([B-35](../../../docs/decisions/cluster-elasticity.md)).
     pub join: JoinStatusView,
-    /// Capability hosts, queue registration layout, coordination Raft counts ([B-33](super::scale_plan::ProductScalePlan)).
+    /// Capability hosts, queue registration layout, coordination Raft counts (B-33 product scale plan).
     pub product_scale: ProductScalePlan,
-    /// R3 directory visibility ([B-36](super::directory_r3::DirectoryR3Snapshot)).
+    /// R3 directory visibility (B-36 merge lag / delivery snapshot).
     pub directory_r3: DirectoryR3Snapshot,
     /// Named growth preset when configured at boot ([B-37](../../../docs/decisions/capability-dx.md)).
     pub coordination_profile: CoordinationProfileSnapshot,

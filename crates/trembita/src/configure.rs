@@ -190,7 +190,7 @@ impl TrembitaConfigure {
 
     /// Apply a B-37 growth profile (coordination + leader auto-shard policy defaults).
     ///
-    /// Call **before** [`.manifest`](crate::TrembitaAppBuilder::manifest) / [`.queue`](crate::TrembitaAppBuilder::queue)
+    /// Call **before** [`.manifest`](crate::TrembitaAppBuilder::manifest) / `.queue(...)` on the builder
     /// so standard queues pick up the profile's auto-shard thresholds. Explicit
     /// [`.with_coordination_raft_groups`](Self::with_coordination_raft_groups) after this method overrides groups.
     #[must_use]

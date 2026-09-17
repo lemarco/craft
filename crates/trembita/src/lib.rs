@@ -36,7 +36,7 @@
 //! | `capstore-postgres` | Postgres `trembita_capstore::CapStateStore` via `trembita-capstore-postgres` |
 //! | `gateway-session-postgres` | Postgres [`GatewaySessionStore`] via `trembita-gateway-session-postgres` (B-46) |
 //! | `external-backlog` | Postgres [`ExternalBacklog`] adapter |
-//! | `schedule-postgres` | Postgres [`ScheduleSource`](trembita_jobs::ScheduleSource) via `trembita-schedule-postgres` |
+//! | `schedule-postgres` | Postgres [`ScheduleSource`] via `trembita-schedule-postgres` |
 //! | `domain-outbox` | Postgres [`EventOutboxSource`] adapter |
 //!
 //! Full reference: [facade ADR](https://gitlab.com/lemarco/trembita/-/blob/main/docs/decisions/facade.md).

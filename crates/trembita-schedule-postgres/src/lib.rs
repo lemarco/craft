@@ -1,4 +1,4 @@
-//! PostgreSQL [`ScheduleSource`](trembita_jobs::ScheduleSource) adapter (B-41).
+//! PostgreSQL [`ScheduleSource`] adapter (B-41).
 
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{AssertSqlSafe, PgPool, Row};

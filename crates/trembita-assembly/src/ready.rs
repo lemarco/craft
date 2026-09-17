@@ -9,7 +9,7 @@ pub struct ReadyOpts {
     pub timeout: Duration,
     /// When non-empty, every listed job stream must be mounted before ready.
     pub job_streams: Vec<String>,
-    /// When true, wait until [`Readiness::is_ready`] (LB pool / join pipeline) instead of Raft leader.
+    /// When true, wait until join-pipeline pool readiness (LB `/ready`) instead of Raft leader only.
     pub pool_membership: bool,
 }
 
