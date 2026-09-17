@@ -127,6 +127,31 @@ fn b42_cluster_showcases_include_node_four_cert_id() {
 }
 
 #[test]
+fn b42_script_elastic_up_forces_four_nodes() {
+    let root = workspace_root().expect("repo");
+    let script = std::fs::read_to_string(root.join("scripts/local-cluster.sh")).unwrap();
+    assert!(script.contains("elastic_up()"));
+    assert!(script.contains("NODES=4 up"));
+}
+
+#[test]
+fn b42_e2e_and_local_cap_smoke_min_distinct_documented() {
+    let root = workspace_root().expect("repo");
+    let e2e = std::fs::read_to_string(root.join("e2e/elastic_lb.sh")).unwrap();
+    let local = std::fs::read_to_string(root.join("scripts/local-cluster.sh")).unwrap();
+    assert!(e2e.contains("cap_distinct") && e2e.contains("-lt 2"));
+    assert!(local.contains("cap_distinct") && local.contains("-lt 2"));
+}
+
+#[test]
+fn b42_cli_main_cluster_up_mentions_elastic_nodes_four() {
+    let root = workspace_root().expect("repo");
+    let main_rs = std::fs::read_to_string(root.join("crates/trembita-cli/src/main.rs")).unwrap();
+    assert!(main_rs.contains("--nodes 4"));
+    assert!(main_rs.contains("B-42"));
+}
+
+#[test]
 fn showcase_registry_includes_stateful_workers() {
     let s = find_showcase("stateful-workers").expect("showcase");
     assert_eq!(s.base_port, 8190);

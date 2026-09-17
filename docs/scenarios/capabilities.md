@@ -224,20 +224,32 @@ Same mental model as [Elastic join + LB (B-34)](#elastic-join--lb-b-34) on a lap
 
 Ports (**realtime**): **8290–8293**. Guide: [dev/local-3node § B-42](../../dev/local-3node/README.md#local-elastic-parity-b-42).
 
+**Smoke thresholds** (same as [`e2e/elastic_lb.sh`](../../e2e/elastic_lb.sh)):
+
+| Check | 3 nodes | 4 nodes |
+|-------|---------|---------|
+| `lb-smoke` distinct `node_id` on `/ready` | ≥ **2** | ≥ **3** |
+| `cap-smoke` distinct handler `node_id` on `/e2e/whoami` | ≥ **2** (LB required) | ≥ **2** |
+
+Rust mirrors: [`lb_smoke_min_distinct`](../../crates/trembita-cli/src/dev/local_cluster.rs), [`cap_smoke_min_distinct`](../../crates/trembita-cli/src/dev/local_cluster.rs), [`resolve_lb_backend_count`](../../crates/trembita-cli/src/dev/local_cluster.rs) (CLI `cluster-lb-up --nodes`).
+
 ### Automated regression (B-42)
 
 | Scenario | Regression |
 |----------|------------|
 | Elastic default node count = 4 | `b42_elastic_default_four_nodes_constant`, `b42_elastic_node_count_default_is_four` |
-| Fourth nginx upstream when `backends=4` | `b42_repo_nginx_template_renders_fourth_backend_when_elastic`, `b42_workflows_fourth_nginx_upstream_port` (placeholder `${LOCAL_CLUSTER_NODE4_SERVER}` in `b39_local_3node_packaging_files_exist_in_repo`) |
+| Fourth nginx upstream when `backends=4` | `b42_repo_nginx_template_renders_fourth_backend_when_elastic`, `b42_workflows_fourth_nginx_upstream_port`, `b42_render_lb_clamp_drops_fourth_upstream_for_low_backend_count` (placeholder `${LOCAL_CLUSTER_NODE4_SERVER}` in `b39_local_3node_packaging_files_exist_in_repo`) |
 | LB upstream count clamped to 3..=4 | `b42_clamp_lb_backends_scenarios_table` |
 | Fourth listen addr per showcase (8093 / 8193 / 8293 / 8493) | `b42_showcase_fourth_listen_addr_scenarios_table`, `b42_realtime_fourth_listen_addr_matches_elastic_ports` |
-| Staged join policy + spawn waves + `/ready` ports | `b42_use_staged_elastic_join_scenarios_table`, `b42_cluster_spawn_waves_scenarios_table`, `b42_ready_port_for_node_scenarios_table`, `b42_ready_port_matches_showcase_listen_addr` |
+| Staged join policy + spawn waves (`nodes=0` … `5`) + `/ready` ports | `b42_use_staged_elastic_join_scenarios_table`, `b42_cluster_spawn_waves_scenarios_table`, `b42_ready_port_for_node_scenarios_table`, `b42_ready_port_matches_showcase_listen_addr` |
 | `--nodes 4` valid before binary/setup errors | `b42_cluster_up_four_nodes_rejects_invalid_nodes_not_first` |
-| LB/cap distinct thresholds vs E2E script | `b42_lb_smoke_distinct_thresholds_match_e2e_elastic_script` |
-| Node 4 dev cert + realtime `e2e_pool` wiring | `b42_cluster_showcases_include_node_four_cert_id`, `b42_realtime_example_wires_e2e_pool_manifest` |
+| LB/cap distinct thresholds vs E2E script | `b42_lb_smoke_distinct_thresholds_match_e2e_elastic_script`, `b42_lb_smoke_min_distinct_scenarios_table`, `b42_cap_smoke_min_distinct_matches_e2e_elastic`, `b42_e2e_and_local_cap_smoke_min_distinct_documented` |
+| `cluster-lb-up` backend count (explicit vs probe) | `b42_resolve_lb_backend_count_scenarios_table` |
+| Join seed + cert id 4 for elastic joiners | `b42_join_seed_points_at_node_one_for_all_cluster_showcases`, `b42_cluster_showcases_cert_id_four_present`, `b42_cluster_showcases_include_node_four_cert_id` |
+| Script / CLI packaging | `b42_script_elastic_up_forces_four_nodes`, `b42_cli_main_cluster_up_mentions_elastic_nodes_four` |
+| Realtime `e2e_pool` wiring | `b42_realtime_example_wires_e2e_pool_manifest` |
 | Script phases mirror `e2e/elastic_lb.sh` | `b42_local_cluster_script_elastic_phases_exist`, `b42_elastic_lb_e2e_script_uses_same_whoami_path_as_local_cap_smoke` |
-| Shared **`/e2e/whoami`** path + cap metadata | `b42_whoami_path_matches_elastic_lb_and_local_cluster_scripts`, `b42_whoami_cap_request_metadata_scenarios_table` |
+| Shared **`/e2e/whoami`** path + cap metadata | `b42_whoami_path_matches_elastic_lb_and_local_cluster_scripts`, `b42_whoami_cap_request_metadata_scenarios_table`, `b42_node_reply_json_wire_fields_scenarios_table` |
 | Staged join waits on `/ready` (nodes ≥ 4) | [`cluster.rs`](../../crates/trembita-cli/src/dev/cluster.rs) — live check: `./scripts/local-cluster.sh elastic-smoke` |
 
 ```bash

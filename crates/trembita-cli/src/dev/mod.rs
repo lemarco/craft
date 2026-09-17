@@ -102,9 +102,8 @@ pub fn dev_cluster_lb_up(showcase_id: Option<&str>, nodes: Option<u32>) -> Resul
     let id = showcase_id.unwrap_or(local_cluster::DEFAULT_CLUSTER_UP_SHOWCASE);
     let showcase = resolve(id)?;
     let root = workspace_root()?;
-    let backends = nodes
-        .map(|n| n.clamp(3, 4))
-        .unwrap_or_else(|| local_cluster::detect_lb_backends(showcase, 4));
+    let detected = local_cluster::detect_lb_backends(showcase, 4);
+    let backends = local_cluster::resolve_lb_backend_count(nodes, detected);
     local_cluster::lb_up(&root, showcase, backends)?;
     local_cluster::print_lb_hints_public(showcase);
     Ok(())

@@ -187,3 +187,37 @@ mod b39_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod b42_tests {
+    use super::*;
+
+    #[test]
+    fn b42_join_seed_points_at_node_one_for_all_cluster_showcases() {
+        for id in [
+            "realtime",
+            "background-jobs",
+            "stateful-workers",
+            "workflows",
+        ] {
+            let s = find(id).unwrap_or_else(|| panic!("{id}"));
+            assert_eq!(s.join_seed(), format!("1@127.0.0.1:{}", s.base_port));
+        }
+    }
+
+    #[test]
+    fn b42_cluster_showcases_cert_id_four_present() {
+        for id in [
+            "realtime",
+            "background-jobs",
+            "stateful-workers",
+            "workflows",
+        ] {
+            let s = find(id).unwrap_or_else(|| panic!("{id}"));
+            assert!(
+                s.cert_ids.contains(&4),
+                "{id}: missing cert id 4 for elastic joiner"
+            );
+        }
+    }
+}

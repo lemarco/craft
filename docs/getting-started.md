@@ -198,7 +198,7 @@ Docs: [dev/local-3node](../dev/local-3node/README.md) · [capabilities § B-39](
 ./scripts/local-cluster.sh stop
 ```
 
-Regression: `./scripts/test-fast.sh -p trembita-cli --lib b42_` · `./scripts/test-fast.sh -p trembita-tools --lib b42_`. Heavy CI lane: [`e2e/elastic_lb.sh`](../e2e/elastic_lb.sh).
+Regression: `./scripts/test-fast.sh -p trembita-cli --lib b42_` · `./scripts/test-fast.sh -p trembita-cli --test dev b42_` · `./scripts/test-fast.sh -p trembita-tools --lib b42_`. Full `b42_*` table: [capabilities § B-42 regression](scenarios/capabilities.md#automated-regression-b-42). Heavy CI lane: [`e2e/elastic_lb.sh`](../e2e/elastic_lb.sh).
 
 Reference KV [`StateMachine`](../crates/trembita-core/src/kv.rs) (`trembita::kv` on the facade) for low-level Raft `propose` / `query` without a full product app.
 

@@ -100,4 +100,11 @@ mod tests {
             "e2e_pool manifest required for B-42 cap-smoke"
         );
     }
+
+    #[test]
+    fn b42_node_reply_json_wire_fields_scenarios_table() {
+        let json = serde_json::to_value(NodeReply { node_id: 7 }).expect("json");
+        assert_eq!(json.as_object().map(|m| m.len()), Some(1));
+        assert_eq!(json["node_id"], 7);
+    }
 }

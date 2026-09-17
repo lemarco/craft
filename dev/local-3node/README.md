@@ -52,7 +52,7 @@ Four **realtime** nodes on **8290–8293** with the same staged join story as B-
 ./scripts/local-cluster.sh stop
 ```
 
-Debug CLI: `./target/debug/trembita dev cluster-up --setup --nodes 4 --lb`
+Debug CLI: `./target/debug/trembita dev cluster-up --setup --nodes 4 --lb` · `./target/debug/trembita dev cluster-lb-up --nodes 4`
 
 | Phase | What it checks (realtime) |
 |-------|---------------------------|
@@ -61,6 +61,8 @@ Debug CLI: `./target/debug/trembita dev cluster-up --setup --nodes 4 --lb`
 | `session-smoke` | Cluster cookie: login node1 → `/me` node2 (or via LB with `--lb`) |
 | `cap-smoke` | PerNode **`GET /e2e/whoami`** via LB — ≥2 handler `node_id`s |
 | `elastic-smoke` | All of the above in one pass |
+
+**Authoritative regression index:** [capabilities § B-42](../../docs/scenarios/capabilities.md#automated-regression-b-42) (full `b42_*` table + smoke thresholds).
 
 ### Automated regression (B-39)
 
@@ -79,9 +81,11 @@ Debug CLI: `./target/debug/trembita dev cluster-up --setup --nodes 4 --lb`
 
 | Scenario | Regression |
 |----------|------------|
-| Fourth node ports for all cluster showcases | `b42_showcase_fourth_listen_addr_scenarios_table` |
-| nginx upstream clamp 3..=4 | `b42_clamp_lb_backends_scenarios_table` |
-| Script + E2E share `/e2e/whoami` | `b42_local_cluster_script_elastic_phases_exist`, `b42_elastic_lb_e2e_script_uses_same_whoami_path_as_local_cap_smoke` |
+| Staged join + spawn waves | `b42_use_staged_elastic_join_scenarios_table`, `b42_cluster_spawn_waves_scenarios_table` |
+| Smoke thresholds (LB 2/3, cap 2) | `b42_lb_smoke_min_distinct_scenarios_table`, `b42_cap_smoke_min_distinct_matches_e2e_elastic` |
+| nginx / `cluster-lb-up` backends | `b42_clamp_lb_backends_scenarios_table`, `b42_resolve_lb_backend_count_scenarios_table` |
+| Join seed + cert id 4 | `b42_join_seed_points_at_node_one_for_all_cluster_showcases`, `b42_cluster_showcases_cert_id_four_present` |
+| Script + E2E `/e2e/whoami` | `b42_local_cluster_script_elastic_phases_exist`, `b42_elastic_lb_e2e_script_uses_same_whoami_path_as_local_cap_smoke` |
 
 ```bash
 ./scripts/test-fast.sh -p trembita-cli --lib b39_

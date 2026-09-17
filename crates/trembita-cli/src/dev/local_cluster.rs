@@ -23,6 +23,24 @@ pub const LOCAL_CLUSTER_LB_PORT: u16 = 18_290;
 /// Default node count for elastic local proof (seed + 3 joiners, then 4th joiner — mirrors B-34).
 pub const LOCAL_CLUSTER_ELASTIC_NODES: u32 = 4;
 
+/// Minimum distinct `node_id` values for `lb-smoke` ([`scripts/local-cluster.sh`](../../../../scripts/local-cluster.sh)).
+#[must_use]
+pub(crate) fn lb_smoke_min_distinct(fourth_node_ready: bool) -> u32 {
+    if fourth_node_ready { 3 } else { 2 }
+}
+
+/// Minimum distinct handler `node_id`s for `cap-smoke` (matches [`e2e/elastic_lb.sh`](../../../../e2e/elastic_lb.sh)).
+#[must_use]
+pub const fn cap_smoke_min_distinct() -> u32 {
+    2
+}
+
+/// CLI `--nodes` override for `cluster-lb-up`, else probe result.
+#[must_use]
+pub(crate) fn resolve_lb_backend_count(explicit_nodes: Option<u32>, detected: u32) -> u32 {
+    explicit_nodes.map(clamp_lb_backends).unwrap_or(detected)
+}
+
 /// Start cluster with shared gateway env; optional local nginx LB.
 pub fn cluster_up(
     showcase: &Showcase,
@@ -130,7 +148,15 @@ fn print_smoke_hints(showcase: &Showcase, nodes: u32) {
     if nodes >= LOCAL_CLUSTER_ELASTIC_NODES {
         eprintln!("Local elastic cluster smoke (B-42 — mirrors e2e/elastic_lb.sh on localhost):");
         eprintln!("  ./scripts/local-cluster.sh elastic-smoke");
-        eprintln!("  ./scripts/local-cluster.sh cap-smoke      # GET /e2e/whoami via LB");
+        eprintln!(
+            "  ./scripts/local-cluster.sh lb-smoke       # ≥{} / ≥{} distinct node_id on /ready",
+            lb_smoke_min_distinct(false),
+            lb_smoke_min_distinct(true)
+        );
+        eprintln!(
+            "  ./scripts/local-cluster.sh cap-smoke      # ≥{} handler node_id on /e2e/whoami",
+            cap_smoke_min_distinct()
+        );
     } else {
         eprintln!("Local 3-node cluster smoke (shared TREMBITA_GATEWAY_SESSION_SECRET):");
     }
@@ -193,7 +219,10 @@ pub fn print_lb_hints_public(showcase: &Showcase) {
     eprintln!("  curl -sf http://127.0.0.1:{lb}/ready   # round-robin backends");
     if showcase.id == "realtime" {
         eprintln!("  ./scripts/local-cluster.sh session-smoke --lb");
-        eprintln!("  ./scripts/local-cluster.sh cap-smoke");
+        eprintln!(
+            "  ./scripts/local-cluster.sh cap-smoke   # ≥{} handler node_id",
+            cap_smoke_min_distinct()
+        );
     }
 }
 
@@ -396,6 +425,85 @@ mod b42_tests {
         let template = "${LOCAL_CLUSTER_NODE4_SERVER}";
         let got = render_lb_nginx_ports(template, 8490, 4);
         assert!(got.contains("host.docker.internal:8493"));
+    }
+
+    #[test]
+    fn b42_lb_smoke_min_distinct_scenarios_table() {
+        struct Row {
+            fourth_ready: bool,
+            want: u32,
+        }
+        let rows = [
+            Row {
+                fourth_ready: false,
+                want: 2,
+            },
+            Row {
+                fourth_ready: true,
+                want: 3,
+            },
+        ];
+        for row in rows {
+            assert_eq!(
+                lb_smoke_min_distinct(row.fourth_ready),
+                row.want,
+                "fourth_ready={}",
+                row.fourth_ready
+            );
+        }
+    }
+
+    #[test]
+    fn b42_cap_smoke_min_distinct_matches_e2e_elastic() {
+        assert_eq!(cap_smoke_min_distinct(), 2);
+    }
+
+    #[test]
+    fn b42_resolve_lb_backend_count_scenarios_table() {
+        struct Row {
+            explicit: Option<u32>,
+            detected: u32,
+            want: u32,
+        }
+        let rows = [
+            Row {
+                explicit: None,
+                detected: 4,
+                want: 4,
+            },
+            Row {
+                explicit: Some(2),
+                detected: 4,
+                want: 3,
+            },
+            Row {
+                explicit: Some(4),
+                detected: 3,
+                want: 4,
+            },
+            Row {
+                explicit: Some(9),
+                detected: 3,
+                want: 4,
+            },
+        ];
+        for row in rows {
+            assert_eq!(
+                resolve_lb_backend_count(row.explicit, row.detected),
+                row.want,
+                "explicit={:?} detected={}",
+                row.explicit,
+                row.detected
+            );
+        }
+    }
+
+    #[test]
+    fn b42_render_lb_clamp_drops_fourth_upstream_for_low_backend_count() {
+        let template = "a${LOCAL_CLUSTER_NODE4_SERVER}z";
+        let got = render_lb_nginx_ports(template, 8290, 2);
+        assert!(!got.contains("host.docker.internal"));
+        assert!(!got.contains("${LOCAL_CLUSTER"));
     }
 
     #[test]

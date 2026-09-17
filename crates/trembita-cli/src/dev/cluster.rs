@@ -487,6 +487,11 @@ mod b42_tests {
         }
         let rows = [
             Row {
+                nodes: 0,
+                staged: false,
+                want: &[],
+            },
+            Row {
                 nodes: 2,
                 staged: false,
                 want: &[&[1, 2]],

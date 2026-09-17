@@ -230,6 +230,13 @@ Default **`realtime`** — cookie login across nodes ([B-29](../decisions/gatewa
 
 **CI:** [capabilities § B-39](../scenarios/capabilities.md#local-3-node-cluster-b-39) · [local-3node README](../../dev/local-3node/README.md).
 
+#### Automated regression (B-39)
+
+```bash
+./scripts/test-fast.sh -p trembita-cli --lib b39_
+./scripts/test-fast.sh -p trembita-cli --test dev b39_
+```
+
 ### Local elastic parity (B-42)
 
 [`cluster-up --nodes 4`](../../crates/trembita-cli/src/main.rs) runs seed nodes **1–3**, waits on **`GET /ready`**, then starts the **4th joiner** ([`up_with_shared_gateway_env`](../../crates/trembita-cli/src/dev/cluster.rs)). Optional nginx includes a **4th upstream** when node **4** responds on `/ready`. Default **`realtime`** showcase registers shared [`e2e_pool` / `/e2e/whoami`](../../crates/trembita-tools/src/e2e_elastic/) for PerNode cap smoke ([`cap-smoke`](../../scripts/local-cluster.sh)).
@@ -251,19 +258,7 @@ Regression:
 ./scripts/test-fast.sh -p trembita-tools --lib b34_
 ```
 
-| Scenario | Test |
-|----------|------|
-| Fourth node ports (all showcases) | `b42_showcase_fourth_listen_addr_scenarios_table` |
-| nginx 3/4 upstream clamp + render | `b42_clamp_lb_backends_scenarios_table`, `b42_repo_nginx_template_renders_fourth_backend_when_elastic` |
-| Script parity with `elastic_lb.sh` | `b42_local_cluster_script_elastic_phases_exist`, `b42_elastic_lb_e2e_script_uses_same_whoami_path_as_local_cap_smoke` |
-| Shared whoami route path | `b42_whoami_path_matches_elastic_lb_and_local_cluster_scripts` |
-
-#### Automated regression (B-39)
-
-```bash
-./scripts/test-fast.sh -p trembita-cli --lib b39_
-./scripts/test-fast.sh -p trembita-cli --test dev b39_
-```
+Full **`b42_*`** inventory (spawn waves, smoke thresholds, nginx/LB resolve, join seed, scripts): [capabilities § B-42 regression](../scenarios/capabilities.md#automated-regression-b-42).
 
 ### Routes (product contract)
 
