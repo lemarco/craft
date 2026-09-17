@@ -158,16 +158,16 @@ Run locally:
 
 End-to-end story for **«add VPS + same binary + join seeds»** behind an HTTP reverse proxy:
 
-| Proof | Fast (in-process) | Docker (`e2e/elastic_lb.sh`) |
-|-------|-------------------|------------------------------|
-| Four cluster members each expose **`GET /ready`** with distinct `node_id` | Round-robin over four gateways sees four ids | nginx on host **`:18180`** → ≥3 distinct `node_id` on `/ready` |
-| **4th dynamic joiner** after seed + two learners | Simulated four `TrembitaApp` processes | `node4` profile after `node1..3` |
-| **Cluster session cookie** — login on A, `GET /me` on B | `b34_cluster_session_cookie_valid_on_peer_gateway` | `DIRECT[1]` login → `DIRECT[2]` `/me` |
-| **Secret mismatch** rejects peer cookie | `b34_cluster_session_rejects_peer_cookie_when_secret_differs` | — (covered in-process; set `TREMBITA_GATEWAY_SESSION_SECRET` identically in prod) |
-| **PerNode** cap hosts on every node | Directory pool size 4 + `scale_plan` `PerNode` | `/e2e/whoami` via LB hits ≥2 distinct handler `node_id`s |
-| Product E2E binary | `trembita-tools/e2e_elastic/cap.rs` (`b34_*`) | Binary `trembita-e2e-elastic` in `Dockerfile.elastic` |
+| Proof | Fast (in-process) | Local laptop (B-42) | Docker (`e2e/elastic_lb.sh`) |
+|-------|-------------------|---------------------|------------------------------|
+| Four cluster members each expose **`GET /ready`** with distinct `node_id` | Round-robin over four gateways sees four ids | `./scripts/local-cluster.sh elastic-up` + `lb-smoke` (≥3 ids) | nginx on host **`:18180`** → ≥3 distinct `node_id` on `/ready` |
+| **4th dynamic joiner** after seed + two learners | Simulated four `TrembitaApp` processes | Staged join in `dev cluster-up --nodes 4` | `node4` profile after `node1..3` |
+| **Cluster session cookie** — login on A, `GET /me` on B | `b34_cluster_session_cookie_valid_on_peer_gateway` | `local-cluster.sh session-smoke` | `DIRECT[1]` login → `DIRECT[2]` `/me` |
+| **Secret mismatch** rejects peer cookie | `b34_cluster_session_rejects_peer_cookie_when_secret_differs` | — (same secret injected by `cluster-up`) | — (set `TREMBITA_GATEWAY_SESSION_SECRET` identically in prod) |
+| **PerNode** cap hosts on every node | Directory pool size 4 + `scale_plan` `PerNode` | `cap-smoke` → **`GET /e2e/whoami`** on **realtime** via LB **`:18290`** | `/e2e/whoami` via LB hits ≥2 distinct handler `node_id`s |
+| Product E2E binary | `trembita-tools/e2e_elastic/cap.rs` (`b34_*`) | **realtime** showcase + shared `e2e_pool` manifest | Binary `trembita-e2e-elastic` in `Dockerfile.elastic` |
 
-Shared secret in lab: `TREMBITA_GATEWAY_SESSION_SECRET=e2e-elastic-secret-16b` (compose + tests). Session mechanics: [gateway-cluster-auth § B-29/B-40](../decisions/gateway-cluster-auth.md) · [capabilities § B-40](../scenarios/capabilities.md#gateway-auth-split-b-40) · rotation [runbook § B-40](../ops/production-runbook.md#gateway-session-rotation-b-40). Join gating before pool: [cluster-elasticity § B-35](../decisions/cluster-elasticity.md#join-readiness-pipeline-b-35). Local **3-node** local 3-node path (no 4th joiner): [local-3node](../../dev/local-3node/README.md) (B-39).
+Shared secret in lab: `TREMBITA_GATEWAY_SESSION_SECRET=e2e-elastic-secret-16b` (compose + tests). Local cluster dev secret: `trembita-local-3node-dev-secret` ([B-39/B-42 local-3node](../../dev/local-3node/README.md)). Session mechanics: [gateway-cluster-auth § B-29/B-40](../decisions/gateway-cluster-auth.md) · [capabilities § B-40](../scenarios/capabilities.md#gateway-auth-split-b-40) · rotation [runbook § B-40](../ops/production-runbook.md#gateway-session-rotation-b-40). Join gating before pool: [cluster-elasticity § B-35](../decisions/cluster-elasticity.md#join-readiness-pipeline-b-35). Three-node cookies only: [local-3node](../../dev/local-3node/README.md) (B-39).
 
 Docker layout: [e2e/docker-compose-elastic.yml](../../e2e/docker-compose-elastic.yml) — direct ops HTTP **`:18181`–`:18184`**, LB **`:18180`**.
 

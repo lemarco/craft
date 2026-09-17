@@ -7,7 +7,7 @@ closing a gap.
 **Strategy:** [testing-strategy](decisions/testing-strategy.md)  
 **Feature status:** [status.md](status.md)  
 **Product docs:** [product-terminology](decisions/product-terminology.md) (capabilities vs runtime actors)  
-**Last audit:** 2026-09-17 (B-28–B-33 wave index)
+**Last audit:** 2026-09-17 (B-39 / B-42 local cluster index)
 
 Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** scheduled / `#[ignore]` only
 
@@ -31,6 +31,7 @@ Product scale wave — quick regression commands (detail in scenario pages):
 | B-37 | Coordination growth presets | `coordination_profile.rs`, `env_config.rs`, `queue_auto_shard.rs`, `configure.rs`, `queue_opts.rs`, `job_opts.rs`, `coordination_growth_preset.rs` | `./scripts/test-fast.sh -p trembita-assembly --lib b37_` · `./scripts/test-fast.sh -p trembita-jobs --lib b37_` · `./scripts/test-fast.sh -p trembita --lib b37_` · `./scripts/test-fast.sh -p trembita --test coordination_growth_preset b37_` |
 | B-38 | Scale & scaffold DX (B-38) (doctor + scaffold) | `doctor.rs`, `template.rs`, `task.rs.tpl`, `tests/scaffold.rs`, `tests/cap_scale_doctor.rs` | `./scripts/test-fast.sh -p trembita-cli --lib b38_` · `./scripts/test-fast.sh -p trembita-cli --test scaffold b38_` · `./scripts/test-fast.sh -p trembita-cli --test cap_scale_doctor b38_` |
 | B-39 | Local 3-node cluster | `dev/local_cluster.rs`, `dev/showcases.rs`, `dev/cluster.rs`, `tests/dev.rs`, `dev/local-3node/`, `local-cluster.sh` | `./scripts/test-fast.sh -p trembita-cli --lib b39_` · `./scripts/test-fast.sh -p trembita-cli --test dev b39_` |
+| B-42 | Local elastic parity (4th joiner + LB/cap smoke) | `dev/local_cluster.rs` (`b42_*`), `dev/cluster.rs`, `tests/dev.rs` (`b42_*`), `e2e_elastic/gateway.rs` (`b42_*`), `examples/realtime`, `local-cluster.sh` | `./scripts/test-fast.sh -p trembita-cli --lib b42_` · `./scripts/test-fast.sh -p trembita-cli --test dev b42_` · `./scripts/test-fast.sh -p trembita-tools --lib b42_` · live: `./scripts/local-cluster.sh elastic-smoke` |
 | B-40 | Gateway session ports + rotation + OIDC helper | `session_ports.rs`, `cluster_session.rs`, `gateway_cluster_session.rs`, `trembita-gateway-auth` (`dev_oidc.rs`, `lib.rs`), `examples/oauth-gateway` | `./scripts/test-fast.sh -p trembita-http --lib b40_` · `./scripts/test-fast.sh -p trembita --lib b40_` · `./scripts/test-fast.sh -p trembita --test gateway_cluster_session b40_` · `./scripts/test-fast.sh -p trembita-gateway-auth --lib b40_` |
 | B-41 | Product surface: durable mailbox, leader hook, Pg schedules | `configure.rs`, `manifest.rs`, `trembita-schedule-postgres`, `app_cluster.rs`, `schedule_source.rs` | `./scripts/test-fast.sh -p trembita --lib b41_` · `./scripts/test-fast.sh -p trembita-schedule-postgres --lib b41_` · `./scripts/test-fast.sh -p trembita --test app_cluster b41_` · `./scripts/test-fast.sh -p trembita --test schedule_source b41_` |
 

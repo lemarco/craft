@@ -90,7 +90,9 @@ Product-scale proof: **QUIC/mTLS cluster join**, **HTTP LB**, **cluster session 
 
 **CI:** heavy lane — MR label **`run-heavy`** ([process.md](../docs/process.md)). **Fast parity** (no Docker): `./scripts/test-fast.sh -p trembita --test elastic_lb_product b34_`.
 
-Docs: [ingress-lb § B-34](../docs/ops/ingress-lb.md#elastic-join--http-lb-proof-b-34) · [capabilities § B-34](../docs/scenarios/capabilities.md#elastic-join--lb-b-34).
+**Laptop parity (B-42, no E2E containers):** [`../scripts/local-cluster.sh`](../scripts/local-cluster.sh) `elastic-up` + `elastic-smoke` on **realtime** (**8290–8293**, LB **:18290**) — same `/ready`, session, and **`/e2e/whoami`** checks. Regression: `./scripts/test-fast.sh -p trembita-cli --lib b42_`.
+
+Docs: [ingress-lb § B-34](../docs/ops/ingress-lb.md#elastic-join--http-lb-proof-b-34) · [capabilities § B-34](../docs/scenarios/capabilities.md#elastic-join--lb-b-34) · [B-42 local elastic](../docs/scenarios/capabilities.md#local-elastic-parity-b-42).
 
 ## Chaos (T9)
 

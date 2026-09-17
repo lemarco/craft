@@ -8,6 +8,7 @@ use std::time::Duration;
 use trembita::{AppManifest, TrembitaApp, TrembitaConfigure};
 
 pub use cap::capabilities_manifest;
+pub use gateway::{mount_whoami, route_table};
 
 const DATA_DIR_NAME: &str = "trembita-e2e-elastic";
 

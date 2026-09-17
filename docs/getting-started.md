@@ -186,7 +186,19 @@ Exercise **multi-node gateway** with a shared **`TREMBITA_GATEWAY_SESSION_SECRET
 
 Debug CLI (repo checkout only): `./target/debug/trembita dev cluster-up --setup` · `dev cluster-lb-up`.
 
-Docs: [dev/local-3node](../dev/local-3node/README.md) · [capabilities § B-39](scenarios/capabilities.md#local-3-node-cluster-b-39). Regression: `./scripts/test-fast.sh -p trembita-cli --lib b39_`. Heavier LB proof: [B-34](scenarios/capabilities.md#elastic-join--lb-b-34).
+Docs: [dev/local-3node](../dev/local-3node/README.md) · [capabilities § B-39](scenarios/capabilities.md#local-3-node-cluster-b-39). Regression: `./scripts/test-fast.sh -p trembita-cli --lib b39_`.
+
+**Local elastic (B-42)** — same proof story as [B-34](scenarios/capabilities.md#elastic-join--lb-b-34) without Docker E2E containers (**realtime**, ports **8290–8293**):
+
+```bash
+./scripts/local-cluster.sh setup
+./scripts/local-cluster.sh elastic-up
+./scripts/local-cluster.sh lb-up
+./scripts/local-cluster.sh elastic-smoke
+./scripts/local-cluster.sh stop
+```
+
+Regression: `./scripts/test-fast.sh -p trembita-cli --lib b42_` · `./scripts/test-fast.sh -p trembita-tools --lib b42_`. Heavy CI lane: [`e2e/elastic_lb.sh`](../e2e/elastic_lb.sh).
 
 Reference KV [`StateMachine`](../crates/trembita-core/src/kv.rs) (`trembita::kv` on the facade) for low-level Raft `propose` / `query` without a full product app.
 

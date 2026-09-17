@@ -17,6 +17,7 @@ use trembita::{
     WsMessage,
     futures_util::{SinkExt, StreamExt}, mount_sticky_websocket, server_stream,
 };
+use trembita_tools::e2e_elastic::{capabilities_manifest, mount_whoami};
 use trembita_tools::showcase_common::{
     data_dir, display_addr, http_bind_display, http_bind_from_env, http_disabled,
 };
@@ -80,9 +81,8 @@ fn gateway_surfaces(state: TrembitaGatewayState) -> Gateway {
     let chat_session = session.clone();
     let me_session = session.clone();
     let ops = state.app.ops_api().route_table();
+    let mut table = mount_whoami(RouteTable::new(), state.clone());
     let ws_state = state;
-
-    let mut table = RouteTable::new();
     table = mount_sticky_websocket::<Append>(
         table,
         "/ws",
@@ -119,7 +119,11 @@ fn server_builder() -> trembita::TrembitaAppBuilder {
     let _ = std::fs::create_dir_all(&dir);
     let gateway = http_bind_from_env("127.0.0.1:8290");
     TrembitaApp::builder()
-        .manifest(AppManifest::new().capabilities(capabilities::chat::manifest()))
+        .manifest(
+            AppManifest::new()
+                .capabilities(capabilities::chat::manifest())
+                .capabilities(capabilities_manifest()),
+        )
         .configure(
             TrembitaConfigure::default()
                 .with_local_gateway_apis()

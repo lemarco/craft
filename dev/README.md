@@ -8,7 +8,7 @@ cargo build -p trembita-cli
 ./target/debug/trembita dev up --showcase stateful-workers --nodes 3
 ./target/debug/trembita dev trigger stateful-workers -- 1001
 ./target/debug/trembita dev http --showcase background-jobs -- job emails hello
-./target/debug/trembita dev cluster-up --setup   # B-39: shared session secret + smoke hints
+./target/debug/trembita dev cluster-up --setup   # B-39; --nodes 4 --lb for B-42 elastic smoke
 ```
 
 See [getting-started §4](../docs/getting-started.md#4-try-the-showcases).

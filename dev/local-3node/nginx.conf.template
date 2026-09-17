@@ -2,6 +2,7 @@ upstream trembita_local_cluster {
     server host.docker.internal:${LOCAL_CLUSTER_NODE1_PORT};
     server host.docker.internal:${LOCAL_CLUSTER_NODE2_PORT};
     server host.docker.internal:${LOCAL_CLUSTER_NODE3_PORT};
+${LOCAL_CLUSTER_NODE4_SERVER}
 }
 
 server {

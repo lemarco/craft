@@ -97,12 +97,15 @@ pub fn dev_cluster_lb_down() -> Result<(), DevError> {
     local_cluster::lb_down(&root)
 }
 
-/// `trembita dev cluster-lb-up --showcase …`
-pub fn dev_cluster_lb_up(showcase_id: Option<&str>) -> Result<(), DevError> {
+/// `trembita dev cluster-lb-up --showcase … [--nodes N]`
+pub fn dev_cluster_lb_up(showcase_id: Option<&str>, nodes: Option<u32>) -> Result<(), DevError> {
     let id = showcase_id.unwrap_or(local_cluster::DEFAULT_CLUSTER_UP_SHOWCASE);
     let showcase = resolve(id)?;
     let root = workspace_root()?;
-    local_cluster::lb_up(&root, showcase)?;
+    let backends = nodes
+        .map(|n| n.clamp(3, 4))
+        .unwrap_or_else(|| local_cluster::detect_lb_backends(showcase, 4));
+    local_cluster::lb_up(&root, showcase, backends)?;
     local_cluster::print_lb_hints_public(showcase);
     Ok(())
 }

@@ -117,12 +117,13 @@ pub fn up_with_shared_gateway_env(
     workspace: &Path,
     nodes: u32,
 ) -> Result<(), DevError> {
-    up_inner(showcase, workspace, nodes, true)
+    let staged_elastic_join = nodes >= 4;
+    up_inner(showcase, workspace, nodes, true, staged_elastic_join)
 }
 
 /// Start `nodes` cluster members in the background.
 pub fn up(showcase: &Showcase, workspace: &Path, nodes: u32) -> Result<(), DevError> {
-    up_inner(showcase, workspace, nodes, false)
+    up_inner(showcase, workspace, nodes, false, false)
 }
 
 fn up_inner(
@@ -130,6 +131,7 @@ fn up_inner(
     workspace: &Path,
     nodes: u32,
     shared_gateway_env: bool,
+    staged_elastic_join: bool,
 ) -> Result<(), DevError> {
     if nodes == 0 || nodes > 8 {
         return Err(DevError::InvalidNodes(nodes));
@@ -156,8 +158,36 @@ fn up_inner(
         }
         stop(showcase)?;
         fs::create_dir_all(cluster.join("logs"))?;
-        for node in 1..=nodes {
-            spawn_node(showcase, workspace, node, &bin, shared_gateway_env)?;
+        if staged_elastic_join && nodes >= 4 {
+            eprintln!(">> elastic join: seed nodes 1–3, then joiners 4–{nodes}");
+            for node in 1..=3 {
+                spawn_node(showcase, workspace, node, &bin, shared_gateway_env)?;
+            }
+            for node in 1..=3 {
+                let port = u32::from(showcase.base_port) + node - 1;
+                eprintln!(">> waiting for node {node} GET /ready on :{port}");
+                if !wait_ready(u16::try_from(port).unwrap_or(showcase.base_port), 120) {
+                    return Err(DevError::CommandFailed(format!(
+                        "node {node} /ready timeout (see {}/logs/)",
+                        cluster.display()
+                    )));
+                }
+            }
+            for node in 4..=nodes {
+                spawn_node(showcase, workspace, node, &bin, shared_gateway_env)?;
+                let port = u32::from(showcase.base_port) + node - 1;
+                eprintln!(">> waiting for node {node} GET /ready on :{port}");
+                if !wait_ready(u16::try_from(port).unwrap_or(showcase.base_port), 120) {
+                    return Err(DevError::CommandFailed(format!(
+                        "node {node} /ready timeout (see {}/logs/)",
+                        cluster.display()
+                    )));
+                }
+            }
+        } else {
+            for node in 1..=nodes {
+                spawn_node(showcase, workspace, node, &bin, shared_gateway_env)?;
+            }
         }
     }
 
@@ -278,6 +308,32 @@ fn wait_health(port: u16) -> bool {
         thread::sleep(Duration::from_secs(1));
     }
     false
+}
+
+/// Poll `GET /ready` until success or `tries` elapsed seconds (B-35 join smoke).
+fn wait_ready(port: u16, tries: u32) -> bool {
+    for _ in 0..tries {
+        if curl_ready(port) {
+            return true;
+        }
+        thread::sleep(Duration::from_secs(1));
+    }
+    false
+}
+
+fn curl_ready(port: u16) -> bool {
+    Command::new("curl")
+        .args([
+            "-sf",
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{http_code}",
+            &format!("http://127.0.0.1:{port}/ready"),
+        ])
+        .output()
+        .ok()
+        .is_some_and(|o| o.stdout.starts_with(b"200"))
 }
 
 fn curl_health(port: u16) -> bool {

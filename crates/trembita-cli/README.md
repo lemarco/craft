@@ -37,7 +37,10 @@ cargo build -p trembita-cli
 ./target/debug/trembita dev trigger background-jobs -- job emails hello   # built-in HTTP (no trigger.sh)
 ./target/debug/trembita dev http --showcase workflows -- workflow run onboard-42
 ./target/debug/trembita dev stop --showcase stateful-workers
+./target/debug/trembita dev cluster-up --setup --nodes 4 --lb   # B-42 elastic smoke (realtime)
 ```
+
+Local cluster scripts: [`scripts/local-cluster.sh`](../../scripts/local-cluster.sh) · [dev/local-3node](../../dev/local-3node/README.md). Regression: `./scripts/test-fast.sh -p trembita-cli --lib b39_` · `./scripts/test-fast.sh -p trembita-cli --lib b42_`.
 
 See [`framework-conventions`](../../docs/decisions/framework-conventions.md) for the generated
 project layout and [facade ADR](../../docs/decisions/facade.md) for how adapter features map to `trembita`.
@@ -51,7 +54,7 @@ What each subcommand touches and where it is tested ([testing-coverage](../../do
 | `new` | Full tree + `manifest.rs` | `tests/scaffold.rs` |
 | `doctor` | `manifest.rs` ↔ handlers; `app.rs` `.manifest()` only (read-only) | `src/scaffold/doctor.rs`, `tests/{add_doctor,manifest_doctor}.rs` |
 | `doctor --preflight` | `deploy/` env + gateway ops | unit cases in `doctor.rs` |
-| `dev *` (debug CLI only) | Repo `examples/` showcases; `dev http` job/topic/workflow | `tests/dev.rs`, `src/dev/http.rs` |
+| `dev *` (debug CLI only) | Repo `examples/` showcases; `dev cluster-up` / `cluster-lb-up` (B-39/B-42) | `tests/dev.rs` (`b39_*`, `b42_*`), `src/dev/local_cluster.rs`, `src/dev/http.rs` |
 
 Run locally: `./scripts/test-fast.sh -p trembita-cli` from the repo root.
 

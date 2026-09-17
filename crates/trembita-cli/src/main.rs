@@ -152,12 +152,12 @@ enum DevCommand {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
-    /// Local 3-node cluster: shared session secret + smoke hints (B-39).
+    /// Local cluster: shared session secret + smoke hints (B-39; `--nodes 4` = B-42 elastic).
     ClusterUp {
         /// Showcase id (default: `realtime` — login + cluster cookies).
         #[arg(long)]
         showcase: Option<String>,
-        /// Number of nodes (1–8).
+        /// Number of nodes (1–8). Use `4` for staged elastic join (seed + 3, then 4th joiner).
         #[arg(long, default_value_t = 3)]
         nodes: u32,
         /// Run setup (certs + build) before starting.
@@ -172,6 +172,9 @@ enum DevCommand {
         /// Showcase id (ports for upstream).
         #[arg(long)]
         showcase: Option<String>,
+        /// Upstream count (3 or 4). Default: probe `/ready` on node ports.
+        #[arg(long)]
+        nodes: Option<u32>,
     },
     /// Stop local cluster nginx LB container.
     ClusterLbDown,
@@ -257,7 +260,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 setup,
                 lb,
             } => dev_cluster_up(showcase.as_deref(), nodes, setup, lb)?,
-            DevCommand::ClusterLbUp { showcase } => dev_cluster_lb_up(showcase.as_deref())?,
+            DevCommand::ClusterLbUp { showcase, nodes } => {
+                dev_cluster_lb_up(showcase.as_deref(), nodes)?
+            }
             DevCommand::ClusterLbDown => dev_cluster_lb_down()?,
         },
         Command::Doctor {

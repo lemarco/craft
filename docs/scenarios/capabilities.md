@@ -170,13 +170,13 @@ Runbook: [production-runbook § B-38](../ops/production-runbook.md#scale-scaffol
 
 ## Local 3-node cluster (B-39)
 
-**Dev-only** packaging to run **three identical showcase binaries** on `127.0.0.1` with the same **`TREMBITA_GATEWAY_SESSION_SECRET`** on every node — exercise cluster session cookies and optional nginx round-robin **without** the B-34 four-node elastic E2E binary.
+**Dev-only** packaging to run **three (or four, [B-42](#local-elastic-parity-b-42)) identical showcase binaries** on `127.0.0.1` with the same **`TREMBITA_GATEWAY_SESSION_SECRET`** on every node — exercise cluster session cookies and optional nginx round-robin before the heavier [B-34](#elastic-join--lb-b-34) Docker E2E binary.
 
 | Entry | Purpose |
 |-------|---------|
-| [`scripts/local-cluster.sh`](../../scripts/local-cluster.sh) | `setup` / `up` / `session-smoke` / `lb-up` / `lb-smoke` / `stop` |
-| `trembita dev cluster-up` | Same flow via debug CLI ([`local_cluster.rs`](../../crates/trembita-cli/src/dev/local_cluster.rs)) |
-| `trembita dev cluster-lb-up` | Docker nginx on **`:18290`** — [`dev/local-3node/`](../../dev/local-3node/README.md) |
+| [`scripts/local-cluster.sh`](../../scripts/local-cluster.sh) | `setup` / `up` / `session-smoke` / `lb-up` / `lb-smoke` / `stop` ([B-42](#local-elastic-parity-b-42): `elastic-up`, `elastic-smoke`, `cap-smoke`) |
+| `trembita dev cluster-up` | Same flow via debug CLI ([`local_cluster.rs`](../../crates/trembita-cli/src/dev/local_cluster.rs)); `--nodes 4` = staged elastic join |
+| `trembita dev cluster-lb-up` | Docker nginx on **`:18290`** (3 or 4 upstreams) — [`dev/local-3node/`](../../dev/local-3node/README.md) |
 
 Default showcase **`realtime`** (ports **8290–8292**): `POST /login` on node1 → `GET /me` on node2 with cookie. **`background-jobs`** uses the same 3-node layout (**8090–8092**) but LB smoke is **`/ready`** only (no session routes).
 
@@ -209,6 +209,39 @@ Guide: [dev/local-3node/README.md](../../dev/local-3node/README.md) · ADR: [cap
 ```bash
 ./scripts/test-fast.sh -p trembita-cli --lib b39_
 ./scripts/test-fast.sh -p trembita-cli --test dev b39_
+```
+
+## Local elastic parity (B-42)
+
+Same mental model as [Elastic join + LB (B-34)](#elastic-join--lb-b-34) on a laptop: **staged 4th joiner**, nginx round-robin over **3 or 4** backends, cluster session smoke, **`GET /e2e/whoami`** PerNode cap spread via LB. Uses the **realtime** showcase (registers shared [`e2e_pool`](../../crates/trembita-tools/src/e2e_elastic/cap.rs)) — not the dedicated elastic E2E binary.
+
+| Entry | Purpose |
+|-------|---------|
+| `./scripts/local-cluster.sh elastic-up` | `--nodes 4` via debug CLI (seed 1–3 → wait `/ready` → joiner 4) |
+| `./scripts/local-cluster.sh elastic-smoke` | `lb-smoke` (≥3 distinct `node_id` when 4 nodes) + session + `cap-smoke` |
+| `./scripts/local-cluster.sh cap-smoke` | PerNode inline cap via LB (realtime only) |
+| `trembita dev cluster-up --nodes 4 [--lb]` | Same staging + optional nginx **:18290** with 4th upstream |
+
+Ports (**realtime**): **8290–8293**. Guide: [dev/local-3node § B-42](../../dev/local-3node/README.md#local-elastic-parity-b-42).
+
+### Automated regression (B-42)
+
+| Scenario | Regression |
+|----------|------------|
+| Elastic default node count = 4 | `b42_elastic_default_four_nodes_constant`, `b42_elastic_node_count_default_is_four` |
+| Fourth nginx upstream when `backends=4` | `b42_repo_nginx_template_renders_fourth_backend_when_elastic`, `b42_workflows_fourth_nginx_upstream_port` (placeholder `${LOCAL_CLUSTER_NODE4_SERVER}` in `b39_local_3node_packaging_files_exist_in_repo`) |
+| LB upstream count clamped to 3..=4 | `b42_clamp_lb_backends_scenarios_table` |
+| Fourth listen addr per showcase (8093 / 8193 / 8293 / 8493) | `b42_showcase_fourth_listen_addr_scenarios_table`, `b42_realtime_fourth_listen_addr_matches_elastic_ports` |
+| Script phases mirror `e2e/elastic_lb.sh` | `b42_local_cluster_script_elastic_phases_exist`, `b42_elastic_lb_e2e_script_uses_same_whoami_path_as_local_cap_smoke` |
+| Shared **`/e2e/whoami`** path constant | `b42_whoami_path_matches_elastic_lb_and_local_cluster_scripts` (`trembita-tools/e2e_elastic/gateway.rs`) |
+| Staged join waits on `/ready` (nodes ≥ 4) | [`cluster.rs`](../../crates/trembita-cli/src/dev/cluster.rs) — live check: `./scripts/local-cluster.sh elastic-smoke` |
+
+```bash
+./scripts/test-fast.sh -p trembita-cli --lib b39_
+./scripts/test-fast.sh -p trembita-cli --lib b42_
+./scripts/test-fast.sh -p trembita-cli --test dev b42_
+./scripts/test-fast.sh -p trembita-tools --lib b42_
+./scripts/test-fast.sh -p trembita-tools --lib b34_
 ```
 
 ## Gateway auth split (B-40)

@@ -38,7 +38,29 @@ Other showcases (`TREMBITA_LOCAL_CLUSTER_SHOWCASE` or `--showcase`):
 | `stateful-workers` | 8190–8192 | `/ready` only |
 | `workflows` | 8490–8492 | `/ready` only |
 
-Use **`GET /ready`** for LB backends ([ingress-lb § B-35](../../docs/ops/ingress-lb.md#join-readiness-pipeline-b-35)). Production-scale elastic proof (4 nodes): [e2e/elastic_lb.sh](../../e2e/elastic_lb.sh) ([capabilities § B-34](../../docs/scenarios/capabilities.md#elastic-join--lb-b-34)).
+Use **`GET /ready`** for LB backends ([ingress-lb § B-35](../../docs/ops/ingress-lb.md#join-readiness-pipeline-b-35)). Heavier CI elastic proof (dedicated E2E binary): [e2e/elastic_lb.sh](../../e2e/elastic_lb.sh) ([capabilities § B-34](../../docs/scenarios/capabilities.md#elastic-join--lb-b-34)).
+
+## Local elastic parity (B-42)
+
+Four **realtime** nodes on **8290–8293** with the same staged join story as B-34 — without Docker trembita containers:
+
+```bash
+./scripts/local-cluster.sh setup
+./scripts/local-cluster.sh elastic-up      # or: up --nodes 4
+./scripts/local-cluster.sh lb-up           # nginx includes 4th upstream when node4 /ready
+./scripts/local-cluster.sh elastic-smoke   # /ready spread + session + GET /e2e/whoami
+./scripts/local-cluster.sh stop
+```
+
+Debug CLI: `./target/debug/trembita dev cluster-up --setup --nodes 4 --lb`
+
+| Phase | What it checks (realtime) |
+|-------|---------------------------|
+| `elastic-up` | Staged join: nodes 1–3 → `/ready` → node 4 |
+| `lb-smoke` | ≥2 distinct `node_id` (3 nodes) or ≥3 (4 nodes) on `/ready` |
+| `session-smoke` | Cluster cookie: login node1 → `/me` node2 (or via LB with `--lb`) |
+| `cap-smoke` | PerNode **`GET /e2e/whoami`** via LB — ≥2 handler `node_id`s |
+| `elastic-smoke` | All of the above in one pass |
 
 ### Automated regression (B-39)
 
@@ -53,12 +75,22 @@ Use **`GET /ready`** for LB backends ([ingress-lb § B-35](../../docs/ops/ingres
 | Repo nginx template → docker backends | `b39_repo_nginx_template_renders_realtime_backends` |
 | Showcase `base_port` table vs script | `b39_local_cluster_showcase_base_ports_match_script_table` |
 
+### Automated regression (B-42)
+
+| Scenario | Regression |
+|----------|------------|
+| Fourth node ports for all cluster showcases | `b42_showcase_fourth_listen_addr_scenarios_table` |
+| nginx upstream clamp 3..=4 | `b42_clamp_lb_backends_scenarios_table` |
+| Script + E2E share `/e2e/whoami` | `b42_local_cluster_script_elastic_phases_exist`, `b42_elastic_lb_e2e_script_uses_same_whoami_path_as_local_cap_smoke` |
+
 ```bash
 ./scripts/test-fast.sh -p trembita-cli --lib b39_
-./scripts/test-fast.sh -p trembita-cli --test dev b39_
+./scripts/test-fast.sh -p trembita-cli --lib b42_
+./scripts/test-fast.sh -p trembita-cli --test dev b42_
+./scripts/test-fast.sh -p trembita-tools --lib b42_
 ```
 
-Scenario index: [capabilities § B-39](../../docs/scenarios/capabilities.md#local-3-node-cluster-b-39).
+Scenario index: [capabilities § B-39](../../docs/scenarios/capabilities.md#local-3-node-cluster-b-39) · [B-42](../../docs/scenarios/capabilities.md#local-elastic-parity-b-42).
 
 ## Env (set automatically by `cluster-up`)
 

@@ -222,13 +222,41 @@ Teams validate **multi-node gateway + shared session secret** locally before VPS
 
 Default **`realtime`** — cookie login across nodes ([B-29](../decisions/gateway-cluster-auth.md) / [B-40](../decisions/gateway-cluster-auth.md#b-40--logic--storage-split)). Optional nginx on **`:18290`** mirrors ingress **`GET /ready`** checks ([B-30](../ops/ingress-lb.md), [B-35](../decisions/cluster-elasticity.md#join-readiness-pipeline-b-35)).
 
-| vs | B-39 (local 3-node) | B-34 (elastic E2E) |
-|----|------------------------|---------------------|
-| Nodes | 3 showcases on localhost | 4th joiner + product binary |
-| Packaging | `local-cluster.sh` / `dev cluster-*` | `e2e/elastic_lb.sh`, Docker elastic compose |
-| Primary proof | Session smoke + optional nginx | PerNode cap + LB round-robin under CI |
+| vs | B-39 (local 3-node) | B-42 (local elastic) | B-34 (elastic E2E) |
+|----|------------------------|----------------------|---------------------|
+| Nodes | 3 showcases on localhost | Staged **4th joiner** (`--nodes 4`) | 4th joiner + dedicated E2E binary |
+| Packaging | `local-cluster.sh` / `dev cluster-*` | `elastic-up`, `elastic-smoke`, 4-upstream nginx | `e2e/elastic_lb.sh`, Docker elastic compose |
+| Primary proof | Session smoke + optional nginx | Same as B-34 on laptop: `/ready` spread, session, **`/e2e/whoami`** | PerNode cap + LB round-robin under CI |
 
 **CI:** [capabilities § B-39](../scenarios/capabilities.md#local-3-node-cluster-b-39) · [local-3node README](../../dev/local-3node/README.md).
+
+### Local elastic parity (B-42)
+
+[`cluster-up --nodes 4`](../../crates/trembita-cli/src/main.rs) runs seed nodes **1–3**, waits on **`GET /ready`**, then starts the **4th joiner** ([`up_with_shared_gateway_env`](../../crates/trembita-cli/src/dev/cluster.rs)). Optional nginx includes a **4th upstream** when node **4** responds on `/ready`. Default **`realtime`** showcase registers shared [`e2e_pool` / `/e2e/whoami`](../../crates/trembita-tools/src/e2e_elastic/) for PerNode cap smoke ([`cap-smoke`](../../scripts/local-cluster.sh)).
+
+```bash
+./scripts/local-cluster.sh setup
+./scripts/local-cluster.sh elastic-up
+./scripts/local-cluster.sh lb-up
+./scripts/local-cluster.sh elastic-smoke
+```
+
+Regression:
+
+```bash
+./scripts/test-fast.sh -p trembita-cli --lib b39_
+./scripts/test-fast.sh -p trembita-cli --lib b42_
+./scripts/test-fast.sh -p trembita-cli --test dev b42_
+./scripts/test-fast.sh -p trembita-tools --lib b42_
+./scripts/test-fast.sh -p trembita-tools --lib b34_
+```
+
+| Scenario | Test |
+|----------|------|
+| Fourth node ports (all showcases) | `b42_showcase_fourth_listen_addr_scenarios_table` |
+| nginx 3/4 upstream clamp + render | `b42_clamp_lb_backends_scenarios_table`, `b42_repo_nginx_template_renders_fourth_backend_when_elastic` |
+| Script parity with `elastic_lb.sh` | `b42_local_cluster_script_elastic_phases_exist`, `b42_elastic_lb_e2e_script_uses_same_whoami_path_as_local_cap_smoke` |
+| Shared whoami route path | `b42_whoami_path_matches_elastic_lb_and_local_cluster_scripts` |
 
 #### Automated regression (B-39)
 
