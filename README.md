@@ -151,10 +151,10 @@ Product apps: default `http-jobs` enables HTTP job routes; add `dev-certs` for l
 | [`trembita-runtime`](crates/trembita-runtime) | Node runtime, registry, supervisor |
 | [`trembita-jobs`](crates/trembita-jobs) | Job queue, autoscale, backlog |
 | [`trembita-events`](crates/trembita-events) | Durable pub/sub topics |
-| [`trembita-actor-store`](crates/trembita-actor-store) | Stateful actor workflow keys |
+| [`trembita-capstore`](crates/trembita-capstore) | Capability workflow keys (`CapStateStore`) |
 | [`trembita-client`](crates/trembita-client) | Client, saga, keyed/batch APIs |
 | [`trembita-macros`](crates/trembita-macros) | Derive macros (re-exported by facade) |
-| [`trembita-store-redis`](crates/trembita-store-redis) | Redis `ActorStateStore` (via `trembita` feature `redis-store`) |
+| [`trembita-store-redis`](crates/trembita-store-redis) | Redis `CapStateStore` (via `trembita` feature `redis-store`) |
 | [`trembita-backlog-postgres`](crates/trembita-backlog-postgres) | Postgres `ExternalBacklog` (via `external-backlog`) |
 | [`trembita-events-postgres`](crates/trembita-events-postgres) | Postgres outbox source (via `domain-outbox`) |
 | [`trembita-dashboard`](crates/trembita-dashboard) | Admin + observability |

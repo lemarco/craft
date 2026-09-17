@@ -1,6 +1,6 @@
 # trembita-store-redis
 
-Redis-backed [`ActorStateStore`](https://docs.rs/trembita-actor-store) for stateful
+Redis-backed [`CapStateStore`](https://docs.rs/trembita-capstore) for stateful
 [trembita](https://crates.io/crates/trembita) actors.
 
 Use when actor instances need durable key/value state outside the Raft log

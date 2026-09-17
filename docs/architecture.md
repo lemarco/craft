@@ -43,7 +43,8 @@ crates/
 ├── trembita-runtime/      # RaftDriver, NodeService, actors, supervisor, multi-Raft
 ├── trembita-jobs/         # JobQueue port, redb adapter, QueueService
 ├── trembita-events/       # EventTopic port, redb adapter, TopicService
-├── trembita-actor-store/  # ActorStateStore port, redb adapter, StoreService
+├── trembita-capstore/       # CapStateStore port, redb adapter, StoreService
+├── trembita-capstore-postgres/  # optional Postgres CapStateStore
 ├── trembita-client/       # ClientHandle, RemoteClient, saga, keyed/batch APIs
 ├── trembita-macros/       # StateMachine + UserActor derives
 ├── trembita-tools/        # reference binaries (node, ops, e2e clients)

@@ -32,7 +32,7 @@ crates/
 ├── trembita-runtime/      # RaftDriver, actors, supervisor, multi-Raft
 ├── trembita-jobs/         # JobQueue port + redb adapter
 ├── trembita-events/       # EventTopic port + redb adapter
-├── trembita-actor-store/  # CapStore port (rename → trembita-capstore); facade `trembita::capstore`
+├── trembita-capstore/       # CapStateStore port; facade `trembita::capstore`
 ├── trembita-client/
 ├── trembita-macros/
 ├── trembita-sim/

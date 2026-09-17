@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-08-28  
-**Updated:** 2026-09-17 — crates.io crate **`trembita-capstore`** ([0.6.1](../releases/0.6.1.md)); port trait **`CapStateStore`** (deprecated `ActorStateStore` alias). Product: [`trembita::capstore`](../../crates/trembita/src/capstore.rs). Shim **`trembita-actor-store`** re-exports for one transition cycle.
+**Updated:** 2026-09-17 — crates.io crate **`trembita-capstore`** ([0.6.1](../releases/0.6.1.md)); port trait **`CapStateStore`** (deprecated `ActorStateStore` alias). Product: [`trembita::capstore`](../../crates/trembita/src/capstore.rs). **`trembita-actor-store`** was a 0.6.1-only re-export shim (removed from the repo after that release).
 
 ## Context
 

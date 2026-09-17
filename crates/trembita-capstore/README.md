@@ -11,4 +11,4 @@ Optional backends:
 | [`trembita-store-redis`](https://crates.io/crates/trembita-store-redis) | Redis |
 | [`trembita-capstore-postgres`](https://crates.io/crates/trembita-capstore-postgres) | PostgreSQL |
 
-The crates.io name **`trembita-actor-store`** remains a deprecated re-export shim (0.6.1+).
+**Migration:** `trembita-actor-store` 0.6.1 on crates.io was a one-release re-export shim; the monorepo no longer ships that crate — use **`trembita-capstore`**.

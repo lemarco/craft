@@ -17,10 +17,11 @@
 |-------|-----------|----------|
 | `trembita` | **Yes** — primary | Framework users depend on this; optional integrations via [Cargo features](facade.md) |
 | `trembita-macros` | Yes | Re-exported by `trembita`; direct dep optional |
-| `trembita-proto`, `trembita-core`, `trembita-storage`, `trembita-net`, `trembita-runtime`, `trembita-jobs`, `trembita-events`, `trembita-actor-store`, `trembita-client`, `trembita-assembly`, `trembita-test-support`, `trembita-metrics-otlp` | Yes | Advanced users / composability |
+| `trembita-proto`, `trembita-core`, `trembita-storage`, `trembita-net`, `trembita-runtime`, `trembita-jobs`, `trembita-events`, `trembita-capstore`, `trembita-client`, `trembita-assembly`, `trembita-test-support`, `trembita-metrics-otlp` | Yes | Advanced users / composability |
 | `trembita-cli` | Yes | Scaffold CLI (`trembita new`, `doctor`, …) |
 | `trembita-http` | Yes (optional) | Product HTTP — enabled via `trembita/http-jobs` |
-| `trembita-store-redis` | Yes (optional) | Redis `ActorStateStore` — `trembita/redis-store` |
+| `trembita-capstore-postgres` | Yes (optional) | Postgres `CapStateStore` — `trembita/capstore-postgres` |
+| `trembita-store-redis` | Yes (optional) | Redis `CapStateStore` — `trembita/redis-store` |
 | `trembita-backlog-postgres` | Yes (optional) | Postgres `ExternalBacklog` — `trembita/external-backlog` |
 | `trembita-events-postgres` | Yes (optional) | Postgres outbox — `trembita/domain-outbox` |
 | `trembita-dashboard` | Yes (optional) | Monitoring UI (always linked by facade today) |
@@ -56,7 +57,7 @@
 ### Release process
 
 - `cargo release` (or workspace script) publishes crates in dependency order:
-  `./scripts/publish-workspace.sh` order (see script `PUBLISH_ORDER`): proto → core/storage/macros/net → test-support → runtime → jobs/events/actor-store → client → optional adapters → **assembly** → **trembita** → **trembita-cli**.
+  `./scripts/publish-workspace.sh` order (see script `PUBLISH_ORDER`): proto → core/storage/macros/net → test-support → runtime → capstore → jobs/events → client → optional adapters → **assembly** → **trembita** → **trembita-cli**.
 - Tag `vX.Y.Z`; GitLab release with CHANGELOG excerpt.
 - `docs.rs` builds automatically on publish.
 

@@ -50,7 +50,6 @@ PUBLISH_ORDER=(
     trembita-test-support
     trembita-runtime
     trembita-capstore
-    trembita-actor-store
     trembita-capstore-postgres
     trembita-jobs
     trembita-events

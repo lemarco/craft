@@ -31,7 +31,6 @@ members = [
     "crates/trembita-jobs",
     "crates/trembita-events",
     "crates/trembita-capstore",
-    "crates/trembita-actor-store",
     "crates/trembita-client",
     "crates/trembita-store-redis",
     "crates/trembita-dashboard",
@@ -192,7 +191,6 @@ trembita-runtime = { path = "crates/trembita-runtime", version = "0.6.1" }
 trembita-jobs = { path = "crates/trembita-jobs", version = "0.6.1" }
 trembita-events = { path = "crates/trembita-events", version = "0.6.1" }
 trembita-capstore = { path = "crates/trembita-capstore", version = "0.6.1" }
-trembita-actor-store = { path = "crates/trembita-actor-store", version = "0.6.1" }
 trembita-capstore-postgres = { path = "crates/trembita-capstore-postgres", version = "0.6.1" }
 trembita-client = { path = "crates/trembita-client", version = "0.6.1" }
 trembita-store-redis = { path = "crates/trembita-store-redis", version = "0.6.1" }

@@ -48,7 +48,7 @@ See [.cursor/rules/cargo-shell-safety.mdc](.cursor/rules/cargo-shell-safety.mdc)
 |--------|----------|
 | Pure Raft / FSM | `trembita-core` |
 | Runtime, actors | `trembita-runtime`, facade in `trembita` |
-| Jobs / events / actor store ports | `trembita-jobs`, `trembita-events`, `trembita-actor-store` |
+| Jobs / events / cap store ports | `trembita-jobs`, `trembita-events`, `trembita-capstore` |
 | Public product API | `TrembitaApp` in `trembita`, docs in `docs/getting-started.md` |
 | New port trait | core trait + prod adapter crate + test/sim adapter |
 | Runnable product demo | `examples/<name>/` (standalone `Cargo.toml`) |
