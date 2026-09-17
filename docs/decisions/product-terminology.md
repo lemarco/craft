@@ -17,6 +17,8 @@ When writing for **product teams** (`getting-started`, scenarios, env, README, c
 
 **Runtime actors** (`UserActor`, directory, migration, cross-node deliver) remain in **`trembita-runtime`**. The facade uses them internally (**`CapHost`**, supervisors). Product code does not register custom `UserActor` groups unless documented as **advanced** ([getting-started §5](../getting-started.md#5-product-workers)).
 
+**Scale vocabulary:** **B-28** — auto cap **group scale** (`PerNode` vs `Fixed`) from manifest shape; **B-31** — **stateless / keyed / session / queued op** founder map + doctor; **B-32** — **coordination scale** (sharded job queue, product multi-Raft). **B-29** — cluster **session cookie** (not in-memory token sets). **B-30** — **`/ready`** vs **`/health`** for LB pools. Index: [status § B-28–B-32](../status.md#product-scale-wave-b-28b32). Detail: [capability-dx § Founder scale](capability-dx.md#founder-scale-model-b-31), [capabilities § Coordination scale](../scenarios/capabilities.md#coordination-scale-b-32).
+
 ## Defaults (0.6+)
 
 - [`TrembitaConfigure::default()`](../../crates/trembita/src/configure.rs) sets **`without_actors_api: true`** — no `/actors/*` on the default gateway.

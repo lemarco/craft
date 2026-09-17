@@ -116,6 +116,10 @@ Optional: `TREMBITA_JOB_QUEUE`, `TREMBITA_ALLOW_JOIN` (seed, default on).
 
 **Homogeneous nodes:** every VPS runs the same binary (gateway + consumers when configured). Local **API vs jobs** fairness uses [`.workload()`](../crates/trembita/src/app/builder.rs) compute tokens ([workload governor](decisions/workload-governor.md)) — not static node roles. Edge-only ingress without local consumers: omit `.jobs()` / `.workers()` on those nodes (deployment choice), not a role env var.
 
+**Production ingress:** point DNS / floating IP / reverse proxy at each node’s [`TREMBITA_LISTEN`](env.md#trembita_listen); health-check **`GET /ready`** (not `/health` alone for pool membership — B-30). Recipe: [ops/ingress-lb.md](ops/ingress-lb.md).
+
+**Scaling on N VPS (B-28–B-32):** capability groups default to **PerNode** for stateless ops; use **`trembita doctor`** before deploy (B-31); set **`TREMBITA_GATEWAY_SESSION_SECRET`** for cookie login behind LB (B-29); optional sharded queues / multi-Raft via manifest or env (B-32). Index: [status § Product scale wave](status.md#product-scale-wave-b-28b32).
+
 ## 4. Try the showcases
 
 From the **trembita repo root** (set `TREMBITA_ROOT` if needed):
@@ -334,6 +338,7 @@ cargo check       # greenfield scaffold should compile (sample job + /ping cap r
 | Push export | `.metrics_sink(Arc::new(my_sink))` on [`TrembitaAppBuilder`](../crates/trembita/src/app/mod.rs) — see [`MetricsSink`](../crates/trembita-dashboard/src/metrics_sink.rs) |
 | Live events | `cluster.events().subscribe()` — forward [`TrembitaEvent`](../crates/trembita-dashboard/src/telemetry.rs) to your sink |
 | Production checklist | [ops/production-runbook.md](ops/production-runbook.md) |
+| Ingress / load balancing | [ops/ingress-lb.md](ops/ingress-lb.md) |
 
 ## 11. Cluster APIs
 

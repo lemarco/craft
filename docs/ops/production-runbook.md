@@ -15,7 +15,8 @@ Operational checklist for running trembita on **N identical VPS or bare-metal no
 4. **`TREMBITA_CERT_DIR`** — shared PKI layout (`ca.pem`, `node-{id}.pem`); see [certs.md](../certs.md).
 5. **Seed** — `TREMBITA_ALLOW_JOIN=1`; **joiners** — `TREMBITA_JOIN_SEEDS=1@seed:443` (no static `TREMBITA_PEERS`).
 6. **Optional `GATEWAY_TOKEN`** — protect product HTTP in non-dev environments.
-7. **Firewall** — allow **UDP + TCP** on the listen port between members; restrict HTTP to ingress/LB as needed.
+7. **`TREMBITA_GATEWAY_SESSION_SECRET`** — identical on every node when using cookie login behind a load balancer (B-29 — [gateway-cluster-auth](../decisions/gateway-cluster-auth.md)).
+8. **Firewall** — allow **UDP + TCP** on the listen port between members; restrict HTTP to ingress/LB as needed ([ingress-lb.md](ingress-lb.md) — B-30).
 
 Ops routes (`/health`, `/ready`, `/metrics`, `/dashboard`) are on the **same** TCP port as product APIs when using [`TrembitaApp::from_env`](../../crates/trembita/src/app/runtime.rs).
 
@@ -44,6 +45,7 @@ Reference layout (not elastic product apps): explicit `TREMBITA_NODE_ID`, static
 
 | Task | Guide |
 |------|-------|
+| Public HTTP/WebSocket ingress (LB, health checks) | [ingress-lb.md](ingress-lb.md) |
 | Snapshot / restore `data_dir` | [backup-restore.md](backup-restore.md) |
 | Rolling wire vs app semver upgrades | [rolling-upgrade.md](rolling-upgrade.md) |
 | PKI generation and SAN naming | [certs.md](../certs.md) |
@@ -55,7 +57,9 @@ Reference layout (not elastic product apps): explicit `TREMBITA_NODE_ID`, static
 
 When write load exceeds a single Raft group:
 
-- Enable `.raft_groups(n)` / multi-group catalog — see [multi-raft.md](../decisions/multi-raft.md).
+- **Product apps (B-32):** [`TrembitaConfigure::with_coordination_raft_groups`](../../crates/trembita/src/configure.rs), optional `TREMBITA_RAFT_GROUPS` / `TREMBITA_RAFT_SHARD_COUNT`, runtime [`add_raft_groups`](../../crates/trembita/src/app/runtime.rs) — see [capabilities § Coordination scale](../scenarios/capabilities.md#coordination-scale-b-32).
+- **Assembly / custom SM:** `.raft_groups(n)` on [`TrembitaClusterBuilder`](../../crates/trembita-assembly/src/builder/mod.rs) — [multi-raft.md](../decisions/multi-raft.md).
+- **Job enqueue hotspot:** sharded queue via [`QueueOpts::sharded`](../../crates/trembita/src/queue_opts.rs) or `TREMBITA_JOB_QUEUE_SHARDS` (B-32).
 - **Backup must include `group-meta.redb`** (Meta-Raft coordinator: saga journal, catalog).
 - Rebalance and expansion are leader-driven; monitor `GET /introspect/raft-groups` on the ops HTTP bind (`TREMBITA_LISTEN` for product apps).
 
@@ -76,7 +80,9 @@ Scrape `/metrics` from a private network; do not expose the ops HTTP listener on
 
 ## Post-deploy verification
 
-- [ ] `/ready` returns 200 on every node
+- [ ] `/ready` returns 200 on every backend in the LB pool (B-30 — not only `/health`)
+- [ ] Cookie login works via LB VIP when using cluster sessions (B-29)
+- [ ] `trembita doctor --preflight` clean on release manifest (B-31 scale foot-guns)
 - [ ] Sample `propose` / `query` or app-specific health check
 - [ ] `./e2e/run.sh` or your integration smoke test
 - [ ] Backup export tested to object storage (if DR required)

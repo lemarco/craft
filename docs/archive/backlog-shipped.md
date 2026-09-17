@@ -2,7 +2,7 @@
 
 Historical epics **B-01 … B-27**, contract fixes, and epic maps moved from [backlog.md](../backlog.md) on 2026-09-17.
 
-**Open work:** [backlog.md](../backlog.md#open-work) · **Current capabilities:** [status.md](../status.md)
+**B-28 … B-32 (product scale wave):** [backlog-wave-b28-b32.md](backlog-wave-b28-b32.md) · **Open work:** [backlog.md](../backlog.md#open-work) · **Current capabilities:** [status.md](../status.md)
 
 ---
 
@@ -12,7 +12,7 @@ Historical epics **B-01 … B-27**, contract fixes, and epic maps moved from [ba
 **Scenario:** [capabilities](../scenarios/capabilities.md), [background-jobs](../scenarios/background-jobs.md), [realtime-sessions](../scenarios/realtime-sessions.md)  
 **ADR:** [capability-dx](../decisions/capability-dx.md) — closes gaps noted after B-25/B-26 (ADR vs shipped surface, templates, queue bridge).
 
-Post-ship review (2026-09): B-27 subtasks in the table below are **shipped**; optional follow-up `trembita-capstore` rename stays in [Open work](../backlog.md#open-work).
+Post-ship review (2026-09): B-27 subtasks in the table below are **shipped**; optional `trembita-capstore` crate rename was never tracked as an open B-NN row.
 
 | Subtask | Wave | Description | Status |
 | ------- | ---- | ----------- | ------ |

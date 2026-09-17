@@ -3,7 +3,8 @@
 Guides for building on trembita **without mandatory Redis** — same binary on each VPS, scale by adding nodes ([deployment-model](../decisions/deployment-model.md)).
 
 **Decision record:** [product-scenarios](../decisions/product-scenarios.md)  
-**Backlog:** [open work](../backlog.md#open-work) · **Shipped:** [status.md](../status.md)
+**Backlog:** [open work](../backlog.md#open-work) · **Shipped:** [status.md](../status.md)  
+**Scale wave (B-28–B-32):** [status § Product scale wave](../status.md#product-scale-wave-b-28b32)
 
 ## Choose your pattern
 
@@ -19,6 +20,11 @@ Guides for building on trembita **without mandatory Redis** — same binary on e
 | Typed ops + inline/queued/event routes (capability DX) | [Capabilities](capabilities.md) · [parity matrix](capability-parity.md) | ✅ [ADR](../decisions/capability-dx.md) · [greenfield wire](../decisions/capability-greenfield-wire.md) | — |
 | Cron + events + long runs (how they compose) | [Triggers & pipelines](triggers-and-pipelines.md) · [Cookbook](cookbook-async-work.md) | ✅ patterns + `WorkTrigger` + schedule HTTP | — |
 | Same binary everywhere; API vs jobs on one node | [Workload governor](../decisions/workload-governor.md) | ✅ compute tokens + consumer tune; subprocess [`ExternalLoad`](../decisions/external-load.md) | Finer HTTP / consumer in-flight signals (ADR future) |
+| Auto cap hosts when cluster grows (B-28) | [Capabilities § Group scale](capabilities.md#group-scale-b-28) | ✅ `resolved_scale` defaults | — |
+| LB + `/ready` pool health (B-30) | [ops/ingress-lb.md](../ops/ingress-lb.md) | ✅ ops routes on `TREMBITA_LISTEN` | — |
+| Cookie sessions on any gateway node (B-29) | [Real-time § B-29](realtime-sessions.md#cluster-session-cookies-b-29) | ✅ `TREMBITA_GATEWAY_SESSION_SECRET` | — |
+| Manifest scale foot-guns (B-31) | [Capabilities § Founder scale](capabilities.md#founder-scale-b-31) | ✅ `trembita doctor` | — |
+| Sharded queue / product multi-Raft (B-32) | [Capabilities § Coordination scale](capabilities.md#coordination-scale-b-32) | ✅ manifest + `TREMBITA_*` | — |
 
 ## Shared persistence model
 

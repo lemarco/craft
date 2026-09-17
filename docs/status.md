@@ -20,8 +20,8 @@
 | Background jobs | [scenarios/background-jobs.md](scenarios/background-jobs.md) | ✅ queue, DLQ, cron, external backlog |
 | Event topics | [scenarios/event-topics.md](scenarios/event-topics.md) | ✅ pub/sub, named subscriptions |
 | Stateful workers | [scenarios/stateful-workers.md](scenarios/stateful-workers.md) | ✅ capabilities + `RedbActorStateStore`; **`TREMBITA_MIGRATE_DEMO`** = advanced `UserActor` lab only |
-| Capabilities (typed ops) | [scenarios/capabilities.md](scenarios/capabilities.md) · [structural-limits](scenarios/structural-limits.md) | ✅ `OpCtx` store/deps/ingress + [`consensus` helpers](../crates/trembita/src/capability/consensus.rs); RYW directory; doctor store guard |
-| Real-time / session | [scenarios/realtime-sessions.md](scenarios/realtime-sessions.md) | ✅ `ActorSession`, gateway WS |
+| Capabilities (typed ops) | [scenarios/capabilities.md](scenarios/capabilities.md) · [structural-limits](scenarios/structural-limits.md) | ✅ `OpCtx` store/deps/ingress + [`consensus` helpers](../crates/trembita/src/capability/consensus.rs); RYW directory; doctor store guard; **auto group scale** (B-28) + **founder scale map / doctor foot-guns** (B-31 — [capability-dx § Founder scale](decisions/capability-dx.md#founder-scale-model-b-31)) |
+| Real-time / session | [scenarios/realtime-sessions.md](scenarios/realtime-sessions.md) | ✅ `ActorSession`, gateway WS; **cluster session cookies** ([gateway-cluster-auth](decisions/gateway-cluster-auth.md)) |
 | Workflows | [scenarios/workflows.md](scenarios/workflows.md) | ✅ Meta-Raft saga journal |
 | Product API | [getting-started.md](getting-started.md) | ✅ `capabilities/` + **`async` [`#[cap_handler]`](../crates/trembita-macros/src/lib.rs)** + gateway [`cap_*`](../crates/trembita/src/gateway/cap_handlers.rs); `/actors/*` off by default ([`WorkerOpts::http_cast`](../crates/trembita/src/worker_opts.rs) advanced) |
 
@@ -30,6 +30,22 @@
 **Not goals:** linearizable actor `ask`, global cross-shard serializable isolation. **Optional work:** [backlog.md](backlog.md#open-work).
 
 Details below ↓
+
+---
+
+## Product scale wave (B-28–B-32)
+
+Shipped backlog items for **«add VPS + same binary»** — capability compute, gateway sessions, ingress health checks, founder-safe manifests, and coordination-scale queues / multi-Raft on the **product** API.
+
+| Id | What shipped | Read first | Automated regression |
+|----|--------------|------------|----------------------|
+| **B-28** | Auto **[`resolved_scale`](../crates/trembita/src/capability/group.rs)** on cap groups (marker → **PerNode**, shared RAM / session → **Fixed**) | [capabilities § Group scale](scenarios/capabilities.md#group-scale-b-28) · [capability-dx § B-28](decisions/capability-dx.md#group-scale-b-28) | [`cap_scale.rs`](../crates/trembita/src/integration/cap_scale.rs), [`group.rs`](../crates/trembita/src/capability/group.rs) unit tables |
+| **B-29** | **Cluster session cookies** — [`ClusterSessionSecret`](../crates/trembita/src/gateway/cluster_session.rs), optional cap-store registry; same secret on all gateway nodes | [gateway-cluster-auth](decisions/gateway-cluster-auth.md) · [realtime § B-29](scenarios/realtime-sessions.md#cluster-session-cookies-b-29) | [`gateway_cluster_session.rs`](../crates/trembita/tests/gateway_cluster_session.rs), [`cluster_session.rs`](../crates/trembita/src/gateway/cluster_session.rs) |
+| **B-30** | **Ingress / LB** recipe — liveness **`GET /health`** vs pool **`GET /ready`** on unified `TREMBITA_LISTEN` | [ops/ingress-lb.md](ops/ingress-lb.md) | [`ingress_lb_ops.rs`](../crates/trembita/tests/ingress_lb_ops.rs), [`ingress_lb.rs`](../crates/trembita/src/integration/ingress_lb.rs) |
+| **B-31** | **Founder scale** vocabulary + **`trembita doctor`** foot-guns (`.instances(1)` + queued, session without `.per_node()`) | [capability-dx § Founder scale](decisions/capability-dx.md#founder-scale-model-b-31) · [product-terminology](decisions/product-terminology.md) | [`doctor.rs`](../crates/trembita-cli/src/scaffold/doctor.rs), [`cap_scale_doctor.rs`](../crates/trembita-cli/tests/cap_scale_doctor.rs) |
+| **B-32** | **Coordination scale** — sharded / auto-shard job queue + multi-Raft via [`QueueOpts` / `JobOpts`](../crates/trembita/src/queue_opts.rs), [`TrembitaConfigure`](../crates/trembita/src/configure.rs), **`TREMBITA_*`** | [capabilities § Coordination scale](scenarios/capabilities.md#coordination-scale-b-32) · [env.md](env.md) | [`product_coordination_scale.rs`](../crates/trembita/tests/product_coordination_scale.rs), [`env_config.rs`](../crates/trembita-assembly/src/env_config.rs) `b32_*` |
+
+Full test commands: [testing-coverage § B-28–B-32](testing-coverage.md#shipped-backlog-b-28b32). Planning snapshot: [archive/backlog-wave-b28-b32.md](archive/backlog-wave-b28-b32.md).
 
 ---
 
@@ -70,11 +86,11 @@ Details below ↓
 - **Cap store** — `RedbCapStateStore` + voter replication; auto with `.data_dir()` ([actor-state-store](decisions/actor-state-store.md)); TTL/GC; optional Redis (`redis-store`) and Postgres (`capstore-postgres`, transactional CAS); migration RPC for advanced workers
 - **Durable mailbox spool** — assembly-only [`durable_mailbox`](../crates/trembita-assembly/src/builder/cluster/config.rs) + `/actor/deliver` wire (not `TrembitaApp` today)
 
-**Job queue** ([job-queue](decisions/job-queue.md)): `RedbJobQueue`, batch enqueue/ack, prefetch, DLQ, cron, `ClusterJobQueue`, `#[trembita::consumer]`, autoscale; manual **`job_queue_sharded`** and leader **`job_queue_auto_shard`** under sustained depth; **`ExternalBacklog`** ([external-backlog](decisions/external-backlog.md), facade feature `external-backlog`); **`ScheduleSource`** ([schedule-source](decisions/schedule-source.md)).
+**Job queue** ([job-queue](decisions/job-queue.md)): `RedbJobQueue`, batch enqueue/ack, prefetch, DLQ, cron, `ClusterJobQueue`, `#[trembita::consumer]`, autoscale; sharded / auto-shard queues via **product** [`QueueOpts` / `JobOpts`](../crates/trembita/src/queue_opts.rs) and **`TREMBITA_JOB_QUEUE_*`** env (B-32); assembly **`job_queue_sharded`** / **`job_queue_auto_shard`** unchanged for embedders; **`ExternalBacklog`** ([external-backlog](decisions/external-backlog.md), facade feature `external-backlog`); **`ScheduleSource`** ([schedule-source](decisions/schedule-source.md)).
 
 **Event topics** ([event-topics](decisions/event-topics.md)): durable pub/sub, named subscriptions, voter replication; [`TopicOpts`](../crates/trembita/src/topic_opts.rs), [`.topics()`](../crates/trembita/src/app/mod.rs); **`EventOutboxSource`** ([event-outbox](decisions/event-outbox.md)) for transactional outbox drain.
 
-**Gateway & HTTP** ([unified-listener](decisions/unified-listener.md), [gateway-routing-v2](decisions/gateway-routing-v2.md), [gateway-identity](decisions/gateway-identity.md)): one TCP bind on `TREMBITA_LISTEN`; default ops/jobs surfaces from env boot or explicit `.surfaces()`; `AuthMode` on route tables; native `Gateway`/`RouteTable` + hyper WebSocket. Cluster-only: [`spawn_cluster_ops_http`](../crates/trembita/src/gateway/cluster_ops.rs). Env: [env.md](env.md).
+**Gateway & HTTP** ([unified-listener](decisions/unified-listener.md), [gateway-routing-v2](decisions/gateway-routing-v2.md), [gateway-identity](decisions/gateway-identity.md)): one TCP bind on `TREMBITA_LISTEN`; default ops/jobs surfaces from env boot or explicit `.surfaces()`; `AuthMode` on route tables; native `Gateway`/`RouteTable` + hyper WebSocket. Cluster-only: [`spawn_cluster_ops_http`](../crates/trembita/src/gateway/cluster_ops.rs). Env: [env.md](env.md). **Ops:** VPS ingress/LB recipe [ops/ingress-lb.md](ops/ingress-lb.md) (B-30).
 
 **Workload governor** ([workload-governor](decisions/workload-governor.md)): per-node compute tokens + consumer tuning from gateway connections, **in-flight HTTP**, **consumer in-flight**, and queue depth; `ConsumerTune::max_in_flight` caps concurrent handlers across consumer instances; subprocess load via [`compute_cost`](../crates/trembita/src/job_opts.rs) + optional [`ExternalLoad`](decisions/external-load.md) ([external-load](decisions/external-load.md)).
 
@@ -89,7 +105,7 @@ Details below ↓
 | Routing | `ShardRouter`, `StableShardRouter` (default), rendezvous `place_shard` / `place_group` |
 | Runtime | `ShardedNodeService`, `spawn_multi_raft_node`, Meta-Raft coordinator, keyed `ProposeKeyed` / `QueryKeyed` |
 | Modulus routing | Per-group learners, `expand_shard_count`, `propose_keyed_batch`, `/introspect/raft-groups` |
-| Stable shards & catalog | Dynamic catalog (`add_raft_groups`), stable shard activation (`activate_shards`, `switch_to_stable_shards`), `catalog_version` |
+| Stable shards & catalog | Dynamic catalog (`add_raft_groups`), stable shard activation (`activate_shards`, `switch_to_stable_shards`), `catalog_version`; product boot via **`TrembitaConfigure::with_coordination_raft_groups`** / **`TREMBITA_RAFT_*`** (B-32, `EmptyStateMachine` apps) |
 | Meta-Raft | Dedicated coordinator group for join/leave, catalog, saga journal (multi-Raft only) |
 | Rebalance | `RaftGroupReconciler`, cross-node group migration RPC (`/cluster/group/migrate`) |
 | Membership | Per-group voter sets (`group_replication_factor`, `sync_group_membership`) |
@@ -153,6 +169,7 @@ Documented in [future-work-and-risks](decisions/future-work-and-risks.md):
 | [examples/README.md](../examples/README.md) | Product showcases (local + QUIC cluster) |
 | [scenarios/README.md](scenarios/README.md) | Product scenario index |
 | [backlog.md](backlog.md) | Open work |
+| [status § B-28–B-32](#product-scale-wave-b-28b32) | Shipped product scale wave |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Contributor guide (humans) |
 | [architecture.md](architecture.md) | Crate graph, data flows |
 | [decisions/](decisions/) | Design decision records |

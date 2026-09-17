@@ -215,6 +215,7 @@ For a product-oriented checklist and gaps, see [status.md](../status.md) and [ba
 
 | API | Behaviour |
 |-----|-----------|
+| **Product `TrembitaApp` (B-32)** — [`QueueOpts::sharded`](../../crates/trembita/src/queue_opts.rs) / [`.auto_shard()`](../../crates/trembita/src/queue_opts.rs) on manifest, or env-only `TREMBITA_JOB_QUEUE_*` | Same physical streams as assembly helpers; wired via [`mount_queue_stream`](../../crates/trembita/src/app/builder.rs). |
 | **`job_queue_sharded(name, N, …)`** | Fixed `N` physical streams (`{name}~0` …) at boot — hash routing via [`ShardedJobQueue`](../../crates/trembita-jobs/src/sharded_queue.rs). |
 | **`job_queue_auto_shard(name, …, AutoShardPolicy)`** | Starts as one shard (`{name}~0`); leader coordinator adds `{name}~1`, … when logical `pending` stays above policy thresholds (cap `max_shards`). Followers **lazy-open** new physical streams on first replicate. Existing backlog stays on the shard that holds it — no cross-shard migration. |
 

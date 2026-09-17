@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-09-16  
-**Backlog:** B-21 … B-27 (shipped)
+**Backlog:** B-21 … B-27, **B-28**, **B-31**, **B-32** (shipped in this ADR). **B-29** / **B-30** — [gateway-cluster-auth](gateway-cluster-auth.md), [ops/ingress-lb.md](../ops/ingress-lb.md). Wave index: [status § B-28–B-32](../status.md#product-scale-wave-b-28b32).
 
 ## Context
 
@@ -75,7 +75,6 @@ Registration (`{handler}_register` from the attribute; wire `OP` is never duplic
 ```rust
 CapManifest::new().group(trembita::cap_register_chain!(
     CapGroup::<OrdersState>::for_cap::<Fulfill>()
-        .instances(1)
         .default_queue_for::<Fulfill>(), // `{group}.{op}` on macro-generated `CapRequest`
     run_register,
 ))
@@ -110,6 +109,52 @@ Fulfill { id }.via(&app).route(Route::InlineFire).await?;
 **Route is chosen at the call site** (`.route(Route::Queued)`, `fire_cap`, session APIs). Registration
 does not whitelist routes unless an op uses [`.routes`](../../crates/trembita/src/capability/op.rs) for
 advanced restriction. Missing queue/topic wiring fails when that mode is invoked, not at handler define time.
+
+### Group scale (B-28)
+
+Host placement is chosen when the manifest is applied ([`resolved_scale`](../../crates/trembita/src/capability/group.rs)):
+
+| Situation | Default |
+|-----------|---------|
+| Marker-only `State` (zero-sized), no `Route::Session` on any op | **`PerNode`** — stateless inline/queued ops scale with cluster nodes |
+| Non–zero-sized `State` (shared RAM in the host) | **`Fixed(1)`** — one authoritative host unless you `.per_node()` or `.instances(n)` |
+| Any op registers `Route::Session` | **`Fixed(1)`** — use `.per_node()` for realtime pools (see [realtime showcase](../../examples/realtime/)) |
+
+Explicit overrides: [`.instances(n)`](../../crates/trembita/src/capability/group.rs) (fixed pool), [`.per_node()`](../../crates/trembita/src/capability/group.rs). Queued work still flows through job consumers; handler hosts follow the group scale above.
+
+**CI regression:** [capabilities § Automated regression (B-28)](../scenarios/capabilities.md#automated-regression-b-28).
+
+### Founder scale model (B-31)
+
+Transparent split for **«add VPS + same binary»** — what actually scales when the cluster grows:
+
+| Op shape | What scales with more nodes | Founder rule |
+|----------|----------------------------|--------------|
+| **Stateless** inline / fire (`Route::Inline`, `InlineFire`) on marker-only `State` | **Capability hosts** — default [`PerNode`](../../crates/trembita/src/capability/group.rs) | Do not `.instances(1)` unless you mean a single global owner |
+| **Keyed** inline / fire (`#[cap_handler(key = "field")]`) | **Shard / single owner per key** — directory routes to the host for that key | Use for per-entity RAM or single-writer semantics |
+| **Session** (`Route::Session`) | **Sticky** session → one cap host for the session lifetime; LB may stick WebSocket | Realtime pools: `.per_node()` + session routes ([realtime-sessions](../scenarios/realtime-sessions.md)) |
+| **Queued** (`Route::Queued`, `default_queue_for`) | **Job consumers** scale with cluster / autoscale; **handler runs on cap hosts** per group scale | Queued + `.instances(1)` without keyed ops pins all handler work on one node — `trembita doctor` **errors** |
+
+**Two layers for queued work:** the **job stream** (backlog depth, consumer count) is independent from **cap host placement** (where `run` executes). Misconfiguring `.instances(1)` on a stateless queued group looks like “queue scales” but handlers do not.
+
+Tooling: [`trembita doctor`](../../crates/trembita-cli/src/scaffold/doctor.rs) flags Fixed(1)+queued without keys, stateless `.instances(1)`, and session routes without `.per_node()`. See [capabilities § Founder scale](../scenarios/capabilities.md#founder-scale-b-31).
+
+**CI regression:** [capabilities § Automated regression (B-31)](../scenarios/capabilities.md#automated-regression-b-31).
+
+### Coordination scale (B-32)
+
+When **enqueue throughput** or **keyed coordination** (cap store, topics, multi-group Raft) outgrow a single Meta-Raft group, use assembly-scale features through the **product** surface — not only `TrembitaClusterBuilder`:
+
+| Need | Product API | Env (env-only queue boot) |
+|------|-------------|---------------------------|
+| Fixed queue shards | [`QueueOpts::sharded`](../../crates/trembita/src/queue_opts.rs) / [`JobOpts::sharded`](../../crates/trembita/src/job_opts.rs) | `TREMBITA_JOB_QUEUE` + `TREMBITA_JOB_QUEUE_SHARDS` |
+| Adaptive queue shards | [`.auto_shard()`](../../crates/trembita/src/queue_opts.rs) | `TREMBITA_JOB_QUEUE_AUTO_SHARD=1` |
+| Multi-Raft on coordination SM | [`TrembitaConfigure::with_coordination_raft_groups`](../../crates/trembita/src/configure.rs), optional [`.with_coordination_shard_count`](../../crates/trembita/src/configure.rs) | `TREMBITA_RAFT_GROUPS`, `TREMBITA_RAFT_SHARD_COUNT` |
+| Expand catalog at runtime | [`TrembitaApp::add_raft_groups`](../../crates/trembita/src/app/runtime.rs) | — |
+
+This path uses **`EmptyStateMachine`** (default `TrembitaApp`) — not custom application state machines. See [multi-raft](multi-raft.md), [job-queue § sharded](job-queue.md).
+
+**CI regression:** [`product_coordination_scale.rs`](../../crates/trembita/tests/product_coordination_scale.rs), env parse tables in [`env_config.rs`](../../crates/trembita-assembly/src/env_config.rs), unit tables in [`configure.rs`](../../crates/trembita/src/configure.rs) / [`queue_opts.rs`](../../crates/trembita/src/queue_opts.rs) / [`job_opts.rs`](../../crates/trembita/src/job_opts.rs). Scenario index: [capabilities § B-32](../scenarios/capabilities.md#automated-regression-b-32).
 
 ### Routes (product contract)
 
@@ -184,8 +229,7 @@ Custom HTTP shapes (extra response fields, different DTO) remain plain handlers 
 `.via(&app)` or wrap these adapters.
 
 Greenfield product policy: no documented reliance on `/actors/{group}/cast` or ad-hoc cast bytes —
-see [capability-greenfield-wire](capability-greenfield-wire.md). The actors HTTP surface may remain
-enabled for tooling until B-22 removes it from default gateway presets.
+see [capability-greenfield-wire](capability-greenfield-wire.md). Default product gateway **excludes** `/actors/*`; re-enable with [`.http_cast(true)`](../../crates/trembita/src/worker_opts.rs) / [`.with_actors_api()`](../../crates/trembita/src/app/builder.rs) for advanced labs only.
 
 ### Non-goals
 

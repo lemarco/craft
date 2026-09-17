@@ -68,7 +68,4 @@ Sticky [`ActorSession`](../../crates/trembita-runtime/src/session.rs) is an **op
 
 ## Follow-up (implementation)
 
-| Id | Task | Status |
-|----|------|--------|
-| B-22 | Greenfield wire (gateway ingress, scripts, Event route) | ✅ |
-| B-23 | Showcase: capability idempotency; advanced RAM migrate-demo documented | ✅ |
+B-22 and B-23 shipped — see [archive/backlog-shipped.md](../archive/backlog-shipped.md) and [status.md](../status.md).

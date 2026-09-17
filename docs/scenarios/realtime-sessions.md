@@ -221,9 +221,29 @@ See [read-consistency](../decisions/client-and-routing.md#read-consistency).
 | [`examples/realtime/`](../../examples/realtime/) | WebSocket + `ActorSession` showcase |
 | `trembita/tests/http_actors.rs` | HTTP cast/ask on gateway |
 
-## Future polish
+## Cluster session cookies (B-29)
 
-Gateway auth: [`GatewayBearerIdentity`](../../crates/trembita/src/gateway/identity.rs) on [`GatewayOpts::identity`](../../crates/trembita/src/gateway/opts.rs) plus [`AuthMode::Identity`](../../crates/trembita-http/src/routing/auth.rs) on sticky WebSocket and login routes (see [`examples/realtime/`](../../examples/realtime/)). Custom routes use the same identity via [`TrembitaGatewayState::open_worker_session_parts`](../../crates/trembita/src/gateway/state.rs).
+Login on one gateway node must work on another behind a load balancer:
+
+1. Edge auth: [`GatewayBearerIdentity`](../../crates/trembita/src/gateway/identity.rs) / custom [`GatewayIdentity`](../../crates/trembita/src/gateway/identity.rs) on `/login` and sticky WebSocket ([`AuthMode::Identity`](../../crates/trembita-http/src/routing/auth.rs)).
+2. Issue cookie: [`ClusterSessionSecret::issue`](../../crates/trembita/src/gateway/cluster_session.rs) + [`cluster_session_gate`](../../crates/trembita/src/gateway/cluster_session.rs) — **not** a process-local token set.
+3. Sticky cap/WS: open [`SessionHandle`](../../crates/trembita/src/gateway/session.rs) with the **verified session key** (user id), not the opaque cookie bytes.
+
+Set `TREMBITA_GATEWAY_SESSION_SECRET` identically on all nodes ([env.md](../env.md)). Optional server-side registry: [`register_capstore_session`](../../crates/trembita/src/gateway/cluster_session.rs). ADR: [gateway-cluster-auth](../decisions/gateway-cluster-auth.md).
+
+### Automated regression (B-29)
+
+| Area | Location |
+|------|----------|
+| Signed cookie + cap-store session gate | `trembita/tests/gateway_cluster_session.rs` |
+| Token crypto / verify edge cases | `trembita/src/gateway/cluster_session.rs` |
+
+```bash
+./scripts/test-fast.sh -p trembita --test gateway_cluster_session
+./scripts/test-fast.sh -p trembita --lib cluster_session
+```
+
+Full ADR + env table: [gateway-cluster-auth § B-29](../decisions/gateway-cluster-auth.md). Wave index: [status § B-28–B-32](../status.md#product-scale-wave-b-28b32).
 
 ## Related
 

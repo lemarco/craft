@@ -52,12 +52,17 @@ Register domain wiring in [`AppManifest`](../crates/trembita/src/app/manifest.rs
 | [`TREMBITA_CERT_DIR`](#trembita_cert_dir) | yes in prod (or `dev-certs` feature locally) | Shared dir: `ca.pem`, `node-{id}.pem` — joiners boot with `node-0.pem`, reload after id assign |
 | [`TREMBITA_JOIN_SEEDS`](#trembita_join_seeds) | joiners only | `id@host:port` of a seed (`1@node1:443`) — **no static peer mesh** in the happy path |
 | [`GATEWAY_TOKEN`](#gateway_token) | optional | Bearer + `X-Trembita-User` for identity-protected `/jobs/*` and sticky routing ([gateway-identity](decisions/gateway-identity.md)) |
+| [`TREMBITA_GATEWAY_SESSION_SECRET`](#trembita_gateway_session_secret) | multi-node gateway + cookies | Same secret on every node — cluster session cookies ([gateway-cluster-auth](decisions/gateway-cluster-auth.md)) |
 
 Common optional:
 
 | Variable | Purpose |
 |----------|---------|
 | `TREMBITA_JOB_QUEUE` | Job stream name when using env-only queue registration + [`RunOpts::from_config`](../crates/trembita/src/app_opts.rs) / [`RunOpts::for_manifest`](../crates/trembita/src/app_opts.rs) wait-for-leader |
+| `TREMBITA_JOB_QUEUE_SHARDS` | Fixed physical shard count for env-only `TREMBITA_JOB_QUEUE` (`{name}~0` …); requires `TREMBITA_DATA_DIR`. Mutually exclusive with `TREMBITA_JOB_QUEUE_AUTO_SHARD` |
+| `TREMBITA_JOB_QUEUE_AUTO_SHARD` | `1` / `true` — leader adaptive shard growth for env-only queue ([job-queue](decisions/job-queue.md)) |
+| `TREMBITA_RAFT_GROUPS` | Multi-Raft coordination groups on the product **`EmptyStateMachine`** path (default `1`). Use with `TREMBITA_DATA_DIR` for keyed queue/topic/store traffic ([multi-raft](decisions/multi-raft.md)) |
+| `TREMBITA_RAFT_SHARD_COUNT` | Virtual shard modulus when `TREMBITA_RAFT_GROUPS` > 1 (optional; assembly default applies when unset) |
 | `TREMBITA_ALLOW_JOIN` | Seed accepts dynamic join (default **on** when not joining) |
 
 **Do not set** `TREMBITA_NODE_ID` on product nodes — id comes from join assignment and `{data_dir}/node-id`.
@@ -65,6 +70,8 @@ Common optional:
 ### `TREMBITA_LISTEN`
 
 Single published port per node. Wire and HTTP share the port **number** (different protocols). Default gateway surfaces bind here automatically when using [`from_env()`](../crates/trembita/src/app/runtime.rs) / [`from_config()`](../crates/trembita/src/app/builder.rs) (ops + registration-driven APIs; not `/actors/*`).
+
+**Load balancing:** point your edge (DNS, floating IP, reverse proxy) at **each** node’s TCP listener on this port; use **`GET /ready`** for pool health. Inter-node QUIC uses **UDP** on the same port between real node IPs — see [ops/ingress-lb.md](ops/ingress-lb.md).
 
 **Ops (zero config):** `/health`, `/ready`, `/metrics`, `/dashboard`, `/introspect/*` on the same listener — no manual `http::ops` merge. Opt out with [`.without_ops()`](../crates/trembita/src/app/builder.rs) only when ops live on another host.
 
@@ -83,7 +90,9 @@ Declare capabilities in [`AppManifest`](../crates/trembita/src/app/manifest.rs) 
 
 ### `TREMBITA_DATA_DIR`
 
-Enables durable job queue, **cap store** (`trembita::capstore`), and node id persistence. Required when `TREMBITA_JOB_QUEUE` is set.
+Enables durable job queue, **cap store** (`trembita::capstore`), and node id persistence. Required when `TREMBITA_JOB_QUEUE` is set. Sharded / multi-Raft coordination env vars also require a data directory.
+
+**Manifest alternative (B-32):** [`.sharded(n)`](../crates/trembita/src/queue_opts.rs) / [`.auto_shard()`](../crates/trembita/src/queue_opts.rs) on [`QueueOpts`](../crates/trembita/src/queue_opts.rs) / [`JobOpts`](../crates/trembita/src/job_opts.rs); [`.with_coordination_raft_groups(n)`](../crates/trembita/src/configure.rs) / [`.with_coordination_shard_count(n)`](../crates/trembita/src/configure.rs) on [`TrembitaConfigure`](../crates/trembita/src/configure.rs). Runtime catalog expansion: [`TrembitaApp::add_raft_groups`](../crates/trembita/src/app/runtime.rs).
 
 ### `TREMBITA_CERT_DIR`
 
@@ -98,6 +107,14 @@ Comma-separated seeds for joiners. Seed nodes omit this and set `TREMBITA_ALLOW_
 ### `GATEWAY_TOKEN`
 
 Also accepted as `TREMBITA_GATEWAY_TOKEN` (legacy name). Unset = open product HTTP (dev only).
+
+### `TREMBITA_GATEWAY_SESSION_SECRET`
+
+Shared signing key for product session cookies (≥16 bytes). Every gateway process in the cluster must use the **same** value so [`SessionGate`](../crates/trembita-http/src/routing/auth.rs) accepts cookies on any node. Alias: `GATEWAY_SESSION_SECRET`. See [gateway-cluster-auth](decisions/gateway-cluster-auth.md) and [`ClusterSessionSecret`](../crates/trembita/src/gateway/cluster_session.rs).
+
+### `TREMBITA_GATEWAY_AUTH_PROFILE`
+
+`cookie-only` (default) or `external-idp` — composition hint for [`GatewayAuthProfile`](../crates/trembita/src/gateway/auth_profile.rs); OAuth/OIDC stays app-owned via [`.identity()`](../crates/trembita/src/gateway/opts.rs).
 
 ---
 
@@ -135,6 +152,8 @@ Also accepted as `TREMBITA_GATEWAY_TOKEN` (legacy name). Unset = open product HT
 | [`trembita-node`](../crates/trembita-tools/src/bin/node.rs) | Reference **product** node (`TrembitaApp` + empty SM): may use `TREMBITA_NODE_ID`, `TREMBITA_PEERS`, `TREMBITA_DISCOVERY`, `--join-seed`. [`NodeConfig::into_app_config`](../crates/trembita-tools/src/node/config.rs) sets [`EnvOverrides`](../crates/trembita-assembly/src/env_config.rs) (e.g. `env.peers` when `TREMBITA_PEERS` is set) so static membership merges into the builder — **not** for normal app deploys |
 | [`dev-client`](../crates/trembita-tools/src/bin/dev-client.rs) | Client tooling; requires `TREMBITA_PEERS` |
 
-Run `trembita doctor` on scaffold projects — it checks `manifest.rs` ↔ `consumers/` wiring, gateway merges in `app.rs`, legacy keys in `deploy/.env.example`, and **removed APIs** (`TrembitaCluster::builder`, old gateway toggles). Before deploy, use **`trembita doctor --preflight`**: stricter checks for `TREMBITA_LISTEN` / `DATA_DIR` / `CERT_DIR`, compose join pattern (no `TREMBITA_NODE_ID`), default ops gateway wiring, and local `deploy/certs/ca.pem` when present.
+Run `trembita doctor` on scaffold projects — it checks `manifest.rs` ↔ `consumers/` wiring, gateway merges in `app.rs`, legacy keys in `deploy/.env.example`, **removed APIs** (`TrembitaCluster::builder`, old gateway toggles), and **capability scale foot-guns** (B-31 — e.g. `.instances(1)` with queued ops but no keyed handlers). Before deploy, use **`trembita doctor --preflight`**: stricter checks for `TREMBITA_LISTEN` / `DATA_DIR` / `CERT_DIR`, compose join pattern (no `TREMBITA_NODE_ID`), default ops gateway wiring, and local `deploy/certs/ca.pem` when present.
+
+**Scale wave env (B-28–B-32):** B-29 — [`TREMBITA_GATEWAY_SESSION_SECRET`](#trembita_gateway_session_secret); B-30 — pool health via **`GET /ready`** on [`TREMBITA_LISTEN`](#trembita_listen) ([ingress-lb](ops/ingress-lb.md)); B-32 — `TREMBITA_JOB_QUEUE_*`, `TREMBITA_RAFT_*` (table above). Cap group defaults (B-28) are manifest-side, not env. Index: [status § Product scale wave](status.md#product-scale-wave-b-28b32).
 
 See also: [getting-started.md](getting-started.md), [certs.md](certs.md), [unified-listener](decisions/unified-listener.md).

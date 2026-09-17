@@ -7,9 +7,25 @@ closing a gap.
 **Strategy:** [testing-strategy](decisions/testing-strategy.md)  
 **Feature status:** [status.md](status.md)  
 **Product docs:** [product-terminology](decisions/product-terminology.md) (capabilities vs runtime actors)  
-**Last audit:** 2026-09-15
+**Last audit:** 2026-09-17 (B-28–B-32 wave index)
 
 Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** scheduled / `#[ignore]` only
+
+---
+
+## Shipped backlog B-28–B-32
+
+Product scale wave — quick regression commands (detail in scenario pages):
+
+| Id | Focus | Primary tests | Fast command |
+|----|-------|---------------|--------------|
+| B-28 | Auto cap group `resolved_scale` | `capability/group.rs`, `integration/cap_scale.rs` | `./scripts/test-fast.sh -p trembita --lib auto_scale_marker_state_spawns_one_host_per_node` |
+| B-29 | Cluster session cookies | `gateway/cluster_session.rs`, `tests/gateway_cluster_session.rs` | `./scripts/test-fast.sh -p trembita --test gateway_cluster_session` |
+| B-30 | Ingress `/health` vs `/ready` | `trembita-http`, `trembita-dashboard`, `ingress_lb*.rs` | `./scripts/test-fast.sh -p trembita --test ingress_lb_ops` |
+| B-31 | Founder scale doctor | `trembita-cli/.../doctor.rs`, `tests/cap_scale_doctor.rs` | `./scripts/test-fast.sh -p trembita-cli --test cap_scale_doctor` |
+| B-32 | Product coordination scale | `configure` / `queue_opts` / `job_opts`, `env_config`, `product_coordination_scale.rs` | `./scripts/test-fast.sh -p trembita --all-features --lib b32_` |
+
+Index: [status § Product scale wave](status.md#product-scale-wave-b-28b32) · [capabilities scenarios](scenarios/capabilities.md).
 
 ---
 
@@ -41,8 +57,8 @@ Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** sch
 | `trembita-runtime` | 10 | 99 | **109** | `RaftDriver`, runtime, registry, placement, supervision, migration, trybuild |
 | `trembita-net` | 12 | 32 | **44** | Wire framing, `LocalNetwork`, TLS handshake, loopback QUIC, protocol compat |
 | `trembita-sim` | 8 | 22 | **30** | Safety/liveness under faults, linearizability, actor scenarios, multi-Raft |
-| `trembita-dashboard` | 8 | **8** | **16** | Ops HTTP handlers (`/introspect/*`, dashboard), ops TLS, metrics, telemetry |
-| `trembita` (facade) | 2 | **24** | **26** | `TrembitaCluster` builder, multi-Raft, keyed client, live QUIC cluster, reachability reconcile, actor store resume, gateway ops TLS, DNS discovery |
+| `trembita-dashboard` | **14** | **8** | **22** | Ops HTTP handlers (`/introspect/*`, dashboard), ops TLS, metrics, telemetry, LB readiness unit |
+| `trembita` (facade) | **10** | **30** | **40** | `TrembitaCluster` builder, multi-Raft, keyed client, live QUIC cluster, reachability reconcile, actor store resume, gateway ops TLS, DNS discovery, B-30 ingress LB, B-32 coordination scale (unit tables + env + product boot) |
 | `trembita-storage` | 0 | 7 | **7** | Store contract (Memory + Redb), namespaced groups, reopen |
 | `trembita-proto` | 7 | 0 | **7** | Encode/decode roundtrips, protocol compat band |
 | `trembita-store-redis` | 0 | 10 (7 `redis` + 3 `tls`, `#[ignore]` except 2 fast) | **10** | Redis CAS/TTL, dual conn, idempotent worker, reconnect, `rediss://` |
@@ -51,7 +67,7 @@ Legend: **✅** covered · **⚠️** partial · **❌** missing · **🔒** sch
 | `trembita-ops` | 0 | 2 | **2** | Snapshot export/import, object-store push/pull |
 | `trembita-macros` | — | via trybuild in `trembita-runtime` | — | Compile-pass/fail |
 | `trembita-tools` | **10** | 0 | **10** | `trembita-node` env parsing (`node/config.rs`); E2E smoke via binary |
-| `trembita-cli` | **13** | **14** | **27** | `new` scaffold, read-only `doctor`, marker naming; `dev` registry (debug CLI only) |
+| `trembita-cli` | **13** | **16** | **29** | `new` scaffold, read-only `doctor`, B-31 cap scale foot-guns; `dev` registry (debug CLI only) |
 
 Count tests locally:
 
@@ -184,7 +200,7 @@ Published binary **`trembita`** ([`crates/trembita-cli`](../crates/trembita-cli/
 | Command | Behavior under test | Tests |
 |---------|---------------------|-------|
 | **`new`** | Layout incl. `manifest.rs`, `.without_actors_api()` in `app.rs`, `manifest` marker regions (`jobs`/`topics`/`workers`/`capabilities`), path dep canonicalization, `cargo check`-clean templates (`serde`, `trembita::RouteTable`) | `tests/scaffold.rs`, `scaffold/render.rs`, `scaffold/features.rs` |
-| **`doctor`** | manifest ↔ consumers/actors/workflows; `// trembita:topics` / `// trembita:workers` markers; duplicate ids; `.manifest()` in `app.rs`; no inline capabilities in `app.rs`; missing `mod` declarations (reports only); cap store API without `OpCtx::require_store` (R4) | `scaffold/doctor.rs`, `tests/add_doctor.rs` |
+| **`doctor`** | manifest ↔ consumers/actors/workflows; `// trembita:topics` / `// trembita:workers` markers; duplicate ids; `.manifest()` in `app.rs`; no inline capabilities in `app.rs`; missing `mod` declarations (reports only); cap store API without `OpCtx::require_store` (R4); **B-31** cap scale foot-guns (`.instances(1)`+queued without `key`, session without `.per_node()`) | `scaffold/doctor.rs`, `tests/add_doctor.rs` |
 | **`doctor --preflight`** | deploy env / gateway ops hints | `scaffold/doctor.rs` (unit scenarios) |
 | **`dev *`** (debug CLI) | showcase registry, workspace root, `trigger.sh` path | `tests/dev.rs`; full `dev up` 🔒 manual / `TREMBITA_DEV_INTEGRATION` |
 | **Project discover** | walk parents; requires `app.rs` + `manifest.rs` | `tests/add_doctor.rs`, `scaffold/project.rs` |
@@ -242,7 +258,7 @@ skipped when no matching staged files) and pre-push (clippy → tests → doctes
 
 ## Known gaps (prioritized)
 
-Track open gaps here; move rows to **Closed gaps** when fixed.
+Track open gaps here; append fixed rows to [archive/testing-closed-gaps.md](archive/testing-closed-gaps.md).
 
 | Priority | Gap | Suggested test location | Effort |
 |----------|-----|-------------------------|--------|
@@ -250,87 +266,7 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | Low | `doctor --preflight` on full synthetic `deploy/` tree | `tests/add_doctor.rs` or `scaffold/doctor.rs` | S |
 | Low | `trembita dev up` multi-node smoke in CI (debug CLI) | `tests/dev.rs` + job label `run-heavy` | M |
 
-### Closed gaps
-
-| Closed | What | Where |
-|--------|------|-------|
-| 2026-09-17 | R1 client + leader wire `CommandTooLarge`; OpCtx consensus; R3 cap inline during `add_raft_groups` | `trembita-client/tests/command_size.rs`, `trembita-test-runtime/tests/runtime.rs` (`leader_rejects_oversized_propose_on_wire`), `trembita/src/integration/cap_rebalance.rs`, `capability/consensus.rs`, `trembita-assembly/.../assemble.rs` |
-| 2026-09-15 | CLI **`new`** + read-only **`doctor`**; removed **`trembita add`**, **`doctor --fix`**, release **`dev`** | `trembita-cli`, `docs/{getting-started,decisions/framework-conventions}.md` |
-| 2026-09 | Product **`AppManifest`** + scaffold **`manifest.rs`** (layout; manual edits in marker regions) | `trembita/src/app/manifest.rs`, `trembita-cli/src/scaffold/render.rs`, `tests/{scaffold,add_doctor}.rs` |
-| 2026-09 | Doctor duplicate manifest ids + workflow wiring checks | `trembita-cli/src/scaffold/doctor.rs`, `tests/add_doctor.rs` |
-| 2026-09 | Topic replicate auth rejects non-leader caller | `trembita/tests/topic.rs` |
-| 2026-09 | Product gateway symmetry (topics/workflows HTTP + identity) | `trembita/tests/gateway_product_http.rs`, `gateway_product_symmetry.rs` |
-| 2026-09 | Introspect `GET /introspect/topics` | `trembita-dashboard/tests/admin.rs`, `trembita/tests/gateway_product_http.rs` |
-| 2026-09 | Gateway rate limit HTTP integration (`429`) | `trembita/tests/gateway_jobs_http.rs` |
-| 2026-09 | Typed product wire errors (`ProductWireError` on queue/topic/store replies) | `trembita-proto/src/product.rs`, service handlers |
-| 2026-09 | Gateway bearer identity header-only user + no query token | `trembita/src/gateway/identity.rs` (unit) |
-| 2026-09 | Actor store in-memory contract tests | `trembita-capstore/tests/memory_contract.rs` |
-| 2026-08 | Scenario soak per product path (actor store, saga resume, session restart) | `benchmarks/soak_{actor_store,saga,session}.rs`, `.gitlab-ci.yml` `bench` |
-| 2026-08 | Gateway identity, `SessionHandle`, WS + HTTP E2E, gateway drain | `trembita/src/gateway/`, `trembita/tests/{gateway_identity,gateway_ws,gateway_http}.rs`, `examples/{realtime,stateful-workers}/`, `docs/decisions/gateway-identity.md` |
-| 2026-09 | Introspect API on product gateway (`IntrospectApi`, default gateway surfaces, `AuthFn`) | `trembita-http/src/introspect_routes.rs`, `trembita/tests/gateway_introspect_http.rs`, `docs/decisions/introspect-api.md` |
-| 2026-09 | Gateway virtual-host dispatch (`Gateway`/`Surface`, strict default, loopback dev fallback) | `trembita-http/src/gateway/`, `trembita-http/README.md`, `trembita/src/gateway/mod.rs` |
-| 2026-09 | Durable event topics (`EventTopic`, min-cursor compaction, retention discard, voter replication) | `trembita-events/src/{topic,redb_topic,topic_service}`, `trembita-events/tests/topic_failover.rs`, `trembita/src/topic_opts.rs`, `docs/decisions/event-topics.md` |
-| 2026-09 | Dynamic schedule source (`ScheduleSource`, diff reconcile, leader replication) | `trembita-jobs/src/schedule_source.rs`, `trembita-jobs/tests/schedule_source.rs`, `trembita/tests/schedule_source.rs`, `docs/decisions/schedule-source.md` |
-| 2026-09 | Capability DX wave 1 (B-21) — inline ask, queued deliver, `CapManifest` | `trembita/src/capability/`, `trembita/tests/capability.rs`, `examples/stateful-workers/src/capabilities/`, `docs/decisions/capability-dx.md` |
-| 2026-09 | Gateway capability adapters (`cap_fire`, `cap_invoke`) | `trembita/src/gateway/cap_handlers.rs`, `trembita/tests/gateway_cap_http.rs` |
-| 2026-09 | B-21 complete — QueuedWait/Scheduled/Session, scaffold `capabilities/` | `trembita/src/capability/`, `trembita/tests/capability.rs`, `trembita-cli/templates/…/capabilities/` |
-| 2026-09 | B-22 greenfield + `Route::Event` topic ingress / `publish_event` | `trembita/src/capability/event.rs`, `trembita/src/capability/call.rs`, `trembita/tests/capability.rs` (`capability_event_subscription_runs_inline`), `examples/stateful-workers/` |
-| 2026-09 | B-25 — `cap_handler`, `{handler}_register`, `cap_register_chain!` | `trembita-macros/src/cap_handler.rs`, `trembita/tests/cap_request_macro.rs`, `examples/*/capabilities/` |
-| 2026-09 | B-26a — `#[cap_handler]` on `async fn` | `trembita-macros/src/cap_handler.rs`, `examples/stateful-workers/src/capabilities/orders.rs` |
-| 2026-09 | B-26c–d — typed WS mount, `{group}.{op}` on `CapRequest` | `gateway/ws/mod.rs`, `capability/call.rs`, showcases |
-| 2026-09 | Async-only `#[cap_handler]`; jobs showcase → cap queue | `trembita-macros`, `examples/background-jobs/`, `capability_wiring.rs` |
-| 2026-09 | Product gateway opt-out sugar — [`TrembitaAppBuilder::without_*`](../crates/trembita/src/app/builder.rs), [`with_actors_api`](../crates/trembita/src/app/builder.rs); `from_config` + `TREMBITA_LISTEN` enables ops/registration HTTP (not `/actors/*`) | `trembita/src/app/builder.rs` (`env_listen_gateway_tests`), `docs/decisions/product-terminology.md` |
-| 2026-09 | B-22/B-23 scaffold greenfield — `.without_actors_api()`, `cap_invoke` `/ping`, infallible `from_config`, compile-ready `cargo check` | `trembita-cli/src/scaffold/{render.rs,main.rs}`, `trembita-cli/tests/scaffold.rs`, `trembita-cli/templates/trembita-app/` |
-| 2026-09 | B-24 parity matrix + realtime cap session | `docs/scenarios/capability-parity.md`, `examples/realtime/src/capabilities/` |
-| 2026-09 | B-24d realtime scaffold (`chat` cap + sticky WS) | `crates/trembita-cli/src/scaffold/render.rs`, `trembita-cli/tests/scaffold.rs` |
-| 2026-09 | B-24c workflows saga → onboarding cap ops | `examples/workflows/src/capabilities/onboarding.rs`, `examples/workflows/src/onboarding.rs` |
-| 2026-09 | CapGroup `per_node` + jobs ledger cap + workflows scaffold | `crates/trembita/src/capability/group.rs`, `examples/background-jobs/`, `trembita-cli/templates/…/onboarding.rs.tpl` |
-| 2026-09 | B-27i cap queued dedup + bridge idempotency | `trembita/src/capability/{call,queue}.rs`, `trembita/src/consumer.rs`, `trembita/tests/capability.rs` (`capability_enqueue_dedup_key_collapses`), `trembita/tests/gateway_cap_http.rs` (`gateway_cap_enqueue_honors_dedup_query`) |
-| 2026-09 | Schedule admin HTTP + facade (B-20) | `trembita-http/src/schedule_routes.rs`, `trembita/tests/http_schedules.rs`, `docs/scenarios/triggers-and-pipelines.md` |
-| 2026-09 | WorkTrigger + cron→workflow sugar | `trembita-jobs/src/work_trigger.rs`, `trembita/tests/work_trigger_dispatch.rs`, `docs/scenarios/cookbook-async-work.md` |
-| 2026-09 | `.scheduled_workflows()` product preset | `trembita/src/scheduled_workflow_opts.rs`, `trembita/tests/scheduled_workflows_builder.rs` |
-| 2026-09 | One-shot enqueue at T (`run_at_ms` / `delay_ms`, `enqueue_at`) | `trembita-jobs/src/queue/types.rs`, `trembita-http/src/routes.rs`, `trembita/tests/http_delayed_enqueue.rs` |
-| 2026-08 | Transport + facade gaps: QUIC backoff, DNS discovery, queue compaction, auto-spawn sim, admin/leave E2E | `trembita-net/tests/quic.rs`, `trembita/tests/{discovery,queue}.rs`, `trembita-sim/tests/{auto_spawn,actor_scenarios}.rs`, `e2e/{run,leave}.sh` |
-| 2026-08 | Runtime fatal-error observable path (`status()` → `None`, `Stopped`) | `trembita-runtime/tests/runtime.rs` |
-| 2026-08 | Multi-Raft sim: shard routing + independent group safety | `trembita-sim/tests/multi_raft.rs` |
-| 2026-08 | Group rebalance planner + sharded adopt/retire runtime | `trembita-runtime/tests/group_rebalance.rs`, `sharded.rs` |
-| 2026-08 | Malformed persistence + backend error injection at driver | `trembita-runtime/tests/driver.rs` |
-| 2026-08 | Cluster leave RPC + `TrembitaCluster::leave()` facade | `trembita-runtime/tests/runtime.rs`, `trembita/tests/multi_raft.rs`, `docs/decisions/cluster-membership.md#leave-rpc` |
-| 2026-08 | Injectable Tokio clock in integration tests (`trembita-test-support::clock`, `start_paused`) | `trembita-test-support`, `trembita/tests/*`, `trembita-runtime/tests/*`, `trembita-client/tests/cluster.rs` |
-| 2026-08 | Snapshot survives facade restart (`compact` + `data_dir`) | `trembita/tests/persistence.rs` |
-| 2026-08 | 3-node majority survives one member restart | `trembita/tests/persistence.rs` |
-| 2026-08 | Shared KV fixtures + harness helpers (dedupe ~8 copies) | `trembita-test-support` (`Kv`, `TrackedKv`, `find_keys_for_two_groups`, cluster polling) |
-| 2026-08 | Stable shard router runtime (`StableShardRouter`, `activate_shards`, builder default) | `trembita-runtime/sharded`, `trembita/tests/multi_raft.rs`, `trembita-runtime/tests/sharded.rs` |
-| 2026-08 | Linearizability E2E phase 2 (QUIC `trembita-e2e-client` + external checker) | `crates/trembita-e2e-client`, `e2e/linearizability.sh`, `e2e/docker-compose.yml` |
-| 2026-08 | Hardening: graceful leave integration, ops HTTP TLS E2E | `trembita/tests/graceful_leave.rs`, `trembita/tests/facade.rs`, `trembita-dashboard/tests/admin.rs` |
-| 2026-08 | Wire decode fuzz (`cargo-fuzz` wire_decode, scheduled CI) | `crates/trembita-fuzz/`, `.gitlab-ci.yml` `fuzz` job |
-| 2026-08 | Multi-Raft modulus routing: learners planner, shard expansion, keyed batch, `/introspect/raft-groups` | `trembita-core`, `trembita-client`, `trembita-dashboard`, `trembita/tests/multi_raft.rs`, `docs/decisions/multi-raft.md#modulus-routing--keyed-batch` |
-| 2026-08 | Client retry edge cases (`NoTargets`, timeout, `NotLeader`, unreachable) | `trembita-client/tests/retry.rs` |
-| 2026-08 | Keyed client routing (multi-Raft propose/query) | `trembita/tests/client_keyed.rs` |
-| 2026-08 | Stable shards & catalog: `catalog_version`, `switch_to_stable_shards`, saga hardening | `trembita-core/shard.rs`, `trembita/src/cluster.rs`, `trembita-client/src/saga.rs`, `trembita/tests/{multi_raft,saga}.rs` |
-| 2026-08 | Cross-shard saga coordinator (`run_saga`, `StoreSagaJournal`) | `trembita-client/src/saga.rs`, `trembita/src/saga.rs`, `trembita/tests/saga.rs`, `docs/decisions/multi-raft.md#cross-shard-transactions` |
-| 2026-08 | Saga hardening v2: group 0 journal fallback + coordinator restart resume | `trembita-proto/saga_journal`, `trembita-core/node`, `trembita-runtime`, `trembita/src/saga.rs`, `trembita/tests/saga.rs` |
-| 2026-08 | Saga journal layered tests (proto/core/driver/runtime/facade) | `trembita-proto`, `trembita-core/tests/saga_journal.rs`, `trembita-runtime/tests/{driver,runtime}.rs`, `trembita/tests/saga.rs` |
-| 2026-08 | Durable 2PC prepare timeout GC + `resume_cross_shard_2pc` | `trembita-runtime`, `trembita-client/two_phase`, `trembita/tests/two_phase.rs` |
-| 2026-08 | 2PC facade + client journal + metrics + sim partition test | `trembita/src/two_phase.rs`, `trembita-proto/two_phase_journal`, `trembita-sim/tests/two_phase.rs`, `trembita/tests/two_phase.rs` |
-| 2026-08 | Product showcases (4 standalone examples + cluster scripts) | `examples/{background-jobs,stateful-workers,realtime,workflows}/`, `dev/cluster-common.sh`, `./scripts/check-examples.sh` |
-| 2026-08 | Reference KV in `trembita_core::kv` (single source, re-exported by facade) | `trembita-core/src/kv.rs`, `trembita-test-support` `TrackedKv` only |
-| 2026-08 | Durable cross-shard 2PC (`durable_cross_shard_2pc`, `EntryPayload::TwoPhasePrepare/Abort`) | `trembita-proto/src/two_phase.rs`, `trembita-core/tests/two_phase_journal.rs`, `trembita/tests/two_phase.rs` |
-| 2026-08 | Dynamic catalog runtime (`add_raft_groups`, `/cluster/catalog/add`) | `trembita-proto/catalog`, `trembita-runtime`, `trembita/tests/multi_raft.rs`, `docs/decisions/multi-raft.md` |
-| 2026-08 | Multi-Raft architecture ADR + pure planners | `trembita-core/src/shard.rs`, `docs/decisions/multi-raft.md` |
-| 2026-08 | Actor routing: ring, session, drain override, `ask_linearizable`, directory RYW | `trembita-runtime` (`ring`, `session`, `directory_policy`), `trembita-runtime/tests/{messaging,migration}.rs`, `docs/decisions/actor-routing.md` |
-| 2026-08 | `trembita-node` env parsing unit tests | `trembita-tools/src/node/config.rs` (`#[cfg(test)]`) |
-| 2026-08 | Actor store resume + idempotency after unreachable node | `trembita/tests/actor_store_resume.rs` |
-| 2026-08 | Redis dual connection, idempotent worker, reconnect | `trembita-store-redis/tests/redis.rs` |
-| 2026-08 | Redis TLS (`rediss://`) with private CA | `trembita-store-redis/tests/tls.rs` |
-| 2026-08 | Facade `data_dir` stop → restart → state | `trembita/tests/persistence.rs` |
-| 2026-07 | Pure Raft FSM + property sim | `trembita-core`, `trembita-sim` |
-| 2026-07 | Store contract Memory ≡ Redb + reopen | `trembita-storage/tests/storage.rs` |
-| 2026-07 | Driver-level restart + replay | `trembita-runtime/tests/driver.rs` |
-| 2026-07 | E2E election + failover + chaos | `e2e/` |
-| 2026-08 | E2E PEM hot reload (SIGHUP + poll) | `e2e/cert_renew.sh` |
-| 2026-07 | Macro compile-fail suite | `trembita-runtime/tests/compile_fail.rs` |
-| 2026-07 | Loopback QUIC + mTLS integration | `trembita-net/tests/quic.rs`, `trembita/tests/quic.rs` |
+**Closed gaps (historical):** [archive/testing-closed-gaps.md](archive/testing-closed-gaps.md) — append new rows there when fixing a gap.
 
 ---
 
@@ -354,6 +290,6 @@ the lowest layer that reproduces it — usually a seeded `trembita-sim` case.
 ## Maintenance
 
 1. After adding or removing tests, refresh the **Total** column in [Per-crate inventory](#per-crate-inventory).
-2. When closing a gap, update [Known gaps](#known-gaps-prioritized) → [Closed gaps](#closed-gaps).
+2. When closing a gap, update [Known gaps](#known-gaps-prioritized) and append a row to [archive/testing-closed-gaps.md](archive/testing-closed-gaps.md).
 3. Keep [testing-strategy](decisions/testing-strategy.md) as the *strategy*; this file is the *inventory*.
 4. Optional: per-crate counts via `cargo test -p <crate> --lib --tests -- --list | rg ': test$' | wc -l`.
