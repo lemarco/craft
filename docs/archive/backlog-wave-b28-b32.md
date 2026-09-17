@@ -2,7 +2,7 @@
 
 Product scale epics closed **2026-09-17**. **Current index:** [status § Product scale wave](../status.md#product-scale-wave-b-28b32). **Regression commands:** [testing-coverage § B-28–B-32](../testing-coverage.md#shipped-backlog-b-28b32).
 
-**Context:** homogeneous cluster growth — add VPS, same binary, `TREMBITA_JOIN_SEEDS` — without orchestrator-specific packaging. Next open epic id: **B-33** ([backlog](../backlog.md#open-work)).
+**Context:** homogeneous cluster growth — add VPS, same binary, `TREMBITA_JOIN_SEEDS` — without orchestrator-specific packaging. Follow-up **B-33** (regression hardening + boot scale report): [status § B-33](../status.md#product-scale-wave-b-28b32). Next open epic: **B-34** ([backlog](../backlog.md#open-work)).
 
 ---
 
