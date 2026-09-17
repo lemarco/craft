@@ -120,7 +120,7 @@ impl QueueService {
         {
             return QueueReplicateReply { error: Some(e) };
         }
-        match self.local_stream(request.stream.as_str()) {
+        match self.resolve_local_stream(request.stream.as_str()) {
             Err(e) => QueueReplicateReply { error: Some(e) },
             Ok(queue) => {
                 for op in &request.ops {

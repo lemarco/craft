@@ -66,6 +66,7 @@ impl<M: StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
             job_streams: Vec::new(),
             topic_streams: Vec::new(),
             job_sharded: Vec::new(),
+            job_auto_shard: Vec::new(),
             recurring_jobs: Vec::new(),
             job_autoscale: Vec::new(),
             job_membership_autoscale: Vec::new(),

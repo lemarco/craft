@@ -5,6 +5,7 @@ mod cluster_job_queue;
 mod depth_cache;
 mod external_backlog;
 mod queue;
+mod queue_auto_shard;
 mod queue_autoscale;
 mod queue_lifecycle;
 mod queue_prefetch;
@@ -29,10 +30,13 @@ pub use external_backlog::{
     run_backlog_settle_drainer, terminal_backlog_outcome,
 };
 pub use queue::{
-    BatchRequeueResult, EnqueueOptions, InMemoryJobQueue, JobContext, JobLifecycle, JobListFilter,
-    JobListPage, JobQueue, JobStatus, LIST_JOBS_DEFAULT_LIMIT, LeasedJob, QueueConsumerWorkload,
-    QueueError, QueueMetrics, QueueReplicationOps, apply_enqueue_scheduling,
-    job_status_matches_filter, run_queue_consumer,
+    BatchRequeueResult, ConsumerInflight, EnqueueOptions, InMemoryJobQueue, JobContext,
+    JobLifecycle, JobListFilter, JobListPage, JobQueue, JobStatus, LIST_JOBS_DEFAULT_LIMIT,
+    LeasedJob, QueueConsumerWorkload, QueueError, QueueMetrics, QueueReplicationOps,
+    apply_enqueue_scheduling, job_status_matches_filter, run_queue_consumer,
+};
+pub use queue_auto_shard::{
+    AutoShardPolicy, AutoShardStreamSpec, run_queue_auto_shard_coordinator,
 };
 pub use queue_autoscale::{
     AutoscalePolicy, MembershipAutoscalePolicy, QueueAutoscaleRegistry, run_queue_autoscaler,

@@ -4,7 +4,7 @@
 //! replication paths) while presenting one logical queue to producers/consumers.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use trembita_proto::BoxFuture;
 
@@ -45,7 +45,7 @@ pub(crate) fn encode_global_id(shard: usize, local: u64) -> u64 {
 
 /// Routes jobs across `shards` by hashing the shard key (or payload).
 pub struct ShardedJobQueue {
-    shards: Vec<Arc<dyn JobQueue>>,
+    shards: RwLock<Vec<Arc<dyn JobQueue>>>,
 }
 
 impl ShardedJobQueue {
@@ -59,23 +59,37 @@ impl ShardedJobQueue {
             !shards.is_empty(),
             "ShardedJobQueue requires at least one shard"
         );
-        Self { shards }
+        Self {
+            shards: RwLock::new(shards),
+        }
     }
 
     /// Number of federated shards.
     #[must_use]
     pub fn shard_count(&self) -> usize {
-        self.shards.len()
+        self.shards.read().expect("poisoned").len()
+    }
+
+    /// Append a physical shard (auto-shard expand on the leader).
+    ///
+    /// # Panics
+    /// If the shard lock is poisoned.
+    pub fn add_shard(&self, queue: Arc<dyn JobQueue>) {
+        self.shards.write().expect("poisoned").push(queue);
     }
 
     fn pick_shard(&self, payload: &[u8], shard_key: Option<&[u8]>) -> usize {
         let key = shard_key.unwrap_or(payload);
-        usize::try_from(stable_hash(key)).unwrap_or(usize::MAX) % self.shards.len()
+        let len = self.shards.read().expect("poisoned").len();
+        usize::try_from(stable_hash(key)).unwrap_or(usize::MAX) % len.max(1)
     }
 
-    fn shard(&self, index: usize) -> Result<&Arc<dyn JobQueue>, QueueError> {
+    fn shard(&self, index: usize) -> Result<Arc<dyn JobQueue>, QueueError> {
         self.shards
+            .read()
+            .expect("poisoned")
             .get(index)
+            .cloned()
             .ok_or_else(|| QueueError::Backend(format!("invalid shard index {index}")))
     }
 }
@@ -192,7 +206,8 @@ impl ShardedJobQueue {
         let mut out = Vec::new();
         let mut replications = Vec::new();
         let mut need = max;
-        for (shard, queue) in self.shards.iter().enumerate() {
+        let shards = self.shards.read().expect("poisoned").clone();
+        for (shard, queue) in shards.iter().enumerate() {
             if need == 0 {
                 break;
             }
@@ -390,7 +405,8 @@ impl JobQueue for ShardedJobQueue {
             let mut out = Vec::new();
             let mut ops = Vec::new();
             let mut need = max;
-            for (shard, queue) in self.shards.iter().enumerate() {
+            let shards = self.shards.read().expect("poisoned").clone();
+            for (shard, queue) in shards.iter().enumerate() {
                 if need == 0 {
                     break;
                 }
@@ -471,7 +487,8 @@ impl JobQueue for ShardedJobQueue {
     fn metrics(&self) -> BoxFuture<'_, Result<QueueMetrics, QueueError>> {
         Box::pin(async move {
             let mut total = QueueMetrics::default();
-            for shard in &self.shards {
+            let shards = self.shards.read().expect("poisoned").clone();
+            for shard in &shards {
                 let m = shard.metrics().await?;
                 total.pending += m.pending;
                 total.leased += m.leased;
@@ -509,7 +526,8 @@ impl JobQueue for ShardedJobQueue {
             scan.after_job_id = None;
             scan.limit = None;
             let mut all = Vec::new();
-            for (shard_idx, shard) in self.shards.iter().enumerate() {
+            let shards = self.shards.read().expect("poisoned").clone();
+            for (shard_idx, shard) in shards.iter().enumerate() {
                 let page = shard.list_jobs(scan.clone()).await?;
                 all.extend(page.jobs.into_iter().map(|mut status| {
                     status.job_id = JobId(encode_id(shard_idx, status.job_id.0));

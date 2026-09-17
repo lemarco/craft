@@ -154,7 +154,8 @@ cargo test --workspace --all-features --lib --tests -- --list | rg ': test$' | w
 | **Transactional event outbox drainer (`EventOutboxSource`)** | ✅ `event_outbox` | ✅ `event_outbox` (facade) | — | — | ✅ |
 | **Leader task primitive (`LeaderSession`, `run_leader_loop`, `on_leader`)** | ✅ `leader_task` | ✅ `leader_task` | — | — | ✅ |
 | **External backlog (feeder + settle outbox drainer + autoscale depth)** | ✅ `external_backlog`, `backlog_settle_outbox` | ✅ `external_backlog` (facade) | — | — | ✅ |
-| **Workload governor (compute tokens + consumer tune + actor ask)** | ✅ `compute_token`, `workload`, `messaging` | ✅ `workload_governor` | — | — | ✅ |
+| **Workload governor (connections + HTTP/consumer in-flight + `max_in_flight` + actor ask)** | ✅ `compute_token`, `workload`, `messaging`, `workload::decide_*` | ✅ `workload_governor` | — | — | ✅ |
+| **Queue auto-shard coordinator + lazy follower open** | ✅ `queue_auto_shard`, `queue_service/auto_shard` | — | — | — | — |
 | **Job queue E2E (QUIC enqueue → follower lease/ack → leader failover)** | — | — | — | ✅ `e2e/queue.sh` | ✅ |
 | **Durable mailbox outbox/inbox** | ✅ `mailbox_spool` | ✅ `mailbox_spool` (wire) | — | — | ✅ |
 | Actor state store resume + idempotency (facade) | — | ✅ `actor_store_resume` | — | — | ✅ |

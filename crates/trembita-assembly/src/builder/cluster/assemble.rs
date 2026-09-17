@@ -21,11 +21,12 @@ use trembita_events::{
     RedbEventOutboxCursor, RedbEventTopic, TopicService, run_event_outbox_drainer,
 };
 use trembita_jobs::{
-    BacklogRegistry, BacklogSettleOutbox, BacklogSettleOutboxOpts, ClusterJobQueue,
-    CompositeScheduleSource, InMemoryBacklogSettleOutbox, JobQueue, QueueAutoscaleRegistry,
-    QueueService, RecurringJob, RedbBacklogSettleOutbox, RedbJobQueue, ScheduleSource,
-    ShardedJobQueue, StaticScheduleSource, WorkloadMetricsSnapshot, run_backlog_feeder,
-    run_backlog_settle_drainer, run_queue_schedule_ticker, run_workload_governor,
+    AutoShardStreamSpec, BacklogRegistry, BacklogSettleOutbox, BacklogSettleOutboxOpts,
+    ClusterJobQueue, CompositeScheduleSource, InMemoryBacklogSettleOutbox, JobQueue,
+    QueueAutoscaleRegistry, QueueService, RecurringJob, RedbBacklogSettleOutbox, RedbJobQueue,
+    ScheduleSource, ShardedJobQueue, StaticScheduleSource, WorkloadMetricsSnapshot,
+    run_backlog_feeder, run_backlog_settle_drainer, run_queue_auto_shard_coordinator,
+    run_queue_schedule_ticker, run_workload_governor,
 };
 use trembita_runtime::{
     ActorDirectory, ActorRegistry, ClusterControl, ClusterMessaging, ClusterState,
@@ -35,10 +36,11 @@ use trembita_runtime::{
 };
 
 use crate::cluster_handle::{ClusterFacts, TrembitaCluster};
-use crate::connections::ConnectionTracker;
+use crate::connections::{ConnectionTracker, HttpInFlight};
 use crate::handler::{NodeRouter, PeerSource};
 use crate::multi_raft::{ArcGroupMigrate, GroupMigratePort, MultiRaftState};
 use crate::workload::WorkloadRuntime;
+use trembita_jobs::ConsumerInflight;
 
 use super::TrembitaClusterBuilder;
 use super::topic_leader::TopicLeaderLoop;
@@ -450,6 +452,22 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
         }
 
         if let Some(service) = queue_service.as_ref() {
+            for spec in &self.job_auto_shard {
+                let data_dir = self.data_dir.as_ref().unwrap_or_else(|| {
+                    panic!("job_queue_auto_shard({:?}) requires data_dir", spec.logical)
+                });
+                service.register_auto_shard_stream(AutoShardStreamSpec {
+                    logical: spec.logical.clone(),
+                    data_dir: data_dir.clone(),
+                    lease_timeout: spec.lease_timeout,
+                    prefetch: spec.prefetch,
+                    default_max_attempts: spec.default_max_attempts,
+                    policy: spec.policy.clone(),
+                });
+            }
+        }
+
+        if let Some(service) = queue_service.as_ref() {
             let mut streams: std::collections::HashSet<String> = self
                 .schedule_sources
                 .iter()
@@ -825,6 +843,38 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
             ));
         }
 
+        for spec in &self.job_auto_shard {
+            let Some(service) = queue_service.as_ref() else {
+                continue;
+            };
+            let Some(queue) = job_queues.get(&spec.logical).cloned() else {
+                panic!(
+                    "job_queue_auto_shard stream {:?} missing from job_queues",
+                    spec.logical
+                );
+            };
+            let data_dir = self
+                .data_dir
+                .as_ref()
+                .expect("job_queue_auto_shard requires data_dir")
+                .clone();
+            let stream_spec = AutoShardStreamSpec {
+                logical: spec.logical.clone(),
+                data_dir,
+                lease_timeout: spec.lease_timeout,
+                prefetch: spec.prefetch,
+                default_max_attempts: spec.default_max_attempts,
+                policy: spec.policy.clone(),
+            };
+            let state = Arc::clone(&facts) as Arc<dyn ClusterState>;
+            let service = Arc::clone(service);
+            let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+            leader_loop_stops.push(stop_tx);
+            tasks.push(tokio::spawn(async move {
+                run_queue_auto_shard_coordinator(state, queue, service, stream_spec, stop_rx).await;
+            }));
+        }
+
         for spawn in self.job_membership_autoscale {
             spawn(
                 Arc::clone(&facts) as Arc<dyn ClusterState>,
@@ -959,11 +1009,21 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
             let pool =
                 compute_pool.unwrap_or_else(|| ComputeTokenPool::new(opts.max_compute_tokens));
             let connections = Arc::new(ConnectionTracker::default());
+            let http_inflight = Arc::new(HttpInFlight::default());
+            let consumer_inflight = Arc::new(ConsumerInflight::default());
             let (tune_tx, tune_rx) = tokio::sync::watch::channel(opts.when_balanced);
             let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
             let queues: Vec<Arc<dyn JobQueue>> = job_queues.values().cloned().collect();
             let connections_fn: Arc<dyn Fn() -> usize + Send + Sync> = {
                 let c = Arc::clone(&connections);
+                Arc::new(move || c.active())
+            };
+            let http_inflight_fn: Arc<dyn Fn() -> usize + Send + Sync> = {
+                let h = Arc::clone(&http_inflight);
+                Arc::new(move || h.active())
+            };
+            let consumer_inflight_fn: Arc<dyn Fn() -> usize + Send + Sync> = {
+                let c = Arc::clone(&consumer_inflight);
                 Arc::new(move || c.active())
             };
             let metrics_hook = {
@@ -987,6 +1047,18 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
                         &[],
                         f64::from(u32::try_from(snap.token_ceiling).unwrap_or(u32::MAX)),
                     );
+                    metrics.set(
+                        "trembita_http_in_flight",
+                        "HTTP handlers currently executing on this node.",
+                        &[],
+                        f64::from(u32::try_from(snap.http_in_flight).unwrap_or(u32::MAX)),
+                    );
+                    metrics.set(
+                        "trembita_consumer_handlers_in_flight",
+                        "Job consumer handlers currently executing on this node.",
+                        &[],
+                        f64::from(u32::try_from(snap.consumer_in_flight).unwrap_or(u32::MAX)),
+                    );
                     if snap.tune_changed {
                         metrics.incr(
                             "trembita_workload_tune_events_total",
@@ -1005,12 +1077,21 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
                     stop_rx,
                     opts,
                     connections_fn,
+                    http_inflight_fn,
+                    consumer_inflight_fn,
                     queues,
                     metrics_hook,
                 )
                 .await;
             }));
-            WorkloadRuntime::new(pool, tune_rx, connections, stop_tx)
+            WorkloadRuntime::new(
+                pool,
+                tune_rx,
+                connections,
+                http_inflight,
+                consumer_inflight,
+                stop_tx,
+            )
         });
 
         let queue_autoscale_proposals: Vec<_> = self.queue_autoscale_meta.into_values().collect();

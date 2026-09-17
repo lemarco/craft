@@ -9,7 +9,7 @@ use trembita_events::{
     TopicSubscriptionDef,
 };
 use trembita_jobs::{
-    AutoscalePolicy, BacklogFeedOpts, DEFAULT_QUEUE_PREFETCH, ExternalBacklog,
+    AutoShardPolicy, AutoscalePolicy, BacklogFeedOpts, DEFAULT_QUEUE_PREFETCH, ExternalBacklog,
     MembershipAutoscalePolicy, RecurringJob, SchedulePoll, ScheduleSource, WorkloadOpts,
     run_queue_autoscaler, run_queue_membership_autoscaler,
 };
@@ -20,8 +20,8 @@ use crate::cluster_handle::ClusterFacts;
 
 use super::TrembitaClusterBuilder;
 use super::types::{
-    BacklogFeedSpec, EventOutboxFeedSpec, JobStreamSpec, RecurringJobSpec, ScheduleSourceSpec,
-    ShardedJobSpec, TopicStreamSpec,
+    AutoShardJobSpec, BacklogFeedSpec, EventOutboxFeedSpec, JobStreamSpec, RecurringJobSpec,
+    ScheduleSourceSpec, ShardedJobSpec, TopicStreamSpec,
 };
 
 impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<M> {
@@ -348,6 +348,36 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
         self.job_sharded.push(ShardedJobSpec {
             name: name.to_string(),
             shard_count,
+        });
+        self
+    }
+
+    /// Logical queue that starts as one physical shard (`{name}~0`) and may expand
+    /// under sustained enqueue pressure ([job-queue](../../docs/decisions/job-queue.md)).
+    #[must_use]
+    pub fn job_queue_auto_shard(
+        mut self,
+        name: &str,
+        lease_timeout: Duration,
+        policy: AutoShardPolicy,
+    ) -> Self {
+        self.job_streams.push(JobStreamSpec {
+            name: format!("{name}~0"),
+            path: None,
+            lease_timeout,
+            prefetch: DEFAULT_QUEUE_PREFETCH,
+            default_max_attempts: 0,
+        });
+        self.job_sharded.push(ShardedJobSpec {
+            name: name.to_string(),
+            shard_count: 1,
+        });
+        self.job_auto_shard.push(AutoShardJobSpec {
+            logical: name.to_string(),
+            lease_timeout,
+            prefetch: DEFAULT_QUEUE_PREFETCH,
+            default_max_attempts: 0,
+            policy,
         });
         self
     }

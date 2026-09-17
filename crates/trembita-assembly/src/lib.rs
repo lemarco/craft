@@ -26,7 +26,7 @@ pub use trembita_proto::NodeId;
 
 pub use builder::{StartError, TrembitaClusterBuilder};
 pub use cluster_handle::{ClusterFacts, TrembitaCluster};
-pub use connections::{ConnectionGuard, ConnectionTracker};
+pub use connections::{ConnectionGuard, ConnectionTracker, HttpInFlight, InFlightGuard};
 pub use discovery::Seed;
 pub use empty_state_machine::EmptyStateMachine;
 pub use env_config::{

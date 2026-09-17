@@ -17,6 +17,8 @@ pub struct ConsumerTune {
     pub batch: usize,
     /// Sleep between polls when the queue is empty.
     pub idle_sleep: Duration,
+    /// Max concurrent handler executions per consumer loop (`0` = unlimited).
+    pub max_in_flight: usize,
 }
 
 impl Default for ConsumerTune {
@@ -24,6 +26,7 @@ impl Default for ConsumerTune {
         Self {
             batch: 1,
             idle_sleep: Duration::from_millis(100),
+            max_in_flight: 0,
         }
     }
 }
@@ -37,6 +40,8 @@ pub struct WorkloadOpts {
     pub min_compute_tokens: usize,
     /// Active gateway connections at or above which API protection kicks in.
     pub api_protect_connections: usize,
+    /// In-flight HTTP handlers at or above which API protection kicks in (`0` = ignore).
+    pub api_protect_http_inflight: usize,
     /// Governor tick interval.
     pub tick: Duration,
     /// Tune when ingress is quiet and work is waiting.
@@ -55,6 +60,7 @@ impl std::fmt::Debug for WorkloadOpts {
             .field("max_compute_tokens", &self.max_compute_tokens)
             .field("min_compute_tokens", &self.min_compute_tokens)
             .field("api_protect_connections", &self.api_protect_connections)
+            .field("api_protect_http_inflight", &self.api_protect_http_inflight)
             .field("tick", &self.tick)
             .field("when_opportunistic", &self.when_opportunistic)
             .field("when_balanced", &self.when_balanced)
@@ -76,18 +82,22 @@ impl WorkloadOpts {
                 .map_or(4, std::num::NonZero::get),
             min_compute_tokens: 1,
             api_protect_connections: 32,
+            api_protect_http_inflight: 16,
             tick: Duration::from_millis(500),
             when_opportunistic: ConsumerTune {
                 batch: 16,
                 idle_sleep: Duration::from_millis(10),
+                max_in_flight: 0,
             },
             when_balanced: ConsumerTune {
                 batch: 4,
                 idle_sleep: Duration::from_millis(100),
+                max_in_flight: 8,
             },
             when_protective: ConsumerTune {
                 batch: 1,
                 idle_sleep: Duration::from_millis(500),
+                max_in_flight: 2,
             },
             external_load: None,
         }
@@ -101,6 +111,7 @@ impl WorkloadOpts {
         opts.when_protective = ConsumerTune {
             batch: 1,
             idle_sleep: Duration::from_secs(1),
+            max_in_flight: 1,
         };
         opts
     }
@@ -113,6 +124,7 @@ impl WorkloadOpts {
         opts.when_opportunistic = ConsumerTune {
             batch: 32,
             idle_sleep: Duration::from_millis(5),
+            max_in_flight: 0,
         };
         opts
     }
@@ -128,6 +140,13 @@ impl WorkloadOpts {
     #[must_use]
     pub fn api_protect_connections(mut self, connections: usize) -> Self {
         self.api_protect_connections = connections.max(1);
+        self
+    }
+
+    /// Set the in-flight HTTP handler threshold for API protection (`0` disables).
+    #[must_use]
+    pub fn api_protect_http_inflight(mut self, in_flight: usize) -> Self {
+        self.api_protect_http_inflight = in_flight;
         self
     }
 
@@ -148,6 +167,10 @@ pub struct WorkloadMetricsSnapshot {
     pub token_ceiling: usize,
     /// Active gateway connections.
     pub active_connections: usize,
+    /// HTTP handlers currently executing.
+    pub http_in_flight: usize,
+    /// Job consumer handlers currently executing on this node.
+    pub consumer_in_flight: usize,
     /// Sum of `pending` across registered job queues.
     pub queue_depth: u64,
     /// Subprocess / shell-out units from [`ExternalLoad`], if wired.
@@ -168,6 +191,8 @@ pub async fn run_workload_governor(
     mut stop: watch::Receiver<bool>,
     opts: WorkloadOpts,
     connections: Arc<dyn Fn() -> usize + Send + Sync>,
+    http_in_flight: Arc<dyn Fn() -> usize + Send + Sync>,
+    consumer_in_flight: Arc<dyn Fn() -> usize + Send + Sync>,
     queues: Vec<Arc<dyn JobQueue>>,
     metrics: Option<WorkloadMetricsHook>,
 ) {
@@ -185,6 +210,8 @@ pub async fn run_workload_governor(
         }
 
         let active_connections = connections();
+        let http_in_flight = http_in_flight();
+        let consumer_in_flight = consumer_in_flight();
         let external_load_units = opts.external_load.as_ref().map_or(0, |load| load.units());
         let mut queue_depth = 0u64;
         for queue in &queues {
@@ -196,6 +223,8 @@ pub async fn run_workload_governor(
         let (token_ceiling, tune) = decide(
             &opts,
             active_connections,
+            http_in_flight,
+            consumer_in_flight,
             queue_depth,
             pool.in_use(),
             external_load_units,
@@ -212,6 +241,8 @@ pub async fn run_workload_governor(
                 tokens_in_use: pool.in_use(),
                 token_ceiling,
                 active_connections,
+                http_in_flight,
+                consumer_in_flight,
                 queue_depth,
                 external_load_units,
                 tune,
@@ -224,15 +255,28 @@ pub async fn run_workload_governor(
 fn decide(
     opts: &WorkloadOpts,
     connections: usize,
+    http_in_flight: usize,
+    consumer_in_flight: usize,
     queue_depth: u64,
     tokens_in_use: usize,
     external_units: usize,
 ) -> (usize, ConsumerTune) {
     let external_pressure = external_units.saturating_mul(opts.api_protect_connections)
         / opts.max_compute_tokens.max(1);
-    let effective_connections = connections.saturating_add(external_pressure);
+    let mut effective_connections = connections.saturating_add(external_pressure);
+    if opts.api_protect_http_inflight > 0 {
+        let http_pressure = http_in_flight.saturating_mul(opts.api_protect_connections)
+            / opts.api_protect_http_inflight;
+        effective_connections = effective_connections.max(http_pressure);
+    }
     if effective_connections >= opts.api_protect_connections {
         return (opts.min_compute_tokens.max(1), opts.when_protective);
+    }
+    if consumer_in_flight > tokens_in_use.saturating_add(1) {
+        return (
+            opts.min_compute_tokens.max(tokens_in_use).max(1),
+            opts.when_protective,
+        );
     }
     if effective_connections == 0 && queue_depth > 0 {
         return (opts.max_compute_tokens.max(1), opts.when_opportunistic);
@@ -259,7 +303,7 @@ mod tests {
     #[test]
     fn decide_hot_protects_api() {
         let opts = WorkloadOpts::balanced();
-        let (tokens, tune) = decide(&opts, opts.api_protect_connections, 100, 0, 0);
+        let (tokens, tune) = decide(&opts, opts.api_protect_connections, 0, 0, 100, 0, 0);
         assert_eq!(tokens, opts.min_compute_tokens.max(1));
         assert_eq!(tune, opts.when_protective);
     }
@@ -267,7 +311,7 @@ mod tests {
     #[test]
     fn decide_idle_with_depth_boosts_jobs() {
         let opts = WorkloadOpts::balanced();
-        let (tokens, tune) = decide(&opts, 0, 5, 0, 0);
+        let (tokens, tune) = decide(&opts, 0, 0, 0, 5, 0, 0);
         assert_eq!(tokens, opts.max_compute_tokens.max(1));
         assert_eq!(tune, opts.when_opportunistic);
     }
@@ -275,7 +319,7 @@ mod tests {
     #[test]
     fn decide_moderate_load_balances() {
         let opts = WorkloadOpts::balanced();
-        let (tokens, tune) = decide(&opts, 4, 0, 0, 0);
+        let (tokens, tune) = decide(&opts, 4, 0, 0, 0, 0, 0);
         assert!(tokens > opts.min_compute_tokens);
         assert!(tokens <= opts.max_compute_tokens);
         assert_eq!(tune, opts.when_balanced);
@@ -285,9 +329,25 @@ mod tests {
     fn decide_external_load_protects_api() {
         let opts = WorkloadOpts::balanced();
         let heavy_external = opts.max_compute_tokens;
-        let (tokens, tune) = decide(&opts, 0, 0, 0, heavy_external);
+        let (tokens, tune) = decide(&opts, 0, 0, 0, 0, 0, heavy_external);
         assert_eq!(tokens, opts.min_compute_tokens.max(1));
         assert_eq!(tune, opts.when_protective);
+    }
+
+    #[test]
+    fn decide_http_inflight_protects_api() {
+        let opts = WorkloadOpts::balanced().api_protect_connections(8);
+        let (tokens, tune) = decide(&opts, 0, opts.api_protect_http_inflight, 0, 0, 0, 0);
+        assert_eq!(tune, opts.when_protective);
+        assert_eq!(tokens, opts.min_compute_tokens.max(1));
+    }
+
+    #[test]
+    fn decide_consumer_inflight_protects_pool() {
+        let opts = WorkloadOpts::balanced();
+        let (tokens, tune) = decide(&opts, 0, 0, 8, 0, 2, 0);
+        assert_eq!(tune, opts.when_protective);
+        assert!(tokens >= 2);
     }
 
     #[tokio::test]
@@ -307,6 +367,8 @@ mod tests {
             tune_tx,
             stop_rx,
             opts.clone(),
+            Arc::new(|| 0usize),
+            Arc::new(|| 0usize),
             Arc::new(|| 0usize),
             queues,
             None,

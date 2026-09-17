@@ -65,13 +65,16 @@ pub(super) fn build_gateway_service_with_tracker(
         svc
     };
 
-    let compute_pool = app.cluster().workload_runtime().map(|w| w.pool());
+    let workload = app.cluster().workload_runtime();
+    let compute_pool = workload.as_ref().map(|w| w.pool());
+    let http_inflight = workload.map(|w| w.http_inflight());
 
     Ok(WrappedGatewayService {
         inner,
         connections,
         rate_limiter: rate_limit_per_sec.map(GatewayRateLimiter::new),
         compute_pool,
+        http_inflight,
     })
 }
 
@@ -82,6 +85,7 @@ pub struct WrappedGatewayService {
     connections: Option<Arc<ConnectionTracker>>,
     rate_limiter: Option<GatewayRateLimiter>,
     compute_pool: Option<Arc<ComputeTokenPool>>,
+    http_inflight: Option<Arc<trembita_assembly::HttpInFlight>>,
 }
 
 impl WrappedGatewayService {
@@ -102,6 +106,7 @@ impl WrappedGatewayService {
             connections,
             rate_limiter: None,
             compute_pool: None,
+            http_inflight: None,
         }
     }
 }
@@ -131,8 +136,10 @@ impl tower::Service<http::Request<hyper::body::Incoming>> for WrappedGatewayServ
 
         let _guard = self.connections.as_ref().map(|c| c.track());
         let compute = self.compute_pool.clone();
+        let http_inflight = self.http_inflight.clone();
         let mut inner = self.inner.clone();
         Box::pin(async move {
+            let _inflight = http_inflight.as_ref().map(|h| h.track());
             let _compute = if let Some(pool) = compute {
                 Some(pool.acquire().await)
             } else {

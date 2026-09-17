@@ -35,9 +35,9 @@ No cluster topology change. No leader election for this loop. No `TREMBITA_ROLE`
 | Signal | Source today | Use |
 |--------|--------------|-----|
 | Active gateway connections | [`ConnectionTracker`](../../crates/trembita/src/gateway/drain.rs) | Low → more tokens for jobs; high → protect API |
-| In-flight HTTP (future) | Gateway middleware counter | Same, finer than connections alone — see [Future work](#future-work) |
+| In-flight HTTP | [`HttpInFlight`](../crates/trembita-assembly/src/connections.rs) on gateway handler bodies | Finer than connection count alone |
 | Queue depth (local view) | `JobQueue::metrics` / external backlog | Opportunistic job boost when API quiet **and** work waiting |
-| Consumer in-flight (future) | governor-owned counter | Avoid over-subscription — see [Future work](#future-work) |
+| Consumer in-flight | [`ConsumerInflight`](../crates/trembita-jobs/src/queue/consumer.rs) across `run_queue_consumer` loops | Avoid raising token ceiling when handlers already occupy the pool |
 | External subprocess load (shipped) | [`ExternalLoad`](external-load.md) + `ComputeTokenPool` weighted acquire | CPU in child processes (ffmpeg, shell) the tokio pool cannot see — [external-load](external-load.md) |
 
 ### Actions (outputs)
@@ -45,7 +45,7 @@ No cluster topology change. No leader election for this loop. No `TREMBITA_ROLE`
 | Action | Mechanism |
 |--------|-----------|
 | **Hard cap** | Acquire token before running gateway handler body / consumer handler / actor ask (cluster + typed [`ActorRef`](../../crates/trembita-runtime/src/registry/mod.rs)) |
-| **Soft throttle** | Governor publishes `ConsumerTune { batch, idle_sleep }` via `watch` channel — [`run_queue_consumer`](../../crates/trembita-jobs/src/queue/mod.rs) already uses `watch` for stop; optional `max_in_flight` cap is [future](#future-work) |
+| **Soft throttle** | Governor publishes `ConsumerTune { batch, idle_sleep, max_in_flight }` via `watch` — [`run_queue_consumer`](../../crates/trembita-jobs/src/queue/mod.rs) applies `max_in_flight` across consumer instances on the node |
 | **Preset expansion** | When `connections.active == 0` and depth > 0 → raise token ceiling toward `WorkloadOpts::max_tokens` |
 
 Default preset **`Balanced`**: protect API when hot; jobs consume slack automatically.
@@ -95,31 +95,9 @@ Homogeneous nodes use `.workload()` for local API vs jobs fairness. To run gatew
 - CPU-bound handlers must release tokens quickly or block peers — document RAII pattern
 - Token pool is **cooperative** (same process); subprocess / shell-out load uses
   [`compute_cost`](external-load.md) and optional [`ExternalLoad`](external-load.md) ([external-load ADR](external-load.md))
-- Governor adds one background task per node; metrics: `trembita_compute_tokens_in_use`, `trembita_compute_external_load_units`, `trembita_consumer_tune_events`
+- Governor adds one background task per node; metrics: `trembita_compute_tokens_in_use`, `trembita_compute_token_ceiling`, `trembita_compute_external_load_units`, `trembita_http_in_flight`, `trembita_consumer_handlers_in_flight`, `trembita_workload_tune_events_total`
 
 ## Future work
-
-Finer ingress and consumer signals — **not shipped**; tracked as [O-04](../backlog.md#open-work).
-
-### In-flight HTTP
-
-[`ConnectionTracker`](../../crates/trembita/src/gateway/drain.rs) counts open TCP/WebSocket connections. That is a coarse proxy: many idle keep-alive connections do not compete with job handlers, while a few long-running uploads or SSE streams can saturate CPU without raising connection count much.
-
-**Planned:** a process-wide `HttpInFlight` counter (RAII guard around gateway handler bodies, same layering as compute tokens). Governor `decide()` would combine:
-
-`effective_pressure = f(active_connections, http_in_flight, external_load, …)`
-
-with weights tuned so short JSON RPC stays on connection count and heavy routes contribute via in-flight.
-
-### Consumer in-flight
-
-Today the governor tunes `batch` and `idle_sleep` only. Consumers can still hold many leased jobs when handlers are slow (`batch ×` parallel handler tasks per instance), which can oversubscribe the token pool even under protective tune.
-
-**Planned:**
-
-- Governor-owned **`consumer_handlers_in_flight`** (increment on handler start, decrement on drop) aggregated across `run_queue_consumer` loops on the node.
-- Optional **`ConsumerTune::max_in_flight`** — cap concurrent handlers per consumer instance without changing lease semantics.
-- Use in-flight + `tokens_in_use` to avoid raising the token ceiling when jobs already occupy the pool.
 
 ### Non-goals (governor scope)
 

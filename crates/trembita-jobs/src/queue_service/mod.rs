@@ -26,6 +26,8 @@ use crate::{JobQueue, RedbJobQueue, ShardedJobQueue};
 
 use registry::QueueStreamRegistry;
 
+mod auto_shard;
+
 /// Serves `/raft/v1/queue/*` on the leader; followers transparently forward.
 pub struct QueueService {
     pub(super) node_id: NodeId,
@@ -34,6 +36,7 @@ pub struct QueueService {
     pub(super) transport: Arc<dyn Transport>,
     pub(super) lifecycle_hook: Option<Arc<dyn Fn(QueueLifecycleEvent) + Send + Sync>>,
     pub(super) backlog_settle_outbox: Option<Arc<dyn BacklogSettleOutbox>>,
+    pub(super) auto_shard_specs: Mutex<Vec<crate::queue_auto_shard::AutoShardStreamSpec>>,
 }
 
 impl QueueService {
@@ -51,7 +54,16 @@ impl QueueService {
             transport,
             lifecycle_hook: None,
             backlog_settle_outbox: None,
+            auto_shard_specs: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Register lazy open for `{logical}~{n}` physical streams on voters.
+    ///
+    /// # Panics
+    /// If an internal mutex is poisoned.
+    pub fn register_auto_shard_stream(&self, spec: crate::queue_auto_shard::AutoShardStreamSpec) {
+        self.auto_shard_specs.lock().expect("poisoned").push(spec);
     }
 
     /// Persist terminal jobs with dedup keys to the settle outbox ([`crate::run_backlog_settle_drainer`]).

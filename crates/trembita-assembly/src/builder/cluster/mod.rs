@@ -30,9 +30,9 @@ mod types;
 mod tests;
 
 use types::{
-    AutoscaleTask, BacklogFeedSpec, BuilderOverrides, EventOutboxFeedSpec, JobStreamSpec, ManageFn,
-    MembershipAutoscaleTask, RecurringJobSpec, RegisterFn, ScheduleSourceSpec, ShardedJobSpec,
-    TopicStreamSpec, UserLeaderTaskSpec,
+    AutoShardJobSpec, AutoscaleTask, BacklogFeedSpec, BuilderOverrides, EventOutboxFeedSpec,
+    JobStreamSpec, ManageFn, MembershipAutoscaleTask, RecurringJobSpec, RegisterFn,
+    ScheduleSourceSpec, ShardedJobSpec, TopicStreamSpec, UserLeaderTaskSpec,
 };
 
 /// Internal fluent builder for a single trembita node — product apps use the `trembita` facade (`TrembitaApp`).
@@ -74,6 +74,7 @@ pub struct TrembitaClusterBuilder<M: StateMachine> {
     job_streams: Vec<JobStreamSpec>,
     topic_streams: Vec<TopicStreamSpec>,
     job_sharded: Vec<ShardedJobSpec>,
+    job_auto_shard: Vec<AutoShardJobSpec>,
     recurring_jobs: Vec<RecurringJobSpec>,
     job_autoscale: Vec<AutoscaleTask>,
     job_membership_autoscale: Vec<MembershipAutoscaleTask>,

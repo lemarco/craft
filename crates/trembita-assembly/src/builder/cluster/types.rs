@@ -10,8 +10,8 @@ use trembita_events::{
     EventOutboxDrainOpts, EventOutboxSource, TopicRetentionOpts, TopicSubscriptionDef,
 };
 use trembita_jobs::{
-    BacklogFeedOpts, BacklogRegistry, ExternalBacklog, JobQueue, QueueAutoscaleRegistry,
-    RecurringJob, ScheduleSource,
+    AutoShardPolicy, BacklogFeedOpts, BacklogRegistry, ExternalBacklog, JobQueue,
+    QueueAutoscaleRegistry, RecurringJob, ScheduleSource,
 };
 use trembita_runtime::{ActorDirectory, ClusterControl, ClusterState, LeaderGate, LeaderLoopOpts};
 
@@ -66,6 +66,15 @@ pub(super) struct TopicStreamSpec {
 pub(super) struct ShardedJobSpec {
     pub name: String,
     pub shard_count: usize,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct AutoShardJobSpec {
+    pub logical: String,
+    pub lease_timeout: Duration,
+    pub prefetch: usize,
+    pub default_max_attempts: u32,
+    pub policy: AutoShardPolicy,
 }
 
 #[derive(Debug, Clone)]

@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::sync::Arc;
 use std::time::Duration;
 
 use super::port::JobQueue;
@@ -14,6 +15,53 @@ pub struct QueueConsumerWorkload {
     pub tokens: std::sync::Arc<trembita_runtime::ComputeTokenPool>,
     /// Live consumer tuning from [`crate::run_workload_governor`].
     pub tune: tokio::sync::watch::Receiver<crate::ConsumerTune>,
+    /// Optional governor signal for handlers currently running on this node.
+    pub consumer_inflight: Option<Arc<ConsumerInflight>>,
+}
+
+/// Process-wide counter for consumer handlers (governor input).
+#[derive(Debug, Default)]
+pub struct ConsumerInflight {
+    active: std::sync::atomic::AtomicUsize,
+}
+
+impl ConsumerInflight {
+    /// Increment when a consumer handler starts.
+    pub fn inc(&self) {
+        self.active
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Decrement when a consumer handler finishes.
+    pub fn dec(&self) {
+        self.active
+            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Handlers currently running on this node.
+    #[must_use]
+    pub fn active(&self) -> usize {
+        self.active.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+struct InflightGuard(Option<Arc<ConsumerInflight>>);
+
+impl InflightGuard {
+    fn new(counter: Option<Arc<ConsumerInflight>>) -> Self {
+        if let Some(c) = &counter {
+            c.inc();
+        }
+        Self(counter)
+    }
+}
+
+impl Drop for InflightGuard {
+    fn drop(&mut self) {
+        if let Some(c) = self.0.take() {
+            c.dec();
+        }
+    }
 }
 
 /// Poll a [`JobQueue`], invoke `handle` on each leased job, then ack or nack.
@@ -45,6 +93,7 @@ pub async fn run_queue_consumer<Q, F, Fut, E>(
     Fut: Future<Output = Result<(), E>>,
 {
     let mut tune_rx = workload.as_ref().map(|w| w.tune.clone());
+    let consumer_inflight = workload.as_ref().and_then(|w| w.consumer_inflight.clone());
     loop {
         if *stop.borrow() {
             break;
@@ -53,6 +102,7 @@ pub async fn run_queue_consumer<Q, F, Fut, E>(
             let tune = *rx.borrow();
             (tune.batch.max(1), tune.idle_sleep)
         });
+        let max_in_flight = tune_rx.as_ref().map_or(0, |rx| rx.borrow().max_in_flight);
         let Ok(jobs) = queue.lease(worker, batch).await else {
             tokio::time::sleep(idle_sleep).await;
             continue;
@@ -83,6 +133,21 @@ pub async fn run_queue_consumer<Q, F, Fut, E>(
         let mut acks = Vec::with_capacity(jobs.len());
         let mut nacks = Vec::new();
         for (index, job) in jobs.into_iter().enumerate() {
+            if max_in_flight > 0 {
+                while consumer_inflight
+                    .as_ref()
+                    .is_some_and(|c| c.active() >= max_in_flight)
+                {
+                    tokio::task::yield_now().await;
+                    if *stop.borrow() {
+                        break;
+                    }
+                }
+            }
+            if *stop.borrow() {
+                break;
+            }
+            let _inflight = InflightGuard::new(consumer_inflight.clone());
             let _token = if let Some(wl) = &workload {
                 Some(wl.tokens.acquire_weighted(compute_cost).await)
             } else {

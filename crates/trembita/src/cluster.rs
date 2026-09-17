@@ -55,10 +55,10 @@ pub use trembita_http::{
     spawn_workflows_server,
 };
 pub use trembita_jobs::{
-    AutoscalePolicy, BacklogError, BacklogFeedOpts, BacklogItem, BacklogRegistry, ClusterJobQueue,
-    ConsumerCount, DEFAULT_QUEUE_BATCH_MAX, DEFAULT_QUEUE_PREFETCH, EnqueueOptions,
-    ExternalBacklog, InMemoryExternalBacklog, InMemoryJobQueue, JobId, JobQueue, LeaseId,
-    LeasedJob, MembershipAutoscalePolicy, QueueConsumerWorkload, QueueError, QueueMetrics,
+    AutoShardPolicy, AutoscalePolicy, BacklogError, BacklogFeedOpts, BacklogItem, BacklogRegistry,
+    ClusterJobQueue, ConsumerCount, DEFAULT_QUEUE_BATCH_MAX, DEFAULT_QUEUE_PREFETCH,
+    EnqueueOptions, ExternalBacklog, InMemoryExternalBacklog, InMemoryJobQueue, JobId, JobQueue,
+    LeaseId, LeasedJob, MembershipAutoscalePolicy, QueueConsumerWorkload, QueueError, QueueMetrics,
     QueueService, RecurringJob, RedbJobQueue, Settlement, ShardedJobQueue, WorkerId, WorkloadOpts,
     effective_queue_depth, run_backlog_feeder, run_queue_autoscaler, run_queue_consumer,
     run_queue_membership_autoscaler, run_queue_schedule_ticker, run_workload_governor,

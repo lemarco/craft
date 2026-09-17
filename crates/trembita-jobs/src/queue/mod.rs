@@ -12,7 +12,7 @@ mod tests;
 mod time;
 mod types;
 
-pub use consumer::{QueueConsumerWorkload, run_queue_consumer};
+pub use consumer::{ConsumerInflight, QueueConsumerWorkload, run_queue_consumer};
 pub use in_memory::InMemoryJobQueue;
 pub use port::JobQueue;
 pub use types::{
