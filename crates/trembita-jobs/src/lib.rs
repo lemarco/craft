@@ -61,5 +61,6 @@ pub use trembita_proto::{JobId, LeaseId};
 pub use trembita_runtime::{AttemptOutcome, after_failed_attempt};
 pub use work_trigger::{WorkTrigger, WorkTriggerError};
 pub use workload::{
-    ConsumerTune, WorkloadMetricsHook, WorkloadMetricsSnapshot, WorkloadOpts, run_workload_governor,
+    ConsumerTune, WorkloadGovernorSignals, WorkloadMetricsHook, WorkloadMetricsSnapshot,
+    WorkloadOpts, run_workload_governor,
 };

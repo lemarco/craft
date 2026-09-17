@@ -48,7 +48,7 @@ use trembita::{RedisStore, store_redis::RedisTlsConfig};
 let store = RedisStore::connect("redis://127.0.0.1:6379").await?.with_prefix("orders:");
 ```
 
-Trait ([`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs)):
+Trait ([`ActorStateStore`](../../crates/trembita-capstore/src/store.rs)):
 
 ```rust
 #[derive(UserActor)]

@@ -184,15 +184,24 @@ pub struct WorkloadMetricsSnapshot {
 /// Optional metrics callback from [`run_workload_governor`].
 pub type WorkloadMetricsHook = Arc<dyn Fn(WorkloadMetricsSnapshot) + Send + Sync>;
 
+/// Ingress counters sampled each governor tick.
+#[derive(Clone)]
+pub struct WorkloadGovernorSignals {
+    /// Active gateway connections.
+    pub connections: Arc<dyn Fn() -> usize + Send + Sync>,
+    /// In-flight HTTP handlers.
+    pub http_in_flight: Arc<dyn Fn() -> usize + Send + Sync>,
+    /// In-flight job consumer handlers on this node.
+    pub consumer_in_flight: Arc<dyn Fn() -> usize + Send + Sync>,
+}
+
 /// Per-node background loop: read ingress + queue depth, adjust token ceiling and consumer tune.
 pub async fn run_workload_governor(
     pool: Arc<ComputeTokenPool>,
     tune_tx: watch::Sender<ConsumerTune>,
     mut stop: watch::Receiver<bool>,
     opts: WorkloadOpts,
-    connections: Arc<dyn Fn() -> usize + Send + Sync>,
-    http_in_flight: Arc<dyn Fn() -> usize + Send + Sync>,
-    consumer_in_flight: Arc<dyn Fn() -> usize + Send + Sync>,
+    signals: WorkloadGovernorSignals,
     queues: Vec<Arc<dyn JobQueue>>,
     metrics: Option<WorkloadMetricsHook>,
 ) {
@@ -209,9 +218,9 @@ pub async fn run_workload_governor(
             }
         }
 
-        let active_connections = connections();
-        let http_in_flight = http_in_flight();
-        let consumer_in_flight = consumer_in_flight();
+        let active_connections = (signals.connections)();
+        let http_in_flight = (signals.http_in_flight)();
+        let consumer_in_flight = (signals.consumer_in_flight)();
         let external_load_units = opts.external_load.as_ref().map_or(0, |load| load.units());
         let mut queue_depth = 0u64;
         for queue in &queues {
@@ -265,8 +274,10 @@ fn decide(
         / opts.max_compute_tokens.max(1);
     let mut effective_connections = connections.saturating_add(external_pressure);
     if opts.api_protect_http_inflight > 0 {
-        let http_pressure = http_in_flight.saturating_mul(opts.api_protect_connections)
-            / opts.api_protect_http_inflight;
+        let http_pressure = http_in_flight
+            .saturating_mul(opts.api_protect_connections)
+            .checked_div(opts.api_protect_http_inflight)
+            .unwrap_or(usize::MAX);
         effective_connections = effective_connections.max(http_pressure);
     }
     if effective_connections >= opts.api_protect_connections {
@@ -367,9 +378,11 @@ mod tests {
             tune_tx,
             stop_rx,
             opts.clone(),
-            Arc::new(|| 0usize),
-            Arc::new(|| 0usize),
-            Arc::new(|| 0usize),
+            WorkloadGovernorSignals {
+                connections: Arc::new(|| 0usize),
+                http_in_flight: Arc::new(|| 0usize),
+                consumer_in_flight: Arc::new(|| 0usize),
+            },
             queues,
             None,
         ));

@@ -15,7 +15,7 @@
 | Layer | Store | Purpose |
 |-------|--------|---------|
 | **Authoritative / consensus** | Raft → `StateMachine` | Orders, balances, config — linearizable and replicated |
-| **Cap / workflow keys** | [`CapStore`](../../crates/trembita/src/capstore.rs) ([`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs) port name) | Idempotency keys, step progress, handler caches — survives crash when `data_dir` is set |
+| **Cap / workflow keys** | [`CapStore`](../../crates/trembita/src/capstore.rs) ([`ActorStateStore`](../../crates/trembita-capstore/src/store.rs) port name) | Idempotency keys, step progress, handler caches — survives crash when `data_dir` is set |
 
 **Do not** put routine workflow bytes in the Raft log — avoids R1 write ceiling and wrong abstraction ([future-work-and-risks](future-work-and-risks.md)).
 

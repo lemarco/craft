@@ -243,7 +243,7 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 
 | Priority | Gap | Suggested test location | Effort |
 |----------|-----|-------------------------|--------|
-| Medium | Actor store redb contract at crate level | `trembita-actor-store/tests/redb_contract.rs` | S |
+| Medium | Actor store redb contract at crate level | `trembita-capstore/tests/redb_contract.rs` | S |
 | Low | `doctor --preflight` on full synthetic `deploy/` tree | `tests/add_doctor.rs` or `scaffold/doctor.rs` | S |
 | Low | `trembita dev up` multi-node smoke in CI (debug CLI) | `tests/dev.rs` + job label `run-heavy` | M |
 
@@ -260,7 +260,7 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-09 | Gateway rate limit HTTP integration (`429`) | `trembita/tests/gateway_jobs_http.rs` |
 | 2026-09 | Typed product wire errors (`ProductWireError` on queue/topic/store replies) | `trembita-proto/src/product.rs`, service handlers |
 | 2026-09 | Gateway bearer identity header-only user + no query token | `trembita/src/gateway/identity.rs` (unit) |
-| 2026-09 | Actor store in-memory contract tests | `trembita-actor-store/tests/memory_contract.rs` |
+| 2026-09 | Actor store in-memory contract tests | `trembita-capstore/tests/memory_contract.rs` |
 | 2026-08 | Scenario soak per product path (actor store, saga resume, session restart) | `benchmarks/soak_{actor_store,saga,session}.rs`, `.gitlab-ci.yml` `bench` |
 | 2026-08 | Gateway identity, `SessionHandle`, WS + HTTP E2E, gateway drain | `trembita/src/gateway/`, `trembita/tests/{gateway_identity,gateway_ws,gateway_http}.rs`, `examples/{realtime,stateful-workers}/`, `docs/decisions/gateway-identity.md` |
 | 2026-09 | Introspect API on product gateway (`IntrospectApi`, default gateway surfaces, `AuthFn`) | `trembita-http/src/introspect_routes.rs`, `trembita/tests/gateway_introspect_http.rs`, `docs/decisions/introspect-api.md` |
@@ -275,7 +275,7 @@ Track open gaps here; move rows to **Closed gaps** when fixed.
 | 2026-09 | B-26a — `#[cap_handler]` on `async fn` | `trembita-macros/src/cap_handler.rs`, `examples/stateful-workers/src/capabilities/orders.rs` |
 | 2026-09 | B-26c–d — typed WS mount, `{group}.{op}` on `CapRequest` | `gateway/ws/mod.rs`, `capability/call.rs`, showcases |
 | 2026-09 | Async-only `#[cap_handler]`; jobs showcase → cap queue | `trembita-macros`, `examples/background-jobs/`, `capability_wiring.rs` |
-| 2026-09 | Product gateway opt-out sugar — [`TrembitaAppBuilder::without_*`](../../crates/trembita/src/app/builder.rs), [`with_actors_api`](../../crates/trembita/src/app/builder.rs); `from_config` + `TREMBITA_LISTEN` enables ops/registration HTTP (not `/actors/*`) | `trembita/src/app/builder.rs` (`env_listen_gateway_tests`), `docs/decisions/product-terminology.md` |
+| 2026-09 | Product gateway opt-out sugar — [`TrembitaAppBuilder::without_*`](../crates/trembita/src/app/builder.rs), [`with_actors_api`](../crates/trembita/src/app/builder.rs); `from_config` + `TREMBITA_LISTEN` enables ops/registration HTTP (not `/actors/*`) | `trembita/src/app/builder.rs` (`env_listen_gateway_tests`), `docs/decisions/product-terminology.md` |
 | 2026-09 | B-22/B-23 scaffold greenfield — `.without_actors_api()`, `cap_invoke` `/ping`, infallible `from_config`, compile-ready `cargo check` | `trembita-cli/src/scaffold/{render.rs,main.rs}`, `trembita-cli/tests/scaffold.rs`, `trembita-cli/templates/trembita-app/` |
 | 2026-09 | B-24 parity matrix + realtime cap session | `docs/scenarios/capability-parity.md`, `examples/realtime/src/capabilities/` |
 | 2026-09 | B-24d realtime scaffold (`chat` cap + sticky WS) | `crates/trembita-cli/src/scaffold/render.rs`, `trembita-cli/tests/scaffold.rs` |

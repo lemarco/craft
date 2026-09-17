@@ -1026,6 +1026,11 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
                 let c = Arc::clone(&consumer_inflight);
                 Arc::new(move || c.active())
             };
+            let signals = trembita_jobs::WorkloadGovernorSignals {
+                connections: connections_fn,
+                http_in_flight: http_inflight_fn,
+                consumer_in_flight: consumer_inflight_fn,
+            };
             let metrics_hook = {
                 let metrics = metrics.clone();
                 Some(Arc::new(move |snap: WorkloadMetricsSnapshot| {
@@ -1076,9 +1081,7 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
                     tune_tx,
                     stop_rx,
                     opts,
-                    connections_fn,
-                    http_inflight_fn,
-                    consumer_inflight_fn,
+                    signals,
                     queues,
                     metrics_hook,
                 )

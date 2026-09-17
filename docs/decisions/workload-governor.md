@@ -35,9 +35,9 @@ No cluster topology change. No leader election for this loop. No `TREMBITA_ROLE`
 | Signal | Source today | Use |
 |--------|--------------|-----|
 | Active gateway connections | [`ConnectionTracker`](../../crates/trembita/src/gateway/drain.rs) | Low → more tokens for jobs; high → protect API |
-| In-flight HTTP | [`HttpInFlight`](../crates/trembita-assembly/src/connections.rs) on gateway handler bodies | Finer than connection count alone |
+| In-flight HTTP | [`HttpInFlight`](../../crates/trembita-assembly/src/connections.rs) on gateway handler bodies | Finer than connection count alone |
 | Queue depth (local view) | `JobQueue::metrics` / external backlog | Opportunistic job boost when API quiet **and** work waiting |
-| Consumer in-flight | [`ConsumerInflight`](../crates/trembita-jobs/src/queue/consumer.rs) across `run_queue_consumer` loops | Avoid raising token ceiling when handlers already occupy the pool |
+| Consumer in-flight | [`ConsumerInflight`](../../crates/trembita-jobs/src/queue/consumer.rs) across `run_queue_consumer` loops | Avoid raising token ceiling when handlers already occupy the pool |
 | External subprocess load (shipped) | [`ExternalLoad`](external-load.md) + `ComputeTokenPool` weighted acquire | CPU in child processes (ffmpeg, shell) the tokio pool cannot see — [external-load](external-load.md) |
 
 ### Actions (outputs)

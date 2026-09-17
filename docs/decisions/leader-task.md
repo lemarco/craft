@@ -22,7 +22,7 @@ There is **no primitive for “run this loop while I am leader”**. Every produ
 | Queue autoscaler | [`run_queue_autoscaler`](../../crates/trembita-jobs/src/queue_autoscale.rs) | in loop | none | cooldown across terms undocumented |
 | Membership autoscaler | [`run_queue_membership_autoscaler`](../../crates/trembita-jobs/src/queue_autoscale.rs) | in loop | none | same |
 | Schedule ticker | [`run_queue_schedule_ticker`](../../crates/trembita-jobs/src/queue_schedule.rs) | in `QueueService` | `watch` | loop unaware of leadership |
-| Actor-store GC | [`run_actor_store_gc_ticker`](../../crates/trembita-actor-store/src/store_service.rs) | in `StoreService` | `watch` | same |
+| Cap store GC | [`run_cap_store_gc_ticker`](../../crates/trembita-capstore/src/store_service.rs) | in `StoreService` | `watch` | same |
 | Supervisor reconcile | [`ClusterSupervisor::reconcile`](../../crates/trembita-runtime/src/supervisor.rs) | in method | none | + immediate call from facts-refresher |
 | Topic bootstrap / retention | inline in [`builder.rs`](../../crates/trembita-assembly/src/builder/cluster/mod.rs) | in loop | none | `bootstrapped` flag — one-shot per process |
 | Upgrade coordinator | [`spawn_upgrade_coordinator`](../../crates/trembita-assembly/src/upgrade/coordinator.rs) | in `tick` | abort | leader vs local executor split |

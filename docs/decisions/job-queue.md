@@ -52,7 +52,7 @@ Typical HTTP mapping:
 
 ### `JobQueue` port
 
-New trait in **`trembita-jobs`** (object-safe, boxed futures — same pattern as [`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs)):
+New trait in **`trembita-jobs`** (object-safe, boxed futures — same pattern as [`ActorStateStore`](../../crates/trembita-capstore/src/store.rs)):
 
 ```rust
 pub struct JobId(u64);

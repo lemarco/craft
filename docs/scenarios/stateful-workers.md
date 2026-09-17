@@ -23,7 +23,7 @@ See [capabilities](capabilities.md) and [capability-greenfield-wire](../decision
 | Level | Mechanism | Survives crash? |
 |-------|-----------|-----------------|
 | **Hot** | Fields on actor struct + [`ActorSession`](../../crates/trembita-runtime/src/session.rs) | ❌ (OK for live session) |
-| **Workflow keys** | [`ActorStateStore`](../../crates/trembita-actor-store/src/store.rs) → `RedbActorStateStore` | ✅ |
+| **Workflow keys** | [`ActorStateStore`](../../crates/trembita-capstore/src/store.rs) → `RedbActorStateStore` | ✅ |
 | **Domain data** | `StateMachine` via `propose` | ✅ (Raft replicated) |
 
 ## Architecture
