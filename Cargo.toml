@@ -184,35 +184,35 @@ proptest = "1"
 testcontainers-modules = { version = "0.15.0", features = ["redis"] }
 
 # --- Workspace crates (published trembita-*) ----------------------------------
-trembita-proto = { path = "crates/trembita-proto", version = "0.6.2" }
-trembita-core = { path = "crates/trembita-core", version = "0.6.2" }
-trembita-storage = { path = "crates/trembita-storage", version = "0.6.2" }
-trembita-net = { path = "crates/trembita-net", version = "0.6.2" }
-trembita-macros = { path = "crates/trembita-macros", version = "0.6.2" }
-trembita-runtime = { path = "crates/trembita-runtime", version = "0.6.2" }
-trembita-jobs = { path = "crates/trembita-jobs", version = "0.6.2" }
-trembita-events = { path = "crates/trembita-events", version = "0.6.2" }
-trembita-capstore = { path = "crates/trembita-capstore", version = "0.6.2" }
-trembita-capstore-postgres = { path = "crates/trembita-capstore-postgres", version = "0.6.2" }
-trembita-client = { path = "crates/trembita-client", version = "0.6.2" }
-trembita-store-redis = { path = "crates/trembita-store-redis", version = "0.6.2" }
-trembita-dashboard = { path = "crates/trembita-dashboard", version = "0.6.2" }
-trembita-http = { path = "crates/trembita-http", version = "0.6.2" }
-trembita-gateway-auth = { path = "crates/trembita-gateway-auth", version = "0.6.2" }
-trembita-schedule-postgres = { path = "crates/trembita-schedule-postgres", version = "0.6.2" }
-trembita-sim = { path = "crates/trembita-sim", version = "0.6.2" }
-trembita = { path = "crates/trembita", version = "0.6.2" }
-trembita-backlog-postgres = { path = "crates/trembita-backlog-postgres", version = "0.6.2" }
-trembita-events-postgres = { path = "crates/trembita-events-postgres", version = "0.6.2" }
-trembita-cli = { path = "crates/trembita-cli", version = "0.6.2" }
-trembita-metrics-otlp = { path = "crates/trembita-metrics-otlp", version = "0.6.2" }
+trembita-proto = { path = "crates/trembita-proto", version = "0.6.3" }
+trembita-core = { path = "crates/trembita-core", version = "0.6.3" }
+trembita-storage = { path = "crates/trembita-storage", version = "0.6.3" }
+trembita-net = { path = "crates/trembita-net", version = "0.6.3" }
+trembita-macros = { path = "crates/trembita-macros", version = "0.6.3" }
+trembita-runtime = { path = "crates/trembita-runtime", version = "0.6.3" }
+trembita-jobs = { path = "crates/trembita-jobs", version = "0.6.3" }
+trembita-events = { path = "crates/trembita-events", version = "0.6.3" }
+trembita-capstore = { path = "crates/trembita-capstore", version = "0.6.3" }
+trembita-capstore-postgres = { path = "crates/trembita-capstore-postgres", version = "0.6.3" }
+trembita-client = { path = "crates/trembita-client", version = "0.6.3" }
+trembita-store-redis = { path = "crates/trembita-store-redis", version = "0.6.3" }
+trembita-dashboard = { path = "crates/trembita-dashboard", version = "0.6.3" }
+trembita-http = { path = "crates/trembita-http", version = "0.6.3" }
+trembita-gateway-auth = { path = "crates/trembita-gateway-auth", version = "0.6.3" }
+trembita-schedule-postgres = { path = "crates/trembita-schedule-postgres", version = "0.6.3" }
+trembita-sim = { path = "crates/trembita-sim", version = "0.6.3" }
+trembita = { path = "crates/trembita", version = "0.6.3" }
+trembita-backlog-postgres = { path = "crates/trembita-backlog-postgres", version = "0.6.3" }
+trembita-events-postgres = { path = "crates/trembita-events-postgres", version = "0.6.3" }
+trembita-cli = { path = "crates/trembita-cli", version = "0.6.3" }
+trembita-metrics-otlp = { path = "crates/trembita-metrics-otlp", version = "0.6.3" }
 
 # --- Workspace crates (unpublished, `publish = false`) ------------------------
-trembita-assembly = { path = "crates/trembita-assembly", version = "0.6.2" }
+trembita-assembly = { path = "crates/trembita-assembly", version = "0.6.3" }
 trembita-showcase = { path = "crates/trembita-showcase" }
-trembita-test-support = { path = "crates/trembita-test-support", version = "0.6.2" }
-trembita-test-facade = { path = "crates/trembita-test-facade", version = "0.6.2" }
-trembita-test-runtime = { path = "crates/trembita-test-runtime", version = "0.6.2" }
+trembita-test-support = { path = "crates/trembita-test-support", version = "0.6.3" }
+trembita-test-facade = { path = "crates/trembita-test-facade", version = "0.6.3" }
+trembita-test-runtime = { path = "crates/trembita-test-runtime", version = "0.6.3" }
 trembita-tools = { path = "crates/trembita-tools" }
 
 # Lints applied across the workspace (library-and-publishing).
