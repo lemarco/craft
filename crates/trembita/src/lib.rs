@@ -32,8 +32,8 @@
 //! |---------|---------|
 //! | `http-jobs` (default) | Product HTTP gateway (`Gateway`, `/jobs/*`, `cap_*`, …; `/actors/*` off by default) |
 //! | `dev-certs` | Ephemeral mTLS for local development |
-//! | `redis-store` | Redis [`CapStateStore`](trembita_capstore::CapStateStore) |
-//! | `capstore-postgres` | Postgres [`CapStateStore`](trembita_capstore::CapStateStore) via `trembita-capstore-postgres` |
+//! | `redis-store` | Redis `trembita_capstore::CapStateStore` |
+//! | `capstore-postgres` | Postgres `trembita_capstore::CapStateStore` via `trembita-capstore-postgres` |
 //! | `external-backlog` | Postgres [`ExternalBacklog`] adapter |
 //! | `domain-outbox` | Postgres [`EventOutboxSource`] adapter |
 //!
