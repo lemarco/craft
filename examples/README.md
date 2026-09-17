@@ -13,6 +13,7 @@ cargo build -p trembita-cli
 |----------|---------|------|------------------------|
 | [`background-jobs/`](background-jobs/) | HTTP `202` → cap enqueue → queue bridge | `cargo run --release` | `./target/debug/trembita dev up --showcase background-jobs` |
 | [`realtime/`](realtime/) | Cap `chat` + WebSocket/HTTP sticky `ActorSession` | `cargo run --release` | `./target/debug/trembita dev up --showcase realtime` |
+| [`oauth-gateway/`](oauth-gateway/) | Dev OIDC callback → [`SessionIssuer`](../crates/trembita-http/src/routing/session_ports.rs) (B-40) | `cargo run --release` | — |
 | [`stateful-workers/`](stateful-workers/) | Capabilities + `ActorStateStore` idempotency + `POST /orders/submit` | `cargo run --release` | `./target/debug/trembita dev up --showcase stateful-workers` |
 | [`workflows/`](workflows/) | Saga journal + capability inline steps | `cargo run --release` | `./target/debug/trembita dev up --showcase workflows` |
 | [`self-update/`](self-update/) | Leader-coordinated rolling self-update | `cargo run --release` | `./target/debug/trembita dev up --showcase self-update` |

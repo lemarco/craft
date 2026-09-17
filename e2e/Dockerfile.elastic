@@ -1,0 +1,14 @@
+# Product elastic + LB E2E (B-34). Build context: repo root.
+FROM rust:slim AS build
+WORKDIR /src
+COPY . .
+RUN cargo build --release -p trembita-e2e-elastic
+
+FROM debian:stable-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /src/target/release/trembita-e2e-elastic /usr/local/bin/trembita-e2e-elastic
+COPY dev/certs/generate.sh /app/generate.sh
+RUN chmod +x /app/generate.sh
+ENTRYPOINT ["trembita-e2e-elastic"]

@@ -6,6 +6,8 @@ use std::time::Duration;
 use trembita_jobs::{BacklogFeedOpts, ConsumerCount, DEFAULT_QUEUE_PREFETCH, ExternalBacklog};
 
 use crate::consumer::{ConsumerOpts, ConsumerSpawnFn, IdempotencyOpts, JobConsumer};
+use trembita_assembly::coordination_profile::CoordinationGrowthPreset;
+
 use crate::queue_opts::{QueueOpts, QueueRegistrationScale};
 
 /// One durable job stream with optional handler, scaling, and HTTP enqueue.
@@ -130,6 +132,20 @@ impl JobOpts {
     pub fn auto_shard_policy(mut self, policy: trembita_jobs::AutoShardPolicy) -> Self {
         self.scale = QueueRegistrationScale::AutoShard(policy);
         self
+    }
+
+    /// When scale is still standard, apply B-37 auto-shard leader policy from a preset.
+    #[must_use]
+    pub fn with_coordination_growth_preset(self, preset: CoordinationGrowthPreset) -> Self {
+        if !matches!(self.scale, QueueRegistrationScale::Standard) {
+            return self;
+        }
+        match preset {
+            CoordinationGrowthPreset::JobsBacklog | CoordinationGrowthPreset::Full => {
+                self.auto_shard_policy(preset.spec().auto_shard_policy)
+            }
+            CoordinationGrowthPreset::Standard | CoordinationGrowthPreset::WriteSharding => self,
+        }
     }
 
     /// Lease visibility timeout for workers holding jobs from this stream.
@@ -325,6 +341,52 @@ mod b32_tests {
             assert_eq!(reg.queue.name, reg.stream, "{}: stream name", row.label);
             assert_eq!(reg.queue.lease, lease, "{}: lease", row.label);
             assert!((row.check)(&reg.queue.scale), "{}", row.label);
+        }
+    }
+}
+
+#[cfg(test)]
+mod b37_tests {
+    use super::*;
+    use crate::queue_opts::QueueRegistrationScale;
+    use trembita_assembly::coordination_profile::CoordinationGrowthPreset;
+    use trembita_jobs::AutoShardPolicy;
+
+    #[test]
+    fn b37_job_opts_growth_preset_scenarios_table() {
+        struct Row {
+            label: &'static str,
+            preset: CoordinationGrowthPreset,
+            want_policy: Option<AutoShardPolicy>,
+        }
+        let rows = [
+            Row {
+                label: "jobs_backlog",
+                preset: CoordinationGrowthPreset::JobsBacklog,
+                want_policy: Some(AutoShardPolicy::jobs_backlog_growth()),
+            },
+            Row {
+                label: "full",
+                preset: CoordinationGrowthPreset::Full,
+                want_policy: Some(AutoShardPolicy::full_growth()),
+            },
+            Row {
+                label: "standard",
+                preset: CoordinationGrowthPreset::Standard,
+                want_policy: None,
+            },
+        ];
+        for row in rows {
+            let reg = JobOpts::new("work")
+                .with_coordination_growth_preset(row.preset)
+                .into_registration();
+            match (&reg.queue.scale, row.want_policy) {
+                (QueueRegistrationScale::AutoShard(p), Some(want)) => {
+                    assert_eq!(*p, want, "{}", row.label);
+                }
+                (QueueRegistrationScale::Standard, None) => {}
+                other => panic!("{}: unexpected {other:?}", row.label),
+            }
         }
     }
 }

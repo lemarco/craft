@@ -184,3 +184,86 @@ fn template_workflows_includes_onboarding_cap_and_named_workflow() {
     assert!(manifest.contains("WorkflowOpts::named(\"onboard\""));
     assert!(!root.join("src/capabilities/ping.rs").exists());
 }
+
+#[test]
+fn b38_template_jobs_includes_queued_idempotency_capability() {
+    use trembita_cli::{AppTemplate, resolve_scaffold_features};
+
+    let dir = tempdir().unwrap();
+    let features = resolve_scaffold_features(Some(AppTemplate::Jobs), "").unwrap();
+    let opts = NewProjectOpts {
+        name: "jobs-app".into(),
+        output: dir.path().to_path_buf(),
+        features,
+        template: Some(AppTemplate::Jobs),
+        trembita_version: "0.3.2".into(),
+        trembita_path: None,
+    };
+    let root = scaffold_project(&opts).unwrap();
+    let task = std::fs::read_to_string(root.join("src/capabilities/task.rs")).unwrap();
+    assert!(task.contains("require_store"));
+    assert!(task.contains("default_queue_for"));
+    assert!(task.contains("store_get"));
+    let product = std::fs::read_to_string(root.join("src/http/product.rs")).unwrap();
+    assert!(product.contains("cap_enqueue::<RunTask>"));
+    let manifest = std::fs::read_to_string(root.join("src/manifest.rs")).unwrap();
+    assert!(manifest.contains("task::manifest()"));
+}
+
+#[test]
+fn b38_profile_jobs_matches_template_jobs_layout() {
+    use trembita_cli::{AppTemplate, resolve_scaffold_features};
+
+    let dir = tempdir().unwrap();
+    let features = resolve_scaffold_features(Some(AppTemplate::Jobs), "").unwrap();
+    let opts = NewProjectOpts {
+        name: "jobs-profile".into(),
+        output: dir.path().to_path_buf(),
+        features,
+        template: Some(AppTemplate::Jobs),
+        trembita_version: "0.3.2".into(),
+        trembita_path: None,
+    };
+    let root = scaffold_project(&opts).unwrap();
+    assert!(root.join("src/capabilities/task.rs").is_file());
+    assert!(root.join("src/consumers/sample.rs").is_file());
+}
+
+#[test]
+fn b38_profile_realtime_includes_session_per_node_wiring() {
+    use trembita_cli::{AppTemplate, resolve_scaffold_features};
+
+    let dir = tempdir().unwrap();
+    let features = resolve_scaffold_features(Some(AppTemplate::Realtime), "").unwrap();
+    let opts = NewProjectOpts {
+        name: "rt-profile".into(),
+        output: dir.path().to_path_buf(),
+        features,
+        template: Some(AppTemplate::Realtime),
+        trembita_version: "0.3.2".into(),
+        trembita_path: None,
+    };
+    let root = scaffold_project(&opts).unwrap();
+    let chat = std::fs::read_to_string(root.join("src/capabilities/chat.rs")).unwrap();
+    assert!(chat.contains(".per_node()"));
+    assert!(chat.contains("session"));
+}
+
+#[test]
+fn b38_profile_api_omits_job_consumer() {
+    use trembita_cli::{AppTemplate, resolve_scaffold_features};
+
+    let dir = tempdir().unwrap();
+    let features = resolve_scaffold_features(Some(AppTemplate::Api), "").unwrap();
+    let opts = NewProjectOpts {
+        name: "api-app".into(),
+        output: dir.path().to_path_buf(),
+        features,
+        template: Some(AppTemplate::Api),
+        trembita_version: "0.3.2".into(),
+        trembita_path: None,
+    };
+    let root = scaffold_project(&opts).unwrap();
+    assert!(!root.join("src/consumers/sample.rs").exists());
+    assert!(root.join("src/capabilities/ping.rs").is_file());
+}

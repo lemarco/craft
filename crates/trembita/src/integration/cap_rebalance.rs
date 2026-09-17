@@ -173,6 +173,13 @@ async fn capability_inline_survives_raft_group_rebalance() {
         advance(TICK_PERIOD).await;
     }
 
+    let r3 = leader.directory_r3_snapshot();
+    assert_eq!(r3.directory_policy, "read_your_writes");
+    assert!(
+        r3.merge_lag_epochs <= 64,
+        "merge lag should stay bounded after rebalance: {r3:?}"
+    );
+
     for app in &apps {
         app.shutdown();
     }

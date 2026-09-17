@@ -12,7 +12,7 @@ use trembita_jobs::{RecurringJob, StaticScheduleSource};
 use trembita_test_facade::boot_local_app;
 
 #[tokio::test]
-async fn schedule_source_wires_on_app_boot() {
+async fn b41_schedule_source_manifest_boots_without_panic() {
     let base = std::env::temp_dir().join(format!(
         "trembita-sched-boot-{}",
         std::time::SystemTime::now()

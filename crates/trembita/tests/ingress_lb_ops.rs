@@ -157,6 +157,83 @@ async fn gateway_ops_config_serves_ready_for_lb_http_check() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn b35_ready_json_includes_join_phase_after_boot() {
+    let base = std::env::temp_dir().join(format!(
+        "trembita-b35-ready-phase-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+
+    let app = boot_local_app(
+        || {
+            TrembitaApp::builder().configure(
+                TrembitaConfigure::default()
+                    .with_local_gateway_apis()
+                    .with_data_dir(&base)
+                    .with_tick_period(Duration::from_millis(5)),
+            )
+        },
+        None,
+    )
+    .await;
+
+    let addr = spawn_test_gateway(&app, gateway_ops_config()).await;
+    let mut body = String::new();
+    for _ in 0..400 {
+        let (status, b) = http_get(addr, "/ready").await;
+        body = b;
+        if status == 200 {
+            break;
+        }
+        advance(Duration::from_millis(5)).await;
+    }
+    let json: serde_json::Value = serde_json::from_str(&body).expect("ready json");
+    assert_eq!(
+        json["join_phase"].as_str(),
+        Some("pool_ready"),
+        "seed voter should reach pool_ready: {json}"
+    );
+
+    app.shutdown();
+    let _ = std::fs::remove_dir_all(base);
+}
+
+#[tokio::test(start_paused = true)]
+async fn b35_product_ops_exposes_join_status_route() {
+    let app = boot_local_app(
+        || TrembitaApp::builder().configure(TrembitaConfigure::default().with_local_gateway_apis()),
+        None,
+    )
+    .await;
+    let state = TrembitaGatewayState::new(std::sync::Arc::clone(&app));
+    let table = TrembitaApp::default_product_routes(&state, DefaultGatewayApis::ops_only());
+    let resp = table
+        .dispatch_open(
+            &Method::GET,
+            "/introspect/join-status",
+            HashMap::new(),
+            http::HeaderMap::new(),
+            Bytes::new(),
+        )
+        .await
+        .expect("join-status route");
+    assert_eq!(resp.status_code(), StatusCode::OK);
+    let json = match resp.body() {
+        ResponseBody::Json(v) => v.clone(),
+        ResponseBody::Bytes(b) => serde_json::from_slice(b).expect("json"),
+        other => panic!("unexpected body {other:?}"),
+    };
+    assert!(json.get("phase").is_some());
+    assert!(json.get("log_caught_up").is_some());
+
+    app.shutdown();
+}
+
+#[tokio::test(start_paused = true)]
 async fn ops_route_table_health_json_shape() {
     let app = boot_local_app(
         || TrembitaApp::builder().configure(TrembitaConfigure::default()),

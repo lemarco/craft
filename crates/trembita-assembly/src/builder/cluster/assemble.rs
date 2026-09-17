@@ -30,9 +30,9 @@ use trembita_jobs::{
 };
 use trembita_runtime::{
     ActorDirectory, ActorRegistry, ClusterControl, ClusterMessaging, ClusterState,
-    ClusterSupervisor, ComputeTokenPool, DirectorySync, MailboxSpool, NodeService, RaftDriver,
-    RedbMailboxSpool, run_leader_loop, run_mailbox_spool_drainer, spawn_multi_raft_node,
-    spawn_node,
+    ClusterSupervisor, ComputeTokenPool, DirectoryDeliveryStats, DirectorySync, MailboxSpool,
+    NodeService, RaftDriver, RedbMailboxSpool, run_leader_loop, run_mailbox_spool_drainer,
+    spawn_multi_raft_node, spawn_node,
 };
 
 use crate::cluster_handle::{ClusterFacts, TrembitaCluster};
@@ -273,6 +273,7 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
             )
             .with_cluster_state(facts_state),
         );
+        let directory_delivery_stats = Arc::new(DirectoryDeliveryStats::default());
         let messaging = Arc::new({
             let mut messaging = ClusterMessaging::with_policy(
                 node_id,
@@ -281,7 +282,8 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
                 Arc::clone(&transport),
                 self.directory_policy,
                 self.directory_retry,
-            );
+            )
+            .with_directory_stats(Arc::clone(&directory_delivery_stats));
             if self.durable_mailbox {
                 let data_dir = self.data_dir.as_ref().unwrap_or_else(|| {
                     panic!("durable_mailbox requires data_dir on the cluster builder")
@@ -322,6 +324,14 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
 
         // --- Observability ------------------------------------------------
         let events = EventBus::new(self.event_capacity);
+        {
+            let events_hook = events.clone();
+            directory_delivery_stats.set_on_no_target(Arc::new(move |group| {
+                let _ = events_hook.emit(TrembitaEvent::DirectoryDeliverNoTarget {
+                    group: group.to_string(),
+                });
+            }));
+        }
         // Surface actor lifecycle / restarts / escalations and (opt-in)
         // per-message traces as metrics + events (E14 → Track H, observability): the
         // registry stays telemetry-agnostic. Installed *before* any spawn so
@@ -740,6 +750,11 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
             let registry = registry.clone();
             let metrics = metrics.clone();
             let events = events.clone();
+            let directory = Arc::clone(&directory);
+            let directory_sync = Arc::clone(&directory_sync);
+            let messaging = Arc::clone(&messaging);
+            let members = self.members.clone();
+            let node_label = node_id.0.to_string();
             let period = self.refresh_period;
             tasks.push(tokio::spawn(async move {
                 let mut interval = tokio::time::interval(period);
@@ -747,8 +762,40 @@ impl<M: trembita_core::StateMachine + Default + 'static> TrembitaClusterBuilder<
                 // per-interval deltas into the monotonic counters.
                 let mut prev: std::collections::HashMap<String, (u64, u64)> =
                     std::collections::HashMap::new();
+                let mut prev_no_target: BTreeMap<String, u64> = BTreeMap::new();
+                let mut prev_merge_lag: u64 = 0;
                 loop {
                     interval.tick().await;
+                    let local_epoch = directory_sync.local_epoch();
+                    let merge_lag = directory.merge_lag_epochs(local_epoch, &members);
+                    metrics.set(
+                        "trembita_directory_merge_lag_epochs",
+                        "Max epoch lag between this node's publish and merged peer epochs (R3).",
+                        &[("node", node_label.as_str())],
+                        metric_u64(merge_lag),
+                    );
+                    if merge_lag > 0 && merge_lag != prev_merge_lag {
+                        let _ = events.emit(TrembitaEvent::DirectoryMergeLag {
+                            lag_epochs: merge_lag,
+                        });
+                    }
+                    prev_merge_lag = merge_lag;
+                    if let Some(stats) = messaging.directory_stats() {
+                        let totals = stats.no_target_totals();
+                        for (group, total) in &totals {
+                            let prev_total = prev_no_target.get(group).copied().unwrap_or(0);
+                            let delta = total.saturating_sub(prev_total);
+                            if delta > 0 {
+                                metrics.incr(
+                                    "trembita_directory_deliver_no_target_total",
+                                    "Cross-node deliver resolves that returned NoTarget (cap/actor groups).",
+                                    &[("group", group.as_str())],
+                                    metric_u64(delta),
+                                );
+                            }
+                        }
+                        prev_no_target = totals;
+                    }
                     for stat in registry.stats() {
                         let actor = stat.name.as_str();
                         metrics.set(

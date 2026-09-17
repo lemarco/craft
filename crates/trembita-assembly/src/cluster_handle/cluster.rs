@@ -514,6 +514,12 @@ impl<M: StateMachine> TrembitaCluster<M> {
         &self.directory
     }
 
+    /// Epoch of this node's last directory publish ([`DirectorySync::local_epoch`]).
+    #[must_use]
+    pub fn directory_local_epoch(&self) -> u64 {
+        self.directory_sync.local_epoch()
+    }
+
     /// The leader-only supervisor driving managed / auto-worker groups.
     #[must_use]
     pub fn supervisor(&self) -> &Arc<ClusterSupervisor<Arc<ClusterFacts>>> {
@@ -711,14 +717,29 @@ impl<M: StateMachine> TrembitaCluster<M> {
     /// examples and edge gateways that start before peer workers.
     pub async fn wait_until_ready(&self, opts: crate::ReadyOpts) -> bool {
         let deadline = tokio::time::Instant::now() + opts.timeout;
+        let observer = if opts.pool_membership {
+            Some(crate::observer::build_introspect_observer(self))
+        } else {
+            None
+        };
         loop {
-            let leader = self.is_leader().await;
             let queues_ok = opts.job_streams.is_empty()
                 || opts
                     .job_streams
                     .iter()
                     .all(|stream| self.job_queue(stream).is_some());
-            if leader && queues_ok {
+            let ready = if opts.pool_membership {
+                observer
+                    .as_ref()
+                    .expect("pool observer")
+                    .readiness()
+                    .await
+                    .is_ready()
+                    && queues_ok
+            } else {
+                self.is_leader().await && queues_ok
+            };
+            if ready {
                 return true;
             }
             if tokio::time::Instant::now() >= deadline {

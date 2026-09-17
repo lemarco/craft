@@ -160,6 +160,7 @@ e2e:
     - bash e2e/queue.sh
     - bash e2e/chaos.sh
     - bash e2e/cert_renew.sh
+    - bash e2e/elastic_lb.sh
     - TREMBITA_LINEARIZABILITY_SKIP_SIM=1 TREMBITA_E2E_LINEARIZABILITY=1 bash e2e/linearizability.sh
 
 linearizability-sim:

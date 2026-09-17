@@ -35,6 +35,7 @@
 //! | `redis-store` | Redis `trembita_capstore::CapStateStore` |
 //! | `capstore-postgres` | Postgres `trembita_capstore::CapStateStore` via `trembita-capstore-postgres` |
 //! | `external-backlog` | Postgres [`ExternalBacklog`] adapter |
+//! | `schedule-postgres` | Postgres [`ScheduleSource`](trembita_jobs::ScheduleSource) via `trembita-schedule-postgres` |
 //! | `domain-outbox` | Postgres [`EventOutboxSource`] adapter |
 //!
 //! Full reference: [facade ADR](https://gitlab.com/lemarco/trembita/-/blob/main/docs/decisions/facade.md).
@@ -105,8 +106,9 @@ pub use trembita_storage as storage;
 
 pub use actor_group::ActorGroupOpts;
 pub use app::{
-    AppManifest, DefaultGatewayApis, JobsPreset, RealtimePreset, ScheduleSourceOpts, ShutdownOpts,
-    TestBoot, TopicsPreset, TrembitaApp, TrembitaAppBuilder, journal_workflow,
+    AppManifest, DefaultGatewayApis, JobsPreset, ProductScalePlan, RealtimePreset,
+    ScheduleSourceOpts, ShutdownOpts, TestBoot, TopicsPreset, TrembitaApp, TrembitaAppBuilder,
+    journal_workflow,
 };
 pub use app_opts::RunOpts;
 pub use capability::{
@@ -114,7 +116,10 @@ pub use capability::{
     CapIngress, CapManifest, CapOp, CapQueued, CapRequest, CapRuntime, CapVia, CapWire, OpCtx,
     Route, deliver_event, deliver_queued, enqueue, fire, invoke, publish_event,
 };
-pub use configure::TrembitaConfigure;
+pub use configure::{
+    CoordinationGrowthPreset, CoordinationProfileSpec, TrembitaConfigure,
+    parse_coordination_growth_profile,
+};
 pub use consumer::{ConsumerGroup, ConsumerOpts, IdempotencyKeyFn, IdempotencyOpts, JobConsumer};
 pub use cron_opts::CronOpts;
 #[allow(deprecated)]
@@ -127,8 +132,11 @@ pub use gateway::{
 };
 #[cfg(feature = "http-jobs")]
 pub use gateway::{
-    ClusterSessionError, ClusterSessionSecret, VerifiedClusterSession, capstore_session_gate,
-    cluster_session_gate, register_capstore_session, session_user_from_cookie,
+    CapStoreGatewaySessionStore, CapStoreSessionIssuer, CapStoreSessionVerifier,
+    ClusterSessionError, ClusterSessionSecret, GatewaySessionStore, SignedCookieSessionIssuer,
+    SignedCookieSessionVerifier, VerifiedClusterSession, capstore_session_gate,
+    cluster_session_gate, register_capstore_session, revoke_capstore_session,
+    rotating_cluster_session_gate, session_user_from_cookie, session_user_from_verifier,
     verify_capstore_session,
 };
 pub use gateway::{
@@ -184,8 +192,9 @@ pub use trembita_http::{
     AuthMode, CookieConfig, CorsPolicy, EmbeddedAssets, EmbeddedFile, Gateway, GatewayBuildError,
     GatewayService, HttpError, IntrospectApi, IntrospectApiError, Observer, OpsApi, Precompressed,
     RequestCtx, Response, ResponseBody, RouteDescriptor, RouteTable, RouteTableDiff, SessionGate,
-    StaticSite, StaticSource, Surface, UpgradeStream, accept_websocket, embedded_from_dir,
-    is_local_dev_host, normalize_host, routing_to_http_response,
+    SessionIssuer, SessionVerifier, StaticSite, StaticSource, Surface, UpgradeStream,
+    VerifiedSession, accept_websocket, embedded_from_dir, is_local_dev_host, normalize_host,
+    routing_to_http_response, session_issuer, session_verifier,
 };
 
 #[cfg(feature = "redis-store")]
@@ -208,6 +217,20 @@ pub use trembita_events_postgres as events_postgres;
 
 #[cfg(feature = "domain-outbox")]
 pub use trembita_events_postgres::{PgEventOutboxSchema, PgEventOutboxSource};
+
+#[cfg(feature = "gateway-auth")]
+#[doc(inline)]
+pub use trembita_gateway_auth as gateway_auth;
+
+#[cfg(feature = "schedule-postgres")]
+#[doc(inline)]
+pub use trembita_schedule_postgres as schedule_postgres;
+
+#[cfg(feature = "schedule-postgres")]
+pub use trembita_schedule_postgres::{PgScheduleSchema, PgScheduleSource};
+
+pub use trembita_runtime::{LeaderGate, LeaderLoopOpts, LeaderSession, run_leader_loop};
+
 pub use upgrade::upgrade_api;
 pub use upgrade::{
     ArtifactManifest, UpgradeCommand, UpgradeError, UpgradeMachine, UpgradeOpts, UpgradePhase,

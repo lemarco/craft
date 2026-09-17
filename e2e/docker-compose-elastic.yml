@@ -1,0 +1,119 @@
+# 4-node product cluster (dynamic join) + nginx round-robin LB — B-34.
+# Run: ./e2e/elastic_lb.sh
+
+x-elastic-build: &elastic-build
+  build:
+    context: ..
+    dockerfile: e2e/Dockerfile.elastic
+
+x-elastic-env: &elastic-env
+  TREMBITA_CERT_DIR: /certs
+  TREMBITA_DATA_DIR: /data
+  TREMBITA_LISTEN: 0.0.0.0:7443
+  TREMBITA_GATEWAY_SESSION_SECRET: e2e-elastic-secret-16b
+  RUST_LOG: warn,trembita=info,trembita_net=warn
+
+services:
+  certgen:
+    <<: *elastic-build
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        if [ ! -f /certs/ca.pem ]; then
+          /app/generate.sh --ca-only --out /certs
+          /app/generate.sh --node-id 0 --out /certs --ca /certs/ca.pem --ca-key /certs/ca.key
+          for id in 1 2 3 4; do
+            /app/generate.sh --node-id "$$id" --out /certs \
+              --ca /certs/ca.pem --ca-key /certs/ca.key
+          done
+        fi
+        ls -1 /certs
+    volumes:
+      - elastic-certs:/certs
+
+  node1:
+    <<: *elastic-build
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+    environment:
+      <<: *elastic-env
+      TREMBITA_ALLOW_JOIN: "1"
+    volumes:
+      - elastic-certs:/certs
+      - elastic-node1-data:/data
+    ports:
+      - "18181:7443"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:7443/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 45s
+
+  node2:
+    <<: *elastic-build
+    depends_on:
+      node1:
+        condition: service_healthy
+    environment:
+      <<: *elastic-env
+      TREMBITA_JOIN_SEEDS: 1@node1:7443
+    volumes:
+      - elastic-certs:/certs
+      - elastic-node2-data:/data
+    ports:
+      - "18182:7443"
+    restart: on-failure
+
+  node3:
+    <<: *elastic-build
+    depends_on:
+      node1:
+        condition: service_healthy
+    environment:
+      <<: *elastic-env
+      TREMBITA_JOIN_SEEDS: 1@node1:7443
+    volumes:
+      - elastic-certs:/certs
+      - elastic-node3-data:/data
+    ports:
+      - "18183:7443"
+    restart: on-failure
+
+  node4:
+    <<: *elastic-build
+    profiles: ["joiner"]
+    depends_on:
+      node1:
+        condition: service_healthy
+    environment:
+      <<: *elastic-env
+      TREMBITA_JOIN_SEEDS: 1@node1:7443
+    volumes:
+      - elastic-certs:/certs
+      - elastic-node4-data:/data
+    ports:
+      - "18184:7443"
+    restart: on-failure
+
+  lb:
+    image: nginx:1.27-alpine
+    profiles: ["lb"]
+    depends_on:
+      - node1
+      - node2
+      - node3
+      - node4
+    volumes:
+      - ./nginx-elastic.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "18180:8080"
+
+volumes:
+  elastic-certs: {}
+  elastic-node1-data: {}
+  elastic-node2-data: {}
+  elastic-node3-data: {}
+  elastic-node4-data: {}

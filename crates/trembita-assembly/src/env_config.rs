@@ -105,6 +105,8 @@ pub struct AppConfig {
     pub coordination_raft_groups: u32,
     /// Key routing shard count when multi-Raft is enabled (`TREMBITA_RAFT_SHARD_COUNT`).
     pub coordination_shard_count: Option<u32>,
+    /// Parsed `TREMBITA_COORDINATION_PROFILE` (B-37).
+    pub coordination_growth_profile: Option<crate::coordination_profile::CoordinationGrowthPreset>,
     /// HTTP connection drain timeout (`TREMBITA_HTTP_DRAIN_TIMEOUT`).
     pub http_drain_timeout: Duration,
     /// Explicit env vars that were set for this parse.
@@ -402,8 +404,36 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
     let job_queue_shards = parse_job_queue_shards(env("TREMBITA_JOB_QUEUE_SHARDS"));
     let job_queue_auto_shard = env_bool("TREMBITA_JOB_QUEUE_AUTO_SHARD");
     validate_job_queue_scale_env(job_queue_shards, job_queue_auto_shard)?;
-    let coordination_raft_groups = parse_coordination_raft_groups(env("TREMBITA_RAFT_GROUPS"));
-    let coordination_shard_count = parse_coordination_shard_count(env("TREMBITA_RAFT_SHARD_COUNT"));
+    let coordination_growth_profile = env("TREMBITA_COORDINATION_PROFILE")
+        .as_deref()
+        .and_then(crate::coordination_profile::parse_coordination_growth_profile);
+    if env("TREMBITA_COORDINATION_PROFILE").is_some() && coordination_growth_profile.is_none() {
+        return Err(
+            "TREMBITA_COORDINATION_PROFILE must be one of: standard, jobs_backlog, write_sharding, full"
+                .into(),
+        );
+    }
+    let mut coordination_raft_groups = parse_coordination_raft_groups(env("TREMBITA_RAFT_GROUPS"));
+    let mut coordination_shard_count =
+        parse_coordination_shard_count(env("TREMBITA_RAFT_SHARD_COUNT"));
+    let mut job_queue_auto_shard = job_queue_auto_shard;
+    if let Some(profile) = coordination_growth_profile {
+        let spec = profile.spec();
+        if env("TREMBITA_RAFT_GROUPS").is_none() {
+            coordination_raft_groups = spec.coordination_raft_groups;
+        }
+        if env("TREMBITA_RAFT_SHARD_COUNT").is_none() {
+            coordination_shard_count = spec.coordination_shard_count;
+        }
+        if spec.env_job_queue_auto_shard
+            && job_queue_stream.is_some()
+            && job_queue_shards.is_none()
+            && !env_bool("TREMBITA_JOB_QUEUE_AUTO_SHARD")
+        {
+            job_queue_auto_shard = true;
+        }
+    }
+    validate_job_queue_scale_env(job_queue_shards, job_queue_auto_shard)?;
     let http_tls = match (
         env("TREMBITA_HTTP_TLS_CERT").or_else(|| env("TREMBITA_GATEWAY_TLS_CERT")),
         env("TREMBITA_HTTP_TLS_KEY").or_else(|| env("TREMBITA_GATEWAY_TLS_KEY")),
@@ -462,6 +492,7 @@ pub fn app_config_from_env() -> Result<AppConfig, Box<dyn Error>> {
         job_queue_auto_shard,
         coordination_raft_groups,
         coordination_shard_count,
+        coordination_growth_profile,
         http_drain_timeout: http_drain_timeout_from_env(),
         env: env_overrides,
     })
@@ -640,6 +671,53 @@ mod b32_env_tests {
         for row in rows {
             let got = parse_coordination_shard_count(row.raw.map(str::to_string));
             assert_eq!(got, row.want, "raw={:?}", row.raw);
+        }
+    }
+
+    #[test]
+    fn b37_profile_write_sharding_fills_raft_when_env_unset() {
+        use crate::coordination_profile::CoordinationGrowthPreset;
+
+        let profile = CoordinationGrowthPreset::WriteSharding;
+        let spec = profile.spec();
+        assert_eq!(spec.coordination_raft_groups, 2);
+        assert_eq!(spec.coordination_shard_count, Some(64));
+    }
+
+    /// B-37 — env-only queue auto-shard is driven by [`CoordinationProfileSpec::env_job_queue_auto_shard`].
+    #[test]
+    fn b37_env_job_queue_auto_shard_from_profile_spec_table() {
+        use crate::coordination_profile::CoordinationGrowthPreset;
+
+        struct Row {
+            preset: CoordinationGrowthPreset,
+            want: bool,
+        }
+        let rows = [
+            Row {
+                preset: CoordinationGrowthPreset::Standard,
+                want: false,
+            },
+            Row {
+                preset: CoordinationGrowthPreset::JobsBacklog,
+                want: true,
+            },
+            Row {
+                preset: CoordinationGrowthPreset::WriteSharding,
+                want: false,
+            },
+            Row {
+                preset: CoordinationGrowthPreset::Full,
+                want: true,
+            },
+        ];
+        for row in rows {
+            assert_eq!(
+                row.preset.spec().env_job_queue_auto_shard,
+                row.want,
+                "{:?}",
+                row.preset
+            );
         }
     }
 

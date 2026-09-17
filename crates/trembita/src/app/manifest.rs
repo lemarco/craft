@@ -232,4 +232,29 @@ mod tests {
         let manifest = AppManifest::new().jobs([JobOpts::new("a"), JobOpts::new("b")]);
         assert_eq!(manifest.job_stream_names(), vec!["a", "b"]);
     }
+
+    /// B-41 — manifest can register [`ScheduleSourceOpts`] before boot.
+    #[test]
+    fn b41_manifest_schedule_source_chains_into_builder() {
+        use trembita_jobs::{RecurringJob, StaticScheduleSource};
+
+        let manifest = AppManifest::new()
+            .queue([QueueOpts::new("jobs", Duration::from_secs(30))])
+            .schedule_source(ScheduleSourceOpts {
+                stream: "jobs".into(),
+                source: Arc::new(StaticScheduleSource::new(vec![RecurringJob::new(
+                    "tick",
+                    "0 * * * *",
+                    b"x",
+                )])),
+                poll: trembita_jobs::SchedulePoll::secs(5),
+            });
+        let _builder = TrembitaApp::builder()
+            .configure(
+                TrembitaConfigure::default()
+                    .with_data_dir("/tmp/b41-sched-manifest")
+                    .with_local_gateway_apis(),
+            )
+            .manifest(manifest);
+    }
 }

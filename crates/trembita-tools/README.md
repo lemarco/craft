@@ -8,6 +8,7 @@ Workspace binaries and shared dev helpers (`publish = false`).
 | `trembita-ops` | Snapshot backup/restore |
 | `trembita-e2e-client` | Linearizability load generator |
 | `trembita-e2e-queue-client` | Queue E2E smoke client |
+| `trembita-e2e-elastic` | Product elastic + LB docker E2E app (B-34) |
 | `trembita-dev-client` | Dev QUIC client |
 | `trembita-showcase-client` | Product showcase HTTP/WS helper |
 

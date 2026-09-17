@@ -14,6 +14,59 @@ use serde::{Deserialize, Serialize};
 /// A boxed, `Send` future — object-safe return type for [`Observer`].
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+/// Elastic join lifecycle phase (B-35) — exposed on `/ready` and `/introspect/join-status`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum JoinPhase {
+    /// Not yet in committed voters/learners.
+    AwaitingMembership,
+    /// Membership committed; log replication in progress.
+    CatchingUp,
+    /// Caught up; waiting for supervisor auto-hosts (typical elastic learner).
+    AwaitingHosts,
+    /// Safe for HTTP/LB pool membership (`GET /ready` → 200).
+    PoolReady,
+}
+
+/// Detailed join pipeline snapshot (`GET /introspect/join-status`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct JoinStatusView {
+    /// This node's id.
+    pub node_id: u64,
+    /// Current pipeline phase.
+    pub phase: JoinPhase,
+    /// In the committed voter set.
+    pub committed_voter: bool,
+    /// In the committed learner set (elastic join default).
+    pub committed_learner: bool,
+    /// Applied index caught up to commit index.
+    pub log_caught_up: bool,
+    /// At least one auto-hosted worker/cap host registered locally.
+    pub hosts_wired: bool,
+    /// Local worker actor names (registry).
+    pub local_workers: Vec<String>,
+    /// Human-readable blocker when not [`JoinPhase::PoolReady`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl JoinStatusView {
+    /// Build from a [`Readiness`] snapshot (same underlying evaluation).
+    #[must_use]
+    pub fn from_readiness(r: &Readiness) -> Self {
+        Self {
+            node_id: r.node_id,
+            phase: r.join_phase,
+            committed_voter: r.member,
+            committed_learner: r.committed_learner,
+            log_caught_up: r.log_caught_up,
+            hosts_wired: r.hosts_wired,
+            local_workers: r.workers.clone(),
+            reason: r.reason.clone(),
+        }
+    }
+}
+
 /// Readiness snapshot for `GET /ready` (health-admin-port). `200` iff
 /// [`is_ready`](Readiness::is_ready).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,7 +75,7 @@ pub struct Readiness {
     pub node_id: u64,
     /// Current role (`leader`/`follower`/`candidate`/…).
     pub role: String,
-    /// Whether the node is a member of the current Raft configuration.
+    /// Whether the node is a **voting** Raft member (legacy `member` field).
     pub member: bool,
     /// Whether the node is draining/leaving (drain-timeout).
     pub draining: bool,
@@ -31,13 +84,22 @@ pub struct Readiness {
     /// Human-readable reason when not ready (e.g. `"joining"`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// B-35 join pipeline phase (always present on live observers).
+    pub join_phase: JoinPhase,
+    /// Committed learner set (elastic join).
+    pub committed_learner: bool,
+    /// Applied ≥ committed log index.
+    pub log_caught_up: bool,
+    /// Local supervisor has wired at least one host.
+    pub hosts_wired: bool,
 }
 
 impl Readiness {
-    /// A node is ready when it is a cluster member and not draining.
+    /// A node is ready for LB pool traffic when not draining and pipeline is pool-ready
+    /// (voters immediately; learners after catch-up + auto-hosts).
     #[must_use]
     pub fn is_ready(&self) -> bool {
-        self.member && !self.draining
+        !self.draining && self.join_phase == JoinPhase::PoolReady
     }
 }
 
@@ -264,6 +326,11 @@ mod readiness_tests {
     use super::Readiness;
 
     fn sample(member: bool, draining: bool) -> Readiness {
+        let phase = if draining || member {
+            super::JoinPhase::PoolReady
+        } else {
+            super::JoinPhase::AwaitingMembership
+        };
         Readiness {
             node_id: 1,
             role: "leader".into(),
@@ -271,6 +338,10 @@ mod readiness_tests {
             draining,
             workers: Vec::new(),
             reason: None,
+            join_phase: phase,
+            committed_learner: false,
+            log_caught_up: member,
+            hosts_wired: member,
         }
     }
 
@@ -306,5 +377,57 @@ mod readiness_tests {
         let mut r = sample(true, false);
         r.workers = vec!["w#1".into(), "w#2".into()];
         assert!(r.is_ready());
+    }
+
+    /// B-35 — `/ready` pool membership follows `join_phase`, not legacy `member` alone.
+    #[test]
+    fn b35_is_ready_join_phase_scenarios_table() {
+        fn readiness(phase: super::JoinPhase, member: bool, draining: bool) -> Readiness {
+            Readiness {
+                node_id: 4,
+                role: if member {
+                    "follower".into()
+                } else {
+                    "learner".into()
+                },
+                member,
+                draining,
+                workers: Vec::new(),
+                reason: None,
+                join_phase: phase,
+                committed_learner: !member,
+                log_caught_up: phase != super::JoinPhase::AwaitingMembership
+                    && phase != super::JoinPhase::CatchingUp,
+                hosts_wired: phase == super::JoinPhase::PoolReady,
+            }
+        }
+
+        assert!(!readiness(super::JoinPhase::AwaitingMembership, false, false).is_ready());
+        assert!(!readiness(super::JoinPhase::CatchingUp, false, false).is_ready());
+        assert!(!readiness(super::JoinPhase::AwaitingHosts, false, false).is_ready());
+        assert!(readiness(super::JoinPhase::PoolReady, true, false).is_ready());
+        assert!(readiness(super::JoinPhase::PoolReady, false, false).is_ready());
+        assert!(!readiness(super::JoinPhase::PoolReady, true, true).is_ready());
+    }
+
+    #[test]
+    fn b35_join_status_view_from_readiness_preserves_phase_and_workers() {
+        let r = Readiness {
+            node_id: 6,
+            role: "learner".into(),
+            member: false,
+            draining: false,
+            workers: vec!["workers#1".into()],
+            reason: Some("learner".into()),
+            join_phase: super::JoinPhase::PoolReady,
+            committed_learner: true,
+            log_caught_up: true,
+            hosts_wired: true,
+        };
+        let view = super::JoinStatusView::from_readiness(&r);
+        assert_eq!(view.phase, super::JoinPhase::PoolReady);
+        assert_eq!(view.local_workers, vec!["workers#1"]);
+        assert_eq!(view.reason.as_deref(), Some("learner"));
+        assert!(view.committed_learner);
     }
 }

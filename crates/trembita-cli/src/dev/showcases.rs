@@ -150,3 +150,40 @@ impl Showcase {
         format!("1@127.0.0.1:{}", self.base_port)
     }
 }
+
+#[cfg(test)]
+mod b39_tests {
+    use super::*;
+
+    /// B-39 — base ports match [`scripts/founder-cluster.sh`](../../../../scripts/founder-cluster.sh).
+    #[test]
+    fn b39_founder_showcase_base_ports_match_script_table() {
+        struct Row {
+            id: &'static str,
+            base: u16,
+        }
+        let rows = [
+            Row {
+                id: "realtime",
+                base: 8290,
+            },
+            Row {
+                id: "background-jobs",
+                base: 8090,
+            },
+            Row {
+                id: "stateful-workers",
+                base: 8190,
+            },
+            Row {
+                id: "workflows",
+                base: 8490,
+            },
+        ];
+        for row in rows {
+            let s = find(row.id).unwrap_or_else(|| panic!("showcase {}", row.id));
+            assert_eq!(s.base_port, row.base, "{}", row.id);
+            assert_eq!(s.listen_addr(3), format!("127.0.0.1:{}", row.base + 2));
+        }
+    }
+}

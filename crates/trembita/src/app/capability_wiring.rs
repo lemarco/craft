@@ -41,6 +41,7 @@ impl<S: Send + Default + 'static> CapGroupApply for CapGroup<S> {
         let group = *self;
         let name = group.name();
         let scale = group.resolved_scale();
+        builder.scale_plan.record_capability_group(name, scale);
         let queue_stream = group.queued_stream();
         let event_ingress = group.event_ingress_spec();
         let config = group.host_config(builder.cap_runtime.app_slot());

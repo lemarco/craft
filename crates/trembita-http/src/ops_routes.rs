@@ -161,23 +161,47 @@ mod tests {
     use std::collections::HashMap;
 
     use http::HeaderMap;
-    use trembita_dashboard::BoxFuture;
+    use trembita_dashboard::{BoxFuture, JoinPhase};
 
     use crate::ResponseBody;
+
+    fn readiness_fixture(
+        node_id: u64,
+        role: &str,
+        member: bool,
+        draining: bool,
+        workers: Vec<String>,
+        phase: JoinPhase,
+        reason: Option<String>,
+    ) -> Readiness {
+        Readiness {
+            node_id,
+            role: role.into(),
+            member,
+            draining,
+            workers: workers.clone(),
+            reason,
+            join_phase: phase,
+            committed_learner: !member && phase != JoinPhase::AwaitingMembership,
+            log_caught_up: !matches!(phase, JoinPhase::AwaitingMembership | JoinPhase::CatchingUp),
+            hosts_wired: member || !workers.is_empty(),
+        }
+    }
 
     #[derive(Clone)]
     struct FakeObserver(Readiness);
 
     impl FakeObserver {
         fn ready_leader() -> Self {
-            Self(Readiness {
-                node_id: 1,
-                role: "leader".into(),
-                member: true,
-                draining: false,
-                workers: Vec::new(),
-                reason: None,
-            })
+            Self(readiness_fixture(
+                1,
+                "leader",
+                true,
+                false,
+                Vec::new(),
+                JoinPhase::PoolReady,
+                None,
+            ))
         }
     }
 
@@ -278,110 +302,132 @@ mod tests {
         let scenarios: &[(&str, Readiness, StatusCode)] = &[
             (
                 "member leader in pool",
-                Readiness {
-                    node_id: 1,
-                    role: "leader".into(),
-                    member: true,
-                    draining: false,
-                    workers: vec!["w#1".into()],
-                    reason: None,
-                },
+                readiness_fixture(
+                    1,
+                    "leader",
+                    true,
+                    false,
+                    vec!["w#1".into()],
+                    JoinPhase::PoolReady,
+                    None,
+                ),
                 StatusCode::OK,
             ),
             (
                 "member follower in pool",
-                Readiness {
-                    node_id: 2,
-                    role: "follower".into(),
-                    member: true,
-                    draining: false,
-                    workers: Vec::new(),
-                    reason: None,
-                },
+                readiness_fixture(
+                    2,
+                    "follower",
+                    true,
+                    false,
+                    Vec::new(),
+                    JoinPhase::PoolReady,
+                    None,
+                ),
                 StatusCode::OK,
             ),
             (
                 "joining not in pool",
-                Readiness {
-                    node_id: 3,
-                    role: "follower".into(),
-                    member: false,
-                    draining: false,
-                    workers: Vec::new(),
-                    reason: Some("joining".into()),
-                },
+                readiness_fixture(
+                    3,
+                    "follower",
+                    false,
+                    false,
+                    Vec::new(),
+                    JoinPhase::AwaitingMembership,
+                    Some("joining".into()),
+                ),
                 StatusCode::SERVICE_UNAVAILABLE,
             ),
             (
                 "draining removed from pool",
-                Readiness {
-                    node_id: 1,
-                    role: "leader".into(),
-                    member: true,
-                    draining: true,
-                    workers: Vec::new(),
-                    reason: Some("drain".into()),
-                },
+                readiness_fixture(
+                    1,
+                    "leader",
+                    true,
+                    true,
+                    Vec::new(),
+                    JoinPhase::PoolReady,
+                    Some("drain".into()),
+                ),
                 StatusCode::SERVICE_UNAVAILABLE,
             ),
             (
                 "non-member without reason",
-                Readiness {
-                    node_id: 4,
-                    role: "learner".into(),
-                    member: false,
-                    draining: false,
-                    workers: Vec::new(),
-                    reason: None,
-                },
+                readiness_fixture(
+                    4,
+                    "learner",
+                    false,
+                    false,
+                    Vec::new(),
+                    JoinPhase::CatchingUp,
+                    None,
+                ),
                 StatusCode::SERVICE_UNAVAILABLE,
             ),
             (
                 "member draining even with workers",
-                Readiness {
-                    node_id: 2,
-                    role: "follower".into(),
-                    member: true,
-                    draining: true,
-                    workers: vec!["w#9".into()],
-                    reason: Some("upgrade".into()),
-                },
+                readiness_fixture(
+                    2,
+                    "follower",
+                    true,
+                    true,
+                    vec!["w#9".into()],
+                    JoinPhase::PoolReady,
+                    Some("upgrade".into()),
+                ),
                 StatusCode::SERVICE_UNAVAILABLE,
             ),
             (
                 "candidate still member",
-                Readiness {
-                    node_id: 1,
-                    role: "candidate".into(),
-                    member: true,
-                    draining: false,
-                    workers: Vec::new(),
-                    reason: None,
-                },
+                readiness_fixture(
+                    1,
+                    "candidate",
+                    true,
+                    false,
+                    Vec::new(),
+                    JoinPhase::PoolReady,
+                    None,
+                ),
                 StatusCode::OK,
             ),
             (
-                "learner not in voter pool",
-                Readiness {
-                    node_id: 5,
-                    role: "learner".into(),
-                    member: false,
-                    draining: false,
-                    workers: Vec::new(),
-                    reason: Some("learner".into()),
-                },
+                "learner awaiting hosts",
+                readiness_fixture(
+                    5,
+                    "learner",
+                    false,
+                    false,
+                    Vec::new(),
+                    JoinPhase::AwaitingHosts,
+                    Some("learner".into()),
+                ),
                 StatusCode::SERVICE_UNAVAILABLE,
             ),
             (
+                "elastic learner in pool after hosts",
+                readiness_fixture(
+                    6,
+                    "learner",
+                    false,
+                    false,
+                    vec!["workers".into()],
+                    JoinPhase::PoolReady,
+                    None,
+                ),
+                StatusCode::OK,
+            ),
+            (
                 "rolling upgrade drain flag",
-                Readiness {
-                    node_id: 2,
-                    role: "follower".into(),
-                    member: true,
-                    draining: true,
-                    workers: vec!["w#2".into()],
-                    reason: Some("rolling-upgrade".into()),
-                },
+                readiness_fixture(
+                    2,
+                    "follower",
+                    true,
+                    true,
+                    vec!["w#2".into()],
+                    JoinPhase::PoolReady,
+                    Some("rolling-upgrade".into()),
+                ),
                 StatusCode::SERVICE_UNAVAILABLE,
             ),
         ];
@@ -417,7 +463,24 @@ mod tests {
                 Some(readiness.draining),
                 "{name}: draining field"
             );
+            assert_eq!(
+                json["join_phase"],
+                serde_json::to_value(readiness.join_phase).expect("join_phase json"),
+                "{name}: join_phase field"
+            );
         }
+    }
+
+    #[test]
+    fn b35_join_phase_serializes_snake_case() {
+        assert_eq!(
+            serde_json::to_value(JoinPhase::AwaitingMembership).unwrap(),
+            "awaiting_membership"
+        );
+        assert_eq!(
+            serde_json::to_value(JoinPhase::PoolReady).unwrap(),
+            "pool_ready"
+        );
     }
 
     async fn dispatch_open_status(

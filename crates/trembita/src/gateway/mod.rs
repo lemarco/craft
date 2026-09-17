@@ -35,8 +35,11 @@ pub type GatewayTlsPaths = AdminTlsPaths;
 pub use auth_profile::GatewayAuthProfile;
 #[cfg(feature = "http-jobs")]
 pub use cluster_session::{
-    ClusterSessionError, ClusterSessionSecret, VerifiedClusterSession, capstore_session_gate,
-    cluster_session_gate, register_capstore_session, session_user_from_cookie,
+    CapStoreGatewaySessionStore, CapStoreSessionIssuer, CapStoreSessionVerifier,
+    ClusterSessionError, ClusterSessionSecret, GatewaySessionStore, SignedCookieSessionIssuer,
+    SignedCookieSessionVerifier, VerifiedClusterSession, capstore_session_gate,
+    cluster_session_gate, register_capstore_session, revoke_capstore_session,
+    rotating_cluster_session_gate, session_user_from_cookie, session_user_from_verifier,
     verify_capstore_session,
 };
 pub(crate) use config::GatewaySurfacesFn;

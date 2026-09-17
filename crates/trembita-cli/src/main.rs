@@ -8,11 +8,13 @@ use std::process;
 use clap::{Parser, Subcommand, ValueHint};
 use trembita_cli::{
     AddKind, AppTemplate, NewProjectOpts, TrembitaProject, default_output,
-    resolve_scaffold_features, run_add, run_doctor, run_doctor_fix, scaffold_project,
+    resolve_scaffold_features, run_add, run_doctor, run_doctor_fix, run_explain_scale,
+    scaffold_project,
 };
 #[cfg(debug_assertions)]
 use trembita_cli::{
-    dev_http, dev_setup, dev_status, dev_stop, dev_trigger, dev_up, list_showcases,
+    dev_cluster_lb_down, dev_cluster_lb_up, dev_cluster_up, dev_http, dev_setup, dev_status,
+    dev_stop, dev_trigger, dev_up, list_showcases,
 };
 
 #[derive(Parser)]
@@ -35,9 +37,12 @@ enum Command {
         /// Parent directory (default: current directory).
         #[arg(long, value_hint = ValueHint::DirPath)]
         output: Option<PathBuf>,
-        /// Preset: jobs, realtime, workflows, topics (sets default features + manifest stubs).
+        /// Preset: jobs, realtime, workflows, topics, api (sets default features + manifest stubs).
         #[arg(long, value_parser = parse_template_arg)]
         template: Option<AppTemplate>,
+        /// Alias for `--template` (B-38): jobs | realtime | api | workflows | topics.
+        #[arg(long, value_parser = parse_template_arg)]
+        profile: Option<AppTemplate>,
         /// Comma-separated features (overrides `--template` when non-empty).
         #[arg(long, default_value = "")]
         features: String,
@@ -65,6 +70,9 @@ enum Command {
         /// Apply safe mechanical fixes (e.g. simplify `.run()` in app.rs).
         #[arg(long)]
         fix: bool,
+        /// Print founder scale narrative + B-31 footguns (no full layout lint).
+        #[arg(long)]
+        explain_scale: bool,
     },
     /// Register a job stream or topic in `manifest.rs` (scaffold marker regions).
     Add {
@@ -144,6 +152,29 @@ enum DevCommand {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
+    /// Founder 3-node cluster: shared session secret + smoke hints (B-39).
+    ClusterUp {
+        /// Showcase id (default: `realtime` — login + cluster cookies).
+        #[arg(long)]
+        showcase: Option<String>,
+        /// Number of nodes (1–8).
+        #[arg(long, default_value_t = 3)]
+        nodes: u32,
+        /// Run setup (certs + build) before starting.
+        #[arg(long)]
+        setup: bool,
+        /// Start optional nginx LB on :18290 (requires Docker).
+        #[arg(long)]
+        lb: bool,
+    },
+    /// Start nginx LB on :18290 (nodes must already be up; requires Docker).
+    ClusterLbUp {
+        /// Showcase id (ports for upstream).
+        #[arg(long)]
+        showcase: Option<String>,
+    },
+    /// Stop founder nginx LB container.
+    ClusterLbDown,
 }
 
 fn main() {
@@ -173,10 +204,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             name,
             output,
             template,
+            profile,
             features,
             trembita_path,
             trembita_version,
         } => {
+            let template = profile.or(template);
             let features = resolve_scaffold_features(template, &features)?;
             let output =
                 output.unwrap_or_else(|| default_output(&std::env::current_dir().expect("cwd")));
@@ -218,11 +251,20 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 gateway,
                 args,
             } => dev_http(Some(&showcase), gateway.as_deref(), &args)?,
+            DevCommand::ClusterUp {
+                showcase,
+                nodes,
+                setup,
+                lb,
+            } => dev_cluster_up(showcase.as_deref(), nodes, setup, lb)?,
+            DevCommand::ClusterLbUp { showcase } => dev_cluster_lb_up(showcase.as_deref())?,
+            DevCommand::ClusterLbDown => dev_cluster_lb_down()?,
         },
         Command::Doctor {
             path,
             preflight,
             fix,
+            explain_scale,
         } => {
             let project = resolve_project(path.as_deref())?;
             if fix {
@@ -234,6 +276,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                         eprintln!("fix: {action}");
                     }
                 }
+            }
+            if explain_scale {
+                eprintln!("Scale model for {} …", project.root.display());
+                let report = run_explain_scale(&project);
+                let code = report.print_and_exit_code();
+                if code != 0 {
+                    process::exit(code);
+                }
+                return Ok(());
             }
             eprintln!("Checking {} …", project.root.display());
             if preflight {

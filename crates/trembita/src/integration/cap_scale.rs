@@ -145,6 +145,11 @@ async fn auto_scale_marker_state_spawns_one_host_per_node() {
     wait_for_group_leaders(leader.cluster()).await;
     wait_pool_size(&leader, "scale_ping", 3).await;
 
+    let plan = leader.scale_plan();
+    assert_eq!(plan.capability_groups.len(), 1);
+    assert_eq!(plan.capability_groups[0].group, "scale_ping");
+    assert_eq!(plan.capability_groups[0].hosts, "PerNode");
+
     let nodes = leader.cluster_ref("scale_ping").nodes();
     assert_eq!(nodes, members.to_vec());
 
@@ -175,6 +180,9 @@ async fn explicit_instances_pins_cluster_wide_pool_on_marker_state() {
     let leader = find_leader_app(&apps).await;
     wait_for_group_leaders(leader.cluster()).await;
     wait_pool_size(&leader, "scale_ping", 2).await;
+
+    let plan = leader.scale_plan();
+    assert_eq!(plan.capability_groups[0].hosts, "Fixed(2)");
 
     for app in &apps {
         app.shutdown();
@@ -234,6 +242,8 @@ async fn auto_scale_shared_ram_state_spawns_single_cluster_host() {
     let leader = find_leader_app(&apps).await;
     wait_for_group_leaders(leader.cluster()).await;
     wait_pool_size(&leader, "scale_math", 1).await;
+
+    assert_eq!(leader.scale_plan().capability_groups[0].hosts, "Fixed(1)");
 
     let sum1 = Add { n: 1 }
         .via(apps[0].as_ref())

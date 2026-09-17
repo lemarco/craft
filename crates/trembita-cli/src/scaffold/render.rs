@@ -137,6 +137,10 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
         Some(AppTemplate::Workflows) => {
             "//! Capability groups — saga side effects.\n\npub mod onboarding;\n".to_string()
         }
+        Some(AppTemplate::Jobs) => {
+            "//! Capability groups — queued idempotency reference (R4).\n\npub mod task;\n"
+                .to_string()
+        }
         _ => vars.apply(app_tpl!("src/capabilities/mod.rs.tpl")),
     };
     write_file(&root.join("src/capabilities/mod.rs"), &capabilities_mod)?;
@@ -151,6 +155,12 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
             write_file(
                 &root.join("src/capabilities/onboarding.rs"),
                 &vars.apply(app_tpl!("src/capabilities/onboarding.rs.tpl")),
+            )?;
+        }
+        Some(AppTemplate::Jobs) => {
+            write_file(
+                &root.join("src/capabilities/task.rs"),
+                &vars.apply(app_tpl!("src/capabilities/task.rs.tpl")),
             )?;
         }
         _ => {
@@ -182,10 +192,10 @@ pub fn scaffold_project(opts: &NewProjectOpts) -> Result<PathBuf, ScaffoldError>
                 &vars.apply(app_tpl!("src/http/jobs.rs.tpl")),
             )?;
         }
-        let product_rs = if opts.template == Some(AppTemplate::Realtime) {
-            generate_realtime_product_rs()
-        } else {
-            vars.apply(app_tpl!("src/http/product.rs.tpl"))
+        let product_rs = match opts.template {
+            Some(AppTemplate::Realtime) => generate_realtime_product_rs(),
+            Some(AppTemplate::Jobs) => generate_jobs_product_rs(),
+            _ => vars.apply(app_tpl!("src/http/product.rs.tpl")),
         };
         write_file(&root.join("src/http/product.rs"), &product_rs)?;
     }
@@ -376,6 +386,9 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
                 "use crate::workflows::onboarding::{build_plan, run_onboarding_plan};".to_string(),
             );
         }
+        Some(AppTemplate::Jobs) => {
+            imports.push("use crate::capabilities::task;".to_string());
+        }
         _ => {
             imports.push("use crate::capabilities::ping;".to_string());
         }
@@ -439,6 +452,16 @@ fn generate_manifest_rs(opts: &NewProjectOpts, features: &HashSet<AppFeature>) -
         .capabilities(
             // trembita:capabilities
             onboarding::manifest(),
+            // trembita:capabilities-end
+        )"#,
+            );
+        }
+        Some(AppTemplate::Jobs) => {
+            chain.push_str(
+                r#"
+        .capabilities(
+            // trembita:capabilities
+            task::manifest(),
             // trembita:capabilities-end
         )"#,
             );
@@ -634,6 +657,26 @@ fn generate_actors_mod_rs(_opts: &NewProjectOpts) -> String {
 
 fn generate_realtime_capabilities_mod() -> String {
     "//! Capability groups — sticky session chat in `chat`.\n\npub mod chat;\n".to_string()
+}
+
+fn generate_jobs_product_rs() -> String {
+    r##"//! App-specific HTTP routes — queued capability enqueue (R4 idempotency in handler).
+
+use trembita::{ProductRoutes, Route, RouteTable, TrembitaGatewayState, cap_enqueue};
+
+use crate::capabilities::task::RunTask;
+
+/// Custom product routes (webhooks, BFF handlers, capability HTTP, …).
+#[must_use]
+pub fn route_table(state: TrembitaGatewayState) -> RouteTable {
+    ProductRoutes::new()
+        // trembita:product-routes
+        .post("/tasks", cap_enqueue::<RunTask>(state, Route::Queued))
+        // trembita:product-routes-end
+        .build()
+}
+"##
+    .to_string()
 }
 
 fn generate_realtime_product_rs() -> String {

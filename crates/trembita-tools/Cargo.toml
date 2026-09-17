@@ -39,8 +39,14 @@ path = "src/bin/dev-client.rs"
 name = "trembita-showcase-client"
 path = "src/bin/showcase-client.rs"
 
+[[bin]]
+name = "trembita-e2e-elastic"
+path = "src/bin/e2e-elastic.rs"
+
 [dependencies]
-trembita = { workspace = true, features = ["dev-certs"] }
+trembita = { workspace = true, features = ["dev-certs", "http-jobs"] }
+trembita-http.workspace = true
+http.workspace = true
 trembita-runtime.workspace = true
 trembita-client.workspace = true
 trembita-net.workspace = true
@@ -51,6 +57,7 @@ flate2.workspace = true
 opendal.workspace = true
 tar.workspace = true
 thiserror.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 futures-util.workspace = true

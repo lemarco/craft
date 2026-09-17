@@ -1,0 +1,15 @@
+# Optional round-robin LB for founder local cluster (B-39).
+# Backends must be reachable from the container (host.docker.internal).
+#
+#   FOUNDER_NODE1_PORT=8290 FOUNDER_NODE2_PORT=8291 FOUNDER_NODE3_PORT=8292 \
+#     docker compose -f dev/founder-3node/docker-compose.yml up -d
+#
+services:
+  lb:
+    image: nginx:alpine
+    ports:
+      - "${FOUNDER_LB_PORT:-18290}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./nginx.generated.conf:/etc/nginx/conf.d/default.conf:ro

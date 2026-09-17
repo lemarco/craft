@@ -11,6 +11,9 @@ TREMBITA_ALLOW_JOIN=1
 # Joiners only (uncomment on node 2+)
 # TREMBITA_JOIN_SEEDS=1@node1:443
 
+# Multi-node gateway (required when joiners use TREMBITA_JOIN_SEEDS — same value on every node)
+# TREMBITA_GATEWAY_SESSION_SECRET=change-me-at-least-16-bytes
+
 # Optional
 GATEWAY_TOKEN=dev-change-me
 # TREMBITA_JOB_QUEUE=app.jobs

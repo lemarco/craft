@@ -33,6 +33,7 @@ use trembita_proto::{ActorEnvelope, ActorRegistration, DeliverAck, NodeId};
 use crate::ActorRegistry;
 use crate::compute_token::{ComputeTokenPool, with_compute_guard};
 use crate::directory::ActorDirectory;
+use crate::directory_delivery::DirectoryDeliveryStats;
 use crate::directory_policy::{DirectoryPolicy, DirectoryRetry};
 use crate::mailbox_spool::{MailboxSpool, MailboxSpoolId};
 use crate::registry::DeliverError;
@@ -145,6 +146,8 @@ pub struct ClusterMessaging {
     compute_tokens: Option<Arc<ComputeTokenPool>>,
     /// Optional durable outbox/inbox ([`MailboxSpool`]).
     spool: Option<Arc<dyn MailboxSpool>>,
+    /// R3 delivery counters (optional; installed by assembly).
+    directory_stats: Option<Arc<DirectoryDeliveryStats>>,
 }
 
 impl ClusterMessaging {
@@ -189,6 +192,26 @@ impl ClusterMessaging {
             directory_retry_boost_until_ms: AtomicU64::new(0),
             compute_tokens: None,
             spool: None,
+            directory_stats: None,
+        }
+    }
+
+    /// Attach shared directory delivery counters (B-36).
+    #[must_use]
+    pub fn with_directory_stats(mut self, stats: Arc<DirectoryDeliveryStats>) -> Self {
+        self.directory_stats = Some(stats);
+        self
+    }
+
+    /// Shared R3 delivery stats, when installed.
+    #[must_use]
+    pub fn directory_stats(&self) -> Option<&Arc<DirectoryDeliveryStats>> {
+        self.directory_stats.as_ref()
+    }
+
+    fn record_no_target(&self, group: &str) {
+        if let Some(stats) = &self.directory_stats {
+            stats.record_no_target(group);
         }
     }
 
@@ -280,6 +303,18 @@ impl ClusterMessaging {
         self.directory_policy
     }
 
+    /// Configured RYW retry budget (before rebalance boost).
+    #[must_use]
+    pub fn directory_retry(&self) -> DirectoryRetry {
+        self.directory_retry
+    }
+
+    /// Whether post-rebalance directory retry boost is active.
+    #[must_use]
+    pub fn directory_retry_boost_active(&self) -> bool {
+        unix_now_ms() < self.directory_retry_boost_until_ms.load(Ordering::SeqCst)
+    }
+
     /// This node's id.
     #[must_use]
     pub fn node_id(&self) -> NodeId {
@@ -324,9 +359,11 @@ impl ClusterMessaging {
         session: &ActorSession,
         payload: Vec<u8>,
     ) -> Result<(), CastError> {
-        let target = self
-            .resolve_session(session)
-            .ok_or_else(|| CastError::NoTarget(session.target().name.as_str().to_string()))?;
+        let group = session.target().name.as_str();
+        let target = self.resolve_session(session).ok_or_else(|| {
+            self.record_no_target(group);
+            CastError::NoTarget(group.to_string())
+        })?;
         self.deliver(target, payload).await
     }
 
@@ -389,9 +426,11 @@ impl ClusterMessaging {
         session: &ActorSession,
         payload: Vec<u8>,
     ) -> Result<Vec<u8>, AskError> {
-        let target = self
-            .resolve_session(session)
-            .ok_or_else(|| AskError::NoTarget(session.target().name.as_str().to_string()))?;
+        let group = session.target().name.as_str();
+        let target = self.resolve_session(session).ok_or_else(|| {
+            self.record_no_target(group);
+            AskError::NoTarget(group.to_string())
+        })?;
         self.deliver_ask(target, payload).await
     }
 
@@ -426,7 +465,10 @@ impl ClusterMessaging {
     ) -> Result<ActorRegistration, CastError> {
         self.pick_with_policy(group, policy, || self.directory.pick_rr(group))
             .await
-            .ok_or_else(|| CastError::NoTarget(group.to_string()))
+            .ok_or_else(|| {
+                self.record_no_target(group);
+                CastError::NoTarget(group.to_string())
+            })
     }
 
     async fn resolve_keyed<K: Hash>(
@@ -437,7 +479,10 @@ impl ClusterMessaging {
     ) -> Result<ActorRegistration, CastError> {
         self.pick_with_policy(group, policy, || self.directory.pick_keyed(group, key))
             .await
-            .ok_or_else(|| CastError::NoTarget(group.to_string()))
+            .ok_or_else(|| {
+                self.record_no_target(group);
+                CastError::NoTarget(group.to_string())
+            })
     }
 
     async fn resolve_rr_ask(
@@ -447,7 +492,10 @@ impl ClusterMessaging {
     ) -> Result<ActorRegistration, AskError> {
         self.pick_with_policy(group, policy, || self.directory.pick_rr(group))
             .await
-            .ok_or_else(|| AskError::NoTarget(group.to_string()))
+            .ok_or_else(|| {
+                self.record_no_target(group);
+                AskError::NoTarget(group.to_string())
+            })
     }
 
     async fn resolve_keyed_ask<K: Hash>(
@@ -458,7 +506,10 @@ impl ClusterMessaging {
     ) -> Result<ActorRegistration, AskError> {
         self.pick_with_policy(group, policy, || self.directory.pick_keyed(group, key))
             .await
-            .ok_or_else(|| AskError::NoTarget(group.to_string()))
+            .ok_or_else(|| {
+                self.record_no_target(group);
+                AskError::NoTarget(group.to_string())
+            })
     }
 
     fn resolve_session(&self, session: &ActorSession) -> Option<ActorRegistration> {

@@ -28,6 +28,7 @@ use trembita_runtime::{DirectoryPolicy, DirectoryRetry, LeaderGate, LeaderLoopOp
 use super::manifest::AppManifest;
 use super::run_hint::ManifestRunHint;
 use super::runtime::TrembitaApp;
+use super::scale_plan::ProductScalePlan;
 use super::types::{
     EmptyStateMachine, GatewayProductApiExclusions, TrembitaAppGatewayApiFlags,
     TrembitaAppRegistrationFlags,
@@ -70,6 +71,12 @@ pub struct TrembitaAppBuilder {
     run_hint: ManifestRunHint,
     pub(crate) cap_runtime: CapRuntime,
     cap_deps: Option<CapDeps>,
+    pub(crate) scale_plan: ProductScalePlan,
+    /// B-37 preset applied to standard manifest queues ([`Self::configure`]).
+    coordination_growth_preset:
+        Option<trembita_assembly::coordination_profile::CoordinationGrowthPreset>,
+    /// B-41 — [`TrembitaConfigure::with_durable_mailbox`].
+    durable_mailbox: bool,
 }
 
 impl TrembitaAppBuilder {
@@ -105,6 +112,9 @@ impl TrembitaAppBuilder {
             run_hint: ManifestRunHint::default(),
             cap_runtime: CapRuntime::empty(),
             cap_deps: None,
+            scale_plan: ProductScalePlan::default(),
+            coordination_growth_preset: None,
+            durable_mailbox: false,
         }
     }
 
@@ -123,7 +133,8 @@ impl TrembitaAppBuilder {
         // R3: product capability delivery uses directory RYW (spawn, scale, rebalance).
         builder.inner = builder
             .inner
-            .directory_policy(DirectoryPolicy::ReadYourWrites);
+            .directory_policy(DirectoryPolicy::ReadYourWrites)
+            .directory_retry(DirectoryRetry::default());
         builder
     }
 
@@ -131,7 +142,10 @@ impl TrembitaAppBuilder {
     ///
     /// [`AppManifest`](super::manifest::AppManifest) capabilities enable
     /// [`DirectoryPolicy::ReadYourWrites`] by default (brief retry on `NoTarget` after
-    /// spawn, scale, or Raft group rebalance). Override for lowest-latency advanced paths.
+    /// spawn, scale, or Raft group rebalance). Default retry: **8** attempts × **25 ms**
+    /// ([`DirectoryRetry::default`](trembita_runtime::DirectoryRetry::default)); assembly
+    /// boosts to [`DirectoryRetry::after_rebalance`](trembita_runtime::DirectoryRetry::after_rebalance)
+    /// for **3 s** after multi-Raft group adopt/retire. Override for lowest-latency advanced paths.
     #[must_use]
     pub fn directory_policy(mut self, policy: DirectoryPolicy) -> Self {
         self.inner = self.inner.directory_policy(policy);
@@ -139,7 +153,7 @@ impl TrembitaAppBuilder {
     }
 
     /// Retry budget when [`directory_policy`](Self::directory_policy) is
-    /// [`DirectoryPolicy::ReadYourWrites`].
+    /// [`DirectoryPolicy::ReadYourWrites`] (default **8 × 25 ms** on capability apps).
     #[must_use]
     pub fn directory_retry(mut self, retry: DirectoryRetry) -> Self {
         self.inner = self.inner.directory_retry(retry);
@@ -197,6 +211,13 @@ impl TrembitaAppBuilder {
         self
     }
 
+    fn apply_growth_to_queue_opts(&self, mut opts: QueueOpts) -> QueueOpts {
+        if let Some(preset) = self.coordination_growth_preset {
+            opts = opts.with_coordination_growth_preset(preset);
+        }
+        opts
+    }
+
     fn mount_queue_stream(
         inner: TrembitaClusterBuilder<EmptyStateMachine>,
         opts: &QueueOpts,
@@ -233,6 +254,8 @@ impl TrembitaAppBuilder {
     /// Merge env-only settings into `builder` when not already set in code.
     fn apply_env_config(mut self, cfg: &AppConfig) -> Self {
         self.inner = Self::apply_env_coordination(self.inner.merge_app_config(cfg), cfg);
+        self.scale_plan
+            .set_coordination(cfg.coordination_raft_groups, cfg.coordination_shard_count);
         if let Some(stream) = cfg.job_queue_stream.clone()
             && !self.registration.jobs
         {
@@ -240,17 +263,27 @@ impl TrembitaAppBuilder {
             self.queue_streams.insert(stream.clone());
             let mut opts = QueueOpts::new(stream, cfg.job_queue_lease);
             if cfg.job_queue_auto_shard {
-                opts = opts.auto_shard();
+                let policy = cfg
+                    .coordination_growth_profile
+                    .map(|p| p.spec().auto_shard_policy)
+                    .unwrap_or_default();
+                opts = opts.auto_shard_policy(policy);
             } else if let Some(shards) = cfg.job_queue_shards {
                 opts = opts.sharded(shards);
             }
             self = self.queue([opts]);
+        }
+        if let Some(preset) = cfg.coordination_growth_profile {
+            self.coordination_growth_preset = Some(preset);
         }
         if let Some(gateway) = self.gateway.as_mut()
             && gateway.tls.is_none()
             && let Some((cert, key)) = cfg.http_tls.clone()
         {
             gateway.tls = Some(crate::gateway::GatewayTlsPaths { cert, key });
+        }
+        if !cfg.join_seeds.is_empty() {
+            self.run_hint.join_pool_wait = true;
         }
         self
     }
@@ -408,7 +441,8 @@ impl TrembitaAppBuilder {
             }
             self.registration.jobs = true;
             self.queue_streams.insert(reg.stream.clone());
-            self.inner = Self::mount_queue_stream(self.inner, &reg.queue);
+            let queue = self.apply_growth_to_queue_opts(reg.queue);
+            self.inner = Self::mount_queue_stream(self.inner, &queue);
             if let Some((backlog, opts)) = reg.backlog {
                 self.inner = self
                     .inner
@@ -432,6 +466,8 @@ impl TrembitaAppBuilder {
         for opts in queues {
             self.registration.jobs = true;
             self.queue_streams.insert(opts.name.clone());
+            let opts = self.apply_growth_to_queue_opts(opts);
+            self.scale_plan.record_job_queue(&opts.name, &opts.scale);
             self.inner = Self::mount_queue_stream(self.inner, &opts);
         }
         self
@@ -625,6 +661,14 @@ impl TrembitaAppBuilder {
         self
     }
 
+    /// Enable durable mailbox spool (B-41) — same as [`.configure`](Self::configure)([`TrembitaConfigure::with_durable_mailbox`](crate::TrembitaConfigure::with_durable_mailbox)(true)).
+    #[must_use]
+    pub fn with_durable_mailbox(mut self, enabled: bool) -> Self {
+        self.durable_mailbox = enabled;
+        self.inner = self.inner.durable_mailbox(enabled);
+        self
+    }
+
     /// Register a leader-only periodic task ([leader-task](../../docs/decisions/leader-task.md)).
     ///
     /// The closure runs on each tick while this node holds Raft leadership.
@@ -701,8 +745,10 @@ impl TrembitaAppBuilder {
                 .map_err(|e| StartError::Config(format!("gateway bind to {addr}: {e}")))?;
             app.install_gateway(handle).await;
         }
-        if let Some(opts) = wait_ready {
-            app.wait_until_ready(opts).await;
+        if let Some(opts) = wait_ready
+            && app.wait_until_ready(opts).await
+        {
+            app.scale_plan().emit_boot_log();
         }
         Ok(app)
     }
@@ -716,9 +762,10 @@ impl TrembitaAppBuilder {
             let gateway = builder.gateway;
             let cap_runtime = builder.cap_runtime;
             let cap_deps = builder.cap_deps.unwrap_or_default();
+            let scale_plan = builder.scale_plan;
             let cluster = builder.inner.start_local(net).await;
             return Self::finish_start(
-                TrembitaApp::assemble(cluster, workflows, cap_runtime, cap_deps),
+                TrembitaApp::assemble(cluster, workflows, cap_runtime, cap_deps, scale_plan),
                 gateway,
                 opts.wait_ready.clone(),
             )
@@ -734,11 +781,18 @@ impl TrembitaAppBuilder {
             }
         };
         builder = builder.ensure_product_gateway(Some(&cfg));
+        if builder.durable_mailbox && cfg.data_dir.is_none() {
+            return Err(StartError::Config(
+                "durable mailbox requires `TREMBITA_DATA_DIR` or TrembitaConfigure::with_data_dir"
+                    .into(),
+            ));
+        }
         builder.validate(cfg.http)?;
         let workflows = builder.workflows;
         let gateway = builder.gateway;
         let cap_runtime = builder.cap_runtime;
         let cap_deps = builder.cap_deps.unwrap_or_default();
+        let scale_plan = builder.scale_plan;
         let cluster = builder
             .inner
             .start_quic_cluster(
@@ -750,7 +804,7 @@ impl TrembitaAppBuilder {
             )
             .await?;
         Self::finish_start(
-            TrembitaApp::assemble(cluster, workflows, cap_runtime, cap_deps),
+            TrembitaApp::assemble(cluster, workflows, cap_runtime, cap_deps, scale_plan),
             gateway,
             opts.wait_ready.clone(),
         )
@@ -828,6 +882,12 @@ impl TrembitaAppBuilder {
                 topics: config.without_topics_api,
             };
         }
+        self.coordination_growth_preset = config.coordination_growth_preset;
+        self.durable_mailbox = config.durable_mailbox;
+        self.scale_plan.set_coordination(
+            config.coordination_raft_groups,
+            config.coordination_shard_count,
+        );
         self.inner = config.apply_to(self.inner);
         self
     }

@@ -5,10 +5,12 @@ use std::time::Duration;
 
 use http::StatusCode;
 use trembita::{
-    ClusterSessionSecret, GatewayOpts, TrembitaApp, TrembitaConfigure, capstore_session_gate,
-    cluster_session_gate, register_capstore_session, session_user_from_cookie,
-    verify_capstore_session,
+    ClusterSessionSecret, GatewayOpts, SignedCookieSessionIssuer, SignedCookieSessionVerifier,
+    TrembitaApp, TrembitaConfigure, capstore_session_gate, cluster_session_gate,
+    register_capstore_session, revoke_capstore_session, rotating_cluster_session_gate,
+    session_user_from_cookie, session_user_from_verifier, verify_capstore_session,
 };
+use trembita_http::SessionIssuer;
 use trembita_http::{CookieConfig, Gateway, RequestCtx, Response, RouteTable};
 
 const SECRET_A: &str = "0123456789abcdef";
@@ -205,6 +207,43 @@ async fn second_gateway_instance_accepts_cookie_signed_with_same_cluster_secret(
 }
 
 #[tokio::test]
+async fn b40_rotating_gate_accepts_token_signed_with_previous_secret() {
+    let current = ClusterSessionSecret::from_bytes(SECRET_A).unwrap();
+    let previous = ClusterSessionSecret::from_bytes(SECRET_B).unwrap();
+    let token = previous
+        .issue("rotating", Duration::from_secs(3600))
+        .unwrap();
+    let verifier = SignedCookieSessionVerifier::with_previous(current, Some(previous));
+    let config = GatewayOpts::new("127.0.0.1:0".parse().unwrap())
+        .surfaces({
+            let gate = rotating_cluster_session_gate(verifier.clone(), cookie_config());
+            move |_state| {
+                let routes = RouteTable::new().get_session("/me", {
+                    let verifier = verifier.clone();
+                    move |ctx: RequestCtx| {
+                        let verifier = verifier.clone();
+                        async move {
+                            let user = session_user_from_verifier("sess", ctx.headers(), &verifier)
+                                .await?;
+                            Ok(Response::text(StatusCode::OK, user))
+                        }
+                    }
+                });
+                Gateway::new(false)
+                    .dev_fallback_session(gate)
+                    .dev_fallback(routes)
+            }
+        })
+        .build_config();
+    let app = boot_app().await;
+    let addr = trembita_test_facade::spawn_test_gateway(&app, config).await;
+    let client = reqwest::Client::new();
+    let ok = get_me(&client, addr, &format!("sess={token}")).await;
+    assert_eq!(ok.status(), StatusCode::OK);
+    assert_eq!(ok.text().await.expect("body"), "rotating");
+}
+
+#[tokio::test]
 async fn gateway_rejects_cookie_signed_with_different_cluster_secret() {
     let issuer = ClusterSessionSecret::from_bytes(SECRET_A).unwrap();
     let verifier = ClusterSessionSecret::from_bytes(SECRET_B).unwrap();
@@ -215,6 +254,115 @@ async fn gateway_rejects_cookie_signed_with_different_cluster_secret() {
     let addr = trembita_test_facade::spawn_test_gateway(&app, config).await;
     let client = reqwest::Client::new();
 
+    let resp = get_me(&client, addr, &format!("sess={token}")).await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn b40_signed_cookie_issuer_login_then_verifier_me_route() {
+    let secret = ClusterSessionSecret::from_bytes(SECRET_A).unwrap();
+    let issuer = SignedCookieSessionIssuer::new(secret.clone());
+    let verifier = SignedCookieSessionVerifier::new(secret.clone());
+    let cookie = cookie_config();
+    let gate = rotating_cluster_session_gate(verifier.clone(), cookie.clone());
+
+    let config = GatewayOpts::new("127.0.0.1:0".parse().unwrap())
+        .identity(LoginIdentity)
+        .surfaces({
+            let gate = gate.clone();
+            move |_state| {
+                let routes = RouteTable::new()
+                    .get_identity("/login", {
+                        let gate = gate.clone();
+                        let issuer = issuer.clone();
+                        move |ctx: RequestCtx| {
+                            let gate = gate.clone();
+                            let issuer = issuer.clone();
+                            async move {
+                                let user =
+                                    ctx.query_param("user").unwrap_or("anonymous").to_string();
+                                let token = issuer
+                                    .issue_boxed(user.clone(), Duration::from_secs(3600))
+                                    .await?;
+                                let mut resp = Response::text(StatusCode::OK, user.clone());
+                                gate.set_session_cookie(&mut resp, &token)?;
+                                Ok(resp)
+                            }
+                        }
+                    })
+                    .get_session("/me", {
+                        let verifier = verifier.clone();
+                        move |ctx: RequestCtx| {
+                            let verifier = verifier.clone();
+                            async move {
+                                let user =
+                                    session_user_from_verifier("sess", ctx.headers(), &verifier)
+                                        .await?;
+                                Ok(Response::text(StatusCode::OK, user))
+                            }
+                        }
+                    });
+                Gateway::new(false)
+                    .dev_fallback_session(gate.clone())
+                    .dev_fallback(routes)
+            }
+        })
+        .build_config();
+
+    let app = boot_app().await;
+    let addr = trembita_test_facade::spawn_test_gateway(&app, config).await;
+    let client = reqwest::Client::new();
+
+    let login = client
+        .get(format!("http://{addr}/login?user=issuer-bob"))
+        .send()
+        .await
+        .expect("login");
+    assert_eq!(login.status(), StatusCode::OK);
+    let set_cookie = login
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .next()
+        .and_then(|v| v.to_str().ok())
+        .expect("Set-Cookie");
+
+    let me = client
+        .get(format!("http://{addr}/me"))
+        .header("Cookie", set_cookie.split(';').next().expect("pair"))
+        .send()
+        .await
+        .expect("me");
+    assert_eq!(me.status(), StatusCode::OK);
+    assert_eq!(me.text().await.expect("body"), "issuer-bob");
+}
+
+#[tokio::test]
+async fn b40_capstore_revoked_session_returns_unauthorized_on_me() {
+    let store: Arc<dyn trembita_capstore::CapStateStore> = Arc::new(trembita::InMemoryStore::new());
+    let token = register_capstore_session(store.as_ref(), "revoked", Duration::from_secs(3600))
+        .await
+        .expect("register");
+    revoke_capstore_session(store.as_ref(), &token)
+        .await
+        .expect("revoke");
+    let cookie = cookie_config();
+    let gate = capstore_session_gate(Arc::clone(&store), cookie);
+
+    let config = GatewayOpts::new("127.0.0.1:0".parse().unwrap())
+        .surfaces(move |_state| {
+            let routes = RouteTable::new().get_session("/me", |_ctx: RequestCtx| async {
+                Ok(Response::text(StatusCode::OK, "never"))
+            });
+            Gateway::new(false)
+                .dev_fallback_session(gate.clone())
+                .dev_fallback(routes)
+        })
+        .build_config();
+
+    let app = boot_app().await;
+    let addr = trembita_test_facade::spawn_test_gateway(&app, config).await;
+    let client = reqwest::Client::new();
     let resp = get_me(&client, addr, &format!("sess={token}")).await;
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }

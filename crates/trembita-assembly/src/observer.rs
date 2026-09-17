@@ -171,16 +171,32 @@ impl<M: StateMachine> Observer for TrembitaObserver<M> {
                     draining: true,
                     workers: Vec::new(),
                     reason: Some("runtime stopped".to_string()),
+                    join_phase: trembita_dashboard::JoinPhase::AwaitingMembership,
+                    committed_learner: false,
+                    log_caught_up: false,
+                    hosts_wired: false,
                 };
             };
-            let member = status.voters.contains(&self.node_id);
+            let workers = self.registry.names();
+            let pipeline =
+                crate::join_pipeline::evaluate_join_pipeline(self.node_id, &status, &workers);
+            let member = pipeline.committed_voter;
+            let role = if pipeline.committed_learner && !member {
+                "learner".to_string()
+            } else {
+                role_str(status.role).to_string()
+            };
             Readiness {
                 node_id: self.node_id.0,
-                role: role_str(status.role).to_string(),
+                role,
                 member,
                 draining: false,
-                workers: self.registry.names(),
-                reason: (!member).then(|| "not a cluster member yet".to_string()),
+                workers,
+                reason: pipeline.reason,
+                join_phase: pipeline.phase,
+                committed_learner: pipeline.committed_learner,
+                log_caught_up: pipeline.log_caught_up,
+                hosts_wired: pipeline.hosts_wired,
             }
         })
     }

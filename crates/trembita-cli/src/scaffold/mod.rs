@@ -10,7 +10,7 @@ mod render;
 mod template;
 
 pub use add::{AddKind, run_add};
-pub use doctor::{DoctorReport, Level, run_doctor, run_doctor_fix};
+pub use doctor::{DoctorReport, Finding, Level, run_doctor, run_doctor_fix, run_explain_scale};
 pub use features::{AppFeature, parse_feature_list};
 pub use new::{NewProjectOpts, default_output};
 pub use project::{ProjectError, TrembitaProject};

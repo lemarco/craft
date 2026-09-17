@@ -44,6 +44,8 @@ members = [
     "crates/trembita-test-runtime",
     "crates/trembita-tools",
     "crates/trembita-cli",
+    "crates/trembita-gateway-auth",
+    "crates/trembita-schedule-postgres",
     "crates/trembita-backlog-postgres",
     "crates/trembita-events-postgres",
     "crates/trembita-capstore-postgres",
@@ -54,7 +56,7 @@ members = [
 exclude = ["benchmarks", "examples", "crates/trembita-fuzz"]
 
 [workspace.package]
-version = "0.6.2"
+version = "0.6.3"
 edition = "2024"
 rust-version = "1.94"
 license = "MIT OR Apache-2.0"
@@ -196,6 +198,8 @@ trembita-client = { path = "crates/trembita-client", version = "0.6.2" }
 trembita-store-redis = { path = "crates/trembita-store-redis", version = "0.6.2" }
 trembita-dashboard = { path = "crates/trembita-dashboard", version = "0.6.2" }
 trembita-http = { path = "crates/trembita-http", version = "0.6.2" }
+trembita-gateway-auth = { path = "crates/trembita-gateway-auth", version = "0.6.2" }
+trembita-schedule-postgres = { path = "crates/trembita-schedule-postgres", version = "0.6.2" }
 trembita-sim = { path = "crates/trembita-sim", version = "0.6.2" }
 trembita = { path = "crates/trembita", version = "0.6.2" }
 trembita-backlog-postgres = { path = "crates/trembita-backlog-postgres", version = "0.6.2" }

@@ -107,6 +107,16 @@ pub enum TrembitaEvent {
         /// Groups retired on this node.
         retire: Vec<u32>,
     },
+    /// Actor/capability deliver found no directory target (R3, B-36).
+    DirectoryDeliverNoTarget {
+        /// Worker group name.
+        group: String,
+    },
+    /// Directory merge lag sample (epochs behind local publish).
+    DirectoryMergeLag {
+        /// Max epoch lag across cluster members in the merged view.
+        lag_epochs: u64,
+    },
     /// The Raft commit index advanced on this node.
     RaftCommitted {
         /// New commit index.

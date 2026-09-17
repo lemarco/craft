@@ -26,7 +26,7 @@ fn temp_base(label: &str) -> PathBuf {
 }
 
 #[tokio::test(start_paused = true)]
-async fn trembita_app_on_leader_runs_on_product_builder() {
+async fn b41_on_leader_ticks_while_raft_leader() {
     let base = temp_base("on-leader");
     let data_dir = base.clone();
     let ticks = Arc::new(AtomicUsize::new(0));
@@ -57,6 +57,59 @@ async fn trembita_app_on_leader_runs_on_product_builder() {
 
     wait_for_trembita_app_leader(&app).await;
     eventually_default("on_leader ticks", || ticks.load(Ordering::SeqCst) >= 2).await;
+
+    app.shutdown();
+    let _ = std::fs::remove_dir_all(base);
+}
+
+#[tokio::test]
+async fn b41_durable_mailbox_boot_creates_spool_redb() {
+    let base = temp_base("mailbox-spool");
+    let data_dir = base.clone();
+
+    let app = boot_local_app(
+        || {
+            TrembitaApp::builder().configure(
+                TrembitaConfigure::default()
+                    .with_data_dir(data_dir)
+                    .with_durable_mailbox(true)
+                    .with_tick_period(Duration::from_millis(5)),
+            )
+        },
+        None,
+    )
+    .await;
+
+    assert!(
+        base.join("mailbox-spool.redb").is_file(),
+        "durable mailbox should open {}/mailbox-spool.redb",
+        base.display()
+    );
+
+    app.shutdown();
+    let _ = std::fs::remove_dir_all(base);
+}
+
+#[tokio::test]
+async fn b41_builder_with_durable_mailbox_matches_configure_flag() {
+    let base = temp_base("mailbox-builder");
+    let data_dir = base.clone();
+
+    let app = boot_local_app(
+        || {
+            TrembitaApp::builder()
+                .configure(
+                    TrembitaConfigure::default()
+                        .with_data_dir(data_dir)
+                        .with_tick_period(Duration::from_millis(5)),
+                )
+                .with_durable_mailbox(true)
+        },
+        None,
+    )
+    .await;
+
+    assert!(base.join("mailbox-spool.redb").is_file());
 
     app.shutdown();
     let _ = std::fs::remove_dir_all(base);

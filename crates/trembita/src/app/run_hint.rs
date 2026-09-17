@@ -5,6 +5,8 @@
 pub(crate) struct ManifestRunHint {
     pub(crate) job_streams: Vec<String>,
     pub(crate) has_workers: bool,
+    /// Elastic joiner — wait for LB pool readiness, not Raft leadership (B-35).
+    pub(crate) join_pool_wait: bool,
 }
 
 impl ManifestRunHint {

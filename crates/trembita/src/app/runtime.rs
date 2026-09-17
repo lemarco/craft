@@ -19,6 +19,7 @@ use trembita_assembly::cluster_handle::{ClusterFacts, TrembitaCluster};
 
 use super::builder::TrembitaAppBuilder;
 use super::manifest::AppManifest;
+use super::scale_plan::ProductScalePlan;
 use super::shutdown::ShutdownOpts;
 use super::types::{EmptyStateMachine, WorkerInfo};
 
@@ -30,6 +31,7 @@ pub struct TrembitaApp {
     gateway: tokio::sync::Mutex<Option<GatewayHandle>>,
     cap_runtime: CapRuntime,
     cap_deps: CapDeps,
+    scale_plan: ProductScalePlan,
 }
 
 impl TrembitaApp {
@@ -38,6 +40,7 @@ impl TrembitaApp {
         workflows: Vec<WorkflowRegistration>,
         cap_runtime: CapRuntime,
         cap_deps: CapDeps,
+        scale_plan: ProductScalePlan,
     ) -> Self {
         Self {
             cluster,
@@ -46,7 +49,24 @@ impl TrembitaApp {
             gateway: tokio::sync::Mutex::new(None),
             cap_runtime,
             cap_deps,
+            scale_plan,
         }
+    }
+
+    /// Capability groups, job queue layout, and coordination Raft counts at boot (B-33).
+    #[must_use]
+    pub fn scale_plan(&self) -> &ProductScalePlan {
+        &self.scale_plan
+    }
+
+    #[cfg(feature = "http-jobs")]
+    pub(crate) fn product_scale_route_table(&self) -> trembita_http::RouteTable {
+        super::scale_plan::product_scale_route_table(self.scale_plan.clone())
+    }
+
+    #[cfg(feature = "http-jobs")]
+    pub(crate) fn directory_r3_route_table(self: &Arc<Self>) -> trembita_http::RouteTable {
+        super::directory_r3::directory_r3_route_table(Arc::clone(self))
     }
 
     /// Builder-injected ports for [`OpCtx::deps`](crate::OpCtx::deps).
@@ -561,6 +581,18 @@ impl TrembitaApp {
         ttl: Option<Duration>,
     ) -> Option<ActorSession> {
         self.cluster_ref(group).session_str(key, ttl)
+    }
+
+    /// Re-open a sticky session after rebalance or worker loss (R3).
+    #[must_use]
+    pub fn reopen_session_str(
+        &self,
+        group: &str,
+        key: &str,
+        ttl: Option<Duration>,
+        previous: Option<&ActorSession>,
+    ) -> Option<ActorSession> {
+        ActorSession::reopen_str(self.cluster.directory(), group, key, ttl, previous)
     }
 
     /// Open a sticky session to a keyed worker pool.

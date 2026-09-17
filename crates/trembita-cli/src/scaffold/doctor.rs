@@ -14,6 +14,8 @@ pub struct Finding {
     pub level: Level,
     /// Human-readable message.
     pub message: String,
+    /// Optional fix hint (lint v2, B-38).
+    pub suggestion: Option<String>,
 }
 
 /// Finding severity.
@@ -36,16 +38,34 @@ pub struct DoctorReport {
 
 impl DoctorReport {
     fn error(&mut self, message: impl Into<String>) {
+        self.error_with_suggestion(message, Option::<String>::None);
+    }
+
+    fn error_with_suggestion(
+        &mut self,
+        message: impl Into<String>,
+        suggestion: Option<impl Into<String>>,
+    ) {
         self.findings.push(Finding {
             level: Level::Error,
             message: message.into(),
+            suggestion: suggestion.map(Into::into),
         });
     }
 
     fn warn(&mut self, message: impl Into<String>) {
+        self.warn_with_suggestion(message, Option::<String>::None);
+    }
+
+    fn warn_with_suggestion(
+        &mut self,
+        message: impl Into<String>,
+        suggestion: Option<impl Into<String>>,
+    ) {
         self.findings.push(Finding {
             level: Level::Warn,
             message: message.into(),
+            suggestion: suggestion.map(Into::into),
         });
     }
 
@@ -53,6 +73,7 @@ impl DoctorReport {
         self.findings.push(Finding {
             level: Level::Ok,
             message: message.into(),
+            suggestion: None,
         });
     }
 
@@ -72,8 +93,70 @@ impl DoctorReport {
                 Level::Ok => "ok",
             };
             eprintln!("[{tag}] {}", f.message);
+            if let Some(s) = &f.suggestion {
+                eprintln!("       → {s}");
+            }
         }
         i32::from(self.has_errors())
+    }
+}
+
+/// Founder scale narrative + B-31 footguns only ([`--explain-scale`](../../docs/decisions/capability-dx.md#founder-dx-v2-b-38)).
+#[must_use]
+pub fn run_explain_scale(project: &TrembitaProject) -> DoctorReport {
+    let mut report = DoctorReport::default();
+    let Ok(manifest) = fs::read_to_string(project.manifest_rs()) else {
+        report.error(format!("missing {}", project.manifest_rs().display()));
+        return report;
+    };
+    explain_scale_narrative(project, &manifest, &mut report);
+    check_capability_scale_footguns(project, &manifest, &mut report);
+    report
+}
+
+fn explain_scale_narrative(project: &TrembitaProject, manifest: &str, report: &mut DoctorReport) {
+    let cap_dir = project.capabilities_dir();
+    let keyed = capabilities_have_keyed_handlers(&cap_dir);
+    let shared_ram = capabilities_likely_shared_ram(&cap_dir);
+    let uses_queued = capability_queued_wiring(manifest, &cap_dir);
+    let fixed_one =
+        manifest.contains(".instances(1)") || capabilities_declare_instances_one(&cap_dir);
+    let per_node = manifest.contains(".per_node()") || capabilities_declare_per_node(&cap_dir);
+    let session_ops = capability_uses_session_route(manifest, &cap_dir);
+
+    report.ok(
+        "Founder scale (B-28/B-31): stateless inline caps default to PerNode — add VPS with the same binary to grow handler hosts",
+    );
+    if uses_queued {
+        report.ok(
+            "Queued capabilities: job stream depth scales with consumers; handler placement follows CapGroup scale (not the queue shard count alone)",
+        );
+    }
+    if keyed {
+        report.ok(
+            "Keyed handlers: one logical owner per key — use for entity-scoped RAM or single-writer semantics",
+        );
+    }
+    if session_ops {
+        report.ok(
+            "Session routes: sticky to one host for the session TTL — pair with `.per_node()` for a pool on every node (realtime)",
+        );
+    }
+    if fixed_one && !shared_ram {
+        report.warn_with_suggestion(
+            "Manifest declares `.instances(1)` on a likely stateless group",
+            Some("Remove `.instances(1)` to use automatic PerNode when adding nodes"),
+        );
+    }
+    if !fixed_one && !per_node && !keyed && !uses_queued {
+        report.ok(
+            "No Fixed(1) foot-gun detected — marker-state groups should scale PerNode by default",
+        );
+    }
+    if manifest.contains("TREMBITA_COORDINATION_PROFILE")
+        || manifest.contains("with_coordination_growth_preset")
+    {
+        report.ok("Coordination growth preset referenced — see docs/getting-started.md § B-37");
     }
 }
 
@@ -416,19 +499,24 @@ fn check_capability_scale_footguns(
     let per_node = manifest.contains(".per_node()") || capabilities_declare_per_node(&cap_dir);
 
     if fixed_one && uses_queued && !keyed {
-        report.error(
+        report.error_with_suggestion(
             "capability group uses `.instances(1)` with queued/default_queue wiring but no `#[cap_handler(key = …)]` — \
-             queue consumers scale cluster-wide while Fixed(1) pins handlers to one host; remove `.instances(1)` for PerNode or add keyed ops (B-31 — docs/decisions/capability-dx.md#founder-scale-model-b-31)",
+             queue consumers scale cluster-wide while Fixed(1) pins handlers to one host (B-31)",
+            Some(
+                "Remove `.instances(1)` for PerNode hosts, or add `key = \"…\"` on handlers for keyed ownership",
+            ),
         );
     } else if fixed_one && !shared_ram && !keyed {
-        report.warn(
+        report.warn_with_suggestion(
             "`.instances(1)` on a stateless capability group — omit it to use automatic PerNode scale when you add VPS nodes (B-28/B-31)",
+            Some("Delete `.instances(1)` from the CapGroup chain unless you intentionally want one global host"),
         );
     }
 
     if session_ops && !per_node {
-        report.warn(
-            "capabilities use `Route::Session` but manifest has no `.per_node()` — default host scale is Fixed(1); add `.per_node()` for a pool on each node (realtime pattern)",
+        report.warn_with_suggestion(
+            "capabilities use `Route::Session` but manifest has no `.per_node()` — default host scale is Fixed(1)",
+            Some("Add `.per_node()` on the session CapGroup (see `trembita new --profile realtime`)"),
         );
     }
 
@@ -570,10 +658,27 @@ fn check_capability_store(project: &TrembitaProject, manifest: &str, report: &mu
             || content.contains("store_cas")
             || content.contains("CapStore");
         if uses_store_api && !content.contains("require_store") {
-            report.error(format!(
-                "{} uses cap store APIs but never calls OpCtx::require_store() (R4 — see docs/scenarios/structural-limits.md)",
-                entry.display()
-            ));
+            report.error_with_suggestion(
+                format!(
+                    "{} uses cap store APIs but never calls OpCtx::require_store() (R4)",
+                    entry.display()
+                ),
+                Some(
+                    "Call `ctx.require_store()?` at handler start; set `TREMBITA_DATA_DIR` — see `capabilities/task.rs` in jobs scaffold",
+                ),
+            );
+        }
+        if content.contains("default_queue_for")
+            && content.contains("require_store")
+            && !content.contains("store_get")
+        {
+            report.warn_with_suggestion(
+                format!(
+                    "{}: queued capability with require_store but no idempotency marker read (R4)",
+                    entry.file_name().and_then(|n| n.to_str()).unwrap_or("capability")
+                ),
+                Some("Use store_get/store_set marker before ack — copy from scaffold `task.rs` or examples/background-jobs"),
+            );
         }
     }
 }
@@ -983,6 +1088,30 @@ fn preflight_env_vars(content: &str, path: &str, strict: bool, report: &mut Doct
             "{path}: TREMBITA_PEERS — static bootstrap only; product deploys use TREMBITA_JOIN_SEEDS"
         ));
     }
+    let join_seeds = content.lines().any(|line| {
+        let t = line.trim();
+        !t.starts_with('#') && t.starts_with("TREMBITA_JOIN_SEEDS=")
+    });
+    let session_secret = has("TREMBITA_GATEWAY_SESSION_SECRET") || has("GATEWAY_SESSION_SECRET");
+    if join_seeds && !session_secret {
+        let msg = format!(
+            "{path}: TREMBITA_JOIN_SEEDS without TREMBITA_GATEWAY_SESSION_SECRET — multi-node gateway sessions need a shared secret (docs/env.md)"
+        );
+        if strict {
+            report.error(msg);
+        } else {
+            report.warn(msg);
+        }
+    } else if join_seeds && session_secret {
+        report.ok(format!(
+            "{path}: join seeds + gateway session secret documented for multi-node"
+        ));
+    }
+    if strict && content.contains("dev-change-me") {
+        report.warn(format!(
+            "{path}: replace placeholder GATEWAY_TOKEN / secrets before production"
+        ));
+    }
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("TREMBITA_HTTP=")
@@ -1026,6 +1155,18 @@ fn preflight_compose(content: &str, path: &str, strict: bool, report: &mut Docto
         report.ok(format!("{path}: TREMBITA_LISTEN in compose"));
     } else {
         report.warn(format!("{path}: set TREMBITA_LISTEN per service"));
+    }
+    let joiners = content
+        .lines()
+        .filter(|l| {
+            let t = l.trim();
+            !t.starts_with('#') && t.contains("TREMBITA_JOIN_SEEDS")
+        })
+        .count();
+    if joiners > 0 {
+        report.ok(format!(
+            "{path}: {joiners} service(s) declare TREMBITA_JOIN_SEEDS (elastic join)"
+        ));
     }
 }
 
@@ -1792,6 +1933,139 @@ fn _w() {
         }
     }
 
+    /// B-38 — lint v2 attaches `→` suggestions on scale foot-guns.
+    #[test]
+    fn b38_scale_footgun_suggestions_scenarios_table() {
+        const QUEUED_FOOTGUN: &str = r#"
+use trembita::{cap_handler, CapGroup};
+
+#[derive(Default)]
+struct S;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Work { n: u32 }
+
+#[cap_handler(group = "g")]
+async fn work(_: Work, _: &mut S) -> Result<(), trembita::CapError> { Ok(()) }
+
+fn _w() {
+    let _ = CapGroup::<S>::for_cap::<Work>()
+        .instances(1)
+        .default_queue_for::<Work>();
+}
+"#;
+        const STATELESS_FIXED: &str = r#"
+use trembita::CapGroup;
+
+#[derive(Default)]
+struct S;
+
+fn _w() {
+    let _ = CapGroup::<S>::with_state("g").instances(1);
+}
+"#;
+        const SESSION_NO_PER_NODE: &str = r#"
+fn _call() {
+    let _ = trembita::Route::Session;
+}
+"#;
+
+        struct Row {
+            name: &'static str,
+            files: &'static [(&'static str, &'static str)],
+            want_snippet: &'static str,
+        }
+        let rows = [
+            Row {
+                name: "queued Fixed(1) error",
+                files: &[("bad.rs", QUEUED_FOOTGUN)],
+                want_snippet: "key =",
+            },
+            Row {
+                name: "stateless Fixed(1) warn",
+                files: &[("pin.rs", STATELESS_FIXED)],
+                want_snippet: "Delete `.instances(1)`",
+            },
+            Row {
+                name: "session without per_node",
+                files: &[("sess.rs", SESSION_NO_PER_NODE)],
+                want_snippet: "realtime",
+            },
+        ];
+        for row in rows {
+            let (_dir, project, manifest) = b31_minimal_cap_project(row.files);
+            let mut report = DoctorReport::default();
+            check_capability_scale_footguns(&project, &manifest, &mut report);
+            let hit = report.findings.iter().find(|f| {
+                f.suggestion
+                    .as_ref()
+                    .is_some_and(|s| s.contains(row.want_snippet))
+            });
+            assert!(hit.is_some(), "{}: {:?}", row.name, report.findings);
+        }
+    }
+
+    /// B-38 — R4 store guard suggestions from `check_capability_store`.
+    #[test]
+    fn b38_store_guard_suggestions_scenarios_table() {
+        const STORE_WITHOUT_REQUIRE: &str = r#"
+use trembita::{cap_handler, CapError, OpCtx};
+
+#[cap_handler(group = "g")]
+async fn read_marker(ctx: &mut OpCtx) -> Result<(), CapError> {
+    let _ = ctx.store_get("marker");
+    Ok(())
+}
+"#;
+        let (_dir, project, manifest) =
+            b31_minimal_cap_project(&[("store.rs", STORE_WITHOUT_REQUIRE)]);
+        let mut report = DoctorReport::default();
+        check_capability_store(&project, &manifest, &mut report);
+        let err = report
+            .findings
+            .iter()
+            .find(|f| f.level == Level::Error && f.message.contains("require_store"));
+        assert!(err.is_some(), "{:?}", report.findings);
+        assert!(
+            err.unwrap()
+                .suggestion
+                .as_ref()
+                .is_some_and(|s| s.contains("task.rs")),
+            "{:?}",
+            report.findings
+        );
+    }
+
+    #[test]
+    fn b38_explain_scale_skips_layout_lint() {
+        let (_dir, project, _manifest) = b31_minimal_cap_project(&[]);
+        let full = run_doctor(&project, false);
+        assert!(
+            full.findings.iter().any(|f| {
+                f.level == Level::Error && f.message.contains("missing required path")
+            }),
+            "full doctor should lint layout: {:?}",
+            full.findings
+        );
+        let explain = run_explain_scale(&project);
+        assert!(
+            !explain
+                .findings
+                .iter()
+                .any(|f| f.message.contains("missing required path")),
+            "explain-scale should not run layout checks: {:?}",
+            explain.findings
+        );
+        assert!(
+            explain
+                .findings
+                .iter()
+                .any(|f| f.message.contains("Founder scale")),
+            "{:?}",
+            explain.findings
+        );
+    }
+
     #[test]
     fn founder_scale_b31_helper_key_and_queue_detection() {
         let (_dir, project, manifest) = b31_minimal_cap_project(&[(
@@ -1918,5 +2192,102 @@ pub fn manifest() -> CapManifest {
                 .iter()
                 .any(|f| { f.level == Level::Error && f.message.contains("duplicate job stream") })
         );
+    }
+
+    /// B-33 — `preflight_env_vars` join seeds vs gateway session secret.
+    #[test]
+    fn b33_preflight_join_seeds_scenarios_table() {
+        const BASE: &str = "TREMBITA_LISTEN=0.0.0.0:443\nTREMBITA_DATA_DIR=/var/lib/app\nTREMBITA_CERT_DIR=/var/lib/certs\n";
+
+        struct Row {
+            name: &'static str,
+            env_suffix: &'static str,
+            strict: bool,
+            want_error: bool,
+            want_warn: bool,
+            want_ok_pair: bool,
+        }
+
+        let rows = [
+            Row {
+                name: "active join without secret (preflight)",
+                env_suffix: "TREMBITA_JOIN_SEEDS=1@seed:443\n",
+                strict: true,
+                want_error: true,
+                want_warn: false,
+                want_ok_pair: false,
+            },
+            Row {
+                name: "active join without secret (doctor only)",
+                env_suffix: "TREMBITA_JOIN_SEEDS=1@seed:443\n",
+                strict: false,
+                want_error: false,
+                want_warn: true,
+                want_ok_pair: false,
+            },
+            Row {
+                name: "join + session secret documented",
+                env_suffix: "TREMBITA_JOIN_SEEDS=1@seed:443\nTREMBITA_GATEWAY_SESSION_SECRET=sixteen-bytes-min!!\n",
+                strict: true,
+                want_error: false,
+                want_warn: false,
+                want_ok_pair: true,
+            },
+            Row {
+                name: "commented join seeds only",
+                env_suffix: "# TREMBITA_JOIN_SEEDS=1@seed:443\n",
+                strict: true,
+                want_error: false,
+                want_warn: false,
+                want_ok_pair: false,
+            },
+        ];
+
+        for row in rows {
+            let dir = tempdir().unwrap();
+            let opts = NewProjectOpts {
+                name: "b33-preflight".into(),
+                output: dir.path().to_path_buf(),
+                features: AppFeature::defaults(),
+                trembita_version: "0.3.2".into(),
+                trembita_path: None,
+                template: None,
+            };
+            let root = scaffold_project(&opts).unwrap();
+            let body = format!("{BASE}{}", row.env_suffix);
+            fs::write(root.join("deploy/.env.example"), body).unwrap();
+            let project = TrembitaProject { root };
+            let report = run_doctor(&project, row.strict);
+
+            let join_error = report.findings.iter().any(|f| {
+                f.level == Level::Error
+                    && f.message.contains("TREMBITA_JOIN_SEEDS")
+                    && f.message.contains("GATEWAY_SESSION_SECRET")
+            });
+            let join_warn = report.findings.iter().any(|f| {
+                f.level == Level::Warn
+                    && f.message.contains("TREMBITA_JOIN_SEEDS")
+                    && f.message.contains("GATEWAY_SESSION_SECRET")
+            });
+            let join_ok = report.findings.iter().any(|f| {
+                f.level == Level::Ok && f.message.contains("join seeds + gateway session secret")
+            });
+
+            assert_eq!(
+                join_error, row.want_error,
+                "{}: join_error={join_error} findings={:?}",
+                row.name, report.findings
+            );
+            assert_eq!(
+                join_warn, row.want_warn,
+                "{}: join_warn={join_warn} findings={:?}",
+                row.name, report.findings
+            );
+            assert_eq!(
+                join_ok, row.want_ok_pair,
+                "{}: join_ok={join_ok} findings={:?}",
+                row.name, report.findings
+            );
+        }
     }
 }

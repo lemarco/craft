@@ -8,8 +8,9 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use trembita_dashboard::{
-    ActorView, AdminServer, AdminTlsPaths, BoxFuture, ClusterView, EventBus, Metrics, NodeSummary,
-    NodeView, Observer, QueuesView, RaftGroupsView, Readiness, SagaRecordView, admin_tls_config,
+    ActorView, AdminServer, AdminTlsPaths, BoxFuture, ClusterView, EventBus, JoinPhase, Metrics,
+    NodeSummary, NodeView, Observer, QueuesView, RaftGroupsView, Readiness, SagaRecordView,
+    admin_tls_config,
 };
 
 struct Fake {
@@ -27,6 +28,14 @@ impl Observer for Fake {
                 draining: false,
                 workers: vec!["orders".into()],
                 reason: (!ready).then(|| "joining".into()),
+                join_phase: if ready {
+                    JoinPhase::PoolReady
+                } else {
+                    JoinPhase::CatchingUp
+                },
+                committed_learner: !ready,
+                log_caught_up: ready,
+                hosts_wired: true,
             }
         })
     }

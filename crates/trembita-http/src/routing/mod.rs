@@ -13,6 +13,7 @@ mod error;
 mod handler;
 mod path;
 pub(crate) mod query;
+mod session_ports;
 mod table;
 
 pub use auth::{AuthMode, DispatchGates, IdentityAuthFn, SessionGate};
@@ -22,4 +23,7 @@ pub use error::HttpError;
 pub use handler::{ArcHandler, Handler};
 pub use path::{PathParams, PathPattern, PathSegment};
 pub use query::parse_query_string;
+pub use session_ports::{
+    SessionIssuer, SessionVerifier, VerifiedSession, session_issuer, session_verifier,
+};
 pub use table::{RouteEntry, RouteTable};

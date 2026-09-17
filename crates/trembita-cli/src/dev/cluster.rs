@@ -7,6 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use super::DevError;
+use super::founder::{FOUNDER_GATEWAY_SESSION_SECRET, FOUNDER_GATEWAY_TOKEN};
 use super::showcases::Showcase;
 
 /// Build release binary + optional showcase client.
@@ -110,8 +111,26 @@ pub fn stop(showcase: &Showcase) -> Result<(), DevError> {
     Ok(())
 }
 
+/// Start `nodes` cluster members with founder gateway env (B-39).
+pub fn up_with_founder_gateway(
+    showcase: &Showcase,
+    workspace: &Path,
+    nodes: u32,
+) -> Result<(), DevError> {
+    up_inner(showcase, workspace, nodes, true)
+}
+
 /// Start `nodes` cluster members in the background.
 pub fn up(showcase: &Showcase, workspace: &Path, nodes: u32) -> Result<(), DevError> {
+    up_inner(showcase, workspace, nodes, false)
+}
+
+fn up_inner(
+    showcase: &Showcase,
+    workspace: &Path,
+    nodes: u32,
+    founder_gateway: bool,
+) -> Result<(), DevError> {
     if nodes == 0 || nodes > 8 {
         return Err(DevError::InvalidNodes(nodes));
     }
@@ -138,7 +157,7 @@ pub fn up(showcase: &Showcase, workspace: &Path, nodes: u32) -> Result<(), DevEr
         stop(showcase)?;
         fs::create_dir_all(cluster.join("logs"))?;
         for node in 1..=nodes {
-            spawn_node(showcase, workspace, node, &bin)?;
+            spawn_node(showcase, workspace, node, &bin, founder_gateway)?;
         }
     }
 
@@ -191,6 +210,7 @@ fn spawn_node(
     workspace: &Path,
     node: u32,
     bin: &Path,
+    founder_gateway: bool,
 ) -> Result<(), DevError> {
     let listen = showcase.listen_addr(node);
     let port = listen.split(':').next_back().unwrap_or("443");
@@ -223,6 +243,13 @@ fn spawn_node(
             "RUST_LOG",
             "info,showcase=debug,trembita=info,trembita_net=warn",
         );
+    }
+    if founder_gateway {
+        cmd.env(
+            "TREMBITA_GATEWAY_SESSION_SECRET",
+            FOUNDER_GATEWAY_SESSION_SECRET,
+        )
+        .env("GATEWAY_TOKEN", FOUNDER_GATEWAY_TOKEN);
     }
 
     let log_file = fs::OpenOptions::new()

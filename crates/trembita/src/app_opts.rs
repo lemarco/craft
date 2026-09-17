@@ -94,6 +94,9 @@ impl RunOpts {
         if let [stream] = hint.job_streams.as_slice() {
             ready = ready.with_queue(stream);
         }
+        if hint.join_pool_wait {
+            ready = ready.pool_membership();
+        }
         self.with_wait_ready(ready)
     }
 

@@ -80,7 +80,8 @@ pub use ops_routes::{OpsApi, OpsApiState, ops_route_table};
 pub use routing::{
     ArcHandler, AuthMode, DispatchGates, Handler, HttpError, IdentityAuthFn, PathParams,
     PathPattern, PathSegment, RequestCtx, Response, ResponseBody, RouteDescriptor, RouteEntry,
-    RouteTable, RouteTableDiff, SessionGate,
+    RouteTable, RouteTableDiff, SessionGate, SessionIssuer, SessionVerifier, VerifiedSession,
+    session_issuer, session_verifier,
 };
 pub use static_site::{
     EmbeddedAssets, EmbeddedFile, Precompressed, StaticSite, StaticSiteEnvError, StaticSiteError,

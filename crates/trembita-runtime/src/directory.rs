@@ -157,6 +157,31 @@ impl ActorDirectory {
         self.len() == 0
     }
 
+    /// Last applied directory epoch for `node`, if known.
+    #[must_use]
+    pub fn node_epoch(&self, node: NodeId) -> Option<u64> {
+        self.inner
+            .lock()
+            .unwrap()
+            .by_node
+            .get(&node)
+            .map(|e| e.epoch)
+    }
+
+    /// Max `local_epoch - peer_epoch` across `members` (0 when every member is at least `local_epoch`).
+    ///
+    /// Measures how far the merged view lags this node's latest publish (R3 merge lag).
+    #[must_use]
+    pub fn merge_lag_epochs(&self, local_epoch: u64, members: &[NodeId]) -> u64 {
+        let inner = self.inner.lock().unwrap();
+        members
+            .iter()
+            .filter_map(|node| inner.by_node.get(node).map(|e| e.epoch))
+            .map(|peer_epoch| local_epoch.saturating_sub(peer_epoch))
+            .max()
+            .unwrap_or(0)
+    }
+
     /// Pick the next instance of `name` round-robin across the whole cluster.
     ///
     /// # Panics
@@ -353,6 +378,12 @@ impl DirectorySync {
         self.node_id
     }
 
+    /// Epoch of this node's last [`Self::publish`].
+    #[must_use]
+    pub fn local_epoch(&self) -> u64 {
+        self.epoch.load(Ordering::SeqCst)
+    }
+
     /// The shared directory this bridge maintains.
     #[must_use]
     pub fn directory(&self) -> &Arc<ActorDirectory> {
@@ -405,5 +436,64 @@ impl RequestHandler for DirectorySync {
             ))),
         };
         Box::pin(async move { result })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// B-36 — merge lag for `trembita_directory_merge_lag_epochs` / introspect.
+    #[test]
+    fn b36_merge_lag_scenarios_table() {
+        struct Row {
+            name: &'static str,
+            local_epoch: u64,
+            peer_epochs: &'static [(u64, u64)],
+            members: &'static [u64],
+            want_lag: u64,
+        }
+
+        let rows = [
+            Row {
+                name: "peers match local",
+                local_epoch: 5,
+                peer_epochs: &[(1, 5), (2, 5)],
+                members: &[1, 2],
+                want_lag: 0,
+            },
+            Row {
+                name: "stale peer epoch",
+                local_epoch: 10,
+                peer_epochs: &[(1, 10), (2, 7)],
+                members: &[1, 2],
+                want_lag: 3,
+            },
+            Row {
+                name: "lag vs slowest visible peer only",
+                local_epoch: 10,
+                peer_epochs: &[(2, 6)],
+                members: &[1, 2],
+                want_lag: 4,
+            },
+        ];
+
+        for row in rows {
+            let directory = ActorDirectory::new();
+            for &(node, epoch) in row.peer_epochs {
+                directory.apply(&DirectoryUpdate {
+                    node: NodeId(node),
+                    epoch,
+                    registrations: vec![],
+                });
+            }
+            let members: Vec<NodeId> = row.members.iter().map(|id| NodeId(*id)).collect();
+            assert_eq!(
+                directory.merge_lag_epochs(row.local_epoch, &members),
+                row.want_lag,
+                "{}",
+                row.name
+            );
+        }
     }
 }

@@ -7,6 +7,9 @@ use trembita_core::Config;
 
 use crate::app::EmptyStateMachine;
 use trembita_assembly::TrembitaClusterBuilder;
+pub use trembita_assembly::coordination_profile::{
+    CoordinationGrowthPreset, CoordinationProfileSpec, parse_coordination_growth_profile,
+};
 
 /// Product boot tuning for [`.configure`](super::app::TrembitaAppBuilder::configure).
 ///
@@ -44,6 +47,10 @@ pub struct TrembitaConfigure {
     pub coordination_raft_groups: u32,
     /// Modulus / stable virtual shard count when [`Self::coordination_raft_groups`] > 1.
     pub coordination_shard_count: Option<u32>,
+    /// Named growth profile (B-37) — sets coordination + default queue auto-shard policy.
+    pub coordination_growth_preset: Option<CoordinationGrowthPreset>,
+    /// Durable cross-node actor mailbox spool (`{data_dir}/mailbox-spool.redb`) — B-41.
+    pub durable_mailbox: bool,
     /// When `true`, omit ops HTTP (`/health`, `/ready`, `/metrics`, `/dashboard`, …). Or use
     /// [`TrembitaAppBuilder::without_ops`](crate::TrembitaAppBuilder::without_ops).
     #[cfg(feature = "http-jobs")]
@@ -79,6 +86,8 @@ impl Default for TrembitaConfigure {
             directory_publish_period: Duration::from_millis(250),
             coordination_raft_groups: 1,
             coordination_shard_count: None,
+            coordination_growth_preset: None,
+            durable_mailbox: false,
             #[cfg(feature = "http-jobs")]
             without_ops: true,
             #[cfg(feature = "http-jobs")]
@@ -152,6 +161,27 @@ impl TrembitaConfigure {
         self
     }
 
+    /// Enable redb mailbox outbox/inbox for cross-node [`/actor/deliver`](../../docs/protocol.md#actor-mailbox-spool-durable-delivery) (requires [`Self::data_dir`] or `TREMBITA_DATA_DIR`).
+    #[must_use]
+    pub fn with_durable_mailbox(mut self, enabled: bool) -> Self {
+        self.durable_mailbox = enabled;
+        self
+    }
+
+    /// Apply a B-37 growth profile (coordination + leader auto-shard policy defaults).
+    ///
+    /// Call **before** [`.manifest`](crate::TrembitaAppBuilder::manifest) / [`.queue`](crate::TrembitaAppBuilder::queue)
+    /// so standard queues pick up the profile's auto-shard thresholds. Explicit
+    /// [`.with_coordination_raft_groups`](Self::with_coordination_raft_groups) after this method overrides groups.
+    #[must_use]
+    pub fn with_coordination_growth_preset(mut self, preset: CoordinationGrowthPreset) -> Self {
+        let spec = preset.spec();
+        self.coordination_growth_preset = Some(preset);
+        self.coordination_raft_groups = spec.coordination_raft_groups.max(1);
+        self.coordination_shard_count = spec.coordination_shard_count;
+        self
+    }
+
     /// Apply Raft / tick settings to a cluster builder.
     #[must_use]
     pub(crate) fn apply_to(
@@ -173,7 +203,50 @@ impl TrembitaConfigure {
         if let Some(count) = self.coordination_shard_count {
             inner = inner.shard_count(count);
         }
+        if self.durable_mailbox {
+            inner = inner.durable_mailbox(true);
+        }
         inner
+    }
+}
+
+#[cfg(test)]
+mod b41_tests {
+    use super::*;
+    use crate::app::EmptyStateMachine;
+    use trembita_assembly::TrembitaClusterBuilder;
+
+    #[test]
+    fn b41_durable_mailbox_applies_to_cluster_builder() {
+        let cfg = TrembitaConfigure::default()
+            .with_data_dir("/tmp/b41-mailbox")
+            .with_durable_mailbox(true);
+        let inner = TrembitaClusterBuilder::new(trembita_proto::NodeId(1), EmptyStateMachine);
+        let _ = cfg.apply_to(inner);
+    }
+
+    /// B-41 — [`TrembitaConfigure::with_durable_mailbox`] product flag.
+    #[test]
+    fn b41_configure_durable_mailbox_scenarios_table() {
+        struct Row {
+            enabled: bool,
+            want: bool,
+        }
+        let rows = [
+            Row {
+                enabled: true,
+                want: true,
+            },
+            Row {
+                enabled: false,
+                want: false,
+            },
+        ];
+        for row in rows {
+            let cfg = TrembitaConfigure::default().with_durable_mailbox(row.enabled);
+            assert_eq!(cfg.durable_mailbox, row.want, "enabled={}", row.enabled);
+        }
+        assert!(!TrembitaConfigure::default().durable_mailbox);
     }
 }
 
@@ -256,5 +329,57 @@ mod b32_tests {
             .with_coordination_shard_count(64)
             .apply_to(inner);
         // Boot-level assertion lives in `product_coordination_scale` integration tests.
+    }
+}
+
+#[cfg(test)]
+mod b37_tests {
+    use super::*;
+    use trembita_assembly::coordination_profile::CoordinationGrowthPreset;
+
+    #[test]
+    fn b37_configure_growth_preset_scenarios_table() {
+        struct Row {
+            preset: CoordinationGrowthPreset,
+            groups: u32,
+            shard: Option<u32>,
+        }
+        let rows = [
+            Row {
+                preset: CoordinationGrowthPreset::Standard,
+                groups: 1,
+                shard: None,
+            },
+            Row {
+                preset: CoordinationGrowthPreset::JobsBacklog,
+                groups: 1,
+                shard: None,
+            },
+            Row {
+                preset: CoordinationGrowthPreset::WriteSharding,
+                groups: 2,
+                shard: Some(64),
+            },
+            Row {
+                preset: CoordinationGrowthPreset::Full,
+                groups: 2,
+                shard: Some(64),
+            },
+        ];
+        for row in rows {
+            let cfg = TrembitaConfigure::default().with_coordination_growth_preset(row.preset);
+            assert_eq!(cfg.coordination_raft_groups, row.groups, "{:?}", row.preset);
+            assert_eq!(cfg.coordination_shard_count, row.shard, "{:?}", row.preset);
+            assert_eq!(cfg.coordination_growth_preset, Some(row.preset));
+        }
+    }
+
+    #[test]
+    fn b37_explicit_raft_groups_after_preset_override_profile() {
+        let cfg = TrembitaConfigure::default()
+            .with_coordination_growth_preset(CoordinationGrowthPreset::WriteSharding)
+            .with_coordination_raft_groups(4);
+        assert_eq!(cfg.coordination_raft_groups, 4);
+        assert_eq!(cfg.coordination_shard_count, Some(64));
     }
 }

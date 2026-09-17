@@ -32,6 +32,8 @@ trembita-client.workspace = true
 trembita-macros.workspace = true
 trembita-dashboard.workspace = true
 trembita-http = { workspace = true, optional = true }
+trembita-gateway-auth = { workspace = true, optional = true }
+trembita-schedule-postgres = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
 tokio-tungstenite = { workspace = true, optional = true }
 trembita-store-redis = { workspace = true, optional = true }
@@ -66,6 +68,9 @@ json-wire = ["trembita-proto/json-wire"]
 # Built-in `/jobs/*`, `/actors/*`, `/workflows/*` gateway routes via `trembita-http`.
 # Custom gateway routes (WebSocket, native HTTP) work without this feature.
 http-jobs = ["dep:trembita-http", "dep:futures-util", "dep:tokio-tungstenite"]
+# Dev OIDC callback helper crate (B-40) — re-exported when enabled.
+gateway-auth = ["dep:trembita-gateway-auth", "http-jobs"]
+schedule-postgres = ["dep:trembita-schedule-postgres"]
 # Redis-backed [`CapStateStore`](trembita_capstore::CapStateStore) for external workflow keys.
 redis-store = ["dep:trembita-store-redis"]
 # PostgreSQL [`CapStateStore`](trembita_capstore::CapStateStore) adapter.
@@ -79,6 +84,8 @@ otlp-metrics = ["trembita-runtime/otlp"]
 # All optional integrations — used by docs.rs (`all-features = true`).
 full = [
     "http-jobs",
+    "gateway-auth",
+    "schedule-postgres",
     "redis-store",
     "capstore-postgres",
     "external-backlog",

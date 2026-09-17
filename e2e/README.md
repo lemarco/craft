@@ -35,6 +35,7 @@ real network between separate processes.
   follower (`trembita-e2e-queue-client`), kill the leader, drain the replicated
   backlog on the new leader.
 - `gateway_jobs.sh` — HTTP jobs batch + auth through product gateway (in-process test).
+- `elastic_lb.sh` — **B-34** (see [§ Elastic LB (B-34)](#elastic-lb-b-34) below).
 - `queue_idempotency.sh` — `IdempotencyOpts` under redelivery + dedup key across leader failover (in-process tests).
 - `lib.sh` — shared helpers (compose wrapper, leader polling, `run_linclient`,
   `run_queue_client`) sourced by E2E scripts.
@@ -46,6 +47,7 @@ real network between separate processes.
 ./e2e/leave.sh                  # graceful leave (TREMBITA_GRACEFUL_LEAVE)
 ./e2e/queue.sh                  # job queue enqueue / follower worker / failover
 ./e2e/gateway_jobs.sh         # HTTP jobs via gateway (integration test)
+./e2e/elastic_lb.sh           # elastic join + LB + cluster session (docker, heavy)
 ./e2e/queue_idempotency.sh    # idempotency under redelivery
 ./e2e/chaos.sh                  # partition + heal
 ./e2e/cert_renew.sh             # PEM reissue + SIGHUP/poll hot reload
@@ -60,6 +62,35 @@ inside the cluster, `7443`) is published on host ports `18081` (node 1),
 
 Under GitLab dind the published ports live on the `docker` service host, so the
 CI job sets `TREMBITA_E2E_HOST=docker`.
+
+## Elastic LB (B-34)
+
+Product-scale proof: **QUIC/mTLS cluster join**, **HTTP LB**, **cluster session cookies**, **PerNode** inline cap.
+
+| Artifact | Role |
+|----------|------|
+| [`docker-compose-elastic.yml`](docker-compose-elastic.yml) | `node1..3` + optional `node4` joiner + nginx `lb` |
+| [`Dockerfile.elastic`](Dockerfile.elastic) | Builds `trembita-e2e-elastic` (see `trembita-tools/e2e_elastic`) |
+| [`nginx-elastic.conf`](nginx-elastic.conf) | Round-robin upstream to host-mapped node ports |
+| [`elastic_lb.sh`](elastic_lb.sh) | Orchestrates build, wait `/ready`, LB spread, session smoke, `/e2e/whoami` |
+
+**Host ports (default `TREMBITA_E2E_HOST=127.0.0.1`):**
+
+| Port | Target |
+|------|--------|
+| `18180` | nginx LB → backends |
+| `18181`–`18184` | Direct ops/product HTTP on `node1`–`node4` |
+
+**What the script asserts**
+
+1. Nodes 1–3 ready, then **node4** joins and reaches `/ready`.
+2. LB `/ready` returns **≥3 distinct** `node_id` values (round-robin).
+3. `POST`-less login on node 1 → cookie → **`GET /me` on node 2** returns `lbproof`.
+4. **`GET /e2e/whoami`** through LB hits **≥2 distinct** capability host `node_id`s.
+
+**CI:** heavy lane — MR label **`run-heavy`** ([process.md](../docs/process.md)). **Fast parity** (no Docker): `./scripts/test-fast.sh -p trembita --test elastic_lb_product b34_`.
+
+Docs: [ingress-lb § B-34](../docs/ops/ingress-lb.md#elastic-join--http-lb-proof-b-34) · [capabilities § B-34](../docs/scenarios/capabilities.md#elastic-join--lb-b-34).
 
 ## Chaos (T9)
 

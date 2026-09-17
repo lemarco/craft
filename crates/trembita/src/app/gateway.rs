@@ -62,7 +62,10 @@ impl TrembitaApp {
         apis: DefaultGatewayApis,
     ) -> RouteTable {
         let mut table = if apis.ops {
-            state.app.ops_api().route_table()
+            let mut ops = state.app.ops_api().route_table();
+            ops = ops.merge(state.app.product_scale_route_table());
+            ops = ops.merge(Arc::clone(&state.app).directory_r3_route_table());
+            ops
         } else {
             RouteTable::new()
         };

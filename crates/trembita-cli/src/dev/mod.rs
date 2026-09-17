@@ -1,6 +1,7 @@
 //! Local development — showcase clusters without bash/compose as the primary path.
 
 mod cluster;
+pub mod founder;
 mod http;
 mod showcases;
 mod trigger;
@@ -75,6 +76,35 @@ pub fn dev_up(showcase_id: &str, nodes: u32, run_setup: bool) -> Result<(), DevE
         cluster::setup(showcase, &root)?;
     }
     cluster::up(showcase, &root, nodes)
+}
+
+/// `trembita dev cluster-up` — founder 3-node path (B-39).
+pub fn dev_cluster_up(
+    showcase_id: Option<&str>,
+    nodes: u32,
+    run_setup: bool,
+    with_lb: bool,
+) -> Result<(), DevError> {
+    let id = showcase_id.unwrap_or(founder::DEFAULT_CLUSTER_UP_SHOWCASE);
+    let showcase = resolve(id)?;
+    let root = workspace_root()?;
+    founder::cluster_up(showcase, &root, nodes, run_setup, with_lb)
+}
+
+/// `trembita dev cluster-lb-down`
+pub fn dev_cluster_lb_down() -> Result<(), DevError> {
+    let root = workspace_root()?;
+    founder::lb_down(&root)
+}
+
+/// `trembita dev cluster-lb-up --showcase …`
+pub fn dev_cluster_lb_up(showcase_id: Option<&str>) -> Result<(), DevError> {
+    let id = showcase_id.unwrap_or(founder::DEFAULT_CLUSTER_UP_SHOWCASE);
+    let showcase = resolve(id)?;
+    let root = workspace_root()?;
+    founder::lb_up(&root, showcase)?;
+    founder::print_lb_hints_public(showcase);
+    Ok(())
 }
 
 /// `trembita dev stop --showcase …`

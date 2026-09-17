@@ -24,7 +24,8 @@ pub fn route_table(state: Arc<IntrospectApiState>) -> RouteTable {
     let s5 = Arc::clone(&state);
     let s6 = Arc::clone(&state);
     let s7 = Arc::clone(&state);
-    let s8 = state;
+    let s8 = Arc::clone(&state);
+    let s9 = state;
     RouteTable::new()
         .get("/introspect/cluster", move |ctx| {
             let state = Arc::clone(&s1);
@@ -57,6 +58,10 @@ pub fn route_table(state: Arc<IntrospectApiState>) -> RouteTable {
         .get("/introspect/topics", move |ctx| {
             let state = Arc::clone(&s8);
             async move { get_topics(state, ctx).await }
+        })
+        .get("/introspect/join-status", move |ctx| {
+            let state = Arc::clone(&s9);
+            async move { get_join_status(state, ctx).await }
         })
 }
 
@@ -209,6 +214,26 @@ async fn get_topics_inner(
     json_ok(state.observer.topics().await)
 }
 
+async fn get_join_status(
+    state: Arc<IntrospectApiState>,
+    ctx: RequestCtx,
+) -> Result<Response, HttpError> {
+    match get_join_status_inner(&state, ctx).await {
+        Ok(r) => Ok(r),
+        Err(e) => Ok(e.into_http_response()),
+    }
+}
+
+async fn get_join_status_inner(
+    state: &IntrospectApiState,
+    _ctx: RequestCtx,
+) -> Result<Response, IntrospectApiError> {
+    let readiness = state.observer.readiness().await;
+    json_ok(trembita_dashboard::JoinStatusView::from_readiness(
+        &readiness,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,26 +243,39 @@ mod tests {
 
     use std::sync::Arc;
     use trembita_dashboard::{
-        ActorView, BoxFuture, ClusterView, NodeSummary, NodeView, Observer, QueuesView,
+        ActorView, BoxFuture, ClusterView, JoinPhase, NodeSummary, NodeView, Observer, QueuesView,
         RaftGroupsView, Readiness, SagaRecordView, TopicsView,
     };
 
     struct FakeObserver {
         actor_id: String,
+        readiness: Readiness,
     }
 
-    impl Observer for FakeObserver {
-        fn readiness(&self) -> BoxFuture<'_, Readiness> {
-            Box::pin(async move {
-                Readiness {
+    impl FakeObserver {
+        fn pool_ready_leader() -> Self {
+            Self {
+                actor_id: "orders/0".into(),
+                readiness: Readiness {
                     node_id: 1,
                     role: "leader".into(),
                     member: true,
                     draining: false,
                     workers: vec![],
                     reason: None,
-                }
-            })
+                    join_phase: JoinPhase::PoolReady,
+                    committed_learner: false,
+                    log_caught_up: true,
+                    hosts_wired: true,
+                },
+            }
+        }
+    }
+
+    impl Observer for FakeObserver {
+        fn readiness(&self) -> BoxFuture<'_, Readiness> {
+            let snapshot = self.readiness.clone();
+            Box::pin(async move { snapshot })
         }
 
         fn cluster(&self) -> BoxFuture<'_, ClusterView> {
@@ -327,9 +365,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_cluster_returns_json() {
-        let observer: Arc<dyn Observer> = Arc::new(FakeObserver {
-            actor_id: "orders/0".into(),
-        });
+        let observer: Arc<dyn Observer> = Arc::new(FakeObserver::pool_ready_leader());
         let table = route_table(Arc::new(IntrospectApiState { observer }));
         let resp = table
             .dispatch_open(
@@ -342,5 +378,53 @@ mod tests {
             .await
             .expect("dispatch");
         assert_eq!(resp.status_code(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn b35_join_status_json_reflects_readiness_pipeline() {
+        let readiness = Readiness {
+            node_id: 4,
+            role: "learner".into(),
+            member: false,
+            draining: false,
+            workers: vec!["cap#1".into()],
+            reason: Some("awaiting supervisor auto-hosts".into()),
+            join_phase: JoinPhase::AwaitingHosts,
+            committed_learner: true,
+            log_caught_up: true,
+            hosts_wired: false,
+        };
+        let observer: Arc<dyn Observer> = Arc::new(FakeObserver {
+            actor_id: "cap/0".into(),
+            readiness: readiness.clone(),
+        });
+        let table = route_table(Arc::new(IntrospectApiState { observer }));
+        let resp = table
+            .dispatch_open(
+                &Method::GET,
+                "/introspect/join-status",
+                HashMap::new(),
+                http::HeaderMap::new(),
+                Bytes::new(),
+            )
+            .await
+            .expect("dispatch");
+        assert_eq!(resp.status_code(), StatusCode::OK);
+        let json = match resp.body() {
+            crate::ResponseBody::Json(v) => v.clone(),
+            crate::ResponseBody::Bytes(b) => serde_json::from_slice(b).expect("json"),
+            other => panic!("expected json, got {other:?}"),
+        };
+        assert_eq!(json["node_id"], 4);
+        assert_eq!(json["phase"], "awaiting_hosts");
+        assert_eq!(json["committed_learner"], true);
+        assert_eq!(json["log_caught_up"], true);
+        assert_eq!(json["hosts_wired"], false);
+        assert_eq!(json["local_workers"], serde_json::json!(["cap#1"]));
+        let expected = trembita_dashboard::JoinStatusView::from_readiness(&readiness);
+        assert_eq!(
+            json,
+            serde_json::to_value(expected).expect("join status json")
+        );
     }
 }

@@ -10,7 +10,7 @@ use crate::JobQueue;
 use crate::queue_service::QueueService;
 
 /// When sustained `pending` exceeds this, the leader may add a physical shard.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AutoShardPolicy {
     /// Minimum logical `pending` before counting pressure ticks.
     pub pending_threshold: u64,
@@ -28,6 +28,30 @@ impl Default for AutoShardPolicy {
             pending_threshold: 512,
             ticks_above_threshold: 3,
             max_shards: 8,
+            poll_interval: Duration::from_secs(5),
+        }
+    }
+}
+
+impl AutoShardPolicy {
+    /// B-37 **`jobs_backlog`** profile — expand sooner, allow more physical shards.
+    #[must_use]
+    pub fn jobs_backlog_growth() -> Self {
+        Self {
+            pending_threshold: 256,
+            ticks_above_threshold: 2,
+            max_shards: 16,
+            poll_interval: Duration::from_secs(5),
+        }
+    }
+
+    /// B-37 **`full`** profile — default depth with a higher shard ceiling.
+    #[must_use]
+    pub fn full_growth() -> Self {
+        Self {
+            pending_threshold: 512,
+            ticks_above_threshold: 3,
+            max_shards: 12,
             poll_interval: Duration::from_secs(5),
         }
     }
@@ -115,5 +139,34 @@ mod tests {
         let p = AutoShardPolicy::default();
         assert!(p.max_shards >= 2);
         assert!(p.pending_threshold > 0);
+    }
+
+    /// B-37 — leader thresholds documented in [capabilities § B-37](../../../docs/scenarios/capabilities.md#coordination-growth-presets-b-37).
+    #[test]
+    fn b37_growth_preset_auto_shard_policies_table() {
+        struct Row {
+            label: &'static str,
+            policy: AutoShardPolicy,
+            pending: u64,
+            max_shards: usize,
+        }
+        let rows = [
+            Row {
+                label: "jobs_backlog",
+                policy: AutoShardPolicy::jobs_backlog_growth(),
+                pending: 256,
+                max_shards: 16,
+            },
+            Row {
+                label: "full",
+                policy: AutoShardPolicy::full_growth(),
+                pending: 512,
+                max_shards: 12,
+            },
+        ];
+        for row in rows {
+            assert_eq!(row.policy.pending_threshold, row.pending, "{}", row.label);
+            assert_eq!(row.policy.max_shards, row.max_shards, "{}", row.label);
+        }
     }
 }

@@ -16,6 +16,7 @@ pub use trembita_macros::actor;
 
 mod compute_token;
 mod directory;
+mod directory_delivery;
 mod directory_policy;
 mod driver;
 mod external_load;
@@ -43,6 +44,7 @@ pub use compute_token::{
     ComputeGuard, ComputeTokenPool, with_compute_guard, with_compute_guard_weighted,
 };
 pub use directory::{ActorDirectory, ClusterRef, DirectorySync};
+pub use directory_delivery::DirectoryDeliveryStats;
 pub use directory_policy::{DirectoryPolicy, DirectoryRetry};
 pub use driver::{DriverError, NetEffect, RaftDriver, ReadOutcome, Step};
 pub use external_load::{ExternalLoad, ManualExternalLoad};

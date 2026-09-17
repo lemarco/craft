@@ -13,13 +13,21 @@ pub enum AppTemplate {
     Workflows,
     /// Event topics + publish HTTP.
     Topics,
+    /// HTTP gateway + inline capabilities (no default job stream).
+    Api,
 }
 
 impl AppTemplate {
     /// All template ids for help text.
     #[must_use]
     pub fn all() -> &'static [Self] {
-        &[Self::Jobs, Self::Realtime, Self::Workflows, Self::Topics]
+        &[
+            Self::Jobs,
+            Self::Realtime,
+            Self::Workflows,
+            Self::Topics,
+            Self::Api,
+        ]
     }
 
     /// CLI / docs id.
@@ -30,6 +38,7 @@ impl AppTemplate {
             Self::Realtime => "realtime",
             Self::Workflows => "workflows",
             Self::Topics => "topics",
+            Self::Api => "api",
         }
     }
 
@@ -49,6 +58,7 @@ impl AppTemplate {
                 AppFeature::Gateway,
                 AppFeature::Telemetry,
             ],
+            Self::Api => vec![AppFeature::Gateway, AppFeature::Telemetry],
         }
     }
 
@@ -60,8 +70,15 @@ impl AppTemplate {
             "realtime" | "real-time" | "ws" | "websocket" => Self::Realtime,
             "workflows" | "workflow" | "saga" => Self::Workflows,
             "topics" | "topic" | "events" => Self::Topics,
+            "api" | "http" | "gateway" => Self::Api,
             _ => return None,
         })
+    }
+
+    /// B-38 alias: `--profile` maps to the same presets as `--template`.
+    #[must_use]
+    pub fn parse_profile(s: &str) -> Option<Self> {
+        Self::parse_name(s)
     }
 }
 
@@ -94,5 +111,68 @@ mod tests {
         let feats = resolve_scaffold_features(Some(AppTemplate::Topics), "jobs,gateway").unwrap();
         assert!(feats.contains(&AppFeature::Jobs));
         assert!(!feats.contains(&AppFeature::Topics));
+    }
+
+    #[test]
+    fn b38_api_profile_omits_jobs_feature() {
+        let feats = AppTemplate::Api.features();
+        assert!(!feats.contains(&AppFeature::Jobs));
+        assert!(feats.contains(&AppFeature::Gateway));
+    }
+
+    /// B-38 — `--profile` is an alias for `--template` ([capability-dx § B-38](../../../docs/decisions/capability-dx.md#founder-dx-v2-b-38)).
+    #[test]
+    fn b38_parse_profile_matches_template_aliases_table() {
+        struct Row {
+            raw: &'static str,
+            want: AppTemplate,
+        }
+        let rows = [
+            Row {
+                raw: "jobs",
+                want: AppTemplate::Jobs,
+            },
+            Row {
+                raw: "job",
+                want: AppTemplate::Jobs,
+            },
+            Row {
+                raw: "real-time",
+                want: AppTemplate::Realtime,
+            },
+            Row {
+                raw: "ws",
+                want: AppTemplate::Realtime,
+            },
+            Row {
+                raw: "api",
+                want: AppTemplate::Api,
+            },
+            Row {
+                raw: "gateway",
+                want: AppTemplate::Api,
+            },
+        ];
+        for row in rows {
+            assert_eq!(
+                AppTemplate::parse_profile(row.raw),
+                Some(row.want),
+                "{}",
+                row.raw
+            );
+            assert_eq!(
+                AppTemplate::parse_name(row.raw),
+                Some(row.want),
+                "{}",
+                row.raw
+            );
+        }
+    }
+
+    #[test]
+    fn b38_template_id_roundtrip_table() {
+        for t in AppTemplate::all() {
+            assert_eq!(AppTemplate::parse_profile(t.id()), Some(*t));
+        }
     }
 }

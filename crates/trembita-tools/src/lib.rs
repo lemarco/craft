@@ -3,6 +3,7 @@
 #![allow(missing_docs)]
 #![allow(clippy::missing_errors_doc)]
 
+pub mod e2e_elastic;
 pub mod gateway_auth;
 pub mod node;
 pub mod ops;

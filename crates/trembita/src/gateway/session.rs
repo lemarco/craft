@@ -124,11 +124,14 @@ impl SessionHandle {
         &self.session_key
     }
 
-    /// Re-open session after expiry or worker loss.
+    /// Re-open session after expiry or worker loss (uses R3 [`ActorSession::reopen_str`]).
     pub fn reopen(&mut self) -> bool {
-        self.session = self
-            .app
-            .session_str(&self.group, &self.session_key, self.ttl);
+        self.session = self.app.reopen_session_str(
+            &self.group,
+            &self.session_key,
+            self.ttl,
+            self.session.as_ref(),
+        );
         self.session.is_some()
     }
 
